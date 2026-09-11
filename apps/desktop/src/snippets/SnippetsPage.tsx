@@ -135,7 +135,7 @@ function SnippetDialog({
   );
 }
 
-function RunDialog({
+export function RunDialog({
   snippet,
   busy,
   onCancel,
@@ -181,9 +181,8 @@ function RunDialog({
                 Variables
               </Typography>
               {snippet.variables.map((v) => (
-                <Field label={v}>
+                <Field key={v} label={v}>
                   <TextField
-                    key={v}
                     size="small"
                     value={vars[v] ?? ""}
                     onChange={(e) => setVars({ ...vars, [v]: e.target.value })}

@@ -91,17 +91,20 @@ const SAMPLE: { color: number; text: string }[][] = [
   ],
 ];
 
-function ThemeCard({
+export function ThemeCard({
   theme,
   label,
   hint,
   selected,
+  compact = false,
   onClick,
 }: {
   theme: TerminalTheme;
   label: string;
   hint?: string;
   selected: boolean;
+  /** Shorter preview for narrow columns (terminal side panel). */
+  compact?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -125,9 +128,9 @@ function ThemeCard({
     >
       <Box
         sx={{
-          height: 64,
+          height: compact ? 46 : 64,
           px: 1.25,
-          py: 1,
+          py: compact ? 0.75 : 1,
           bgcolor: theme.background,
           color: theme.foreground,
           fontFamily: "monospace",
@@ -138,7 +141,7 @@ function ThemeCard({
           position: "relative",
         }}
       >
-        {SAMPLE.map((line, i) => (
+        {(compact ? SAMPLE.slice(0, 1) : SAMPLE).map((line, i) => (
           <Box key={i} component="div">
             {line.map((seg, j) => (
               <Box key={j} component="span" sx={{ color: theme.ansi[seg.color] }}>
@@ -171,13 +174,15 @@ function ThemeCard({
           </Box>
         )}
       </Box>
-      <Box sx={{ px: 1.25, py: 0.75, minWidth: 0 }}>
+      <Box sx={{ px: 1.25, py: compact ? 0.5 : 0.75, minWidth: 0 }}>
         <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
           {label}
         </Typography>
-        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-          {hint ?? (theme.dark ? "Dark" : "Light")}
-        </Typography>
+        {!compact && (
+          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+            {hint ?? (theme.dark ? "Dark" : "Light")}
+          </Typography>
+        )}
       </Box>
     </ButtonBase>
   );

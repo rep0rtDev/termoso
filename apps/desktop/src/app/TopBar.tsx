@@ -8,16 +8,23 @@ import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import LockRoundedIcon from "@mui/icons-material/LockRounded";
-import type { ReactNode } from "react";
+import DeleteSweepRoundedIcon from "@mui/icons-material/DeleteSweepRounded";
+import ViewSidebarRoundedIcon from "@mui/icons-material/ViewSidebarRounded";
+import type { DragEvent, ReactNode } from "react";
 import { PqBadge, StatusDot } from "@/terminal/TerminalPane";
 import {
   HOME_TAB,
+  clearBuffer,
   closeTab,
+  moveTab,
   openTerminal,
+  resetZoom,
   setActiveTab,
   setSearchOpen,
   splitActivePane,
+  terminalStore,
   toggleBroadcast,
+  toggleSidePanel,
   useTerminal,
   type TerminalTab,
 } from "@/terminal/store";
@@ -43,6 +50,7 @@ export function TopBar() {
   const sftpCount = useSftp((s) => s.order.length);
   const active = tabs.find((t) => t.id === activeTabId);
   const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
 
   return (
     <Box
@@ -90,7 +98,13 @@ export function TopBar() {
         }}
       >
         {tabs.map((t) => (
-          <TerminalTopTab key={t.id} tab={t} active={t.id === activeTabId} />
+          <TerminalTopTab
+            key={t.id}
+            tab={t}
+            active={t.id === activeTabId}
+            dragging={dragging}
+            onDragState={setDragging}
+          />
         ))}
         <Tooltip title="New terminal">
           <IconButton
@@ -121,9 +135,33 @@ export function TopBar() {
 
 function PaneTools({ tab }: { tab: TerminalTab }) {
   const pane = useTerminal((s) => s.panes[tab.activePaneId]);
+  const sidePanel = useTerminal((s) => s.sidePanel);
   const canSftp = pane?.protocol === "ssh" && pane.status === "connected";
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, px: 1 }}>
+      {tab.zoom !== 1 && (
+        <Tooltip title="Reset zoom (Ctrl+0)">
+          <Box
+            component="button"
+            onClick={() => resetZoom(tab.id)}
+            sx={{
+              all: "unset",
+              cursor: "pointer",
+              px: 0.75,
+              height: 20,
+              mr: 0.5,
+              borderRadius: 1,
+              fontSize: 11,
+              fontWeight: 600,
+              color: "text.secondary",
+              bgcolor: "action.selected",
+              "&:hover": { color: "text.primary" },
+            }}
+          >
+            {Math.round(tab.zoom * 100)}%
+          </Box>
+        </Tooltip>
+      )}
       <Tooltip title="Split right (Ctrl+Shift+D)">
         <IconButton onClick={() => splitActivePane(tab.id, "row")}>
           <VerticalSplitRoundedIcon fontSize="small" />
@@ -153,6 +191,11 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
           <SearchRoundedIcon fontSize="small" />
         </IconButton>
       </Tooltip>
+      <Tooltip title="Clear buffer (Ctrl+Shift+K)">
+        <IconButton onClick={() => clearBuffer(tab.activePaneId)}>
+          <DeleteSweepRoundedIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
       <Tooltip title="Open SFTP for this connection">
         <span>
           <IconButton
@@ -167,19 +210,81 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
           </IconButton>
         </span>
       </Tooltip>
+      <Tooltip title="Side panel: snippets, history, themes, info (Ctrl+Shift+B)">
+        <IconButton
+          onClick={() => toggleSidePanel()}
+          sx={sidePanel ? { color: "text.primary", bgcolor: "action.selected" } : undefined}
+        >
+          <ViewSidebarRoundedIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
     </Box>
   );
 }
 
-function TerminalTopTab({ tab, active }: { tab: TerminalTab; active: boolean }) {
+const TAB_MIME = "application/x-termoso-tab";
+
+function TerminalTopTab({
+  tab,
+  active,
+  dragging,
+  onDragState,
+}: {
+  tab: TerminalTab;
+  active: boolean;
+  /** Id of the tab currently being dragged, if any. */
+  dragging: string | null;
+  onDragState: (id: string | null) => void;
+}) {
   const pane = useTerminal((s) => s.panes[tab.activePaneId]);
   const hosts = useHosts(null);
+  const [over, setOver] = useState<"before" | "after" | null>(null);
   if (!pane) return null;
   const os = pane.hostId ? hosts.data?.find((h) => h.id === pane.hostId)?.osName : null;
   const distro = pane.status === "connected" ? distroIcon(os) : null;
+
+  const side = (e: DragEvent<HTMLElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return e.clientX < r.left + r.width / 2 ? "before" : "after";
+  };
+  const drag = {
+    draggable: true,
+    onDragStart: (e: DragEvent<HTMLElement>) => {
+      e.dataTransfer.setData(TAB_MIME, tab.id);
+      e.dataTransfer.effectAllowed = "move";
+      onDragState(tab.id);
+    },
+    onDragEnd: () => {
+      onDragState(null);
+      setOver(null);
+    },
+    onDragOver: (e: DragEvent<HTMLElement>) => {
+      if (!dragging || dragging === tab.id) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setOver(side(e));
+    },
+    onDragLeave: () => setOver(null),
+    onDrop: (e: DragEvent<HTMLElement>) => {
+      const id = e.dataTransfer.getData(TAB_MIME) || dragging;
+      setOver(null);
+      if (!id || id === tab.id) return;
+      e.preventDefault();
+      const tabs = terminalStore.get().tabs;
+      if (side(e) === "before") moveTab(id, tab.id);
+      else {
+        const idx = tabs.findIndex((t) => t.id === tab.id);
+        moveTab(id, tabs[idx + 1]?.id ?? null);
+      }
+    },
+  };
+
   return (
     <TopTab
       active={active}
+      drag={drag}
+      dropSide={over}
+      faded={dragging === tab.id}
       onClick={() => setActiveTab(tab.id)}
       onMiddleClick={() => closeTab(tab.id)}
       icon={
@@ -208,9 +313,32 @@ interface TopTabProps {
   onClick: () => void;
   onClose?: () => void;
   onMiddleClick?: () => void;
+  /** HTML5 drag handlers for reorderable tabs. */
+  drag?: DragHandlers & { draggable: boolean };
+  dropSide?: "before" | "after" | null;
+  faded?: boolean;
 }
 
-function TopTab({ active, icon, label, trailing, onClick, onClose, onMiddleClick }: TopTabProps) {
+interface DragHandlers {
+  onDragStart: (e: DragEvent<HTMLElement>) => void;
+  onDragEnd: () => void;
+  onDragOver: (e: DragEvent<HTMLElement>) => void;
+  onDragLeave: () => void;
+  onDrop: (e: DragEvent<HTMLElement>) => void;
+}
+
+function TopTab({
+  active,
+  icon,
+  label,
+  trailing,
+  onClick,
+  onClose,
+  onMiddleClick,
+  drag,
+  dropSide,
+  faded,
+}: TopTabProps) {
   return (
     <Box
       role="tab"
@@ -219,6 +347,7 @@ function TopTab({ active, icon, label, trailing, onClick, onClose, onMiddleClick
       onAuxClick={(e) => {
         if (e.button === 1) onMiddleClick?.();
       }}
+      {...drag}
       sx={{
         display: "flex",
         alignItems: "center",
@@ -233,6 +362,13 @@ function TopTab({ active, icon, label, trailing, onClick, onClose, onMiddleClick
         flexShrink: 0,
         borderRadius: 1.5,
         cursor: "default",
+        opacity: faded ? 0.4 : 1,
+        boxShadow: (t) =>
+          dropSide === "before"
+            ? `-2px 0 0 0 ${t.palette.primary.main}`
+            : dropSide === "after"
+              ? `2px 0 0 0 ${t.palette.primary.main}`
+              : "none",
         bgcolor: active ? "surface.highest" : "transparent",
         color: active ? "text.primary" : "text.secondary",
         "&:hover": { bgcolor: active ? "surface.highest" : "action.hover", color: "text.primary" },

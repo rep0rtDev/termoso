@@ -147,6 +147,8 @@ export interface HostForm {
   envVariables: [string, string][];
   keepAliveInterval: number | null;
   timeout: number | null;
+  /** Terminal colour scheme id; null follows the app setting. */
+  colorScheme: string | null;
   hasPassword: boolean;
 }
 
@@ -189,6 +191,7 @@ export function emptyHostForm(vaultId: Uuid, groupId: Uuid | null): HostForm {
     envVariables: [],
     keepAliveInterval: null,
     timeout: null,
+    colorScheme: null,
     hasPassword: false,
   };
 }
@@ -640,6 +643,8 @@ export interface SessionInfo {
   algorithms: SshAlgorithms | null;
   /** Jump hosts the connection went through, outermost first (`user@host:port`). */
   via: string[];
+  /** Colour scheme configured on the host (or inherited); null follows the app setting. */
+  colorScheme: string | null;
 }
 
 export interface SshAlgorithms {

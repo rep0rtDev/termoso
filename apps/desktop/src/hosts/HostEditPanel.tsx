@@ -5,6 +5,7 @@ import {
   Chip,
   IconButton,
   InputAdornment,
+  ListSubheader,
   MenuItem,
   TextField,
   ToggleButton,
@@ -39,6 +40,7 @@ import {
 import { emptyHostForm, errorMessage, type HostForm, type Uuid } from "@/ipc/types";
 import { goToSftp } from "@/app/navigation";
 import { openTerminal } from "@/terminal/store";
+import { terminalThemes } from "@/terminal/themes";
 import { openSftpForHost } from "@/sftp/store";
 import { monoFontFamily, sizes } from "@/theme/theme";
 import { ChainDialog, ProxyDialog } from "./HostAdvancedDialogs";
@@ -112,7 +114,8 @@ function HostEditor({
       initial.startupSnippetId !== null ||
       initial.envVariables.length > 0 ||
       initial.keepAliveInterval !== null ||
-      initial.timeout !== null,
+      initial.timeout !== null ||
+      initial.colorScheme !== null,
   );
   const [dialog, setDialog] = useState<"proxy" | "chain" | null>(null);
   const [newTag, setNewTag] = useState("");
@@ -386,6 +389,8 @@ function HostEditor({
           />
         </SectionCard>
 
+        {!ssh && <TerminalThemeCard form={form} set={set} />}
+
         {ssh && (
           <Button
             variant="text"
@@ -513,6 +518,8 @@ function HostEditor({
               </Box>
             </SectionCard>
 
+            <TerminalThemeCard form={form} set={set} />
+
             <SectionCard
               title="Environment variables"
               action={
@@ -623,5 +630,67 @@ function HostEditor({
         “{form.label || form.address}” and its inline credentials will be removed from this device.
       </ConfirmDialog>
     </SidePanel>
+  );
+}
+
+/** Colour scheme the terminal opens with for this host; empty follows Settings. */
+function TerminalThemeCard({
+  form,
+  set,
+}: {
+  form: HostForm;
+  set: <K extends keyof HostForm>(k: K, v: HostForm[K]) => void;
+}) {
+  const dark = terminalThemes.filter((t) => t.dark);
+  const light = terminalThemes.filter((t) => !t.dark);
+  return (
+    <SectionCard title="Terminal">
+      <Field label="Colour scheme" hint="Overrides Settings → Terminal for this host only.">
+        <TextField
+          select
+          value={form.colorScheme ?? ""}
+          onChange={(e) => set("colorScheme", e.target.value === "" ? null : e.target.value)}
+        >
+          <MenuItem value="">
+            <em>App default</em>
+          </MenuItem>
+          <ListSubheader disableSticky>Dark</ListSubheader>
+          {dark.map((t) => (
+            <MenuItem key={t.id} value={t.id}>
+              <ThemeSwatch background={t.background} ansi={t.ansi} />
+              {t.name}
+            </MenuItem>
+          ))}
+          <ListSubheader disableSticky>Light</ListSubheader>
+          {light.map((t) => (
+            <MenuItem key={t.id} value={t.id}>
+              <ThemeSwatch background={t.background} ansi={t.ansi} />
+              {t.name}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Field>
+    </SectionCard>
+  );
+}
+
+function ThemeSwatch({ background, ansi }: { background: string; ansi: readonly string[] }) {
+  return (
+    <Box
+      sx={{
+        display: "inline-flex",
+        gap: "2px",
+        p: "3px",
+        mr: 1.25,
+        borderRadius: "4px",
+        bgcolor: background,
+        border: 1,
+        borderColor: "border.light",
+      }}
+    >
+      {[1, 2, 3, 4, 5, 6].map((i) => (
+        <Box key={i} sx={{ width: 6, height: 10, borderRadius: "1px", bgcolor: ansi[i] }} />
+      ))}
+    </Box>
   );
 }
