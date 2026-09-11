@@ -14,7 +14,7 @@ use termoso_core::hostkey::KnownHosts;
 use termoso_core::model::{Entity, HostSnippet, Identity, ResolvedHost, Snippet, SshConfig};
 use termoso_core::pty::{LocalShellOptions, LocalTerminal};
 use termoso_core::ssh::proxy::{ProxyConfig, ProxyKind};
-use termoso_core::ssh::{AuthMethod, ConnectOptions, SshClient, SshTarget};
+use termoso_core::ssh::{Algorithms, AuthMethod, ConnectOptions, SshClient, SshTarget};
 use termoso_core::store::{ConnectionHistory, LogMeta};
 use termoso_core::telnet::{TelnetOptions, TelnetTerminal};
 use termoso_core::terminal::{SharedTerminal, TermEvent, TermEvents, TermSize};
@@ -64,6 +64,8 @@ pub struct SessionInfo {
     pub host_id: Option<Uuid>,
     pub started_at: DateTime<Utc>,
     pub state: SessionState,
+    /// Negotiated SSH algorithms (`None` for local / telnet / still connecting).
+    pub algorithms: Option<Algorithms>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -255,6 +257,7 @@ pub async fn open<R: Runtime>(
         host_id: opened.host_id,
         started_at: Utc::now(),
         state: SessionState::Connected,
+        algorithms: opened.client.as_ref().and_then(|c| c.algorithms().cloned()),
     };
     let history_id = state
         .store
@@ -570,6 +573,7 @@ async fn connect<R: Runtime>(
             emit_connecting(app, id, "ssh", &label, &display, Some(*host_id));
             let (client, jumps) = connect_resolved(app, id, &resolved).await?;
             let (term, events) = client.shell(TERM, size).await?;
+            detect_os_in_background(app, &resolved, client.clone());
             Ok(Opened {
                 protocol: "ssh",
                 title: label,
@@ -608,12 +612,55 @@ pub async fn connect_host<R: Runtime>(
     }
     let display = ssh_target(&resolved).display();
     let (client, jumps) = connect_resolved(app, session_id, &resolved).await?;
+    detect_os_in_background(app, &resolved, client.clone());
     Ok(HostConnection {
         label: resolved.host.data.label.clone(),
         display,
         client,
         jumps,
     })
+}
+
+/// Fill in `os_name` for a host that has none yet, so its card gets the
+/// right icon after the first successful connection. Runs off the session
+/// path: a slow or refused probe never delays the shell, and failures are
+/// silently dropped (the next connection tries again).
+fn detect_os_in_background<R: Runtime>(
+    app: &AppHandle<R>,
+    resolved: &ResolvedHost,
+    client: Arc<SshClient>,
+) {
+    let state = app.state::<AppState>();
+    let enabled = state.settings().map(|s| s.detect_os).unwrap_or(true);
+    if !enabled || resolved.host.data.os_name.is_some() {
+        return;
+    }
+    let app = app.clone();
+    let host_id = resolved.host.id;
+    tauri::async_runtime::spawn(async move {
+        let Some(os) = termoso_core::osdetect::detect(&client).await else {
+            return;
+        };
+        let state = app.state::<AppState>();
+        let saved = (|| -> Result<Uuid> {
+            let mut host = state.store.require::<termoso_core::model::Host>(host_id)?;
+            if host.data.os_name.is_some() {
+                return Ok(host.vault_id);
+            }
+            host.data.os_name = Some(os.to_string());
+            state.store.update(host.id, &host.data)?;
+            Ok(host.vault_id)
+        })();
+        match saved {
+            Ok(vault_id) => {
+                let _ = app.emit(
+                    crate::account::SYNC_EVENT,
+                    crate::account::SyncNotice::EntitiesChanged { vault_id },
+                );
+            }
+            Err(e) => tracing::debug!("saving detected os failed: {e}"),
+        }
+    });
 }
 
 fn ssh_target(resolved: &ResolvedHost) -> SshTarget {
@@ -660,6 +707,7 @@ fn emit_connecting<R: Runtime>(
                 host_id,
                 started_at: Utc::now(),
                 state: SessionState::Connecting,
+                algorithms: None,
             },
         },
     );
@@ -811,6 +859,7 @@ async fn ssh_connect<R: Runtime>(
             proxy: proxy.clone(),
             env: ssh_cfg.env_variables.clone(),
             agent_forwarding: ssh_cfg.agent_forwarding,
+            post_quantum_kex: state.settings().map(|s| s.post_quantum_kex).unwrap_or(true),
         };
 
         let result = match &via {

@@ -1,8 +1,10 @@
 import { useEffect, useRef } from "react";
-import { Box, Button, CircularProgress, Stack, Typography, alpha } from "@mui/material";
+import { Box, Button, CircularProgress, Stack, Tooltip, Typography, alpha } from "@mui/material";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
-import type { Uuid } from "@/ipc/types";
+import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
+import type { SshAlgorithms, Uuid } from "@/ipc/types";
+import { isPostQuantumKex } from "@/ipc/types";
 import {
   closePane,
   focusPane,
@@ -11,6 +13,7 @@ import {
   setActivePane,
   useTerminal,
 } from "./store";
+import { useTerminalTheme } from "./useTerminalTheme";
 
 interface Props {
   paneId: Uuid;
@@ -21,6 +24,7 @@ interface Props {
 export function TerminalPane({ paneId, active, showFrame }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const pane = useTerminal((s) => s.panes[paneId]);
+  const theme = useTerminalTheme();
 
   useEffect(() => {
     const host = hostRef.current;
@@ -45,7 +49,7 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
         minHeight: 0,
         display: "flex",
         flexDirection: "column",
-        bgcolor: "background.default",
+        bgcolor: theme.background,
         outline: showFrame
           ? `1px solid ${active ? t.palette.primary.main : t.palette.divider}`
           : "none",
@@ -73,6 +77,7 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
           <Typography variant="caption" color="text.secondary" noWrap>
             {pane.subtitle}
           </Typography>
+          <PqBadge algorithms={pane.algorithms} size={13} />
         </Stack>
       )}
       <Box ref={hostRef} sx={{ flex: 1, minHeight: 0, position: "relative" }} />
@@ -80,14 +85,18 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
       {pane.status === "connecting" && (
         <Overlay>
           <CircularProgress size={22} />
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" sx={{ opacity: 0.8 }}>
             Connecting to {pane.subtitle || pane.title}…
           </Typography>
         </Overlay>
       )}
       {finished && (
         <Overlay dim>
-          <Typography variant="body2" color={pane.status === "error" ? "error" : "text.secondary"}>
+          <Typography
+            variant="body2"
+            color={pane.status === "error" ? "error" : "inherit"}
+            sx={{ opacity: pane.status === "error" ? 1 : 0.8 }}
+          >
             {pane.message ?? "Session ended"}
           </Typography>
           <Stack direction="row" spacing={1}>
@@ -115,23 +124,45 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
 }
 
 function Overlay({ children, dim }: { children: React.ReactNode; dim?: boolean }) {
+  const theme = useTerminalTheme();
   return (
     <Stack
       spacing={1.5}
-      sx={(t) => ({
+      sx={{
         alignItems: "center",
         justifyContent: "flex-end",
         position: "absolute",
         inset: 0,
         pb: 4,
+        color: theme.foreground,
         pointerEvents: dim ? "auto" : "none",
         background: dim
-          ? `linear-gradient(to bottom, transparent 40%, ${alpha(t.palette.background.default, 0.92)})`
+          ? `linear-gradient(to bottom, transparent 40%, ${alpha(theme.background, 0.92)})`
           : "transparent",
-      })}
+      }}
     >
       {children}
     </Stack>
+  );
+}
+
+export function algorithmsSummary(a: SshAlgorithms): string {
+  return `KEX ${a.kex}\nHost key ${a.hostKey}\nCipher ${a.cipher}\nMAC ${a.mac}`;
+}
+
+/** Shield shown when the session negotiated a post-quantum key exchange. */
+export function PqBadge({ algorithms, size }: { algorithms: SshAlgorithms | null; size: number }) {
+  if (!algorithms || !isPostQuantumKex(algorithms)) return null;
+  return (
+    <Tooltip
+      title={
+        <Box sx={{ whiteSpace: "pre-line" }}>
+          {"Quantum-safe key exchange\n" + algorithmsSummary(algorithms)}
+        </Box>
+      }
+    >
+      <ShieldRoundedIcon sx={{ fontSize: size, color: "primary.main" }} />
+    </Tooltip>
   );
 }
 

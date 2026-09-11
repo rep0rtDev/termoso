@@ -8,6 +8,7 @@ use russh::client::{Msg, Session};
 use russh::keys::PublicKeyOrCertificate;
 use russh::keys::ssh_key::PublicKey;
 use russh::{Channel, ChannelOpenFailure};
+use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 
 use crate::error::CoreError;
@@ -30,6 +31,27 @@ pub struct ForwardedChannel {
 /// Remote-forward listeners keyed by the server-side port they were bound on.
 pub(crate) type ForwardRoutes = Arc<Mutex<HashMap<u16, mpsc::UnboundedSender<ForwardedChannel>>>>;
 
+/// Algorithms negotiated for a connection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Algorithms {
+    /// Key exchange, e.g. `mlkem768x25519-sha256`.
+    pub kex: String,
+    /// Host key algorithm, e.g. `ssh-ed25519`.
+    pub host_key: String,
+    /// Symmetric cipher.
+    pub cipher: String,
+    /// MAC (empty for AEAD ciphers that carry their own).
+    pub mac: String,
+}
+
+impl Algorithms {
+    /// True when the key exchange includes a post-quantum KEM.
+    pub fn post_quantum(&self) -> bool {
+        self.kex.contains("mlkem") || self.kex.contains("sntrup")
+    }
+}
+
 /// Termoso's russh client handler.
 pub struct ClientHandler {
     host: String,
@@ -37,7 +59,9 @@ pub struct ClientHandler {
     known_hosts: KnownHosts,
     prompt: Arc<dyn HostKeyPrompt>,
     banner: Arc<Mutex<Option<String>>>,
+    algorithms: Arc<Mutex<Option<Algorithms>>>,
     closed: watch::Sender<Option<String>>,
+    prompting: watch::Sender<bool>,
     forwarded: ForwardRoutes,
 }
 
@@ -56,13 +80,25 @@ impl ClientHandler {
             known_hosts,
             prompt,
             banner: Arc::new(Mutex::new(None)),
+            algorithms: Arc::new(Mutex::new(None)),
             closed,
+            prompting: watch::Sender::new(false),
             forwarded,
         }
     }
 
     pub(crate) fn banner(&self) -> Arc<Mutex<Option<String>>> {
         self.banner.clone()
+    }
+
+    /// `true` while the user is being asked about an unknown or changed host
+    /// key; the handshake timeout is paused for that time.
+    pub(crate) fn prompting(&self) -> watch::Receiver<bool> {
+        self.prompting.subscribe()
+    }
+
+    pub(crate) fn algorithms(&self) -> Arc<Mutex<Option<Algorithms>>> {
+        self.algorithms.clone()
     }
 
     /// The host key a certificate vouches for. Certificate authorities are
@@ -88,7 +124,10 @@ impl russh::client::Handler for ClientHandler {
             return Ok(true);
         }
         let changed = matches!(verdict, HostKeyVerdict::Changed { .. });
-        match self.prompt.decide(verdict).await {
+        let _ = self.prompting.send(true);
+        let decision = self.prompt.decide(verdict).await;
+        let _ = self.prompting.send(false);
+        match decision {
             HostKeyDecision::Reject => {
                 tracing::warn!(host = %self.host, changed, "host key rejected");
                 Ok(false)
@@ -107,6 +146,25 @@ impl russh::client::Handler for ClientHandler {
         _session: &mut Session,
     ) -> Result<(), Self::Error> {
         *self.banner.lock().unwrap_or_else(|p| p.into_inner()) = Some(banner.to_string());
+        Ok(())
+    }
+
+    async fn kex_done(
+        &mut self,
+        _shared_secret: Option<&[u8]>,
+        names: &russh::Names,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        let mut slot = self.algorithms.lock().unwrap_or_else(|p| p.into_inner());
+        // Only the first exchange is interesting; rekeys reuse the same names.
+        if slot.is_none() {
+            *slot = Some(Algorithms {
+                kex: names.kex.as_ref().to_string(),
+                host_key: names.key.to_string(),
+                cipher: names.cipher.as_ref().to_string(),
+                mac: names.server_mac.as_ref().to_string(),
+            });
+        }
         Ok(())
     }
 

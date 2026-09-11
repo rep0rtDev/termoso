@@ -27,6 +27,8 @@ import { Loading, Mono, SectionCard, SettingRow } from "@/components/ui";
 import * as ipc from "@/ipc/commands";
 import { keys, useAppInfo, useSaveSettings, useSettings } from "@/ipc/hooks";
 import { UpdatesCard } from "@/update/UpdatesCard";
+import { FontPicker, FontPreview } from "./FontPicker";
+import { ThemeGallery } from "./ThemeGallery";
 import {
   errorMessage,
   type CursorStyle,
@@ -182,12 +184,24 @@ function General({ s, update }: SectionProps) {
         <SettingRow
           label="Start forwarding rules on launch"
           hint="Rules marked auto-start are brought up when the app opens."
-          last
           control={
             <Toggle
               checked={s.autostartForwarding}
               onChange={(v) => update({ autostartForwarding: v })}
             />
+          }
+        />
+        <SettingRow
+          label="Detect OS on first connection"
+          hint="Reads /etc/os-release once after connecting to pick the host's icon. Nothing leaves the SSH session."
+          control={<Toggle checked={s.detectOs} onChange={(v) => update({ detectOs: v })} />}
+        />
+        <SettingRow
+          label="Post-quantum key exchange"
+          hint="Offers hybrid ML-KEM-768 + X25519 (mlkem768x25519-sha256) first; servers without it negotiate a classical exchange."
+          last
+          control={
+            <Toggle checked={s.postQuantumKex} onChange={(v) => update({ postQuantumKex: v })} />
           }
         />
       </SectionCard>
@@ -231,14 +245,16 @@ function General({ s, update }: SectionProps) {
 function Terminal({ s, update }: SectionProps) {
   return (
     <>
+      <ThemeGallery value={s.terminalTheme} onChange={(id) => update({ terminalTheme: id })} />
+
       <SectionCard title="Text">
         <SettingRow
           label="Font family"
+          hint="Bundled faces ship with the app; Nerd Font symbols are always available as a fallback."
           control={
-            <TextField
+            <FontPicker
               value={s.terminalFontFamily}
-              onChange={(e) => update({ terminalFontFamily: e.target.value })}
-              sx={{ width: 280 }}
+              onChange={(name) => update({ terminalFontFamily: name })}
             />
           }
         />
@@ -253,6 +269,25 @@ function Terminal({ s, update }: SectionProps) {
               width={90}
             />
           }
+        />
+        <SettingRow
+          label="Line height"
+          hint="Multiplier of the font's natural height."
+          control={
+            <NumberInput
+              value={s.terminalLineHeight}
+              onChange={(n) => update({ terminalLineHeight: Math.min(2, Math.max(0.8, n)) })}
+              min={0.8}
+              max={2}
+              step={0.05}
+              width={90}
+            />
+          }
+        />
+        <FontPreview
+          family={s.terminalFontFamily}
+          size={s.terminalFontSize}
+          lineHeight={s.terminalLineHeight}
         />
         <SettingRow
           label="Scrollback lines"

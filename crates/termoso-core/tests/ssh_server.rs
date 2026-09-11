@@ -269,6 +269,15 @@ impl russh::server::Handler for TestHandler {
                 self.shell_echo.insert(channel, ());
                 return Ok(());
             }
+            termoso_core::osdetect::DETECT_COMMAND => {
+                session.data(
+                    channel,
+                    Bytes::from_static(
+                        b"Linux\nPRETTY_NAME=\"Rocky Linux 9.4\"\nID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\n",
+                    ),
+                )?;
+                session.exit_status_request(channel, 0)?;
+            }
             _ => {
                 session.extended_data(channel, 1, Bytes::from(format!("unknown: {cmd}\n")))?;
                 session.exit_status_request(channel, 127)?;
@@ -995,6 +1004,32 @@ async fn exec_returns_stdout_stderr_and_status() {
         .unwrap();
     assert_eq!(cat.stdout, b"piped");
     assert_eq!(cat.exit_code, Some(0));
+}
+
+#[tokio::test]
+async fn detects_os_and_reports_negotiated_algorithms() {
+    let h = start().await;
+    let c = h.connect_password().await;
+    assert!(
+        c.server_id().is_some_and(|id| id.starts_with("SSH-2.0-")),
+        "{:?}",
+        c.server_id()
+    );
+    let algs = c.algorithms().expect("kex_done recorded");
+    assert_eq!(algs.host_key, "ssh-ed25519");
+    assert!(
+        algs.post_quantum(),
+        "default kex should be hybrid: {algs:?}"
+    );
+    assert_eq!(termoso_core::osdetect::detect(&c).await, Some("rocky"));
+
+    let mut o = h.trusted();
+    o.post_quantum_kex = false;
+    o.auth
+        .push(AuthMethod::Password(Zeroizing::new(PASSWORD.into())));
+    let classical = SshClient::connect(o).await.unwrap();
+    let algs = classical.algorithms().unwrap();
+    assert!(!algs.post_quantum(), "{algs:?}");
 }
 
 #[tokio::test]

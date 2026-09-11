@@ -9,7 +9,7 @@ import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import LockRoundedIcon from "@mui/icons-material/LockRounded";
 import type { ReactNode } from "react";
-import { StatusDot } from "@/terminal/TerminalPane";
+import { PqBadge, StatusDot } from "@/terminal/TerminalPane";
 import {
   HOME_TAB,
   closeTab,
@@ -22,6 +22,9 @@ import {
   type TerminalTab,
 } from "@/terminal/store";
 import { openSftpForSession, useSftp } from "@/sftp/store";
+import { useHosts } from "@/ipc/hooks";
+import { distroIcon } from "@/hosts/distroIcons";
+import { DistroGlyph } from "@/hosts/HostAvatar";
 import { LogoMark } from "@/components/Logo";
 import { ActionMenu } from "@/components/ui";
 import { sizes } from "@/theme/theme";
@@ -170,7 +173,10 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
 
 function TerminalTopTab({ tab, active }: { tab: TerminalTab; active: boolean }) {
   const pane = useTerminal((s) => s.panes[tab.activePaneId]);
+  const hosts = useHosts(null);
   if (!pane) return null;
+  const os = pane.hostId ? hosts.data?.find((h) => h.id === pane.hostId)?.osName : null;
+  const distro = pane.status === "connected" ? distroIcon(os) : null;
   return (
     <TopTab
       active={active}
@@ -179,11 +185,16 @@ function TerminalTopTab({ tab, active }: { tab: TerminalTab; active: boolean }) 
       icon={
         pane.protocol === "local" ? (
           <TerminalRoundedIcon sx={{ fontSize: 16 }} />
+        ) : distro ? (
+          <DistroGlyph icon={distro} sx={{ fontSize: 15 }} />
         ) : (
           <StatusDot status={pane.status} />
         )
       }
       label={tab.paneIds.length > 1 ? `${pane.title} (+${tab.paneIds.length - 1})` : pane.title}
+      trailing={
+        tab.paneIds.length === 1 ? <PqBadge algorithms={pane.algorithms} size={13} /> : null
+      }
       onClose={() => closeTab(tab.id)}
     />
   );
@@ -193,12 +204,13 @@ interface TopTabProps {
   active: boolean;
   icon: ReactNode;
   label: string;
+  trailing?: ReactNode;
   onClick: () => void;
   onClose?: () => void;
   onMiddleClick?: () => void;
 }
 
-function TopTab({ active, icon, label, onClick, onClose, onMiddleClick }: TopTabProps) {
+function TopTab({ active, icon, label, trailing, onClick, onClose, onMiddleClick }: TopTabProps) {
   return (
     <Box
       role="tab"
@@ -232,6 +244,7 @@ function TopTab({ active, icon, label, onClick, onClose, onMiddleClick }: TopTab
       <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
         {label}
       </Typography>
+      {trailing}
       {onClose && (
         <IconButton
           className="tab-close"

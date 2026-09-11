@@ -1,31 +1,40 @@
 import DnsRoundedIcon from "@mui/icons-material/DnsRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
+import SvgIcon, { type SvgIconProps } from "@mui/material/SvgIcon";
 import type { HostCard } from "@/ipc/types";
 import { IconTile } from "@/components/ui";
 import { sizes } from "@/theme/theme";
+import { distroIcon, type DistroIcon } from "./distroIcons";
 
-/** Recognisable OS names get a small brand colour on the tile; everything else stays neutral. */
-const osColors: [RegExp, string][] = [
-  [/ubuntu/i, "#DD4814"],
-  [/debian/i, "#A81D33"],
-  [/fedora|red ?hat|rhel|centos|rocky|alma/i, "#CC0000"],
-  [/arch/i, "#1793D1"],
-  [/alpine/i, "#0D597F"],
-  [/suse/i, "#73BA25"],
-  [/freebsd|openbsd|netbsd/i, "#AB2B28"],
-  [/mac|darwin/i, "#8E8E93"],
-  [/windows/i, "#0078D4"],
-];
-
-function osColor(os: string | null): string | undefined {
-  if (!os) return undefined;
-  return osColors.find(([re]) => re.test(os))?.[1];
+/** Renders a distro glyph as a regular MUI icon (inherits `fontSize` / `color`). */
+export function DistroGlyph({ icon, ...props }: { icon: DistroIcon } & SvgIconProps) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" titleAccess={icon.title} {...props}>
+      <path d={icon.path} />
+    </SvgIcon>
+  );
 }
 
+/** Glyph for a host's detected OS, or the protocol fallback while unknown. */
+export function HostGlyph({
+  osName,
+  protocol,
+  ...props
+}: {
+  osName: string | null | undefined;
+  protocol: HostCard["protocol"];
+} & SvgIconProps) {
+  const icon = distroIcon(osName);
+  if (icon) return <DistroGlyph icon={icon} {...props} />;
+  return protocol === "telnet" ? <TerminalRoundedIcon {...props} /> : <DnsRoundedIcon {...props} />;
+}
+
+/** Host tile: brand-coloured with the distro logo once the OS is known, neutral before. */
 export function HostAvatar({ host, size = sizes.tile }: { host: HostCard; size?: number }) {
+  const icon = distroIcon(host.osName);
   return (
-    <IconTile size={size} color={osColor(host.osName)}>
-      {host.protocol === "telnet" ? <TerminalRoundedIcon /> : <DnsRoundedIcon />}
+    <IconTile size={size} color={icon?.color}>
+      <HostGlyph osName={host.osName} protocol={host.protocol} />
     </IconTile>
   );
 }

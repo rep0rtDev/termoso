@@ -3,8 +3,8 @@ import { Box, useColorScheme } from "@mui/material";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { monoFontFamily } from "@/theme/theme";
-import { terminalThemes } from "@/terminal/xtermTheme";
+import { terminalFontStack } from "@/terminal/fonts";
+import { resolveTerminalTheme, toXtermTheme } from "@/terminal/themes";
 import type { Settings } from "@/ipc/types";
 
 export interface ViewerHandle {
@@ -32,7 +32,6 @@ export function LogViewer({
   useEffect(() => {
     const el = host.current;
     if (!el) return;
-    const font = settings.terminalFontFamily.trim();
     const term = new Terminal({
       disableStdin: true,
       convertEol: false,
@@ -42,8 +41,9 @@ export function LogViewer({
       scrollback: 200_000,
       cols,
       fontSize: settings.terminalFontSize,
-      fontFamily: font ? `'${font}', ${monoFontFamily}` : monoFontFamily,
-      theme: terminalThemes[scheme],
+      fontFamily: terminalFontStack(settings.terminalFontFamily),
+      lineHeight: settings.terminalLineHeight,
+      theme: toXtermTheme(resolveTerminalTheme(settings.terminalTheme, scheme)),
       allowProposedApi: true,
     });
     const fit = new FitAddon();
@@ -65,7 +65,16 @@ export function LogViewer({
       ro.disconnect();
       term.dispose();
     };
-  }, [text, cols, settings.terminalFontFamily, settings.terminalFontSize, scheme, onReady]);
+  }, [
+    text,
+    cols,
+    settings.terminalFontFamily,
+    settings.terminalFontSize,
+    settings.terminalLineHeight,
+    settings.terminalTheme,
+    scheme,
+    onReady,
+  ]);
 
   return (
     <Box
