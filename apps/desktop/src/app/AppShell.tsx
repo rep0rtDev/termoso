@@ -13,6 +13,8 @@ import { KnownHostsPage } from "@/knownhosts/KnownHostsPage";
 import { LogsPage } from "@/logs/LogsPage";
 import { PromptHost } from "@/prompts/PromptHost";
 import { TerminalWorkspace } from "@/terminal/TerminalWorkspace";
+import { TerminalOverlays } from "@/terminal/TerminalOverlays";
+import { startTerminalHotkeys } from "@/terminal/hotkeys";
 import { startTerminalEvents, useTerminal } from "@/terminal/store";
 import { startSftpEvents } from "@/sftp/store";
 import { startUpdateEvents } from "@/update/store";
@@ -31,6 +33,7 @@ export function AppShell() {
   useSyncNotices();
   useEffect(() => {
     startTerminalEvents();
+    startTerminalHotkeys();
     startSftpEvents(queryClient);
     startUpdateEvents();
   }, [queryClient]);
@@ -98,6 +101,7 @@ export function AppShell() {
           </Box>
         </Box>
       </Box>
+      <TerminalOverlays />
       <PromptHost />
     </Box>
   );

@@ -71,6 +71,9 @@ pub struct HostForm {
     pub keep_alive_interval: Option<u32>,
     #[serde(default)]
     pub timeout: Option<u32>,
+    /// Terminal colour scheme id; `None` follows the app setting.
+    #[serde(default)]
+    pub color_scheme: Option<String>,
     /// Set when the stored inline identity has a password (UI shows a mask).
     #[serde(default)]
     pub has_password: bool,
@@ -78,6 +81,15 @@ pub struct HostForm {
 
 fn default_protocol() -> String {
     "ssh".to_string()
+}
+
+/// Empty / whitespace scheme ids mean "follow the app setting".
+fn clean_scheme(scheme: &Option<String>) -> Option<String> {
+    scheme
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 fn is_telnet(h: &Host) -> bool {
@@ -321,6 +333,11 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
             .unwrap_or_default(),
         keep_alive_interval: ssh.as_ref().and_then(|s| s.keep_alive_interval),
         timeout: ssh.as_ref().and_then(|s| s.timeout),
+        color_scheme: if telnet {
+            telnet_cfg.as_ref().and_then(|t| t.color_scheme.clone())
+        } else {
+            ssh.as_ref().and_then(|s| s.color_scheme.clone())
+        },
         has_password,
     })
 }
@@ -391,6 +408,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
             .unwrap_or_default();
         t.port = port;
         t.identity_id = identity_id;
+        t.color_scheme = clean_scheme(&f.color_scheme);
         let id = match &existing_telnet {
             Some(e) => {
                 store.update(e.id, &t)?;
@@ -421,6 +439,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
             .collect();
         ssh.keep_alive_interval = f.keep_alive_interval.filter(|s| *s > 0);
         ssh.timeout = f.timeout.filter(|s| *s > 0);
+        ssh.color_scheme = clean_scheme(&f.color_scheme);
         let id = match &existing_ssh {
             Some(e) => {
                 store.update(e.id, &ssh)?;
@@ -1132,6 +1151,7 @@ mod tests {
             env_variables: vec![],
             keep_alive_interval: None,
             timeout: None,
+            color_scheme: None,
             has_password: false,
         }
     }
