@@ -6,6 +6,7 @@ members = [
     "crates/termoso-core",
     "crates/termoso-server",
     "crates/termoso-wasm",
+    "apps/desktop/src-tauri",
 ]
 
 [workspace.package]
