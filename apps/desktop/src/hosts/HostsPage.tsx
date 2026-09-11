@@ -20,11 +20,14 @@ import ViewListRoundedIcon from "@mui/icons-material/ViewListRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import CreateNewFolderRoundedIcon from "@mui/icons-material/CreateNewFolderRounded";
 import DnsRoundedIcon from "@mui/icons-material/DnsRounded";
+import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
+import BoltRoundedIcon from "@mui/icons-material/BoltRounded";
 import { EmptyState } from "@/components/EmptyState";
 import { useSnackbar } from "@/components/Snackbar";
 import { useDefaultVault, useGroups, useHosts, useSaveSettings, useSettings } from "@/ipc/hooks";
 import type { GroupNode, HostCard, HostsView, Uuid } from "@/ipc/types";
 import { errorMessage } from "@/ipc/types";
+import { openTerminal } from "@/terminal/store";
 import { HostGrid } from "./HostGrid";
 import { HostList } from "./HostList";
 import { HostEditPanel } from "./HostEditPanel";
@@ -33,7 +36,24 @@ import { GroupDialog } from "./GroupDialog";
 type Editor =
   { mode: "closed" } | { mode: "new"; groupId: Uuid | null } | { mode: "edit"; id: Uuid };
 
-export function HostsPage() {
+/** `user@host:port` → quick-connect target; bare words are treated as hostnames. */
+export function parseQuickConnect(input: string) {
+  const s = input.trim();
+  if (!s) return null;
+  const m = /^(?:(?<user>[^@\s]+)@)?(?<host>\[[^\]]+\]|[^:\s]+)(?::(?<port>\d{1,5}))?$/.exec(s);
+  const groups = m?.groups;
+  const host = groups?.host?.replace(/^\[|\]$/g, "");
+  if (!groups || !host) return null;
+  const port = groups.port ? Number(groups.port) : null;
+  if (port !== null && (port < 1 || port > 65535)) return null;
+  return { kind: "quick" as const, address: host, username: groups.user ?? null, port };
+}
+
+interface Props {
+  onOpenSftp: () => void;
+}
+
+export function HostsPage({ onOpenSftp }: Props) {
   const snackbar = useSnackbar();
   const vault = useDefaultVault();
   const vaultId = vault.data?.id ?? null;
@@ -44,6 +64,7 @@ export function HostsPage() {
 
   const [groupId, setGroupId] = useState<Uuid | null>(null);
   const [search, setSearch] = useState("");
+  const [quick, setQuick] = useState("");
   const [editor, setEditor] = useState<Editor>({ mode: "closed" });
   const [groupDialog, setGroupDialog] = useState<{ open: boolean; edit: GroupNode | null }>({
     open: false,
@@ -99,6 +120,13 @@ export function HostsPage() {
   }, [hosts.data, groupId, q, searching]);
 
   const openHost = (h: HostCard) => setEditor({ mode: "edit", id: h.id });
+  const connectHost = (h: HostCard) => openTerminal({ kind: "host", host_id: h.id });
+  const quickTarget = parseQuickConnect(quick);
+  const quickConnect = () => {
+    if (!quickTarget) return;
+    openTerminal(quickTarget);
+    setQuick("");
+  };
   const selectedId = editor.mode === "edit" ? editor.id : null;
   const loading = vault.isPending || hosts.isPending || groups.isPending;
   const loadError = vault.error ?? hosts.error ?? groups.error;
@@ -133,7 +161,33 @@ export function HostsPage() {
               },
             }}
           />
+          <TextField
+            size="small"
+            placeholder="Quick connect: user@host:port"
+            value={quick}
+            onChange={(e) => setQuick(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") quickConnect();
+            }}
+            error={quick.trim().length > 0 && quickTarget === null}
+            sx={{ width: 300 }}
+            slotProps={{
+              input: {
+                sx: { fontFamily: "monospace", fontSize: 13 },
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <BoltRoundedIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
           <Box sx={{ flex: 1 }} />
+          <Tooltip title="Local terminal">
+            <IconButton onClick={() => openTerminal({ kind: "local" })}>
+              <TerminalRoundedIcon />
+            </IconButton>
+          </Tooltip>
           <ToggleButtonGroup
             size="small"
             exclusive
@@ -235,6 +289,7 @@ export function HostsPage() {
               onOpenGroup={setGroupId}
               onEditGroup={(g) => setGroupDialog({ open: true, edit: g })}
               onOpenHost={openHost}
+              onConnectHost={connectHost}
             />
           ) : (
             <HostList
@@ -245,6 +300,7 @@ export function HostsPage() {
               onOpenGroup={setGroupId}
               onEditGroup={(g) => setGroupDialog({ open: true, edit: g })}
               onOpenHost={openHost}
+              onConnectHost={connectHost}
             />
           )}
         </Box>
@@ -259,6 +315,7 @@ export function HostsPage() {
             hostId={editor.mode === "edit" ? editor.id : null}
             initialGroupId={editor.mode === "new" ? editor.groupId : null}
             onClose={() => setEditor({ mode: "closed" })}
+            onOpenSftp={onOpenSftp}
           />
         </>
       )}

@@ -6,6 +6,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Runtime, State};
 use termoso_core::model::AnyEntity;
 use termoso_core::secrets::MasterKeySource;
+use termoso_core::sftp::RemoteEntry;
 use termoso_core::store::{ConnectionHistory, HistoryItem};
 use termoso_core::store::{EntityFilter, LocalVault};
 use termoso_core::terminal::TermSize;
@@ -16,6 +17,7 @@ use crate::error::{DesktopError, Result};
 use crate::hosts::{self, GroupNode, HostCard, HostForm, TagInfo};
 use crate::prompts::PromptAnswer;
 use crate::sessions::{self, OpenTarget, SessionInfo};
+use crate::sftp::{self, Direction, Listing, SftpInfo, SftpTarget, TransferInfo};
 use crate::state::{AppState, Settings};
 
 #[derive(Debug, Clone, Serialize)]
@@ -231,6 +233,7 @@ pub fn sessions_list(state: State<'_, AppState>) -> Vec<SessionInfo> {
 #[tauri::command]
 pub async fn terminal_open<R: Runtime>(
     app: AppHandle<R>,
+    id: Option<Uuid>,
     target: OpenTarget,
     cols: u16,
     rows: u16,
@@ -240,7 +243,7 @@ pub async fn terminal_open<R: Runtime>(
         cols: cols.max(2),
         rows: rows.max(1),
     };
-    sessions::open(app, target, size, output).await
+    sessions::open(app, id, target, size, output).await
 }
 
 /// Re-attach an output channel (after the webview reloaded).
@@ -285,4 +288,130 @@ pub async fn terminal_close<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<(
 #[tauri::command]
 pub fn prompt_answer(state: State<'_, AppState>, id: Uuid, answer: PromptAnswer) -> bool {
     state.prompts.answer(id, answer)
+}
+
+// ───────────────────────────── SFTP ─────────────────────────────
+
+#[tauri::command]
+pub fn sftp_sessions_list(state: State<'_, AppState>) -> Vec<SftpInfo> {
+    state.sftp.list()
+}
+
+#[tauri::command]
+pub async fn sftp_open<R: Runtime>(
+    app: AppHandle<R>,
+    id: Option<Uuid>,
+    target: SftpTarget,
+) -> Result<SftpInfo> {
+    sftp::open(app, id, target).await
+}
+
+#[tauri::command]
+pub async fn sftp_close<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
+    sftp::close(&app, id).await
+}
+
+#[tauri::command]
+pub async fn sftp_list(
+    state: State<'_, AppState>,
+    id: Uuid,
+    path: Option<String>,
+) -> Result<Listing> {
+    sftp::remote_list(&state, id, path).await
+}
+
+#[tauri::command]
+pub async fn sftp_stat(state: State<'_, AppState>, id: Uuid, path: String) -> Result<RemoteEntry> {
+    sftp::remote_stat(&state, id, path).await
+}
+
+#[tauri::command]
+pub async fn sftp_mkdir(state: State<'_, AppState>, id: Uuid, path: String) -> Result<()> {
+    sftp::remote_mkdir(&state, id, path).await
+}
+
+#[tauri::command]
+pub async fn sftp_rename(
+    state: State<'_, AppState>,
+    id: Uuid,
+    from: String,
+    to: String,
+) -> Result<()> {
+    sftp::remote_rename(&state, id, from, to).await
+}
+
+#[tauri::command]
+pub async fn sftp_remove(
+    state: State<'_, AppState>,
+    id: Uuid,
+    path: String,
+    recursive: bool,
+) -> Result<()> {
+    sftp::remote_remove(&state, id, path, recursive).await
+}
+
+#[tauri::command]
+pub async fn sftp_chmod(
+    state: State<'_, AppState>,
+    id: Uuid,
+    path: String,
+    mode: u32,
+) -> Result<()> {
+    sftp::remote_chmod(&state, id, path, mode).await
+}
+
+#[tauri::command]
+pub fn local_home() -> String {
+    sftp::local_home()
+}
+
+#[tauri::command]
+pub async fn local_list(path: Option<String>) -> Result<Listing> {
+    sftp::local_list(path).await
+}
+
+#[tauri::command]
+pub async fn local_stat(path: String) -> Result<RemoteEntry> {
+    sftp::local_stat(path).await
+}
+
+#[tauri::command]
+pub async fn local_mkdir(path: String) -> Result<()> {
+    sftp::local_mkdir(path).await
+}
+
+#[tauri::command]
+pub async fn local_rename(from: String, to: String) -> Result<()> {
+    sftp::local_rename(from, to).await
+}
+
+#[tauri::command]
+pub async fn local_remove(path: String, recursive: bool) -> Result<()> {
+    sftp::local_remove(path, recursive).await
+}
+
+/// Start an upload or download (files or whole directories); progress and
+/// completion arrive as `transfer` events.
+#[tauri::command]
+pub fn transfer_start<R: Runtime>(
+    app: AppHandle<R>,
+    sftp_id: Uuid,
+    direction: Direction,
+    local: String,
+    remote: String,
+    resume: Option<bool>,
+) -> Result<TransferInfo> {
+    sftp::transfer_start(
+        app,
+        sftp_id,
+        direction,
+        local,
+        remote,
+        resume.unwrap_or(false),
+    )
+}
+
+#[tauri::command]
+pub fn transfer_cancel(state: State<'_, AppState>, id: Uuid) -> bool {
+    state.sftp.cancel_transfer(id)
 }
