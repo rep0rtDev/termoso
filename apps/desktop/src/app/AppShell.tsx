@@ -7,11 +7,17 @@ import { HostsPage } from "@/hosts/HostsPage";
 import { HistoryPage } from "@/history/HistoryPage";
 import { SettingsPage } from "@/settings/SettingsPage";
 import { SftpPage } from "@/sftp/SftpPage";
-import { ComingSoon } from "./ComingSoon";
+import { ForwardingPage } from "@/forwarding/ForwardingPage";
+import { SnippetsPage } from "@/snippets/SnippetsPage";
+import { KeychainPage } from "@/keychain/KeychainPage";
+import { KnownHostsPage } from "@/knownhosts/KnownHostsPage";
+import { LogsPage } from "@/logs/LogsPage";
+import { AccountPage } from "@/account/AccountPage";
 import { PromptHost } from "@/prompts/PromptHost";
 import { TerminalWorkspace } from "@/terminal/TerminalWorkspace";
 import { HOME_TAB, setActiveTab, startTerminalEvents, useTerminal } from "@/terminal/store";
 import { startSftpEvents } from "@/sftp/store";
+import { useSyncNotices } from "@/ipc/hooks";
 
 export function AppShell() {
   const [section, setSection] = useState<Section>("hosts");
@@ -20,6 +26,7 @@ export function AppShell() {
   const activeTabId = useTerminal((s) => s.activeTabId);
   const terminalOpen = activeTabId !== HOME_TAB;
 
+  useSyncNotices();
   useEffect(() => {
     startTerminalEvents();
     startSftpEvents(queryClient);
@@ -60,12 +67,14 @@ export function AppShell() {
         >
           {section === "hosts" && <HostsPage onOpenSftp={openSftp} />}
           {section === "sftp" && <SftpPage />}
+          {section === "forwarding" && <ForwardingPage />}
+          {section === "snippets" && <SnippetsPage />}
+          {section === "keychain" && <KeychainPage />}
+          {section === "knownHosts" && <KnownHostsPage />}
           {section === "history" && <HistoryPage />}
+          {section === "logs" && <LogsPage />}
+          {section === "account" && <AccountPage />}
           {section === "settings" && <SettingsPage />}
-          {section !== "hosts" &&
-            section !== "sftp" &&
-            section !== "history" &&
-            section !== "settings" && <ComingSoon section={section} />}
         </Box>
       </Box>
       <PromptHost />
