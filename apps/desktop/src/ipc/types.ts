@@ -62,6 +62,8 @@ export interface Settings {
   detectOs: boolean;
   /** Offer hybrid ML-KEM-768 + X25519 key exchange. */
   postQuantumKex: boolean;
+  /** Offer keys from the system SSH agent (SSH_AUTH_SOCK / Pageant) when authenticating. */
+  useSshAgent: boolean;
   recordSessions: boolean;
   logRetentionDays: number;
   autostartForwarding: boolean;
@@ -297,7 +299,31 @@ export interface KeyCard {
   dirty: boolean;
 }
 
-export type KeyAlgorithm = "ed25519" | { rsa: { bits: number } };
+export type KeyAlgorithm =
+  "ed25519" | { rsa: { bits: number } } | "ecdsa_p256" | "ecdsa_p384" | "ecdsa_p521";
+
+export type ExportOutcome = "added" | "already_present";
+
+export interface ExportToHostResult {
+  outcome: ExportOutcome;
+  hostLabel: string;
+  /** `user@host:port` the key was installed for. */
+  target: string;
+}
+
+/** A key held by the system SSH agent (public half only). */
+export interface AgentKey {
+  keyType: string;
+  fingerprint: string;
+  publicKey: string;
+  comment: string;
+}
+
+export interface AgentKeys {
+  available: boolean;
+  error: string | null;
+  keys: AgentKey[];
+}
 
 export interface GenerateKeyForm {
   vaultId: Uuid;
@@ -612,6 +638,8 @@ export interface SessionInfo {
   state: SessionState;
   /** Negotiated SSH algorithms (null for telnet/local or before key exchange). */
   algorithms: SshAlgorithms | null;
+  /** Jump hosts the connection went through, outermost first (`user@host:port`). */
+  via: string[];
 }
 
 export interface SshAlgorithms {

@@ -310,6 +310,68 @@ pub fn export(
     )?)
 }
 
+/// Remote side of "Export to host" (`ssh-copy-id` semantics). The public key
+/// line arrives on stdin — never inside the command string — so no part of
+/// it is ever parsed by the remote shell. Idempotent: an existing entry with
+/// the same type+blob is left alone. POSIX sh + coreutils/busybox only; one
+/// line without single quotes so it survives `sh -c '…'` under any login
+/// shell (fish, csh, …).
+macro_rules! authorized_keys_script {
+    () => {
+        concat!(
+            "umask 077; d=\"${HOME:?}/.ssh\"; f=\"$d/authorized_keys\"; ",
+            "mkdir -p \"$d\" && chmod 700 \"$d\" && touch \"$f\" && chmod 600 \"$f\" || exit 2; ",
+            "k=$(head -n 1); set -f; set -- $k; [ -n \"$2\" ] || exit 3; blob=\"$1 $2\"; ",
+            "if grep -qF -- \"$blob\" \"$f\"; then echo EXISTS; else ",
+            "{ [ -s \"$f\" ] && [ -n \"$(tail -c 1 \"$f\")\" ] && echo >> \"$f\"; ",
+            "printf \"%s\\n\" \"$k\" >> \"$f\" && echo ADDED; }; fi",
+        )
+    };
+}
+
+#[cfg(test)]
+const AUTHORIZED_KEYS_SCRIPT: &str = authorized_keys_script!();
+
+/// Command sent over `exec`: forces POSIX sh regardless of the login shell.
+pub const EXPORT_COMMAND: &str = concat!("exec sh -c '", authorized_keys_script!(), "'");
+
+/// What `EXPORT_COMMAND` reported.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExportOutcome {
+    Added,
+    AlreadyPresent,
+}
+
+/// Interpret the script's exit status and output.
+pub fn export_outcome(
+    exit_code: Option<u32>,
+    stdout: &[u8],
+    stderr: &[u8],
+) -> Result<ExportOutcome> {
+    let out = String::from_utf8_lossy(stdout);
+    match (exit_code, out.trim()) {
+        (Some(0), "ADDED") => Ok(ExportOutcome::Added),
+        (Some(0), "EXISTS") => Ok(ExportOutcome::AlreadyPresent),
+        (Some(2), _) => Err(DesktopError::invalid(
+            "could not create ~/.ssh/authorized_keys on the host (permissions?)",
+        )),
+        (Some(3), _) => Err(DesktopError::invalid(
+            "the host did not receive the key (stdin was empty)",
+        )),
+        (code, _) => {
+            let err = String::from_utf8_lossy(stderr);
+            let detail = err.trim();
+            Err(DesktopError::invalid(match (code, detail.is_empty()) {
+                (Some(c), false) => format!("remote command failed (exit {c}): {detail}"),
+                (Some(c), true) => format!("remote command failed (exit {c})"),
+                (None, false) => format!("remote command failed: {detail}"),
+                (None, true) => "remote command failed without an exit status".to_string(),
+            }))
+        }
+    }
+}
+
 /// Delete a key and detach it from every identity that referenced it.
 pub fn delete(store: &Store, id: Uuid) -> Result<()> {
     let e = store.require::<SshKey>(id)?;
@@ -425,6 +487,112 @@ mod tests {
             },
         )
         .expect("generate")
+    }
+
+    #[test]
+    fn export_outcome_maps_script_results() {
+        assert_eq!(
+            export_outcome(Some(0), b"ADDED\n", b"").unwrap(),
+            ExportOutcome::Added
+        );
+        assert_eq!(
+            export_outcome(Some(0), b"EXISTS\n", b"").unwrap(),
+            ExportOutcome::AlreadyPresent
+        );
+        let e = export_outcome(Some(2), b"", b"").unwrap_err().to_string();
+        assert!(e.contains("authorized_keys"), "{e}");
+        let e = export_outcome(Some(127), b"", b"sh: awk: not found\n")
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("exit 127") && e.contains("awk"), "{e}");
+        assert!(export_outcome(None, b"", b"").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn authorized_keys_script_is_idempotent_and_keeps_key_out_of_argv() {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let store = store();
+        let vault = store.local_vault().unwrap().id;
+        let card = make_key(&store, vault, None, false);
+        let line = public_key(&store, card.id).unwrap();
+        let home = tempfile::tempdir().unwrap();
+
+        // Pre-existing file without a trailing newline must not get glued to.
+        std::fs::create_dir(home.path().join(".ssh")).unwrap();
+        let ak = home.path().join(".ssh/authorized_keys");
+        std::fs::write(&ak, "ssh-ed25519 AAAAexisting old@box").unwrap();
+
+        // Goes through the login-shell wrapper exactly like the remote side.
+        let run = |input: &str| {
+            let mut child = Command::new("sh")
+                .arg("-c")
+                .arg(EXPORT_COMMAND)
+                .env_clear()
+                .env("HOME", home.path())
+                .env("PATH", "/usr/bin:/bin")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(format!("{input}\n").as_bytes())
+                .unwrap();
+            let out = child.wait_with_output().unwrap();
+            export_outcome(
+                out.status.code().map(|c| c as u32),
+                &out.stdout,
+                &out.stderr,
+            )
+        };
+
+        assert_eq!(run(&line).unwrap(), ExportOutcome::Added);
+        assert_eq!(run(&line).unwrap(), ExportOutcome::AlreadyPresent);
+        // Same key, different comment: still a duplicate.
+        let mut parts: Vec<&str> = line.split_whitespace().collect();
+        parts.truncate(2);
+        let no_comment = parts.join(" ");
+        assert_eq!(run(&no_comment).unwrap(), ExportOutcome::AlreadyPresent);
+        // A different key is appended as a second line.
+        let other = make_key(&store, vault, None, false);
+        assert_eq!(
+            run(&public_key(&store, other.id).unwrap()).unwrap(),
+            ExportOutcome::Added
+        );
+
+        let text = std::fs::read_to_string(&ak).unwrap();
+        assert_eq!(text.lines().count(), 3);
+        assert_eq!(text.lines().nth(1), Some(line.as_str()));
+        assert!(text.ends_with('\n'));
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&ak).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            std::fs::metadata(home.path().join(".ssh"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert!(!AUTHORIZED_KEYS_SCRIPT.contains("ssh-ed25519"));
+        assert!(!AUTHORIZED_KEYS_SCRIPT.contains('\'') && !AUTHORIZED_KEYS_SCRIPT.contains('\n'));
+        // Malformed input (no blob) is refused rather than matched as a prefix.
+        assert!(run("ssh-ed25519").is_err());
+
+        // Hostile input never reaches the shell as code.
+        let evil = "ssh-ed25519 AAAA$(touch /tmp/pwned_termoso)`id` x";
+        assert_eq!(run(evil).unwrap(), ExportOutcome::Added);
+        assert!(!std::path::Path::new("/tmp/pwned_termoso").exists());
+        assert!(std::fs::read_to_string(&ak).unwrap().contains(evil));
     }
 
     #[test]

@@ -66,6 +66,8 @@ pub struct SessionInfo {
     pub state: SessionState,
     /// Negotiated SSH algorithms (`None` for local / telnet / still connecting).
     pub algorithms: Option<Algorithms>,
+    /// Jump hosts the connection went through, outermost first (`user@host:port`).
+    pub via: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -258,6 +260,7 @@ pub async fn open<R: Runtime>(
         started_at: Utc::now(),
         state: SessionState::Connected,
         algorithms: opened.client.as_ref().and_then(|c| c.algorithms().cloned()),
+        via: opened.jumps.iter().map(|j| j.target().display()).collect(),
     };
     let history_id = state
         .store
@@ -598,6 +601,16 @@ pub struct HostConnection {
     pub jumps: Vec<Arc<SshClient>>,
 }
 
+impl HostConnection {
+    /// Tear down the target and every hop, innermost first.
+    pub async fn close(self) {
+        let _ = self.client.disconnect().await;
+        for jump in self.jumps.into_iter().rev() {
+            let _ = jump.disconnect().await;
+        }
+    }
+}
+
 /// Connect to a saved SSH host, asking the UI for anything missing. Prompts
 /// are routed under `session_id`.
 pub async fn connect_host<R: Runtime>(
@@ -708,6 +721,7 @@ fn emit_connecting<R: Runtime>(
                 started_at: Utc::now(),
                 state: SessionState::Connecting,
                 algorithms: None,
+                via: Vec::new(),
             },
         },
     );
@@ -777,7 +791,12 @@ async fn ssh_connect<R: Runtime>(
     let state = app.state::<AppState>();
     let mut jumps: Vec<Arc<SshClient>> = Vec::new();
 
-    // Jump hosts first (each resolved on its own, one level deep).
+    // Jump hosts first, in the order saved on the host chain. Each hop is
+    // dialled through the previous one (direct-tcpip), uses its own
+    // credentials, proxy and known-host entry, and is kept alive for the
+    // whole session. A hop's own chain is deliberately not followed: the
+    // chain on the target host is the single source of truth for the route,
+    // which also rules out cycles.
     let mut via = jump;
     for hop in chain {
         let hop_resolved = state.store.resolve_host(hop.id)?;
@@ -830,7 +849,9 @@ async fn ssh_connect<R: Runtime>(
                     .map(|c| c.data.certificate.clone()),
             });
         }
-        auth.push(AuthMethod::Agent);
+        if state.settings().map(|s| s.use_ssh_agent).unwrap_or(true) {
+            auth.push(AuthMethod::Agent);
+        }
         if let Some(pw) = &password {
             auth.push(AuthMethod::Password(pw.clone()));
         }
@@ -960,7 +981,7 @@ fn proxy_config(state: &AppState, p: &termoso_core::model::Proxy) -> Result<Prox
         host: p.host.clone(),
         port: p.port,
         username,
-        password,
+        password: password.filter(|_| kind.supports_password()),
     })
 }
 

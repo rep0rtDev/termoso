@@ -119,6 +119,9 @@ pub struct Settings {
     /// Offer the hybrid ML-KEM-768 + X25519 key exchange (servers without it
     /// fall back to classical algorithms).
     pub post_quantum_kex: bool,
+    /// Offer keys held by the system SSH agent (`SSH_AUTH_SOCK`, Windows
+    /// OpenSSH agent or Pageant) when authenticating.
+    pub use_ssh_agent: bool,
     /// Record terminal output of every session into the encrypted log store.
     pub record_sessions: bool,
     /// Delete local recordings older than this many days (0 = keep).
@@ -159,6 +162,7 @@ impl Default for Settings {
             keep_alive_seconds: 30,
             detect_os: true,
             post_quantum_kex: true,
+            use_ssh_agent: true,
             record_sessions: false,
             log_retention_days: 0,
             autostart_forwarding: true,

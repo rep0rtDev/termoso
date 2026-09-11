@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Alert,
+  Autocomplete,
   Button,
   Checkbox,
   Dialog,
@@ -14,8 +15,16 @@ import {
   Typography,
 } from "@mui/material";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
-import type { GenerateKeyForm, ImportKeyForm, KeyAlgorithm, KeyCard, Uuid } from "@/ipc/types";
-import { Field } from "@/components/ui";
+import type {
+  GenerateKeyForm,
+  HostCard,
+  ImportKeyForm,
+  KeyAlgorithm,
+  KeyCard,
+  Uuid,
+} from "@/ipc/types";
+import { Field, Mono } from "@/components/ui";
+import { HostAvatar } from "@/hosts/HostAvatar";
 
 interface Base {
   open: boolean;
@@ -23,9 +32,18 @@ interface Base {
   onCancel: () => void;
 }
 
-type Algo = "ed25519" | "rsa2048" | "rsa3072" | "rsa4096";
-const algoOf = (a: Algo): KeyAlgorithm =>
-  a === "ed25519" ? "ed25519" : { rsa: { bits: Number(a.slice(3)) } };
+type Algo =
+  "ed25519" | "rsa2048" | "rsa3072" | "rsa4096" | "ecdsa_p256" | "ecdsa_p384" | "ecdsa_p521";
+const ALGOS: Record<Algo, KeyAlgorithm> = {
+  ed25519: "ed25519",
+  rsa2048: { rsa: { bits: 2048 } },
+  rsa3072: { rsa: { bits: 3072 } },
+  rsa4096: { rsa: { bits: 4096 } },
+  ecdsa_p256: "ecdsa_p256",
+  ecdsa_p384: "ecdsa_p384",
+  ecdsa_p521: "ecdsa_p521",
+};
+const algoOf = (a: Algo): KeyAlgorithm => ALGOS[a];
 
 export function GenerateKeyDialog({
   open,
@@ -63,6 +81,9 @@ export function GenerateKeyDialog({
                 <MenuItem value="rsa2048">RSA 2048</MenuItem>
                 <MenuItem value="rsa3072">RSA 3072</MenuItem>
                 <MenuItem value="rsa4096">RSA 4096</MenuItem>
+                <MenuItem value="ecdsa_p256">ECDSA P-256</MenuItem>
+                <MenuItem value="ecdsa_p384">ECDSA P-384</MenuItem>
+                <MenuItem value="ecdsa_p521">ECDSA P-521</MenuItem>
               </TextField>
             </Field>
             <Field label="Comment" sx={{ flex: 1 }}>
@@ -415,6 +436,96 @@ export function ExportKeyDialog({
           onClick={() => onConfirm(args("file"))}
         >
           Save to file…
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/** ssh-copy-id: pick a saved SSH host and confirm before its
+ *  `~/.ssh/authorized_keys` is touched. */
+export function ExportToHostDialog({
+  open,
+  card,
+  hosts,
+  busy,
+  onCancel,
+  onConfirm,
+}: Base & {
+  card: KeyCard;
+  hosts: HostCard[];
+  onConfirm: (host: HostCard) => void;
+}) {
+  const [host, setHost] = useState<HostCard | null>(null);
+  const sshHosts = useMemo(
+    () => hosts.filter((h) => h.protocol === "ssh").sort((a, b) => a.label.localeCompare(b.label)),
+    [hosts],
+  );
+  const where = host ? `${host.username || "?"}@${host.address}:${host.port}` : null;
+
+  return (
+    <Dialog open={open} onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
+      <DialogTitle>Export key to host</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 0.5 }}>
+          <Typography variant="body2" color="text.secondary">
+            Adds the public half of <b>{card.label}</b> to <Mono>~/.ssh/authorized_keys</Mono> on
+            the selected host, connecting with the host&apos;s current credentials. Nothing else is
+            changed; an already present key is left as is.
+          </Typography>
+          <Field label="Host">
+            <Autocomplete
+              autoFocus
+              options={sshHosts}
+              value={host}
+              onChange={(_, v) => setHost(v)}
+              getOptionLabel={(h) => h.label}
+              isOptionEqualToValue={(a, b) => a.id === b.id}
+              noOptionsText="No SSH hosts"
+              renderOption={(props, h) => {
+                const { key, ...rest } = props;
+                return (
+                  <li key={key} {...rest}>
+                    <Stack
+                      direction="row"
+                      spacing={1.25}
+                      sx={{ alignItems: "center", minWidth: 0 }}
+                    >
+                      <HostAvatar host={h} size={24} />
+                      <Stack sx={{ minWidth: 0 }}>
+                        <Typography variant="body2" noWrap>
+                          {h.label}
+                        </Typography>
+                        <Mono secondary>
+                          {h.username ? `${h.username}@` : ""}
+                          {h.address}
+                          {h.port !== 22 ? `:${h.port}` : ""}
+                        </Mono>
+                      </Stack>
+                    </Stack>
+                  </li>
+                );
+              }}
+              renderInput={(params) => <TextField {...params} placeholder="Choose a host" />}
+            />
+          </Field>
+          {where && (
+            <Alert severity="info" variant="outlined">
+              You may be asked for the password or to trust the host key of <Mono>{where}</Mono>.
+            </Alert>
+          )}
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={onCancel} disabled={busy} color="inherit">
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          disabled={host === null || busy}
+          onClick={() => host && onConfirm(host)}
+        >
+          {busy ? "Connecting…" : "Export"}
         </Button>
       </DialogActions>
     </Dialog>

@@ -236,9 +236,19 @@ mod tests {
 
     #[test]
     fn ecdsa_and_rsa_sizes() {
-        let e = generate(KeyAlgorithm::EcdsaP384, "", None).unwrap();
-        assert_eq!(e.info.bits, 384);
-        assert_eq!(e.info.key_type, "ecdsa-sha2-nistp384");
+        for (algo, bits, key_type) in [
+            (KeyAlgorithm::EcdsaP256, 256, "ecdsa-sha2-nistp256"),
+            (KeyAlgorithm::EcdsaP384, 384, "ecdsa-sha2-nistp384"),
+            (KeyAlgorithm::EcdsaP521, 521, "ecdsa-sha2-nistp521"),
+        ] {
+            let e = generate(algo, "c", Some("pw")).unwrap();
+            assert_eq!(e.info.bits, bits);
+            assert_eq!(e.info.key_type, key_type);
+            assert!(e.public_key.starts_with(key_type));
+            let again = import(&e.private_key, Some("pw")).unwrap();
+            assert_eq!(again.info.fingerprint, e.info.fingerprint);
+            assert_eq!(parse_public(&e.public_key).unwrap().bits, bits);
+        }
         let r = generate(KeyAlgorithm::Rsa { bits: 2048 }, "", None).unwrap();
         assert_eq!(r.info.bits, 2048);
         assert!(matches!(

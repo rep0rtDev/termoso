@@ -130,7 +130,9 @@ impl russh::client::Handler for ClientHandler {
         match decision {
             HostKeyDecision::Reject => {
                 tracing::warn!(host = %self.host, changed, "host key rejected");
-                Ok(false)
+                Err(CoreError::HostKeyRejected {
+                    host: crate::hostkey::host_id(&self.host, self.port),
+                })
             }
             HostKeyDecision::AcceptOnce => Ok(true),
             HostKeyDecision::AcceptAndSave => {
