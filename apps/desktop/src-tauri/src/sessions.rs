@@ -1,0 +1,781 @@
+//! Live terminal sessions: connect (SSH / telnet / local shell), pump output
+//! into an IPC channel, accept input, resize, close.
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use tauri::ipc::{Channel, InvokeResponseBody};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
+use termoso_core::error::CoreError;
+use termoso_core::hostkey::KnownHosts;
+use termoso_core::model::{Entity, Identity, ResolvedHost, SshConfig};
+use termoso_core::pty::{LocalShellOptions, LocalTerminal};
+use termoso_core::ssh::proxy::{ProxyConfig, ProxyKind};
+use termoso_core::ssh::{AuthMethod, ConnectOptions, SshClient, SshTarget};
+use termoso_core::store::ConnectionHistory;
+use termoso_core::telnet::{TelnetOptions, TelnetTerminal};
+use termoso_core::terminal::{SharedTerminal, TermEvent, TermEvents, TermSize};
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
+use zeroize::Zeroizing;
+
+use crate::error::{DesktopError, Result};
+use crate::prompts::{PromptAnswer, PromptRequest, UiHostKeyPrompt, UiInteractivePrompt};
+use crate::state::AppState;
+
+pub const SESSION_EVENT: &str = "session";
+const TERM: &str = "xterm-256color";
+const MAX_PASSWORD_ATTEMPTS: usize = 3;
+
+/// What the UI asked to open.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum OpenTarget {
+    /// A saved host.
+    Host { host_id: Uuid },
+    /// Ad-hoc `user@host:port` typed into the quick-connect bar.
+    Quick {
+        address: String,
+        #[serde(default)]
+        username: Option<String>,
+        #[serde(default)]
+        port: Option<u16>,
+    },
+    /// Shell on this machine.
+    Local,
+}
+
+/// Public view of a session.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionInfo {
+    pub id: Uuid,
+    /// `ssh` | `telnet` | `local`.
+    pub protocol: String,
+    pub title: String,
+    /// `user@host:port` or the local shell.
+    pub target: String,
+    pub host_id: Option<Uuid>,
+    pub started_at: DateTime<Utc>,
+    pub state: SessionState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionState {
+    Connecting,
+    Connected,
+}
+
+/// Something happened to a session; emitted as the `session` event.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SessionEvent {
+    Connecting {
+        id: Uuid,
+        info: SessionInfo,
+    },
+    Connected {
+        id: Uuid,
+        info: SessionInfo,
+    },
+    Notice {
+        id: Uuid,
+        message: String,
+    },
+    Exit {
+        id: Uuid,
+        code: Option<u32>,
+        signal: Option<String>,
+    },
+    Error {
+        id: Uuid,
+        message: String,
+    },
+    Closed {
+        id: Uuid,
+    },
+}
+
+struct Live {
+    info: SessionInfo,
+    term: SharedTerminal,
+    /// SSH transport (kept so SFTP / forwarding can reuse it later).
+    #[allow(dead_code)]
+    client: Option<Arc<SshClient>>,
+    /// Jump hosts, outermost first. Dropped with the session.
+    #[allow(dead_code)]
+    jumps: Vec<Arc<SshClient>>,
+    output: Arc<Mutex<Channel<InvokeResponseBody>>>,
+    pump: JoinHandle<()>,
+    cancel: CancellationToken,
+    history_id: Option<Uuid>,
+}
+
+/// Registry of sessions. Connection attempts are registered up-front so the UI
+/// can cancel them and prompts can be routed.
+#[derive(Default)]
+pub struct Sessions {
+    live: Mutex<HashMap<Uuid, Live>>,
+    pending: Mutex<HashMap<Uuid, CancellationToken>>,
+}
+
+impl Sessions {
+    pub fn list(&self) -> Vec<SessionInfo> {
+        let mut v: Vec<SessionInfo> = self
+            .live
+            .lock()
+            .expect("sessions poisoned")
+            .values()
+            .map(|l| l.info.clone())
+            .collect();
+        v.sort_by_key(|s| s.started_at);
+        v
+    }
+
+    pub fn terminal(&self, id: Uuid) -> Result<SharedTerminal> {
+        self.live
+            .lock()
+            .expect("sessions poisoned")
+            .get(&id)
+            .map(|l| l.term.clone())
+            .ok_or_else(|| DesktopError::not_found(format!("session {id}")))
+    }
+
+    pub fn attach(&self, id: Uuid, channel: Channel<InvokeResponseBody>) -> Result<()> {
+        let live = self.live.lock().expect("sessions poisoned");
+        let l = live
+            .get(&id)
+            .ok_or_else(|| DesktopError::not_found(format!("session {id}")))?;
+        *l.output.lock().expect("output poisoned") = channel;
+        Ok(())
+    }
+
+    /// Cancel a connection attempt or close a live session.
+    fn close(&self, id: Uuid) -> Option<Live> {
+        if let Some(tok) = self.pending.lock().expect("sessions poisoned").remove(&id) {
+            tok.cancel();
+        }
+        self.live.lock().expect("sessions poisoned").remove(&id)
+    }
+
+    fn begin(&self, id: Uuid) -> CancellationToken {
+        let tok = CancellationToken::new();
+        self.pending
+            .lock()
+            .expect("sessions poisoned")
+            .insert(id, tok.clone());
+        tok
+    }
+
+    fn finish_pending(&self, id: Uuid) -> bool {
+        self.pending
+            .lock()
+            .expect("sessions poisoned")
+            .remove(&id)
+            .is_some()
+    }
+}
+
+/// Open a session and start streaming its output into `output`.
+pub async fn open<R: Runtime>(
+    app: AppHandle<R>,
+    target: OpenTarget,
+    size: TermSize,
+    output: Channel<InvokeResponseBody>,
+) -> Result<SessionInfo> {
+    let state = app.state::<AppState>();
+    let id = Uuid::new_v4();
+    let cancel = state.sessions.begin(id);
+
+    let result = tokio::select! {
+        r = connect(&app, id, &target, size) => r,
+        _ = cancel.cancelled() => Err(CoreError::Cancelled.into()),
+    };
+    state.prompts.cancel_session(id);
+    // Cancelled while connecting: whoever cancelled already removed us.
+    let still_wanted = state.sessions.finish_pending(id);
+
+    let opened = match result {
+        Ok(o) => o,
+        Err(e) => {
+            if still_wanted && e.kind != "cancelled" {
+                let _ = app.emit(
+                    SESSION_EVENT,
+                    SessionEvent::Error {
+                        id,
+                        message: e.message.clone(),
+                    },
+                );
+            }
+            return Err(e);
+        }
+    };
+    if !still_wanted {
+        let _ = opened.term.close().await;
+        return Err(CoreError::Cancelled.into());
+    }
+
+    let info = SessionInfo {
+        id,
+        protocol: opened.protocol.into(),
+        title: opened.title,
+        target: opened.target,
+        host_id: opened.host_id,
+        started_at: Utc::now(),
+        state: SessionState::Connected,
+    };
+    let history_id = state
+        .store
+        .record_connection(&ConnectionHistory {
+            host_id: info.host_id,
+            label: info.title.clone(),
+            target: info.target.clone(),
+            protocol: info.protocol.clone(),
+            duration_secs: None,
+            error: None,
+        })
+        .ok();
+
+    let output = Arc::new(Mutex::new(output));
+    let pump = tokio::spawn(pump(app.clone(), id, opened.events, output.clone()));
+    let live = Live {
+        info: info.clone(),
+        term: opened.term,
+        client: opened.client,
+        jumps: opened.jumps,
+        output,
+        pump,
+        cancel,
+        history_id,
+    };
+    state
+        .sessions
+        .live
+        .lock()
+        .expect("sessions poisoned")
+        .insert(id, live);
+    let _ = app.emit(
+        SESSION_EVENT,
+        SessionEvent::Connected {
+            id,
+            info: info.clone(),
+        },
+    );
+    Ok(info)
+}
+
+/// Close a session (or abort its connection attempt).
+pub async fn close<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
+    let state = app.state::<AppState>();
+    state.prompts.cancel_session(id);
+    if let Some(live) = state.sessions.close(id) {
+        live.cancel.cancel();
+        let _ = live.term.close().await;
+        live.pump.abort();
+        if let Some(hid) = live.history_id {
+            finish_history(&state, hid, &live.info, None);
+        }
+        let _ = app.emit(SESSION_EVENT, SessionEvent::Closed { id });
+    }
+    Ok(())
+}
+
+fn finish_history(state: &AppState, history_id: Uuid, info: &SessionInfo, error: Option<String>) {
+    let duration = Utc::now()
+        .signed_duration_since(info.started_at)
+        .num_seconds()
+        .max(0) as u64;
+    let _ = state.store.update_connection(
+        history_id,
+        &ConnectionHistory {
+            host_id: info.host_id,
+            label: info.title.clone(),
+            target: info.target.clone(),
+            protocol: info.protocol.clone(),
+            duration_secs: Some(duration),
+            error,
+        },
+    );
+}
+
+async fn pump<R: Runtime>(
+    app: AppHandle<R>,
+    id: Uuid,
+    mut events: TermEvents,
+    output: Arc<Mutex<Channel<InvokeResponseBody>>>,
+) {
+    let mut error: Option<String> = None;
+    while let Some(ev) = events.recv().await {
+        match ev {
+            TermEvent::Output(bytes) => {
+                let ch = output.lock().expect("output poisoned").clone();
+                if let Err(e) = ch.send(InvokeResponseBody::Raw(bytes.to_vec())) {
+                    tracing::debug!(error = %e, "terminal channel gone");
+                }
+            }
+            TermEvent::Notice(message) => {
+                let _ = app.emit(SESSION_EVENT, SessionEvent::Notice { id, message });
+            }
+            TermEvent::Exit { code, signal } => {
+                let _ = app.emit(SESSION_EVENT, SessionEvent::Exit { id, code, signal });
+            }
+            TermEvent::Error(message) => {
+                error = Some(message.clone());
+                let _ = app.emit(SESSION_EVENT, SessionEvent::Error { id, message });
+            }
+            TermEvent::Closed => break,
+        }
+    }
+    let state = app.state::<AppState>();
+    if let Some(live) = state.sessions.close(id)
+        && let Some(hid) = live.history_id
+    {
+        finish_history(&state, hid, &live.info, error);
+    }
+    let _ = app.emit(SESSION_EVENT, SessionEvent::Closed { id });
+}
+
+struct Opened {
+    protocol: &'static str,
+    title: String,
+    target: String,
+    host_id: Option<Uuid>,
+    term: SharedTerminal,
+    events: TermEvents,
+    client: Option<Arc<SshClient>>,
+    jumps: Vec<Arc<SshClient>>,
+}
+
+async fn connect<R: Runtime>(
+    app: &AppHandle<R>,
+    id: Uuid,
+    target: &OpenTarget,
+    size: TermSize,
+) -> Result<Opened> {
+    let state = app.state::<AppState>();
+    match target {
+        OpenTarget::Local => {
+            let (term, events) = LocalTerminal::spawn(LocalShellOptions {
+                argv: Vec::new(),
+                cwd: dirs_home(),
+                env: vec![("TERM".into(), TERM.into())],
+                size,
+            })?;
+            Ok(Opened {
+                protocol: "local",
+                title: "Local".into(),
+                target: "local shell".into(),
+                host_id: None,
+                term,
+                events,
+                client: None,
+                jumps: Vec::new(),
+            })
+        }
+        OpenTarget::Quick {
+            address,
+            username,
+            port,
+        } => {
+            let (user, host, p) = parse_quick(address, username.as_deref(), *port)?;
+            let target = SshTarget {
+                host,
+                port: p,
+                username: user,
+            };
+            let display = target.display();
+            emit_connecting(app, id, "ssh", &display, &display, None);
+            let (client, jumps) = ssh_connect(app, id, target, None, &[], None).await?;
+            let (term, events) = client.shell(TERM, size).await?;
+            Ok(Opened {
+                protocol: "ssh",
+                title: display.clone(),
+                target: display,
+                host_id: None,
+                term,
+                events,
+                client: Some(client),
+                jumps,
+            })
+        }
+        OpenTarget::Host { host_id } => {
+            let resolved = state.store.resolve_host(*host_id)?;
+            let label = resolved.host.data.label.clone();
+            let is_telnet = resolved.telnet.is_some() && resolved.host.data.ssh_config_id.is_none();
+            if is_telnet {
+                let telnet = resolved.telnet.clone().unwrap_or_default();
+                let port = telnet.port.unwrap_or(23);
+                let display = format!("{}:{}", resolved.host.data.address, port);
+                emit_connecting(app, id, "telnet", &label, &display, Some(*host_id));
+                let (term, events) = TelnetTerminal::connect(TelnetOptions {
+                    host: resolved.host.data.address.clone(),
+                    port,
+                    term: TERM.into(),
+                    size,
+                    timeout: Duration::from_secs(20),
+                })
+                .await?;
+                return Ok(Opened {
+                    protocol: "telnet",
+                    title: label,
+                    target: display,
+                    host_id: Some(*host_id),
+                    term,
+                    events,
+                    client: None,
+                    jumps: Vec::new(),
+                });
+            }
+            let target = SshTarget {
+                host: resolved.host.data.address.clone(),
+                port: resolved.port(),
+                username: resolved.username(),
+            };
+            let display = target.display();
+            emit_connecting(app, id, "ssh", &label, &display, Some(*host_id));
+            let chain = resolved.chain.clone();
+            let (client, jumps) =
+                ssh_connect(app, id, target, Some(&resolved), &chain, None).await?;
+            let (term, events) = client.shell(TERM, size).await?;
+            Ok(Opened {
+                protocol: "ssh",
+                title: label,
+                target: display,
+                host_id: Some(*host_id),
+                term,
+                events,
+                client: Some(client),
+                jumps,
+            })
+        }
+    }
+}
+
+fn emit_connecting<R: Runtime>(
+    app: &AppHandle<R>,
+    id: Uuid,
+    protocol: &str,
+    title: &str,
+    target: &str,
+    host_id: Option<Uuid>,
+) {
+    let _ = app.emit(
+        SESSION_EVENT,
+        SessionEvent::Connecting {
+            id,
+            info: SessionInfo {
+                id,
+                protocol: protocol.into(),
+                title: title.into(),
+                target: target.into(),
+                host_id,
+                started_at: Utc::now(),
+                state: SessionState::Connecting,
+            },
+        },
+    );
+}
+
+fn dirs_home() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(Into::into)
+}
+
+/// `[user@]host[:port]` → (user, host, port). IPv6 literals go in brackets.
+fn parse_quick(
+    address: &str,
+    username: Option<&str>,
+    port: Option<u16>,
+) -> Result<(String, String, u16)> {
+    let s = address.trim();
+    if s.is_empty() {
+        return Err(DesktopError::invalid("address is empty"));
+    }
+    let (user_part, rest) = match s.rsplit_once('@') {
+        Some((u, r)) => (Some(u), r),
+        None => (None, s),
+    };
+    let (host, port_part) = if let Some(r) = rest.strip_prefix('[') {
+        let (h, tail) = r
+            .split_once(']')
+            .ok_or_else(|| DesktopError::invalid("unterminated IPv6 literal"))?;
+        (h.to_string(), tail.strip_prefix(':'))
+    } else if rest.matches(':').count() == 1 {
+        let (h, p) = rest.split_once(':').unwrap_or((rest, ""));
+        (h.to_string(), Some(p))
+    } else {
+        (rest.to_string(), None)
+    };
+    if host.is_empty() {
+        return Err(DesktopError::invalid("host is empty"));
+    }
+    let port = match (port, port_part) {
+        (Some(p), _) => p,
+        (None, Some(p)) if !p.is_empty() => p
+            .parse()
+            .map_err(|_| DesktopError::invalid(format!("bad port {p}")))?,
+        _ => 22,
+    };
+    let user = username
+        .map(str::to_string)
+        .or_else(|| user_part.map(str::to_string))
+        .filter(|u| !u.is_empty())
+        .or_else(|| std::env::var("USER").ok())
+        .or_else(|| std::env::var("USERNAME").ok())
+        .unwrap_or_else(|| "root".into());
+    Ok((user, host, port))
+}
+
+/// Connect to `target`, going through `chain` jump hosts first. Asks the UI
+/// for a password/passphrase when the stored credentials are not enough.
+async fn ssh_connect<R: Runtime>(
+    app: &AppHandle<R>,
+    session_id: Uuid,
+    target: SshTarget,
+    resolved: Option<&ResolvedHost>,
+    chain: &[Entity<termoso_core::model::Host>],
+    jump: Option<Arc<SshClient>>,
+) -> Result<(Arc<SshClient>, Vec<Arc<SshClient>>)> {
+    let state = app.state::<AppState>();
+    let mut jumps: Vec<Arc<SshClient>> = Vec::new();
+
+    // Jump hosts first (each resolved on its own, one level deep).
+    let mut via = jump;
+    for hop in chain {
+        let hop_resolved = state.store.resolve_host(hop.id)?;
+        let hop_target = SshTarget {
+            host: hop_resolved.host.data.address.clone(),
+            port: hop_resolved.port(),
+            username: hop_resolved.username(),
+        };
+        let (client, _) = Box::pin(ssh_connect(
+            app,
+            session_id,
+            hop_target,
+            Some(&hop_resolved),
+            &[],
+            via.clone(),
+        ))
+        .await?;
+        jumps.push(client.clone());
+        via = Some(client);
+    }
+
+    let known_hosts = KnownHosts::new(state.store.clone(), state.store.local_vault()?.id);
+    let display = target.display();
+    let ssh_cfg = resolved.map(|r| r.ssh.clone()).unwrap_or_default();
+    let identity = resolved.and_then(|r| r.identity.clone());
+    let mut password: Option<Zeroizing<String>> = identity
+        .as_ref()
+        .and_then(|i| i.data.password.clone())
+        .filter(|p| !p.is_empty())
+        .map(Zeroizing::new);
+    let mut passphrase: Option<Zeroizing<String>> = resolved
+        .and_then(|r| r.key.as_ref())
+        .and_then(|k| k.data.passphrase.clone())
+        .filter(|p| !p.is_empty())
+        .map(Zeroizing::new);
+    let proxy = match resolved.and_then(|r| r.proxy.as_ref()) {
+        Some(p) => Some(proxy_config(&state, &p.data)?),
+        None => None,
+    };
+
+    let mut attempts = 0;
+    loop {
+        let mut auth: Vec<AuthMethod> = Vec::new();
+        if let Some(key) = resolved.and_then(|r| r.key.as_ref()) {
+            auth.push(AuthMethod::Key {
+                private_key: Zeroizing::new(key.data.private_key.clone()),
+                passphrase: passphrase.clone(),
+                certificate: resolved
+                    .and_then(|r| r.certificate.as_ref())
+                    .map(|c| c.data.certificate.clone()),
+            });
+        }
+        auth.push(AuthMethod::Agent);
+        if let Some(pw) = &password {
+            auth.push(AuthMethod::Password(pw.clone()));
+        }
+        auth.push(AuthMethod::KeyboardInteractive);
+
+        let interactive: Option<Arc<dyn termoso_core::ssh::InteractivePrompt>> = match password {
+            Some(_) => None,
+            None => Some(Arc::new(UiInteractivePrompt {
+                app: app.clone(),
+                session_id,
+                target: display.clone(),
+            })),
+        };
+        let opts = ConnectOptions {
+            target: target.clone(),
+            auth,
+            known_hosts: known_hosts.clone(),
+            host_key_prompt: Arc::new(UiHostKeyPrompt {
+                app: app.clone(),
+                session_id,
+                target: display.clone(),
+            }),
+            interactive,
+            keepalive: keepalive(&state, &ssh_cfg),
+            timeout: Duration::from_secs(ssh_cfg.timeout.unwrap_or(20).clamp(1, 600) as u64),
+            proxy: proxy.clone(),
+            env: ssh_cfg.env_variables.clone(),
+            agent_forwarding: ssh_cfg.agent_forwarding,
+        };
+
+        let result = match &via {
+            Some(j) => SshClient::connect_via(j, opts).await,
+            None => SshClient::connect(opts).await,
+        };
+        match result {
+            Ok(client) => return Ok((Arc::new(client), jumps)),
+            Err(CoreError::AuthFailed { remaining })
+                if attempts < MAX_PASSWORD_ATTEMPTS
+                    && remaining
+                        .iter()
+                        .any(|m| m == "password" || m == "keyboard-interactive") =>
+            {
+                attempts += 1;
+                let answer = state
+                    .prompts
+                    .ask(
+                        app,
+                        session_id,
+                        display.clone(),
+                        PromptRequest::Password {
+                            username: target.username.clone(),
+                            retry: password.is_some(),
+                        },
+                    )
+                    .await;
+                match answer {
+                    Some(PromptAnswer::Secret { value, remember }) => {
+                        if remember && let Some(r) = resolved {
+                            remember_password(&state, r, &value);
+                        }
+                        password = Some(value);
+                    }
+                    _ => return Err(CoreError::Cancelled.into()),
+                }
+            }
+            Err(CoreError::Key(msg))
+                if attempts < MAX_PASSWORD_ATTEMPTS && msg.contains("passphrase") =>
+            {
+                attempts += 1;
+                let label = resolved
+                    .and_then(|r| r.key.as_ref())
+                    .map(|k| k.data.label.clone())
+                    .unwrap_or_default();
+                let answer = state
+                    .prompts
+                    .ask(
+                        app,
+                        session_id,
+                        display.clone(),
+                        PromptRequest::Passphrase { key_label: label },
+                    )
+                    .await;
+                match answer {
+                    Some(PromptAnswer::Secret { value, remember }) => {
+                        if remember && let Some(key) = resolved.and_then(|r| r.key.as_ref()) {
+                            let mut data = key.data.clone();
+                            data.passphrase = Some(value.to_string());
+                            let _ = state.store.update(key.id, &data);
+                        }
+                        passphrase = Some(value);
+                    }
+                    _ => return Err(CoreError::Cancelled.into()),
+                }
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+}
+
+fn keepalive(state: &AppState, cfg: &SshConfig) -> Option<Duration> {
+    let secs = cfg
+        .keep_alive_interval
+        .or_else(|| state.settings().ok().map(|s| s.keep_alive_seconds))
+        .unwrap_or(30);
+    (secs > 0).then(|| Duration::from_secs(secs as u64))
+}
+
+fn proxy_config(state: &AppState, p: &termoso_core::model::Proxy) -> Result<ProxyConfig> {
+    let kind = ProxyKind::parse(&p.kind)
+        .ok_or_else(|| DesktopError::invalid(format!("unsupported proxy type {}", p.kind)))?;
+    let (username, password) = match p.identity_id {
+        Some(id) => {
+            let ident = state.store.get::<Identity>(id)?;
+            (
+                ident.as_ref().map(|i| i.data.username.clone()),
+                ident
+                    .and_then(|i| i.data.password)
+                    .filter(|p| !p.is_empty())
+                    .map(Zeroizing::new),
+            )
+        }
+        None => (None, None),
+    };
+    Ok(ProxyConfig {
+        kind,
+        host: p.host.clone(),
+        port: p.port,
+        username,
+        password,
+    })
+}
+
+/// Store a password the user asked to remember: on the host's identity when
+/// it has one, otherwise on a new hidden identity attached to the host's SSH
+/// config (created if missing).
+fn remember_password(state: &AppState, resolved: &ResolvedHost, value: &Zeroizing<String>) {
+    let store = &state.store;
+    let result = (|| -> termoso_core::error::Result<()> {
+        if let Some(ident) = &resolved.identity {
+            let mut data = ident.data.clone();
+            data.password = Some(value.to_string());
+            return store.update(ident.id, &data);
+        }
+        let vault_id = resolved.host.vault_id;
+        let identity_id = store.insert(
+            vault_id,
+            &Identity {
+                label: format!("{}@{}", resolved.username(), resolved.host.data.address),
+                username: resolved.username(),
+                password: Some(value.to_string()),
+                ssh_key_id: None,
+                ssh_certificate_id: None,
+                is_visible: false,
+            },
+        )?;
+        match resolved.host.data.ssh_config_id {
+            Some(cfg_id) => {
+                let cfg = store.require::<SshConfig>(cfg_id)?;
+                let mut data = cfg.data;
+                data.identity_id = Some(identity_id);
+                store.update(cfg_id, &data)
+            }
+            None => {
+                let cfg_id = store.insert(
+                    vault_id,
+                    &SshConfig {
+                        identity_id: Some(identity_id),
+                        ..resolved.ssh.clone()
+                    },
+                )?;
+                let mut host = resolved.host.data.clone();
+                host.ssh_config_id = Some(cfg_id);
+                store.update(resolved.host.id, &host)
+            }
+        }
+    })();
+    if let Err(e) = result {
+        tracing::warn!(error = %e, "could not remember password");
+    }
+}

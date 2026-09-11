@@ -8,3 +8,5 @@
 node_modules
 /web/dist
 /web/src/crypto/pkg
+/apps/desktop/dist
+/apps/desktop/src-tauri/gen/schemas
