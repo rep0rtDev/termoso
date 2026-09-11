@@ -113,6 +113,8 @@ pub fn run() {
             commands_tools::key_public,
             commands_tools::key_export,
             commands_tools::key_export_file,
+            commands_tools::key_export_to_host,
+            commands_tools::agent_keys,
             commands_tools::key_delete,
             commands_tools::identities_list,
             commands_tools::identity_save,

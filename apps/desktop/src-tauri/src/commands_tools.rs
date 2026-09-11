@@ -14,8 +14,11 @@ use crate::account::{
 };
 use crate::error::Result;
 use crate::forwarding::{self, PfRuleCard, PfRuleForm, PfRuntime};
-use crate::keychain::{self, GenerateForm, IdentityCard, IdentityForm, ImportForm, KeyCard};
+use crate::keychain::{
+    self, ExportOutcome, GenerateForm, IdentityCard, IdentityForm, ImportForm, KeyCard,
+};
 use crate::logs::{self, BookmarkCard, LogBody, LogCard};
+use crate::sessions;
 use crate::snippets::{self, PackageNode, RunResult, SnippetCard, SnippetForm};
 use crate::state::AppState;
 use crate::trust::{self, ImportReport, KnownHostCard};
@@ -135,6 +138,84 @@ fn write_private(path: &str, bytes: &[u8]) -> Result<()> {
 fn write_private(path: &str, bytes: &[u8]) -> Result<()> {
     std::fs::write(path, bytes)?;
     Ok(())
+}
+
+/// Result of `key_export_to_host`.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportToHostResult {
+    pub outcome: ExportOutcome,
+    pub host_label: String,
+    /// `user@host:port` the key was installed for.
+    pub target: String,
+}
+
+/// `ssh-copy-id`: connect to a saved host with its current credentials and
+/// append the key's public half to `~/.ssh/authorized_keys` there. Prompts
+/// (password, host key) are routed under a throw-away session id; the
+/// transport is closed as soon as the command returns.
+#[tauri::command]
+pub async fn key_export_to_host<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    id: Uuid,
+    host_id: Uuid,
+) -> Result<ExportToHostResult> {
+    let public = keychain::public_key(&state.store, id)?;
+    let conn = sessions::connect_host(&app, Uuid::new_v4(), host_id).await?;
+    let out = conn
+        .client
+        .exec(
+            keychain::EXPORT_COMMAND,
+            Some(bytes::Bytes::from(format!("{public}\n"))),
+        )
+        .await;
+    let (host_label, target) = (conn.label.clone(), conn.display.clone());
+    conn.close().await;
+    let out = out?;
+    let outcome = keychain::export_outcome(out.exit_code, &out.stdout, &out.stderr)?;
+    Ok(ExportToHostResult {
+        outcome,
+        host_label,
+        target,
+    })
+}
+
+/// Keys the system SSH agent currently holds (public halves only). Empty
+/// with `available: false` when no agent is reachable.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentKeys {
+    pub available: bool,
+    /// Why the agent is unavailable (never contains secrets).
+    pub error: Option<String>,
+    pub keys: Vec<termoso_core::agent::AgentKey>,
+}
+
+#[tauri::command]
+pub async fn agent_keys() -> Result<AgentKeys> {
+    let mut agent = match termoso_core::agent::connect_system_agent().await {
+        Ok(a) => a,
+        Err(e) => {
+            return Ok(AgentKeys {
+                available: false,
+                error: Some(e.to_string()),
+                keys: Vec::new(),
+            });
+        }
+    };
+    match termoso_core::agent::list_keys(&mut agent).await {
+        Ok(keys) => Ok(AgentKeys {
+            available: true,
+            error: None,
+            keys,
+        }),
+        Err(e) => Ok(AgentKeys {
+            available: false,
+            error: Some(e.to_string()),
+            keys: Vec::new(),
+        }),
+    }
 }
 
 #[tauri::command]

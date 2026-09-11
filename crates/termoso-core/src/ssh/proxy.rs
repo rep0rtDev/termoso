@@ -1,5 +1,6 @@
-//! Outbound proxies for the TCP leg of an SSH connection: HTTP `CONNECT` and
-//! SOCKS5 (RFC 1928, optional username/password per RFC 1929).
+//! Outbound proxies for the TCP leg of an SSH connection: HTTP `CONNECT`,
+//! SOCKS4/4a (hostname sent to the proxy when the target is not an IPv4
+//! literal) and SOCKS5 (RFC 1928, optional username/password per RFC 1929).
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -16,6 +17,8 @@ use crate::error::{CoreError, Result};
 pub enum ProxyKind {
     /// HTTP `CONNECT`.
     Http,
+    /// SOCKS4 / SOCKS4a (no password; `username` becomes the user id).
+    Socks4,
     /// SOCKS5.
     Socks5,
 }
@@ -25,9 +28,15 @@ impl ProxyKind {
     pub fn parse(s: &str) -> Option<Self> {
         match s.to_ascii_lowercase().as_str() {
             "http" | "https" => Some(Self::Http),
+            "socks4" | "socks4a" => Some(Self::Socks4),
             "socks" | "socks5" | "socks5h" => Some(Self::Socks5),
             _ => None,
         }
+    }
+
+    /// Whether the proxy protocol can carry a password.
+    pub fn supports_password(self) -> bool {
+        !matches!(self, Self::Socks4)
     }
 }
 
@@ -105,6 +114,7 @@ pub async fn connect(proxy: &ProxyConfig, host: &str, port: u16) -> Result<Proxy
     let _ = stream.set_nodelay(true);
     match proxy.kind {
         ProxyKind::Http => http_connect(&mut stream, proxy, host, port).await?,
+        ProxyKind::Socks4 => socks4_connect(&mut stream, proxy, host, port).await?,
         ProxyKind::Socks5 => socks5_connect(&mut stream, proxy, host, port).await?,
     }
     Ok(ProxyStream::Tcp(stream))
@@ -149,6 +159,56 @@ async fn http_connect(s: &mut TcpStream, proxy: &ProxyConfig, host: &str, port: 
         Err(CoreError::Ssh(format!(
             "proxy: CONNECT failed with HTTP {status}"
         )))
+    }
+}
+
+async fn socks4_connect(
+    s: &mut TcpStream,
+    proxy: &ProxyConfig,
+    host: &str,
+    port: u16,
+) -> Result<()> {
+    let user = proxy.username.as_deref().unwrap_or("");
+    if user.contains('\0') {
+        return Err(CoreError::Ssh("socks4: user id contains NUL".into()));
+    }
+    let mut req = vec![4u8, 1];
+    req.extend_from_slice(&port.to_be_bytes());
+    let v4 = host.parse::<std::net::Ipv4Addr>().ok();
+    match v4 {
+        Some(ip) => req.extend_from_slice(&ip.octets()),
+        // SOCKS4a: 0.0.0.x tells the proxy to resolve the name that follows.
+        None => req.extend_from_slice(&[0, 0, 0, 1]),
+    }
+    req.extend_from_slice(user.as_bytes());
+    req.push(0);
+    if v4.is_none() {
+        if host.contains('\0') {
+            return Err(CoreError::Ssh("socks4: hostname contains NUL".into()));
+        }
+        req.extend_from_slice(host.as_bytes());
+        req.push(0);
+    }
+    s.write_all(&req).await?;
+
+    let mut resp = [0u8; 8];
+    s.read_exact(&mut resp).await?;
+    if resp[0] != 0 {
+        return Err(CoreError::Ssh(format!(
+            "socks4: bad reply version {}",
+            resp[0]
+        )));
+    }
+    match resp[1] {
+        0x5a => Ok(()),
+        0x5b => Err(CoreError::Ssh("socks4: request rejected or failed".into())),
+        0x5c => Err(CoreError::Ssh(
+            "socks4: rejected — proxy cannot reach identd on the client".into(),
+        )),
+        0x5d => Err(CoreError::Ssh(
+            "socks4: rejected — user id does not match identd".into(),
+        )),
+        c => Err(CoreError::Ssh(format!("socks4: unexpected reply {c:#x}"))),
     }
 }
 
@@ -326,6 +386,162 @@ mod tests {
         target.await.unwrap();
         drop(s);
         let _ = srv.await;
+    }
+
+    #[tokio::test]
+    async fn socks4a_sends_hostname_and_user_id() {
+        let (target_port, target) = echo_target().await;
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_port = l.local_addr().unwrap().port();
+        let srv = tokio::spawn(async move {
+            let (mut s, _) = l.accept().await.unwrap();
+            let mut head = [0u8; 8];
+            s.read_exact(&mut head).await.unwrap();
+            assert_eq!(head[0], 4);
+            assert_eq!(head[1], 1);
+            let port = u16::from_be_bytes([head[2], head[3]]);
+            assert_eq!(&head[4..8], &[0, 0, 0, 1]);
+            let mut user = Vec::new();
+            let mut b = [0u8; 1];
+            loop {
+                s.read_exact(&mut b).await.unwrap();
+                if b[0] == 0 {
+                    break;
+                }
+                user.push(b[0]);
+            }
+            assert_eq!(user, b"alice");
+            let mut name = Vec::new();
+            loop {
+                s.read_exact(&mut b).await.unwrap();
+                if b[0] == 0 {
+                    break;
+                }
+                name.push(b[0]);
+            }
+            assert_eq!(name, b"localhost");
+            let mut up = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+            s.write_all(&[0, 0x5a, 0, 0, 0, 0, 0, 0]).await.unwrap();
+            tokio::io::copy_bidirectional(&mut s, &mut up).await.ok();
+        });
+        let cfg = ProxyConfig {
+            kind: ProxyKind::Socks4,
+            host: "127.0.0.1".into(),
+            port: proxy_port,
+            username: Some("alice".into()),
+            password: None,
+        };
+        let mut s = connect(&cfg, "localhost", target_port).await.unwrap();
+        s.write_all(b"hello").await.unwrap();
+        let mut back = [0u8; 5];
+        s.read_exact(&mut back).await.unwrap();
+        assert_eq!(&back, b"hello");
+        target.await.unwrap();
+        drop(s);
+        let _ = srv.await;
+    }
+
+    #[tokio::test]
+    async fn socks4_ipv4_literal_is_sent_inline_and_rejection_is_typed() {
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_port = l.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut s, _) = l.accept().await.unwrap();
+            let mut req = [0u8; 9];
+            s.read_exact(&mut req).await.unwrap();
+            assert_eq!(req, [4, 1, 0, 22, 10, 0, 0, 7, 0]);
+            s.write_all(&[0, 0x5b, 0, 0, 0, 0, 0, 0]).await.unwrap();
+        });
+        let cfg = ProxyConfig {
+            kind: ProxyKind::Socks4,
+            host: "127.0.0.1".into(),
+            port: proxy_port,
+            username: None,
+            password: None,
+        };
+        let err = connect(&cfg, "10.0.0.7", 22).await.err().unwrap();
+        assert!(err.to_string().contains("rejected"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn socks5_auth_rejection_is_typed() {
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_port = l.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut s, _) = l.accept().await.unwrap();
+            let mut g = [0u8; 4];
+            s.read_exact(&mut g).await.unwrap();
+            s.write_all(&[5, 2]).await.unwrap();
+            let mut buf = [0u8; 64];
+            let _ = s.read(&mut buf).await.unwrap();
+            s.write_all(&[1, 1]).await.unwrap();
+        });
+        let cfg = ProxyConfig {
+            kind: ProxyKind::Socks5,
+            host: "127.0.0.1".into(),
+            port: proxy_port,
+            username: Some("u".into()),
+            password: Some(Zeroizing::new("wrong".into())),
+        };
+        let err = connect(&cfg, "localhost", 22).await.err().unwrap();
+        assert!(err.to_string().contains("authentication rejected"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn http_connect_with_basic_auth_tunnels() {
+        let (target_port, target) = echo_target().await;
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_port = l.local_addr().unwrap().port();
+        let srv = tokio::spawn(async move {
+            let (mut s, _) = l.accept().await.unwrap();
+            let mut buf = Vec::new();
+            let mut b = [0u8; 1];
+            while !buf.ends_with(b"\r\n\r\n") {
+                s.read_exact(&mut b).await.unwrap();
+                buf.push(b[0]);
+            }
+            let text = String::from_utf8(buf).unwrap();
+            assert!(text.starts_with(&format!(
+                "CONNECT example.invalid:{target_port} HTTP/1.1\r\n"
+            )));
+            // base64("u:pw")
+            assert!(
+                text.contains("Proxy-Authorization: Basic dTpwdw==\r\n"),
+                "{text}"
+            );
+            let mut up = TcpStream::connect(("127.0.0.1", target_port))
+                .await
+                .unwrap();
+            s.write_all(b"HTTP/1.1 200 Connection established\r\nX-Proxy: test\r\n\r\n")
+                .await
+                .unwrap();
+            tokio::io::copy_bidirectional(&mut s, &mut up).await.ok();
+        });
+        let cfg = ProxyConfig {
+            kind: ProxyKind::Http,
+            host: "127.0.0.1".into(),
+            port: proxy_port,
+            username: Some("u".into()),
+            password: Some(Zeroizing::new("pw".into())),
+        };
+        let mut s = connect(&cfg, "example.invalid", target_port).await.unwrap();
+        s.write_all(b"hello").await.unwrap();
+        let mut back = [0u8; 5];
+        s.read_exact(&mut back).await.unwrap();
+        assert_eq!(&back, b"hello");
+        target.await.unwrap();
+        drop(s);
+        let _ = srv.await;
+    }
+
+    #[test]
+    fn parse_accepts_every_ui_kind() {
+        assert_eq!(ProxyKind::parse("socks4"), Some(ProxyKind::Socks4));
+        assert_eq!(ProxyKind::parse("SOCKS4a"), Some(ProxyKind::Socks4));
+        assert_eq!(ProxyKind::parse("socks5"), Some(ProxyKind::Socks5));
+        assert_eq!(ProxyKind::parse("http"), Some(ProxyKind::Http));
+        assert_eq!(ProxyKind::parse("ftp"), None);
+        assert!(!ProxyKind::Socks4.supports_password());
     }
 
     #[tokio::test]

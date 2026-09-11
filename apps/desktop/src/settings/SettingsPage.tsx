@@ -17,7 +17,7 @@ import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import ArticleRoundedIcon from "@mui/icons-material/ArticleRounded";
 import SystemUpdateAltRoundedIcon from "@mui/icons-material/SystemUpdateAltRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AccountPage } from "@/account/AccountPage";
 import { setSettingsPage, useNav, type SettingsPage as PageId } from "@/app/navigation";
 import { EmptyState } from "@/components/EmptyState";
@@ -206,6 +206,16 @@ function General({ s, update }: SectionProps) {
         />
       </SectionCard>
 
+      <SectionCard title="SSH agent">
+        <SettingRow
+          label="Use the system SSH agent"
+          hint="Offers keys held by ssh-agent (SSH_AUTH_SOCK), the Windows OpenSSH agent or Pageant after the host's own key. Private keys never leave the agent."
+          last={!s.useSshAgent}
+          control={<Toggle checked={s.useSshAgent} onChange={(v) => update({ useSshAgent: v })} />}
+        />
+        {s.useSshAgent && <AgentKeyList />}
+      </SectionCard>
+
       <SectionCard title="Sync">
         <SettingRow
           label="On conflict"
@@ -239,6 +249,52 @@ function General({ s, update }: SectionProps) {
         />
       </SectionCard>
     </>
+  );
+}
+
+function AgentKeyList() {
+  const q = useQuery({ queryKey: ["agentKeys"], queryFn: ipc.agentKeys, staleTime: 10_000 });
+  const a = q.data;
+  return (
+    <Box sx={{ py: 1 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: a?.keys.length ? 0.75 : 0 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+          {q.isPending
+            ? "Looking for an agent…"
+            : a?.available
+              ? a.keys.length === 0
+                ? "Agent reachable, no keys loaded (ssh-add to add one)."
+                : `Agent reachable · ${a.keys.length} key${a.keys.length === 1 ? "" : "s"}`
+              : `No agent: ${a?.error ?? errorMessage(q.error)}`}
+        </Typography>
+        <Button
+          size="small"
+          color="inherit"
+          onClick={() => void q.refetch()}
+          disabled={q.isFetching}
+        >
+          Refresh
+        </Button>
+      </Box>
+      {a?.keys.map((k) => (
+        <Box
+          key={k.fingerprint}
+          sx={{ display: "flex", gap: 1.5, alignItems: "baseline", minWidth: 0, py: 0.25 }}
+        >
+          <Mono secondary>{k.keyType}</Mono>
+          <Mono
+            sx={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            {k.fingerprint}
+          </Mono>
+          {k.comment && (
+            <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 200 }}>
+              {k.comment}
+            </Typography>
+          )}
+        </Box>
+      ))}
+    </Box>
   );
 }
 

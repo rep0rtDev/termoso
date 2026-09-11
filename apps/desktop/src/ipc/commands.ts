@@ -4,12 +4,14 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AccountStatus,
+  AgentKeys,
   AppInfo,
   BookmarkCard,
   ConnectionHistory,
   Device,
   Direction,
   Entity,
+  ExportToHostResult,
   ForwardEvent,
   FsEntry,
   GenerateKeyForm,
@@ -224,6 +226,10 @@ export const keyExportFile = (args: {
   passphrase: string | null;
   exportPassphrase: string | null;
 }) => invoke<null>("key_export_file", args);
+/** ssh-copy-id: append the public key to ~/.ssh/authorized_keys on a saved host. */
+export const keyExportToHost = (id: Uuid, hostId: Uuid) =>
+  invoke<ExportToHostResult>("key_export_to_host", { id, hostId });
+export const agentKeys = () => invoke<AgentKeys>("agent_keys");
 export const keyDelete = (id: Uuid) => invoke<null>("key_delete", { id });
 
 export const identitiesList = (vaultId?: Uuid | null) =>
