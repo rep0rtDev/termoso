@@ -121,6 +121,7 @@ function HostKeyPrompt({
 }) {
   const v = prompt.verdict;
   const changed = v.status === "changed";
+  const [verified, setVerified] = useState(false);
   const decide = (decision: "reject" | "accept_once" | "accept_and_save") =>
     onAnswer({ kind: "host_key", decision });
   return (
@@ -144,6 +145,20 @@ function HostKeyPrompt({
             <>
               <KeyBlock info={v.old} tone="old" />
               <KeyBlock info={v.new} tone="new" />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={verified}
+                    onChange={(e) => setVerified(e.target.checked)}
+                  />
+                }
+                label={
+                  <Typography variant="body2">
+                    I verified the new fingerprint with the server owner
+                  </Typography>
+                }
+              />
             </>
           )}
         </Stack>
@@ -159,6 +174,7 @@ function HostKeyPrompt({
         <Button
           variant="contained"
           color={changed ? "error" : "primary"}
+          disabled={changed && !verified}
           onClick={() => decide("accept_and_save")}
         >
           {changed ? "Replace & connect" : "Trust & connect"}

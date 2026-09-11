@@ -16,7 +16,7 @@ use russh_sftp::protocol::{
 use termoso_core::error::CoreError;
 use termoso_core::forward::{Forward, ForwardSpec};
 use termoso_core::hostkey::{
-    FixedPrompt, HostKeyDecision, HostKeyVerdict, KnownHosts, StrictPrompt,
+    self, FixedPrompt, HostKeyDecision, HostKeyPrompt, HostKeyVerdict, KnownHosts, StrictPrompt,
 };
 use termoso_core::sftp::{Sftp, TransferOptions};
 use termoso_core::ssh::{AuthMethod, ConnectOptions, PasswordResponder, SshClient, SshTarget};
@@ -174,13 +174,20 @@ impl russh::server::Handler for TestHandler {
                 .await;
             return Ok(());
         };
-        if host != "echo.internal" || port != 7 {
-            reply.reject(russh::ChannelOpenFailure::ConnectFailed).await;
-            return Ok(());
-        }
+        // Like sshd: loopback targets are dialled for real (this is how a
+        // jump host forwards to the next hop); `echo.internal:7` is the
+        // fixture name for the echo server; anything else is refused.
+        let upstream = match (host, port) {
+            ("echo.internal", 7) => echo,
+            ("127.0.0.1" | "localhost", p) if (1..=65535).contains(&p) => p as u16,
+            _ => {
+                reply.reject(russh::ChannelOpenFailure::ConnectFailed).await;
+                return Ok(());
+            }
+        };
         reply.accept().await;
         tokio::spawn(async move {
-            let Ok(mut sock) = tokio::net::TcpStream::connect(("127.0.0.1", echo)).await else {
+            let Ok(mut sock) = tokio::net::TcpStream::connect(("127.0.0.1", upstream)).await else {
                 return;
             };
             let mut stream = channel.into_stream();
@@ -832,14 +839,112 @@ async fn unknown_host_key_is_rejected_by_strict_prompt() {
     o.auth
         .push(AuthMethod::Password(Zeroizing::new(PASSWORD.into())));
     let err = SshClient::connect(o).await.err().unwrap();
-    assert!(
-        matches!(err, CoreError::HostKeyRejected { .. } | CoreError::Ssh(_)),
-        "{err:?}"
-    );
+    assert!(matches!(err, CoreError::HostKeyRejected { .. }), "{err:?}");
     assert!(matches!(
         h.kh.check("127.0.0.1", h.port, &h.host_key).unwrap(),
         HostKeyVerdict::Unknown { .. }
     ));
+}
+
+/// Prompt standing in for the UI's changed-key dialog: records what it was
+/// shown and answers with a fixed decision even for a changed key.
+struct RecordingPrompt {
+    decision: HostKeyDecision,
+    seen: std::sync::Mutex<Vec<HostKeyVerdict>>,
+}
+
+impl HostKeyPrompt for RecordingPrompt {
+    fn decide(
+        &self,
+        verdict: HostKeyVerdict,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = HostKeyDecision> + Send + '_>> {
+        self.seen.lock().unwrap().push(verdict);
+        let d = self.decision;
+        Box::pin(async move { d })
+    }
+}
+
+#[tokio::test]
+async fn changed_key_replace_and_connect_repins_and_drops_old_pin() {
+    // The dialog gets both fingerprints; "Replace & connect" swaps the pin
+    // so the next connection is silent, and the stale pin is gone.
+    let h = start().await;
+    let stale = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap();
+    h.kh.trust("127.0.0.1", h.port, stale.public_key()).unwrap();
+
+    let prompt = Arc::new(RecordingPrompt {
+        decision: HostKeyDecision::AcceptAndSave,
+        seen: std::sync::Mutex::new(Vec::new()),
+    });
+    let mut o = h.opts(prompt.clone());
+    o.auth
+        .push(AuthMethod::Password(Zeroizing::new(PASSWORD.into())));
+    let c = SshClient::connect(o).await.unwrap();
+    c.disconnect().await.unwrap();
+
+    let seen = std::mem::take(&mut *prompt.seen.lock().unwrap());
+    assert_eq!(seen.len(), 1);
+    match &seen[0] {
+        HostKeyVerdict::Changed { old, new } => {
+            assert_eq!(old.fingerprint, hostkey::fingerprint(stale.public_key()));
+            assert_eq!(new.fingerprint, hostkey::fingerprint(&h.host_key));
+            assert_ne!(old.fingerprint, new.fingerprint);
+            assert_eq!(old.key_type, new.key_type);
+        }
+        other => panic!("expected Changed, got {other:?}"),
+    }
+
+    assert_eq!(
+        h.kh.check("127.0.0.1", h.port, &h.host_key).unwrap(),
+        HostKeyVerdict::Known
+    );
+    let pins = h.kh.for_host("127.0.0.1", h.port).unwrap();
+    assert_eq!(pins.len(), 1, "old pin replaced, not appended");
+
+    // Silent now.
+    let mut o = h.opts(Arc::new(StrictPrompt));
+    o.auth
+        .push(AuthMethod::Password(Zeroizing::new(PASSWORD.into())));
+    SshClient::connect(o)
+        .await
+        .unwrap()
+        .disconnect()
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn changed_key_connect_once_keeps_old_pin() {
+    let h = start().await;
+    let stale = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap();
+    h.kh.trust("127.0.0.1", h.port, stale.public_key()).unwrap();
+
+    let prompt = Arc::new(RecordingPrompt {
+        decision: HostKeyDecision::AcceptOnce,
+        seen: std::sync::Mutex::new(Vec::new()),
+    });
+    let mut o = h.opts(prompt.clone());
+    o.auth
+        .push(AuthMethod::Password(Zeroizing::new(PASSWORD.into())));
+    SshClient::connect(o)
+        .await
+        .unwrap()
+        .disconnect()
+        .await
+        .unwrap();
+    assert_eq!(prompt.seen.lock().unwrap().len(), 1);
+
+    // Still flagged next time: nothing was written.
+    assert!(matches!(
+        h.kh.check("127.0.0.1", h.port, &h.host_key).unwrap(),
+        HostKeyVerdict::Changed { .. }
+    ));
+    let pins = h.kh.for_host("127.0.0.1", h.port).unwrap();
+    assert_eq!(pins.len(), 1);
+    assert_eq!(
+        pins[0].data.fingerprint,
+        hostkey::fingerprint(stale.public_key())
+    );
 }
 
 #[tokio::test]
@@ -1279,10 +1384,140 @@ async fn remote_forward_delivers_server_connections_locally() {
 }
 
 #[tokio::test]
+async fn two_hop_jump_chain_reaches_final_host() {
+    // bastion -> relay -> target: every hop is a separate server with its own
+    // host key, and the final exec must run on the last one.
+    let bastion = start().await;
+    let relay = start().await;
+    let target = start().await;
+
+    let first = bastion.connect_password().await;
+
+    let mut o = relay.trusted();
+    o.auth
+        .push(AuthMethod::Password(Zeroizing::new(PASSWORD.into())));
+    let second = SshClient::connect_via(&first, o).await.unwrap();
+
+    let mut o = target.trusted();
+    o.auth.push(AuthMethod::Key {
+        private_key: Zeroizing::new(
+            target
+                .client_key
+                .to_openssh(russh::keys::ssh_key::LineEnding::LF)
+                .unwrap()
+                .to_string(),
+        ),
+        passphrase: None,
+        certificate: None,
+    });
+    let third = SshClient::connect_via(&second, o).await.unwrap();
+
+    let out = third.exec("whoami", None).await.unwrap();
+    assert_eq!(out.stdout, b"tester\n");
+    assert!(!first.is_closed() && !second.is_closed());
+
+    // Each hop trusted its own key; nothing leaked across stores.
+    assert_eq!(bastion.kh.all().unwrap().len(), 1);
+    assert_eq!(relay.kh.all().unwrap().len(), 1);
+    assert_eq!(target.kh.all().unwrap().len(), 1);
+
+    // Tearing down the bastion transport takes the inner hops with it.
+    first.disconnect().await.unwrap();
+    tokio::time::timeout(Duration::from_secs(10), third.closed())
+        .await
+        .expect("inner hop must close when the outer transport is gone");
+}
+
+#[tokio::test]
+async fn jump_host_changed_key_is_rejected_by_strict_prompt() {
+    // A MITM on the second hop presents a different key than the one on
+    // record; StrictPrompt must refuse and the bastion must stay usable.
+    let bastion = start().await;
+    let target = start().await;
+    let first = bastion.connect_password().await;
+
+    let imposter = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap();
+    target
+        .kh
+        .trust("127.0.0.1", target.port, imposter.public_key())
+        .unwrap();
+    let mut o = target.opts(Arc::new(StrictPrompt));
+    o.auth
+        .push(AuthMethod::Password(Zeroizing::new(PASSWORD.into())));
+    let err = SshClient::connect_via(&first, o).await.err().unwrap();
+    assert!(matches!(err, CoreError::HostKeyRejected { .. }), "{err:?}");
+    assert!(matches!(
+        target
+            .kh
+            .check("127.0.0.1", target.port, &target.host_key)
+            .unwrap(),
+        HostKeyVerdict::Changed { .. }
+    ));
+    assert!(!first.is_closed());
+}
+
+/// Minimal no-auth SOCKS5 relay that dials whatever the client asks for.
+async fn socks5_relay() -> u16 {
+    let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = l.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((mut s, _)) = l.accept().await {
+            tokio::spawn(async move {
+                let mut g = [0u8; 2];
+                s.read_exact(&mut g).await.unwrap();
+                let mut methods = vec![0u8; g[1] as usize];
+                s.read_exact(&mut methods).await.unwrap();
+                s.write_all(&[5, 0]).await.unwrap();
+                let mut head = [0u8; 4];
+                s.read_exact(&mut head).await.unwrap();
+                assert_eq!(head[3], 1, "client sends IPv4 literals inline");
+                let mut addr = [0u8; 6];
+                s.read_exact(&mut addr).await.unwrap();
+                let ip = std::net::Ipv4Addr::new(addr[0], addr[1], addr[2], addr[3]);
+                let port = u16::from_be_bytes([addr[4], addr[5]]);
+                let mut up = tokio::net::TcpStream::connect((ip, port)).await.unwrap();
+                s.write_all(&[5, 0, 0, 1, 0, 0, 0, 0, 0, 0]).await.unwrap();
+                let _ = tokio::io::copy_bidirectional(&mut s, &mut up).await;
+            });
+        }
+    });
+    port
+}
+
+#[tokio::test]
+async fn ssh_over_socks5_proxy_then_jump() {
+    // proxy -> bastion -> target, exercising the proxied TCP leg together
+    // with a direct-tcpip hop on top of it.
+    let bastion = start().await;
+    let target = start().await;
+    let proxy_port = socks5_relay().await;
+
+    let mut o = bastion.trusted();
+    o.auth
+        .push(AuthMethod::Password(Zeroizing::new(PASSWORD.into())));
+    o.proxy = Some(termoso_core::ssh::proxy::ProxyConfig {
+        kind: termoso_core::ssh::proxy::ProxyKind::Socks5,
+        host: "127.0.0.1".into(),
+        port: proxy_port,
+        username: None,
+        password: None,
+    });
+    let first = SshClient::connect(o).await.unwrap();
+
+    let mut o = target.trusted();
+    o.auth
+        .push(AuthMethod::Password(Zeroizing::new(PASSWORD.into())));
+    let second = SshClient::connect_via(&first, o).await.unwrap();
+    let out = second.exec("whoami", None).await.unwrap();
+    assert_eq!(out.stdout, b"tester\n");
+    second.disconnect().await.unwrap();
+    first.disconnect().await.unwrap();
+}
+
+#[tokio::test]
 async fn jump_host_chain() {
-    // Connect to the same server "through itself" via direct-tcpip is not
-    // possible (the test server only tunnels to echo.internal), so verify the
-    // failure path is typed and the jump session survives.
+    // An unreachable target behind the jump yields a typed error and leaves
+    // the jump session alive.
     let h = start().await;
     let jump = h.connect_password().await;
     let mut o = h.trusted();

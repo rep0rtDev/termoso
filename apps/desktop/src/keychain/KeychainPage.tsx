@@ -23,6 +23,7 @@ import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import UploadFileRoundedIcon from "@mui/icons-material/UploadFileRounded";
+import DnsRoundedIcon from "@mui/icons-material/DnsRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { save as saveFile } from "@tauri-apps/plugin-dialog";
@@ -40,13 +41,14 @@ import {
 } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
-import { useDefaultVault, useIdentities, useSshKeys } from "@/ipc/hooks";
+import { useDefaultVault, useHosts, useIdentities, useSshKeys } from "@/ipc/hooks";
 import { errorMessage, type IdentityCard, type KeyCard } from "@/ipc/types";
 import { sizes } from "@/theme/theme";
 import { NameDialog } from "@/sftp/dialogs";
 import { IdentityDialog } from "./IdentityDialog";
 import {
   ExportKeyDialog,
+  ExportToHostDialog,
   GenerateKeyDialog,
   ImportKeyDialog,
   PassphraseDialog,
@@ -59,6 +61,7 @@ type KeyDialog =
   | { kind: "rename"; card: KeyCard }
   | { kind: "passphrase"; card: KeyCard }
   | { kind: "export"; card: KeyCard }
+  | { kind: "exportToHost"; card: KeyCard }
   | { kind: "delete"; card: KeyCard };
 
 type IdDialog =
@@ -77,6 +80,7 @@ export function KeychainPage() {
   const vaultId = vault.data?.id ?? null;
   const sshKeys = useSshKeys(vaultId);
   const identities = useIdentities(vaultId);
+  const hosts = useHosts(vaultId);
   const [tab, setTab] = useState<"keys" | "identities">("keys");
   const [keyDialog, setKeyDialog] = useState<KeyDialog>({ kind: "none" });
   const [idDialog, setIdDialog] = useState<IdDialog>({ kind: "none" });
@@ -383,6 +387,20 @@ export function KeychainPage() {
         )}
         {menu && (
           <MenuItem
+            disabled={menu.card.unreadable}
+            onClick={() => {
+              setKeyDialog({ kind: "exportToHost", card: menu.card });
+              setMenu(null);
+            }}
+          >
+            <ListItemIcon>
+              <DnsRoundedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Export to host…</ListItemText>
+          </MenuItem>
+        )}
+        {menu && (
+          <MenuItem
             onClick={() => {
               setKeyDialog({ kind: "delete", card: menu.card });
               setMenu(null);
@@ -473,6 +491,24 @@ export function KeychainPage() {
           onConfirm={(args) => {
             const card = keyDialog.card;
             run(() => exportKey(card, args));
+          }}
+        />
+      )}
+      {keyDialog.kind === "exportToHost" && (
+        <ExportToHostDialog
+          open
+          card={keyDialog.card}
+          hosts={hosts.data ?? []}
+          busy={op.isPending}
+          onCancel={closeKey}
+          onConfirm={(host) => {
+            const card = keyDialog.card;
+            run(async () => {
+              const r = await ipc.keyExportToHost(card.id, host.id);
+              return r.outcome === "added"
+                ? `${card.label} added to authorized_keys on ${r.target}`
+                : `${card.label} is already authorized on ${r.target}`;
+            });
           }}
         />
       )}
