@@ -36,6 +36,9 @@ zeroize = { workspace = true }
 bytes = { workspace = true }
 base64 = { workspace = true }
 hostname = "0.4"
+url = { workspace = true }
+time = { version = "0.3", features = ["formatting"] }
+tauri-plugin-updater = "2.11"
 
 [dev-dependencies]
 tempfile = "3"

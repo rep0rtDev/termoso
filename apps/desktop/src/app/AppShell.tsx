@@ -17,6 +17,8 @@ import { PromptHost } from "@/prompts/PromptHost";
 import { TerminalWorkspace } from "@/terminal/TerminalWorkspace";
 import { HOME_TAB, setActiveTab, startTerminalEvents, useTerminal } from "@/terminal/store";
 import { startSftpEvents } from "@/sftp/store";
+import { startUpdateEvents } from "@/update/store";
+import { UpdateBanner } from "@/update/UpdateBanner";
 import { useSyncNotices } from "@/ipc/hooks";
 
 export function AppShell() {
@@ -30,6 +32,7 @@ export function AppShell() {
   useEffect(() => {
     startTerminalEvents();
     startSftpEvents(queryClient);
+    startUpdateEvents();
   }, [queryClient]);
 
   const selectSection = useCallback((s: Section) => {
@@ -37,12 +40,14 @@ export function AppShell() {
     setActiveTab(HOME_TAB);
   }, []);
   const openSftp = useCallback(() => selectSection("sftp"), [selectSection]);
+  const openSettings = useCallback(() => selectSection("settings"), [selectSection]);
 
   return (
     <Box sx={{ display: "flex", height: "100%", bgcolor: "background.default" }}>
       <Sidebar section={terminalOpen ? null : section} onSelect={selectSection} />
       <Divider orientation="vertical" flexItem />
       <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        {!terminalOpen && <UpdateBanner onOpenSettings={openSettings} />}
         {tabs.length > 0 && <TabBar onOpenSftp={openSftp} />}
         {tabs.map((t) => (
           <Box
