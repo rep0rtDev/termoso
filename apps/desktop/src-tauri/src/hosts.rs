@@ -4,7 +4,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use termoso_core::model::{Entity, Group, Host, Identity, SshConfig, Tag};
+use termoso_core::model::{Entity, Group, Host, Identity, SshConfig, Tag, TelnetConfig};
 use termoso_core::store::Store;
 use uuid::Uuid;
 
@@ -56,9 +56,26 @@ pub struct HostForm {
     pub startup_snippet_id: Option<Uuid>,
     pub host_chain_id: Option<Uuid>,
     pub proxy_id: Option<Uuid>,
+    /// `ssh` (default) or `telnet`.
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+    #[serde(default)]
+    pub env_variables: Vec<(String, String)>,
+    #[serde(default)]
+    pub keep_alive_interval: Option<u32>,
+    #[serde(default)]
+    pub timeout: Option<u32>,
     /// Set when the stored inline identity has a password (UI shows a mask).
     #[serde(default)]
     pub has_password: bool,
+}
+
+fn default_protocol() -> String {
+    "ssh".to_string()
+}
+
+fn is_telnet(h: &Host) -> bool {
+    h.telnet_config_id.is_some() && h.ssh_config_id.is_none()
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -164,11 +181,21 @@ pub fn tags(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<TagInfo>> {
 /// flattened into the form; visible ones are referenced by id.
 pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
     let host = store.require::<Host>(id)?;
+    let telnet = is_telnet(&host.data);
     let ssh = match host.data.ssh_config_id {
         Some(c) => store.get::<SshConfig>(c)?.map(|e| e.data),
         None => None,
     };
-    let identity = match ssh.as_ref().and_then(|s| s.identity_id) {
+    let telnet_cfg = match host.data.telnet_config_id {
+        Some(c) => store.get::<TelnetConfig>(c)?.map(|e| e.data),
+        None => None,
+    };
+    let identity_ref = if telnet {
+        telnet_cfg.as_ref().and_then(|t| t.identity_id)
+    } else {
+        ssh.as_ref().and_then(|s| s.identity_id)
+    };
+    let identity = match identity_ref {
         Some(i) => store.get::<Identity>(i)?,
         None => None,
     };
@@ -188,7 +215,11 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
         label: host.data.label,
         address: host.data.address,
         group_id: host.data.group_id,
-        port: ssh.as_ref().and_then(|s| s.port),
+        port: if telnet {
+            telnet_cfg.as_ref().and_then(|t| t.port)
+        } else {
+            ssh.as_ref().and_then(|s| s.port)
+        },
         username,
         password: None,
         ssh_key_id,
@@ -200,6 +231,13 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
         startup_snippet_id: host.data.startup_snippet_id,
         host_chain_id: ssh.as_ref().and_then(|s| s.host_chain_id),
         proxy_id: ssh.as_ref().and_then(|s| s.proxy_id),
+        protocol: if telnet { "telnet" } else { "ssh" }.to_string(),
+        env_variables: ssh
+            .as_ref()
+            .map(|s| s.env_variables.clone())
+            .unwrap_or_default(),
+        keep_alive_interval: ssh.as_ref().and_then(|s| s.keep_alive_interval),
+        timeout: ssh.as_ref().and_then(|s| s.timeout),
         has_password,
     })
 }
@@ -218,6 +256,12 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
         }
     }
 
+    let telnet = match f.protocol.as_str() {
+        "ssh" => false,
+        "telnet" => true,
+        other => return Err(DesktopError::invalid(format!("unknown protocol {other}"))),
+    };
+
     let existing = match f.id {
         Some(id) => store.get::<Host>(id)?,
         None => None,
@@ -226,7 +270,15 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
         Some(c) => store.get::<SshConfig>(c)?,
         None => None,
     };
-    let existing_inline_identity = match existing_ssh.as_ref().and_then(|s| s.data.identity_id) {
+    let existing_telnet = match existing.as_ref().and_then(|h| h.data.telnet_config_id) {
+        Some(c) => store.get::<TelnetConfig>(c)?,
+        None => None,
+    };
+    let existing_identity_ref = existing_ssh
+        .as_ref()
+        .and_then(|s| s.data.identity_id)
+        .or_else(|| existing_telnet.as_ref().and_then(|t| t.data.identity_id));
+    let existing_inline_identity = match existing_identity_ref {
         Some(i) => store.get::<Identity>(i)?.filter(|e| !e.data.is_visible),
         None => None,
     };
@@ -279,22 +331,56 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
         }
     };
 
-    // Inline ssh_config, keeping fields the form does not edit.
-    let mut ssh = existing_ssh
-        .as_ref()
-        .map(|e| e.data.clone())
-        .unwrap_or_default();
-    ssh.port = f.port.filter(|p| *p != 0);
-    ssh.identity_id = identity_id;
-    ssh.agent_forwarding = f.agent_forwarding;
-    ssh.host_chain_id = f.host_chain_id;
-    ssh.proxy_id = f.proxy_id;
-    let ssh_config_id = match &existing_ssh {
-        Some(e) => {
-            store.update(e.id, &ssh)?;
-            e.id
+    let port = f.port.filter(|p| *p != 0);
+    let (ssh_config_id, telnet_config_id) = if telnet {
+        // Switching protocol drops the ssh_config so the host resolves as telnet.
+        if let Some(e) = &existing_ssh {
+            store.delete(e.id)?;
         }
-        None => store.insert(f.vault_id, &ssh)?,
+        let mut t = existing_telnet
+            .as_ref()
+            .map(|e| e.data.clone())
+            .unwrap_or_default();
+        t.port = port;
+        t.identity_id = identity_id;
+        let id = match &existing_telnet {
+            Some(e) => {
+                store.update(e.id, &t)?;
+                e.id
+            }
+            None => store.insert(f.vault_id, &t)?,
+        };
+        (None, Some(id))
+    } else {
+        if let Some(e) = &existing_telnet {
+            store.delete(e.id)?;
+        }
+        // Inline ssh_config, keeping fields the form does not edit.
+        let mut ssh = existing_ssh
+            .as_ref()
+            .map(|e| e.data.clone())
+            .unwrap_or_default();
+        ssh.port = port;
+        ssh.identity_id = identity_id;
+        ssh.agent_forwarding = f.agent_forwarding;
+        ssh.host_chain_id = f.host_chain_id;
+        ssh.proxy_id = f.proxy_id;
+        ssh.env_variables = f
+            .env_variables
+            .iter()
+            .map(|(k, v)| (k.trim().to_string(), v.clone()))
+            .filter(|(k, _)| !k.is_empty())
+            .collect();
+        ssh.keep_alive_interval = f.keep_alive_interval.filter(|s| *s > 0);
+        ssh.timeout = f.timeout.filter(|s| *s > 0);
+        let id = match &existing_ssh {
+            Some(e) => {
+                store.update(e.id, &ssh)?;
+                e.id
+            }
+            None => store.insert(f.vault_id, &ssh)?,
+        };
+        (Some(id), None)
     };
 
     let mut host = existing
@@ -308,7 +394,8 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
     };
     host.address = address.to_string();
     host.group_id = f.group_id;
-    host.ssh_config_id = Some(ssh_config_id);
+    host.ssh_config_id = ssh_config_id;
+    host.telnet_config_id = telnet_config_id;
     host.tag_ids = f.tag_ids.clone();
     host.notes = f.notes.clone();
     host.os_name = f.os_name.clone().filter(|s| !s.is_empty());
@@ -332,16 +419,25 @@ pub fn delete(store: &Store, id: Uuid) -> Result<()> {
     let Some(host) = store.get::<Host>(id)? else {
         return Ok(());
     };
+    let mut identity_refs = Vec::new();
     if let Some(cid) = host.data.ssh_config_id
         && let Some(cfg) = store.get::<SshConfig>(cid)?
     {
-        if let Some(iid) = cfg.data.identity_id
-            && let Some(i) = store.get::<Identity>(iid)?
+        identity_refs.extend(cfg.data.identity_id);
+        store.delete(cfg.id)?;
+    }
+    if let Some(cid) = host.data.telnet_config_id
+        && let Some(cfg) = store.get::<TelnetConfig>(cid)?
+    {
+        identity_refs.extend(cfg.data.identity_id);
+        store.delete(cfg.id)?;
+    }
+    for iid in identity_refs {
+        if let Some(i) = store.get::<Identity>(iid)?
             && !i.data.is_visible
         {
             store.delete(i.id)?;
         }
-        store.delete(cfg.id)?;
     }
     store.delete(id)?;
     Ok(())
@@ -430,6 +526,10 @@ mod tests {
             startup_snippet_id: None,
             host_chain_id: None,
             proxy_id: None,
+            protocol: "ssh".into(),
+            env_variables: vec![],
+            keep_alive_interval: None,
+            timeout: None,
             has_password: false,
         }
     }
@@ -500,6 +600,61 @@ mod tests {
         let card = cards(&s, Some(vault)).unwrap().remove(0);
         assert_eq!(card.group_id, None);
         assert_eq!(card.port, 22);
+    }
+
+    #[test]
+    fn advanced_ssh_fields_round_trip() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let mut f = new_form(vault);
+        f.env_variables = vec![
+            ("TERM".into(), "xterm".into()),
+            ("  ".into(), "dropped".into()),
+        ];
+        f.keep_alive_interval = Some(30);
+        f.timeout = Some(0);
+        let card = save(&s, &f).unwrap();
+        let f = form(&s, card.id).unwrap();
+        assert_eq!(
+            f.env_variables,
+            vec![("TERM".to_string(), "xterm".to_string())]
+        );
+        assert_eq!(f.keep_alive_interval, Some(30));
+        assert_eq!(f.timeout, None);
+        assert_eq!(f.protocol, "ssh");
+    }
+
+    #[test]
+    fn telnet_hosts_use_telnet_config() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let mut f = new_form(vault);
+        f.protocol = "telnet".into();
+        f.port = None;
+        let card = save(&s, &f).unwrap();
+        assert_eq!(card.protocol, "telnet");
+        assert_eq!(card.port, 23);
+        assert_eq!(card.username, "deploy");
+
+        let mut f = form(&s, card.id).unwrap();
+        assert_eq!(f.protocol, "telnet");
+        f.protocol = "ssh".into();
+        let card = save(&s, &f).unwrap();
+        assert_eq!(card.protocol, "ssh");
+        assert_eq!(card.port, 22);
+        let telnets: Vec<Entity<TelnetConfig>> = s.list(Some(vault)).unwrap();
+        assert!(telnets.is_empty());
+
+        assert!(
+            save(
+                &s,
+                &HostForm {
+                    protocol: "serial".into(),
+                    ..new_form(vault)
+                }
+            )
+            .is_err()
+        );
     }
 
     #[test]

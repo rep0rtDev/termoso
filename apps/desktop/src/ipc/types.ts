@@ -132,7 +132,27 @@ export interface HostForm {
   startupSnippetId: Uuid | null;
   hostChainId: Uuid | null;
   proxyId: Uuid | null;
+  protocol: HostProtocol;
+  envVariables: [string, string][];
+  keepAliveInterval: number | null;
+  timeout: number | null;
   hasPassword: boolean;
+}
+
+export type HostProtocol = "ssh" | "telnet";
+
+/** Raw `proxy` entity payload. */
+export interface ProxyData {
+  kind: "socks4" | "socks5" | "http";
+  host: string;
+  port: number;
+  identity_id?: Uuid | null;
+}
+
+/** Raw `host_chain` entity payload. */
+export interface HostChainData {
+  label: string;
+  host_ids: Uuid[];
 }
 
 export function emptyHostForm(vaultId: Uuid, groupId: Uuid | null): HostForm {
@@ -154,6 +174,10 @@ export function emptyHostForm(vaultId: Uuid, groupId: Uuid | null): HostForm {
     startupSnippetId: null,
     hostChainId: null,
     proxyId: null,
+    protocol: "ssh",
+    envVariables: [],
+    keepAliveInterval: null,
+    timeout: null,
     hasPassword: false,
   };
 }

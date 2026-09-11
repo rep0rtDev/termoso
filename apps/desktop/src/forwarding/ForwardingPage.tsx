@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  Box,
   Button,
   Checkbox,
   Chip,
@@ -10,19 +9,16 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
-  IconButton,
   MenuItem,
   Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
+import CallReceivedRoundedIcon from "@mui/icons-material/CallReceivedRounded";
+import CallMadeRoundedIcon from "@mui/icons-material/CallMadeRounded";
+import HubRoundedIcon from "@mui/icons-material/HubRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import StopRoundedIcon from "@mui/icons-material/StopRounded";
@@ -32,6 +28,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { Page, PageBody, PageHeader } from "@/components/PageHeader";
+import { EntityCard, Field, IconTile, Loading, Mono, ToolIconButton } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
 import { keys, useDefaultVault, useHosts, usePfRules } from "@/ipc/hooks";
@@ -51,6 +48,17 @@ const KIND_LABEL: Record<PfKind, string> = {
   dynamic: "Dynamic (SOCKS5)",
 };
 
+function KindIcon({ kind }: { kind: PfKind }) {
+  switch (kind) {
+    case "local":
+      return <CallReceivedRoundedIcon />;
+    case "remote":
+      return <CallMadeRoundedIcon />;
+    case "dynamic":
+      return <HubRoundedIcon />;
+  }
+}
+
 function describe(r: PfRuleCard): string {
   const bind = `${r.boundAddress}:${r.localPort}`;
   switch (r.kind) {
@@ -66,15 +74,21 @@ function describe(r: PfRuleCard): string {
 function StateChip({ r }: { r: PfRuleCard }) {
   const rt = r.runtime;
   if (rt.state === "running")
-    return <Chip size="small" color="success" label={rt.bound ? `on ${rt.bound}` : "running"} />;
-  if (rt.state === "starting") return <Chip size="small" color="info" label="starting…" />;
+    return (
+      <Chip
+        size="small"
+        color="success"
+        label={rt.bound ? `Listening on ${rt.bound}` : "Running"}
+      />
+    );
+  if (rt.state === "starting") return <Chip size="small" color="info" label="Starting…" />;
   if (rt.lastError)
     return (
       <Tooltip title={rt.lastError}>
-        <Chip size="small" color="error" variant="outlined" label="failed" />
+        <Chip size="small" color="error" label="Failed" />
       </Tooltip>
     );
-  return <Chip size="small" variant="outlined" label="stopped" />;
+  return null;
 }
 
 function RuleDialog({
@@ -133,82 +147,88 @@ function RuleDialog({
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           <Stack direction="row" spacing={2}>
-            <TextField
-              autoFocus
-              label="Label (optional)"
-              value={f.label}
-              onChange={(e) => set("label", e.target.value)}
-              sx={{ flex: 1 }}
-            />
+            <Field label="Label (optional)" sx={{ flex: 1 }}>
+              <TextField autoFocus value={f.label} onChange={(e) => set("label", e.target.value)} />
+            </Field>
+            <Field label="Type" sx={{ width: 200 }}>
+              <TextField
+                select
+                value={f.kind}
+                onChange={(e) => set("kind", e.target.value as PfKind)}
+              >
+                {(Object.keys(KIND_LABEL) as PfKind[]).map((k) => (
+                  <MenuItem key={k} value={k}>
+                    {KIND_LABEL[k]}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Field>
+          </Stack>
+          <Field label="Through host">
             <TextField
               select
-              label="Type"
-              value={f.kind}
-              onChange={(e) => set("kind", e.target.value as PfKind)}
-              sx={{ width: 200 }}
+              value={f.hostId}
+              onChange={(e) => set("hostId", e.target.value)}
+              helperText={sshHosts.length === 0 ? "Add an SSH host first" : undefined}
             >
-              {(Object.keys(KIND_LABEL) as PfKind[]).map((k) => (
-                <MenuItem key={k} value={k}>
-                  {KIND_LABEL[k]}
+              {sshHosts.map((h) => (
+                <MenuItem key={h.id} value={h.id}>
+                  {h.label}
+                  <Typography
+                    component="span"
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ ml: 1 }}
+                  >
+                    {h.address}
+                  </Typography>
                 </MenuItem>
               ))}
             </TextField>
-          </Stack>
-          <TextField
-            select
-            label="Through host"
-            value={f.hostId}
-            onChange={(e) => set("hostId", e.target.value)}
-            helperText={sshHosts.length === 0 ? "Add an SSH host first" : undefined}
-          >
-            {sshHosts.map((h) => (
-              <MenuItem key={h.id} value={h.id}>
-                {h.label}
-                <Typography
-                  component="span"
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ ml: 1 }}
-                >
-                  {h.address}
-                </Typography>
-              </MenuItem>
-            ))}
-          </TextField>
+          </Field>
           <Stack direction="row" spacing={2}>
-            <TextField
+            <Field
               label={f.kind === "remote" ? "Remote bind address" : "Bind address"}
-              value={f.boundAddress}
-              onChange={(e) => set("boundAddress", e.target.value)}
               sx={{ flex: 1 }}
-            />
-            <TextField
-              label={f.kind === "remote" ? "Remote port" : "Local port"}
-              type="number"
-              value={f.kind === "remote" ? f.remotePort : f.localPort}
-              onChange={(e) =>
-                set(f.kind === "remote" ? "remotePort" : "localPort", port(e.target.value))
-              }
-              sx={{ width: 140 }}
-            />
+            >
+              <TextField
+                value={f.boundAddress}
+                onChange={(e) => set("boundAddress", e.target.value)}
+              />
+            </Field>
+            <Field label={f.kind === "remote" ? "Remote port" : "Local port"} sx={{ width: 140 }}>
+              <TextField
+                type="number"
+                value={f.kind === "remote" ? f.remotePort : f.localPort}
+                onChange={(e) =>
+                  set(f.kind === "remote" ? "remotePort" : "localPort", port(e.target.value))
+                }
+              />
+            </Field>
           </Stack>
           {f.kind !== "dynamic" && (
             <Stack direction="row" spacing={2}>
-              <TextField
+              <Field
                 label={f.kind === "remote" ? "Forward to local host" : "Destination host"}
-                value={f.remoteHost}
-                onChange={(e) => set("remoteHost", e.target.value)}
                 sx={{ flex: 1 }}
-              />
-              <TextField
+              >
+                <TextField
+                  value={f.remoteHost}
+                  onChange={(e) => set("remoteHost", e.target.value)}
+                />
+              </Field>
+              <Field
                 label={f.kind === "remote" ? "Local port" : "Destination port"}
-                type="number"
-                value={f.kind === "remote" ? f.localPort : f.remotePort}
-                onChange={(e) =>
-                  set(f.kind === "remote" ? "localPort" : "remotePort", port(e.target.value))
-                }
                 sx={{ width: 140 }}
-              />
+              >
+                <TextField
+                  type="number"
+                  value={f.kind === "remote" ? f.localPort : f.remotePort}
+                  onChange={(e) =>
+                    set(f.kind === "remote" ? "localPort" : "remotePort", port(e.target.value))
+                  }
+                />
+              </Field>
             </Stack>
           )}
           <FormControlLabel
@@ -290,14 +310,15 @@ export function ForwardingPage() {
   const loading = vault.isPending || rules.isPending || hosts.isPending;
   const loadError = vault.error ?? rules.error ?? hosts.error;
 
+  const ruleList = rules.data ?? [];
+  const running = ruleList.filter((r) => r.runtime.state !== "stopped").length;
+
   return (
     <Page>
       <PageHeader
-        title="Port Forwarding"
-        description="Local, remote and dynamic (SOCKS5) tunnels over your SSH hosts. Rules run in Rust; the UI only observes them."
         actions={
           <Button
-            variant="contained"
+            variant="tonal"
             startIcon={<AddRoundedIcon />}
             disabled={!vaultId}
             onClick={() => setDialog({ kind: "edit", rule: null })}
@@ -305,15 +326,20 @@ export function ForwardingPage() {
             New rule
           </Button>
         }
+        trailing={
+          ruleList.length > 0 && (
+            <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+              {running} of {ruleList.length} running
+            </Typography>
+          )
+        }
       />
       <PageBody>
         {loading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", pt: 8 }}>
-            <CircularProgress size={28} />
-          </Box>
+          <Loading />
         ) : loadError ? (
           <EmptyState title="Could not load rules" description={errorMessage(loadError)} />
-        ) : (rules.data ?? []).length === 0 ? (
+        ) : ruleList.length === 0 ? (
           <EmptyState
             icon={<SwapHorizRoundedIcon />}
             title="No forwarding rules"
@@ -325,101 +351,88 @@ export function ForwardingPage() {
             }
           />
         ) : (
-          <Table size="small" sx={{ mt: 1 }}>
-            <TableHead>
-              <TableRow sx={{ "& th": { color: "text.secondary", fontWeight: 600 } }}>
-                <TableCell padding="checkbox" />
-                <TableCell>Rule</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>State</TableCell>
-                <TableCell align="right">Conns</TableCell>
-                <TableCell align="right">Traffic</TableCell>
-                <TableCell padding="checkbox" />
-                <TableCell padding="checkbox" />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(rules.data ?? []).map((r) => {
-                const running = r.runtime.state !== "stopped";
-                return (
-                  <TableRow key={r.id} hover>
-                    <TableCell padding="checkbox">
-                      <Tooltip title={running ? "Stop" : "Start"}>
-                        <IconButton
-                          size="small"
-                          color={running ? "default" : "primary"}
-                          disabled={busyId === r.id}
-                          onClick={() => toggle(r)}
+          <Stack spacing={1}>
+            {ruleList.map((r) => {
+              const on = r.runtime.state !== "stopped";
+              const busy = busyId === r.id;
+              return (
+                <EntityCard
+                  key={r.id}
+                  tile={
+                    <IconTile tone={on ? "accent" : "neutral"}>
+                      <KindIcon kind={r.kind} />
+                    </IconTile>
+                  }
+                  title={
+                    <>
+                      {r.label || describe(r)}
+                      {r.autoStart && (
+                        <Chip label="auto" size="small" variant="outlined" sx={{ ml: 1 }} />
+                      )}
+                    </>
+                  }
+                  subtitle={
+                    <>
+                      {KIND_LABEL[r.kind]}
+                      {" · "}
+                      <Mono>{describe(r)}</Mono>
+                    </>
+                  }
+                  trailing={
+                    <>
+                      {on && (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          noWrap
+                          sx={{ px: 0.5 }}
                         >
-                          {busyId === r.id ? (
-                            <CircularProgress size={16} />
-                          ) : running ? (
-                            <StopRoundedIcon fontSize="small" />
-                          ) : (
-                            <PlayArrowRoundedIcon fontSize="small" />
-                          )}
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-                        {r.label || describe(r)}
-                        {r.autoStart && (
-                          <Chip
-                            label="auto"
-                            size="small"
-                            variant="outlined"
-                            sx={{ ml: 1, height: 18, fontSize: 10 }}
-                          />
-                        )}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ fontFamily: "monospace" }}
-                        noWrap
-                      >
-                        {describe(r)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip size="small" variant="outlined" label={KIND_LABEL[r.kind]} />
-                    </TableCell>
-                    <TableCell>
+                          {r.runtime.active}/{r.runtime.connections} conns · ↓
+                          {formatSize(r.runtime.bytesIn)} ↑{formatSize(r.runtime.bytesOut)}
+                        </Typography>
+                      )}
                       <StateChip r={r} />
-                    </TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body2" color="text.secondary">
-                        {r.runtime.active}/{r.runtime.connections}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body2" color="text.secondary" noWrap>
-                        ↓{formatSize(r.runtime.bytesIn)} ↑{formatSize(r.runtime.bytesOut)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell padding="checkbox">
-                      <IconButton
-                        size="small"
-                        disabled={running}
+                      <Button
+                        variant={on ? "text" : "tonal"}
+                        color={on ? "inherit" : "primary"}
+                        disabled={busy}
+                        startIcon={
+                          busy ? (
+                            <CircularProgress size={14} color="inherit" />
+                          ) : on ? (
+                            <StopRoundedIcon />
+                          ) : (
+                            <PlayArrowRoundedIcon />
+                          )
+                        }
+                        onClick={() => toggle(r)}
+                        sx={{ minWidth: 84, ml: 0.5 }}
+                      >
+                        {on ? "Stop" : "Start"}
+                      </Button>
+                    </>
+                  }
+                  actions={
+                    <>
+                      <ToolIconButton
+                        title={on ? "Stop the tunnel to edit it" : "Edit"}
+                        disabled={on}
                         onClick={() => setDialog({ kind: "edit", rule: r })}
                       >
                         <EditRoundedIcon fontSize="small" />
-                      </IconButton>
-                    </TableCell>
-                    <TableCell padding="checkbox">
-                      <IconButton
-                        size="small"
+                      </ToolIconButton>
+                      <ToolIconButton
+                        title="Delete"
                         onClick={() => setDialog({ kind: "delete", rule: r })}
                       >
                         <DeleteOutlineRoundedIcon fontSize="small" />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                      </ToolIconButton>
+                    </>
+                  }
+                />
+              );
+            })}
+          </Stack>
         )}
       </PageBody>
 

@@ -682,7 +682,7 @@ pub fn transfer_start<R: Runtime>(
             info: info.clone(),
         },
     );
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let result = tokio::select! {
             r = run_transfer(&app, id, sftp, direction, PathBuf::from(local), remote, resume, cancel.clone()) => r,
             _ = cancel.cancelled() => Err(CoreError::Cancelled.into()),

@@ -6,17 +6,43 @@ interface Props {
   title: string;
   description?: ReactNode;
   action?: ReactNode;
+  compact?: boolean;
 }
 
-export function EmptyState({ icon, title, description, action }: Props) {
+export function EmptyState({ icon, title, description, action, compact }: Props) {
   return (
-    <Box sx={{ textAlign: "center", py: 6, px: 2, color: "text.secondary" }}>
-      {icon && <Box sx={{ fontSize: 40, mb: 1, "& svg": { fontSize: 40 } }}>{icon}</Box>}
-      <Typography variant="h5" color="text.primary">
+    <Box
+      sx={{
+        textAlign: "center",
+        py: compact ? 4 : 8,
+        px: 2,
+        color: "text.secondary",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+      }}
+    >
+      {icon && (
+        <Box
+          sx={{
+            width: 48,
+            height: 48,
+            borderRadius: 2,
+            bgcolor: "surface.high",
+            display: "grid",
+            placeItems: "center",
+            mb: 1.5,
+            "& svg": { fontSize: 24, color: "text.secondary" },
+          }}
+        >
+          {icon}
+        </Box>
+      )}
+      <Typography variant="subtitle1" color="text.primary">
         {title}
       </Typography>
       {description && (
-        <Typography variant="body2" sx={{ mt: 0.5, maxWidth: 420, mx: "auto" }}>
+        <Typography variant="body2" sx={{ mt: 0.5, maxWidth: 380 }}>
           {description}
         </Typography>
       )}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Alert,
   Box,
@@ -9,17 +9,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
-  IconButton,
-  Paper,
   Stack,
-  Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Tabs,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -33,12 +23,26 @@ import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import CloudDoneRoundedIcon from "@mui/icons-material/CloudDoneRounded";
 import CloudOffRoundedIcon from "@mui/icons-material/CloudOffRounded";
 import BoltRoundedIcon from "@mui/icons-material/BoltRounded";
+import DevicesRoundedIcon from "@mui/icons-material/DevicesRounded";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import LockOpenRoundedIcon from "@mui/icons-material/LockOpenRounded";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { Page, PageBody, PageHeader } from "@/components/PageHeader";
+import { PageBody } from "@/components/PageHeader";
+import {
+  EntityCard,
+  Field,
+  IconTile,
+  Loading,
+  Mono,
+  SectionCard,
+  SettingRow,
+  ToolIconButton,
+} from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
 import { keys, useAccount, useDevices } from "@/ipc/hooks";
+import { sizes } from "@/theme/theme";
 import {
   errorMessage,
   type AccountStatus,
@@ -120,94 +124,92 @@ function SignInCard({ onOutcome }: { onOutcome: (o: LoginOutcome) => void }) {
     (tab === "login" ? password.length > 0 : password.length >= 12);
 
   return (
-    <Paper variant="outlined" sx={{ p: 3, maxWidth: 480 }}>
-      <Typography variant="h6" gutterBottom>
-        Connect to a Termoso server
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+    <SectionCard title="Connect to a Termoso server" sx={{ maxWidth: 480 }}>
+      <Typography variant="body2" color="text.secondary">
         Sync is optional. When you sign in, your vaults are encrypted on this device before they
         leave it — the server only ever sees ciphertext.
       </Typography>
-      <Stack spacing={2}>
-        <TextField
-          label="Server URL"
-          placeholder="https://termoso.example.com"
-          value={serverUrl}
-          onChange={(e) => setServerUrl(e.target.value)}
-          error={info.isError}
-          helperText={
-            info.isError
-              ? errorMessage(info.error)
-              : info.data
-                ? `${info.data.name} · v${info.data.version}${
-                    info.data.registration_open ? "" : " · registration closed"
-                  }`
-                : " "
-          }
-          slotProps={{
-            input: {
-              endAdornment: info.isFetching ? <CircularProgress size={16} /> : undefined,
-            },
-          }}
-        />
-        <Tabs
-          value={tab}
-          onChange={(_, v: "login" | "register") => setTab(v)}
-          sx={{ minHeight: 36, "& .MuiTab-root": { minHeight: 36 } }}
-        >
-          <Tab value="login" label="Sign in" />
-          <Tab
-            value="register"
-            label="Create account"
-            disabled={info.data !== undefined && !info.data.registration_open && !invite}
-          />
-        </Tabs>
-        <TextField
-          label="Email"
-          type="email"
-          autoComplete="username"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        {tab === "register" && (
+      <Stack spacing={1.5}>
+        <Field label="Server URL">
           <TextField
-            label="Display name (optional)"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-          />
-        )}
-        <TextField
-          label="Password"
-          type="password"
-          autoComplete={tab === "login" ? "current-password" : "new-password"}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          helperText={
-            tab === "register" ? "At least 12 characters. It never leaves this device." : undefined
-          }
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && canSubmit && !busy) {
-              if (tab === "login") login.mutate();
-              else register.mutate();
+            placeholder="https://termoso.example.com"
+            value={serverUrl}
+            onChange={(e) => setServerUrl(e.target.value)}
+            error={info.isError}
+            helperText={
+              info.isError
+                ? errorMessage(info.error)
+                : info.data
+                  ? `${info.data.name} · v${info.data.version}${
+                      info.data.registration_open ? "" : " · registration closed"
+                    }`
+                  : " "
             }
-          }}
-        />
-        {tab === "register" && info.data && !info.data.registration_open && (
-          <TextField
-            label="Invite token"
-            value={invite}
-            onChange={(e) => setInvite(e.target.value)}
-            helperText="This server only accepts invited users."
+            slotProps={{
+              input: {
+                endAdornment: info.isFetching ? <CircularProgress size={16} /> : undefined,
+              },
+            }}
           />
+        </Field>
+        <ToggleButtonGroup
+          exclusive
+          fullWidth
+          value={tab}
+          onChange={(_, v: "login" | "register" | null) => v && setTab(v)}
+        >
+          <ToggleButton value="login">Sign in</ToggleButton>
+          <ToggleButton
+            value="register"
+            disabled={info.data !== undefined && !info.data.registration_open && !invite}
+          >
+            Create account
+          </ToggleButton>
+        </ToggleButtonGroup>
+        <Field label="Email">
+          <TextField
+            type="email"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </Field>
+        {tab === "register" && (
+          <Field label="Display name" hint="Optional">
+            <TextField value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+          </Field>
+        )}
+        <Field label="Password">
+          <TextField
+            type="password"
+            autoComplete={tab === "login" ? "current-password" : "new-password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            helperText={
+              tab === "register"
+                ? "At least 12 characters. It never leaves this device."
+                : undefined
+            }
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && canSubmit && !busy) {
+                if (tab === "login") login.mutate();
+                else register.mutate();
+              }
+            }}
+          />
+        </Field>
+        {tab === "register" && info.data && !info.data.registration_open && (
+          <Field label="Invite token" hint="This server only accepts invited users.">
+            <TextField value={invite} onChange={(e) => setInvite(e.target.value)} />
+          </Field>
         )}
         <Button
           variant="contained"
-          size="large"
           disabled={!canSubmit || busy}
           onClick={() => (tab === "login" ? login.mutate() : register.mutate())}
         >
           {busy ? (
-            <CircularProgress size={22} color="inherit" />
+            <CircularProgress size={18} color="inherit" />
           ) : tab === "login" ? (
             "Sign in"
           ) : (
@@ -217,7 +219,7 @@ function SignInCard({ onOutcome }: { onOutcome: (o: LoginOutcome) => void }) {
       </Stack>
 
       {phrase !== null && <RecoveryDialog phrase={phrase} onDone={() => setPhrase(null)} />}
-    </Paper>
+    </SectionCard>
   );
 }
 
@@ -232,10 +234,11 @@ function RecoveryDialog({ phrase, onDone }: { phrase: string; onDone: () => void
           This is the only way to regain access if you forget your password. Termoso does not keep a
           copy anywhere — not on this device, not on the server.
         </Alert>
-        <Paper
-          variant="outlined"
+        <Box
           sx={{
             p: 2,
+            borderRadius: 2,
+            bgcolor: "surface.high",
             fontFamily: "monospace",
             fontSize: 15,
             lineHeight: 1.8,
@@ -244,7 +247,7 @@ function RecoveryDialog({ phrase, onDone }: { phrase: string; onDone: () => void
           }}
         >
           {phrase}
-        </Paper>
+        </Box>
         <Button
           startIcon={<ContentCopyRoundedIcon />}
           sx={{ mt: 1 }}
@@ -317,13 +320,15 @@ function PendingCard({
   const busy = submit.isPending || cancel.isPending;
 
   return (
-    <Paper variant="outlined" sx={{ p: 3, maxWidth: 480 }}>
-      <Typography variant="h6" gutterBottom>
-        {pending.step === "deviceApprovalRequired"
+    <SectionCard
+      title={
+        pending.step === "deviceApprovalRequired"
           ? "Approve this device"
-          : "Two-factor verification"}
-      </Typography>
-      <Stack spacing={2}>
+          : "Two-factor verification"
+      }
+      sx={{ maxWidth: 480 }}
+    >
+      <Stack spacing={1.5}>
         {pending.step === "deviceApprovalRequired" ? (
           <Typography variant="body2" color="text.secondary">
             A confirmation code was sent to <b>{pending.emailHint}</b>. Enter it to trust this
@@ -334,7 +339,6 @@ function PendingCard({
             {methods.length > 1 && (
               <ToggleButtonGroup
                 exclusive
-                size="small"
                 value={method}
                 onChange={(_, v: MfaMethod | null) => v && setMethod(v)}
                 sx={{ flexWrap: "wrap" }}
@@ -354,7 +358,7 @@ function PendingCard({
             )}
             {method === "email" && (
               <Button
-                variant="outlined"
+                variant="tonal"
                 disabled={side.isPending}
                 onClick={() =>
                   side.mutate(async () => {
@@ -369,19 +373,22 @@ function PendingCard({
             )}
           </>
         )}
-        <TextField
-          autoFocus
+        <Field
           label={
             method === "backup_code" && pending.step === "mfaRequired" ? "Backup code" : "Code"
           }
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          autoComplete="one-time-code"
-          slotProps={{ htmlInput: { style: { fontFamily: "monospace", letterSpacing: 2 } } }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && code.trim() && !busy) submit.mutate();
-          }}
-        />
+        >
+          <TextField
+            autoFocus
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            autoComplete="one-time-code"
+            slotProps={{ htmlInput: { style: { fontFamily: "monospace", letterSpacing: 2 } } }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && code.trim() && !busy) submit.mutate();
+            }}
+          />
+        </Field>
         <Stack direction="row" spacing={1} sx={{ justifyContent: "space-between" }}>
           <Stack direction="row" spacing={1}>
             <Button color="inherit" disabled={busy} onClick={() => cancel.mutate()}>
@@ -410,7 +417,7 @@ function PendingCard({
           </Button>
         </Stack>
       </Stack>
-    </Paper>
+    </SectionCard>
   );
 }
 
@@ -458,19 +465,18 @@ function SignedIn({
   });
 
   return (
-    <Stack spacing={2.5} sx={{ maxWidth: 760, mt: 2 }}>
-      <Paper variant="outlined" sx={{ p: 2.5 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+    <Stack spacing={1.5} sx={{ maxWidth: 760 }}>
+      <SectionCard>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <IconTile tone="accent">{(a.displayName ?? a.email).slice(0, 1).toUpperCase()}</IconTile>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="h6" noWrap>
+            <Typography variant="body1" noWrap sx={{ fontWeight: 500 }}>
               {a.displayName ?? a.email}
               {a.isAdmin && <Chip size="small" label="admin" sx={{ ml: 1 }} />}
             </Typography>
-            <Typography variant="body2" color="text.secondary" noWrap>
-              {a.email} · {a.serverUrl}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Signed in {new Date(a.signedInAt).toLocaleString()}
+            <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+              {a.email} · <Mono>{a.serverUrl}</Mono> · signed in{" "}
+              {new Date(a.signedInAt).toLocaleDateString()}
             </Typography>
           </Box>
           <Button
@@ -481,124 +487,118 @@ function SignedIn({
             Sign out
           </Button>
         </Box>
-      </Paper>
+      </SectionCard>
 
-      <Paper variant="outlined" sx={{ p: 2.5 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 1.5 }}>
-          <Typography variant="h6" sx={{ flex: 1 }}>
-            Sync
-          </Typography>
-          <SyncChip s={s} />
-          {s.realtime && (
-            <Tooltip title="Realtime channel connected: changes from other devices arrive instantly">
-              <BoltRoundedIcon fontSize="small" color="primary" />
-            </Tooltip>
-          )}
-          <Button
-            size="small"
-            startIcon={<SyncRoundedIcon />}
-            disabled={op.isPending || s.state === "syncing"}
-            onClick={() =>
-              op.mutate(async () => {
-                const r = await ipc.accountSyncNow();
-                return r.lastError ?? `Synced: ${r.pushed} pushed, ${r.pulled} pulled`;
-              })
-            }
-          >
-            Sync now
-          </Button>
-        </Box>
-        {s.lastError && (
-          <Alert severity="error" sx={{ mb: 1.5 }}>
-            {s.lastError}
-          </Alert>
-        )}
-        <Stack direction="row" spacing={4}>
-          <Stat
-            k="Last sync"
-            v={s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString() : "never"}
-          />
-          <Stat k="Pushed" v={String(s.pushed)} />
-          <Stat k="Pulled" v={String(s.pulled)} />
-          <Stat k="Conflicts" v={String(s.conflicts)} />
-        </Stack>
-        <Divider sx={{ my: 2 }} />
-        <Typography variant="overline" color="text.secondary">
-          Vaults on this device
-        </Typography>
-        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+      <SectionCard
+        title="Sync"
+        action={
+          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+            <SyncChip s={s} />
+            {s.realtime && (
+              <Tooltip title="Realtime channel connected: changes from other devices arrive instantly">
+                <BoltRoundedIcon fontSize="small" color="primary" />
+              </Tooltip>
+            )}
+            <Button
+              variant="tonal"
+              startIcon={<SyncRoundedIcon />}
+              disabled={op.isPending || s.state === "syncing"}
+              onClick={() =>
+                op.mutate(async () => {
+                  const r = await ipc.accountSyncNow();
+                  return r.lastError ?? `Synced: ${r.pushed} pushed, ${r.pulled} pulled`;
+                })
+              }
+            >
+              Sync now
+            </Button>
+          </Stack>
+        }
+      >
+        {s.lastError && <Alert severity="error">{s.lastError}</Alert>}
+        <SettingRow
+          label="Last sync"
+          control={
+            <Value>{s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString() : "never"}</Value>
+          }
+        />
+        <SettingRow label="Pushed" control={<Value>{String(s.pushed)}</Value>} />
+        <SettingRow label="Pulled" control={<Value>{String(s.pulled)}</Value>} />
+        <SettingRow label="Conflicts" last control={<Value>{String(s.conflicts)}</Value>} />
+      </SectionCard>
+
+      <SectionCard title="Vaults on this device">
+        <Stack spacing={1}>
           {status.vaults.map((v) => (
-            <Chip
+            <EntityCard
               key={v.id}
-              variant="outlined"
-              label={`${v.name} · ${v.kind}${v.unlocked ? "" : " · locked"} · ${v.role}`}
-              color={v.unlocked ? "default" : "warning"}
+              dense
+              sx={{ bgcolor: "surface.highest", "&:hover": { bgcolor: "surface.highest" } }}
+              tile={
+                <IconTile size={sizes.tileSmall} tone={v.unlocked ? "neutral" : "warning"}>
+                  {v.unlocked ? <LockOpenRoundedIcon /> : <LockOutlinedIcon />}
+                </IconTile>
+              }
+              title={v.name}
+              subtitle={`${v.kind} · ${v.role}`}
+              trailing={!v.unlocked && <Chip size="small" color="warning" label="Locked" />}
             />
           ))}
         </Stack>
-      </Paper>
+      </SectionCard>
 
-      <Paper variant="outlined" sx={{ p: 2.5 }}>
-        <Typography variant="h6" sx={{ mb: 1 }}>
-          Devices
-        </Typography>
+      <SectionCard title="Devices">
         {devices.isPending ? (
-          <CircularProgress size={22} />
+          <Loading pt={2} />
         ) : devices.error ? (
           <Typography variant="body2" color="error">
             {errorMessage(devices.error)}
           </Typography>
         ) : (
-          <Table size="small">
-            <TableHead>
-              <TableRow sx={{ "& th": { color: "text.secondary", fontWeight: 600 } }}>
-                <TableCell>Name</TableCell>
-                <TableCell>Platform</TableCell>
-                <TableCell>Version</TableCell>
-                <TableCell>Last seen</TableCell>
-                <TableCell padding="checkbox" />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {devices.data.map((d) => (
-                <TableRow key={d.id} hover>
-                  <TableCell>
+          <Stack spacing={1}>
+            {devices.data.map((d) => (
+              <EntityCard
+                key={d.id}
+                dense
+                sx={{ bgcolor: "surface.highest", "&:hover": { bgcolor: "surface.highest" } }}
+                tile={
+                  <IconTile size={sizes.tileSmall}>
+                    <DevicesRoundedIcon />
+                  </IconTile>
+                }
+                title={
+                  <>
                     {d.name}
                     {d.current && <Chip size="small" label="this device" sx={{ ml: 1 }} />}
-                  </TableCell>
-                  <TableCell>{d.platform}</TableCell>
-                  <TableCell>{d.app_version}</TableCell>
-                  <TableCell>
+                  </>
+                }
+                subtitle={
+                  <>
+                    {d.platform} · v{d.app_version} · seen{" "}
                     {new Date(d.last_seen_at).toLocaleString()}
                     {d.last_ip && (
-                      <Typography
-                        component="span"
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ ml: 1 }}
-                      >
-                        {d.last_ip}
-                      </Typography>
+                      <>
+                        {" · "}
+                        <Mono>{d.last_ip}</Mono>
+                      </>
                     )}
-                  </TableCell>
-                  <TableCell padding="checkbox">
-                    {!d.current && (
-                      <Tooltip title="Revoke this device">
-                        <IconButton
-                          size="small"
-                          onClick={() => setConfirm({ kind: "revoke", device: d })}
-                        >
-                          <DeleteOutlineRoundedIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  </>
+                }
+                actions={
+                  !d.current && (
+                    <ToolIconButton
+                      title="Revoke this device"
+                      onClick={() => setConfirm({ kind: "revoke", device: d })}
+                    >
+                      <DeleteOutlineRoundedIcon fontSize="small" />
+                    </ToolIconButton>
+                  )
+                }
+              />
+            ))}
+          </Stack>
         )}
-      </Paper>
+      </SectionCard>
 
       {confirm.kind === "signOut" && (
         <ConfirmDialog
@@ -642,14 +642,11 @@ function SignedIn({
   );
 }
 
-function Stat({ k, v }: { k: string; v: string }) {
+function Value({ children }: { children: ReactNode }) {
   return (
-    <Box>
-      <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-        {k}
-      </Typography>
-      <Typography variant="body2">{v}</Typography>
-    </Box>
+    <Typography variant="body2" color="text.secondary">
+      {children}
+    </Typography>
   );
 }
 
@@ -668,32 +665,18 @@ export function AccountPage() {
   };
 
   return (
-    <Page>
-      <PageHeader
-        title="Account"
-        description="Optional end-to-end encrypted sync between your devices, on a server you choose."
-      />
-      <PageBody>
-        {status.isPending ? (
-          <Box sx={{ display: "flex", justifyContent: "center", pt: 8 }}>
-            <CircularProgress size={28} />
-          </Box>
-        ) : status.error ? (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {errorMessage(status.error)}
-          </Alert>
-        ) : status.data.account ? (
-          <SignedIn status={{ ...status.data, account: status.data.account }} />
-        ) : (
-          <Box sx={{ mt: 2 }}>
-            {pending && pending.step !== "done" ? (
-              <PendingCard key={pending.step} pending={pending} onOutcome={onOutcome} />
-            ) : (
-              <SignInCard onOutcome={onOutcome} />
-            )}
-          </Box>
-        )}
-      </PageBody>
-    </Page>
+    <PageBody>
+      {status.isPending ? (
+        <Loading />
+      ) : status.error ? (
+        <Alert severity="error">{errorMessage(status.error)}</Alert>
+      ) : status.data.account ? (
+        <SignedIn status={{ ...status.data, account: status.data.account }} />
+      ) : pending && pending.step !== "done" ? (
+        <PendingCard key={pending.step} pending={pending} onOutcome={onOutcome} />
+      ) : (
+        <SignInCard onOutcome={onOutcome} />
+      )}
+    </PageBody>
   );
 }

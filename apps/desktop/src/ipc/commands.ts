@@ -71,6 +71,8 @@ export const vaultDefault = () => invoke<LocalVault>("vault_default");
 
 export const entitiesList = <T>(kind: string, vaultId?: Uuid | null) =>
   invoke<Entity<T>[]>("entities_list", { kind, vaultId: vaultId ?? null });
+export const entitySave = <T>(kind: string, vaultId: Uuid, id: Uuid | null, data: T) =>
+  invoke<Entity<T>>("entity_save", { kind, vaultId, id, data });
 export const entityDelete = (id: Uuid) => invoke<null>("entity_delete", { id });
 
 export const hostsList = (vaultId?: Uuid | null) =>
