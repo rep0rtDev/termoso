@@ -475,6 +475,37 @@ impl Store {
 
     // ───────────────────────────── host resolution ─────────────────────────────
 
+    /// Effective SSH config a host placed in `group_id` inherits from its
+    /// group chain (nearer groups win), plus the group path root → leaf.
+    pub fn resolve_group_ssh(&self, group_id: Uuid) -> Result<(SshConfig, Vec<String>)> {
+        let group = self.require::<Group>(group_id)?;
+        let groups: Vec<Entity<Group>> = self.list(Some(group.vault_id))?;
+        let mut path = Vec::new();
+        let mut chain: Vec<Uuid> = Vec::new();
+        let mut cursor = Some(group_id);
+        let mut hops = 0;
+        while let Some(gid) = cursor {
+            hops += 1;
+            if hops > 64 {
+                break;
+            }
+            let Some(g) = groups.iter().find(|g| g.id == gid) else {
+                break;
+            };
+            path.push(g.data.label.clone());
+            chain.extend(g.data.ssh_config_id);
+            cursor = g.data.parent_id;
+        }
+        path.reverse();
+        let mut ssh = SshConfig::default();
+        for cid in chain.iter().rev() {
+            if let Some(c) = self.get::<SshConfig>(*cid)? {
+                merge_ssh(&mut ssh, &c.data);
+            }
+        }
+        Ok((ssh, path))
+    }
+
     /// Resolve everything needed to connect to a host.
     pub fn resolve_host(&self, host_id: Uuid) -> Result<ResolvedHost> {
         let host = self.require::<Host>(host_id)?;

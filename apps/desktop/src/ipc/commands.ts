@@ -13,6 +13,7 @@ import type {
   ForwardEvent,
   FsEntry,
   GenerateKeyForm,
+  GroupForm,
   GroupNode,
   HistoryItem,
   HostCard,
@@ -21,6 +22,7 @@ import type {
   IdentityForm,
   ImportKeyForm,
   ImportReport,
+  Inherited,
   KeyCard,
   KnownHostCard,
   Listing,
@@ -80,6 +82,14 @@ export const hostsList = (vaultId?: Uuid | null) =>
 export const hostForm = (id: Uuid) => invoke<HostForm>("host_form", { id });
 export const hostSave = (form: HostForm) => invoke<HostCard>("host_save", { form });
 export const hostDelete = (id: Uuid) => invoke<null>("host_delete", { id });
+export const hostsDelete = (ids: Uuid[]) => invoke<null>("hosts_delete", { ids });
+export const hostDuplicate = (id: Uuid) => invoke<HostCard>("host_duplicate", { id });
+export const hostsMove = (ids: Uuid[], groupId: Uuid | null) =>
+  invoke<null>("hosts_move", { ids, groupId });
+export const hostsCopyToVault = (ids: Uuid[], vaultId: Uuid, moveHosts: boolean) =>
+  invoke<Uuid[]>("hosts_copy_to_vault", { ids, vaultId, moveHosts });
+export const hostInherited = (groupId: Uuid | null) =>
+  invoke<Inherited>("host_inherited", { groupId });
 
 export const groupsList = (vaultId?: Uuid | null) =>
   invoke<GroupNode[]>("groups_list", { vaultId: vaultId ?? null });
@@ -89,7 +99,11 @@ export const groupSave = (args: {
   label: string;
   parentId: Uuid | null;
 }) => invoke<GroupNode>("group_save", args);
-export const groupDelete = (id: Uuid) => invoke<null>("group_delete", { id });
+export const groupForm = (id: Uuid) => invoke<GroupForm>("group_form", { id });
+export const groupSaveForm = (form: GroupForm) => invoke<GroupNode>("group_save_form", { form });
+export const groupDuplicate = (id: Uuid) => invoke<GroupNode>("group_duplicate", { id });
+export const groupDelete = (id: Uuid, recursive = false) =>
+  invoke<null>("group_delete", { id, recursive });
 
 export const tagsList = (vaultId?: Uuid | null) =>
   invoke<TagInfo[]>("tags_list", { vaultId: vaultId ?? null });
