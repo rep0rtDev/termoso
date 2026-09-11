@@ -3,7 +3,6 @@
 //! drives the callback itself, and the `code` it presents carries the claims
 //! the provider should assert (see [`code_for`]).
 
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::extract::State;
@@ -165,10 +164,10 @@ async fn token(
     })))
 }
 
-/// Serve the provider on `addr` (must be called on the runtime that will keep
-/// running for the whole test binary).
-pub async fn serve(addr: SocketAddr) -> anyhow::Result<MockIdp> {
-    let issuer = format!("http://{addr}");
+/// Serve the provider on an already-bound listener (must be called on the
+/// runtime that will keep running for the whole test binary).
+pub async fn serve(listener: std::net::TcpListener) -> anyhow::Result<MockIdp> {
+    let issuer = format!("http://{}", listener.local_addr()?);
     let key = RsaPrivateKey::new(&mut rand::thread_rng(), 2048)?;
     let idp = Arc::new(Idp {
         issuer: issuer.clone(),
@@ -179,7 +178,8 @@ pub async fn serve(addr: SocketAddr) -> anyhow::Result<MockIdp> {
         .route("/jwks", get(jwks))
         .route("/token", post(token))
         .with_state(idp);
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    listener.set_nonblocking(true)?;
+    let listener = tokio::net::TcpListener::from_std(listener)?;
     tokio::spawn(async move {
         axum::serve(listener, app).await.expect("mock idp");
     });
