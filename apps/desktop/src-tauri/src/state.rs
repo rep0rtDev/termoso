@@ -121,6 +121,11 @@ pub struct Settings {
     pub sync_interval_seconds: u32,
     /// Upload finished recordings to the account server.
     pub upload_logs: bool,
+    /// `manual` (never contacts the feed unless asked) | `startup`.
+    pub update_check: String,
+    /// Release feed URL; empty = project default. Point it at your own server
+    /// to keep updates fully self-hosted.
+    pub update_url: String,
 }
 
 impl Default for Settings {
@@ -146,6 +151,8 @@ impl Default for Settings {
             sync_conflict: "newest_wins".into(),
             sync_interval_seconds: 300,
             upload_logs: false,
+            update_check: "manual".into(),
+            update_url: String::new(),
         }
     }
 }
@@ -181,6 +188,12 @@ impl Settings {
                 "syncIntervalSeconds must be 0 or between 30 and 86400",
             ));
         }
+        if !matches!(self.update_check.as_str(), "manual" | "startup") {
+            return Err(DesktopError::invalid(
+                "updateCheck must be manual or startup",
+            ));
+        }
+        crate::update::feed_url(&self.update_url)?;
         Ok(())
     }
 

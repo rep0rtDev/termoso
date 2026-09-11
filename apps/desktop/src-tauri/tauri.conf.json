@@ -61,7 +61,14 @@
     },
     "windows": {
       "webviewInstallMode": { "type": "downloadBootstrapper" }
-    }
+    },
+    "createUpdaterArtifacts": true
   },
-  "plugins": {}
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENDMjE2QzA2NTRBQUEzQjgKUldTNG82cFVCbXdoelBNRER5bFBWcy82cWdWYUhwdk5sN3MzUXF5WU5YRnY4TUl5S0NxMHJUY2YK",
+      "endpoints": ["https://github.com/rep0rtDev/termoso/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
+  }
 }

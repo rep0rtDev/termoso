@@ -60,7 +60,27 @@ export interface Settings {
   syncConflict: SyncConflict;
   syncIntervalSeconds: number;
   uploadLogs: boolean;
+  updateCheck: UpdateCheck;
+  /** Release feed URL; empty = project default. */
+  updateUrl: string;
 }
+
+export type UpdateCheck = "manual" | "startup";
+
+export interface UpdateInfo {
+  currentVersion: string;
+  version: string;
+  notes: string | null;
+  publishedAt: string | null;
+  downloadUrl: string;
+  target: string;
+}
+
+export type UpdateEvent =
+  | { type: "available"; info: UpdateInfo }
+  | { type: "progress"; downloaded: number; total: number | null }
+  | { type: "installed"; version: string }
+  | { type: "failed"; message: string };
 
 export type LocalVaultKind = "local" | "personal" | "team";
 export type VaultRole = "viewer" | "editor" | "manager";
