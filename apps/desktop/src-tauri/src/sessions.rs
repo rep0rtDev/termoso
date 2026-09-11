@@ -11,11 +11,11 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use termoso_core::error::CoreError;
 use termoso_core::hostkey::KnownHosts;
-use termoso_core::model::{Entity, Identity, ResolvedHost, SshConfig};
+use termoso_core::model::{Entity, HostSnippet, Identity, ResolvedHost, Snippet, SshConfig};
 use termoso_core::pty::{LocalShellOptions, LocalTerminal};
 use termoso_core::ssh::proxy::{ProxyConfig, ProxyKind};
 use termoso_core::ssh::{AuthMethod, ConnectOptions, SshClient, SshTarget};
-use termoso_core::store::ConnectionHistory;
+use termoso_core::store::{ConnectionHistory, LogMeta};
 use termoso_core::telnet::{TelnetOptions, TelnetTerminal};
 use termoso_core::terminal::{SharedTerminal, TermEvent, TermEvents, TermSize};
 use tokio::task::JoinHandle;
@@ -24,7 +24,9 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::error::{DesktopError, Result};
+use crate::logs::Recorder;
 use crate::prompts::{PromptAnswer, PromptRequest, UiHostKeyPrompt, UiInteractivePrompt};
+use crate::snippets;
 use crate::state::AppState;
 
 pub const SESSION_EVENT: &str = "session";
@@ -113,6 +115,7 @@ struct Live {
     pump: JoinHandle<()>,
     cancel: CancellationToken,
     history_id: Option<Uuid>,
+    recorder: Option<Arc<Recorder>>,
 }
 
 /// Registry of sessions. Connection attempts are registered up-front so the UI
@@ -264,18 +267,26 @@ pub async fn open<R: Runtime>(
             error: None,
         })
         .ok();
+    let recorder = start_recording(&state, &info, opened.vault_id, size);
 
     let output = Arc::new(Mutex::new(output));
-    let pump = tokio::spawn(pump(app.clone(), id, opened.events, output.clone()));
+    let pump = tokio::spawn(pump(
+        app.clone(),
+        id,
+        opened.events,
+        output.clone(),
+        recorder.clone(),
+    ));
     let live = Live {
         info: info.clone(),
-        term: opened.term,
+        term: opened.term.clone(),
         client: opened.client,
         jumps: opened.jumps,
         output,
         pump,
         cancel,
         history_id,
+        recorder,
     };
     state
         .sessions
@@ -290,7 +301,88 @@ pub async fn open<R: Runtime>(
             info: info.clone(),
         },
     );
+    if !opened.startup.is_empty() {
+        let term = opened.term;
+        let script = opened.startup;
+        tokio::spawn(async move {
+            tokio::time::sleep(STARTUP_SNIPPET_DELAY).await;
+            if let Err(e) = term.write(script.as_bytes()).await {
+                tracing::debug!(session = %id, "startup snippet not delivered: {e}");
+            }
+        });
+    }
     Ok(info)
+}
+
+/// Begin capturing output when the user enabled recording. Failures only
+/// disable the recording for this session.
+fn start_recording(
+    state: &AppState,
+    info: &SessionInfo,
+    vault_id: Option<Uuid>,
+    size: TermSize,
+) -> Option<Arc<Recorder>> {
+    let settings = state.settings().ok()?;
+    if !settings.record_sessions {
+        return None;
+    }
+    let vault_id = match vault_id {
+        Some(v) => v,
+        None => state.store.local_vault().ok()?.id,
+    };
+    let meta = LogMeta {
+        host_id: info.host_id,
+        label: info.title.clone(),
+        target: info.target.clone(),
+        protocol: info.protocol.clone(),
+        started_at: info.started_at,
+        ended_at: None,
+        cols: size.cols,
+        rows: size.rows,
+    };
+    match Recorder::begin(&state.store, vault_id, meta) {
+        Ok(r) => {
+            tracing::debug!(session = %info.id, log = %r.id(), "recording session");
+            Some(Arc::new(r))
+        }
+        Err(e) => {
+            tracing::warn!("session recording disabled: {e}");
+            None
+        }
+    }
+}
+
+fn finish_recording(state: &AppState, recorder: Option<Arc<Recorder>>) {
+    if let Some(rec) = recorder {
+        if let Err(e) = rec.finish(&state.store, &state.logs_dir()) {
+            tracing::warn!("saving session recording failed: {e}");
+        }
+        if let Ok(settings) = state.settings()
+            && let Err(e) = crate::logs::prune(&state.store, settings.log_retention_days)
+        {
+            tracing::debug!("log retention sweep failed: {e}");
+        }
+    }
+}
+
+/// Startup snippet of the host followed by its bound snippets, in order.
+fn startup_script(state: &AppState, resolved: &ResolvedHost) -> String {
+    let mut ids: Vec<Uuid> = resolved.host.data.startup_snippet_id.into_iter().collect();
+    if let Ok(mut bound) = state
+        .store
+        .list::<HostSnippet>(Some(resolved.host.vault_id))
+    {
+        bound.retain(|b| b.data.host_id == resolved.host.id);
+        bound.sort_by_key(|b| b.data.sort_order);
+        ids.extend(bound.into_iter().map(|b| b.data.snippet_id));
+    }
+    let mut out = String::new();
+    for id in ids {
+        if let Ok(s) = state.store.require::<Snippet>(id) {
+            out.push_str(&snippets::script_to_send(&s.data.script));
+        }
+    }
+    out
 }
 
 /// Close a session (or abort its connection attempt).
@@ -304,6 +396,7 @@ pub async fn close<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
         if let Some(hid) = live.history_id {
             finish_history(&state, hid, &live.info, None);
         }
+        finish_recording(&state, live.recorder);
         let _ = app.emit(SESSION_EVENT, SessionEvent::Closed { id });
     }
     Ok(())
@@ -332,11 +425,15 @@ async fn pump<R: Runtime>(
     id: Uuid,
     mut events: TermEvents,
     output: Arc<Mutex<Channel<InvokeResponseBody>>>,
+    recorder: Option<Arc<Recorder>>,
 ) {
     let mut error: Option<String> = None;
     while let Some(ev) = events.recv().await {
         match ev {
             TermEvent::Output(bytes) => {
+                if let Some(rec) = &recorder {
+                    rec.append(&bytes);
+                }
                 let ch = output.lock().expect("output poisoned").clone();
                 if let Err(e) = ch.send(InvokeResponseBody::Raw(bytes.to_vec())) {
                     tracing::debug!(error = %e, "terminal channel gone");
@@ -356,23 +453,30 @@ async fn pump<R: Runtime>(
         }
     }
     let state = app.state::<AppState>();
-    if let Some(live) = state.sessions.close(id)
-        && let Some(hid) = live.history_id
-    {
-        finish_history(&state, hid, &live.info, error);
+    if let Some(live) = state.sessions.close(id) {
+        if let Some(hid) = live.history_id {
+            finish_history(&state, hid, &live.info, error);
+        }
+        finish_recording(&state, live.recorder);
     }
     let _ = app.emit(SESSION_EVENT, SessionEvent::Closed { id });
 }
+
+const STARTUP_SNIPPET_DELAY: Duration = Duration::from_millis(400);
 
 struct Opened {
     protocol: &'static str,
     title: String,
     target: String,
     host_id: Option<Uuid>,
+    /// Vault of the host (recordings are stored alongside it).
+    vault_id: Option<Uuid>,
     term: SharedTerminal,
     events: TermEvents,
     client: Option<Arc<SshClient>>,
     jumps: Vec<Arc<SshClient>>,
+    /// Script typed into the shell right after connecting.
+    startup: String,
 }
 
 async fn connect<R: Runtime>(
@@ -395,10 +499,12 @@ async fn connect<R: Runtime>(
                 title: "Local".into(),
                 target: "local shell".into(),
                 host_id: None,
+                vault_id: None,
                 term,
                 events,
                 client: None,
                 jumps: Vec::new(),
+                startup: String::new(),
             })
         }
         OpenTarget::Quick {
@@ -421,10 +527,12 @@ async fn connect<R: Runtime>(
                 title: display.clone(),
                 target: display,
                 host_id: None,
+                vault_id: None,
                 term,
                 events,
                 client: Some(client),
                 jumps,
+                startup: String::new(),
             })
         }
         OpenTarget::Host { host_id } => {
@@ -449,10 +557,12 @@ async fn connect<R: Runtime>(
                     title: label,
                     target: display,
                     host_id: Some(*host_id),
+                    vault_id: Some(resolved.host.vault_id),
                     term,
                     events,
                     client: None,
                     jumps: Vec::new(),
+                    startup: startup_script(&state, &resolved),
                 });
             }
             let target = ssh_target(&resolved);
@@ -465,10 +575,12 @@ async fn connect<R: Runtime>(
                 title: label,
                 target: display,
                 host_id: Some(*host_id),
+                vault_id: Some(resolved.host.vault_id),
                 term,
                 events,
                 client: Some(client),
                 jumps,
+                startup: startup_script(&state, &resolved),
             })
         }
     }

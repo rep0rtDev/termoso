@@ -36,6 +36,8 @@ export interface AppInfo {
 
 export type ThemeMode = "dark" | "light" | "system";
 export type HostsView = "grid" | "list";
+export type CursorStyle = "block" | "underline" | "bar";
+export type SyncConflict = "newest_wins" | "local_wins" | "server_wins";
 
 export interface Settings {
   theme: ThemeMode;
@@ -43,13 +45,21 @@ export interface Settings {
   terminalFontSize: number;
   terminalFontFamily: string;
   cursorBlink: boolean;
+  cursorStyle: CursorStyle;
   scrollback: number;
   copyOnSelect: boolean;
   pasteOnRightClick: boolean;
   confirmCloseTab: boolean;
   confirmPasteMultiline: boolean;
   autocomplete: boolean;
+  terminalBell: boolean;
   keepAliveSeconds: number;
+  recordSessions: boolean;
+  logRetentionDays: number;
+  autostartForwarding: boolean;
+  syncConflict: SyncConflict;
+  syncIntervalSeconds: number;
+  uploadLogs: boolean;
 }
 
 export type LocalVaultKind = "local" | "personal" | "team";
@@ -153,17 +163,312 @@ export interface Entity<T> {
   data: T;
 }
 
-export interface IdentityData {
+// ───────────────────────────── keychain ─────────────────────────────
+
+/** Public view of a stored key. Never carries private material. */
+export interface KeyCard {
+  id: Uuid;
+  vaultId: Uuid;
   label: string;
-  username: string;
-  ssh_key_id?: Uuid | null;
-  is_visible: boolean;
+  keyType: string;
+  bits: number;
+  fingerprint: string;
+  publicKey: string;
+  comment: string;
+  encrypted: boolean;
+  hasPassphrase: boolean;
+  unreadable: boolean;
+  usedBy: number;
+  updatedAt: string;
+  dirty: boolean;
 }
 
-export interface SshKeyData {
+export type KeyAlgorithm = "ed25519" | { rsa: { bits: number } };
+
+export interface GenerateKeyForm {
+  vaultId: Uuid;
   label: string;
-  key_type: string;
-  public_key?: string | null;
+  algorithm: KeyAlgorithm;
+  comment: string;
+  passphrase: string | null;
+  rememberPassphrase: boolean;
+}
+
+export interface ImportKeyForm {
+  vaultId: Uuid;
+  label: string;
+  privateKey: string;
+  passphrase: string | null;
+  rememberPassphrase: boolean;
+}
+
+export interface IdentityCard {
+  id: Uuid;
+  vaultId: Uuid;
+  label: string;
+  username: string;
+  hasPassword: boolean;
+  sshKeyId: Uuid | null;
+  sshKeyLabel: string | null;
+  updatedAt: string;
+}
+
+export interface IdentityForm {
+  id: Uuid | null;
+  vaultId: Uuid;
+  label: string;
+  username: string;
+  /** `null` keeps the stored password; `""` clears it. */
+  password: string | null;
+  sshKeyId: Uuid | null;
+}
+
+// ───────────────────────────── port forwarding ─────────────────────────────
+
+export type PfKind = "local" | "remote" | "dynamic";
+export type PfState = "stopped" | "starting" | "running";
+
+export interface PfRuntime {
+  state: PfState;
+  startedAt: string | null;
+  bound: string | null;
+  connections: number;
+  active: number;
+  bytesIn: number;
+  bytesOut: number;
+  lastError: string | null;
+}
+
+export interface PfRuleCard {
+  id: Uuid;
+  vaultId: Uuid;
+  label: string;
+  hostId: Uuid;
+  hostLabel: string;
+  kind: PfKind;
+  boundAddress: string;
+  localPort: number;
+  remoteHost: string;
+  remotePort: number;
+  autoStart: boolean;
+  updatedAt: string;
+  runtime: PfRuntime;
+}
+
+export interface PfRuleForm {
+  id: Uuid | null;
+  vaultId: Uuid;
+  label: string;
+  hostId: Uuid;
+  kind: PfKind;
+  boundAddress: string;
+  localPort: number;
+  remoteHost: string;
+  remotePort: number;
+  autoStart: boolean;
+}
+
+export interface ForwardEvent {
+  type: "changed";
+  id: Uuid;
+  runtime: PfRuntime;
+}
+
+// ───────────────────────────── snippets ─────────────────────────────
+
+export interface SnippetCard {
+  id: Uuid;
+  vaultId: Uuid;
+  label: string;
+  script: string;
+  packageId: Uuid | null;
+  closeAfterRun: boolean;
+  sortOrder: number;
+  variables: string[];
+  updatedAt: string;
+  dirty: boolean;
+}
+
+export interface SnippetForm {
+  id: Uuid | null;
+  vaultId: Uuid;
+  label: string;
+  script: string;
+  packageId: Uuid | null;
+  closeAfterRun: boolean;
+  sortOrder: number;
+}
+
+export interface PackageNode {
+  id: Uuid;
+  vaultId: Uuid;
+  label: string;
+  parentId: Uuid | null;
+  snippetCount: number;
+}
+
+export interface RunResult {
+  sessionIds: Uuid[];
+  closeAfterRun: boolean;
+}
+
+// ───────────────────────────── known hosts ─────────────────────────────
+
+export interface KnownHostCard {
+  id: Uuid;
+  vaultId: Uuid;
+  hostname: string;
+  keyType: string;
+  fingerprint: string;
+  publicKey: string;
+  updatedAt: string;
+}
+
+export interface ImportReport {
+  added: number;
+}
+
+// ───────────────────────────── session logs ─────────────────────────────
+
+export interface LogCard {
+  id: Uuid;
+  vaultId: Uuid;
+  hostId: Uuid | null;
+  label: string;
+  target: string;
+  protocol: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationSecs: number | null;
+  cols: number;
+  rows: number;
+  sizeBytes: number;
+  cached: boolean;
+  uploaded: boolean;
+  completed: boolean;
+  createdAt: string;
+  bookmarks: number;
+}
+
+export interface BookmarkCard {
+  id: Uuid;
+  logId: Uuid;
+  offset: number;
+  note: string;
+  updatedAt: string;
+}
+
+export interface LogBody {
+  id: Uuid;
+  text: string;
+  bytes: number;
+}
+
+// ───────────────────────────── account / sync ─────────────────────────────
+
+export interface AccountCard {
+  serverUrl: string;
+  userId: Uuid;
+  email: string;
+  displayName: string | null;
+  isAdmin: boolean;
+  deviceId: Uuid;
+  signedInAt: string;
+}
+
+export type MfaMethod = "totp" | "webauthn" | "email" | "backup_code";
+
+export type MfaCredential =
+  | { method: "totp"; code: string }
+  | { method: "backup_code"; code: string }
+  | { method: "webauthn"; credential: unknown }
+  | { method: "email"; code: string };
+
+export type LoginOutcome =
+  | { step: "done"; account: AccountCard }
+  | { step: "mfaRequired"; methods: MfaMethod[] }
+  | { step: "deviceApprovalRequired"; emailHint: string };
+
+export interface Registered {
+  account: AccountCard;
+  /** Shown once; Rust never stores it. */
+  recoveryPhrase: string;
+}
+
+export type SyncState = "idle" | "syncing" | "offline" | "error";
+
+export interface SyncStatus {
+  state: SyncState;
+  realtime: boolean;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  pushed: number;
+  pulled: number;
+  conflicts: number;
+}
+
+export interface AccountStatus {
+  account: AccountCard | null;
+  pending: LoginOutcome | null;
+  sync: SyncStatus;
+  vaults: LocalVault[];
+}
+
+export type SyncNotice =
+  | { kind: "status"; status: SyncStatus }
+  | { kind: "entitiesChanged"; vaultId: Uuid }
+  | { kind: "vaultsChanged" }
+  | { kind: "historyChanged" }
+  | { kind: "logsChanged" }
+  | { kind: "accountChanged" }
+  | { kind: "signedOut" };
+
+export interface LoginForm {
+  serverUrl: string;
+  email: string;
+  password: string;
+}
+
+export interface RegisterForm {
+  serverUrl: string;
+  email: string;
+  password: string;
+  displayName: string | null;
+  inviteToken: string | null;
+}
+
+export type Platform = "windows" | "linux" | "macos" | "android" | "ios" | "web" | "cli";
+
+export interface Device {
+  id: Uuid;
+  name: string;
+  platform: Platform;
+  app_version: string;
+  created_at: string;
+  last_seen_at: string;
+  last_ip?: string | null;
+  current: boolean;
+}
+
+export interface SsoProvider {
+  id: string;
+  name: string;
+  kind: "oidc" | "saml";
+}
+
+export interface ServerInfo {
+  name: string;
+  version: string;
+  registration_open: boolean;
+  sso_providers: SsoProvider[];
+  features: {
+    session_logs: boolean;
+    email: boolean;
+    webauthn: boolean;
+    teams: boolean;
+  };
+  max_entity_bytes: number;
+  max_log_bytes: number;
 }
 
 export interface ConnectionHistory {

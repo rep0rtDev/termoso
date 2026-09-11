@@ -1,6 +1,7 @@
 import {
   Box,
   Chip,
+  CircularProgress,
   List,
   ListItemButton,
   ListItemIcon,
@@ -18,9 +19,13 @@ import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
 import ArticleRoundedIcon from "@mui/icons-material/ArticleRounded";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import CloudOffRoundedIcon from "@mui/icons-material/CloudOffRounded";
+import CloudDoneRoundedIcon from "@mui/icons-material/CloudDoneRounded";
+import CloudSyncRoundedIcon from "@mui/icons-material/CloudSyncRounded";
+import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import type { ReactNode } from "react";
 import { Logo } from "@/components/Logo";
-import { useAppInfo } from "@/ipc/hooks";
+import { useAccount, useAppInfo } from "@/ipc/hooks";
+import type { AccountStatus } from "@/ipc/types";
 
 export type Section =
   | "hosts"
@@ -31,6 +36,7 @@ export type Section =
   | "knownHosts"
   | "history"
   | "logs"
+  | "account"
   | "settings";
 
 interface Item {
@@ -43,15 +49,15 @@ interface Item {
 const primary: Item[] = [
   { id: "hosts", label: "Hosts", icon: <DnsRoundedIcon /> },
   { id: "sftp", label: "SFTP", icon: <FolderCopyRoundedIcon /> },
-  { id: "forwarding", label: "Port Forwarding", icon: <SwapHorizRoundedIcon />, soon: true },
-  { id: "snippets", label: "Snippets", icon: <CodeRoundedIcon />, soon: true },
-  { id: "keychain", label: "Keychain", icon: <KeyRoundedIcon />, soon: true },
-  { id: "knownHosts", label: "Known Hosts", icon: <VerifiedUserRoundedIcon />, soon: true },
+  { id: "forwarding", label: "Port Forwarding", icon: <SwapHorizRoundedIcon /> },
+  { id: "snippets", label: "Snippets", icon: <CodeRoundedIcon /> },
+  { id: "keychain", label: "Keychain", icon: <KeyRoundedIcon /> },
+  { id: "knownHosts", label: "Known Hosts", icon: <VerifiedUserRoundedIcon /> },
 ];
 
 const secondary: Item[] = [
   { id: "history", label: "History", icon: <HistoryRoundedIcon /> },
-  { id: "logs", label: "Logs", icon: <ArticleRoundedIcon />, soon: true },
+  { id: "logs", label: "Logs", icon: <ArticleRoundedIcon /> },
   { id: "settings", label: "Settings", icon: <SettingsRoundedIcon /> },
 ];
 
@@ -65,6 +71,7 @@ export function Sidebar({
   onSelect: (s: Section) => void;
 }) {
   const { data: info } = useAppInfo();
+  const { data: account } = useAccount();
   const render = (item: Item) => (
     <ListItemButton
       key={item.id}
@@ -107,21 +114,63 @@ export function Sidebar({
         </Typography>
         {secondary.map(render)}
       </List>
-      <Box sx={{ px: 2, py: 1.5, borderTop: 1, borderColor: "divider" }}>
-        <Tooltip title="Offline vault — account sync arrives in a later build" placement="right">
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, color: "text.secondary" }}>
-            <CloudOffRoundedIcon fontSize="small" />
+      <Box sx={{ borderTop: 1, borderColor: "divider", p: 1 }}>
+        <Tooltip title={footerTip(account)} placement="right">
+          <ListItemButton
+            selected={section === "account"}
+            onClick={() => onSelect("account")}
+            sx={{ borderRadius: 2, py: 0.75, gap: 1, color: "text.secondary" }}
+          >
+            <FooterIcon account={account} />
             <Box sx={{ minWidth: 0 }}>
               <Typography variant="body2" noWrap color="text.primary">
-                Local vault
+                {account?.account ? account.account.email : "Local vault"}
               </Typography>
               <Typography variant="caption" noWrap sx={{ display: "block" }}>
-                {info ? `v${info.version} · ${info.masterKeySource}` : "…"}
+                {footerLine(account, info?.version)}
               </Typography>
             </Box>
-          </Box>
+          </ListItemButton>
         </Tooltip>
       </Box>
     </Box>
   );
+}
+
+function footerTip(a: AccountStatus | undefined): string {
+  if (!a?.account) return "Offline vault — click to connect to a Termoso server";
+  const s = a.sync;
+  if (s.state === "error") return s.lastError ?? "Sync error";
+  if (s.state === "syncing") return "Syncing…";
+  if (s.state === "offline") return "Server unreachable — working offline";
+  return s.lastSyncAt ? `Synced ${new Date(s.lastSyncAt).toLocaleString()}` : "Signed in";
+}
+
+function footerLine(a: AccountStatus | undefined, version: string | undefined): string {
+  const v = version ? `v${version}` : "…";
+  if (!a?.account) return `${v} · not synced`;
+  switch (a.sync.state) {
+    case "syncing":
+      return `${v} · syncing`;
+    case "offline":
+      return `${v} · offline`;
+    case "error":
+      return `${v} · sync error`;
+    case "idle":
+      return `${v} · ${a.sync.realtime ? "live" : "synced"}`;
+  }
+}
+
+function FooterIcon({ account }: { account: AccountStatus | undefined }) {
+  if (!account?.account) return <CloudOffRoundedIcon fontSize="small" />;
+  switch (account.sync.state) {
+    case "syncing":
+      return <CircularProgress size={18} thickness={5} />;
+    case "offline":
+      return <CloudSyncRoundedIcon fontSize="small" />;
+    case "error":
+      return <ErrorOutlineRoundedIcon fontSize="small" color="error" />;
+    case "idle":
+      return <CloudDoneRoundedIcon fontSize="small" color="primary" />;
+  }
 }
