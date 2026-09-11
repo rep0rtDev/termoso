@@ -1,0 +1,179 @@
+name: Desktop release
+
+# Builds signed desktop bundles. On a `v*` tag it assembles a draft GitHub
+# release with the installers, their minisign `.sig` files and the updater
+# manifest `latest.json`, then adds SHA256SUMS and publishes it once every
+# asset is in place (so `releases/latest` never points at a half-uploaded
+# release). Run manually (workflow_dispatch) or on a pull request touching
+# packaging, it only uploads the bundles as workflow artifacts, so the
+# pipeline can be exercised without publishing.
+#
+# Required repository secrets (see docs/RELEASING.md):
+#   TAURI_SIGNING_PRIVATE_KEY           minisign private key (from `tauri signer generate`)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  its password
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - apps/desktop/src-tauri/tauri.conf.json
+      - apps/desktop/src-tauri/capabilities/**
+      - apps/desktop/src-tauri/icons/**
+      - apps/desktop/src-tauri/Cargo.toml
+      - apps/desktop/package.json
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  version:
+    name: version consistency
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        shell: bash
+        run: |
+          pkg=$(node -p "require('./apps/desktop/package.json').version")
+          ws=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "package.json=$pkg workspace=$ws ref=$GITHUB_REF_NAME"
+          [ "$pkg" = "$ws" ] || { echo "::error::apps/desktop/package.json and Cargo.toml versions differ"; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            [ "$GITHUB_REF_NAME" = "v$pkg" ] || { echo "::error::tag $GITHUB_REF_NAME does not match version $pkg"; exit 1; }
+          fi
+          echo "version=$pkg" >> "$GITHUB_OUTPUT"
+
+  bundle:
+    name: ${{ matrix.name }}
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux (deb, rpm, AppImage)
+            os: ubuntu-22.04
+            bundles: deb,rpm,appimage
+          - name: windows (msi, nsis)
+            os: windows-latest
+            bundles: msi,nsis
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tauri system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
+            libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libxdo-dev libssl-dev patchelf file
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: apps/desktop
+
+      - name: Build, sign and (on tags) publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/desktop
+          args: --bundles ${{ matrix.bundles }}
+          # Only publish from a tag; a manual run just produces artifacts below.
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: ${{ github.ref_type == 'tag' && format('Termoso {0}', github.ref_name) || '' }}
+          releaseDraft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          releaseBody: |
+            Signed desktop builds of Termoso ${{ needs.version.outputs.version }}.
+
+            Every installer ships with a minisign `.sig`; the app verifies it against the
+            public key compiled into the binary before installing an update. `latest.json`
+            is the updater manifest — mirror it (and the assets) on your own server to keep
+            update checks fully self-hosted; see docs/RELEASING.md.
+
+      - name: Upload bundles as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: termoso-desktop-${{ needs.version.outputs.version }}-${{ runner.os }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            target/release/bundle/deb/*.deb
+            target/release/bundle/rpm/*.rpm
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/appimage/*.AppImage.sig
+            target/release/bundle/msi/*.msi
+            target/release/bundle/msi/*.msi.sig
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/nsis/*.exe.sig
+
+  publish:
+    name: checksums + publish
+    if: github.ref_type == 'tag'
+    needs: [version, bundle]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Locate the draft release
+        id: rel
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=50" \
+            --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -1)
+          [ -n "$id" ] || { echo "::error::no release for $GITHUB_REF_NAME"; exit 1; }
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+      - name: Verify assets and write SHA256SUMS
+        run: |
+          mkdir assets && cd assets
+          gh api "repos/$GITHUB_REPOSITORY/releases/${{ steps.rel.outputs.id }}/assets?per_page=100" \
+            --jq '.[] | "\(.id) \(.name)"' > ../assets.txt
+          while read -r aid name; do
+            gh api -H 'Accept: application/octet-stream' \
+              "repos/$GITHUB_REPOSITORY/releases/assets/$aid" > "$name"
+          done < ../assets.txt
+          ls -l
+          test -f latest.json
+          for f in *.deb *.rpm *.AppImage *.msi *.exe; do
+            [ -e "$f" ] || { echo "::error::missing bundle $f"; exit 1; }
+          done
+          for f in *.AppImage *.msi *.exe; do
+            [ -e "$f.sig" ] || { echo "::error::missing signature for $f"; exit 1; }
+          done
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh api --method POST -H 'Content-Type: text/plain' \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/${{ steps.rel.outputs.id }}/assets?name=SHA256SUMS.txt" \
+            --input SHA256SUMS.txt > /dev/null
+      - name: Publish
+        run: |
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/${{ steps.rel.outputs.id }}" \
+            -F draft=false -f make_latest=true > /dev/null
+          echo "published https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME"

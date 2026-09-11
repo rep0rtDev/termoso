@@ -15,6 +15,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
 import { keys, useAppInfo, useSaveSettings, useSettings } from "@/ipc/hooks";
+import { UpdatesCard } from "@/update/UpdatesCard";
 import {
   errorMessage,
   type CursorStyle,
@@ -229,6 +230,8 @@ export function SettingsPage() {
           </Typography>
         </Card>
 
+        <UpdatesCard settings={s} onChange={update} />
+
         <Card title="About">
           <Row k="Version" v={info.data ? `Termoso ${info.data.version}` : "…"} />
           <Row k="Platform" v={info.data?.platform ?? "…"} />
@@ -257,8 +260,8 @@ export function SettingsPage() {
           )}
           <Divider sx={{ my: 1 }} />
           <Typography variant="body2" color="text.secondary">
-            Termoso sends nothing anywhere unless you sign in to a server you chose. No analytics,
-            no crash reports, no update pings.
+            Termoso sends nothing anywhere unless you sign in to a server you chose or ask it to
+            check for updates. No analytics, no crash reports, no background pings.
           </Typography>
         </Card>
       </Box>

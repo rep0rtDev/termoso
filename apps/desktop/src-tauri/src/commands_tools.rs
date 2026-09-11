@@ -19,6 +19,7 @@ use crate::logs::{self, BookmarkCard, LogBody, LogCard};
 use crate::snippets::{self, PackageNode, RunResult, SnippetCard, SnippetForm};
 use crate::state::AppState;
 use crate::trust::{self, ImportReport, KnownHostCard};
+use crate::update::{self, UpdateInfo};
 
 // ───────────────────────────── keychain ─────────────────────────────
 
@@ -424,4 +425,21 @@ pub async fn account_devices<R: Runtime>(app: AppHandle<R>) -> Result<Vec<Device
 #[tauri::command]
 pub async fn account_device_revoke<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
     account::revoke_device(&app, id).await
+}
+
+// ───────────────────────────── updates ─────────────────────────────
+
+#[tauri::command]
+pub async fn update_check<R: Runtime>(app: AppHandle<R>) -> Result<Option<UpdateInfo>> {
+    update::check(&app).await
+}
+
+#[tauri::command]
+pub async fn update_install<R: Runtime>(app: AppHandle<R>) -> Result<UpdateInfo> {
+    update::install(&app).await
+}
+
+#[tauri::command]
+pub fn update_restart<R: Runtime>(app: AppHandle<R>) {
+    app.restart()
 }

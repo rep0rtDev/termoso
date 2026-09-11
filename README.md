@@ -150,6 +150,13 @@ The store key sits in the OS keychain (Secret Service / Credential Manager) with
 an owner-only file fallback when no keychain is available. `TERMOSO_LOG` sets the
 log filter (stderr only).
 
+Releases (`.deb`, `.rpm`, AppImage, NSIS, MSI) are built and minisign-signed by
+CI on every `v*` tag. The built-in updater is off by default: it only contacts
+the release feed when you click *Check for updates* (or opt into a startup
+check), verifies every download against the public key compiled into the app,
+and the feed URL can be pointed at your own HTTPS server. See
+[docs/RELEASING.md](docs/RELEASING.md).
+
 ### Tests
 
 ```bash

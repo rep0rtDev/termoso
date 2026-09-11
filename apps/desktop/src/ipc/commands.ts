@@ -56,6 +56,8 @@ import type {
   TagInfo,
   TransferEvent,
   TransferInfo,
+  UpdateEvent,
+  UpdateInfo,
   Uuid,
 } from "./types";
 
@@ -293,3 +295,11 @@ export const accountDevices = () => invoke<Device[]>("account_devices");
 export const accountDeviceRevoke = (id: Uuid) => invoke<null>("account_device_revoke", { id });
 export const onSyncNotice = (cb: (e: SyncNotice) => void): Promise<UnlistenFn> =>
   listen<SyncNotice>("sync", (ev) => cb(ev.payload));
+
+// ───────────────────────────── updates ─────────────────────────────
+
+export const updateCheck = () => invoke<UpdateInfo | null>("update_check");
+export const updateInstall = () => invoke<UpdateInfo>("update_install");
+export const updateRestart = () => invoke<null>("update_restart");
+export const onUpdateEvent = (cb: (e: UpdateEvent) => void): Promise<UnlistenFn> =>
+  listen<UpdateEvent>("update", (ev) => cb(ev.payload));

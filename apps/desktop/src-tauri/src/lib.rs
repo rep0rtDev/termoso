@@ -15,10 +15,12 @@ mod sftp;
 mod snippets;
 mod state;
 mod trust;
+mod update;
 
 use tauri::Manager;
 
 use crate::state::AppState;
+use crate::update::UpdateHub;
 
 pub fn run() {
     tracing_subscriber::fmt()
@@ -32,6 +34,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let state = AppState::open().map_err(|e| {
                 tracing::error!(error = %e, "cannot open profile");
@@ -43,6 +46,7 @@ pub fn run() {
                 "profile opened"
             );
             app.manage(state);
+            app.manage(UpdateHub::default());
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(startup(handle));
             Ok(())
@@ -148,6 +152,9 @@ pub fn run() {
             commands_tools::account_sync_now,
             commands_tools::account_devices,
             commands_tools::account_device_revoke,
+            commands_tools::update_check,
+            commands_tools::update_install,
+            commands_tools::update_restart,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Termoso");
@@ -176,5 +183,8 @@ async fn startup(app: tauri::AppHandle) {
             Ok(_) => {}
             Err(e) => tracing::warn!("forwarding autostart failed: {e}"),
         }
+    }
+    if settings.update_check == "startup" {
+        update::check_on_startup(&app).await;
     }
 }
