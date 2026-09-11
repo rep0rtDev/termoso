@@ -2,7 +2,7 @@
 //! encrypted like entities; synced through `/history/*` when signed in.
 
 use chrono::{DateTime, Utc};
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use termoso_crypto::aead::{self, Aad};
 use termoso_proto::sync::{HistoryEntry, HistoryKind};
@@ -232,21 +232,34 @@ impl Store {
         Ok(())
     }
 
-    /// Apply entries pulled from the server (personal vault key).
-    pub fn apply_remote_history(&self, entries: &[HistoryEntry]) -> Result<()> {
+    /// Apply entries pulled from the server (personal vault key). Echoes of
+    /// rows this device already holds at the same sequence are skipped;
+    /// returns how many rows actually changed.
+    pub fn apply_remote_history(&self, entries: &[HistoryEntry]) -> Result<usize> {
         let Some(personal) = self.personal_vault()? else {
-            return Ok(());
+            return Ok(0);
         };
         let conn = self.conn();
+        let mut applied = 0;
         for e in entries {
+            let known: Option<i64> = conn
+                .query_row(
+                    "SELECT seq FROM history WHERE id = ?1 AND dirty = 0",
+                    params![e.id.to_string()],
+                    |r| r.get(0),
+                )
+                .optional()?;
             if e.deleted {
-                conn.execute(
+                applied += conn.execute(
                     "DELETE FROM history WHERE id = ?1",
                     params![e.id.to_string()],
                 )?;
                 continue;
             }
-            conn.execute(
+            if known == Some(e.seq) {
+                continue;
+            }
+            applied += conn.execute(
                 "INSERT INTO history (id, kind, vault_id, data, key_version, created_at, seq, deleted, dirty)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 0)
                  ON CONFLICT(id) DO UPDATE SET data = excluded.data, key_version = excluded.key_version,
@@ -262,7 +275,7 @@ impl Store {
                 ],
             )?;
         }
-        Ok(())
+        Ok(applied)
     }
 
     /// Move local-vault history into the personal vault after sign-in so it
@@ -301,7 +314,9 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::LocalVaultKind;
     use termoso_crypto::keys::SymmetricKey;
+    use termoso_proto::vault::VaultRole;
 
     #[test]
     fn commands_and_autocomplete() {
@@ -346,5 +361,70 @@ mod tests {
         })
         .unwrap();
         assert_eq!(s.connections(5).unwrap()[0].data.target, "root@1.2.3.4:22");
+    }
+
+    #[test]
+    fn synced_history_is_pushed_once_and_echoes_are_skipped() {
+        let s = Store::open_in_memory(SymmetricKey::generate()).unwrap();
+        let vid = Uuid::new_v4();
+        s.upsert_vault(
+            vid,
+            LocalVaultKind::Personal,
+            "Personal",
+            None,
+            VaultRole::Manager,
+            Some(&SymmetricKey::generate()),
+            1,
+        )
+        .unwrap();
+        let id = s
+            .record_command(&CommandHistory {
+                host_id: None,
+                command: "uptime".into(),
+            })
+            .unwrap();
+        let dirty = s.dirty_history().unwrap();
+        assert_eq!(dirty.len(), 1);
+        assert_eq!(dirty[0].id, id);
+
+        s.mark_history_pushed(&[id], 5).unwrap();
+        assert!(s.dirty_history().unwrap().is_empty());
+
+        // The server echoes our own row back: nothing changes locally.
+        let echo = HistoryEntry {
+            seq: 5,
+            ..dirty[0].clone()
+        };
+        assert_eq!(
+            s.apply_remote_history(std::slice::from_ref(&echo)).unwrap(),
+            0
+        );
+
+        // A peer's row and a tombstone do count.
+        let peer_id = Uuid::new_v4();
+        let peer = CommandHistory {
+            host_id: None,
+            command: "df -h".into(),
+        };
+        let other = HistoryEntry {
+            id: peer_id,
+            seq: 6,
+            data: aead::encrypt_str(
+                &s.vault_key(vid).unwrap(),
+                &aad(HistoryKind::Command, peer_id),
+                &serde_json::to_string(&peer).unwrap(),
+            )
+            .unwrap(),
+            ..echo.clone()
+        };
+        assert_eq!(s.apply_remote_history(&[other]).unwrap(), 1);
+        assert_eq!(s.commands(10).unwrap().len(), 2);
+        let gone = HistoryEntry {
+            seq: 7,
+            deleted: true,
+            ..echo
+        };
+        assert_eq!(s.apply_remote_history(&[gone]).unwrap(), 1);
+        assert_eq!(s.commands(10).unwrap().len(), 1);
     }
 }

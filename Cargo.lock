@@ -5887,7 +5887,9 @@ dependencies = [
 name = "termoso-core"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
+ "axum",
  "base64 0.22.1",
  "bytes",
  "chrono",
@@ -5904,13 +5906,16 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "sqlx",
  "tempfile",
  "termoso-crypto",
  "termoso-proto",
+ "termoso-server",
  "thiserror 2.0.20",
  "tokio",
  "tokio-tungstenite",
  "tokio-util",
+ "totp-rs",
  "tracing",
  "url",
  "uuid",

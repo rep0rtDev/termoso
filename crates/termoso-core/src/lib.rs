@@ -25,6 +25,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs, clippy::all)]
 
+pub mod account;
 pub mod agent;
 pub mod api;
 pub mod error;

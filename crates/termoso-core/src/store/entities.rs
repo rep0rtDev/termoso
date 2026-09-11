@@ -446,16 +446,23 @@ impl Store {
             include_deleted: false,
         })?;
         let conn = self.conn();
-        for row in &rows {
+        let mut done = 0;
+        for row in rows.iter().filter(|r| r.key_version != key_version) {
             let aad = Aad::entity(&row.kind, &row.id.to_string());
-            let pt = aead::decrypt(old_key, &aad, &termoso_crypto::encoding::unb64(&row.data)?)?;
+            // Rows we cannot open with the previous key are left untouched:
+            // a peer may already have re-uploaded them and a later pull wins.
+            let Ok(pt) = aead::decrypt(old_key, &aad, &termoso_crypto::encoding::unb64(&row.data)?)
+            else {
+                continue;
+            };
             let ct = aead::encrypt_b64(&new_key, &aad, &pt)?;
             conn.execute(
                 "UPDATE entities SET data = ?2, key_version = ?3, dirty = 1 WHERE id = ?1",
                 params![row.id.to_string(), ct, key_version],
             )?;
+            done += 1;
         }
-        Ok(rows.len())
+        Ok(done)
     }
 
     // ───────────────────────────── host resolution ─────────────────────────────
