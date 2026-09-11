@@ -157,7 +157,7 @@ pub async fn push(
                 let version = base + 1;
                 sqlx::query(
                     "UPDATE entities SET kind = $2, version = $3, seq = $4, deleted = false, key_version = $5, data = $6,
-                            updated_at = now(), updated_by_device = $7 WHERE id = $1",
+                            updated_at = LEAST($8, now()), updated_by_device = $7 WHERE id = $1",
                 )
                 .bind(c.id)
                 .bind(&c.kind)
@@ -166,6 +166,7 @@ pub async fn push(
                 .bind(c.key_version)
                 .bind(&c.data)
                 .bind(device_id)
+                .bind(c.updated_at)
                 .execute(&mut *tx)
                 .await?;
                 touched.insert(c.vault_id, seq);
@@ -184,8 +185,8 @@ pub async fn push(
             (None, None) => {
                 let seq = next_seq(&mut tx, c.vault_id).await?;
                 sqlx::query(
-                    "INSERT INTO entities (id, vault_id, kind, version, seq, deleted, key_version, data, updated_by_device)
-                     VALUES ($1, $2, $3, 1, $4, false, $5, $6, $7)",
+                    "INSERT INTO entities (id, vault_id, kind, version, seq, deleted, key_version, data, updated_by_device, updated_at)
+                     VALUES ($1, $2, $3, 1, $4, false, $5, $6, $7, LEAST($8, now()))",
                 )
                 .bind(c.id)
                 .bind(c.vault_id)
@@ -194,6 +195,7 @@ pub async fn push(
                 .bind(c.key_version)
                 .bind(&c.data)
                 .bind(device_id)
+                .bind(c.updated_at)
                 .execute(&mut *tx)
                 .await?;
                 touched.insert(c.vault_id, seq);
