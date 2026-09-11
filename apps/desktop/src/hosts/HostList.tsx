@@ -68,6 +68,7 @@ export function HostList(p: HostCollectionProps) {
             selected={h.id === p.selectedId}
             sx={rowSx}
             onClick={() => p.onOpenHost(h)}
+            onDoubleClick={() => p.onConnectHost(h)}
           >
             <TableCell>
               <HostAvatar host={h} size={28} />

@@ -42,7 +42,7 @@ interface Item {
 
 const primary: Item[] = [
   { id: "hosts", label: "Hosts", icon: <DnsRoundedIcon /> },
-  { id: "sftp", label: "SFTP", icon: <FolderCopyRoundedIcon />, soon: true },
+  { id: "sftp", label: "SFTP", icon: <FolderCopyRoundedIcon /> },
   { id: "forwarding", label: "Port Forwarding", icon: <SwapHorizRoundedIcon />, soon: true },
   { id: "snippets", label: "Snippets", icon: <CodeRoundedIcon />, soon: true },
   { id: "keychain", label: "Keychain", icon: <KeyRoundedIcon />, soon: true },
@@ -61,7 +61,7 @@ export function Sidebar({
   section,
   onSelect,
 }: {
-  section: Section;
+  section: Section | null;
   onSelect: (s: Section) => void;
 }) {
   const { data: info } = useAppInfo();
