@@ -5,13 +5,13 @@
 
 use std::collections::{HashMap, HashSet};
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use chrono::{DateTime, Utc};
 use sqlx::AssertSqlSafe;
 use sqlx::{Postgres, Transaction};
 use termoso_crypto::encoding::unb64;
-use termoso_proto::entities::{is_known_kind, SyncEntity};
+use termoso_proto::entities::{SyncEntity, is_known_kind};
 use termoso_proto::sync::*;
 use uuid::Uuid;
 

@@ -7,8 +7,8 @@ use std::collections::BTreeMap;
 use std::net::SocketAddr;
 
 use anyhow::{Context, Result};
-use figment::providers::{Env, Format, Toml};
 use figment::Figment;
+use figment::providers::{Env, Format, Toml};
 use serde::{Deserialize, Serialize};
 use termoso_crypto::keys::SymmetricKey;
 

@@ -1,7 +1,9 @@
 # Backing services only, for local development and integration tests:
 #   docker compose -f deploy/docker-compose.dev.yml up -d
 #   cargo run -p termoso-server            # uses the defaults below
-#   TERMOSO_TEST_DATABASE_URL=... cargo test -p termoso-server --test '*'
+#   cargo test --workspace                 # picks these services up automatically
+#
+# Mailpit catches every outgoing email (UI: http://localhost:8025).
 
 name: termoso-dev
 
@@ -39,4 +41,13 @@ services:
       test: ["CMD", "mc", "ready", "local"]
       interval: 2s
       timeout: 5s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["1025:1025", "8025:8025"]
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 3s
       retries: 30

@@ -1,8 +1,8 @@
 //! Vaults: personal and team containers for encrypted entities. The server
 //! stores each member's *sealed* copy of the vault key and never the key itself.
 
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 use chrono::{DateTime, Utc};
 use sqlx::PgExecutor;
 use termoso_crypto::encoding::unb64;

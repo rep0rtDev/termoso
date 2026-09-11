@@ -1,7 +1,7 @@
 //! Base64 helpers (standard alphabet, padded) used for JSON transport.
 
-use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 
 use crate::CryptoError;
 

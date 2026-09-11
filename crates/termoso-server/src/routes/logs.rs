@@ -1,8 +1,8 @@
 //! Session logs: metadata in Postgres, encrypted recordings in S3 via
 //! pre-signed URLs (the server never proxies log bytes).
 
-use axum::extract::{Path, Query, State};
 use axum::Json;
+use axum::extract::{Path, Query, State};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use sqlx::AssertSqlSafe;
@@ -237,10 +237,10 @@ pub async fn delete(
     if log.deleted {
         return Ok(NoContent);
     }
-    if let Some(storage) = &state.storage {
-        if let Err(e) = storage.delete(&object_key(auth.user_id(), id)).await {
-            tracing::warn!(error = %e, "could not delete log object");
-        }
+    if let Some(storage) = &state.storage
+        && let Err(e) = storage.delete(&object_key(auth.user_id(), id)).await
+    {
+        tracing::warn!(error = %e, "could not delete log object");
     }
     let mut tx = state.db.begin().await?;
     let seq = next_seq(&mut *tx, auth.user_id()).await?;
