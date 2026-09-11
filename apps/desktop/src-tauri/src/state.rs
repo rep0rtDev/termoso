@@ -98,6 +98,11 @@ pub struct Settings {
     pub hosts_view: String,
     pub terminal_font_size: u16,
     pub terminal_font_family: String,
+    /// Line height multiplier (1.0 = font's natural height).
+    pub terminal_line_height: f32,
+    /// Colour scheme id from the client's theme registry; `auto` follows
+    /// `theme` with the Termoso Dark / Light schemes.
+    pub terminal_theme: String,
     pub cursor_blink: bool,
     /// `block` | `underline` | `bar`.
     pub cursor_style: String,
@@ -109,6 +114,11 @@ pub struct Settings {
     pub autocomplete: bool,
     pub terminal_bell: bool,
     pub keep_alive_seconds: u32,
+    /// Probe a host's OS after the first successful connection to pick its icon.
+    pub detect_os: bool,
+    /// Offer the hybrid ML-KEM-768 + X25519 key exchange (servers without it
+    /// fall back to classical algorithms).
+    pub post_quantum_kex: bool,
     /// Record terminal output of every session into the encrypted log store.
     pub record_sessions: bool,
     /// Delete local recordings older than this many days (0 = keep).
@@ -134,7 +144,9 @@ impl Default for Settings {
             theme: "dark".into(),
             hosts_view: "grid".into(),
             terminal_font_size: 13,
-            terminal_font_family: "JetBrains Mono Variable".into(),
+            terminal_font_family: "JetBrains Mono".into(),
+            terminal_line_height: 1.0,
+            terminal_theme: "auto".into(),
             cursor_blink: true,
             cursor_style: "block".into(),
             scrollback: 10_000,
@@ -145,6 +157,8 @@ impl Default for Settings {
             autocomplete: true,
             terminal_bell: false,
             keep_alive_seconds: 30,
+            detect_os: true,
+            post_quantum_kex: true,
             record_sessions: false,
             log_retention_days: 0,
             autostart_forwarding: true,
@@ -172,6 +186,14 @@ impl Settings {
         }
         if !(6..=72).contains(&self.terminal_font_size) {
             return Err(DesktopError::invalid("terminalFontSize out of range"));
+        }
+        if !(0.8..=2.0).contains(&self.terminal_line_height) {
+            return Err(DesktopError::invalid(
+                "terminalLineHeight must be between 0.8 and 2.0",
+            ));
+        }
+        if self.terminal_theme.is_empty() || self.terminal_theme.len() > 64 {
+            return Err(DesktopError::invalid("terminalTheme must be 1-64 chars"));
         }
         if self.scrollback > 1_000_000 {
             return Err(DesktopError::invalid("scrollback too large"));

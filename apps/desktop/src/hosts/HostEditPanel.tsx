@@ -24,6 +24,7 @@ import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import LabelOutlinedIcon from "@mui/icons-material/LabelOutlined";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
+import { distroIcon } from "./distroIcons";
 import {
   Field,
   Loading,
@@ -217,7 +218,13 @@ function HostEditor({
   return (
     <SidePanel
       title={hostId ? form.label || form.address || "Edit host" : "New host"}
-      subtitle={hostId ? (ssh ? "SSH host" : "Telnet host") : undefined}
+      subtitle={
+        hostId
+          ? [ssh ? "SSH host" : "Telnet host", distroIcon(form.osName)?.title]
+              .filter(Boolean)
+              .join(" · ")
+          : undefined
+      }
       onClose={onClose}
       width={sizes.panel}
       actions={

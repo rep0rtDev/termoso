@@ -10,11 +10,15 @@
 
 mod auth;
 mod handler;
+mod peek;
 pub mod proxy;
 mod shell;
 
+use std::borrow::Cow;
+use std::future::Future;
+use std::pin::pin;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use russh::Channel;
@@ -32,7 +36,7 @@ use crate::terminal::{TermEvents, TermSize};
 pub use auth::{
     AuthMethod, InteractivePrompt, InteractiveQuestion, PasswordResponder, load_private_key,
 };
-pub use handler::{ClientHandler, ForwardedChannel};
+pub use handler::{Algorithms, ClientHandler, ForwardedChannel};
 pub use shell::SshTerminal;
 
 /// Where to connect.
@@ -76,6 +80,11 @@ pub struct ConnectOptions {
     pub env: Vec<(String, String)>,
     /// Request agent forwarding on shells.
     pub agent_forwarding: bool,
+    /// Offer the hybrid post-quantum key exchange (`mlkem768x25519-sha256`)
+    /// first. Servers without it fall back to classical algorithms either
+    /// way; turning this off only matters for the rare peer whose KEXINIT
+    /// parser chokes on the larger payload.
+    pub post_quantum_kex: bool,
 }
 
 impl ConnectOptions {
@@ -96,6 +105,7 @@ impl ConnectOptions {
             proxy: None,
             env: Vec::new(),
             agent_forwarding: false,
+            post_quantum_kex: true,
         }
     }
 }
@@ -123,6 +133,8 @@ pub struct SshClient {
     handle: Handle<ClientHandler>,
     target: SshTarget,
     banner: Option<String>,
+    server_id: Option<String>,
+    algorithms: Option<Algorithms>,
     closed: watch::Receiver<Option<String>>,
     forwarded: handler::ForwardRoutes,
     env: Vec<(String, String)>,
@@ -138,6 +150,17 @@ impl std::fmt::Debug for SshClient {
 }
 
 fn config(opts: &ConnectOptions) -> Arc<Config> {
+    let mut preferred = Preferred::default();
+    if !opts.post_quantum_kex {
+        preferred.kex = Cow::Owned(
+            preferred
+                .kex
+                .iter()
+                .filter(|k| **k != russh::kex::MLKEM768X25519_SHA256)
+                .cloned()
+                .collect(),
+        );
+    }
     Arc::new(Config {
         client_id: russh::SshId::Standard(
             format!("SSH-2.0-termoso_{}", crate::CLIENT_VERSION).into(),
@@ -145,10 +168,46 @@ fn config(opts: &ConnectOptions) -> Arc<Config> {
         inactivity_timeout: None,
         keepalive_interval: opts.keepalive,
         keepalive_max: 3,
-        preferred: Preferred::default(),
+        preferred,
         nodelay: true,
         ..Config::default()
     })
+}
+
+/// Like `tokio::time::timeout`, except the clock stops while `prompting` is
+/// `true` — the user deciding about a host key must not count against the
+/// network budget.
+async fn timeout_unless_prompting<F: Future>(
+    budget: Duration,
+    mut prompting: watch::Receiver<bool>,
+    fut: F,
+) -> Option<F::Output> {
+    let mut fut = pin!(fut);
+    let mut remaining = budget;
+    let mut prompt_alive = true;
+    loop {
+        let started = Instant::now();
+        if !prompt_alive {
+            return tokio::time::timeout(remaining, fut).await.ok();
+        }
+        tokio::select! {
+            out = &mut fut => return Some(out),
+            _ = tokio::time::sleep(remaining) => return None,
+            started_prompt = async { prompting.wait_for(|p| *p).await.is_ok() } => {
+                remaining = remaining.saturating_sub(started.elapsed());
+                if !started_prompt {
+                    prompt_alive = false;
+                    continue;
+                }
+                tokio::select! {
+                    out = &mut fut => return Some(out),
+                    ended = async { prompting.wait_for(|p| !*p).await.is_ok() } => {
+                        prompt_alive = ended;
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl SshClient {
@@ -202,12 +261,17 @@ impl SshClient {
             forwarded.clone(),
         );
         let banner = handler.banner();
-        let mut handle = tokio::time::timeout(
+        let algorithms = handler.algorithms();
+        let prompting = handler.prompting();
+        let server_id: peek::ServerId = Default::default();
+        let stream = peek::IdPeek::new(stream, server_id.clone());
+        let mut handle = timeout_unless_prompting(
             opts.timeout,
+            prompting,
             russh::client::connect_stream(config(&opts), stream, handler),
         )
         .await
-        .map_err(|_| {
+        .ok_or_else(|| {
             CoreError::Ssh(format!(
                 "handshake with {} timed out",
                 opts.target.display()
@@ -217,10 +281,14 @@ impl SshClient {
         auth::authenticate(&mut handle, &opts).await?;
 
         let banner = banner.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        let server_id = server_id.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        let algorithms = algorithms.lock().unwrap_or_else(|p| p.into_inner()).clone();
         Ok(Self {
             handle,
             target: opts.target,
             banner,
+            server_id,
+            algorithms,
             closed: closed_rx,
             forwarded,
             env: opts.env,
@@ -236,6 +304,16 @@ impl SshClient {
     /// Pre-auth banner the server sent, if any.
     pub fn banner(&self) -> Option<&str> {
         self.banner.as_deref()
+    }
+
+    /// The server's identification string (`SSH-2.0-OpenSSH_9.6p1 ...`).
+    pub fn server_id(&self) -> Option<&str> {
+        self.server_id.as_deref()
+    }
+
+    /// Algorithms negotiated during the initial key exchange.
+    pub fn algorithms(&self) -> Option<&Algorithms> {
+        self.algorithms.as_ref()
     }
 
     /// True once the transport is gone.
@@ -372,5 +450,62 @@ impl SshClient {
             .disconnect(russh::Disconnect::ByApplication, "bye", "")
             .await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn timeout_pauses_while_prompting() {
+        let tx = watch::Sender::new(false);
+        let rx = tx.subscribe();
+        let work = async move {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let _ = tx.send(true);
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            let _ = tx.send(false);
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            7
+        };
+        let out = timeout_unless_prompting(Duration::from_secs(5), rx, work).await;
+        assert_eq!(out, Some(7));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn timeout_still_fires_without_prompt() {
+        let tx = watch::Sender::new(false);
+        let rx = tx.subscribe();
+        let work = async move {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            drop(tx);
+            7
+        };
+        let out = timeout_unless_prompting(Duration::from_secs(5), rx, work).await;
+        assert_eq!(out, None);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn timeout_survives_dropped_prompt_sender() {
+        let tx = watch::Sender::new(false);
+        let rx = tx.subscribe();
+        drop(tx);
+        let work = async {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            7
+        };
+        let out = timeout_unless_prompting(Duration::from_secs(5), rx, work).await;
+        assert_eq!(out, Some(7));
+        let late = async {
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            7
+        };
+        let (tx, rx) = watch::channel(false);
+        drop(tx);
+        assert_eq!(
+            timeout_unless_prompting(Duration::from_secs(5), rx, late).await,
+            None
+        );
     }
 }
