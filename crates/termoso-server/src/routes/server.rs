@@ -1,8 +1,8 @@
 //! Public server information and health probes.
 
+use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::Json;
 use termoso_proto::account::{ServerFeatures, ServerInfo};
 
 use crate::error::ApiResult;

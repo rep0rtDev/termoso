@@ -20,8 +20,8 @@ use opaque_ke::{
 };
 use zeroize::Zeroizing;
 
-use crate::encoding::{b64, unb64};
 use crate::CryptoError;
+use crate::encoding::{b64, unb64};
 
 /// The Termoso OPAQUE cipher suite.
 pub struct Suite;

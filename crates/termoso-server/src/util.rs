@@ -1,8 +1,8 @@
 //! Small helpers: tokens, codes, hashing, email normalisation.
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
-use rand::{distributions::Uniform, Rng, RngCore};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use rand::{Rng, RngCore, distributions::Uniform};
 
 /// 32 random bytes as URL-safe base64 (43 chars).
 pub fn random_token() -> String {

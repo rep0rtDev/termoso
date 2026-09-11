@@ -5,9 +5,9 @@
 use crypto_box::aead::OsRng;
 use crypto_box::{PublicKey, SalsaBox};
 
+use crate::CryptoError;
 use crate::encoding::{b64, unb64};
 use crate::keys::{KeyPair, SymmetricKey};
-use crate::CryptoError;
 
 /// Seal `plaintext` to `recipient`. Returns base64.
 pub fn seal_b64(recipient: &PublicKey, plaintext: &[u8]) -> Result<String, CryptoError> {

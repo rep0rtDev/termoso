@@ -3,8 +3,8 @@
 
 use std::time::Duration;
 
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use termoso_crypto::encoding::{unb64, unb64_array};
@@ -17,7 +17,7 @@ use crate::error::{ApiResult, Error, NoContent};
 use crate::events::{self, Event};
 use crate::extract::{Auth, Json as Body};
 use crate::ratelimit;
-use crate::routes::auth::{send_email_verification, P_EMAIL_VERIFY};
+use crate::routes::auth::{P_EMAIL_VERIFY, send_email_verification};
 use crate::session;
 use crate::state::AppState;
 use crate::users;
@@ -445,29 +445,29 @@ pub async fn delete_account(
 ) -> ApiResult<axum::http::StatusCode> {
     let u = users::by_id(&state.db, auth.user_id()).await?;
     let code = body.and_then(|Body(b)| b.code);
-    if let Some(mailer) = &state.mailer {
-        if u.email_verified {
-            match code {
-                None => {
-                    ratelimit::check(&state, ratelimit::EMAIL, &u.email).await?;
-                    let code = codes::issue_for(
-                        &state,
-                        P_DELETE,
-                        &u.id.to_string(),
-                        &u.id,
-                        Duration::from_secs(900),
-                    )
-                    .await?;
-                    let (subject, text) = mailer.code_email("account deletion", &code, 15);
-                    mailer
-                        .send(&u.email, &subject, &text)
-                        .await
-                        .map_err(|e| Error::Internal(e.context("sending email")))?;
-                    return Ok(axum::http::StatusCode::ACCEPTED);
-                }
-                Some(c) => {
-                    codes::verify::<Uuid>(&state, P_DELETE, &u.id.to_string(), &c).await?;
-                }
+    if let Some(mailer) = &state.mailer
+        && u.email_verified
+    {
+        match code {
+            None => {
+                ratelimit::check(&state, ratelimit::EMAIL, &u.email).await?;
+                let code = codes::issue_for(
+                    &state,
+                    P_DELETE,
+                    &u.id.to_string(),
+                    &u.id,
+                    Duration::from_secs(900),
+                )
+                .await?;
+                let (subject, text) = mailer.code_email("account deletion", &code, 15);
+                mailer
+                    .send(&u.email, &subject, &text)
+                    .await
+                    .map_err(|e| Error::Internal(e.context("sending email")))?;
+                return Ok(axum::http::StatusCode::ACCEPTED);
+            }
+            Some(c) => {
+                codes::verify::<Uuid>(&state, P_DELETE, &u.id.to_string(), &c).await?;
             }
         }
     }
@@ -492,11 +492,11 @@ pub async fn delete_account(
             .bind(u.id)
             .fetch_all(&state.db)
             .await?;
+    session::revoke_all(&state, u.id, None).await?;
     sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(u.id)
         .execute(&state.db)
         .await?;
-    session::invalidate_user_cache(&state, u.id).await?;
     if let Some(storage) = &state.storage {
         for (k,) in log_keys {
             if let Err(e) = storage.delete(&k).await {
