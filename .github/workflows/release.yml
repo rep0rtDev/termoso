@@ -40,7 +40,7 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: v
         shell: bash
         run: |
@@ -70,7 +70,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Tauri system libraries
         if: runner.os == 'Linux'
@@ -85,7 +85,7 @@ jobs:
         with:
           key: release
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -118,7 +118,7 @@ jobs:
             update checks fully self-hosted; see docs/RELEASING.md.
 
       - name: Upload bundles as workflow artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: termoso-desktop-${{ needs.version.outputs.version }}-${{ runner.os }}
           if-no-files-found: error

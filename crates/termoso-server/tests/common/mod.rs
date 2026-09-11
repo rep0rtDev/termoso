@@ -17,7 +17,6 @@ pub mod oidc;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
@@ -69,7 +68,7 @@ pub struct TestServer {
     pub idp: oidc::MockIdp,
 }
 
-static SERVER: OnceLock<Option<TestServer>> = OnceLock::new();
+static SERVER: tokio::sync::OnceCell<Option<TestServer>> = tokio::sync::OnceCell::const_new();
 
 fn base_pg_url() -> String {
     std::env::var("TERMOSO_TEST_DATABASE_URL").unwrap_or_else(|_| DEFAULT_PG.into())
@@ -85,14 +84,11 @@ fn with_db(url: &str, db: &str) -> String {
     u.to_string()
 }
 
-/// Reserve an ephemeral port. The listener is dropped so the server thread
-/// can bind it on its own runtime.
-async fn free_port() -> SocketAddr {
-    tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind")
-        .local_addr()
-        .expect("addr")
+/// Bind an ephemeral port. The std listener is handed to the server thread
+/// and converted there, so the port can never be taken by anyone else in
+/// between.
+fn bind_ephemeral() -> std::net::TcpListener {
+    std::net::TcpListener::bind("127.0.0.1:0").expect("bind")
 }
 
 fn require_services() -> bool {
@@ -174,12 +170,7 @@ async fn smtp_config() -> Option<(SmtpConfig, String)> {
 /// Boot (once per test binary) and return the shared server, or `None` when
 /// the backing services are not available.
 pub async fn server() -> Option<&'static TestServer> {
-    if let Some(s) = SERVER.get() {
-        return s.as_ref();
-    }
-    let built = boot().await;
-    let _ = SERVER.set(built);
-    SERVER.get().expect("set above").as_ref()
+    SERVER.get_or_init(boot).await.as_ref()
 }
 
 async fn boot() -> Option<TestServer> {
@@ -219,8 +210,10 @@ async fn boot() -> Option<TestServer> {
     let database_url = with_db(&base, &db_name);
 
     let master_key = SymmetricKey::generate().to_b64();
-    let addr = free_port().await;
-    let idp_addr = free_port().await;
+    let listener = bind_ephemeral();
+    let addr = listener.local_addr().expect("addr");
+    let idp_listener = bind_ephemeral();
+    let idp_addr = idp_listener.local_addr().expect("addr");
 
     let s3 = s3_config().await;
     let smtp = smtp_config().await;
@@ -290,7 +283,7 @@ async fn boot() -> Option<TestServer> {
                 .build()
                 .expect("runtime");
             rt.block_on(async move {
-                let idp = match oidc::serve(idp_addr).await {
+                let idp = match oidc::serve(idp_listener).await {
                     Ok(i) => i,
                     Err(e) => {
                         let _ = ready_tx.send(Err(e));
@@ -304,7 +297,10 @@ async fn boot() -> Option<TestServer> {
                         return;
                     }
                 };
-                let listener = match tokio::net::TcpListener::bind(addr).await {
+                let listener = match listener
+                    .set_nonblocking(true)
+                    .and_then(|()| tokio::net::TcpListener::from_std(listener))
+                {
                     Ok(l) => l,
                     Err(e) => {
                         let _ = ready_tx.send(Err(e.into()));
