@@ -280,14 +280,14 @@ function HostEditor({
             <MenuItem value="inline">Set on this host</MenuItem>
             {(identities.data ?? []).map((i) => (
               <MenuItem key={i.id} value={i.id}>
-                {i.data.label}
+                {i.label}
                 <Typography
                   component="span"
                   variant="caption"
                   color="text.secondary"
                   sx={{ ml: 1 }}
                 >
-                  {i.data.username}
+                  {i.username}
                 </Typography>
               </MenuItem>
             ))}
@@ -350,14 +350,14 @@ function HostEditor({
               </MenuItem>
               {(sshKeys.data ?? []).map((k) => (
                 <MenuItem key={k.id} value={k.id}>
-                  {k.data.label}
+                  {k.label}
                   <Typography
                     component="span"
                     variant="caption"
                     color="text.secondary"
                     sx={{ ml: 1 }}
                   >
-                    {k.data.key_type}
+                    {k.keyType}
                   </Typography>
                 </MenuItem>
               ))}

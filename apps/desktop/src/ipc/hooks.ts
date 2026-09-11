@@ -1,6 +1,7 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ipc from "./commands";
-import type { HostForm, IdentityData, Settings, SshKeyData, Uuid } from "./types";
+import type { HostForm, Settings, Uuid } from "./types";
 
 export const keys = {
   app: ["app"] as const,
@@ -14,6 +15,15 @@ export const keys = {
   identities: (vaultId: Uuid | null) => ["identities", vaultId] as const,
   sshKeys: (vaultId: Uuid | null) => ["sshKeys", vaultId] as const,
   history: ["history"] as const,
+  pfRules: (vaultId: Uuid | null) => ["pfRules", vaultId] as const,
+  snippets: (vaultId: Uuid | null) => ["snippets", vaultId] as const,
+  packages: (vaultId: Uuid | null) => ["packages", vaultId] as const,
+  knownHosts: ["knownHosts"] as const,
+  logs: ["logs"] as const,
+  logBody: (id: Uuid) => ["logs", id, "body"] as const,
+  bookmarks: (id: Uuid) => ["logs", id, "bookmarks"] as const,
+  account: ["account"] as const,
+  devices: ["account", "devices"] as const,
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.app, queryFn: ipc.appInfo });
@@ -50,18 +60,91 @@ export const useHostForm = (id: Uuid | null) =>
 export const useIdentities = (vaultId: Uuid | null) =>
   useQuery({
     queryKey: keys.identities(vaultId),
-    queryFn: async () =>
-      (await ipc.entitiesList<IdentityData>("identity", vaultId)).filter((e) => e.data.is_visible),
+    queryFn: () => ipc.identitiesList(vaultId),
   });
 
 export const useSshKeys = (vaultId: Uuid | null) =>
-  useQuery({
-    queryKey: keys.sshKeys(vaultId),
-    queryFn: () => ipc.entitiesList<SshKeyData>("ssh_key", vaultId),
-  });
+  useQuery({ queryKey: keys.sshKeys(vaultId), queryFn: () => ipc.keysList(vaultId) });
 
 export const useHistory = () =>
   useQuery({ queryKey: keys.history, queryFn: () => ipc.historyConnections(50) });
+
+export const usePfRules = (vaultId: Uuid | null) =>
+  useQuery({ queryKey: keys.pfRules(vaultId), queryFn: () => ipc.pfRules(vaultId) });
+export const useSnippets = (vaultId: Uuid | null) =>
+  useQuery({ queryKey: keys.snippets(vaultId), queryFn: () => ipc.snippetsList(vaultId) });
+export const usePackages = (vaultId: Uuid | null) =>
+  useQuery({ queryKey: keys.packages(vaultId), queryFn: () => ipc.snippetPackages(vaultId) });
+export const useKnownHosts = () =>
+  useQuery({ queryKey: keys.knownHosts, queryFn: ipc.knownHostsList });
+export const useLogs = () => useQuery({ queryKey: keys.logs, queryFn: ipc.logsList });
+export const useLogBody = (id: Uuid | null) =>
+  useQuery({
+    queryKey: keys.logBody(id ?? ""),
+    queryFn: () => ipc.logRead(id ?? ""),
+    enabled: id !== null,
+    staleTime: Infinity,
+  });
+export const useBookmarks = (id: Uuid | null) =>
+  useQuery({
+    queryKey: keys.bookmarks(id ?? ""),
+    queryFn: () => ipc.logBookmarks(id ?? ""),
+    enabled: id !== null,
+  });
+export const useAccount = () =>
+  useQuery({ queryKey: keys.account, queryFn: ipc.accountStatus, staleTime: 5_000 });
+export const useDevices = (enabled: boolean) =>
+  useQuery({ queryKey: keys.devices, queryFn: ipc.accountDevices, enabled });
+
+/** Invalidates queries when Rust reports sync / account changes. */
+export function useSyncNotices() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    let active = true;
+    const un = ipc.onSyncNotice((n) => {
+      if (!active) return;
+      void qc.invalidateQueries({ queryKey: keys.account });
+      switch (n.kind) {
+        case "entitiesChanged":
+          for (const k of [
+            "hosts",
+            "groups",
+            "tags",
+            "identities",
+            "sshKeys",
+            "hostForm",
+            "pfRules",
+            "snippets",
+            "packages",
+            "knownHosts",
+          ]) {
+            void qc.invalidateQueries({ queryKey: [k] });
+          }
+          break;
+        case "vaultsChanged":
+          void qc.invalidateQueries({ queryKey: keys.vaults });
+          break;
+        case "historyChanged":
+          void qc.invalidateQueries({ queryKey: keys.history });
+          break;
+        case "logsChanged":
+          void qc.invalidateQueries({ queryKey: keys.logs });
+          break;
+        case "signedOut":
+        case "accountChanged":
+          void qc.invalidateQueries({ queryKey: keys.app });
+          void qc.invalidateQueries({ queryKey: keys.vaults });
+          break;
+        case "status":
+          break;
+      }
+    });
+    return () => {
+      active = false;
+      void un.then((f) => f());
+    };
+  }, [qc]);
+}
 
 function useInvalidateVault() {
   const qc = useQueryClient();

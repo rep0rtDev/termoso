@@ -35,3 +35,7 @@ tracing-subscriber = { workspace = true }
 zeroize = { workspace = true }
 bytes = { workspace = true }
 base64 = { workspace = true }
+hostname = "0.4"
+
+[dev-dependencies]
+tempfile = "3"

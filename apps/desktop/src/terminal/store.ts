@@ -110,6 +110,7 @@ export function applyTerminalSettings(settings: Settings) {
     rt.term.options.fontSize = settings.terminalFontSize;
     rt.term.options.fontFamily = fontFamily(settings);
     rt.term.options.cursorBlink = settings.cursorBlink;
+    rt.term.options.cursorStyle = settings.cursorStyle;
     rt.term.options.scrollback = settings.scrollback;
     if (rt.opened) rt.fit.fit();
   }
@@ -154,13 +155,34 @@ export function confirmPendingPaste(accept: boolean) {
   if (pending && accept) pasteInto(pending.paneId, pending.text, true);
 }
 
+// ───────────────────────────── bell ─────────────────────────────
+
+let audio: AudioContext | null = null;
+
+function beep() {
+  try {
+    audio ??= new AudioContext();
+    const osc = audio.createOscillator();
+    const gain = audio.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.08, audio.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.12);
+    osc.connect(gain).connect(audio.destination);
+    osc.start();
+    osc.stop(audio.currentTime + 0.12);
+  } catch {
+    // no audio output available
+  }
+}
+
 // ───────────────────────────── xterm runtime ─────────────────────────────
 
 function createRuntime(paneId: Uuid): Runtime {
   const term = new Terminal({
     allowProposedApi: true,
     cursorBlink: currentSettings?.cursorBlink ?? true,
-    cursorStyle: "bar",
+    cursorStyle: currentSettings?.cursorStyle ?? "bar",
     fontSize: currentSettings?.terminalFontSize ?? 13,
     fontFamily: fontFamily(currentSettings),
     fontWeight: "400",
@@ -211,6 +233,9 @@ function createRuntime(paneId: Uuid): Runtime {
       if (currentSettings?.copyOnSelect && term.hasSelection()) {
         void copyText(term.getSelection());
       }
+    }),
+    term.onBell(() => {
+      if (currentSettings?.terminalBell) beep();
     }),
   );
 

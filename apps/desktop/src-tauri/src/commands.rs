@@ -13,6 +13,7 @@ use termoso_core::terminal::TermSize;
 use termoso_proto::entities::is_known_kind;
 use uuid::Uuid;
 
+use crate::account;
 use crate::error::{DesktopError, Result};
 use crate::hosts::{self, GroupNode, HostCard, HostForm, TagInfo};
 use crate::prompts::PromptAnswer;
@@ -37,7 +38,7 @@ pub fn app_info(state: State<'_, AppState>) -> Result<AppInfo> {
         version: env!("CARGO_PKG_VERSION"),
         profile_dir: state.profile_dir.display().to_string(),
         device_id: state.store.device_id()?,
-        master_key_source: state.master_source,
+        master_key_source: state.master_source(),
         signed_in: state.store.account()?.is_some(),
         platform: std::env::consts::OS,
     })
@@ -49,8 +50,19 @@ pub fn settings_get(state: State<'_, AppState>) -> Result<Settings> {
 }
 
 #[tauri::command]
-pub fn settings_set(state: State<'_, AppState>, settings: Settings) -> Result<Settings> {
+pub async fn settings_set<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    settings: Settings,
+) -> Result<Settings> {
+    let before = state.settings()?;
     state.save_settings(&settings)?;
+    if before.sync_conflict != settings.sync_conflict
+        || before.sync_interval_seconds != settings.sync_interval_seconds
+        || before.upload_logs != settings.upload_logs
+    {
+        account::reconfigure(&app).await?;
+    }
     Ok(settings)
 }
 
