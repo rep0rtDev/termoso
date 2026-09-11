@@ -43,9 +43,11 @@ compromised web server or mirror cannot push code to users.
    that last step `releases/latest/download/latest.json` still points at the
    previous version, so clients never see a half-uploaded release.
 
-`workflow_dispatch` (the **Run workflow** button) builds the same bundles from
-any branch and attaches them to the workflow run as artifacts without
-creating a release — use it to smoke-test packaging changes.
+Pull requests that touch packaging (the workflow itself, `tauri.conf.json`,
+capabilities, icons, the desktop `Cargo.toml`/`package.json`) and
+`workflow_dispatch` (the **Run workflow** button) build the same bundles and
+attach them to the workflow run as artifacts without creating a release —
+that is how packaging changes are smoke-tested.
 
 ## Secrets
 

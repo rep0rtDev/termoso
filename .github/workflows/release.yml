@@ -4,8 +4,9 @@ name: Desktop release
 # release with the installers, their minisign `.sig` files and the updater
 # manifest `latest.json`, then adds SHA256SUMS and publishes it once every
 # asset is in place (so `releases/latest` never points at a half-uploaded
-# release). Run manually (workflow_dispatch) it only uploads the bundles as
-# workflow artifacts, so the pipeline can be exercised without publishing.
+# release). Run manually (workflow_dispatch) or on a pull request touching
+# packaging, it only uploads the bundles as workflow artifacts, so the
+# pipeline can be exercised without publishing.
 #
 # Required repository secrets (see docs/RELEASING.md):
 #   TAURI_SIGNING_PRIVATE_KEY           minisign private key (from `tauri signer generate`)
@@ -15,6 +16,14 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - apps/desktop/src-tauri/tauri.conf.json
+      - apps/desktop/src-tauri/capabilities/**
+      - apps/desktop/src-tauri/icons/**
+      - apps/desktop/src-tauri/Cargo.toml
+      - apps/desktop/package.json
 
 concurrency:
   group: release-${{ github.ref }}
