@@ -1,13 +1,19 @@
 //! SSH agent: talking to the system agent, and running our own that serves
 //! vault keys to local tools (`SSH_AUTH_SOCK`) and to agent-forwarding.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
+#[cfg(unix)]
 use std::sync::Arc;
 
+#[cfg(unix)]
+use russh::keys::PrivateKey;
+use russh::keys::PublicKey;
 use russh::keys::agent::client::{AgentClient, AgentStream};
 use russh::keys::agent::server::{Agent, MessageType};
-use russh::keys::{PrivateKey, PublicKey};
 use serde::{Deserialize, Serialize};
+#[cfg(unix)]
 use tokio::sync::Mutex;
 
 use crate::error::{CoreError, Result};
@@ -118,6 +124,7 @@ impl Agent for AllowAll {
 ///
 /// Keys are added through the agent protocol itself, so the key store lives
 /// inside russh's server and is dropped with the task.
+#[cfg(unix)]
 pub struct LocalAgent {
     path: PathBuf,
     task: tokio::task::JoinHandle<()>,
@@ -125,6 +132,7 @@ pub struct LocalAgent {
     keys: Mutex<Vec<Arc<PrivateKey>>>,
 }
 
+#[cfg(unix)]
 impl std::fmt::Debug for LocalAgent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LocalAgent")
@@ -239,6 +247,7 @@ impl LocalAgent {
     }
 }
 
+#[cfg(unix)]
 impl Drop for LocalAgent {
     fn drop(&mut self) {
         self.task.abort();
