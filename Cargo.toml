@@ -1,0 +1,83 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/termoso-crypto",
+    "crates/termoso-proto",
+    "crates/termoso-server",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "AGPL-3.0-only"
+repository = "https://github.com/rep0rtDev/termoso"
+homepage = "https://termoso.com"
+authors = ["Termoso contributors"]
+
+[workspace.dependencies]
+termoso-crypto = { path = "crates/termoso-crypto" }
+termoso-proto = { path = "crates/termoso-proto" }
+
+# async / web
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8", features = ["ws", "macros"] }
+tower = { version = "0.5", features = ["util", "timeout", "limit"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-full", "limit", "timeout", "set-header"] }
+hyper = "1"
+futures = "0.3"
+futures-util = "0.3"
+
+# storage
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "migrate", "macros"] }
+redis = { version = "0.32", features = ["tokio-rustls-comp", "connection-manager"] }
+aws-sdk-s3 = "1"
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+
+# serialization / api docs
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_with = { version = "3", features = ["base64"] }
+utoipa = { version = "5", features = ["axum_extras", "uuid", "chrono"] }
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
+validator = { version = "0.20", features = ["derive"] }
+
+# crypto
+opaque-ke = { version = "4.0", features = ["argon2"] }
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+crypto_box = { version = "0.9", features = ["seal"] }
+hkdf = "0.12"
+sha2 = "0.10"
+blake3 = "1"
+rand = "0.8"
+rand_core = { version = "0.6", features = ["getrandom"] }
+zeroize = { version = "1", features = ["derive"] }
+subtle = "2"
+bip39 = { version = "2", features = ["rand"] }
+base64 = "0.22"
+webauthn-rs = { version = "0.5", features = ["danger-allow-state-serialisation"] }
+totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
+openidconnect = "4"
+oauth2 = "5"
+
+# misc
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+figment = { version = "0.10", features = ["env", "toml"] }
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder", "hostname", "pool"] }
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.17", default-features = false }
+url = "2"
+bytes = "1"
+http = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
+strip = true
