@@ -17,6 +17,7 @@
 
 mod entities;
 mod history;
+mod logs;
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -33,7 +34,9 @@ use uuid::Uuid;
 use crate::error::{CoreError, Result};
 
 pub use entities::EntityFilter;
+pub use entities::EntityRow;
 pub use history::{CommandHistory, ConnectionHistory, HistoryItem};
+pub use logs::{LogItem, LogMeta, LogRow};
 
 const SCHEMA: &str = include_str!("schema.sql");
 const SCHEMA_VERSION: i64 = 1;
