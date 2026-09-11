@@ -1,27 +1,21 @@
 import { useState } from "react";
 import {
-  Box,
   Button,
   Chip,
-  CircularProgress,
-  IconButton,
   ListItemIcon,
   ListItemText,
   Menu,
   MenuItem,
-  Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Tabs,
-  Tooltip,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from "@mui/material";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
 import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
-import MoreVertRoundedIcon from "@mui/icons-material/MoreVertRounded";
+import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import DriveFileRenameOutlineRoundedIcon from "@mui/icons-material/DriveFileRenameOutlineRounded";
 import LockResetRoundedIcon from "@mui/icons-material/LockResetRounded";
@@ -35,10 +29,20 @@ import { save as saveFile } from "@tauri-apps/plugin-dialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { Page, PageBody, PageHeader } from "@/components/PageHeader";
+import {
+  EntityCard,
+  IconTile,
+  Loading,
+  Mono,
+  SplitButton,
+  ToolIconButton,
+  type MenuAction,
+} from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
 import { useDefaultVault, useIdentities, useSshKeys } from "@/ipc/hooks";
 import { errorMessage, type IdentityCard, type KeyCard } from "@/ipc/types";
+import { sizes } from "@/theme/theme";
 import { NameDialog } from "@/sftp/dialogs";
 import { IdentityDialog } from "./IdentityDialog";
 import {
@@ -132,63 +136,61 @@ export function KeychainPage() {
   const loading = vault.isPending || sshKeys.isPending || identities.isPending;
   const loadError = vault.error ?? sshKeys.error ?? identities.error;
 
+  const keyList = sshKeys.data ?? [];
+  const idList = identities.data ?? [];
+  const newKeyItems: MenuAction[] = [
+    {
+      label: "Generate key",
+      icon: <AddRoundedIcon fontSize="small" />,
+      onClick: () => setKeyDialog({ kind: "generate" }),
+    },
+    {
+      label: "Import key…",
+      icon: <UploadFileRoundedIcon fontSize="small" />,
+      onClick: () => setKeyDialog({ kind: "import" }),
+    },
+    {
+      label: "New identity",
+      icon: <PersonRoundedIcon fontSize="small" />,
+      onClick: () => setIdDialog({ kind: "edit", card: null }),
+      divider: true,
+    },
+  ];
+
   return (
     <Page>
       <PageHeader
-        title="Keychain"
-        description="SSH keys and identities. Private keys never leave the encrypted vault unless you export them."
         actions={
-          tab === "keys" ? (
-            <>
-              <Button
-                startIcon={<UploadFileRoundedIcon />}
-                onClick={() => setKeyDialog({ kind: "import" })}
-                disabled={!vaultId}
-              >
-                Import
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<AddRoundedIcon />}
-                onClick={() => setKeyDialog({ kind: "generate" })}
-                disabled={!vaultId}
-              >
-                Generate
-              </Button>
-            </>
-          ) : (
-            <Button
-              variant="contained"
-              startIcon={<AddRoundedIcon />}
-              onClick={() => setIdDialog({ kind: "edit", card: null })}
-              disabled={!vaultId}
-            >
-              New identity
-            </Button>
-          )
+          <SplitButton
+            label={tab === "keys" ? "New key" : "New identity"}
+            icon={<AddRoundedIcon />}
+            disabled={!vaultId}
+            onClick={() =>
+              tab === "keys"
+                ? setKeyDialog({ kind: "generate" })
+                : setIdDialog({ kind: "edit", card: null })
+            }
+            items={newKeyItems}
+          />
+        }
+        trailing={
+          <ToggleButtonGroup
+            exclusive
+            value={tab}
+            onChange={(_, v: "keys" | "identities" | null) => v && setTab(v)}
+          >
+            <ToggleButton value="keys">Keys · {keyList.length}</ToggleButton>
+            <ToggleButton value="identities">Identities · {idList.length}</ToggleButton>
+          </ToggleButtonGroup>
         }
       />
-      <Tabs
-        value={tab}
-        onChange={(_, v: "keys" | "identities") => setTab(v)}
-        sx={{ px: 2.5, borderBottom: 1, borderColor: "divider", minHeight: 40 }}
-      >
-        <Tab value="keys" label={`Keys (${sshKeys.data?.length ?? 0})`} sx={{ minHeight: 40 }} />
-        <Tab
-          value="identities"
-          label={`Identities (${identities.data?.length ?? 0})`}
-          sx={{ minHeight: 40 }}
-        />
-      </Tabs>
       <PageBody>
         {loading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", pt: 8 }}>
-            <CircularProgress size={28} />
-          </Box>
+          <Loading />
         ) : loadError ? (
           <EmptyState title="Could not open the keychain" description={errorMessage(loadError)} />
         ) : tab === "keys" ? (
-          (sshKeys.data ?? []).length === 0 ? (
+          keyList.length === 0 ? (
             <EmptyState
               icon={<KeyRoundedIcon />}
               title="No keys yet"
@@ -200,78 +202,81 @@ export function KeychainPage() {
               }
             />
           ) : (
-            <Table size="small" sx={{ mt: 1 }}>
-              <TableHead>
-                <TableRow sx={{ "& th": { color: "text.secondary", fontWeight: 600 } }}>
-                  <TableCell>Label</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Fingerprint</TableCell>
-                  <TableCell>Passphrase</TableCell>
-                  <TableCell align="right">Used by</TableCell>
-                  <TableCell padding="checkbox" />
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {(sshKeys.data ?? []).map((k) => (
-                  <TableRow key={k.id} hover>
-                    <TableCell>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-                          {k.label}
+            <Stack spacing={1}>
+              {keyList.map((k) => (
+                <EntityCard
+                  key={k.id}
+                  dense
+                  tile={
+                    <IconTile size={sizes.tileSmall} tone={k.unreadable ? "warning" : "neutral"}>
+                      {k.unreadable ? <WarningAmberRoundedIcon /> : <KeyRoundedIcon />}
+                    </IconTile>
+                  }
+                  title={
+                    <>
+                      {k.label}
+                      {k.comment && (
+                        <Typography
+                          component="span"
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ ml: 1 }}
+                        >
+                          {k.comment}
                         </Typography>
-                        {k.unreadable && (
-                          <Tooltip title="Could not parse this key">
-                            <WarningAmberRoundedIcon color="warning" fontSize="small" />
-                          </Tooltip>
-                        )}
-                        {k.comment && (
-                          <Typography variant="caption" color="text.secondary" noWrap>
-                            {k.comment}
-                          </Typography>
-                        )}
-                      </Box>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={k.bits > 0 ? `${k.keyType} ${k.bits}` : k.keyType}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Typography
-                        variant="body2"
-                        sx={{ fontFamily: "monospace", fontSize: 12 }}
-                        noWrap
-                        title={k.fingerprint}
+                      )}
+                    </>
+                  }
+                  subtitle={
+                    k.unreadable ? (
+                      "Could not parse this key"
+                    ) : (
+                      <>
+                        {k.bits > 0 ? `${k.keyType} ${k.bits}` : k.keyType}
+                        {" · "}
+                        <Mono>{k.fingerprint}</Mono>
+                      </>
+                    )
+                  }
+                  trailing={
+                    <>
+                      {k.encrypted && (
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          icon={<LockOutlinedIcon />}
+                          label={k.hasPassphrase ? "Passphrase stored" : "Asks for passphrase"}
+                        />
+                      )}
+                      {k.usedBy > 0 && (
+                        <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
+                          {k.usedBy} {k.usedBy === 1 ? "use" : "uses"}
+                        </Typography>
+                      )}
+                      <ToolIconButton
+                        title="Copy public key"
+                        onClick={() =>
+                          run(async () => {
+                            await copy(await ipc.keyPublic(k.id));
+                            return "Public key copied";
+                          })
+                        }
                       >
-                        {k.fingerprint}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" color="text.secondary">
-                        {!k.encrypted ? "none" : k.hasPassphrase ? "stored" : "ask on use"}
-                      </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body2" color="text.secondary">
-                        {k.usedBy}
-                      </Typography>
-                    </TableCell>
-                    <TableCell padding="checkbox">
-                      <IconButton
-                        size="small"
+                        <ContentCopyRoundedIcon fontSize="small" />
+                      </ToolIconButton>
+                      <ToolIconButton
+                        title="More"
                         onClick={(e) => setMenu({ anchor: e.currentTarget, card: k })}
                       >
-                        <MoreVertRoundedIcon fontSize="small" />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                        <MoreHorizRoundedIcon fontSize="small" />
+                      </ToolIconButton>
+                    </>
+                  }
+                />
+              ))}
+            </Stack>
           )
-        ) : (identities.data ?? []).length === 0 ? (
+        ) : idList.length === 0 ? (
           <EmptyState
             icon={<PersonRoundedIcon />}
             title="No identities"
@@ -283,80 +288,58 @@ export function KeychainPage() {
             }
           />
         ) : (
-          <Table size="small" sx={{ mt: 1 }}>
-            <TableHead>
-              <TableRow sx={{ "& th": { color: "text.secondary", fontWeight: 600 } }}>
-                <TableCell>Label</TableCell>
-                <TableCell>Username</TableCell>
-                <TableCell>Password</TableCell>
-                <TableCell>Key</TableCell>
-                <TableCell padding="checkbox" />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(identities.data ?? []).map((i) => (
-                <TableRow
-                  key={i.id}
-                  hover
-                  sx={{ cursor: "pointer" }}
-                  onClick={() => setIdDialog({ kind: "edit", card: i })}
-                >
-                  <TableCell>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-                      {i.label}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" sx={{ fontFamily: "monospace" }} noWrap>
-                      {i.username}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {i.hasPassword ? "stored" : "—"}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary" noWrap>
-                      {i.sshKeyLabel ?? "—"}
-                    </Typography>
-                  </TableCell>
-                  <TableCell padding="checkbox">
-                    <IconButton
-                      size="small"
+          <Stack spacing={1}>
+            {idList.map((i) => (
+              <EntityCard
+                key={i.id}
+                dense
+                onClick={() => setIdDialog({ kind: "edit", card: i })}
+                tile={
+                  <IconTile size={sizes.tileSmall}>
+                    <PersonRoundedIcon />
+                  </IconTile>
+                }
+                title={i.label}
+                subtitle={
+                  <>
+                    <Mono>{i.username}</Mono>
+                    {" · "}
+                    {i.sshKeyLabel
+                      ? `key ${i.sshKeyLabel}`
+                      : i.hasPassword
+                        ? "password"
+                        : "no credentials"}
+                  </>
+                }
+                actions={
+                  <>
+                    <ToolIconButton
+                      title="Edit"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIdDialog({ kind: "edit", card: i });
+                      }}
+                    >
+                      <EditRoundedIcon fontSize="small" />
+                    </ToolIconButton>
+                    <ToolIconButton
+                      title="Delete"
                       onClick={(e) => {
                         e.stopPropagation();
                         setIdDialog({ kind: "delete", card: i });
                       }}
                     >
                       <DeleteOutlineRoundedIcon fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    </ToolIconButton>
+                  </>
+                }
+              />
+            ))}
+          </Stack>
         )}
       </PageBody>
 
       <Menu open={menu !== null} anchorEl={menu?.anchor} onClose={() => setMenu(null)}>
-        {menu && (
-          <MenuItem
-            onClick={() => {
-              const card = menu.card;
-              setMenu(null);
-              run(async () => {
-                await copy(await ipc.keyPublic(card.id));
-                return "Public key copied";
-              });
-            }}
-          >
-            <ListItemIcon>
-              <ContentCopyRoundedIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>Copy public key</ListItemText>
-          </MenuItem>
-        )}
         {menu && (
           <MenuItem
             onClick={() => {

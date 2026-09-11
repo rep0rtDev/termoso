@@ -10,6 +10,7 @@ import {
   TextField,
 } from "@mui/material";
 import type { IdentityCard, IdentityForm, KeyCard, Uuid } from "@/ipc/types";
+import { Field } from "@/components/ui";
 
 export function IdentityDialog({
   open,
@@ -39,44 +40,41 @@ export function IdentityDialog({
       <DialogTitle>{initial ? "Edit identity" : "New identity"}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
-          <TextField
-            autoFocus
-            label="Label"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-          />
-          <TextField
-            label="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-          <TextField
-            label="Password"
-            type="password"
-            value={password ?? ""}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={initial?.hasPassword ? "•••••••• (stored)" : ""}
-            helperText={
-              initial?.hasPassword && password === null
-                ? "Leave untouched to keep the stored password; clear to remove it."
-                : undefined
-            }
-          />
-          <TextField
-            select
-            label="SSH key"
-            value={keyId ?? ""}
-            onChange={(e) => setKeyId(e.target.value === "" ? null : e.target.value)}
-          >
-            <MenuItem value="">
-              <em>None</em>
-            </MenuItem>
-            {keys.map((k) => (
-              <MenuItem key={k.id} value={k.id}>
-                {k.label}
+          <Field label="Label">
+            <TextField autoFocus value={label} onChange={(e) => setLabel(e.target.value)} />
+          </Field>
+          <Field label="Username">
+            <TextField value={username} onChange={(e) => setUsername(e.target.value)} />
+          </Field>
+          <Field label="Password">
+            <TextField
+              type="password"
+              value={password ?? ""}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={initial?.hasPassword ? "•••••••• (stored)" : ""}
+              helperText={
+                initial?.hasPassword && password === null
+                  ? "Leave untouched to keep the stored password; clear to remove it."
+                  : undefined
+              }
+            />
+          </Field>
+          <Field label="SSH key">
+            <TextField
+              select
+              value={keyId ?? ""}
+              onChange={(e) => setKeyId(e.target.value === "" ? null : e.target.value)}
+            >
+              <MenuItem value="">
+                <em>None</em>
               </MenuItem>
-            ))}
-          </TextField>
+              {keys.map((k) => (
+                <MenuItem key={k.id} value={k.id}>
+                  {k.label}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Field>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>

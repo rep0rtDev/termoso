@@ -15,6 +15,7 @@ import {
 } from "@mui/material";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
 import type { GenerateKeyForm, ImportKeyForm, KeyAlgorithm, KeyCard, Uuid } from "@/ipc/types";
+import { Field } from "@/components/ui";
 
 interface Base {
   open: boolean;
@@ -47,51 +48,48 @@ export function GenerateKeyDialog({
       <DialogTitle>Generate key</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
-          <TextField
-            autoFocus
-            label="Label"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            fullWidth
-          />
-          <Stack direction="row" spacing={2}>
+          <Field label="Label">
             <TextField
-              select
-              label="Algorithm"
-              value={algo}
-              onChange={(e) => setAlgo(e.target.value as Algo)}
-              sx={{ width: 220 }}
-            >
-              <MenuItem value="ed25519">Ed25519 (recommended)</MenuItem>
-              <MenuItem value="rsa2048">RSA 2048</MenuItem>
-              <MenuItem value="rsa3072">RSA 3072</MenuItem>
-              <MenuItem value="rsa4096">RSA 4096</MenuItem>
-            </TextField>
-            <TextField
-              label="Comment"
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder="you@laptop"
-              sx={{ flex: 1 }}
+              autoFocus
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              fullWidth
             />
+          </Field>
+          <Stack direction="row" spacing={2}>
+            <Field label="Algorithm" sx={{ width: 220 }}>
+              <TextField select value={algo} onChange={(e) => setAlgo(e.target.value as Algo)}>
+                <MenuItem value="ed25519">Ed25519 (recommended)</MenuItem>
+                <MenuItem value="rsa2048">RSA 2048</MenuItem>
+                <MenuItem value="rsa3072">RSA 3072</MenuItem>
+                <MenuItem value="rsa4096">RSA 4096</MenuItem>
+              </TextField>
+            </Field>
+            <Field label="Comment" sx={{ flex: 1 }}>
+              <TextField
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                placeholder="you@laptop"
+              />
+            </Field>
           </Stack>
           <Stack direction="row" spacing={2}>
-            <TextField
-              label="Passphrase (optional)"
-              type="password"
-              value={passphrase}
-              onChange={(e) => setPassphrase(e.target.value)}
-              sx={{ flex: 1 }}
-            />
-            <TextField
-              label="Confirm"
-              type="password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              error={mismatch}
-              helperText={mismatch ? "Passphrases differ" : undefined}
-              sx={{ flex: 1 }}
-            />
+            <Field label="Passphrase (optional)" sx={{ flex: 1 }}>
+              <TextField
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+              />
+            </Field>
+            <Field label="Confirm" sx={{ flex: 1 }}>
+              <TextField
+                type="password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                error={mismatch}
+                helperText={mismatch ? "Passphrases differ" : undefined}
+              />
+            </Field>
           </Stack>
           {passphrase.length > 0 && (
             <FormControlLabel
@@ -188,13 +186,14 @@ export function ImportKeyDialog({
       <DialogTitle>Import key</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
-          <TextField
-            autoFocus
-            label="Label"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            fullWidth
-          />
+          <Field label="Label">
+            <TextField
+              autoFocus
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              fullWidth
+            />
+          </Field>
           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
             <Button variant="outlined" onClick={() => void pick()} disabled={busy}>
               Choose file…
@@ -209,22 +208,24 @@ export function ImportKeyDialog({
             )}
           </Stack>
           {path === null && (
-            <TextField
-              label="Private key (OpenSSH / PEM / PKCS#8)"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              multiline
-              minRows={6}
-              maxRows={12}
-              slotProps={{ htmlInput: { spellCheck: false, style: { fontFamily: "monospace" } } }}
-            />
+            <Field label="Private key (OpenSSH / PEM / PKCS#8)">
+              <TextField
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                multiline
+                minRows={6}
+                maxRows={12}
+                slotProps={{ htmlInput: { spellCheck: false, style: { fontFamily: "monospace" } } }}
+              />
+            </Field>
           )}
-          <TextField
-            label="Passphrase (if the key is encrypted)"
-            type="password"
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-          />
+          <Field label="Passphrase (if the key is encrypted)">
+            <TextField
+              type="password"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+            />
+          </Field>
           {passphrase.length > 0 && (
             <FormControlLabel
               control={
@@ -270,29 +271,34 @@ export function PassphraseDialog({
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           {card.encrypted && (
-            <TextField
-              autoFocus
+            <Field
               label={needCurrent ? "Current passphrase" : "Current passphrase (stored, optional)"}
-              type="password"
-              value={current}
-              onChange={(e) => setCurrent(e.target.value)}
-            />
+            >
+              <TextField
+                autoFocus
+                type="password"
+                value={current}
+                onChange={(e) => setCurrent(e.target.value)}
+              />
+            </Field>
           )}
-          <TextField
-            autoFocus={!card.encrypted}
-            label="New passphrase (empty removes it)"
-            type="password"
-            value={next}
-            onChange={(e) => setNext(e.target.value)}
-          />
-          <TextField
-            label="Confirm"
-            type="password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            error={mismatch}
-            helperText={mismatch ? "Passphrases differ" : undefined}
-          />
+          <Field label="New passphrase (empty removes it)">
+            <TextField
+              autoFocus={!card.encrypted}
+              type="password"
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+            />
+          </Field>
+          <Field label="Confirm">
+            <TextField
+              type="password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              error={mismatch}
+              helperText={mismatch ? "Passphrases differ" : undefined}
+            />
+          </Field>
           {next.length > 0 && (
             <FormControlLabel
               control={
@@ -360,34 +366,37 @@ export function ExportKeyDialog({
             unless you have a good reason not to.
           </Alert>
           {needCurrent && (
-            <TextField
-              autoFocus
-              label="Current passphrase"
-              type="password"
-              value={current}
-              onChange={(e) => setCurrent(e.target.value)}
-            />
+            <Field label="Current passphrase">
+              <TextField
+                autoFocus
+                type="password"
+                value={current}
+                onChange={(e) => setCurrent(e.target.value)}
+              />
+            </Field>
           )}
-          <TextField
-            label="Passphrase for the exported copy"
-            type="password"
-            value={exportPass}
-            onChange={(e) => setExportPass(e.target.value)}
-          />
-          <TextField
-            label="Confirm"
-            type="password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            error={mismatch}
-            helperText={
-              mismatch
-                ? "Passphrases differ"
-                : exportPass.length === 0
-                  ? "Empty = unencrypted export"
-                  : undefined
-            }
-          />
+          <Field label="Passphrase for the exported copy">
+            <TextField
+              type="password"
+              value={exportPass}
+              onChange={(e) => setExportPass(e.target.value)}
+            />
+          </Field>
+          <Field label="Confirm">
+            <TextField
+              type="password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              error={mismatch}
+              helperText={
+                mismatch
+                  ? "Passphrases differ"
+                  : exportPass.length === 0
+                    ? "Empty = unencrypted export"
+                    : undefined
+              }
+            />
+          </Field>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>

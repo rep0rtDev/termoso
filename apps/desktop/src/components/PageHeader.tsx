@@ -1,40 +1,29 @@
-import { Box, Typography } from "@mui/material";
+import { Box } from "@mui/material";
 import type { ReactNode } from "react";
+import { Toolbar } from "./ui";
 
-interface Props {
-  title: string;
-  description?: ReactNode;
-  actions?: ReactNode;
+/** Page toolbar under the top bar: primary actions left, filters / view controls right. */
+export function PageHeader({ actions, trailing }: { actions?: ReactNode; trailing?: ReactNode }) {
+  return <Toolbar trailing={trailing}>{actions}</Toolbar>;
 }
 
-export function PageHeader({ title, description, actions }: Props) {
+export function PageBody({ children, padded = true }: { children: ReactNode; padded?: boolean }) {
   return (
     <Box
       sx={{
-        px: 2.5,
-        py: 1.75,
-        borderBottom: 1,
-        borderColor: "divider",
+        flex: 1,
+        minHeight: 0,
+        overflowY: "auto",
+        px: padded ? 2 : 0,
+        py: padded ? 2 : 0,
         display: "flex",
-        alignItems: "center",
-        gap: 2,
+        flexDirection: "column",
+        gap: 1.5,
       }}
     >
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="h5">{title}</Typography>
-        {description && (
-          <Typography variant="body2" color="text.secondary">
-            {description}
-          </Typography>
-        )}
-      </Box>
-      {actions && <Box sx={{ display: "flex", gap: 1, flexShrink: 0 }}>{actions}</Box>}
+      {children}
     </Box>
   );
-}
-
-export function PageBody({ children }: { children: ReactNode }) {
-  return <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 2.5, pb: 3 }}>{children}</Box>;
 }
 
 export function Page({ children }: { children: ReactNode }) {

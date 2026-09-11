@@ -1,5 +1,4 @@
-import { Box, Divider, IconButton, Stack, Tooltip, Typography, alpha } from "@mui/material";
-import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
+import { Box, Divider, IconButton, Tooltip, Typography } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import VerticalSplitRoundedIcon from "@mui/icons-material/VerticalSplitRounded";
@@ -8,6 +7,8 @@ import CampaignRoundedIcon from "@mui/icons-material/CampaignRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
+import LockRoundedIcon from "@mui/icons-material/LockRounded";
+import type { ReactNode } from "react";
 import { StatusDot } from "@/terminal/TerminalPane";
 import {
   HOME_TAB,
@@ -20,87 +21,110 @@ import {
   useTerminal,
   type TerminalTab,
 } from "@/terminal/store";
-import { openSftpForSession } from "@/sftp/store";
+import { openSftpForSession, useSftp } from "@/sftp/store";
+import { LogoMark } from "@/components/Logo";
+import { ActionMenu } from "@/components/ui";
+import { sizes } from "@/theme/theme";
+import { SFTP_TAB, goToSftp } from "./navigation";
+import { useState } from "react";
 
-interface Props {
-  onOpenSftp: () => void;
-}
-
-export function TabBar({ onOpenSftp }: Props) {
+/** Persistent top strip: Vaults · SFTP · terminal tabs · [+]  ……  pane tools. */
+export function TopBar() {
   const tabs = useTerminal((s) => s.tabs);
   const activeTabId = useTerminal((s) => s.activeTabId);
+  const sftpCount = useSftp((s) => s.order.length);
   const active = tabs.find((t) => t.id === activeTabId);
+  const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
 
   return (
-    <Stack
-      direction="row"
-
+    <Box
       sx={{
+        display: "flex",
         alignItems: "stretch",
-        height: 40,
+        height: sizes.topbar,
         flexShrink: 0,
-        bgcolor: "background.paper",
+        bgcolor: "surface.lowest",
         borderBottom: 1,
-        borderColor: "divider",
+        borderColor: "border.light",
+        pl: 1,
       }}
     >
-      <TabButton
+      <Box sx={{ display: "flex", alignItems: "center", pr: 1 }}>
+        <LogoMark size={22} />
+      </Box>
+      <TopTab
         active={activeTabId === HOME_TAB}
         onClick={() => setActiveTab(HOME_TAB)}
-        icon={<HomeRoundedIcon fontSize="small" />}
-        label="Hosts"
+        icon={<LockRoundedIcon sx={{ fontSize: 16 }} />}
+        label="Vaults"
       />
+      <TopTab
+        active={activeTabId === SFTP_TAB}
+        onClick={goToSftp}
+        icon={<FolderCopyRoundedIcon sx={{ fontSize: 16 }} />}
+        label={sftpCount > 0 ? `SFTP (${sftpCount})` : "SFTP"}
+      />
+      {tabs.length > 0 && <Divider orientation="vertical" flexItem sx={{ my: 1.25, mx: 0.5 }} />}
       <Box
         sx={{
           flex: 1,
           minWidth: 0,
           display: "flex",
+          alignItems: "stretch",
           overflowX: "auto",
-          "&::-webkit-scrollbar": { height: 3 },
+          "&::-webkit-scrollbar": { height: 0 },
         }}
       >
         {tabs.map((t) => (
-          <TerminalTabButton key={t.id} tab={t} active={t.id === activeTabId} />
+          <TerminalTopTab key={t.id} tab={t} active={t.id === activeTabId} />
         ))}
-        <Tooltip title="New local terminal">
+        <Tooltip title="New terminal">
           <IconButton
-            size="small"
-            onClick={() => openTerminal({ kind: "local" })}
-            sx={{ alignSelf: "center", mx: 0.5 }}
-            aria-label="New local terminal"
+            onClick={(e) => setAddAnchor(e.currentTarget)}
+            sx={{ alignSelf: "center", mx: 0.5, width: 28, height: 28 }}
+            aria-label="New terminal"
           >
             <AddRoundedIcon fontSize="small" />
           </IconButton>
         </Tooltip>
+        <ActionMenu
+          anchor={addAnchor}
+          onClose={() => setAddAnchor(null)}
+          items={[
+            {
+              label: "Local terminal",
+              icon: <TerminalRoundedIcon fontSize="small" />,
+              onClick: () => openTerminal({ kind: "local" }),
+            },
+          ]}
+        />
       </Box>
-      {active && <TabToolbar tab={active} onOpenSftp={onOpenSftp} />}
-    </Stack>
+      {active && <PaneTools tab={active} />}
+    </Box>
   );
 }
 
-function TabToolbar({ tab, onOpenSftp }: { tab: TerminalTab; onOpenSftp: () => void }) {
+function PaneTools({ tab }: { tab: TerminalTab }) {
   const pane = useTerminal((s) => s.panes[tab.activePaneId]);
   const canSftp = pane?.protocol === "ssh" && pane.status === "connected";
   return (
-    <Stack direction="row" spacing={0.25} sx={{ alignItems: "center", px: 1 }}>
-      <Divider orientation="vertical" flexItem sx={{ my: 1, mr: 0.5 }} />
+    <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, px: 1 }}>
       <Tooltip title="Split right (Ctrl+Shift+D)">
-        <IconButton size="small" onClick={() => splitActivePane(tab.id, "row")}>
+        <IconButton onClick={() => splitActivePane(tab.id, "row")}>
           <VerticalSplitRoundedIcon fontSize="small" />
         </IconButton>
       </Tooltip>
       <Tooltip title="Split down (Ctrl+Shift+Alt+D)">
-        <IconButton size="small" onClick={() => splitActivePane(tab.id, "column")}>
+        <IconButton onClick={() => splitActivePane(tab.id, "column")}>
           <HorizontalSplitRoundedIcon fontSize="small" />
         </IconButton>
       </Tooltip>
       <Tooltip title={tab.broadcast ? "Broadcast input: on" : "Broadcast input to all panes"}>
         <span>
           <IconButton
-            size="small"
-            color={tab.broadcast ? "primary" : "default"}
             disabled={tab.paneIds.length < 2}
             onClick={() => toggleBroadcast(tab.id)}
+            sx={tab.broadcast ? { color: "primary.main", bgcolor: "action.selected" } : undefined}
           >
             <CampaignRoundedIcon fontSize="small" />
           </IconButton>
@@ -108,9 +132,8 @@ function TabToolbar({ tab, onOpenSftp }: { tab: TerminalTab; onOpenSftp: () => v
       </Tooltip>
       <Tooltip title="Find (Ctrl+Shift+F)">
         <IconButton
-          size="small"
-          color={tab.searchOpen ? "primary" : "default"}
           onClick={() => setSearchOpen(tab.id, !tab.searchOpen)}
+          sx={tab.searchOpen ? { color: "text.primary", bgcolor: "action.selected" } : undefined}
         >
           <SearchRoundedIcon fontSize="small" />
         </IconButton>
@@ -118,33 +141,32 @@ function TabToolbar({ tab, onOpenSftp }: { tab: TerminalTab; onOpenSftp: () => v
       <Tooltip title="Open SFTP for this connection">
         <span>
           <IconButton
-            size="small"
             disabled={!canSftp}
             onClick={() => {
               if (!pane) return;
               openSftpForSession(pane.id, pane.title, pane.hostId);
-              onOpenSftp();
+              goToSftp();
             }}
           >
             <FolderCopyRoundedIcon fontSize="small" />
           </IconButton>
         </span>
       </Tooltip>
-    </Stack>
+    </Box>
   );
 }
 
-function TerminalTabButton({ tab, active }: { tab: TerminalTab; active: boolean }) {
+function TerminalTopTab({ tab, active }: { tab: TerminalTab; active: boolean }) {
   const pane = useTerminal((s) => s.panes[tab.activePaneId]);
   if (!pane) return null;
   return (
-    <TabButton
+    <TopTab
       active={active}
       onClick={() => setActiveTab(tab.id)}
       onMiddleClick={() => closeTab(tab.id)}
       icon={
         pane.protocol === "local" ? (
-          <TerminalRoundedIcon fontSize="small" />
+          <TerminalRoundedIcon sx={{ fontSize: 16 }} />
         ) : (
           <StatusDot status={pane.status} />
         )
@@ -155,16 +177,16 @@ function TerminalTabButton({ tab, active }: { tab: TerminalTab; active: boolean 
   );
 }
 
-interface TabButtonProps {
+interface TopTabProps {
   active: boolean;
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   onClick: () => void;
   onClose?: () => void;
   onMiddleClick?: () => void;
 }
 
-function TabButton({ active, icon, label, onClick, onClose, onMiddleClick }: TabButtonProps) {
+function TopTab({ active, icon, label, onClick, onClose, onMiddleClick }: TopTabProps) {
   return (
     <Box
       role="tab"
@@ -173,41 +195,42 @@ function TabButton({ active, icon, label, onClick, onClose, onMiddleClick }: Tab
       onAuxClick={(e) => {
         if (e.button === 1) onMiddleClick?.();
       }}
-      sx={(t) => ({
+      sx={{
         display: "flex",
         alignItems: "center",
-        gap: 1,
-        pl: 1.5,
-        pr: onClose ? 0.5 : 1.5,
+        alignSelf: "center",
+        gap: 0.75,
+        height: 30,
+        pl: 1.25,
+        pr: onClose ? 0.5 : 1.25,
+        mx: 0.25,
         minWidth: 0,
         maxWidth: 220,
         flexShrink: 0,
-        cursor: "pointer",
-        borderRight: 1,
-        borderColor: "divider",
-        borderBottom: `2px solid ${active ? t.palette.primary.main : "transparent"}`,
-        bgcolor: active ? alpha(t.palette.primary.main, 0.08) : "transparent",
+        borderRadius: 1.5,
+        cursor: "default",
+        bgcolor: active ? "surface.highest" : "transparent",
         color: active ? "text.primary" : "text.secondary",
-        "&:hover": { bgcolor: alpha(t.palette.primary.main, 0.05) },
+        "&:hover": { bgcolor: active ? "surface.highest" : "action.hover", color: "text.primary" },
         "&:hover .tab-close": { opacity: 1 },
-      })}
+        "& > svg": { color: active ? "text.primary" : "text.secondary" },
+      }}
     >
       {icon}
-      <Typography variant="body2" noWrap sx={{ fontWeight: active ? 600 : 500 }}>
+      <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
         {label}
       </Typography>
       {onClose && (
         <IconButton
           className="tab-close"
-          size="small"
           onClick={(e) => {
             e.stopPropagation();
             onClose();
           }}
-          sx={{ opacity: active ? 0.7 : 0, p: 0.25, ml: 0.25 }}
+          sx={{ opacity: active ? 0.7 : 0, width: 20, height: 20, ml: 0.25 }}
           aria-label={`Close ${label}`}
         >
-          <CloseRoundedIcon sx={{ fontSize: 16 }} />
+          <CloseRoundedIcon sx={{ fontSize: 14 }} />
         </IconButton>
       )}
     </Box>

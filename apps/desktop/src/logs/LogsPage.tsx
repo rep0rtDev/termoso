@@ -3,18 +3,16 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  Divider,
   IconButton,
   List,
   ListItemButton,
   ListItemText,
+  Stack,
   TextField,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import ArticleRoundedIcon from "@mui/icons-material/ArticleRounded";
@@ -23,16 +21,20 @@ import BookmarkRoundedIcon from "@mui/icons-material/BookmarkRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import FiberManualRecordRoundedIcon from "@mui/icons-material/FiberManualRecordRounded";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { save as saveFile } from "@tauri-apps/plugin-dialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
-import { Page, PageHeader } from "@/components/PageHeader";
+import { goToSettings } from "@/app/navigation";
+import { Page, PageBody, PageHeader } from "@/components/PageHeader";
+import { EntityCard, Field, IconTile, InfoBar, Loading, ToolIconButton } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
 import { keys, useBookmarks, useLogBody, useLogs, useSettings } from "@/ipc/hooks";
 import { errorMessage, type LogCard, type Uuid } from "@/ipc/types";
 import { formatSize } from "@/sftp/format";
+import { sizes } from "@/theme/theme";
 import { LogViewer, type ViewerHandle } from "./LogViewer";
 
 function duration(secs: number | null): string {
@@ -59,17 +61,18 @@ function BookmarkDialog({
     <Dialog open onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
       <DialogTitle>Bookmark line {line + 1}</DialogTitle>
       <DialogContent>
-        <TextField
-          autoFocus
-          fullWidth
-          label="Note"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          sx={{ mt: 0.5 }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && note.trim()) onConfirm(note.trim());
-          }}
-        />
+        <Field label="Note">
+          <TextField
+            autoFocus
+            fullWidth
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && note.trim()) onConfirm(note.trim());
+            }}
+            sx={{ mt: 0.5 }}
+          />
+        </Field>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onCancel} disabled={busy} color="inherit">
@@ -139,7 +142,8 @@ function Viewer({
           alignItems: "center",
           gap: 1.5,
           borderBottom: 1,
-          borderColor: "divider",
+          borderColor: "border.light",
+          minHeight: 48,
         }}
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -160,33 +164,27 @@ function Viewer({
             {!log.completed && " · in progress"}
           </Typography>
         </Box>
-        <Tooltip title="Bookmark the line at the top of the view">
-          <IconButton
-            size="small"
-            disabled={!handle}
-            onClick={() => handle && setDialog({ kind: "bookmark", line: handle.topLine() })}
-          >
-            <BookmarkAddRoundedIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Export as plain file">
-          <IconButton size="small" onClick={() => op.mutate(exportLog)}>
-            <FileDownloadRoundedIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title="Delete recording">
-          <IconButton size="small" onClick={() => setDialog({ kind: "delete" })}>
-            <DeleteOutlineRoundedIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <IconButton size="small" onClick={onClose}>
+        <ToolIconButton
+          title="Bookmark the line at the top of the view"
+          disabled={!handle}
+          onClick={() => handle && setDialog({ kind: "bookmark", line: handle.topLine() })}
+        >
+          <BookmarkAddRoundedIcon fontSize="small" />
+        </ToolIconButton>
+        <ToolIconButton title="Export as plain file" onClick={() => op.mutate(exportLog)}>
+          <FileDownloadRoundedIcon fontSize="small" />
+        </ToolIconButton>
+        <ToolIconButton title="Delete recording" onClick={() => setDialog({ kind: "delete" })}>
+          <DeleteOutlineRoundedIcon fontSize="small" />
+        </ToolIconButton>
+        <ToolIconButton title="Close" onClick={onClose}>
           <CloseRoundedIcon fontSize="small" />
-        </IconButton>
+        </ToolIconButton>
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, display: "flex" }}>
         {body.isPending || settings.isPending ? (
-          <Box sx={{ flex: 1, display: "flex", justifyContent: "center", pt: 8 }}>
-            <CircularProgress size={28} />
+          <Box sx={{ flex: 1 }}>
+            <Loading />
           </Box>
         ) : body.error ? (
           <Box sx={{ flex: 1 }}>
@@ -210,11 +208,11 @@ function Viewer({
               width: 240,
               flexShrink: 0,
               borderLeft: 1,
-              borderColor: "divider",
+              borderColor: "border.light",
               overflowY: "auto",
             }}
           >
-            <Typography variant="overline" color="text.secondary" sx={{ px: 2, pt: 1 }}>
+            <Typography variant="subtitle2" sx={{ px: 2, pt: 1.5, pb: 0.5, display: "block" }}>
               Bookmarks
             </Typography>
             <List dense disablePadding>
@@ -299,14 +297,37 @@ export function LogsPage() {
     [logs.data, selectedId],
   );
 
+  const recordingOff = settings.data !== undefined && !settings.data.recordSessions;
+  const list = logs.data ?? [];
+
   return (
     <Page>
       <PageHeader
-        title="Logs"
-        description={
-          settings.data && !settings.data.recordSessions
-            ? "Session recording is off — enable it in Settings › Sessions to capture new terminals."
-            : "Encrypted recordings of your terminal sessions, stored locally."
+        actions={
+          recordingOff ? (
+            <Button
+              variant="tonal"
+              startIcon={<FiberManualRecordRoundedIcon color="error" />}
+              onClick={() => goToSettings("logs")}
+            >
+              Enable recording
+            </Button>
+          ) : (
+            <Chip
+              size="small"
+              icon={<FiberManualRecordRoundedIcon />}
+              label="Recording new sessions"
+              sx={{ "& .MuiChip-icon": { color: "error.main", fontSize: 12 } }}
+            />
+          )
+        }
+        trailing={
+          list.length > 0 && (
+            <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+              {list.length} {list.length === 1 ? "recording" : "recordings"} ·{" "}
+              {formatSize(list.reduce((n, l) => n + l.sizeBytes, 0))}
+            </Typography>
+          )
         }
       />
       <Box sx={{ flex: 1, minHeight: 0, display: "flex" }}>
@@ -315,67 +336,95 @@ export function LogsPage() {
             width: selected ? 320 : "100%",
             flexShrink: 0,
             borderRight: selected ? 1 : 0,
-            borderColor: "divider",
+            borderColor: "border.light",
             display: "flex",
             flexDirection: "column",
             minHeight: 0,
           }}
         >
-          {logs.isPending ? (
-            <Box sx={{ display: "flex", justifyContent: "center", pt: 8 }}>
-              <CircularProgress size={28} />
-            </Box>
-          ) : logs.error ? (
-            <EmptyState title="Could not load logs" description={errorMessage(logs.error)} />
-          ) : logs.data.length === 0 ? (
-            <EmptyState
-              icon={<ArticleRoundedIcon />}
-              title="No recordings"
-              description="Turn on session recording in Settings and every terminal session will be captured here."
-            />
-          ) : (
-            <List dense disablePadding sx={{ overflowY: "auto", py: 1 }}>
-              {logs.data.map((l) => (
-                <ListItemButton
-                  key={l.id}
-                  selected={l.id === selectedId}
-                  onClick={() => setSelectedId(l.id)}
-                  sx={{ mx: 1, borderRadius: 1.5, alignItems: "flex-start" }}
-                >
-                  <ListItemText
-                    primary={
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-                          {l.label}
+          <PageBody>
+            {recordingOff && list.length > 0 && (
+              <InfoBar
+                action={
+                  <Button size="small" onClick={() => goToSettings("logs")}>
+                    Settings
+                  </Button>
+                }
+              >
+                Session recording is off — new terminals are not captured.
+              </InfoBar>
+            )}
+            {logs.isPending ? (
+              <Loading />
+            ) : logs.error ? (
+              <EmptyState title="Could not load logs" description={errorMessage(logs.error)} />
+            ) : list.length === 0 ? (
+              <EmptyState
+                icon={<ArticleRoundedIcon />}
+                title="No recordings"
+                description="Turn on session recording in Settings and every terminal session will be captured here, encrypted and stored locally."
+                action={
+                  recordingOff && (
+                    <Button variant="contained" onClick={() => goToSettings("logs")}>
+                      Open settings
+                    </Button>
+                  )
+                }
+              />
+            ) : (
+              <Stack spacing={1}>
+                {list.map((l) => (
+                  <EntityCard
+                    key={l.id}
+                    dense
+                    selected={l.id === selectedId}
+                    onClick={() => setSelectedId(l.id)}
+                    tile={
+                      <IconTile size={sizes.tileSmall} tone={l.completed ? "neutral" : "danger"}>
+                        <ArticleRoundedIcon />
+                      </IconTile>
+                    }
+                    title={
+                      <>
+                        {l.label}
+                        <Typography
+                          component="span"
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ ml: 1 }}
+                        >
+                          {l.protocol.toUpperCase()}
                         </Typography>
+                        {!l.completed && (
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            color="error.main"
+                            sx={{ ml: 1 }}
+                          >
+                            recording
+                          </Typography>
+                        )}
+                      </>
+                    }
+                    subtitle={`${new Date(l.startedAt).toLocaleString()} · ${duration(
+                      l.durationSecs,
+                    )} · ${formatSize(l.sizeBytes)}`}
+                    trailing={
+                      l.bookmarks > 0 && (
                         <Chip
                           size="small"
                           variant="outlined"
-                          label={l.protocol.toUpperCase()}
-                          sx={{ height: 18, fontSize: 10 }}
+                          icon={<BookmarkRoundedIcon />}
+                          label={l.bookmarks}
                         />
-                        {l.bookmarks > 0 && (
-                          <BookmarkRoundedIcon sx={{ fontSize: 14, color: "primary.main" }} />
-                        )}
-                      </Box>
+                      )
                     }
-                    secondary={`${new Date(l.startedAt).toLocaleString()} · ${duration(
-                      l.durationSecs,
-                    )} · ${formatSize(l.sizeBytes)}`}
-                    slotProps={{ secondary: { noWrap: true } }}
                   />
-                </ListItemButton>
-              ))}
-            </List>
-          )}
-          {!selected && logs.data && logs.data.length > 0 && (
-            <>
-              <Divider />
-              <Typography variant="caption" color="text.secondary" sx={{ px: 2.5, py: 1 }}>
-                Select a recording to replay it.
-              </Typography>
-            </>
-          )}
+                ))}
+              </Stack>
+            )}
+          </PageBody>
         </Box>
         {selected && (
           <Viewer
