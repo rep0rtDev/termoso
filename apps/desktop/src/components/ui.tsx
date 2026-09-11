@@ -99,6 +99,7 @@ export function EntityCard({
   onDoubleClick,
   onContextMenu,
   dense,
+  className,
   sx,
 }: {
   tile: ReactNode;
@@ -111,21 +112,23 @@ export function EntityCard({
   /** Revealed on hover / selection (icon buttons). */
   actions?: ReactNode;
   selected?: boolean;
-  onClick?: () => void;
+  onClick?: (e: MouseEvent<HTMLElement>) => void;
   onDoubleClick?: () => void;
   onContextMenu?: (e: MouseEvent<HTMLElement>) => void;
   dense?: boolean;
+  className?: string;
   sx?: SxProps<Theme>;
 }) {
   return (
     <Box
       role="button"
       tabIndex={0}
+      className={className}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
       onKeyDown={(e) => {
-        if (e.key === "Enter" && onClick) onClick();
+        if (e.key === "Enter" && onClick && e.target === e.currentTarget) e.currentTarget.click();
       }}
       sx={[
         {

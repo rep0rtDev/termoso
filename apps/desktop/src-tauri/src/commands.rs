@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::account;
 use crate::error::{DesktopError, Result};
-use crate::hosts::{self, GroupNode, HostCard, HostForm, TagInfo};
+use crate::hosts::{self, GroupForm, GroupNode, HostCard, HostForm, Inherited, TagInfo};
 use crate::prompts::PromptAnswer;
 use crate::sessions::{self, OpenTarget, SessionInfo};
 use crate::sftp::{self, Direction, Listing, SftpInfo, SftpTarget, TransferInfo};
@@ -198,6 +198,50 @@ pub async fn host_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
 }
 
 #[tauri::command]
+pub async fn hosts_delete(state: State<'_, AppState>, ids: Vec<Uuid>) -> Result<()> {
+    for id in ids {
+        hosts::delete(&state.store, id)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn host_duplicate(state: State<'_, AppState>, id: Uuid) -> Result<HostCard> {
+    hosts::duplicate(&state.store, id)
+}
+
+#[tauri::command]
+pub async fn hosts_move(
+    state: State<'_, AppState>,
+    ids: Vec<Uuid>,
+    group_id: Option<Uuid>,
+) -> Result<()> {
+    hosts::move_hosts(&state.store, &ids, group_id)
+}
+
+#[tauri::command]
+pub async fn hosts_copy_to_vault(
+    state: State<'_, AppState>,
+    ids: Vec<Uuid>,
+    vault_id: Uuid,
+    move_hosts: bool,
+) -> Result<Vec<Uuid>> {
+    if move_hosts {
+        hosts::move_to_vault(&state.store, &ids, vault_id)
+    } else {
+        hosts::copy_to_vault(&state.store, &ids, vault_id)
+    }
+}
+
+#[tauri::command]
+pub async fn host_inherited(
+    state: State<'_, AppState>,
+    group_id: Option<Uuid>,
+) -> Result<Inherited> {
+    hosts::inherited(&state.store, group_id)
+}
+
+#[tauri::command]
 pub async fn groups_list(
     state: State<'_, AppState>,
     vault_id: Option<Uuid>,
@@ -217,8 +261,31 @@ pub async fn group_save(
 }
 
 #[tauri::command]
-pub async fn group_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    hosts::delete_group(&state.store, id)
+pub async fn group_form(state: State<'_, AppState>, id: Uuid) -> Result<GroupForm> {
+    hosts::group_form(&state.store, id)
+}
+
+#[tauri::command]
+pub async fn group_save_form(state: State<'_, AppState>, form: GroupForm) -> Result<GroupNode> {
+    hosts::save_group_form(&state.store, &form)
+}
+
+#[tauri::command]
+pub async fn group_duplicate(state: State<'_, AppState>, id: Uuid) -> Result<GroupNode> {
+    hosts::duplicate_group(&state.store, id)
+}
+
+#[tauri::command]
+pub async fn group_delete(
+    state: State<'_, AppState>,
+    id: Uuid,
+    recursive: Option<bool>,
+) -> Result<()> {
+    if recursive.unwrap_or(false) {
+        hosts::delete_group_recursive(&state.store, id)
+    } else {
+        hosts::delete_group(&state.store, id)
+    }
 }
 
 #[tauri::command]

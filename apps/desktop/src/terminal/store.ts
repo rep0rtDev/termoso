@@ -418,6 +418,8 @@ export interface OpenOptions {
   /** Add as a split pane to this tab instead of opening a new tab. */
   intoTab?: string;
   direction?: SplitDirection;
+  /** Open the tab without switching to it ("Add to workspace"). */
+  background?: boolean;
 }
 
 /** Open a terminal for `target` in a new tab (or split into an existing one). */
@@ -451,7 +453,7 @@ export function openTerminal(target: OpenTarget, opts: OpenOptions = {}): Uuid {
             }
           : t,
       );
-      return { ...s, panes, tabs, activeTabId: existing.id };
+      return { ...s, panes, tabs, activeTabId: opts.background ? s.activeTabId : existing.id };
     }
     const tab: TerminalTab = {
       id: uuid(),
@@ -461,7 +463,12 @@ export function openTerminal(target: OpenTarget, opts: OpenOptions = {}): Uuid {
       broadcast: false,
       searchOpen: false,
     };
-    return { ...s, panes, tabs: [...s.tabs, tab], activeTabId: tab.id };
+    return {
+      ...s,
+      panes,
+      tabs: [...s.tabs, tab],
+      activeTabId: opts.background ? s.activeTabId : tab.id,
+    };
   });
   startSession(paneId, target);
   return paneId;

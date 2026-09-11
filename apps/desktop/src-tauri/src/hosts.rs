@@ -2,9 +2,13 @@
 //! the `host` + inline `ssh_config` + inline `identity` entities (Termius
 //! layout) and resolves group inheritance for display.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use termoso_core::model::{Entity, Group, Host, Identity, SshConfig, Tag, TelnetConfig};
+use termoso_core::model::{
+    Entity, Group, Host, HostChain, Identity, Proxy, Snippet, SshConfig, SshKey, Tag, TelnetConfig,
+};
 use termoso_core::store::Store;
 use uuid::Uuid;
 
@@ -30,6 +34,8 @@ pub struct HostCard {
     pub notes: String,
     pub sort_order: i32,
     pub updated_at: DateTime<Utc>,
+    /// Most recent connection to this host, if any.
+    pub last_connected: Option<DateTime<Utc>>,
     pub dirty: bool,
 }
 
@@ -86,7 +92,63 @@ pub struct GroupNode {
     pub label: String,
     pub parent_id: Option<Uuid>,
     pub sort_order: i32,
+    /// Hosts directly inside this group.
     pub host_count: usize,
+    /// Sub-groups directly inside this group.
+    pub group_count: usize,
+    /// The group carries SSH defaults its hosts inherit.
+    pub has_config: bool,
+}
+
+/// Editor model for a group: name, parent and the SSH defaults hosts inherit.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupForm {
+    pub id: Option<Uuid>,
+    pub vault_id: Uuid,
+    pub label: String,
+    pub parent_id: Option<Uuid>,
+    pub port: Option<u16>,
+    pub username: String,
+    /// `None` keeps the stored password when editing; `Some("")` clears it.
+    pub password: Option<String>,
+    pub ssh_key_id: Option<Uuid>,
+    pub identity_id: Option<Uuid>,
+    #[serde(default)]
+    pub has_password: bool,
+    #[serde(default)]
+    pub agent_forwarding: bool,
+    pub host_chain_id: Option<Uuid>,
+    pub proxy_id: Option<Uuid>,
+    #[serde(default)]
+    pub env_variables: Vec<(String, String)>,
+    #[serde(default)]
+    pub keep_alive_interval: Option<u32>,
+    #[serde(default)]
+    pub timeout: Option<u32>,
+}
+
+/// What a host placed in a group inherits from the group chain. Shown as
+/// placeholders / "Inherited" hints in the host editor.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Inherited {
+    /// Group path root → leaf.
+    pub group_path: Vec<String>,
+    pub port: Option<u16>,
+    pub username: Option<String>,
+    pub has_password: bool,
+    pub ssh_key_id: Option<Uuid>,
+    pub ssh_key_label: Option<String>,
+    /// A visible (shared) identity is inherited.
+    pub identity_id: Option<Uuid>,
+    pub identity_label: Option<String>,
+    pub agent_forwarding: bool,
+    pub host_chain_id: Option<Uuid>,
+    pub proxy_id: Option<Uuid>,
+    pub keep_alive_interval: Option<u32>,
+    pub timeout: Option<u32>,
+    pub env_variables: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -98,8 +160,23 @@ pub struct TagInfo {
     pub color: Option<String>,
 }
 
+/// Newest connection per saved host.
+fn last_connections(store: &Store) -> Result<HashMap<Uuid, DateTime<Utc>>> {
+    let mut out = HashMap::new();
+    for item in store.connections(2000)? {
+        if let Some(hid) = item.data.host_id {
+            let e = out.entry(hid).or_insert(item.created_at);
+            if item.created_at > *e {
+                *e = item.created_at;
+            }
+        }
+    }
+    Ok(out)
+}
+
 pub fn cards(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<HostCard>> {
     let hosts: Vec<Entity<Host>> = store.list(vault_id)?;
+    let recent = last_connections(store)?;
     let mut out = Vec::with_capacity(hosts.len());
     for h in hosts {
         let r = store.resolve_host(h.id)?;
@@ -128,6 +205,7 @@ pub fn cards(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<HostCard>> {
             notes: h.data.notes.clone(),
             sort_order: h.data.sort_order,
             updated_at: h.updated_at,
+            last_connected: recent.get(&h.id).copied(),
             dirty: h.dirty,
         });
     }
@@ -143,15 +221,20 @@ pub fn groups(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<GroupNode>> {
     let groups: Vec<Entity<Group>> = store.list(vault_id)?;
     let hosts: Vec<Entity<Host>> = store.list(vault_id)?;
     let mut out: Vec<GroupNode> = groups
-        .into_iter()
+        .iter()
         .map(|g| GroupNode {
             host_count: hosts
                 .iter()
                 .filter(|h| h.data.group_id == Some(g.id))
                 .count(),
+            group_count: groups
+                .iter()
+                .filter(|c| c.data.parent_id == Some(g.id))
+                .count(),
+            has_config: g.data.ssh_config_id.is_some(),
             id: g.id,
             vault_id: g.vault_id,
-            label: g.data.label,
+            label: g.data.label.clone(),
             parent_id: g.data.parent_id,
             sort_order: g.data.sort_order,
         })
@@ -283,53 +366,18 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
         None => None,
     };
 
-    // Identity: referenced visible one, or an inline hidden one.
-    let identity_id = if let Some(vis) = f.identity_id {
-        let i = store.require::<Identity>(vis)?;
-        if !i.data.is_visible {
-            return Err(DesktopError::invalid("identity is not selectable"));
-        }
-        if let Some(old) = &existing_inline_identity {
-            store.delete(old.id)?;
-        }
-        Some(vis)
-    } else {
-        let username = f.username.trim().to_string();
-        let has_key = f.ssh_key_id.is_some();
-        let password = match (&f.password, &existing_inline_identity) {
-            (Some(p), _) if p.is_empty() => None,
-            (Some(p), _) => Some(p.clone()),
-            (None, Some(old)) => old.data.password.clone(),
-            (None, None) => None,
-        };
-        if username.is_empty() && password.is_none() && !has_key {
-            if let Some(old) = &existing_inline_identity {
-                store.delete(old.id)?;
-            }
-            None
-        } else {
-            let data = Identity {
-                label: if label.is_empty() {
-                    address.to_string()
-                } else {
-                    label.to_string()
-                },
-                username,
-                password,
-                ssh_key_id: f.ssh_key_id,
-                ssh_certificate_id: None,
-                is_visible: false,
-            };
-            let id = match &existing_inline_identity {
-                Some(old) => {
-                    store.update(old.id, &data)?;
-                    old.id
-                }
-                None => store.insert(f.vault_id, &data)?,
-            };
-            Some(id)
-        }
-    };
+    let identity_id = upsert_identity(
+        store,
+        f.vault_id,
+        existing_inline_identity.as_ref(),
+        &Credentials {
+            identity_id: f.identity_id,
+            username: &f.username,
+            password: f.password.as_deref(),
+            ssh_key_id: f.ssh_key_id,
+            label: if label.is_empty() { address } else { label },
+        },
+    )?;
 
     let port = f.port.filter(|p| *p != 0);
     let (ssh_config_id, telnet_config_id) = if telnet {
@@ -443,6 +491,153 @@ pub fn delete(store: &Store, id: Uuid) -> Result<()> {
     Ok(())
 }
 
+/// Credentials as edited in a host / group form.
+struct Credentials<'a> {
+    identity_id: Option<Uuid>,
+    username: &'a str,
+    password: Option<&'a str>,
+    ssh_key_id: Option<Uuid>,
+    label: &'a str,
+}
+
+/// Point at a visible identity, or create / update / drop the inline hidden
+/// one. Returns the identity the config should reference.
+fn upsert_identity(
+    store: &Store,
+    vault_id: Uuid,
+    existing_inline: Option<&Entity<Identity>>,
+    c: &Credentials<'_>,
+) -> Result<Option<Uuid>> {
+    if let Some(vis) = c.identity_id {
+        let i = store.require::<Identity>(vis)?;
+        if !i.data.is_visible {
+            return Err(DesktopError::invalid("identity is not selectable"));
+        }
+        if i.vault_id != vault_id {
+            return Err(DesktopError::invalid("identity belongs to another vault"));
+        }
+        if let Some(old) = existing_inline {
+            store.delete(old.id)?;
+        }
+        return Ok(Some(vis));
+    }
+    if let Some(k) = c.ssh_key_id {
+        let key = store.require::<SshKey>(k)?;
+        if key.vault_id != vault_id {
+            return Err(DesktopError::invalid("SSH key belongs to another vault"));
+        }
+    }
+    let username = c.username.trim().to_string();
+    let password = match (c.password, existing_inline) {
+        (Some(""), _) => None,
+        (Some(p), _) => Some(p.to_string()),
+        (None, Some(old)) => old.data.password.clone(),
+        (None, None) => None,
+    };
+    if username.is_empty() && password.is_none() && c.ssh_key_id.is_none() {
+        if let Some(old) = existing_inline {
+            store.delete(old.id)?;
+        }
+        return Ok(None);
+    }
+    let data = Identity {
+        label: c.label.to_string(),
+        username,
+        password,
+        ssh_key_id: c.ssh_key_id,
+        ssh_certificate_id: None,
+        is_visible: false,
+    };
+    Ok(Some(match existing_inline {
+        Some(old) => {
+            store.update(old.id, &data)?;
+            old.id
+        }
+        None => store.insert(vault_id, &data)?,
+    }))
+}
+
+fn clean_env(env: &[(String, String)]) -> Vec<(String, String)> {
+    env.iter()
+        .map(|(k, v)| (k.trim().to_string(), v.clone()))
+        .filter(|(k, _)| !k.is_empty())
+        .collect()
+}
+
+fn require_same_vault<T: termoso_core::model::Payload>(
+    store: &Store,
+    id: Option<Uuid>,
+    vault_id: Uuid,
+    what: &str,
+) -> Result<()> {
+    if let Some(id) = id {
+        let e = store.require::<T>(id)?;
+        if e.vault_id != vault_id {
+            return Err(DesktopError::invalid(format!(
+                "{what} belongs to another vault"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Ancestors of `group_id` (excluding itself), nearest first.
+fn ancestors(groups: &[Entity<Group>], group_id: Uuid) -> Vec<Uuid> {
+    let mut out = Vec::new();
+    let mut cursor = groups
+        .iter()
+        .find(|g| g.id == group_id)
+        .and_then(|g| g.data.parent_id);
+    while let Some(gid) = cursor {
+        if out.len() > 64 || out.contains(&gid) {
+            break;
+        }
+        out.push(gid);
+        cursor = groups
+            .iter()
+            .find(|g| g.id == gid)
+            .and_then(|g| g.data.parent_id);
+    }
+    out
+}
+
+fn check_parent(
+    store: &Store,
+    vault_id: Uuid,
+    id: Option<Uuid>,
+    parent_id: Option<Uuid>,
+) -> Result<()> {
+    let Some(pid) = parent_id else {
+        return Ok(());
+    };
+    if Some(pid) == id {
+        return Err(DesktopError::invalid("a group cannot be its own parent"));
+    }
+    let parent = store.require::<Group>(pid)?;
+    if parent.vault_id != vault_id {
+        return Err(DesktopError::invalid(
+            "parent group belongs to another vault",
+        ));
+    }
+    if let Some(id) = id {
+        let all: Vec<Entity<Group>> = store.list(Some(vault_id))?;
+        if ancestors(&all, pid).contains(&id) {
+            return Err(DesktopError::invalid(
+                "cannot move a group inside its own sub-group",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn group_node(store: &Store, vault_id: Uuid, gid: Uuid) -> Result<GroupNode> {
+    groups(store, Some(vault_id))?
+        .into_iter()
+        .find(|g| g.id == gid)
+        .ok_or_else(|| DesktopError::not_found(format!("group {gid}")))
+}
+
+/// Rename / re-parent a group, keeping its SSH defaults.
 pub fn save_group(
     store: &Store,
     vault_id: Uuid,
@@ -454,12 +649,7 @@ pub fn save_group(
     if label.is_empty() {
         return Err(DesktopError::invalid("group name is required"));
     }
-    if let Some(pid) = parent_id {
-        if Some(pid) == id {
-            return Err(DesktopError::invalid("a group cannot be its own parent"));
-        }
-        store.require::<Group>(pid)?;
-    }
+    check_parent(store, vault_id, id, parent_id)?;
     let mut data = match id {
         Some(id) => store.require::<Group>(id)?.data,
         None => Group::default(),
@@ -473,10 +663,126 @@ pub fn save_group(
         }
         None => store.insert(vault_id, &data)?,
     };
-    groups(store, Some(vault_id))?
-        .into_iter()
-        .find(|g| g.id == gid)
-        .ok_or_else(|| DesktopError::not_found(format!("group {gid}")))
+    group_node(store, vault_id, gid)
+}
+
+/// Group as the editor sees it: name, parent and its own SSH defaults
+/// (not what it inherits from parents — see [`inherited`]).
+pub fn group_form(store: &Store, id: Uuid) -> Result<GroupForm> {
+    let g = store.require::<Group>(id)?;
+    let ssh = match g.data.ssh_config_id {
+        Some(c) => store.get::<SshConfig>(c)?.map(|e| e.data),
+        None => None,
+    }
+    .unwrap_or_default();
+    let identity = match ssh.identity_id {
+        Some(i) => store.get::<Identity>(i)?,
+        None => None,
+    };
+    let (identity_id, inline) = match identity {
+        Some(i) if i.data.is_visible => (Some(i.id), None),
+        Some(i) => (None, Some(i.data)),
+        None => (None, None),
+    };
+    Ok(GroupForm {
+        id: Some(g.id),
+        vault_id: g.vault_id,
+        label: g.data.label,
+        parent_id: g.data.parent_id,
+        port: ssh.port,
+        username: inline
+            .as_ref()
+            .map(|i| i.username.clone())
+            .unwrap_or_default(),
+        password: None,
+        has_password: inline.as_ref().is_some_and(|i| i.password.is_some()),
+        ssh_key_id: inline.as_ref().and_then(|i| i.ssh_key_id),
+        identity_id,
+        agent_forwarding: ssh.agent_forwarding,
+        host_chain_id: ssh.host_chain_id,
+        proxy_id: ssh.proxy_id,
+        env_variables: ssh.env_variables,
+        keep_alive_interval: ssh.keep_alive_interval,
+        timeout: ssh.timeout,
+    })
+}
+
+/// Create or update a group together with the SSH defaults its hosts inherit.
+pub fn save_group_form(store: &Store, f: &GroupForm) -> Result<GroupNode> {
+    let label = f.label.trim();
+    if label.is_empty() {
+        return Err(DesktopError::invalid("group name is required"));
+    }
+    check_parent(store, f.vault_id, f.id, f.parent_id)?;
+    require_same_vault::<HostChain>(store, f.host_chain_id, f.vault_id, "host chain")?;
+    require_same_vault::<Proxy>(store, f.proxy_id, f.vault_id, "proxy")?;
+
+    let existing = match f.id {
+        Some(id) => store.get::<Group>(id)?,
+        None => None,
+    };
+    let existing_ssh = match existing.as_ref().and_then(|g| g.data.ssh_config_id) {
+        Some(c) => store.get::<SshConfig>(c)?,
+        None => None,
+    };
+    let existing_inline = match existing_ssh.as_ref().and_then(|s| s.data.identity_id) {
+        Some(i) => store.get::<Identity>(i)?.filter(|e| !e.data.is_visible),
+        None => None,
+    };
+    let identity_id = upsert_identity(
+        store,
+        f.vault_id,
+        existing_inline.as_ref(),
+        &Credentials {
+            identity_id: f.identity_id,
+            username: &f.username,
+            password: f.password.as_deref(),
+            ssh_key_id: f.ssh_key_id,
+            label,
+        },
+    )?;
+
+    let mut ssh = existing_ssh
+        .as_ref()
+        .map(|e| e.data.clone())
+        .unwrap_or_default();
+    ssh.port = f.port.filter(|p| *p != 0);
+    ssh.identity_id = identity_id;
+    ssh.agent_forwarding = f.agent_forwarding;
+    ssh.host_chain_id = f.host_chain_id;
+    ssh.proxy_id = f.proxy_id;
+    ssh.env_variables = clean_env(&f.env_variables);
+    ssh.keep_alive_interval = f.keep_alive_interval.filter(|s| *s > 0);
+    ssh.timeout = f.timeout.filter(|s| *s > 0);
+    let empty = ssh == SshConfig::default();
+    let ssh_config_id = match (&existing_ssh, empty) {
+        (Some(e), true) => {
+            store.delete(e.id)?;
+            None
+        }
+        (Some(e), false) => {
+            store.update(e.id, &ssh)?;
+            Some(e.id)
+        }
+        (None, true) => None,
+        (None, false) => Some(store.insert(f.vault_id, &ssh)?),
+    };
+
+    let mut data = existing
+        .as_ref()
+        .map(|e| e.data.clone())
+        .unwrap_or_default();
+    data.label = label.to_string();
+    data.parent_id = f.parent_id;
+    data.ssh_config_id = ssh_config_id;
+    let gid = match &existing {
+        Some(e) => {
+            store.update(e.id, &data)?;
+            e.id
+        }
+        None => store.insert(f.vault_id, &data)?,
+    };
+    group_node(store, f.vault_id, gid)
 }
 
 /// Delete a group; its hosts and sub-groups move to the parent.
@@ -494,8 +800,304 @@ pub fn delete_group(store: &Store, id: Uuid) -> Result<()> {
         c.data.parent_id = g.data.parent_id;
         store.update(c.id, &c.data)?;
     }
+    if let Some(cid) = g.data.ssh_config_id
+        && let Some(cfg) = store.get::<SshConfig>(cid)?
+    {
+        if let Some(iid) = cfg.data.identity_id
+            && let Some(i) = store.get::<Identity>(iid)?
+            && !i.data.is_visible
+        {
+            store.delete(i.id)?;
+        }
+        store.delete(cfg.id)?;
+    }
     store.delete(id)?;
     Ok(())
+}
+
+/// Delete a group with everything inside it (hosts and sub-groups).
+pub fn delete_group_recursive(store: &Store, id: Uuid) -> Result<()> {
+    let Some(g) = store.get::<Group>(id)? else {
+        return Ok(());
+    };
+    let groups: Vec<Entity<Group>> = store.list(Some(g.vault_id))?;
+    for c in groups.iter().filter(|c| c.data.parent_id == Some(id)) {
+        delete_group_recursive(store, c.id)?;
+    }
+    let hosts: Vec<Entity<Host>> = store.list(Some(g.vault_id))?;
+    for h in hosts.iter().filter(|h| h.data.group_id == Some(id)) {
+        delete(store, h.id)?;
+    }
+    delete_group(store, id)
+}
+
+/// What hosts inside `group_id` inherit.
+pub fn inherited(store: &Store, group_id: Option<Uuid>) -> Result<Inherited> {
+    let Some(gid) = group_id else {
+        return Ok(Inherited::default());
+    };
+    let (ssh, group_path) = store.resolve_group_ssh(gid)?;
+    let identity = match ssh.identity_id {
+        Some(i) => store.get::<Identity>(i)?,
+        None => None,
+    };
+    let key_id = identity.as_ref().and_then(|i| i.data.ssh_key_id);
+    let key_label = match key_id {
+        Some(k) => store.get::<SshKey>(k)?.map(|k| k.data.label),
+        None => None,
+    };
+    let (identity_id, identity_label) = match &identity {
+        Some(i) if i.data.is_visible => (Some(i.id), Some(i.data.label.clone())),
+        _ => (None, None),
+    };
+    Ok(Inherited {
+        group_path,
+        port: ssh.port,
+        username: identity
+            .as_ref()
+            .map(|i| i.data.username.clone())
+            .filter(|u| !u.is_empty()),
+        has_password: identity.as_ref().is_some_and(|i| i.data.password.is_some()),
+        ssh_key_id: key_id,
+        ssh_key_label: key_label,
+        identity_id,
+        identity_label,
+        agent_forwarding: ssh.agent_forwarding,
+        host_chain_id: ssh.host_chain_id,
+        proxy_id: ssh.proxy_id,
+        keep_alive_interval: ssh.keep_alive_interval,
+        timeout: ssh.timeout,
+        env_variables: ssh.env_variables,
+    })
+}
+
+fn copy_label(label: &str) -> String {
+    format!("{label} copy")
+}
+
+/// Ids of the referenced entities that exist in `vault_id`; the rest are
+/// dropped so a copy never points at another vault's data.
+fn keep_if_in_vault<T: termoso_core::model::Payload>(
+    store: &Store,
+    id: Option<Uuid>,
+    vault_id: Uuid,
+) -> Result<Option<Uuid>> {
+    Ok(match id {
+        Some(id) => store
+            .get::<T>(id)?
+            .filter(|e| e.vault_id == vault_id)
+            .map(|e| e.id),
+        None => None,
+    })
+}
+
+/// Tags of the source host recreated (by label) in the target vault.
+fn tags_in_vault(store: &Store, tag_ids: &[Uuid], vault_id: Uuid) -> Result<Vec<Uuid>> {
+    let mut out = Vec::new();
+    let mut existing: Vec<Entity<Tag>> = store.list(Some(vault_id))?;
+    for tid in tag_ids {
+        let Some(src) = store.get::<Tag>(*tid)? else {
+            continue;
+        };
+        if src.vault_id == vault_id {
+            out.push(src.id);
+            continue;
+        }
+        let id = match existing
+            .iter()
+            .find(|t| t.data.label.eq_ignore_ascii_case(&src.data.label))
+        {
+            Some(t) => t.id,
+            None => {
+                let id = store.insert(vault_id, &src.data)?;
+                existing.push(Entity {
+                    id,
+                    vault_id,
+                    version: 0,
+                    updated_at: Utc::now(),
+                    dirty: false,
+                    data: src.data.clone(),
+                });
+                id
+            }
+        };
+        out.push(id);
+    }
+    Ok(out)
+}
+
+/// Copy a host (with its inline SSH / Telnet config and hidden identity) into
+/// `vault_id` / `group_id`. Shared references (visible identity, key, chain,
+/// proxy, snippet) are kept only when they live in the target vault; a visible
+/// identity from another vault is flattened into an inline copy.
+fn copy_host(
+    store: &Store,
+    id: Uuid,
+    vault_id: Uuid,
+    group_id: Option<Uuid>,
+    label: Option<String>,
+) -> Result<Uuid> {
+    let src = store.require::<Host>(id)?;
+    let mut f = form(store, id)?;
+    let same_vault = src.vault_id == vault_id;
+    f.id = None;
+    f.vault_id = vault_id;
+    f.group_id = group_id;
+    f.label = label.unwrap_or_else(|| src.data.label.clone());
+    f.password = None;
+
+    // Inline credentials: read the stored identity so the password travels.
+    let ssh = match src.data.ssh_config_id {
+        Some(c) => store.get::<SshConfig>(c)?.map(|e| e.data),
+        None => None,
+    };
+    let telnet = match src.data.telnet_config_id {
+        Some(c) => store.get::<TelnetConfig>(c)?.map(|e| e.data),
+        None => None,
+    };
+    let identity = match ssh
+        .as_ref()
+        .and_then(|s| s.identity_id)
+        .or_else(|| telnet.as_ref().and_then(|t| t.identity_id))
+    {
+        Some(i) => store.get::<Identity>(i)?,
+        None => None,
+    };
+    if let Some(i) = &identity {
+        let visible_here = i.data.is_visible && i.vault_id == vault_id;
+        if visible_here {
+            f.identity_id = Some(i.id);
+        } else {
+            f.identity_id = None;
+            f.username = i.data.username.clone();
+            f.password = i.data.password.clone();
+            f.ssh_key_id = i.data.ssh_key_id;
+        }
+    }
+    if !same_vault {
+        f.ssh_key_id = keep_if_in_vault::<SshKey>(store, f.ssh_key_id, vault_id)?;
+        f.host_chain_id = keep_if_in_vault::<HostChain>(store, f.host_chain_id, vault_id)?;
+        f.proxy_id = keep_if_in_vault::<Proxy>(store, f.proxy_id, vault_id)?;
+        f.startup_snippet_id = keep_if_in_vault::<Snippet>(store, f.startup_snippet_id, vault_id)?;
+        f.tag_ids = tags_in_vault(store, &f.tag_ids, vault_id)?;
+    }
+    let card = save(store, &f)?;
+    // Fields the form does not carry (charset, mosh, colours…) travel raw.
+    if let Some(mut s) = ssh.filter(|_| f.protocol == "ssh")
+        && let Some(cid) = store.require::<Host>(card.id)?.data.ssh_config_id
+        && let Some(saved) = store.get::<SshConfig>(cid)?
+    {
+        s.identity_id = saved.data.identity_id;
+        s.host_chain_id = saved.data.host_chain_id;
+        s.proxy_id = saved.data.proxy_id;
+        if !same_vault {
+            s.port_knocking_id = None;
+        }
+        store.update(cid, &s)?;
+    }
+    Ok(card.id)
+}
+
+/// Duplicate a host next to the original ("<label> copy").
+pub fn duplicate(store: &Store, id: Uuid) -> Result<HostCard> {
+    let src = store.require::<Host>(id)?;
+    let new_id = copy_host(
+        store,
+        id,
+        src.vault_id,
+        src.data.group_id,
+        Some(copy_label(&src.data.label)),
+    )?;
+    cards(store, Some(src.vault_id))?
+        .into_iter()
+        .find(|c| c.id == new_id)
+        .ok_or_else(|| DesktopError::not_found(format!("host {new_id}")))
+}
+
+/// Move hosts into a group (or to the top level) of the same vault.
+pub fn move_hosts(store: &Store, ids: &[Uuid], group_id: Option<Uuid>) -> Result<()> {
+    let group = match group_id {
+        Some(g) => Some(store.require::<Group>(g)?),
+        None => None,
+    };
+    for id in ids {
+        let mut h = store.require::<Host>(*id)?;
+        if let Some(g) = &group
+            && g.vault_id != h.vault_id
+        {
+            return Err(DesktopError::invalid("group belongs to another vault"));
+        }
+        if h.data.group_id != group_id {
+            h.data.group_id = group_id;
+            store.update(h.id, &h.data)?;
+        }
+    }
+    Ok(())
+}
+
+/// Copy hosts into another vault (top level of that vault). Returns new ids.
+pub fn copy_to_vault(store: &Store, ids: &[Uuid], vault_id: Uuid) -> Result<Vec<Uuid>> {
+    let vault = store.vault(vault_id)?;
+    if !vault.unlocked {
+        return Err(DesktopError::invalid("target vault is locked"));
+    }
+    ids.iter()
+        .map(|id| copy_host(store, *id, vault_id, None, None))
+        .collect()
+}
+
+/// Move hosts into another vault: copy, then delete the originals.
+pub fn move_to_vault(store: &Store, ids: &[Uuid], vault_id: Uuid) -> Result<Vec<Uuid>> {
+    let new_ids = copy_to_vault(store, ids, vault_id)?;
+    for id in ids {
+        delete(store, *id)?;
+    }
+    Ok(new_ids)
+}
+
+/// Deep-copy a group (SSH defaults, sub-groups and hosts) next to the original.
+pub fn duplicate_group(store: &Store, id: Uuid) -> Result<GroupNode> {
+    let src = store.require::<Group>(id)?;
+    let new_id = copy_group_tree(
+        store,
+        id,
+        src.data.parent_id,
+        Some(copy_label(&src.data.label)),
+    )?;
+    group_node(store, src.vault_id, new_id)
+}
+
+fn copy_group_tree(
+    store: &Store,
+    id: Uuid,
+    parent_id: Option<Uuid>,
+    label: Option<String>,
+) -> Result<Uuid> {
+    let src = store.require::<Group>(id)?;
+    let mut f = group_form(store, id)?;
+    f.id = None;
+    f.parent_id = parent_id;
+    if let Some(l) = label {
+        f.label = l;
+    }
+    if f.identity_id.is_none()
+        && let Some(cid) = src.data.ssh_config_id
+        && let Some(cfg) = store.get::<SshConfig>(cid)?
+        && let Some(iid) = cfg.data.identity_id
+        && let Some(i) = store.get::<Identity>(iid)?
+    {
+        f.password = i.data.password.clone();
+    }
+    let new_id = save_group_form(store, &f)?.id;
+    let hosts: Vec<Entity<Host>> = store.list(Some(src.vault_id))?;
+    for h in hosts.iter().filter(|h| h.data.group_id == Some(id)) {
+        copy_host(store, h.id, src.vault_id, Some(new_id), None)?;
+    }
+    let groups: Vec<Entity<Group>> = store.list(Some(src.vault_id))?;
+    for g in groups.iter().filter(|g| g.data.parent_id == Some(id)) {
+        copy_group_tree(store, g.id, Some(new_id), None)?;
+    }
+    Ok(new_id)
 }
 
 #[cfg(test)]
@@ -655,6 +1257,174 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn group_defaults_are_inherited_and_editable() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let g = save_group_form(
+            &s,
+            &GroupForm {
+                id: None,
+                vault_id: vault,
+                label: "dc1".into(),
+                parent_id: None,
+                port: Some(2200),
+                username: "ops".into(),
+                password: Some("pw".into()),
+                ssh_key_id: None,
+                identity_id: None,
+                has_password: false,
+                agent_forwarding: true,
+                host_chain_id: None,
+                proxy_id: None,
+                env_variables: vec![("LANG".into(), "C".into())],
+                keep_alive_interval: None,
+                timeout: None,
+            },
+        )
+        .unwrap();
+        assert!(g.has_config);
+
+        let inh = inherited(&s, Some(g.id)).unwrap();
+        assert_eq!(inh.group_path, vec!["dc1".to_string()]);
+        assert_eq!(inh.port, Some(2200));
+        assert_eq!(inh.username.as_deref(), Some("ops"));
+        assert!(inh.has_password && inh.agent_forwarding);
+
+        // A host with nothing set resolves to the group's values.
+        let mut f = new_form(vault);
+        f.group_id = Some(g.id);
+        f.port = None;
+        f.username = String::new();
+        f.password = None;
+        let card = save(&s, &f).unwrap();
+        assert_eq!(card.port, 2200);
+        assert_eq!(card.username, "ops");
+
+        // Editing the group keeps the stored password and can drop defaults.
+        let mut gf = group_form(&s, g.id).unwrap();
+        assert!(gf.has_password);
+        assert_eq!(gf.username, "ops");
+        gf.port = None;
+        gf.username = String::new();
+        gf.password = Some(String::new());
+        gf.agent_forwarding = false;
+        gf.env_variables.clear();
+        let g2 = save_group_form(&s, &gf).unwrap();
+        assert!(!g2.has_config);
+        let ids: Vec<Entity<Identity>> = s.list(Some(vault)).unwrap();
+        assert!(ids.iter().all(|i| i.data.username != "ops"));
+        assert_eq!(cards(&s, Some(vault)).unwrap()[0].port, 22);
+    }
+
+    #[test]
+    fn group_cannot_move_into_own_subtree() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let a = save_group(&s, vault, None, "a", None).unwrap();
+        let b = save_group(&s, vault, None, "b", Some(a.id)).unwrap();
+        assert!(save_group(&s, vault, Some(a.id), "a", Some(b.id)).is_err());
+        assert!(save_group(&s, vault, Some(a.id), "a", Some(a.id)).is_err());
+    }
+
+    #[test]
+    fn duplicate_copies_credentials_and_config() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let mut f = new_form(vault);
+        f.env_variables = vec![("TERM".into(), "xterm".into())];
+        let card = save(&s, &f).unwrap();
+        let copy = duplicate(&s, card.id).unwrap();
+        assert_ne!(copy.id, card.id);
+        assert_eq!(copy.label, "prod copy");
+        assert_eq!(copy.port, 2222);
+        assert_eq!(copy.username, "deploy");
+        let cf = form(&s, copy.id).unwrap();
+        assert!(cf.has_password);
+        assert_eq!(cf.env_variables.len(), 1);
+        // Two hosts, two inline identities, two ssh configs.
+        assert_eq!(cards(&s, Some(vault)).unwrap().len(), 2);
+        let ids: Vec<Entity<Identity>> = s.list(Some(vault)).unwrap();
+        assert_eq!(ids.len(), 2);
+        let cfgs: Vec<Entity<SshConfig>> = s.list(Some(vault)).unwrap();
+        assert_eq!(cfgs.len(), 2);
+    }
+
+    #[test]
+    fn move_hosts_between_groups() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let g = save_group(&s, vault, None, "g", None).unwrap();
+        let a = save(&s, &new_form(vault)).unwrap();
+        let b = save(
+            &s,
+            &HostForm {
+                label: "b".into(),
+                address: "10.0.0.2".into(),
+                ..new_form(vault)
+            },
+        )
+        .unwrap();
+        move_hosts(&s, &[a.id, b.id], Some(g.id)).unwrap();
+        let cards = cards(&s, Some(vault)).unwrap();
+        assert!(cards.iter().all(|c| c.group_id == Some(g.id)));
+        assert_eq!(groups(&s, Some(vault)).unwrap()[0].host_count, 2);
+        move_hosts(&s, &[a.id], None).unwrap();
+        assert_eq!(groups(&s, Some(vault)).unwrap()[0].host_count, 1);
+    }
+
+    #[test]
+    fn duplicate_group_deep_copies_tree() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let root = save_group(&s, vault, None, "root", None).unwrap();
+        let child = save_group(&s, vault, None, "child", Some(root.id)).unwrap();
+        let mut f = new_form(vault);
+        f.group_id = Some(child.id);
+        save(&s, &f).unwrap();
+        let mut f2 = new_form(vault);
+        f2.group_id = Some(root.id);
+        f2.address = "10.0.0.9".into();
+        save(&s, &f2).unwrap();
+
+        let copy = duplicate_group(&s, root.id).unwrap();
+        assert_eq!(copy.label, "root copy");
+        assert_eq!(copy.host_count, 1);
+        assert_eq!(copy.group_count, 1);
+        let all = groups(&s, Some(vault)).unwrap();
+        assert_eq!(all.len(), 4);
+        let copied_child = all
+            .iter()
+            .find(|g| g.parent_id == Some(copy.id))
+            .expect("copied child");
+        assert_eq!(copied_child.label, "child");
+        assert_eq!(copied_child.host_count, 1);
+        assert_eq!(cards(&s, Some(vault)).unwrap().len(), 4);
+
+        delete_group_recursive(&s, copy.id).unwrap();
+        assert_eq!(groups(&s, Some(vault)).unwrap().len(), 2);
+        assert_eq!(cards(&s, Some(vault)).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn last_connected_comes_from_history() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let card = save(&s, &new_form(vault)).unwrap();
+        assert!(card.last_connected.is_none());
+        s.record_connection(&termoso_core::store::ConnectionHistory {
+            host_id: Some(card.id),
+            label: "prod".into(),
+            target: "deploy@10.0.0.1:2222".into(),
+            protocol: "ssh".into(),
+            duration_secs: None,
+            error: None,
+        })
+        .unwrap();
+        let card = &cards(&s, Some(vault)).unwrap()[0];
+        assert!(card.last_connected.is_some());
     }
 
     #[test]

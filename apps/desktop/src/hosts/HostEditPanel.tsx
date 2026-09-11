@@ -6,7 +6,6 @@ import {
   IconButton,
   InputAdornment,
   MenuItem,
-  Switch,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -14,8 +13,6 @@ import {
 } from "@mui/material";
 import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
-import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
-import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import ExpandLessRoundedIcon from "@mui/icons-material/ExpandLessRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
@@ -25,25 +22,18 @@ import LabelOutlinedIcon from "@mui/icons-material/LabelOutlined";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
 import { distroIcon } from "./distroIcons";
-import {
-  Field,
-  Loading,
-  SectionCard,
-  SettingRow,
-  SidePanel,
-  ToolIconButton,
-} from "@/components/ui";
+import { CredentialsFields } from "./CredentialsFields";
+import { Field, Loading, SectionCard, SidePanel, ToolIconButton } from "@/components/ui";
 import {
   useCreateTag,
   useDeleteHost,
   useGroups,
   useHostChains,
   useHostForm,
-  useIdentities,
+  useInherited,
   useProxies,
   useSaveHost,
   useSnippets,
-  useSshKeys,
   useTags,
 } from "@/ipc/hooks";
 import { emptyHostForm, errorMessage, type HostForm, type Uuid } from "@/ipc/types";
@@ -104,8 +94,6 @@ function HostEditor({
   const snackbar = useSnackbar();
   const groups = useGroups(vaultId);
   const tags = useTags(vaultId);
-  const identities = useIdentities(vaultId);
-  const sshKeys = useSshKeys(vaultId);
   const snippets = useSnippets(vaultId);
   const proxies = useProxies(vaultId);
   const chains = useHostChains(vaultId);
@@ -113,7 +101,9 @@ function HostEditor({
   const del = useDeleteHost();
 
   const [form, setForm] = useState<HostForm>(initial);
-  const [showPassword, setShowPassword] = useState(false);
+  const inherited = useInherited(form.groupId);
+  const inh = inherited.data ?? null;
+  const inheritedFrom = inh && inh.groupPath.length > 0 ? inh.groupPath.join(" / ") : null;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [touched, setTouched] = useState(false);
   const [more, setMore] = useState(
@@ -153,11 +143,21 @@ function HostEditor({
     setTouched(true);
     setForm((f) => ({ ...f, [k]: v }));
   };
+  const patch = (p: Partial<HostForm>) => {
+    setTouched(true);
+    setForm((f) => ({ ...f, ...p }));
+  };
 
   const ssh = form.protocol === "ssh";
-  const usingIdentity = form.identityId !== null;
   const canSave = form.address.trim().length > 0 && !save.isPending;
   const defaultPort = ssh ? 22 : 23;
+  const portPlaceholder = String(ssh ? (inh?.port ?? defaultPort) : defaultPort);
+  const chainName = (id: Uuid | null) =>
+    (chains.data ?? []).find((c) => c.id === id)?.data.label ?? null;
+  const proxyName = (id: Uuid | null) => {
+    const p = (proxies.data ?? []).find((c) => c.id === id);
+    return p ? `${p.data.kind.toUpperCase()} ${p.data.host}:${p.data.port}` : null;
+  };
 
   const onSave = (thenConnect: boolean) => {
     save.mutate(form, {
@@ -281,7 +281,14 @@ function HostEditor({
               placeholder={form.address || "Defaults to the address"}
             />
           </Field>
-          <Field label="Group">
+          <Field
+            label="Group"
+            hint={
+              inheritedFrom && inh && (inh.username || inh.hasPassword || inh.sshKeyId || inh.port)
+                ? `Inherits credentials and connection defaults from ${inheritedFrom}.`
+                : undefined
+            }
+          >
             <TextField
               select
               value={form.groupId ?? ""}
@@ -316,7 +323,7 @@ function HostEditor({
                 type="number"
                 value={form.port ?? ""}
                 onChange={(e) => set("port", clampPort(e.target.value))}
-                placeholder={String(defaultPort)}
+                placeholder={portPlaceholder}
                 slotProps={{ htmlInput: { min: 1, max: 65535 } }}
               />
             </Field>
@@ -324,126 +331,14 @@ function HostEditor({
         </SectionCard>
 
         <SectionCard title="Credentials">
-          <Field label="Use">
-            <TextField
-              select
-              value={form.identityId ?? "inline"}
-              onChange={(e) => {
-                const v = e.target.value;
-                set("identityId", v === "inline" ? null : v);
-              }}
-            >
-              <MenuItem value="inline">Credentials set on this host</MenuItem>
-              {(identities.data ?? []).map((i) => (
-                <MenuItem key={i.id} value={i.id}>
-                  {i.label}
-                  <Typography
-                    component="span"
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ ml: 1 }}
-                  >
-                    {i.username}
-                  </Typography>
-                </MenuItem>
-              ))}
-            </TextField>
-          </Field>
-          {!usingIdentity && (
-            <>
-              <Field label="Username">
-                <TextField
-                  value={form.username}
-                  onChange={(e) => set("username", e.target.value)}
-                  autoComplete="off"
-                  placeholder="root"
-                />
-              </Field>
-              <Field
-                label="Password"
-                hint={
-                  form.hasPassword && form.password === null
-                    ? "A password is stored. Type to replace it or clear it to remove."
-                    : undefined
-                }
-              >
-                <TextField
-                  type={showPassword ? "text" : "password"}
-                  value={form.password ?? ""}
-                  onChange={(e) => set("password", e.target.value)}
-                  autoComplete="new-password"
-                  placeholder={form.hasPassword && form.password === null ? "••••••••" : ""}
-                  slotProps={{
-                    input: {
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          {form.hasPassword && form.password === null && (
-                            <Button
-                              size="small"
-                              color="inherit"
-                              onClick={() => set("password", "")}
-                            >
-                              Clear
-                            </Button>
-                          )}
-                          <IconButton
-                            size="small"
-                            onClick={() => setShowPassword((v) => !v)}
-                            aria-label="Toggle password visibility"
-                          >
-                            {showPassword ? (
-                              <VisibilityOffRoundedIcon fontSize="small" />
-                            ) : (
-                              <VisibilityRoundedIcon fontSize="small" />
-                            )}
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    },
-                  }}
-                />
-              </Field>
-              {ssh && (
-                <Field label="SSH key">
-                  <TextField
-                    select
-                    value={form.sshKeyId ?? ""}
-                    onChange={(e) => set("sshKeyId", e.target.value === "" ? null : e.target.value)}
-                  >
-                    <MenuItem value="">
-                      <em>None — password or agent</em>
-                    </MenuItem>
-                    {(sshKeys.data ?? []).map((k) => (
-                      <MenuItem key={k.id} value={k.id}>
-                        {k.label}
-                        <Typography
-                          component="span"
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ ml: 1 }}
-                        >
-                          {k.keyType}
-                        </Typography>
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Field>
-              )}
-            </>
-          )}
-          {ssh && (
-            <SettingRow
-              label="Agent forwarding"
-              hint="Expose the local SSH agent on the remote side."
-              last
-              control={
-                <Switch
-                  checked={form.agentForwarding}
-                  onChange={(e) => set("agentForwarding", e.target.checked)}
-                />
-              }
-            />
-          )}
+          <CredentialsFields
+            vaultId={vaultId}
+            ssh={ssh}
+            inherited={ssh ? inh : null}
+            inlineLabel="Credentials set on this host"
+            value={form}
+            onChange={patch}
+          />
         </SectionCard>
 
         <SectionCard title="Tags">
@@ -517,7 +412,11 @@ function HostEditor({
                   }}
                 >
                   <MenuItem value="">
-                    <em>Direct connection</em>
+                    <em>
+                      {inh?.hostChainId && chainName(inh.hostChainId)
+                        ? `Inherited — ${chainName(inh.hostChainId)}`
+                        : "Direct connection"}
+                    </em>
                   </MenuItem>
                   {(chains.data ?? []).map((c) => (
                     <MenuItem key={c.id} value={c.id}>
@@ -549,7 +448,11 @@ function HostEditor({
                   }}
                 >
                   <MenuItem value="">
-                    <em>None</em>
+                    <em>
+                      {inh?.proxyId && proxyName(inh.proxyId)
+                        ? `Inherited — ${proxyName(inh.proxyId)}`
+                        : "None"}
+                    </em>
                   </MenuItem>
                   {(proxies.data ?? []).map((p) => (
                     <MenuItem key={p.id} value={p.id}>
@@ -594,7 +497,7 @@ function HostEditor({
                     type="number"
                     value={form.keepAliveInterval ?? ""}
                     onChange={(e) => set("keepAliveInterval", clampSeconds(e.target.value))}
-                    placeholder="default"
+                    placeholder={inh?.keepAliveInterval?.toString() ?? "default"}
                     slotProps={{ htmlInput: { min: 0, max: 86400 } }}
                   />
                 </Field>
@@ -603,7 +506,7 @@ function HostEditor({
                     type="number"
                     value={form.timeout ?? ""}
                     onChange={(e) => set("timeout", clampSeconds(e.target.value))}
-                    placeholder="default"
+                    placeholder={inh?.timeout?.toString() ?? "default"}
                     slotProps={{ htmlInput: { min: 0, max: 86400 } }}
                   />
                 </Field>
@@ -623,6 +526,11 @@ function HostEditor({
                 </Button>
               }
             >
+              {inh && inh.envVariables.length > 0 && inheritedFrom && (
+                <Typography variant="caption" color="text.secondary">
+                  From {inheritedFrom}: {inh.envVariables.map(([k, v]) => `${k}=${v}`).join(", ")}
+                </Typography>
+              )}
               {form.envVariables.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">
                   Sent to the server with the session. The server must accept them (

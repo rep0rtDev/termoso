@@ -119,6 +119,7 @@ export interface HostCard {
   notes: string;
   sortOrder: number;
   updatedAt: string;
+  lastConnected: string | null;
   dirty: boolean;
 }
 
@@ -197,6 +198,67 @@ export interface GroupNode {
   parentId: Uuid | null;
   sortOrder: number;
   hostCount: number;
+  groupCount: number;
+  hasConfig: boolean;
+}
+
+/** Group editor model: name, parent and the SSH defaults its hosts inherit. */
+export interface GroupForm {
+  id: Uuid | null;
+  vaultId: Uuid;
+  label: string;
+  parentId: Uuid | null;
+  port: number | null;
+  username: string;
+  password: string | null;
+  sshKeyId: Uuid | null;
+  identityId: Uuid | null;
+  hasPassword: boolean;
+  agentForwarding: boolean;
+  hostChainId: Uuid | null;
+  proxyId: Uuid | null;
+  envVariables: [string, string][];
+  keepAliveInterval: number | null;
+  timeout: number | null;
+}
+
+export function emptyGroupForm(vaultId: Uuid, parentId: Uuid | null): GroupForm {
+  return {
+    id: null,
+    vaultId,
+    label: "",
+    parentId,
+    port: null,
+    username: "",
+    password: null,
+    sshKeyId: null,
+    identityId: null,
+    hasPassword: false,
+    agentForwarding: false,
+    hostChainId: null,
+    proxyId: null,
+    envVariables: [],
+    keepAliveInterval: null,
+    timeout: null,
+  };
+}
+
+/** What a host inherits from its group chain (placeholders in the editor). */
+export interface Inherited {
+  groupPath: string[];
+  port: number | null;
+  username: string | null;
+  hasPassword: boolean;
+  sshKeyId: Uuid | null;
+  sshKeyLabel: string | null;
+  identityId: Uuid | null;
+  identityLabel: string | null;
+  agentForwarding: boolean;
+  hostChainId: Uuid | null;
+  proxyId: Uuid | null;
+  keepAliveInterval: number | null;
+  timeout: number | null;
+  envVariables: [string, string][];
 }
 
 export interface TagInfo {
