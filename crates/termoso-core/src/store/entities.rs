@@ -260,6 +260,14 @@ impl Store {
         Ok(out)
     }
 
+    /// Fetch one entity of any kind as a JSON payload.
+    pub fn get_any(&self, id: Uuid) -> Result<Option<AnyEntity>> {
+        match self.row(id)? {
+            Some(row) if !row.deleted => Ok(Some(self.decrypt_row::<serde_json::Value>(&row)?)),
+            _ => Ok(None),
+        }
+    }
+
     /// List entities of any kind as JSON payloads.
     pub fn list_any(&self, filter: &EntityFilter) -> Result<Vec<AnyEntity>> {
         let rows = self.rows(filter)?;

@@ -9,9 +9,10 @@ telemetry, no analytics, no crash reporting and no "phone home". The only metric
 that exist are opt-in Prometheus counters served on a private listener for the
 operator running the server.
 
-> Status: **phase 2 — web cabinet**. The server API is functional and covered by
+> Status: **phase 3 — desktop**. The server API is functional and covered by
 > integration tests; the web cabinet (account, teams, vaults, admin) is served by
-> the same server. Desktop and mobile clients come next.
+> the same server; the client core (encrypted local store, SSH/SFTP/PTY, sync)
+> is done and the Tauri desktop app is being built on top of it. Mobile comes next.
 
 ## Repository layout
 
@@ -22,6 +23,11 @@ crates/
   termoso-proto    API request/response types shared by server and clients
   termoso-server   the API server (axum + PostgreSQL + Redis + S3)
   termoso-wasm     termoso-crypto compiled to WebAssembly for the web cabinet
+  termoso-core     client engine: encrypted local store, SSH/SFTP/Telnet/PTY, port
+                   forwarding, SSH agent, account + sync client
+apps/
+  desktop/         Tauri 2 desktop app (Linux, Windows); Rust owns state, storage and
+                   sessions, React + MUI is the rendering layer only
 web/               web cabinet (Vite + React + MUI); all crypto runs in the WASM module
 deploy/            Dockerfile, docker-compose for production and for local development
 ```
@@ -125,6 +131,24 @@ npm run dev       # http://localhost:5173, proxies /api to the server on :8080
 are what CI runs; `npm run build` writes `web/dist`, which the server serves when
 `TERMOSO_WEB_DIR=web/dist` is set. The cabinet talks to `/api/v1` on its own
 origin only — there are no third-party scripts, fonts or analytics.
+
+#### Desktop app
+
+Requires Node 22.12+ and the [Tauri 2 Linux prerequisites](https://tauri.app/start/prerequisites/)
+(`libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`).
+
+```bash
+cd apps/desktop
+npm ci
+npm run tauri dev          # Vite on :5174 + the Rust app with hot reload
+npm run tauri build        # .deb / .rpm / .AppImage (Linux), NSIS / MSI (Windows)
+```
+
+The profile (encrypted SQLite store, settings) lives in the OS data directory
+(`~/.local/share/termoso/default` on Linux); `TERMOSO_PROFILE_DIR` overrides it.
+The store key sits in the OS keychain (Secret Service / Credential Manager) with
+an owner-only file fallback when no keychain is available. `TERMOSO_LOG` sets the
+log filter (stderr only).
 
 ### Tests
 
