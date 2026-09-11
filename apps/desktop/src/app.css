@@ -19,6 +19,27 @@ textarea,
   -webkit-user-select: text;
 }
 
+.termoso-xterm {
+  width: 100%;
+  height: 100%;
+  padding: 6px 0 0 8px;
+  box-sizing: border-box;
+}
+.termoso-xterm .xterm {
+  height: 100%;
+}
+.termoso-xterm .xterm,
+.termoso-xterm .xterm * {
+  user-select: text;
+  -webkit-user-select: text;
+}
+.termoso-xterm .xterm .xterm-viewport {
+  overflow-y: auto;
+}
+.termoso-xterm .xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(142, 147, 168, 0.35);
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

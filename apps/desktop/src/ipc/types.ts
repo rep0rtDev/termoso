@@ -241,3 +241,68 @@ export type PromptAnswer =
   | { kind: "secret"; value: string; remember: boolean }
   | { kind: "interactive"; answers: string[] }
   | { kind: "cancel" };
+
+// ───────────────────────────── SFTP ─────────────────────────────
+
+export type EntryKind = "dir" | "file" | "symlink" | "other";
+
+/** A file on either side (Rust fills the same shape for local and remote). */
+export interface FsEntry {
+  name: string;
+  path: string;
+  kind: EntryKind;
+  size: number | null;
+  mode: number | null;
+  uid: number | null;
+  gid: number | null;
+  user: string | null;
+  group: string | null;
+  mtime: number | null;
+  atime: number | null;
+  link_target: string | null;
+}
+
+export interface Listing {
+  path: string;
+  parent: string | null;
+  entries: FsEntry[];
+}
+
+export type SftpTarget = { kind: "host"; host_id: Uuid } | { kind: "session"; session_id: Uuid };
+
+export interface SftpInfo {
+  id: Uuid;
+  title: string;
+  target: string;
+  hostId: Uuid | null;
+  home: string;
+  startedAt: string;
+}
+
+export type SftpEvent = { type: "opened"; id: Uuid; info: SftpInfo } | { type: "closed"; id: Uuid };
+
+export type Direction = "upload" | "download";
+
+export interface TransferInfo {
+  id: Uuid;
+  sftpId: Uuid;
+  direction: Direction;
+  local: string;
+  remote: string;
+  startedAt: string;
+}
+
+export type TransferEvent =
+  | { type: "started"; id: Uuid; info: TransferInfo }
+  | {
+      type: "progress";
+      id: Uuid;
+      done: number;
+      total: number | null;
+      files_done: number;
+      files_total: number;
+      current: string;
+    }
+  | { type: "finished"; id: Uuid; bytes: number }
+  | { type: "failed"; id: Uuid; message: string }
+  | { type: "cancelled"; id: Uuid };
