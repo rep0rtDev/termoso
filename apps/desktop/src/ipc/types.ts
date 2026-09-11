@@ -44,6 +44,10 @@ export interface Settings {
   hostsView: HostsView;
   terminalFontSize: number;
   terminalFontFamily: string;
+  /** Line height multiplier (1.0 = natural). */
+  terminalLineHeight: number;
+  /** Colour scheme id; `auto` follows `theme` with Termoso Dark / Light. */
+  terminalTheme: string;
   cursorBlink: boolean;
   cursorStyle: CursorStyle;
   scrollback: number;
@@ -54,6 +58,10 @@ export interface Settings {
   autocomplete: boolean;
   terminalBell: boolean;
   keepAliveSeconds: number;
+  /** Probe the OS after the first successful connection to pick the host icon. */
+  detectOs: boolean;
+  /** Offer hybrid ML-KEM-768 + X25519 key exchange. */
+  postQuantumKex: boolean;
   recordSessions: boolean;
   logRetentionDays: number;
   autostartForwarding: boolean;
@@ -540,6 +548,20 @@ export interface SessionInfo {
   hostId: Uuid | null;
   startedAt: string;
   state: SessionState;
+  /** Negotiated SSH algorithms (null for telnet/local or before key exchange). */
+  algorithms: SshAlgorithms | null;
+}
+
+export interface SshAlgorithms {
+  kex: string;
+  hostKey: string;
+  cipher: string;
+  mac: string;
+}
+
+/** Hybrid / post-quantum key exchanges announce themselves in the name. */
+export function isPostQuantumKex(a: SshAlgorithms | null): boolean {
+  return !!a && (a.kex.includes("mlkem") || a.kex.includes("sntrup"));
 }
 
 export type SessionEvent =

@@ -18,6 +18,7 @@
 //!   PTY, Telnet) that the UI drives with bytes and resize events.
 //! * [`keys`] – SSH key generation, import, export and fingerprints.
 //! * [`agent`] – in-process SSH agent serving the keys in the vault.
+//! * [`osdetect`] – figure out what OS a host runs (for its icon).
 //!
 //! Nothing in this crate phones home: the only network peers are the servers
 //! the user connects to and the Termoso server they configured.
@@ -33,6 +34,7 @@ pub mod forward;
 pub mod hostkey;
 pub mod keys;
 pub mod model;
+pub mod osdetect;
 pub mod secrets;
 pub mod sftp;
 pub mod ssh;

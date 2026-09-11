@@ -11,11 +11,18 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import * as ipc from "@/ipc/commands";
-import type { OpenTarget, SessionEvent, SessionInfo, Settings, Uuid } from "@/ipc/types";
+import type {
+  OpenTarget,
+  SessionEvent,
+  SessionInfo,
+  Settings,
+  SshAlgorithms,
+  Uuid,
+} from "@/ipc/types";
 import { errorMessage } from "@/ipc/types";
-import { monoFontFamily } from "@/theme/theme";
 import { createStore, omit, useStore } from "@/lib/store";
-import { terminalThemes } from "./xtermTheme";
+import { terminalFontStack } from "./fonts";
+import { resolveTerminalTheme, toXtermTheme } from "./themes";
 
 export type PaneStatus = "connecting" | "connected" | "exited" | "error" | "closed";
 export type SplitDirection = "row" | "column";
@@ -27,6 +34,7 @@ export interface Pane {
   subtitle: string;
   protocol: SessionInfo["protocol"] | null;
   hostId: Uuid | null;
+  algorithms: SshAlgorithms | null;
   status: PaneStatus;
   message: string | null;
 }
@@ -99,26 +107,30 @@ function tabOf(s: TerminalState, paneId: Uuid) {
 
 // ───────────────────────────── settings / theme ─────────────────────────────
 
-function fontFamily(settings: Settings | null) {
-  const f = settings?.terminalFontFamily.trim();
-  return f ? `'${f}', ${monoFontFamily}` : monoFontFamily;
-}
+const fontFamily = (settings: Settings | null) => terminalFontStack(settings?.terminalFontFamily);
+
+const xtermTheme = () =>
+  toXtermTheme(resolveTerminalTheme(currentSettings?.terminalTheme, currentScheme));
 
 export function applyTerminalSettings(settings: Settings) {
   currentSettings = settings;
+  const theme = xtermTheme();
   for (const rt of runtimes.values()) {
     rt.term.options.fontSize = settings.terminalFontSize;
     rt.term.options.fontFamily = fontFamily(settings);
+    rt.term.options.lineHeight = settings.terminalLineHeight;
     rt.term.options.cursorBlink = settings.cursorBlink;
     rt.term.options.cursorStyle = settings.cursorStyle;
     rt.term.options.scrollback = settings.scrollback;
+    rt.term.options.theme = theme;
     if (rt.opened) rt.fit.fit();
   }
 }
 
 export function applyTerminalScheme(scheme: "dark" | "light") {
   currentScheme = scheme;
-  for (const rt of runtimes.values()) rt.term.options.theme = terminalThemes[scheme];
+  const theme = xtermTheme();
+  for (const rt of runtimes.values()) rt.term.options.theme = theme;
 }
 
 // ───────────────────────────── clipboard ─────────────────────────────
@@ -187,10 +199,10 @@ function createRuntime(paneId: Uuid): Runtime {
     fontFamily: fontFamily(currentSettings),
     fontWeight: "400",
     fontWeightBold: "600",
-    lineHeight: 1.15,
+    lineHeight: currentSettings?.terminalLineHeight ?? 1,
     letterSpacing: 0,
     scrollback: currentSettings?.scrollback ?? 10_000,
-    theme: terminalThemes[currentScheme],
+    theme: xtermTheme(),
     macOptionIsMeta: true,
     minimumContrastRatio: 1,
     scrollOnUserInput: true,
@@ -382,6 +394,7 @@ function startSession(paneId: Uuid, target: OpenTarget) {
         subtitle: info.target,
         protocol: info.protocol,
         hostId: info.hostId,
+        algorithms: info.algorithms,
         status: "connected",
         message: null,
       });
@@ -390,7 +403,7 @@ function startSession(paneId: Uuid, target: OpenTarget) {
     })
     .catch((e: unknown) => {
       const pane = terminalStore.get().panes[paneId];
-      if (!pane || pane.status === "closed") return;
+      if (!pane || pane.status === "closed" || pane.status === "error") return;
       const message = errorMessage(e);
       if (message.startsWith("cancelled") || /cancel/i.test(message)) {
         patchPane(paneId, { status: "closed", message: "Cancelled" });
@@ -418,6 +431,7 @@ export function openTerminal(target: OpenTarget, opts: OpenOptions = {}): Uuid {
     subtitle,
     protocol: null,
     hostId: target.kind === "host" ? target.host_id : null,
+    algorithms: null,
     status: "connecting",
     message: null,
   };
@@ -637,7 +651,7 @@ function onSessionEvent(ev: SessionEvent) {
       break;
     }
     case "error":
-      if (pane.status !== "closed") {
+      if (pane.status !== "closed" && pane.status !== "error") {
         patchPane(ev.id, { status: "error", message: ev.message });
         writeSystemLine(ev.id, ev.message, "31");
       }
