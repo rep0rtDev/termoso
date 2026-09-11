@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 use chrono::{DateTime, Utc};
 use termoso_proto::auth::*;
 use uuid::Uuid;

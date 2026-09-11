@@ -1,7 +1,7 @@
 //! Operator API. Admins see accounts and metadata, never vault contents.
 
-use axum::extract::{Path, Query, State};
 use axum::Json;
+use axum::extract::{Path, Query, State};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use sqlx::AssertSqlSafe;
@@ -215,11 +215,11 @@ pub async fn delete_user(
             .bind(id)
             .fetch_all(&state.db)
             .await?;
+    session::revoke_all(&state, id, None).await?;
     sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(id)
         .execute(&state.db)
         .await?;
-    session::invalidate_user_cache(&state, id).await?;
     if let Some(storage) = &state.storage {
         for (k,) in log_keys {
             if let Err(e) = storage.delete(&k).await {
