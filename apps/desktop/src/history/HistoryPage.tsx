@@ -1,18 +1,14 @@
-import {
-  Box,
-  Chip,
-  CircularProgress,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Typography,
-} from "@mui/material";
+import { useState } from "react";
+import { Chip, Stack, Tooltip, Typography } from "@mui/material";
 import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
+import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
+import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import { EmptyState } from "@/components/EmptyState";
+import { Page, PageBody, PageHeader } from "@/components/PageHeader";
+import { EntityCard, IconTile, Loading, Mono, SearchField } from "@/components/ui";
 import { useHistory } from "@/ipc/hooks";
 import { errorMessage } from "@/ipc/types";
+import { sizes } from "@/theme/theme";
 
 function duration(secs: number | null): string {
   if (secs === null) return "open";
@@ -24,19 +20,25 @@ function duration(secs: number | null): string {
 
 export function HistoryPage() {
   const history = useHistory();
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const items = (history.data ?? []).filter(
+    (i) => !q || i.data.label.toLowerCase().includes(q) || i.data.target.toLowerCase().includes(q),
+  );
+
   return (
-    <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <Box sx={{ px: 2.5, py: 1.75, borderBottom: 1, borderColor: "divider" }}>
-        <Typography variant="h5">History</Typography>
-        <Typography variant="body2" color="text.secondary">
-          Recent connections from this device. Stored encrypted, never uploaded.
-        </Typography>
-      </Box>
-      <Box sx={{ flex: 1, overflowY: "auto", px: 2.5, pb: 3 }}>
+    <Page>
+      <PageHeader
+        actions={
+          <Typography variant="body2" color="text.secondary">
+            Recent connections from this device · stored encrypted, never uploaded
+          </Typography>
+        }
+        trailing={<SearchField value={query} onChange={setQuery} placeholder="Search history" />}
+      />
+      <PageBody>
         {history.isPending ? (
-          <Box sx={{ display: "flex", justifyContent: "center", pt: 8 }}>
-            <CircularProgress size={28} />
-          </Box>
+          <Loading />
         ) : history.error ? (
           <EmptyState title="Could not load history" description={errorMessage(history.error)} />
         ) : history.data.length === 0 ? (
@@ -46,60 +48,50 @@ export function HistoryPage() {
             description="Once you open a terminal, it shows up here."
           />
         ) : (
-          <Table size="small" sx={{ mt: 1 }}>
-            <TableHead>
-              <TableRow sx={{ "& th": { color: "text.secondary", fontWeight: 600 } }}>
-                <TableCell>When</TableCell>
-                <TableCell>Label</TableCell>
-                <TableCell>Target</TableCell>
-                <TableCell>Protocol</TableCell>
-                <TableCell align="right">Duration</TableCell>
-                <TableCell>Result</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {history.data.map((item) => (
-                <TableRow key={item.id} hover>
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary" noWrap>
-                      {new Date(item.created_at).toLocaleString()}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-                      {item.data.label}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" sx={{ fontFamily: "monospace" }} noWrap>
-                      {item.data.target}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
+          <Stack spacing={0.75}>
+            {items.map((item) => (
+              <EntityCard
+                key={item.id}
+                dense
+                tile={
+                  <IconTile size={sizes.tileSmall} tone={item.data.error ? "danger" : "neutral"}>
+                    {item.data.error ? <ErrorOutlineRoundedIcon /> : <TerminalRoundedIcon />}
+                  </IconTile>
+                }
+                title={item.data.label}
+                subtitle={
+                  <>
+                    <Mono>{item.data.target}</Mono>
+                    {" · "}
+                    {new Date(item.created_at).toLocaleString()}
+                    {" · "}
+                    {duration(item.data.duration_secs)}
+                  </>
+                }
+                trailing={
+                  <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                    {item.data.error && (
+                      <Tooltip title={item.data.error}>
+                        <Chip size="small" color="error" label="Failed" />
+                      </Tooltip>
+                    )}
                     <Chip
                       size="small"
                       variant="outlined"
                       label={item.data.protocol.toUpperCase()}
                     />
-                  </TableCell>
-                  <TableCell align="right">{duration(item.data.duration_secs)}</TableCell>
-                  <TableCell>
-                    {item.data.error ? (
-                      <Typography variant="body2" color="error" noWrap title={item.data.error}>
-                        {item.data.error}
-                      </Typography>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        ok
-                      </Typography>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  </Stack>
+                }
+              />
+            ))}
+            {items.length === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 2 }}>
+                Nothing matches “{query}”.
+              </Typography>
+            )}
+          </Stack>
         )}
-      </Box>
-    </Box>
+      </PageBody>
+    </Page>
   );
 }

@@ -4,7 +4,6 @@ import {
   Button,
   Checkbox,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -18,7 +17,6 @@ import {
   MenuItem,
   Stack,
   TextField,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import CodeRoundedIcon from "@mui/icons-material/CodeRounded";
@@ -32,6 +30,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { Page, PageBody, PageHeader } from "@/components/PageHeader";
+import { EntityCard, Field, IconTile, Loading, SplitButton, ToolIconButton } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
 import { useDefaultVault, usePackages, useSnippets } from "@/ipc/hooks";
@@ -43,6 +42,7 @@ import {
   type Uuid,
 } from "@/ipc/types";
 import { NameDialog } from "@/sftp/dialogs";
+import { monoFontFamily } from "@/theme/theme";
 import { closePane, terminalStore, type Pane } from "@/terminal/store";
 
 const VAR_HINT = "Use {{name}} placeholders; you will be asked for values on run.";
@@ -81,40 +81,37 @@ function SnippetDialog({
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           <Stack direction="row" spacing={2}>
-            <TextField
-              autoFocus
-              label="Label"
-              value={f.label}
-              onChange={(e) => set("label", e.target.value)}
-              sx={{ flex: 1 }}
-            />
-            <TextField
-              select
-              label="Package"
-              value={f.packageId ?? ""}
-              onChange={(e) => set("packageId", e.target.value === "" ? null : e.target.value)}
-              sx={{ width: 200 }}
-            >
-              <MenuItem value="">
-                <em>None</em>
-              </MenuItem>
-              {packages.map((p) => (
-                <MenuItem key={p.id} value={p.id}>
-                  {p.label}
+            <Field label="Label" sx={{ flex: 1 }}>
+              <TextField autoFocus value={f.label} onChange={(e) => set("label", e.target.value)} />
+            </Field>
+            <Field label="Package" sx={{ width: 200 }}>
+              <TextField
+                select
+                value={f.packageId ?? ""}
+                onChange={(e) => set("packageId", e.target.value === "" ? null : e.target.value)}
+              >
+                <MenuItem value="">
+                  <em>None</em>
                 </MenuItem>
-              ))}
-            </TextField>
+                {packages.map((p) => (
+                  <MenuItem key={p.id} value={p.id}>
+                    {p.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Field>
           </Stack>
-          <TextField
-            label="Script"
-            value={f.script}
-            onChange={(e) => set("script", e.target.value)}
-            multiline
-            minRows={6}
-            maxRows={16}
-            helperText={VAR_HINT}
-            slotProps={{ htmlInput: { spellCheck: false, style: { fontFamily: "monospace" } } }}
-          />
+          <Field label="Script">
+            <TextField
+              value={f.script}
+              onChange={(e) => set("script", e.target.value)}
+              multiline
+              minRows={6}
+              maxRows={16}
+              helperText={VAR_HINT}
+              slotProps={{ htmlInput: { spellCheck: false, style: { fontFamily: "monospace" } } }}
+            />
+          </Field>
           <FormControlLabel
             control={
               <Checkbox
@@ -184,13 +181,14 @@ function RunDialog({
                 Variables
               </Typography>
               {snippet.variables.map((v) => (
-                <TextField
-                  key={v}
-                  label={v}
-                  size="small"
-                  value={vars[v] ?? ""}
-                  onChange={(e) => setVars({ ...vars, [v]: e.target.value })}
-                />
+                <Field label={v}>
+                  <TextField
+                    key={v}
+                    size="small"
+                    value={vars[v] ?? ""}
+                    onChange={(e) => setVars({ ...vars, [v]: e.target.value })}
+                  />
+                </Field>
               ))}
             </Stack>
           )}
@@ -278,73 +276,85 @@ export function SnippetsPage() {
   const loadError = vault.error ?? snippets.error ?? packages.error;
   const currentPkg = pkgFilter.kind === "pkg" ? pkgFilter.id : null;
 
+  const pkgList = packages.data ?? [];
+
   return (
     <Page>
       <PageHeader
-        title="Snippets"
-        description="Reusable commands with {{variables}}, runnable in one or many terminals at once."
         actions={
-          <>
-            <Button
-              startIcon={<CreateNewFolderRoundedIcon />}
-              disabled={!vaultId}
-              onClick={() => setDialog({ kind: "package", pkg: null })}
-            >
-              New package
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<AddRoundedIcon />}
-              disabled={!vaultId}
-              onClick={() => setDialog({ kind: "edit", snippet: null })}
-            >
-              New snippet
-            </Button>
-          </>
+          <SplitButton
+            label="New snippet"
+            icon={<AddRoundedIcon />}
+            disabled={!vaultId}
+            onClick={() => setDialog({ kind: "edit", snippet: null })}
+            items={[
+              {
+                label: "New snippet",
+                icon: <AddRoundedIcon fontSize="small" />,
+                onClick: () => setDialog({ kind: "edit", snippet: null }),
+              },
+              {
+                label: "New package",
+                icon: <CreateNewFolderRoundedIcon fontSize="small" />,
+                onClick: () => setDialog({ kind: "package", pkg: null }),
+              },
+            ]}
+          />
+        }
+        trailing={
+          <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+            {pkgFilter.kind === "all"
+              ? `${snippets.data?.length ?? 0} ${snippets.data?.length === 1 ? "snippet" : "snippets"}`
+              : `${visible.length} of ${snippets.data?.length ?? 0}`}
+          </Typography>
         }
       />
       <Box sx={{ flex: 1, minHeight: 0, display: "flex" }}>
         <Box
           sx={{
-            width: 220,
+            width: 200,
             flexShrink: 0,
             borderRight: 1,
-            borderColor: "divider",
+            borderColor: "border.light",
             overflowY: "auto",
             py: 1,
+            px: 1,
           }}
         >
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ px: 1, display: "block", mb: 0.5 }}
+          >
+            Packages
+          </Typography>
           <List dense disablePadding>
-            <ListItemButton
-              selected={pkgFilter.kind === "all"}
-              onClick={() => setPkgFilter(ALL)}
-              sx={{ mx: 1, borderRadius: 1.5 }}
-            >
+            <ListItemButton selected={pkgFilter.kind === "all"} onClick={() => setPkgFilter(ALL)}>
               <ListItemText primary="All snippets" />
               <Typography variant="caption" color="text.secondary">
                 {snippets.data?.length ?? 0}
               </Typography>
             </ListItemButton>
-            <ListItemButton
-              selected={pkgFilter.kind === "none"}
-              onClick={() => setPkgFilter(NONE)}
-              sx={{ mx: 1, borderRadius: 1.5 }}
-            >
+            <ListItemButton selected={pkgFilter.kind === "none"} onClick={() => setPkgFilter(NONE)}>
               <ListItemText primary="Unpackaged" />
+              <Typography variant="caption" color="text.secondary">
+                {(snippets.data ?? []).filter((x) => x.packageId === null).length}
+              </Typography>
             </ListItemButton>
-            {(packages.data ?? []).length > 0 && <Divider sx={{ my: 1 }} />}
-            {(packages.data ?? []).map((p) => (
+            {pkgList.length > 0 && <Divider sx={{ my: 1 }} />}
+            {pkgList.map((p) => (
               <ListItemButton
                 key={p.id}
                 selected={pkgFilter.kind === "pkg" && pkgFilter.id === p.id}
                 onClick={() => setPkgFilter({ kind: "pkg", id: p.id })}
-                sx={{ mx: 1, borderRadius: 1.5, pr: 0.5, "&:hover .pkg-actions": { opacity: 1 } }}
+                sx={{ pr: 0.5, "&:hover .pkg-actions": { opacity: 1 } }}
               >
                 <FolderRoundedIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} />
                 <ListItemText primary={p.label} slotProps={{ primary: { noWrap: true } }} />
                 <Box className="pkg-actions" sx={{ display: "flex", opacity: 0 }}>
                   <IconButton
                     size="small"
+                    aria-label="Rename package"
                     onClick={(e) => {
                       e.stopPropagation();
                       setDialog({ kind: "package", pkg: p });
@@ -354,6 +364,7 @@ export function SnippetsPage() {
                   </IconButton>
                   <IconButton
                     size="small"
+                    aria-label="Delete package"
                     onClick={(e) => {
                       e.stopPropagation();
                       setDialog({ kind: "deletePackage", pkg: p });
@@ -368,16 +379,14 @@ export function SnippetsPage() {
         </Box>
         <PageBody>
           {loading ? (
-            <Box sx={{ display: "flex", justifyContent: "center", pt: 8 }}>
-              <CircularProgress size={28} />
-            </Box>
+            <Loading />
           ) : loadError ? (
             <EmptyState title="Could not load snippets" description={errorMessage(loadError)} />
           ) : visible.length === 0 ? (
             <EmptyState
               icon={<CodeRoundedIcon />}
               title={pkgFilter.kind === "all" ? "No snippets yet" : "Nothing here"}
-              description="Save the commands you type over and over and run them in any connected terminal."
+              description="Save the commands you type over and over and run them in any connected terminal. Use {{name}} placeholders to be asked for values on run."
               action={
                 <Button
                   variant="contained"
@@ -388,79 +397,80 @@ export function SnippetsPage() {
               }
             />
           ) : (
-            <Stack spacing={1} sx={{ mt: 2 }}>
+            <Stack spacing={1}>
               {visible.map((s) => (
-                <Box
+                <EntityCard
                   key={s.id}
-                  sx={{
-                    border: 1,
-                    borderColor: "divider",
-                    borderRadius: 2,
-                    p: 1.5,
-                    display: "flex",
-                    gap: 1.5,
-                    alignItems: "flex-start",
-                    "&:hover": { borderColor: "text.disabled" },
-                  }}
-                >
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-                        {s.label}
-                      </Typography>
-                      {s.variables.map((v) => (
-                        <Chip
-                          key={v}
-                          label={`{{${v}}}`}
-                          size="small"
-                          variant="outlined"
-                          sx={{ height: 18, fontSize: 10, fontFamily: "monospace" }}
-                        />
-                      ))}
+                  onDoubleClick={() => setDialog({ kind: "edit", snippet: s })}
+                  sx={{ alignItems: "flex-start" }}
+                  tile={
+                    <IconTile tone="purple">
+                      <CodeRoundedIcon />
+                    </IconTile>
+                  }
+                  title={
+                    <>
+                      {s.label}
                       {s.closeAfterRun && (
-                        <Chip
-                          label="closes tab"
-                          size="small"
-                          variant="outlined"
-                          sx={{ height: 18, fontSize: 10 }}
-                        />
+                        <Chip label="closes tab" size="small" variant="outlined" sx={{ ml: 1 }} />
                       )}
-                    </Box>
-                    <Typography
+                    </>
+                  }
+                  subtitle={
+                    <Box
                       component="pre"
-                      variant="body2"
                       sx={{
                         m: 0,
-                        fontFamily: "monospace",
+                        fontFamily: monoFontFamily,
                         fontSize: 12,
-                        color: "text.secondary",
+                        lineHeight: 1.5,
                         whiteSpace: "pre-wrap",
-                        maxHeight: 96,
+                        wordBreak: "break-word",
+                        maxHeight: 72,
                         overflow: "hidden",
                       }}
                     >
                       {s.script}
-                    </Typography>
-                  </Box>
-                  <Tooltip title="Run in terminal">
-                    <IconButton
-                      size="small"
-                      color="primary"
+                    </Box>
+                  }
+                  meta={
+                    s.variables.length > 0
+                      ? s.variables.map((v) => (
+                          <Chip
+                            key={v}
+                            label={`{{${v}}}`}
+                            size="small"
+                            sx={{ fontFamily: monoFontFamily }}
+                          />
+                        ))
+                      : undefined
+                  }
+                  trailing={
+                    <Button
+                      variant="tonal"
+                      startIcon={<PlayArrowRoundedIcon />}
                       onClick={() => setDialog({ kind: "run", snippet: s })}
                     >
-                      <PlayArrowRoundedIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <IconButton size="small" onClick={() => setDialog({ kind: "edit", snippet: s })}>
-                    <EditRoundedIcon fontSize="small" />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    onClick={() => setDialog({ kind: "delete", snippet: s })}
-                  >
-                    <DeleteOutlineRoundedIcon fontSize="small" />
-                  </IconButton>
-                </Box>
+                      Run
+                    </Button>
+                  }
+                  actions={
+                    <>
+                      <ToolIconButton
+                        title="Edit"
+                        onClick={() => setDialog({ kind: "edit", snippet: s })}
+                      >
+                        <EditRoundedIcon fontSize="small" />
+                      </ToolIconButton>
+                      <ToolIconButton
+                        title="Delete"
+                        onClick={() => setDialog({ kind: "delete", snippet: s })}
+                      >
+                        <DeleteOutlineRoundedIcon fontSize="small" />
+                      </ToolIconButton>
+                    </>
+                  }
+                />
               ))}
             </Stack>
           )}

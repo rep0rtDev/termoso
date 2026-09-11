@@ -4,7 +4,6 @@ import {
   Button,
   CircularProgress,
   Divider,
-  IconButton,
   InputBase,
   ListItemIcon,
   ListItemText,
@@ -18,7 +17,6 @@ import {
   TableRow,
   Tooltip,
   Typography,
-  alpha,
 } from "@mui/material";
 import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
 import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
@@ -41,6 +39,8 @@ import type { FsEntry, Listing, Uuid } from "@/ipc/types";
 import { errorMessage } from "@/ipc/types";
 import { useSnackbar } from "@/components/Snackbar";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ToolIconButton } from "@/components/ui";
+import { monoFontFamily, sizes } from "@/theme/theme";
 import { ChmodDialog, NameDialog } from "./dialogs";
 import { formatMode, formatMtime, formatSize, isHidden, joinPath, sortEntries } from "./format";
 import { fsQueryKey } from "./store";
@@ -204,30 +204,22 @@ export function FilePane(props: Props) {
         sx={{
           alignItems: "center",
           px: 0.75,
-          height: 40,
+          height: 44,
           borderBottom: 1,
-          borderColor: "divider",
+          borderColor: "border.light",
           flexShrink: 0,
         }}
       >
-        <Tooltip title="Parent directory">
-          <span>
-            <IconButton
-              size="small"
-              disabled={disabled || !listing.data?.parent}
-              onClick={() => navigate(listing.data?.parent ?? null)}
-            >
-              <ArrowUpwardRoundedIcon fontSize="small" />
-            </IconButton>
-          </span>
-        </Tooltip>
-        <Tooltip title="Home">
-          <span>
-            <IconButton size="small" disabled={disabled} onClick={() => navigate(null)}>
-              <HomeRoundedIcon fontSize="small" />
-            </IconButton>
-          </span>
-        </Tooltip>
+        <ToolIconButton
+          title="Parent directory"
+          disabled={disabled || !listing.data?.parent}
+          onClick={() => navigate(listing.data?.parent ?? null)}
+        >
+          <ArrowUpwardRoundedIcon fontSize="small" />
+        </ToolIconButton>
+        <ToolIconButton title="Home" disabled={disabled} onClick={() => navigate(null)}>
+          <HomeRoundedIcon fontSize="small" />
+        </ToolIconButton>
         <InputBase
           value={pathInput}
           disabled={disabled}
@@ -240,52 +232,44 @@ export function FilePane(props: Props) {
             }
             if (e.key === "Escape") setPathDraft(null);
           }}
-          sx={(t) => ({
+          sx={{
             flex: 1,
             mx: 0.5,
-            px: 1,
-            height: 28,
-            fontSize: 13,
-            fontFamily: "monospace",
-            borderRadius: 1,
-            bgcolor: alpha(t.palette.text.primary, 0.04),
-            border: 1,
-            borderColor: "divider",
-          })}
+            px: 1.25,
+            height: sizes.control,
+            fontSize: 12.5,
+            fontFamily: monoFontFamily,
+            borderRadius: 1.5,
+            bgcolor: "surface.high",
+            "&.Mui-focused": { outline: "1px solid", outlineColor: "primary.main" },
+          }}
         />
-        <Tooltip title="Refresh">
-          <span>
-            <IconButton size="small" disabled={disabled} onClick={refresh}>
-              <RefreshRoundedIcon fontSize="small" />
-            </IconButton>
-          </span>
-        </Tooltip>
-        <Tooltip title="New folder">
-          <span>
-            <IconButton
-              size="small"
-              disabled={disabled}
-              onClick={() => setDialog({ kind: "mkdir" })}
-            >
-              <CreateNewFolderRoundedIcon fontSize="small" />
-            </IconButton>
-          </span>
-        </Tooltip>
-        <Tooltip title={showHidden ? "Hide dotfiles" : "Show dotfiles"}>
-          <IconButton size="small" onClick={() => setShowHidden((v) => !v)}>
-            {showHidden ? (
-              <VisibilityRoundedIcon fontSize="small" />
-            ) : (
-              <VisibilityOffRoundedIcon fontSize="small" />
-            )}
-          </IconButton>
-        </Tooltip>
-        <Divider orientation="vertical" flexItem sx={{ my: 1, mx: 0.5 }} />
+        <ToolIconButton title="Refresh" disabled={disabled} onClick={refresh}>
+          <RefreshRoundedIcon fontSize="small" />
+        </ToolIconButton>
+        <ToolIconButton
+          title="New folder"
+          disabled={disabled}
+          onClick={() => setDialog({ kind: "mkdir" })}
+        >
+          <CreateNewFolderRoundedIcon fontSize="small" />
+        </ToolIconButton>
+        <ToolIconButton
+          title={showHidden ? "Hide dotfiles" : "Show dotfiles"}
+          active={showHidden}
+          onClick={() => setShowHidden((v) => !v)}
+        >
+          {showHidden ? (
+            <VisibilityRoundedIcon fontSize="small" />
+          ) : (
+            <VisibilityOffRoundedIcon fontSize="small" />
+          )}
+        </ToolIconButton>
+        <Divider orientation="vertical" flexItem sx={{ my: 1.25, mx: 0.5 }} />
         <Tooltip title={`${transferLabel} selected to ${oppositePath ?? "…"}`}>
           <span>
             <Button
-              size="small"
-              variant="contained"
+              variant="tonal"
               startIcon={<TransferIcon />}
               disabled={disabled || selectedEntries.length === 0 || oppositePath === null}
               onClick={() => onTransfer(selectedEntries)}
@@ -319,7 +303,17 @@ export function FilePane(props: Props) {
         {listing.data && (
           <Table size="small" stickyHeader sx={{ tableLayout: "fixed" }}>
             <TableHead>
-              <TableRow sx={{ "& th": { py: 0.5, fontSize: 12, color: "text.secondary" } }}>
+              <TableRow
+                sx={{
+                  "& th": {
+                    py: 0.5,
+                    fontSize: 12,
+                    color: "text.secondary",
+                    bgcolor: "surface.base",
+                    borderColor: "border.light",
+                  },
+                }}
+              >
                 <TableCell>Name</TableCell>
                 <TableCell align="right" sx={{ width: 84 }}>
                   Size
@@ -339,7 +333,10 @@ export function FilePane(props: Props) {
                     onClick={(ev) => onRowClick(ev, e)}
                     onDoubleClick={() => openEntry(e)}
                     onContextMenu={(ev) => onContext(ev, e)}
-                    sx={{ cursor: "default", "& td": { py: 0.4, fontSize: 13 } }}
+                    sx={{
+                      cursor: "default",
+                      "& td": { py: 0.4, fontSize: 13, borderColor: "border.light" },
+                    }}
                   >
                     <TableCell sx={{ overflow: "hidden" }}>
                       <Stack direction="row" spacing={1} sx={{ alignItems: "center", minWidth: 0 }}>
@@ -364,7 +361,7 @@ export function FilePane(props: Props) {
                       {formatMtime(e.mtime)}
                     </TableCell>
                     <TableCell
-                      sx={{ color: "text.secondary", fontFamily: "monospace", fontSize: 12 }}
+                      sx={{ color: "text.secondary", fontFamily: monoFontFamily, fontSize: 12 }}
                     >
                       {formatMode(e.mode, e.kind)}
                     </TableCell>
@@ -388,7 +385,13 @@ export function FilePane(props: Props) {
 
       <Stack
         direction="row"
-        sx={{ px: 1.5, height: 24, alignItems: "center", borderTop: 1, borderColor: "divider" }}
+        sx={{
+          px: 1.5,
+          height: 24,
+          alignItems: "center",
+          borderTop: 1,
+          borderColor: "border.light",
+        }}
       >
         <Typography variant="caption" color="text.secondary">
           {entries.length} items{selected.size > 0 ? ` · ${selected.size} selected` : ""}

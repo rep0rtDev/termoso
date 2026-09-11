@@ -539,7 +539,14 @@ impl Store {
             None
         };
 
-        let identity = match ssh.identity_id {
+        let identity_id = ssh.identity_id.or_else(|| {
+            if host.data.ssh_config_id.is_none() {
+                telnet.as_ref().and_then(|t| t.identity_id)
+            } else {
+                None
+            }
+        });
+        let identity = match identity_id {
             Some(id) => self.get::<Identity>(id)?,
             None => None,
         };

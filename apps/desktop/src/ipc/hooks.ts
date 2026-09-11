@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ipc from "./commands";
-import type { HostForm, Settings, Uuid } from "./types";
+import type { HostChainData, HostForm, ProxyData, Settings, Uuid } from "./types";
 
 export const keys = {
   app: ["app"] as const,
@@ -14,6 +14,8 @@ export const keys = {
   hostForm: (id: Uuid) => ["hostForm", id] as const,
   identities: (vaultId: Uuid | null) => ["identities", vaultId] as const,
   sshKeys: (vaultId: Uuid | null) => ["sshKeys", vaultId] as const,
+  proxies: (vaultId: Uuid | null) => ["proxies", vaultId] as const,
+  hostChains: (vaultId: Uuid | null) => ["hostChains", vaultId] as const,
   history: ["history"] as const,
   pfRules: (vaultId: Uuid | null) => ["pfRules", vaultId] as const,
   snippets: (vaultId: Uuid | null) => ["snippets", vaultId] as const,
@@ -66,6 +68,52 @@ export const useIdentities = (vaultId: Uuid | null) =>
 export const useSshKeys = (vaultId: Uuid | null) =>
   useQuery({ queryKey: keys.sshKeys(vaultId), queryFn: () => ipc.keysList(vaultId) });
 
+export const useProxies = (vaultId: Uuid | null) =>
+  useQuery({
+    queryKey: keys.proxies(vaultId),
+    queryFn: () => ipc.entitiesList<ProxyData>("proxy", vaultId),
+  });
+export const useHostChains = (vaultId: Uuid | null) =>
+  useQuery({
+    queryKey: keys.hostChains(vaultId),
+    queryFn: () => ipc.entitiesList<HostChainData>("host_chain", vaultId),
+  });
+
+export function useSaveProxy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (a: { vaultId: Uuid; id: Uuid | null; data: ProxyData }) =>
+      ipc.entitySave("proxy", a.vaultId, a.id, a.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["proxies"] }),
+  });
+}
+
+export function useSaveHostChain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (a: { vaultId: Uuid; id: Uuid | null; data: HostChainData }) =>
+      ipc.entitySave("host_chain", a.vaultId, a.id, a.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["hostChains"] }),
+  });
+}
+
+export function useCreateTag() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (a: { vaultId: Uuid; label: string }) =>
+      ipc.entitySave("tag", a.vaultId, null, { label: a.label }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tags"] }),
+  });
+}
+
+export function useDeleteEntity(kind: "proxies" | "hostChains") {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: Uuid) => ipc.entityDelete(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [kind] }),
+  });
+}
+
 export const useHistory = () =>
   useQuery({ queryKey: keys.history, queryFn: () => ipc.historyConnections(50) });
 
@@ -117,6 +165,8 @@ export function useSyncNotices() {
             "snippets",
             "packages",
             "knownHosts",
+            "proxies",
+            "hostChains",
           ]) {
             void qc.invalidateQueries({ queryKey: [k] });
           }

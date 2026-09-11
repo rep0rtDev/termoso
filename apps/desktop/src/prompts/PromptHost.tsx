@@ -16,6 +16,7 @@ import {
 import { onPrompt, onPromptClosed, promptAnswer } from "@/ipc/commands";
 import type { HostKeyInfo, PromptAnswer, PromptEvent } from "@/ipc/types";
 import { setActiveTab, terminalStore } from "@/terminal/store";
+import { Field } from "@/components/ui";
 
 /**
  * Renders the queue of prompts raised by Rust while connecting (host key,
@@ -201,15 +202,16 @@ function SecretPrompt({
             {target}
           </Typography>
           {warning && <Alert severity="warning">{warning}</Alert>}
-          <TextField
-            autoFocus
-            type="password"
-            label={label}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            fullWidth
-            autoComplete="off"
-          />
+          <Field label={label}>
+            <TextField
+              autoFocus
+              type="password"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              fullWidth
+              autoComplete="off"
+            />
+          </Field>
           <FormControlLabel
             control={
               <Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)} />
@@ -261,16 +263,17 @@ function InteractivePrompt({
             </Typography>
           )}
           {prompt.questions.map((q, i) => (
-            <TextField
-              key={i}
-              autoFocus={i === 0}
-              type={q.echo ? "text" : "password"}
-              label={q.prompt.replace(/:\s*$/, "")}
-              value={answers[i] ?? ""}
-              onChange={(e) => setAnswers((a) => a.map((v, j) => (j === i ? e.target.value : v)))}
-              fullWidth
-              autoComplete="off"
-            />
+            <Field label={q.prompt.replace(/:\s*$/, "")}>
+              <TextField
+                key={i}
+                autoFocus={i === 0}
+                type={q.echo ? "text" : "password"}
+                value={answers[i] ?? ""}
+                onChange={(e) => setAnswers((a) => a.map((v, j) => (j === i ? e.target.value : v)))}
+                fullWidth
+                autoComplete="off"
+              />
+            </Field>
           ))}
         </Stack>
       </DialogContent>

@@ -7,22 +7,24 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
-  Divider,
-  InputBase,
+  InputAdornment,
   List,
   ListItemButton,
   ListItemText,
   ListSubheader,
   Stack,
+  TextField,
   Typography,
 } from "@mui/material";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import type { FsEntry, Uuid } from "@/ipc/types";
 import { errorMessage } from "@/ipc/types";
 import { useHosts } from "@/ipc/hooks";
 import { useSnackbar } from "@/components/Snackbar";
+import { IconTile, Toolbar } from "@/components/ui";
 import { HostAvatar } from "@/hosts/HostAvatar";
 import { useTerminal } from "@/terminal/store";
 import { FilePane } from "./FilePane";
@@ -68,53 +70,38 @@ export function SftpPage() {
 
   return (
     <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <Stack
-        direction="row"
-
-        spacing={1}
-        sx={{
-          alignItems: "center",
-          px: 2,
-          height: 52,
-          borderBottom: 1,
-          borderColor: "divider",
-          flexShrink: 0,
-        }}
+      <Toolbar
+        trailing={
+          order.length > 0 && (
+            <Stack direction="row" spacing={0.75} sx={{ overflowX: "auto", py: 0.5 }}>
+              {order.map((id) => {
+                const c = conns[id];
+                if (!c) return null;
+                return (
+                  <Chip
+                    key={id}
+                    label={c.title}
+                    size="small"
+                    variant={id === activeId ? "filled" : "outlined"}
+                    color={c.status === "error" ? "error" : id === activeId ? "primary" : "default"}
+                    icon={
+                      c.status === "connecting" ? (
+                        <CircularProgress size={12} sx={{ ml: 0.75 }} />
+                      ) : undefined
+                    }
+                    onClick={() => setActiveSftp(id)}
+                    onDelete={() => void closeSftp(id)}
+                  />
+                );
+              })}
+            </Stack>
+          )
+        }
       >
-        <Typography variant="h6" sx={{ fontSize: 16, fontWeight: 600, mr: 1 }}>
-          SFTP
-        </Typography>
-        <Stack direction="row" spacing={0.75} sx={{ flex: 1, overflowX: "auto", py: 0.5 }}>
-          {order.map((id) => {
-            const c = conns[id];
-            if (!c) return null;
-            return (
-              <Chip
-                key={id}
-                label={c.title}
-                size="small"
-                variant={id === activeId ? "filled" : "outlined"}
-                color={c.status === "error" ? "error" : id === activeId ? "primary" : "default"}
-                icon={
-                  c.status === "connecting" ? (
-                    <CircularProgress size={12} sx={{ ml: 0.75 }} />
-                  ) : undefined
-                }
-                onClick={() => setActiveSftp(id)}
-                onDelete={() => void closeSftp(id)}
-              />
-            );
-          })}
-        </Stack>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<AddRoundedIcon />}
-          onClick={() => setPicker(true)}
-        >
+        <Button variant="tonal" startIcon={<AddRoundedIcon />} onClick={() => setPicker(true)}>
           Connect
         </Button>
-      </Stack>
+      </Toolbar>
 
       <Stack direction="row" sx={{ flex: 1, minHeight: 0 }}>
         <PaneFrame title="Local">
@@ -127,7 +114,7 @@ export function SftpPage() {
             onTransfer={(entries) => transfer("upload", entries)}
           />
         </PaneFrame>
-        <Divider orientation="vertical" flexItem />
+        <Box sx={{ width: "1px", bgcolor: "border.light", flexShrink: 0 }} />
         <PaneFrame title={active ? active.title : "Remote"}>
           {active && remoteReady ? (
             <FilePane
@@ -160,8 +147,9 @@ function PaneFrame({ title, children }: { title: string; children: React.ReactNo
   return (
     <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
       <Typography
-        variant="overline"
-        sx={{ px: 1.5, pt: 0.75, lineHeight: 1.6, color: "text.secondary", fontWeight: 600 }}
+        variant="subtitle2"
+        color="text.secondary"
+        sx={{ px: 1.5, height: 32, display: "flex", alignItems: "center", flexShrink: 0 }}
         noWrap
       >
         {title}
@@ -196,7 +184,9 @@ function RemotePlaceholder({
         </>
       ) : (
         <>
-          <FolderCopyRoundedIcon sx={{ fontSize: 40, color: "text.disabled" }} />
+          <IconTile size={48}>
+            <FolderCopyRoundedIcon />
+          </IconTile>
           <Typography
             variant="body2"
             color={status === "error" ? "error" : "text.secondary"}
@@ -206,11 +196,11 @@ function RemotePlaceholder({
           </Typography>
           <Stack direction="row" spacing={1}>
             {onRetry && (status === "error" || status === "closed") && (
-              <Button size="small" startIcon={<ReplayRoundedIcon />} onClick={onRetry}>
+              <Button startIcon={<ReplayRoundedIcon />} onClick={onRetry}>
                 Retry
               </Button>
             )}
-            <Button size="small" variant="contained" onClick={onConnect}>
+            <Button variant="contained" onClick={onConnect}>
               Connect
             </Button>
           </Stack>
@@ -243,19 +233,19 @@ function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }
       <DialogTitle>Open SFTP</DialogTitle>
       <DialogContent sx={{ p: 0 }}>
         <Box sx={{ px: 3, pb: 1 }}>
-          <InputBase
+          <TextField
             autoFocus
-            fullWidth
             placeholder="Search hosts"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            sx={{
-              px: 1.5,
-              height: 36,
-              borderRadius: 1,
-              border: 1,
-              borderColor: "divider",
-              fontSize: 14,
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchRoundedIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              },
             }}
           />
         </Box>
