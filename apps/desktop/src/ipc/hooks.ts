@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ipc from "./commands";
-import type { HostChainData, HostForm, ProxyData, Settings, Uuid } from "./types";
+import type { GroupForm, HostChainData, HostForm, ProxyData, Settings, Uuid } from "./types";
 
 export const keys = {
   app: ["app"] as const,
@@ -12,6 +12,8 @@ export const keys = {
   groups: (vaultId: Uuid | null) => ["groups", vaultId] as const,
   tags: (vaultId: Uuid | null) => ["tags", vaultId] as const,
   hostForm: (id: Uuid) => ["hostForm", id] as const,
+  groupForm: (id: Uuid) => ["groupForm", id] as const,
+  inherited: (groupId: Uuid | null) => ["inherited", groupId] as const,
   identities: (vaultId: Uuid | null) => ["identities", vaultId] as const,
   sshKeys: (vaultId: Uuid | null) => ["sshKeys", vaultId] as const,
   proxies: (vaultId: Uuid | null) => ["proxies", vaultId] as const,
@@ -57,6 +59,19 @@ export const useHostForm = (id: Uuid | null) =>
     queryKey: keys.hostForm(id ?? ""),
     queryFn: () => ipc.hostForm(id ?? ""),
     enabled: id !== null,
+  });
+
+export const useGroupForm = (id: Uuid | null) =>
+  useQuery({
+    queryKey: keys.groupForm(id ?? ""),
+    queryFn: () => ipc.groupForm(id ?? ""),
+    enabled: id !== null,
+  });
+
+export const useInherited = (groupId: Uuid | null) =>
+  useQuery({
+    queryKey: keys.inherited(groupId),
+    queryFn: () => ipc.hostInherited(groupId),
   });
 
 export const useIdentities = (vaultId: Uuid | null) =>
@@ -161,6 +176,8 @@ export function useSyncNotices() {
             "identities",
             "sshKeys",
             "hostForm",
+            "groupForm",
+            "inherited",
             "pfRules",
             "snippets",
             "packages",
@@ -200,9 +217,9 @@ function useInvalidateVault() {
   const qc = useQueryClient();
   return (vaultId: Uuid) =>
     Promise.all(
-      (["hosts", "groups", "tags", "identities", "hostForm"] as const).map((k) =>
-        qc.invalidateQueries({ queryKey: [k] }),
-      ),
+      (
+        ["hosts", "groups", "tags", "identities", "hostForm", "groupForm", "inherited"] as const
+      ).map((k) => qc.invalidateQueries({ queryKey: [k] })),
     ).then(() => qc.invalidateQueries({ queryKey: keys.hosts(vaultId) }));
 }
 
@@ -222,6 +239,40 @@ export function useDeleteHost() {
   });
 }
 
+export function useDeleteHosts() {
+  const invalidate = useInvalidateVault();
+  return useMutation({
+    mutationFn: ({ ids }: { ids: Uuid[]; vaultId: Uuid }) => ipc.hostsDelete(ids),
+    onSuccess: (_r, v) => invalidate(v.vaultId),
+  });
+}
+
+export function useDuplicateHost() {
+  const invalidate = useInvalidateVault();
+  return useMutation({
+    mutationFn: (id: Uuid) => ipc.hostDuplicate(id),
+    onSuccess: (card) => invalidate(card.vaultId),
+  });
+}
+
+export function useMoveHosts() {
+  const invalidate = useInvalidateVault();
+  return useMutation({
+    mutationFn: ({ ids, groupId }: { ids: Uuid[]; groupId: Uuid | null; vaultId: Uuid }) =>
+      ipc.hostsMove(ids, groupId),
+    onSuccess: (_r, v) => invalidate(v.vaultId),
+  });
+}
+
+export function useCopyHostsToVault() {
+  const invalidate = useInvalidateVault();
+  return useMutation({
+    mutationFn: ({ ids, vaultId, move }: { ids: Uuid[]; vaultId: Uuid; move: boolean }) =>
+      ipc.hostsCopyToVault(ids, vaultId, move),
+    onSuccess: (_r, v) => invalidate(v.vaultId),
+  });
+}
+
 export function useSaveGroup() {
   const invalidate = useInvalidateVault();
   return useMutation({
@@ -230,10 +281,27 @@ export function useSaveGroup() {
   });
 }
 
+export function useSaveGroupForm() {
+  const invalidate = useInvalidateVault();
+  return useMutation({
+    mutationFn: (form: GroupForm) => ipc.groupSaveForm(form),
+    onSuccess: (g) => invalidate(g.vaultId),
+  });
+}
+
+export function useDuplicateGroup() {
+  const invalidate = useInvalidateVault();
+  return useMutation({
+    mutationFn: (id: Uuid) => ipc.groupDuplicate(id),
+    onSuccess: (g) => invalidate(g.vaultId),
+  });
+}
+
 export function useDeleteGroup() {
   const invalidate = useInvalidateVault();
   return useMutation({
-    mutationFn: ({ id }: { id: Uuid; vaultId: Uuid }) => ipc.groupDelete(id),
+    mutationFn: ({ id, recursive }: { id: Uuid; vaultId: Uuid; recursive?: boolean }) =>
+      ipc.groupDelete(id, recursive ?? false),
     onSuccess: (_r, v) => invalidate(v.vaultId),
   });
 }
