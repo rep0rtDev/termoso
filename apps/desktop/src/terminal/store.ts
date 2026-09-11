@@ -10,6 +10,10 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+  readText as readNativeClipboard,
+  writeText as writeNativeClipboard,
+} from "@tauri-apps/plugin-clipboard-manager";
 import * as ipc from "@/ipc/commands";
 import type {
   OpenTarget,
@@ -22,10 +26,25 @@ import type {
 import { errorMessage } from "@/ipc/types";
 import { createStore, omit, useStore } from "@/lib/store";
 import { terminalFontStack } from "./fonts";
-import { resolveTerminalTheme, toXtermTheme } from "./themes";
+import {
+  MAX_PANES,
+  leaf,
+  leaves,
+  neighbor,
+  removeLeaf,
+  replaceLeaf,
+  setRatio,
+  splitLeaf,
+  type Rect,
+  type Side,
+  type SplitDirection,
+  type SplitNode,
+} from "./layout";
+import { resolveTerminalTheme, toXtermTheme, type TerminalTheme } from "./themes";
+
+export type { SplitDirection, SplitNode } from "./layout";
 
 export type PaneStatus = "connecting" | "connected" | "exited" | "error" | "closed";
-export type SplitDirection = "row" | "column";
 
 export interface Pane {
   id: Uuid;
@@ -35,18 +54,30 @@ export interface Pane {
   protocol: SessionInfo["protocol"] | null;
   hostId: Uuid | null;
   algorithms: SshAlgorithms | null;
+  /** Jump hosts the connection went through, outermost first. */
+  via: string[];
+  /** Colour scheme configured on the host; `null` follows the app setting. */
+  hostTheme: string | null;
+  startedAt: string | null;
   status: PaneStatus;
   message: string | null;
 }
 
 export interface TerminalTab {
   id: string;
+  layout: SplitNode;
+  /** Leaves of `layout` in reading order (kept in sync by the store). */
   paneIds: Uuid[];
   activePaneId: Uuid;
-  direction: SplitDirection;
   broadcast: boolean;
   searchOpen: boolean;
+  /** Font scale, 1 = the settings font size. */
+  zoom: number;
+  /** Colour scheme picked from the side panel for this tab; `null` = host / app default. */
+  themeOverride: string | null;
 }
+
+export type SidePanelTab = "snippets" | "history" | "themes" | "info";
 
 export const HOME_TAB = "home";
 
@@ -58,6 +89,10 @@ export interface TerminalState {
   pendingPaste: { paneId: Uuid; text: string } | null;
   /** Pane whose close needs confirming. */
   pendingClose: Uuid | null;
+  /** Right-click menu for a pane, at viewport coordinates. */
+  contextMenu: { paneId: Uuid; left: number; top: number } | null;
+  /** Open section of the terminal side panel (shared by all tabs). */
+  sidePanel: SidePanelTab | null;
 }
 
 export const terminalStore = createStore<TerminalState>({
@@ -66,6 +101,8 @@ export const terminalStore = createStore<TerminalState>({
   activeTabId: HOME_TAB,
   pendingPaste: null,
   pendingClose: null,
+  contextMenu: null,
+  sidePanel: null,
 });
 
 export const useTerminal = <S>(selector: (s: TerminalState) => S) =>
@@ -101,54 +138,150 @@ function patchPane(id: Uuid, patch: Partial<Pane>) {
   });
 }
 
+function patchTab(id: string, patch: Partial<TerminalTab>) {
+  update((s) => ({
+    ...s,
+    tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+  }));
+}
+
 function tabOf(s: TerminalState, paneId: Uuid) {
   return s.tabs.find((t) => t.paneIds.includes(paneId));
+}
+
+export function activeTab(s: TerminalState = terminalStore.get()): TerminalTab | undefined {
+  return s.tabs.find((t) => t.id === s.activeTabId);
+}
+
+function withLayout(tab: TerminalTab, layout: SplitNode): TerminalTab {
+  return { ...tab, layout, paneIds: leaves(layout) };
 }
 
 // ───────────────────────────── settings / theme ─────────────────────────────
 
 const fontFamily = (settings: Settings | null) => terminalFontStack(settings?.terminalFontFamily);
 
-const xtermTheme = () =>
-  toXtermTheme(resolveTerminalTheme(currentSettings?.terminalTheme, currentScheme));
+export const ZOOM_STEPS = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+
+const fontSize = (zoom: number) =>
+  Math.max(6, Math.round((currentSettings?.terminalFontSize ?? 13) * zoom));
+
+/** Scheme id a pane renders with: tab override → host scheme → app setting. */
+export function paneThemeId(pane: Pane | undefined, tab: TerminalTab | undefined): string {
+  return tab?.themeOverride ?? pane?.hostTheme ?? currentSettings?.terminalTheme ?? "auto";
+}
+
+export function paneTheme(paneId: Uuid, s: TerminalState = terminalStore.get()): TerminalTheme {
+  return resolveTerminalTheme(paneThemeId(s.panes[paneId], tabOf(s, paneId)), currentScheme);
+}
+
+function applyPaneLook(paneId: Uuid, s: TerminalState = terminalStore.get()) {
+  const rt = runtimes.get(paneId);
+  if (!rt) return;
+  const tab = tabOf(s, paneId);
+  rt.term.options.theme = toXtermTheme(paneTheme(paneId, s));
+  const size = fontSize(tab?.zoom ?? 1);
+  if (rt.term.options.fontSize !== size) {
+    rt.term.options.fontSize = size;
+    if (rt.opened) fitPane(paneId);
+  }
+  if (rt.opened) rt.term.refresh(0, rt.term.rows - 1);
+}
+
+function applyTabLook(tabId: string) {
+  const s = terminalStore.get();
+  const tab = s.tabs.find((t) => t.id === tabId);
+  for (const id of tab?.paneIds ?? []) applyPaneLook(id, s);
+}
 
 export function applyTerminalSettings(settings: Settings) {
   currentSettings = settings;
-  const theme = xtermTheme();
-  for (const rt of runtimes.values()) {
-    rt.term.options.fontSize = settings.terminalFontSize;
+  const s = terminalStore.get();
+  for (const [id, rt] of runtimes) {
     rt.term.options.fontFamily = fontFamily(settings);
     rt.term.options.lineHeight = settings.terminalLineHeight;
     rt.term.options.cursorBlink = settings.cursorBlink;
     rt.term.options.cursorStyle = settings.cursorStyle;
     rt.term.options.scrollback = settings.scrollback;
-    rt.term.options.theme = theme;
+    rt.term.options.theme = toXtermTheme(paneTheme(id, s));
+    rt.term.options.fontSize = fontSize(tabOf(s, id)?.zoom ?? 1);
     if (rt.opened) rt.fit.fit();
   }
 }
 
 export function applyTerminalScheme(scheme: "dark" | "light") {
   currentScheme = scheme;
-  const theme = xtermTheme();
-  for (const rt of runtimes.values()) rt.term.options.theme = theme;
+  const s = terminalStore.get();
+  for (const [id, rt] of runtimes) rt.term.options.theme = toXtermTheme(paneTheme(id, s));
+}
+
+/** Pick a colour scheme for every pane of the tab; `null` returns to the host / app default. */
+export function setTabTheme(tabId: string, themeId: string | null) {
+  patchTab(tabId, { themeOverride: themeId });
+  applyTabLook(tabId);
+}
+
+export function zoomTab(tabId: string, step: 1 | -1) {
+  const tab = terminalStore.get().tabs.find((t) => t.id === tabId);
+  if (!tab) return;
+  const i = ZOOM_STEPS.findIndex((z) => Math.abs(z - tab.zoom) < 1e-6);
+  const next = ZOOM_STEPS[(i === -1 ? ZOOM_STEPS.indexOf(1) : i) + step];
+  if (next === undefined) return;
+  patchTab(tabId, { zoom: next });
+  applyTabLook(tabId);
+}
+
+export function resetZoom(tabId: string) {
+  patchTab(tabId, { zoom: 1 });
+  applyTabLook(tabId);
+}
+
+/** Wipe scrollback and the screen; the shell prompt is redrawn on the next output. */
+export function clearBuffer(paneId: Uuid) {
+  runtimes.get(paneId)?.term.clear();
+}
+
+export function selectAll(paneId: Uuid) {
+  runtimes.get(paneId)?.term.selectAll();
 }
 
 // ───────────────────────────── clipboard ─────────────────────────────
 
+// Native clipboard first: WebKitGTK only allows `navigator.clipboard.readText()` inside a paste event.
 async function copyText(text: string) {
   try {
-    await navigator.clipboard.writeText(text);
+    await writeNativeClipboard(text);
   } catch {
-    // clipboard unavailable (no permission / insecure context); selection stays in xterm
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // clipboard unavailable; selection stays in xterm
+    }
   }
 }
 
 async function readClipboard(): Promise<string> {
   try {
-    return await navigator.clipboard.readText();
+    return await readNativeClipboard();
   } catch {
-    return "";
+    try {
+      return await navigator.clipboard.readText();
+    } catch {
+      return "";
+    }
   }
+}
+
+export function copySelection(paneId: Uuid) {
+  const term = runtimes.get(paneId)?.term;
+  if (term?.hasSelection()) {
+    void copyText(term.getSelection());
+    term.clearSelection();
+  }
+}
+
+export function pasteClipboard(paneId: Uuid) {
+  void readClipboard().then((t) => pasteInto(paneId, t));
 }
 
 function pasteInto(paneId: Uuid, text: string, force = false) {
@@ -165,6 +298,26 @@ export function confirmPendingPaste(accept: boolean) {
   const pending = terminalStore.get().pendingPaste;
   update((s) => ({ ...s, pendingPaste: null }));
   if (pending && accept) pasteInto(pending.paneId, pending.text, true);
+}
+
+/**
+ * OSC 52 — programs on the remote side (tmux, vim, `osc52.sh`) put text on
+ * the local clipboard. Writes only: a query (`?`) is swallowed rather than
+ * answered, so no remote program can read the clipboard.
+ */
+function handleOsc52(data: string): boolean {
+  const sep = data.indexOf(";");
+  const payload = sep === -1 ? data : data.slice(sep + 1);
+  if (payload === "?" || payload === "") return true;
+  try {
+    const bin = atob(payload.replace(/\s+/g, ""));
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    const text = new TextDecoder().decode(bytes);
+    if (text) void copyText(text);
+  } catch {
+    // malformed base64 — ignore
+  }
+  return true;
 }
 
 // ───────────────────────────── bell ─────────────────────────────
@@ -190,19 +343,34 @@ function beep() {
 
 // ───────────────────────────── xterm runtime ─────────────────────────────
 
+/** Keys handled by the app (see hotkeys.ts) that xterm must not turn into input. */
+function isAppShortcut(ev: KeyboardEvent): boolean {
+  const ctrl = ev.ctrlKey || ev.metaKey;
+  if (!ctrl) return false;
+  if (ev.shiftKey && ["KeyK", "KeyF", "KeyD", "KeyW", "KeyB"].includes(ev.code)) {
+    return true;
+  }
+  if (
+    ["Equal", "Minus", "Digit0", "NumpadAdd", "NumpadSubtract", "Numpad0", "Tab"].includes(ev.code)
+  ) {
+    return true;
+  }
+  return ev.altKey && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(ev.code);
+}
+
 function createRuntime(paneId: Uuid): Runtime {
   const term = new Terminal({
     allowProposedApi: true,
     cursorBlink: currentSettings?.cursorBlink ?? true,
     cursorStyle: currentSettings?.cursorStyle ?? "bar",
-    fontSize: currentSettings?.terminalFontSize ?? 13,
+    fontSize: fontSize(1),
     fontFamily: fontFamily(currentSettings),
     fontWeight: "400",
     fontWeightBold: "600",
     lineHeight: currentSettings?.terminalLineHeight ?? 1,
     letterSpacing: 0,
     scrollback: currentSettings?.scrollback ?? 10_000,
-    theme: xtermTheme(),
+    theme: toXtermTheme(resolveTerminalTheme(currentSettings?.terminalTheme, currentScheme)),
     macOptionIsMeta: true,
     minimumContrastRatio: 1,
     scrollOnUserInput: true,
@@ -249,6 +417,7 @@ function createRuntime(paneId: Uuid): Runtime {
     term.onBell(() => {
       if (currentSettings?.terminalBell) beep();
     }),
+    term.parser.registerOscHandler(52, handleOsc52),
   );
 
   term.attachCustomKeyEventHandler((ev) => {
@@ -271,12 +440,15 @@ function createRuntime(paneId: Uuid): Runtime {
       if (term.hasSelection()) void copyText(term.getSelection());
       return false;
     }
-    return true;
+    return !isAppShortcut(ev);
   });
 
   container.addEventListener("contextmenu", (ev) => {
-    if (!currentSettings?.pasteOnRightClick) return;
     ev.preventDefault();
+    if (!currentSettings?.pasteOnRightClick) {
+      update((s) => ({ ...s, contextMenu: { paneId, left: ev.clientX, top: ev.clientY } }));
+      return;
+    }
     if (term.hasSelection()) {
       void copyText(term.getSelection());
       term.clearSelection();
@@ -287,6 +459,10 @@ function createRuntime(paneId: Uuid): Runtime {
   container.addEventListener("mousedown", () => setActivePane(paneId));
 
   return { term, fit, search, container, webgl: null, opened: false, disposables };
+}
+
+export function closeContextMenu() {
+  update((s) => (s.contextMenu ? { ...s, contextMenu: null } : s));
 }
 
 /** Attach the pane's DOM to `host` (first mount also opens xterm). */
@@ -332,6 +508,16 @@ export function fitPane(paneId: Uuid) {
 
 export function focusPane(paneId: Uuid) {
   runtimes.get(paneId)?.term.focus();
+}
+
+/** Rows × cols of the live grid. */
+export function paneSize(paneId: Uuid): { cols: number; rows: number } | null {
+  const t = runtimes.get(paneId)?.term;
+  return t ? { cols: t.cols, rows: t.rows } : null;
+}
+
+export function paneHasSelection(paneId: Uuid): boolean {
+  return runtimes.get(paneId)?.term.hasSelection() ?? false;
 }
 
 function disposeRuntime(paneId: Uuid) {
@@ -395,9 +581,13 @@ function startSession(paneId: Uuid, target: OpenTarget) {
         protocol: info.protocol,
         hostId: info.hostId,
         algorithms: info.algorithms,
+        via: info.via,
+        hostTheme: info.colorScheme,
+        startedAt: info.startedAt,
         status: "connected",
         message: null,
       });
+      applyPaneLook(paneId);
       const t = runtimes.get(paneId)?.term;
       if (t) ipc.terminalResize(paneId, t.cols, t.rows).catch(() => undefined);
     })
@@ -422,11 +612,9 @@ export interface OpenOptions {
   background?: boolean;
 }
 
-/** Open a terminal for `target` in a new tab (or split into an existing one). */
-export function openTerminal(target: OpenTarget, opts: OpenOptions = {}): Uuid {
-  const paneId = uuid();
+function newPane(paneId: Uuid, target: OpenTarget): Pane {
   const { title, subtitle } = describe(target);
-  const pane: Pane = {
+  return {
     id: paneId,
     target,
     title,
@@ -434,22 +622,38 @@ export function openTerminal(target: OpenTarget, opts: OpenOptions = {}): Uuid {
     protocol: null,
     hostId: target.kind === "host" ? target.host_id : null,
     algorithms: null,
+    via: [],
+    hostTheme: null,
+    startedAt: null,
     status: "connecting",
     message: null,
   };
+}
+
+/**
+ * Open a terminal for `target` in a new tab, or split the target tab's active
+ * pane. Returns `null` when the tab already holds `MAX_PANES` panes.
+ */
+export function openTerminal(target: OpenTarget, opts: OpenOptions = {}): Uuid | null {
+  const state = terminalStore.get();
+  const existing = opts.intoTab ? state.tabs.find((t) => t.id === opts.intoTab) : undefined;
+  if (existing && existing.paneIds.length >= MAX_PANES) return null;
+
+  const paneId = uuid();
+  const pane = newPane(paneId, target);
   runtimes.set(paneId, createRuntime(paneId));
 
   update((s) => {
     const panes = { ...s.panes, [paneId]: pane };
-    const existing = opts.intoTab ? s.tabs.find((t) => t.id === opts.intoTab) : undefined;
     if (existing) {
       const tabs = s.tabs.map((t) =>
         t.id === existing.id
           ? {
-              ...t,
-              paneIds: [...t.paneIds, paneId],
+              ...withLayout(
+                t,
+                splitLeaf(t.layout, t.activePaneId, paneId, opts.direction ?? "row", uuid()),
+              ),
               activePaneId: paneId,
-              direction: opts.direction ?? t.direction,
             }
           : t,
       );
@@ -457,11 +661,13 @@ export function openTerminal(target: OpenTarget, opts: OpenOptions = {}): Uuid {
     }
     const tab: TerminalTab = {
       id: uuid(),
+      layout: leaf(paneId),
       paneIds: [paneId],
       activePaneId: paneId,
-      direction: "row",
       broadcast: false,
       searchOpen: false,
+      zoom: 1,
+      themeOverride: null,
     };
     return {
       ...s,
@@ -470,6 +676,7 @@ export function openTerminal(target: OpenTarget, opts: OpenOptions = {}): Uuid {
       activeTabId: opts.background ? s.activeTabId : tab.id,
     };
   });
+  applyPaneLook(paneId);
   startSession(paneId, target);
   return paneId;
 }
@@ -481,6 +688,82 @@ export function splitActivePane(tabId: string, direction: SplitDirection) {
   const pane = tab ? s.panes[tab.activePaneId] : undefined;
   if (!tab || !pane) return;
   openTerminal(pane.target, { intoTab: tabId, direction });
+}
+
+export function setSplitRatio(tabId: string, splitId: string, ratio: number) {
+  update((s) => ({
+    ...s,
+    tabs: s.tabs.map((t) =>
+      t.id === tabId ? withLayout(t, setRatio(t.layout, splitId, ratio)) : t,
+    ),
+  }));
+}
+
+/** Move keyboard focus to the pane next to the active one. */
+export function focusNeighbor(tabId: string, side: Side) {
+  const s = terminalStore.get();
+  const tab = s.tabs.find((t) => t.id === tabId);
+  if (!tab || tab.paneIds.length < 2) return;
+  const rectOf = (id: Uuid): Rect | null => {
+    const el = runtimes.get(id)?.container;
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, width: r.width, height: r.height };
+  };
+  const from = rectOf(tab.activePaneId);
+  if (!from) return;
+  const others = new Map<Uuid, Rect>();
+  for (const id of tab.paneIds) {
+    if (id === tab.activePaneId) continue;
+    const r = rectOf(id);
+    if (r) others.set(id, r);
+  }
+  const next = neighbor(from, others, side);
+  if (next) {
+    setActivePane(next);
+    focusPane(next);
+  }
+}
+
+/** Detach a pane from its split tab into a tab of its own. */
+export function movePaneToNewTab(paneId: Uuid) {
+  const s = terminalStore.get();
+  const tab = tabOf(s, paneId);
+  if (!tab || tab.paneIds.length < 2) return;
+  update((st) => {
+    const tabs: TerminalTab[] = [];
+    let fresh: TerminalTab | null = null;
+    for (const t of st.tabs) {
+      if (t.id !== tab.id) {
+        tabs.push(t);
+        continue;
+      }
+      const rest = removeLeaf(t.layout, paneId);
+      if (rest) {
+        const kept = withLayout(t, rest);
+        tabs.push({
+          ...kept,
+          activePaneId: kept.paneIds.includes(t.activePaneId)
+            ? t.activePaneId
+            : (kept.paneIds[0] ?? t.activePaneId),
+          broadcast: kept.paneIds.length > 1 && t.broadcast,
+        });
+      }
+      fresh = {
+        id: uuid(),
+        layout: leaf(paneId),
+        paneIds: [paneId],
+        activePaneId: paneId,
+        broadcast: false,
+        searchOpen: false,
+        zoom: t.zoom,
+        themeOverride: t.themeOverride,
+      };
+      tabs.push(fresh);
+    }
+    return fresh ? { ...st, tabs, activeTabId: fresh.id } : st;
+  });
+  requestAnimationFrame(() => fitPane(paneId));
 }
 
 /** Replace a finished pane with a new session to the same target. */
@@ -498,14 +781,14 @@ export function reconnectPane(paneId: Uuid) {
     const tabs = st.tabs.map((t) =>
       t.id === tab.id
         ? {
-            ...t,
-            paneIds: t.paneIds.map((id) => (id === paneId ? newId : id)),
+            ...withLayout(t, replaceLeaf(t.layout, paneId, newId)),
             activePaneId: t.activePaneId === paneId ? newId : t.activePaneId,
           }
         : t,
     );
     return { ...st, panes, tabs };
   });
+  applyPaneLook(newId);
   startSession(newId, pane.target);
 }
 
@@ -520,9 +803,8 @@ function removePane(paneId: Uuid) {
         tabs.push(t);
         continue;
       }
-      const paneIds = t.paneIds.filter((id) => id !== paneId);
-      const last = paneIds[paneIds.length - 1];
-      if (last === undefined) {
+      const rest = removeLeaf(t.layout, paneId);
+      if (rest === null) {
         if (activeTabId === t.id) {
           const i = s.tabs.indexOf(t);
           const next = s.tabs[i + 1] ?? s.tabs[i - 1];
@@ -530,14 +812,16 @@ function removePane(paneId: Uuid) {
         }
         continue;
       }
+      const kept = withLayout(t, rest);
+      const last = kept.paneIds[kept.paneIds.length - 1] ?? t.activePaneId;
       tabs.push({
-        ...t,
-        paneIds,
+        ...kept,
         activePaneId: t.activePaneId === paneId ? last : t.activePaneId,
-        broadcast: paneIds.length > 1 && t.broadcast,
+        broadcast: kept.paneIds.length > 1 && t.broadcast,
       });
     }
-    return { ...s, panes, tabs, activeTabId, pendingClose: null };
+    const contextMenu = s.contextMenu?.paneId === paneId ? null : s.contextMenu;
+    return { ...s, panes, tabs, activeTabId, pendingClose: null, contextMenu };
   });
 }
 
@@ -581,6 +865,30 @@ export function setActiveTab(tabId: string) {
   update((s) => (s.activeTabId === tabId ? s : { ...s, activeTabId: tabId }));
 }
 
+/** Switch to the tab `offset` places away, wrapping around. */
+export function cycleTab(offset: number) {
+  const s = terminalStore.get();
+  if (s.tabs.length === 0) return;
+  const i = s.tabs.findIndex((t) => t.id === s.activeTabId);
+  const next =
+    s.tabs[((((i === -1 ? 0 : i) + offset) % s.tabs.length) + s.tabs.length) % s.tabs.length];
+  if (next) setActiveTab(next.id);
+}
+
+/** Reorder: place `tabId` where `beforeId` is (or at the end when `null`). */
+export function moveTab(tabId: string, beforeId: string | null) {
+  update((s) => {
+    if (tabId === beforeId) return s;
+    const moving = s.tabs.find((t) => t.id === tabId);
+    if (!moving) return s;
+    const rest = s.tabs.filter((t) => t.id !== tabId);
+    const at = beforeId === null ? rest.length : rest.findIndex((t) => t.id === beforeId);
+    if (at === -1) return s;
+    const tabs = [...rest.slice(0, at), moving, ...rest.slice(at)];
+    return { ...s, tabs };
+  });
+}
+
 export function setActivePane(paneId: Uuid) {
   update((s) => {
     const tab = tabOf(s, paneId);
@@ -608,11 +916,13 @@ export function setSearchOpen(tabId: string, open: boolean) {
   }));
 }
 
-export function setTabDirection(tabId: string, direction: SplitDirection) {
-  update((s) => ({
-    ...s,
-    tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, direction } : t)),
-  }));
+export function setSidePanel(panel: SidePanelTab | null) {
+  update((s) => (s.sidePanel === panel ? s : { ...s, sidePanel: panel }));
+}
+
+/** Open the side panel on `panel`, or close it when that section is already showing. */
+export function toggleSidePanel(panel: SidePanelTab = "snippets") {
+  update((s) => ({ ...s, sidePanel: s.sidePanel === null ? panel : null }));
 }
 
 /** Send text to a pane (e.g. a snippet); goes through the same broadcast rules. */
@@ -639,7 +949,9 @@ function onSessionEvent(ev: SessionEvent) {
         subtitle: ev.info.target,
         protocol: ev.info.protocol,
         hostId: ev.info.hostId,
+        hostTheme: ev.info.colorScheme,
       });
+      applyPaneLook(ev.id);
       break;
     case "connected":
       break;

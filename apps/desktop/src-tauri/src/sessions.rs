@@ -68,6 +68,8 @@ pub struct SessionInfo {
     pub algorithms: Option<Algorithms>,
     /// Jump hosts the connection went through, outermost first (`user@host:port`).
     pub via: Vec<String>,
+    /// Colour scheme configured on the host (or inherited from its groups).
+    pub color_scheme: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -261,6 +263,7 @@ pub async fn open<R: Runtime>(
         state: SessionState::Connected,
         algorithms: opened.client.as_ref().and_then(|c| c.algorithms().cloned()),
         via: opened.jumps.iter().map(|j| j.target().display()).collect(),
+        color_scheme: opened.color_scheme,
     };
     let history_id = state
         .store
@@ -483,6 +486,7 @@ struct Opened {
     jumps: Vec<Arc<SshClient>>,
     /// Script typed into the shell right after connecting.
     startup: String,
+    color_scheme: Option<String>,
 }
 
 async fn connect<R: Runtime>(
@@ -511,6 +515,7 @@ async fn connect<R: Runtime>(
                 client: None,
                 jumps: Vec::new(),
                 startup: String::new(),
+                color_scheme: None,
             })
         }
         OpenTarget::Quick {
@@ -525,7 +530,7 @@ async fn connect<R: Runtime>(
                 username: user,
             };
             let display = target.display();
-            emit_connecting(app, id, "ssh", &display, &display, None);
+            emit_connecting(app, id, "ssh", &display, &display, None, None);
             let (client, jumps) = ssh_connect(app, id, target, None, &[], None).await?;
             let (term, events) = client.shell(TERM, size).await?;
             Ok(Opened {
@@ -539,6 +544,7 @@ async fn connect<R: Runtime>(
                 client: Some(client),
                 jumps,
                 startup: String::new(),
+                color_scheme: None,
             })
         }
         OpenTarget::Host { host_id } => {
@@ -549,7 +555,16 @@ async fn connect<R: Runtime>(
                 let telnet = resolved.telnet.clone().unwrap_or_default();
                 let port = telnet.port.unwrap_or(23);
                 let display = format!("{}:{}", resolved.host.data.address, port);
-                emit_connecting(app, id, "telnet", &label, &display, Some(*host_id));
+                let scheme = telnet.color_scheme.clone();
+                emit_connecting(
+                    app,
+                    id,
+                    "telnet",
+                    &label,
+                    &display,
+                    Some(*host_id),
+                    scheme.clone(),
+                );
                 let (term, events) = TelnetTerminal::connect(TelnetOptions {
                     host: resolved.host.data.address.clone(),
                     port,
@@ -569,11 +584,21 @@ async fn connect<R: Runtime>(
                     client: None,
                     jumps: Vec::new(),
                     startup: startup_script(&state, &resolved),
+                    color_scheme: scheme,
                 });
             }
             let target = ssh_target(&resolved);
             let display = target.display();
-            emit_connecting(app, id, "ssh", &label, &display, Some(*host_id));
+            let scheme = resolved.ssh.color_scheme.clone();
+            emit_connecting(
+                app,
+                id,
+                "ssh",
+                &label,
+                &display,
+                Some(*host_id),
+                scheme.clone(),
+            );
             let (client, jumps) = connect_resolved(app, id, &resolved).await?;
             let (term, events) = client.shell(TERM, size).await?;
             detect_os_in_background(app, &resolved, client.clone());
@@ -588,6 +613,7 @@ async fn connect<R: Runtime>(
                 client: Some(client),
                 jumps,
                 startup: startup_script(&state, &resolved),
+                color_scheme: scheme,
             })
         }
     }
@@ -707,6 +733,7 @@ fn emit_connecting<R: Runtime>(
     title: &str,
     target: &str,
     host_id: Option<Uuid>,
+    color_scheme: Option<String>,
 ) {
     let _ = app.emit(
         SESSION_EVENT,
@@ -722,6 +749,7 @@ fn emit_connecting<R: Runtime>(
                 state: SessionState::Connecting,
                 algorithms: None,
                 via: Vec::new(),
+                color_scheme,
             },
         },
     );

@@ -13,7 +13,8 @@ import {
   setActivePane,
   useTerminal,
 } from "./store";
-import { useTerminalTheme } from "./useTerminalTheme";
+import { usePaneTheme } from "./useTerminalTheme";
+import type { TerminalTheme } from "./themes";
 
 interface Props {
   paneId: Uuid;
@@ -24,7 +25,7 @@ interface Props {
 export function TerminalPane({ paneId, active, showFrame }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const pane = useTerminal((s) => s.panes[paneId]);
-  const theme = useTerminalTheme();
+  const theme = usePaneTheme(paneId);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -47,6 +48,8 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
         flex: 1,
         minWidth: 0,
         minHeight: 0,
+        width: "100%",
+        height: "100%",
         display: "flex",
         flexDirection: "column",
         bgcolor: theme.background,
@@ -83,7 +86,7 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
       <Box ref={hostRef} sx={{ flex: 1, minHeight: 0, position: "relative" }} />
 
       {pane.status === "connecting" && (
-        <Overlay>
+        <Overlay theme={theme}>
           <CircularProgress size={22} />
           <Typography variant="body2" sx={{ opacity: 0.8 }}>
             Connecting to {pane.subtitle || pane.title}…
@@ -91,7 +94,7 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
         </Overlay>
       )}
       {finished && (
-        <Overlay dim>
+        <Overlay theme={theme} dim>
           <Typography
             variant="body2"
             color={pane.status === "error" ? "error" : "inherit"}
@@ -123,8 +126,15 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
   );
 }
 
-function Overlay({ children, dim }: { children: React.ReactNode; dim?: boolean }) {
-  const theme = useTerminalTheme();
+function Overlay({
+  children,
+  theme,
+  dim,
+}: {
+  children: React.ReactNode;
+  theme: TerminalTheme;
+  dim?: boolean;
+}) {
   return (
     <Stack
       spacing={1.5}
