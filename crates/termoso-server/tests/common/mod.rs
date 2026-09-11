@@ -258,6 +258,7 @@ async fn boot() -> Option<TestServer> {
     let cfg = Config {
         bind: addr,
         public_url: format!("http://{addr}"),
+        web_dir: Some(fake_web_dir(&db_name)),
         database_url: database_url.clone(),
         redis_url: redis_url(),
         redis_prefix: format!("{db_name}:"),
@@ -336,6 +337,20 @@ async fn boot() -> Option<TestServer> {
         mailpit,
         idp,
     })
+}
+
+/// A stand-in for `web/dist`: index.html plus one hashed asset.
+fn fake_web_dir(unique: &str) -> String {
+    let dir = std::env::temp_dir().join(format!("{unique}_web"));
+    std::fs::create_dir_all(dir.join("assets")).expect("web dir");
+    std::fs::write(
+        dir.join("index.html"),
+        "<!doctype html><title>Termoso</title><div id=root></div>",
+    )
+    .expect("index.html");
+    std::fs::write(dir.join("assets/app-abc123.js"), "export {};").expect("asset");
+    std::fs::write(dir.join("favicon.svg"), "<svg/>").expect("favicon");
+    dir.to_string_lossy().into_owned()
 }
 
 fn fake_ip() -> String {
