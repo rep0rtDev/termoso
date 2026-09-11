@@ -6,3 +6,5 @@
 *.log
 .DS_Store
 node_modules
+/web/dist
+/web/src/crypto/pkg

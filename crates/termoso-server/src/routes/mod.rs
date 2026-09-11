@@ -10,6 +10,7 @@ pub mod server;
 pub mod sync;
 pub mod teams;
 pub mod vaults;
+pub mod web;
 
 use std::time::Duration;
 
@@ -167,7 +168,8 @@ pub fn router(state: AppState) -> Router {
             "/admin/settings",
             get(admin::get_settings).put(admin::put_settings),
         )
-        .route("/admin/email/test", post(admin::test_email));
+        .route("/admin/email/test", post(admin::test_email))
+        .fallback(async || crate::error::Error::not_found("route"));
 
     let mut app = Router::new()
         .route("/healthz", get(server::healthz))
@@ -176,6 +178,9 @@ pub fn router(state: AppState) -> Router {
 
     if state.cfg.swagger_ui {
         app = app.merge(crate::openapi::swagger());
+    }
+    if let Some(dir) = state.cfg.web_dir() {
+        app = app.merge(web::router(dir));
     }
 
     let cors = cors_layer(&state);

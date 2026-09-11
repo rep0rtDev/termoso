@@ -1,0 +1,90 @@
+import { useState } from "react";
+import { Box, Button, Chip, Paper, Stack, Typography } from "@mui/material";
+import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
+import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
+import { monoFontFamily } from "@/theme/theme";
+
+interface Props {
+  phrase: string;
+  email?: string;
+}
+
+export function RecoveryPhraseGrid({ phrase, email }: Props) {
+  const words = phrase.trim().split(/\s+/);
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    await navigator.clipboard.writeText(phrase);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+
+  const download = () => {
+    const body = [
+      "Termoso recovery key",
+      email ? `Account: ${email}` : null,
+      "",
+      "Keep this file offline. Anyone with these 24 words can reset your password and read your data.",
+      "",
+      ...words.map((w, i) => `${String(i + 1).padStart(2, " ")}. ${w}`),
+      "",
+    ]
+      .filter((l) => l !== null)
+      .join("\n");
+    const blob = new Blob([body], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "termoso-recovery-key.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <Stack spacing={2}>
+      <Paper
+        variant="outlined"
+        sx={{
+          p: 2,
+          display: "grid",
+          gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", md: "repeat(4, 1fr)" },
+          gap: 1,
+          bgcolor: "background.default",
+        }}
+      >
+        {words.map((w, i) => (
+          <Box
+            key={i}
+            sx={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 1,
+              px: 1.25,
+              py: 0.75,
+              borderRadius: 2,
+              bgcolor: "background.paper",
+              border: 1,
+              borderColor: "divider",
+            }}
+          >
+            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 18 }}>
+              {i + 1}
+            </Typography>
+            <Typography sx={{ fontFamily: monoFontFamily, fontSize: "0.9rem", userSelect: "all" }}>
+              {w}
+            </Typography>
+          </Box>
+        ))}
+      </Paper>
+      <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
+        <Button startIcon={<ContentCopyRoundedIcon />} onClick={copy} variant="outlined">
+          {copied ? "Copied" : "Copy"}
+        </Button>
+        <Button startIcon={<DownloadRoundedIcon />} onClick={download} variant="outlined">
+          Download .txt
+        </Button>
+        <Chip label={`${words.length} words`} size="small" sx={{ alignSelf: "center" }} />
+      </Stack>
+    </Stack>
+  );
+}
