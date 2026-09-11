@@ -3,10 +3,10 @@
 
 use std::time::Duration;
 
-use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
-use serde::de::DeserializeOwned;
+use redis::aio::ConnectionManager;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 use crate::error::ApiResult;
 

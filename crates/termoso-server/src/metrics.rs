@@ -6,8 +6,8 @@
 
 use std::net::SocketAddr;
 
-use axum::routing::get;
 use axum::Router;
+use axum::routing::get;
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 
 pub fn install() -> anyhow::Result<PrometheusHandle> {

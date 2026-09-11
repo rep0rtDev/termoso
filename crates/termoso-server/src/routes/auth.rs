@@ -2,9 +2,9 @@
 
 use std::time::Duration;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use axum::Json;
 use serde::{Deserialize, Serialize};
 use termoso_crypto::encoding::{b64, unb64, unb64_array};
 use termoso_crypto::opaque;
@@ -179,10 +179,10 @@ async fn registration_allowed(
     if state.is_bootstrap_admin(email) {
         return Ok(());
     }
-    if let Some(inv) = invite {
-        if inv.email.eq_ignore_ascii_case(email) {
-            return Ok(());
-        }
+    if let Some(inv) = invite
+        && inv.email.eq_ignore_ascii_case(email)
+    {
+        return Ok(());
     }
     if state.settings().await?.registration_open {
         return Ok(());
@@ -269,18 +269,18 @@ pub async fn register_finish(
         return Err(Error::email_taken());
     }
     users::create_personal_vault(&mut tx, user_id, &req.keys.personal_vault_sealed_key).await?;
-    if let Some(inv) = &invite {
-        if invite_matches {
-            crate::routes::teams::apply_invite(
-                &mut tx,
-                inv.id,
-                inv.team_id,
-                &inv.role,
-                &inv.vault_ids,
-                user_id,
-            )
-            .await?;
-        }
+    if let Some(inv) = &invite
+        && invite_matches
+    {
+        crate::routes::teams::apply_invite(
+            &mut tx,
+            inv.id,
+            inv.team_id,
+            &inv.role,
+            &inv.vault_ids,
+            user_id,
+        )
+        .await?;
     }
     tx.commit().await?;
 

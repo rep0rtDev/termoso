@@ -128,10 +128,10 @@ pub async fn issue(
 pub async fn validate(state: &AppState, token: &str) -> ApiResult<SessionInfo> {
     let h = hash_token(token);
     let key = cache_key(&h);
-    if let Some(info) = state.cache.get_json::<SessionInfo>(&key).await? {
-        if info.expires_at > Utc::now() {
-            return Ok(info);
-        }
+    if let Some(info) = state.cache.get_json::<SessionInfo>(&key).await?
+        && info.expires_at > Utc::now()
+    {
+        return Ok(info);
     }
     let row: Option<(Uuid, Uuid, Uuid, DateTime<Utc>, bool, bool, bool, DateTime<Utc>)> = sqlx::query_as(
         "SELECT s.id, s.user_id, s.device_id, s.expires_at, u.is_admin, u.disabled, u.email_verified, s.last_used_at
