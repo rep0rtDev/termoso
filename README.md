@@ -9,8 +9,9 @@ telemetry, no analytics, no crash reporting and no "phone home". The only metric
 that exist are opt-in Prometheus counters served on a private listener for the
 operator running the server.
 
-> Status: **phase 1 — backend**. The server API is functional and covered by
-> integration tests; clients (desktop / mobile / web cabinet) come next.
+> Status: **phase 2 — web cabinet**. The server API is functional and covered by
+> integration tests; the web cabinet (account, teams, vaults, admin) is served by
+> the same server. Desktop and mobile clients come next.
 
 ## Repository layout
 
@@ -20,6 +21,8 @@ crates/
                    X25519 sealed boxes, BIP39-style recovery key)
   termoso-proto    API request/response types shared by server and clients
   termoso-server   the API server (axum + PostgreSQL + Redis + S3)
+  termoso-wasm     termoso-crypto compiled to WebAssembly for the web cabinet
+web/               web cabinet (Vite + React + MUI); all crypto runs in the WASM module
 deploy/            Dockerfile, docker-compose for production and for local development
 ```
 
@@ -54,9 +57,11 @@ $EDITOR deploy/.env              # at least TERMOSO_MASTER_KEY, passwords and pu
 docker compose -f deploy/docker-compose.yml up -d
 ```
 
-This starts the API (`:8080`), PostgreSQL, Redis and MinIO. Put a TLS-terminating
-reverse proxy (Caddy, Traefik, nginx) in front of the API and of MinIO (for
-pre-signed log uploads) and set `TERMOSO_PUBLIC_URL`, `TERMOSO_WEB_URL` and
+This starts the server (`:8080`), PostgreSQL, Redis and MinIO. The image bundles
+the web cabinet: the API lives under `/api/v1` and everything else on the same
+origin serves the cabinet, so one hostname is enough. Put a TLS-terminating
+reverse proxy (Caddy, Traefik, nginx) in front of the server and of MinIO (for
+pre-signed log uploads) and set `TERMOSO_PUBLIC_URL` and
 `TERMOSO_S3__PUBLIC_ENDPOINT` accordingly. Migrations run automatically on start.
 
 * `GET /healthz` — liveness, `GET /readyz` — readiness (checks PostgreSQL and Redis).
@@ -78,9 +83,11 @@ annotated list; the source of truth is `crates/termoso-server/src/config.rs`.
 |---|---|
 | `TERMOSO_MASTER_KEY` | **required** — 32 random bytes, base64 (`openssl rand -base64 32`) |
 | `TERMOSO_DATABASE_URL`, `TERMOSO_REDIS_URL` | backing services |
-| `TERMOSO_PUBLIC_URL`, `TERMOSO_WEB_URL` | URLs used in e-mails and OAuth redirects |
+| `TERMOSO_PUBLIC_URL` | URL of the server (API + cabinet), used in e-mails and OAuth redirects |
+| `TERMOSO_WEB_URL` | only when the cabinet is hosted on another origin (defaults to `TERMOSO_PUBLIC_URL`) |
+| `TERMOSO_WEB_DIR` | directory with the built cabinet to serve on `/` (the Docker image sets `/app/web`; unset = API only) |
 | `TERMOSO_ADMIN_EMAILS` | comma-separated e-mails that get the admin role |
-| `TERMOSO_CORS_ORIGINS` | browser origins allowed to call the API |
+| `TERMOSO_CORS_ORIGINS` | extra browser origins allowed to call the API (not needed when the cabinet is served by the server) |
 | `TERMOSO_TRUST_PROXY` | honour `X-Forwarded-For` from your reverse proxy |
 | `TERMOSO_S3__*` | S3-compatible storage for session logs (optional) |
 | `TERMOSO_SMTP__*` | outgoing e-mail (optional; without it e-mail features are off) |
@@ -100,6 +107,24 @@ cargo run -p termoso-server
 
 Defaults connect to `postgres://termoso:termoso@localhost:5432/termoso` and
 `redis://127.0.0.1:6379`.
+
+#### Web cabinet
+
+Requires Node 22.12+ and [`wasm-pack`](https://github.com/wasm-bindgen/wasm-pack)
+(`cargo install wasm-pack` or `cargo binstall wasm-pack`).
+
+```bash
+cd web
+npm ci
+npm run wasm      # builds crates/termoso-wasm → src/crypto/pkg (generated, git-ignored)
+npm run dev       # http://localhost:5173, proxies /api to the server on :8080
+```
+
+`npm run wasm` must be re-run after changing `termoso-crypto` or `termoso-wasm`.
+`npm run typecheck`, `npm run lint`, `npm run format:check` and `npm run build`
+are what CI runs; `npm run build` writes `web/dist`, which the server serves when
+`TERMOSO_WEB_DIR=web/dist` is set. The cabinet talks to `/api/v1` on its own
+origin only — there are no third-party scripts, fonts or analytics.
 
 ### Tests
 

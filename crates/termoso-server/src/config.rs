@@ -21,6 +21,9 @@ pub struct Config {
     pub public_url: String,
     /// Public URL of the web cabinet (links in emails). Defaults to `public_url`.
     pub web_url: Option<String>,
+    /// Directory with the built web cabinet (`web/dist`). When set, the server
+    /// serves it on `/` with an `index.html` fallback for client-side routes.
+    pub web_dir: Option<String>,
     /// Human name shown in emails / server info.
     pub server_name: String,
     pub database_url: String,
@@ -168,6 +171,7 @@ impl Default for Config {
             bind: "0.0.0.0:8080".parse().expect("valid addr"),
             public_url: "http://localhost:8080".into(),
             web_url: None,
+            web_dir: None,
             server_name: "Termoso".into(),
             database_url: "postgres://termoso:termoso@localhost:5432/termoso".into(),
             database_max_connections: 20,
@@ -209,7 +213,17 @@ impl Config {
         );
         self.master_key()?;
         url::Url::parse(&self.public_url).context("TERMOSO_PUBLIC_URL must be a URL")?;
+        if let Some(dir) = self.web_dir() {
+            crate::routes::web::validate_dir(&dir)?;
+        }
         Ok(())
+    }
+
+    pub fn web_dir(&self) -> Option<std::path::PathBuf> {
+        self.web_dir
+            .as_deref()
+            .filter(|d| !d.trim().is_empty())
+            .map(std::path::PathBuf::from)
     }
 
     pub fn master_key(&self) -> Result<SymmetricKey> {
