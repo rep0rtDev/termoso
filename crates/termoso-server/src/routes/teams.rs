@@ -1,7 +1,7 @@
 //! Teams: membership, roles, invitations and pending vault-key requests.
 
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 use chrono::{DateTime, Utc};
 use sqlx::{PgExecutor, Postgres, Transaction};
 use termoso_proto::team::*;
@@ -520,30 +520,32 @@ pub async fn create_invite(
         state.cfg.web_url().trim_end_matches('/'),
         token
     );
-    if let Some(mailer) = &state.mailer {
-        if ratelimit::check(&state, ratelimit::EMAIL, &email)
+    if let Some(mailer) = &state.mailer
+        && ratelimit::check(&state, ratelimit::EMAIL, &email)
             .await
             .is_ok()
+    {
+        let (team_name,): (String,) = sqlx::query_as("SELECT name FROM teams WHERE id = $1")
+            .bind(id)
+            .fetch_one(&state.db)
+            .await?;
+        let inviter = users::by_id(&state.db, auth.user_id()).await?;
+        let text = format!(
+            "{} invited you to join the team \"{}\" on {}.\n\nOpen this link to accept:\n\n    {}\n\nThe invitation expires in {} days.",
+            inviter
+                .display_name
+                .clone()
+                .unwrap_or(inviter.email.clone()),
+            team_name,
+            state.cfg.server_name,
+            url,
+            INVITE_DAYS
+        );
+        if let Err(e) = mailer
+            .send(&email, &format!("Invitation to {team_name}"), &text)
+            .await
         {
-            let (team_name,): (String,) = sqlx::query_as("SELECT name FROM teams WHERE id = $1")
-                .bind(id)
-                .fetch_one(&state.db)
-                .await?;
-            let inviter = users::by_id(&state.db, auth.user_id()).await?;
-            let text = format!(
-                "{} invited you to join the team \"{}\" on {}.\n\nOpen this link to accept:\n\n    {}\n\nThe invitation expires in {} days.",
-                inviter.display_name.clone().unwrap_or(inviter.email.clone()),
-                team_name,
-                state.cfg.server_name,
-                url,
-                INVITE_DAYS
-            );
-            if let Err(e) = mailer
-                .send(&email, &format!("Invitation to {team_name}"), &text)
-                .await
-            {
-                tracing::warn!(error = %e, "could not send invite email");
-            }
+            tracing::warn!(error = %e, "could not send invite email");
         }
     }
     Ok(Json(CreatedInvite {

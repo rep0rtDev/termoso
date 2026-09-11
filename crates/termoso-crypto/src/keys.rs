@@ -4,8 +4,8 @@ use crypto_box::aead::OsRng;
 use crypto_box::{PublicKey, SecretKey};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use crate::encoding::{b64, unb64_array};
 use crate::CryptoError;
+use crate::encoding::{b64, unb64_array};
 
 /// Length of every symmetric key in Termoso.
 pub const KEY_LEN: usize = 32;

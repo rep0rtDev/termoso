@@ -1,9 +1,9 @@
 //! Unified error type → JSON `ApiError` body.
 
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
-use termoso_proto::error::{codes, ApiError};
+use termoso_proto::error::{ApiError, codes};
 
 pub type ApiResult<T> = Result<T, Error>;
 

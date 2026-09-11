@@ -63,3 +63,5 @@ async-trait = "0.1"
 tower = { workspace = true }
 http-body-util = "0.1"
 tokio-tungstenite = "0.29"
+# Mock OIDC provider in the integration tests signs RS256 ID tokens.
+rsa = { version = "0.9", features = ["sha2"] }

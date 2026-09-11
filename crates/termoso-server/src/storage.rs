@@ -3,9 +3,9 @@
 use std::time::Duration;
 
 use anyhow::Context;
+use aws_sdk_s3::Client;
 use aws_sdk_s3::config::{BehaviorVersion, Credentials, Region};
 use aws_sdk_s3::presigning::PresigningConfig;
-use aws_sdk_s3::Client;
 
 use crate::config::S3Config;
 

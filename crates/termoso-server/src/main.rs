@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use anyhow::Context;
 use termoso_server::config::{Config, LogFormat};
-use termoso_server::{metrics, Inner};
+use termoso_server::{Inner, metrics};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]

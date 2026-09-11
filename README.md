@@ -92,7 +92,7 @@ annotated list; the source of truth is `crates/termoso-server/src/config.rs`.
 ### Local development
 
 ```bash
-docker compose -f deploy/docker-compose.dev.yml up -d --wait   # postgres, redis, minio
+docker compose -f deploy/docker-compose.dev.yml up -d --wait   # postgres, redis, minio, mailpit
 export TERMOSO_MASTER_KEY=$(openssl rand -base64 32)
 cargo run -p termoso-server
 # → http://localhost:8080/docs
@@ -109,14 +109,31 @@ cargo test --workspace
 
 Unit tests always run. The integration suite in `crates/termoso-server/tests`
 boots a real server against PostgreSQL and Redis (it creates a throw-away
-database per run and applies the migrations). It is skipped with a notice when
-the services are not reachable; set `TERMOSO_TEST_REQUIRE_SERVICES=1` to make
-that a failure (CI does). `TERMOSO_TEST_DATABASE_URL` / `TERMOSO_TEST_REDIS_URL`
-override the defaults.
+database per run and applies the migrations). MinIO (session logs) and Mailpit
+(every email flow: verification, device approval, email MFA, deletion) are
+picked up when reachable; SSO runs against an in-process mock OpenID Connect
+provider, so no external accounts are needed. Tests needing an unavailable
+service are skipped with a notice; set `TERMOSO_TEST_REQUIRE_SERVICES=1` to
+make that a failure (CI does). `TERMOSO_TEST_DATABASE_URL`,
+`TERMOSO_TEST_REDIS_URL`, `TERMOSO_TEST_S3_ENDPOINT`, `TERMOSO_TEST_SMTP_ADDR`
+and `TERMOSO_TEST_MAILPIT_URL` override the defaults.
 
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets
+```
+
+### Load testing
+
+The load generator is a Rust example rather than a k6 script: OPAQUE and the
+vault crypto cannot be reproduced from k6's JavaScript, and a Rust tool reuses
+the real client code paths. It registers N users, then each one pushes
+encrypted host batches and pulls by cursor, printing latency percentiles and
+status counts. Nothing is reported anywhere but stdout.
+
+```bash
+cargo run -p termoso-server --release --example loadtest -- \
+  --url http://127.0.0.1:8080 --users 20 --duration 30 --batch 20
 ```
 
 ## API overview
