@@ -12,6 +12,7 @@ export interface HostCollectionProps {
   onOpenGroup: (id: string) => void;
   onEditGroup: (g: GroupNode) => void;
   onOpenHost: (h: HostCard) => void;
+  onConnectHost: (h: HostCard) => void;
 }
 
 const cardSx = {
@@ -79,6 +80,7 @@ export function HostGrid(p: HostCollectionProps) {
           >
             <CardActionArea
               onClick={() => p.onOpenHost(h)}
+              onDoubleClick={() => p.onConnectHost(h)}
               sx={{
                 p: 1.75,
                 height: "100%",

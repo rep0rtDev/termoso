@@ -6,6 +6,7 @@ mod error;
 mod hosts;
 mod prompts;
 mod sessions;
+mod sftp;
 mod state;
 
 use tauri::Manager;
@@ -64,6 +65,23 @@ pub fn run() {
             commands::terminal_resize,
             commands::terminal_close,
             commands::prompt_answer,
+            commands::sftp_sessions_list,
+            commands::sftp_open,
+            commands::sftp_close,
+            commands::sftp_list,
+            commands::sftp_stat,
+            commands::sftp_mkdir,
+            commands::sftp_rename,
+            commands::sftp_remove,
+            commands::sftp_chmod,
+            commands::local_home,
+            commands::local_list,
+            commands::local_stat,
+            commands::local_mkdir,
+            commands::local_rename,
+            commands::local_remove,
+            commands::transfer_start,
+            commands::transfer_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Termoso");

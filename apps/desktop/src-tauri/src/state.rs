@@ -10,6 +10,7 @@ use termoso_core::store::Store;
 use crate::error::{DesktopError, Result};
 use crate::prompts::PromptBroker;
 use crate::sessions::Sessions;
+use crate::sftp::SftpSessions;
 
 pub const PROFILE_ENV: &str = "TERMOSO_PROFILE_DIR";
 const DB_FILE: &str = "vault.db";
@@ -20,6 +21,7 @@ pub struct AppState {
     pub master_source: MasterKeySource,
     pub store: Arc<Store>,
     pub sessions: Sessions,
+    pub sftp: SftpSessions,
     pub prompts: PromptBroker,
 }
 
@@ -38,6 +40,7 @@ impl AppState {
             master_source: master.source,
             store: Arc::new(store),
             sessions: Sessions::default(),
+            sftp: SftpSessions::default(),
             prompts: PromptBroker::default(),
         })
     }
