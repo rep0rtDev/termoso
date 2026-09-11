@@ -5,8 +5,8 @@ use axum::extract::{
     ConnectInfo, FromRequest, FromRequestParts, OptionalFromRequest, OptionalFromRequestParts,
     Request,
 };
-use axum::http::request::Parts;
 use axum::http::HeaderMap;
+use axum::http::request::Parts;
 use std::net::SocketAddr;
 use uuid::Uuid;
 
@@ -47,10 +47,9 @@ pub fn client_ip(parts: &Parts, trust_proxy: bool) -> Option<String> {
             .headers
             .get("x-forwarded-for")
             .and_then(|v| v.to_str().ok())
+            && let Some(first) = v.split(',').next().map(str::trim).filter(|s| !s.is_empty())
         {
-            if let Some(first) = v.split(',').next().map(str::trim).filter(|s| !s.is_empty()) {
-                return Some(first.to_string());
-            }
+            return Some(first.to_string());
         }
         if let Some(v) = parts.headers.get("x-real-ip").and_then(|v| v.to_str().ok()) {
             return Some(v.trim().to_string());

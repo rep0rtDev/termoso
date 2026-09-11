@@ -8,9 +8,9 @@
 use bip39::{Language, Mnemonic};
 use zeroize::Zeroizing;
 
-use crate::kdf::{derive_key, Label};
-use crate::keys::SymmetricKey;
 use crate::CryptoError;
+use crate::kdf::{Label, derive_key};
+use crate::keys::SymmetricKey;
 
 /// Number of words in a recovery phrase.
 pub const WORD_COUNT: usize = 24;

@@ -13,9 +13,9 @@ pub mod vaults;
 
 use std::time::Duration;
 
-use axum::http::{header, HeaderValue, Method};
-use axum::routing::{delete, get, patch, post, put};
 use axum::Router;
+use axum::http::{HeaderValue, Method, header};
+use axum::routing::{delete, get, patch, post, put};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;

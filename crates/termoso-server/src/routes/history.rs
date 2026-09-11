@@ -1,7 +1,7 @@
 //! Encrypted command / connection history (personal vault key).
 
-use axum::extract::{Query, State};
 use axum::Json;
+use axum::extract::{Query, State};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use termoso_crypto::encoding::unb64;
