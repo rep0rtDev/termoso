@@ -73,6 +73,66 @@ async fn health_and_server_info() {
 }
 
 #[tokio::test]
+async fn web_cabinet_is_served_with_spa_fallback() {
+    let s = server!();
+    let get = |path: &str| s.http().get(format!("http://{}{path}", s.addr)).send();
+
+    let r = get("/").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert!(
+        r.headers()["content-type"]
+            .to_str()
+            .unwrap()
+            .starts_with("text/html")
+    );
+    assert_eq!(r.headers()["cache-control"], "no-cache");
+    assert_eq!(r.headers()["x-frame-options"], "DENY");
+    assert!(
+        r.headers()["content-security-policy"]
+            .to_str()
+            .unwrap()
+            .contains("'wasm-unsafe-eval'")
+    );
+    assert!(r.text().await.unwrap().contains("<div id=root>"));
+
+    // Client-side routes deep-link to index.html.
+    let r = get("/team/00000000-0000-0000-0000-000000000000")
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert!(r.text().await.unwrap().contains("<div id=root>"));
+
+    // Hashed assets are immutable; missing assets are real 404s.
+    let r = get("/assets/app-abc123.js").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert_eq!(
+        r.headers()["cache-control"],
+        "public, max-age=31536000, immutable"
+    );
+    assert!(r.headers().get("content-security-policy").is_none());
+    let r = get("/assets/missing-000.js").await.unwrap();
+    assert_eq!(r.status(), StatusCode::NOT_FOUND);
+    let r = get("/favicon.svg").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert_eq!(r.headers()["cache-control"], "no-cache");
+    let r = get("/robots.txt").await.unwrap();
+    assert_eq!(r.status(), StatusCode::NOT_FOUND);
+
+    // The API keeps JSON 404s and is never shadowed by the SPA.
+    let r = get("/api/v1/no-such-route").await.unwrap();
+    assert_eq!(r.status(), StatusCode::NOT_FOUND);
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(body["code"], "not_found");
+    let r = s
+        .http()
+        .post(format!("http://{}/team", s.addr))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn register_login_and_sessions() {
     let s = server!();
     let email = unique_email("alice");
