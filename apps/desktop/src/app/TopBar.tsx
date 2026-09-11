@@ -26,9 +26,14 @@ import { LogoMark } from "@/components/Logo";
 import { ActionMenu } from "@/components/ui";
 import { sizes } from "@/theme/theme";
 import { SFTP_TAB, goToSftp } from "./navigation";
+import { WindowControls } from "./WindowControls";
 import { useState } from "react";
 
-/** Persistent top strip: Vaults · SFTP · terminal tabs · [+]  ……  pane tools. */
+/**
+ * Persistent top strip, doubling as the window title bar (the native frame is
+ * off): Vaults · SFTP · terminal tabs · [+]  ……  pane tools · window controls.
+ * Empty space drags the window; double-click toggles maximize.
+ */
 export function TopBar() {
   const tabs = useTerminal((s) => s.tabs);
   const activeTabId = useTerminal((s) => s.activeTabId);
@@ -38,6 +43,7 @@ export function TopBar() {
 
   return (
     <Box
+      data-tauri-drag-region
       sx={{
         display: "flex",
         alignItems: "stretch",
@@ -47,9 +53,13 @@ export function TopBar() {
         borderBottom: 1,
         borderColor: "border.light",
         pl: 1,
+        userSelect: "none",
       }}
     >
-      <Box sx={{ display: "flex", alignItems: "center", pr: 1 }}>
+      <Box
+        data-tauri-drag-region
+        sx={{ display: "flex", alignItems: "center", pr: 1, "& svg": { pointerEvents: "none" } }}
+      >
         <LogoMark size={22} />
       </Box>
       <TopTab
@@ -66,6 +76,7 @@ export function TopBar() {
       />
       {tabs.length > 0 && <Divider orientation="vertical" flexItem sx={{ my: 1.25, mx: 0.5 }} />}
       <Box
+        data-tauri-drag-region
         sx={{
           flex: 1,
           minWidth: 0,
@@ -100,6 +111,7 @@ export function TopBar() {
         />
       </Box>
       {active && <PaneTools tab={active} />}
+      <WindowControls />
     </Box>
   );
 }
