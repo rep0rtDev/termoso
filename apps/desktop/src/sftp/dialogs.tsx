@@ -15,6 +15,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { Field } from "@/components/ui";
 
 interface NameDialogProps {
   open: boolean;
@@ -50,18 +51,19 @@ export function NameDialog({
             if (valid) onConfirm(value.trim());
           }}
         >
-          <TextField
-            autoFocus
-            label={label}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            fullWidth
-            margin="dense"
-            onFocus={(e) => {
-              const dot = initial.lastIndexOf(".");
-              e.target.setSelectionRange(0, dot > 0 ? dot : initial.length);
-            }}
-          />
+          <Field label={label}>
+            <TextField
+              autoFocus
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              fullWidth
+              margin="dense"
+              onFocus={(e) => {
+                const dot = initial.lastIndexOf(".");
+                e.target.setSelectionRange(0, dot > 0 ? dot : initial.length);
+              }}
+            />
+          </Field>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -149,15 +151,16 @@ export function ChmodDialog({ open, name, mode: initial, busy, onCancel, onConfi
             ))}
           </TableBody>
         </Table>
-        <TextField
-          label="Octal"
-          value={octal}
-          onChange={(e) => onOctal(e.target.value)}
-          size="small"
-          sx={{ mt: 2, width: 120 }}
-          error={!/^[0-7]{3,4}$/.test(octal)}
-          slotProps={{ input: { sx: { fontFamily: "monospace" } } }}
-        />
+        <Field label="Octal">
+          <TextField
+            value={octal}
+            onChange={(e) => onOctal(e.target.value)}
+            size="small"
+            error={!/^[0-7]{3,4}$/.test(octal)}
+            slotProps={{ input: { sx: { fontFamily: "monospace" } } }}
+            sx={{ mt: 2, width: 120 }}
+          />
+        </Field>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button color="inherit" onClick={onCancel} disabled={busy}>

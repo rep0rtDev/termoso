@@ -4,10 +4,10 @@ import { dark, emerald, light } from "@/theme/theme";
 /** Emerald-accented terminal palettes matching the app color schemes. */
 export const terminalThemes: Record<"dark" | "light", ITheme> = {
   dark: {
-    background: dark.bg,
+    background: dark.lowest,
     foreground: dark.text,
     cursor: emerald.main,
-    cursorAccent: dark.bg,
+    cursorAccent: dark.lowest,
     selectionBackground: "rgba(43, 184, 132, 0.32)",
     selectionInactiveBackground: "rgba(43, 184, 132, 0.18)",
     black: "#1A1E2B",
@@ -28,10 +28,10 @@ export const terminalThemes: Record<"dark" | "light", ITheme> = {
     brightWhite: "#F2F4FA",
   },
   light: {
-    background: light.surface,
+    background: light.high,
     foreground: light.text,
     cursor: emerald.dark,
-    cursorAccent: light.surface,
+    cursorAccent: light.high,
     selectionBackground: "rgba(31, 143, 102, 0.28)",
     selectionInactiveBackground: "rgba(31, 143, 102, 0.16)",
     black: "#171B26",

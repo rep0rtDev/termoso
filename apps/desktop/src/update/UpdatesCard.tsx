@@ -1,14 +1,7 @@
 import { useState } from "react";
-import {
-  Alert,
-  Box,
-  Button,
-  LinearProgress,
-  MenuItem,
-  Paper,
-  TextField,
-  Typography,
-} from "@mui/material";
+import { Alert, Box, Button, LinearProgress, MenuItem, TextField, Typography } from "@mui/material";
+import { SectionCard, SettingRow } from "@/components/ui";
+import { monoFontFamily } from "@/theme/theme";
 import type { Settings, UpdateCheck } from "@/ipc/types";
 import { formatSize } from "@/sftp/format";
 import { checkForUpdates, installUpdate, restartToUpdate, useUpdate } from "./store";
@@ -35,61 +28,61 @@ export function UpdatesCard({
   };
 
   return (
-    <Paper variant="outlined" sx={{ p: 2.5, display: "flex", flexDirection: "column", gap: 1.5 }}>
-      <Typography variant="h6">Updates</Typography>
-      <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
-        <TextField
-          select
-          label="Check for updates"
-          value={settings.updateCheck}
-          onChange={(e) => onChange({ updateCheck: e.target.value as UpdateCheck })}
-          sx={{ width: 240 }}
-        >
-          <MenuItem value="manual">Only when I ask</MenuItem>
-          <MenuItem value="startup">Once at startup</MenuItem>
-        </TextField>
-        <TextField
-          label="Release feed (https)"
-          placeholder={DEFAULT_FEED}
-          value={feed ?? settings.updateUrl}
-          onChange={(e) => setFeed(e.target.value)}
-          onBlur={commitFeed}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commitFeed();
-          }}
-          sx={{ flex: 1, minWidth: 320 }}
-          slotProps={{ input: { sx: { fontFamily: "monospace", fontSize: 13 } } }}
-        />
-      </Box>
-      <Typography variant="body2" color="text.secondary">
-        Manifests and packages are verified against the release signing key built into this app.
-        Point the feed at your own server to keep updates entirely self-hosted; nothing is fetched
-        unless you press the button or enable the startup check.
-      </Typography>
-
-      <Box sx={{ display: "flex", gap: 1.5, alignItems: "center", flexWrap: "wrap" }}>
-        <Button
-          variant="outlined"
-          size="small"
-          disabled={busy}
-          onClick={() => void checkForUpdates()}
-        >
-          {phase.kind === "checking" ? "Checking…" : "Check now"}
-        </Button>
-        {phase.kind === "available" && (
-          <Button variant="contained" size="small" onClick={() => void installUpdate()}>
-            Download and install {phase.info.version}
+    <SectionCard
+      title="Updates"
+      action={
+        <Box sx={{ display: "flex", gap: 1 }}>
+          {phase.kind === "available" && (
+            <Button variant="contained" onClick={() => void installUpdate()}>
+              Install {phase.info.version}
+            </Button>
+          )}
+          {phase.kind === "installed" && (
+            <Button variant="contained" onClick={() => void restartToUpdate()}>
+              Restart to finish
+            </Button>
+          )}
+          <Button variant="tonal" disabled={busy} onClick={() => void checkForUpdates()}>
+            {phase.kind === "checking" ? "Checking…" : "Check now"}
           </Button>
-        )}
-        {phase.kind === "installed" && (
-          <Button variant="contained" size="small" onClick={() => void restartToUpdate()}>
-            Restart to finish
-          </Button>
-        )}
-      </Box>
-
+        </Box>
+      }
+    >
+      <SettingRow
+        label="Check for updates"
+        hint="Nothing is fetched unless you press the button or enable the startup check."
+        control={
+          <TextField
+            select
+            value={settings.updateCheck}
+            onChange={(e) => onChange({ updateCheck: e.target.value as UpdateCheck })}
+            sx={{ width: 200 }}
+          >
+            <MenuItem value="manual">Only when I ask</MenuItem>
+            <MenuItem value="startup">Once at startup</MenuItem>
+          </TextField>
+        }
+      />
+      <SettingRow
+        label="Release feed"
+        hint="https URL of latest.json. Point it at your own server to keep updates self-hosted; manifests and packages are verified against the signing key built into this app."
+        last
+        control={
+          <TextField
+            placeholder={DEFAULT_FEED}
+            value={feed ?? settings.updateUrl}
+            onChange={(e) => setFeed(e.target.value)}
+            onBlur={commitFeed}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitFeed();
+            }}
+            sx={{ width: 320 }}
+            slotProps={{ input: { sx: { fontFamily: monoFontFamily, fontSize: 12 } } }}
+          />
+        }
+      />
       <UpdateStatus />
-    </Paper>
+    </SectionCard>
   );
 }
 

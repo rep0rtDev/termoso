@@ -1,7 +1,10 @@
-import { Box, Card, CardActionArea, Chip, IconButton, Typography } from "@mui/material";
+import { Box, Chip, IconButton, Tooltip } from "@mui/material";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
+import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
+import type { MouseEvent } from "react";
 import type { GroupNode, HostCard } from "@/ipc/types";
+import { CardGrid, EntityCard, IconTile, SectionTitle } from "@/components/ui";
 import { HostAvatar } from "./HostAvatar";
 
 export interface HostCollectionProps {
@@ -13,120 +16,110 @@ export interface HostCollectionProps {
   onEditGroup: (g: GroupNode) => void;
   onOpenHost: (h: HostCard) => void;
   onConnectHost: (h: HostCard) => void;
+  onHostContext: (h: HostCard, e: MouseEvent<HTMLElement>) => void;
 }
 
-const cardSx = {
-  height: "100%",
-  bgcolor: "background.paper",
-  border: 1,
-  borderColor: "divider",
-  transition: "border-color 120ms, transform 120ms",
-  "&:hover": { borderColor: "primary.main" },
-} as const;
+export function hostSubtitle(h: HostCard) {
+  const port = h.protocol === "telnet" || h.port !== 22 ? `:${h.port}` : "";
+  return `${h.username ? `${h.username}@` : ""}${h.address}${port}`;
+}
 
 export function HostGrid(p: HostCollectionProps) {
   return (
-    <Box
-      sx={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-        gap: 1.5,
-        pt: 1.5,
-      }}
-    >
-      {p.groups.map((g) => (
-        <Card key={g.id} variant="outlined" sx={cardSx}>
-          <CardActionArea
-            onClick={() => p.onOpenGroup(g.id)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              p.onEditGroup(g);
-            }}
-            sx={{ p: 1.75, display: "flex", alignItems: "center", gap: 1.25, height: "100%" }}
-          >
-            <FolderRoundedIcon sx={{ color: "secondary.main", fontSize: 32 }} />
-            <Box sx={{ minWidth: 0, flex: 1 }}>
-              <Typography variant="subtitle2" noWrap>
-                {g.label}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {g.hostCount} host{g.hostCount === 1 ? "" : "s"}
-              </Typography>
-            </Box>
-            <IconButton
-              size="small"
-              component="span"
-              aria-label="Group options"
-              onClick={(e) => {
-                e.stopPropagation();
-                p.onEditGroup(g);
-              }}
-            >
-              <MoreHorizRoundedIcon fontSize="small" />
-            </IconButton>
-          </CardActionArea>
-        </Card>
-      ))}
-      {p.hosts.map((h) => {
-        const selected = h.id === p.selectedId;
-        return (
-          <Card
-            key={h.id}
-            variant="outlined"
-            sx={{
-              ...cardSx,
-              ...(selected && { borderColor: "primary.main", bgcolor: "action.selected" }),
-            }}
-          >
-            <CardActionArea
-              onClick={() => p.onOpenHost(h)}
-              onDoubleClick={() => p.onConnectHost(h)}
-              sx={{
-                p: 1.75,
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "stretch",
-              }}
-            >
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
-                <HostAvatar host={h} size={36} />
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Typography variant="subtitle2" noWrap>
-                    {h.label}
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    noWrap
-                    sx={{ display: "block" }}
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      {p.groups.length > 0 && (
+        <Box>
+          <SectionTitle>Groups</SectionTitle>
+          <CardGrid min={240}>
+            {p.groups.map((g) => (
+              <EntityCard
+                key={g.id}
+                dense
+                tile={
+                  <IconTile>
+                    <FolderRoundedIcon />
+                  </IconTile>
+                }
+                title={g.label}
+                subtitle={`${g.hostCount} host${g.hostCount === 1 ? "" : "s"}`}
+                onClick={() => p.onOpenGroup(g.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  p.onEditGroup(g);
+                }}
+                actions={
+                  <IconButton
+                    aria-label="Group options"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      p.onEditGroup(g);
+                    }}
                   >
-                    {h.username ? `${h.username}@` : ""}
-                    {h.address}
-                    {h.protocol === "telnet" || h.port !== 22 ? `:${h.port}` : ""}
-                  </Typography>
-                </Box>
-              </Box>
-              {(p.showPath && h.groupPath.length > 0) || h.tags.length > 0 ? (
-                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 1.25 }}>
-                  {p.showPath && h.groupPath.length > 0 && (
-                    <Chip
-                      size="small"
-                      variant="outlined"
-                      icon={<FolderRoundedIcon />}
-                      label={h.groupPath.join(" / ")}
-                      sx={{ height: 20, fontSize: 11, maxWidth: "100%" }}
-                    />
-                  )}
-                  {h.tags.map((t) => (
-                    <Chip key={t} size="small" label={t} sx={{ height: 20, fontSize: 11 }} />
-                  ))}
-                </Box>
-              ) : null}
-            </CardActionArea>
-          </Card>
-        );
-      })}
+                    <MoreHorizRoundedIcon fontSize="small" />
+                  </IconButton>
+                }
+              />
+            ))}
+          </CardGrid>
+        </Box>
+      )}
+      {p.hosts.length > 0 && (
+        <Box>
+          {p.groups.length > 0 && <SectionTitle>Hosts</SectionTitle>}
+          <CardGrid min={280}>
+            {p.hosts.map((h) => (
+              <EntityCard
+                key={h.id}
+                tile={<HostAvatar host={h} />}
+                title={h.label}
+                subtitle={
+                  p.showPath && h.groupPath.length > 0
+                    ? `${hostSubtitle(h)} · ${h.groupPath.join(" / ")}`
+                    : hostSubtitle(h)
+                }
+                selected={h.id === p.selectedId}
+                onClick={() => p.onOpenHost(h)}
+                onDoubleClick={() => p.onConnectHost(h)}
+                onContextMenu={(e) => p.onHostContext(h, e)}
+                meta={
+                  h.tags.length > 0 ? (
+                    <>
+                      {h.tags.slice(0, 3).map((t) => (
+                        <Chip key={t} size="small" label={t} />
+                      ))}
+                      {h.tags.length > 3 && <Chip size="small" label={`+${h.tags.length - 3}`} />}
+                    </>
+                  ) : undefined
+                }
+                actions={
+                  <>
+                    <Tooltip title="Connect">
+                      <IconButton
+                        aria-label={`Connect to ${h.label}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          p.onConnectHost(h);
+                        }}
+                      >
+                        <PlayArrowRoundedIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <IconButton
+                      aria-label="Host options"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        p.onHostContext(h, e);
+                      }}
+                    >
+                      <MoreHorizRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </>
+                }
+              />
+            ))}
+          </CardGrid>
+        </Box>
+      )}
     </Box>
   );
 }

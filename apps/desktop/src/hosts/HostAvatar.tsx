@@ -1,35 +1,31 @@
-import { Avatar } from "@mui/material";
+import DnsRoundedIcon from "@mui/icons-material/DnsRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import type { HostCard } from "@/ipc/types";
+import { IconTile } from "@/components/ui";
+import { sizes } from "@/theme/theme";
 
-const palette = ["#2BB884", "#5AA9E6", "#F2C94C", "#B07CF2", "#F28C5A", "#5FD0A4", "#8CC5F0"];
+/** Recognisable OS names get a small brand colour on the tile; everything else stays neutral. */
+const osColors: [RegExp, string][] = [
+  [/ubuntu/i, "#DD4814"],
+  [/debian/i, "#A81D33"],
+  [/fedora|red ?hat|rhel|centos|rocky|alma/i, "#CC0000"],
+  [/arch/i, "#1793D1"],
+  [/alpine/i, "#0D597F"],
+  [/suse/i, "#73BA25"],
+  [/freebsd|openbsd|netbsd/i, "#AB2B28"],
+  [/mac|darwin/i, "#8E8E93"],
+  [/windows/i, "#0078D4"],
+];
 
-function hue(s: string): string {
-  let h = 0;
-  for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return palette[h % palette.length] ?? "#2BB884";
+function osColor(os: string | null): string | undefined {
+  if (!os) return undefined;
+  return osColors.find(([re]) => re.test(os))?.[1];
 }
 
-export function HostAvatar({ host, size = 36 }: { host: HostCard; size?: number }) {
-  const color = hue(host.id);
+export function HostAvatar({ host, size = sizes.tile }: { host: HostCard; size?: number }) {
   return (
-    <Avatar
-      variant="rounded"
-      sx={{
-        width: size,
-        height: size,
-        bgcolor: `${color}26`,
-        color,
-        fontSize: size * 0.42,
-        fontWeight: 700,
-        borderRadius: size / 4,
-      }}
-    >
-      {host.protocol === "telnet" ? (
-        <TerminalRoundedIcon fontSize="small" />
-      ) : (
-        (host.label.trim()[0] ?? host.address[0] ?? "?").toUpperCase()
-      )}
-    </Avatar>
+    <IconTile size={size} color={osColor(host.osName)}>
+      {host.protocol === "telnet" ? <TerminalRoundedIcon /> : <DnsRoundedIcon />}
+    </IconTile>
   );
 }

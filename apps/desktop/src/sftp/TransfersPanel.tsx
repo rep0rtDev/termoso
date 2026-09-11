@@ -1,10 +1,11 @@
-import { Box, Button, IconButton, LinearProgress, Stack, Tooltip, Typography } from "@mui/material";
+import { Box, Button, LinearProgress, Stack, Typography } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import UploadRoundedIcon from "@mui/icons-material/UploadRounded";
 import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import ErrorRoundedIcon from "@mui/icons-material/ErrorRounded";
 import BlockRoundedIcon from "@mui/icons-material/BlockRounded";
+import { ToolIconButton } from "@/components/ui";
 import { baseName, formatSize } from "./format";
 import { cancelTransfer, clearFinishedTransfers, useSftp, type Transfer } from "./store";
 
@@ -18,20 +19,19 @@ export function TransfersPanel() {
     <Box
       sx={{
         borderTop: 1,
-        borderColor: "divider",
-        bgcolor: "background.paper",
+        borderColor: "border.light",
+        bgcolor: "surface.base",
         maxHeight: 200,
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
       }}
     >
-      <Stack direction="row" sx={{ alignItems: "center", px: 1.5, height: 32, flexShrink: 0 }}>
-        <Typography variant="caption" sx={{ fontWeight: 600, flex: 1 }}>
+      <Stack direction="row" sx={{ alignItems: "center", px: 1.5, height: 36, flexShrink: 0 }}>
+        <Typography variant="subtitle2" color="text.secondary" sx={{ flex: 1 }}>
           Transfers{running > 0 ? ` · ${running} active` : ""}
         </Typography>
         <Button
-          size="small"
           color="inherit"
           onClick={clearFinishedTransfers}
           disabled={running === order.length}
@@ -85,11 +85,9 @@ function TransferRow({ t }: { t: Transfer }) {
         )}
       </Box>
       {t.status === "running" ? (
-        <Tooltip title="Cancel">
-          <IconButton size="small" onClick={() => void cancelTransfer(t.id)}>
-            <CloseRoundedIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        <ToolIconButton title="Cancel" onClick={() => void cancelTransfer(t.id)}>
+          <CloseRoundedIcon fontSize="small" />
+        </ToolIconButton>
       ) : t.status === "done" ? (
         <CheckCircleRoundedIcon fontSize="small" color="success" />
       ) : t.status === "failed" ? (

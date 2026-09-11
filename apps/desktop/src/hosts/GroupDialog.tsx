@@ -12,6 +12,7 @@ import {
 import { useSnackbar } from "@/components/Snackbar";
 import { useDeleteGroup, useGroups, useSaveGroup } from "@/ipc/hooks";
 import { errorMessage, type GroupNode, type Uuid } from "@/ipc/types";
+import { Field } from "@/components/ui";
 
 interface Props {
   open: boolean;
@@ -84,30 +85,32 @@ function GroupForm({
           }}
           sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}
         >
-          <TextField
-            label="Name"
-            autoFocus
-            required
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-          />
-          <TextField
-            select
-            label="Parent group"
-            value={parent ?? ""}
-            onChange={(e) => setParent(e.target.value === "" ? null : e.target.value)}
-          >
-            <MenuItem value="">
-              <em>Top level</em>
-            </MenuItem>
-            {(groups.data ?? [])
-              .filter((g) => g.id !== group?.id)
-              .map((g) => (
-                <MenuItem key={g.id} value={g.id}>
-                  {g.label}
-                </MenuItem>
-              ))}
-          </TextField>
+          <Field label="Name">
+            <TextField
+              autoFocus
+              required
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+            />
+          </Field>
+          <Field label="Parent group">
+            <TextField
+              select
+              value={parent ?? ""}
+              onChange={(e) => setParent(e.target.value === "" ? null : e.target.value)}
+            >
+              <MenuItem value="">
+                <em>Top level</em>
+              </MenuItem>
+              {(groups.data ?? [])
+                .filter((g) => g.id !== group?.id)
+                .map((g) => (
+                  <MenuItem key={g.id} value={g.id}>
+                    {g.label}
+                  </MenuItem>
+                ))}
+            </TextField>
+          </Field>
         </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
