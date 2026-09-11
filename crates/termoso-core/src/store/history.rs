@@ -147,6 +147,32 @@ impl Store {
         Ok(out)
     }
 
+    /// Replace a connection record (duration / error once the session ends).
+    pub fn update_connection(&self, id: Uuid, data: &ConnectionHistory) -> Result<()> {
+        let (vault_id, key_version): (String, i32) = self
+            .conn()
+            .query_row(
+                "SELECT vault_id, key_version FROM history WHERE id = ?1 AND kind = 'connection' AND deleted = 0",
+                params![id.to_string()],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?
+            .ok_or_else(|| CoreError::NotFound(format!("connection {id}")))?;
+        let vault_id = parse_uuid(&vault_id)?;
+        let key = self.vault_key(vault_id)?;
+        let ct = aead::encrypt_str(
+            &key,
+            &aad(HistoryKind::Connection, id),
+            &serde_json::to_string(data)?,
+        )?;
+        let dirty = self.vault(vault_id)?.kind.is_synced();
+        self.conn().execute(
+            "UPDATE history SET data = ?2, key_version = ?3, dirty = ?4 WHERE id = ?1",
+            params![id.to_string(), ct, key_version, dirty],
+        )?;
+        Ok(())
+    }
+
     /// Most recent commands.
     pub fn commands(&self, limit: usize) -> Result<Vec<HistoryItem<CommandHistory>>> {
         self.list_history(HistoryKind::Command, limit)

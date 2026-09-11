@@ -27,6 +27,7 @@ RUN set -eu; \
     rm -rf /tmp/wp.tgz "/tmp/${name}"
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY apps/desktop/src-tauri ./apps/desktop/src-tauri
 RUN --mount=type=cache,id=cargo-registry-wasm,target=/usr/local/cargo/registry \
     --mount=type=cache,id=target-wasm,target=/src/target \
     wasm-pack build crates/termoso-wasm --release --target web \
@@ -47,6 +48,7 @@ WORKDIR /src
 RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY apps/desktop/src-tauri ./apps/desktop/src-tauri
 RUN --mount=type=cache,id=cargo-registry-server,target=/usr/local/cargo/registry \
     --mount=type=cache,id=target-server,target=/src/target \
     cargo build --release --locked -p termoso-server \

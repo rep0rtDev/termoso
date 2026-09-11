@@ -6,3 +6,6 @@ web/src/crypto/pkg
 deploy/.env
 data
 *.log
+apps/desktop/node_modules
+apps/desktop/dist
+apps/desktop/src-tauri/gen
