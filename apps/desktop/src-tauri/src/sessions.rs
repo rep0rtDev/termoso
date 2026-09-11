@@ -104,8 +104,7 @@ pub enum SessionEvent {
 struct Live {
     info: SessionInfo,
     term: SharedTerminal,
-    /// SSH transport (kept so SFTP / forwarding can reuse it later).
-    #[allow(dead_code)]
+    /// SSH transport; SFTP and forwarding share it.
     client: Option<Arc<SshClient>>,
     /// Jump hosts, outermost first. Dropped with the session.
     #[allow(dead_code)]
@@ -146,6 +145,18 @@ impl Sessions {
             .ok_or_else(|| DesktopError::not_found(format!("session {id}")))
     }
 
+    /// SSH transport of a live session (`None` for local / telnet).
+    pub fn client(&self, id: Uuid) -> Result<Arc<SshClient>> {
+        self.live
+            .lock()
+            .expect("sessions poisoned")
+            .get(&id)
+            .ok_or_else(|| DesktopError::not_found(format!("session {id}")))?
+            .client
+            .clone()
+            .ok_or_else(|| DesktopError::invalid("session is not SSH"))
+    }
+
     pub fn attach(&self, id: Uuid, channel: Channel<InvokeResponseBody>) -> Result<()> {
         let live = self.live.lock().expect("sessions poisoned");
         let l = live
@@ -163,13 +174,24 @@ impl Sessions {
         self.live.lock().expect("sessions poisoned").remove(&id)
     }
 
-    fn begin(&self, id: Uuid) -> CancellationToken {
-        let tok = CancellationToken::new();
-        self.pending
+    fn begin(&self, id: Uuid) -> Result<CancellationToken> {
+        if self
+            .live
             .lock()
             .expect("sessions poisoned")
-            .insert(id, tok.clone());
-        tok
+            .contains_key(&id)
+        {
+            return Err(DesktopError::invalid(format!("session {id} already open")));
+        }
+        let mut pending = self.pending.lock().expect("sessions poisoned");
+        if pending.contains_key(&id) {
+            return Err(DesktopError::invalid(format!(
+                "session {id} already opening"
+            )));
+        }
+        let tok = CancellationToken::new();
+        pending.insert(id, tok.clone());
+        Ok(tok)
     }
 
     fn finish_pending(&self, id: Uuid) -> bool {
@@ -181,16 +203,18 @@ impl Sessions {
     }
 }
 
-/// Open a session and start streaming its output into `output`.
+/// Open a session and start streaming its output into `output`. The UI may
+/// pick the `id` so it can address the tab before the connection completes.
 pub async fn open<R: Runtime>(
     app: AppHandle<R>,
+    id: Option<Uuid>,
     target: OpenTarget,
     size: TermSize,
     output: Channel<InvokeResponseBody>,
 ) -> Result<SessionInfo> {
     let state = app.state::<AppState>();
-    let id = Uuid::new_v4();
-    let cancel = state.sessions.begin(id);
+    let id = id.unwrap_or_else(Uuid::new_v4);
+    let cancel = state.sessions.begin(id)?;
 
     let result = tokio::select! {
         r = connect(&app, id, &target, size) => r,
@@ -431,16 +455,10 @@ async fn connect<R: Runtime>(
                     jumps: Vec::new(),
                 });
             }
-            let target = SshTarget {
-                host: resolved.host.data.address.clone(),
-                port: resolved.port(),
-                username: resolved.username(),
-            };
+            let target = ssh_target(&resolved);
             let display = target.display();
             emit_connecting(app, id, "ssh", &label, &display, Some(*host_id));
-            let chain = resolved.chain.clone();
-            let (client, jumps) =
-                ssh_connect(app, id, target, Some(&resolved), &chain, None).await?;
+            let (client, jumps) = connect_resolved(app, id, &resolved).await?;
             let (term, events) = client.shell(TERM, size).await?;
             Ok(Opened {
                 protocol: "ssh",
@@ -454,6 +472,60 @@ async fn connect<R: Runtime>(
             })
         }
     }
+}
+
+/// An SSH transport to a saved host, without a shell (used by SFTP).
+pub struct HostConnection {
+    pub label: String,
+    pub display: String,
+    pub client: Arc<SshClient>,
+    pub jumps: Vec<Arc<SshClient>>,
+}
+
+/// Connect to a saved SSH host, asking the UI for anything missing. Prompts
+/// are routed under `session_id`.
+pub async fn connect_host<R: Runtime>(
+    app: &AppHandle<R>,
+    session_id: Uuid,
+    host_id: Uuid,
+) -> Result<HostConnection> {
+    let state = app.state::<AppState>();
+    let resolved = state.store.resolve_host(host_id)?;
+    if resolved.telnet.is_some() && resolved.host.data.ssh_config_id.is_none() {
+        return Err(DesktopError::invalid("telnet hosts have no SFTP"));
+    }
+    let display = ssh_target(&resolved).display();
+    let (client, jumps) = connect_resolved(app, session_id, &resolved).await?;
+    Ok(HostConnection {
+        label: resolved.host.data.label.clone(),
+        display,
+        client,
+        jumps,
+    })
+}
+
+fn ssh_target(resolved: &ResolvedHost) -> SshTarget {
+    SshTarget {
+        host: resolved.host.data.address.clone(),
+        port: resolved.port(),
+        username: resolved.username(),
+    }
+}
+
+async fn connect_resolved<R: Runtime>(
+    app: &AppHandle<R>,
+    session_id: Uuid,
+    resolved: &ResolvedHost,
+) -> Result<(Arc<SshClient>, Vec<Arc<SshClient>>)> {
+    ssh_connect(
+        app,
+        session_id,
+        ssh_target(resolved),
+        Some(resolved),
+        &resolved.chain,
+        None,
+    )
+    .await
 }
 
 fn emit_connecting<R: Runtime>(

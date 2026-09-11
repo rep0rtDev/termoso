@@ -16,6 +16,8 @@ import {
   Typography,
 } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
+import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
@@ -31,6 +33,8 @@ import {
   useTags,
 } from "@/ipc/hooks";
 import { emptyHostForm, errorMessage, type HostForm, type Uuid } from "@/ipc/types";
+import { openTerminal } from "@/terminal/store";
+import { openSftpForHost } from "@/sftp/store";
 
 export const PANEL_WIDTH = 380;
 
@@ -39,6 +43,7 @@ interface Props {
   hostId: Uuid | null;
   initialGroupId: Uuid | null;
   onClose: () => void;
+  onOpenSftp: () => void;
 }
 
 const panelSx = {
@@ -50,7 +55,7 @@ const panelSx = {
 } as const;
 
 /** Loads the form for an existing host (or starts blank) and hands it to the editor. */
-export function HostEditPanel({ vaultId, hostId, initialGroupId, onClose }: Props) {
+export function HostEditPanel({ vaultId, hostId, initialGroupId, onClose, onOpenSftp }: Props) {
   const loaded = useHostForm(hostId);
   if (hostId !== null && loaded.data === undefined) {
     return (
@@ -82,6 +87,7 @@ export function HostEditPanel({ vaultId, hostId, initialGroupId, onClose }: Prop
       hostId={hostId}
       initial={loaded.data ?? emptyHostForm(vaultId, initialGroupId)}
       onClose={onClose}
+      onOpenSftp={onOpenSftp}
     />
   );
 }
@@ -91,11 +97,13 @@ function HostEditor({
   hostId,
   initial,
   onClose,
+  onOpenSftp,
 }: {
   vaultId: Uuid;
   hostId: Uuid | null;
   initial: HostForm;
   onClose: () => void;
+  onOpenSftp: () => void;
 }) {
   const snackbar = useSnackbar();
   const groups = useGroups(vaultId);
@@ -149,6 +157,38 @@ function HostEditor({
         <Typography variant="h6" sx={{ flex: 1 }} noWrap>
           {hostId ? "Edit host" : "New host"}
         </Typography>
+        {hostId && (
+          <Tooltip title={touched ? "Save before connecting" : "Connect"}>
+            <span>
+              <IconButton
+                size="small"
+                color="primary"
+                disabled={touched}
+                onClick={() => openTerminal({ kind: "host", host_id: hostId })}
+                aria-label="Connect"
+              >
+                <PlayArrowRoundedIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
+        {hostId && (
+          <Tooltip title={touched ? "Save before opening SFTP" : "Open SFTP"}>
+            <span>
+              <IconButton
+                size="small"
+                disabled={touched}
+                onClick={() => {
+                  openSftpForHost(hostId, form.label || form.address);
+                  onOpenSftp();
+                }}
+                aria-label="Open SFTP"
+              >
+                <FolderCopyRoundedIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
         {hostId && (
           <Tooltip title="Delete host">
             <IconButton size="small" color="error" onClick={() => setConfirmDelete(true)}>
