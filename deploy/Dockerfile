@@ -27,8 +27,8 @@ RUN set -eu; \
     rm -rf /tmp/wp.tgz "/tmp/${name}"
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/target \
+RUN --mount=type=cache,id=cargo-registry-wasm,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=target-wasm,target=/src/target \
     wasm-pack build crates/termoso-wasm --release --target web \
       --out-dir /out/pkg --out-name termoso_wasm
 
@@ -47,8 +47,8 @@ WORKDIR /src
 RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/src/target \
+RUN --mount=type=cache,id=cargo-registry-server,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=target-server,target=/src/target \
     cargo build --release --locked -p termoso-server \
     && cp target/release/termoso-server /termoso-server
 
