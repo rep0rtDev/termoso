@@ -106,11 +106,28 @@ fn remaining(methods: &russh::MethodSet) -> Vec<String> {
 
 /// Parse the stored private key, decrypting it if needed.
 pub fn load_private_key(text: &str, passphrase: Option<&str>) -> Result<PrivateKey> {
+    use russh::keys::ssh_key::Error as SshKeyError;
+    const ENCRYPTED: &str = "private key is encrypted; passphrase required";
+    const WRONG: &str = "wrong passphrase (or the key file is corrupted)";
     match russh::keys::decode_secret_key(text, passphrase) {
         Ok(k) => Ok(k),
-        Err(russh::keys::Error::KeyIsEncrypted) => Err(CoreError::Key(
-            "private key is encrypted; passphrase required".into(),
-        )),
+        Err(russh::keys::Error::KeyIsEncrypted) => Err(CoreError::Key(ENCRYPTED.into())),
+        Err(russh::keys::Error::SshKey(SshKeyError::Encrypted)) => {
+            Err(CoreError::Key(ENCRYPTED.into()))
+        }
+        Err(russh::keys::Error::SshKey(SshKeyError::Ppk(e))) => {
+            let msg = e.to_string();
+            if msg.contains("encrypted") {
+                Err(CoreError::Key(ENCRYPTED.into()))
+            } else if msg.contains("MAC") && passphrase.is_some() {
+                Err(CoreError::Key(WRONG.into()))
+            } else {
+                Err(CoreError::Key(format!("PuTTY key: {msg}")))
+            }
+        }
+        Err(russh::keys::Error::SshKey(SshKeyError::Crypto)) if passphrase.is_some() => {
+            Err(CoreError::Key(WRONG.into()))
+        }
         Err(e) => Err(CoreError::Key(e.to_string())),
     }
 }

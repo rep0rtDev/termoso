@@ -53,6 +53,7 @@ export interface Settings {
   theme: ThemeMode;
   hostsView: HostsView;
   forwardingView: HostsView;
+  keychainView: HostsView;
   terminalFontSize: number;
   terminalFontFamily: string;
   /** Line height multiplier (1.0 = natural). */
@@ -423,6 +424,23 @@ export interface Entity<T> {
 
 // ───────────────────────────── keychain ─────────────────────────────
 
+/** Public metadata of an OpenSSH certificate attached to a key. */
+export interface CertificateCard {
+  /** `null` for an unsaved preview. */
+  id: Uuid | null;
+  certType: string;
+  kind: string;
+  keyId: string;
+  serial: number;
+  principals: string[];
+  validAfter: string | null;
+  validBefore: string | null;
+  fingerprint: string;
+  caFingerprint: string;
+  caKeyType: string;
+  validNow: boolean;
+}
+
 /** Public view of a stored key. Never carries private material. */
 export interface KeyCard {
   id: Uuid;
@@ -437,8 +455,23 @@ export interface KeyCard {
   hasPassphrase: boolean;
   unreadable: boolean;
   usedBy: number;
+  certificate: CertificateCard | null;
+  certificateUnreadable: boolean;
   updatedAt: string;
   dirty: boolean;
+}
+
+/** Public half of pasted/picked private key text (editor preview; not stored). */
+export interface KeyPreview {
+  keyType: string;
+  bits: number;
+  fingerprint: string;
+  publicKey: string;
+  comment: string;
+  /** A passphrase is required to import. */
+  encrypted: boolean;
+  /** PuTTY .ppk; converted to OpenSSH on import. */
+  putty: boolean;
 }
 
 export type KeyAlgorithm =
@@ -479,9 +512,24 @@ export interface GenerateKeyForm {
 export interface ImportKeyForm {
   vaultId: Uuid;
   label: string;
+  /** OpenSSH / PEM / PKCS#8 / PuTTY .ppk text. */
   privateKey: string;
   passphrase: string | null;
   rememberPassphrase: boolean;
+  /** OpenSSH certificate for this key (`*-cert.pub`), verified before saving. */
+  certificate: string | null;
+}
+
+/** Like `ImportKeyForm`, but the private key is read from `path` inside Rust. */
+export interface ImportKeyFileForm {
+  vaultId: Uuid;
+  label: string;
+  path: string;
+  passphrase: string | null;
+  rememberPassphrase: boolean;
+  /** Pasted certificate text; ignored when `certificatePath` is set. */
+  certificate: string | null;
+  certificatePath: string | null;
 }
 
 export interface IdentityCard {
@@ -492,6 +540,9 @@ export interface IdentityCard {
   hasPassword: boolean;
   sshKeyId: Uuid | null;
   sshKeyLabel: string | null;
+  /** Certificate pinned on the identity itself (`null` = the key's own). */
+  sshCertificateId: Uuid | null;
+  hasCertificate: boolean;
   updatedAt: string;
 }
 
@@ -503,6 +554,8 @@ export interface IdentityForm {
   /** `null` keeps the stored password; `""` clears it. */
   password: string | null;
   sshKeyId: Uuid | null;
+  /** Explicit certificate; `null` falls back to the key's own certificate. */
+  sshCertificateId: Uuid | null;
 }
 
 // ───────────────────────────── port forwarding ─────────────────────────────

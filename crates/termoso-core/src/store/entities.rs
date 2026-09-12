@@ -592,9 +592,17 @@ impl Store {
             Some(id) => self.get::<SshKey>(id)?,
             None => None,
         };
+        // Certificates live next to their key: an explicit identity reference
+        // wins, otherwise the certificate attached to the key is used.
         let certificate = match identity.as_ref().and_then(|i| i.data.ssh_certificate_id) {
             Some(id) => self.get::<SshCertificate>(id)?,
-            None => None,
+            None => match &key {
+                Some(k) => self
+                    .list::<SshCertificate>(Some(k.vault_id))?
+                    .into_iter()
+                    .find(|c| c.data.ssh_key_id == Some(k.id)),
+                None => None,
+            },
         };
         let proxy = match ssh.proxy_id {
             Some(id) => self.get::<Proxy>(id)?,
@@ -954,8 +962,38 @@ mod tests {
         let r = s.resolve_host(host).unwrap();
         assert_eq!(r.port(), 22, "host config overrides group");
         assert_eq!(r.username(), "deploy", "identity inherited from root group");
-        assert_eq!(r.key.unwrap().id, key);
+        assert_eq!(r.key.as_ref().unwrap().id, key);
+        assert!(r.certificate.is_none());
         assert_eq!(r.group_path, vec!["Prod", "EU"]);
         assert_eq!(r.tags, vec!["db"]);
+
+        // A certificate attached to the key is picked up even when the
+        // identity does not reference it explicitly.
+        let cert = s
+            .insert(
+                v,
+                &SshCertificate {
+                    label: "k".into(),
+                    certificate: "ssh-ed25519-cert-v01@openssh.com AAAA".into(),
+                    ssh_key_id: Some(key),
+                },
+            )
+            .unwrap();
+        assert_eq!(s.resolve_host(host).unwrap().certificate.unwrap().id, cert);
+        // An explicit identity reference wins.
+        let other = s
+            .insert(
+                v,
+                &SshCertificate {
+                    label: "other".into(),
+                    certificate: "ssh-ed25519-cert-v01@openssh.com BBBB".into(),
+                    ssh_key_id: None,
+                },
+            )
+            .unwrap();
+        let mut i = s.require::<Identity>(ident).unwrap();
+        i.data.ssh_certificate_id = Some(other);
+        s.update(ident, &i.data).unwrap();
+        assert_eq!(s.resolve_host(host).unwrap().certificate.unwrap().id, other);
     }
 }
