@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use tauri::{AppHandle, Runtime, State};
+use tauri::{AppHandle, Manager, Runtime, State};
 use termoso_core::secrets::MasterKeySource;
 use termoso_proto::account::ServerInfo;
 use termoso_proto::auth::{Device, MfaCredential};
@@ -281,6 +281,25 @@ pub async fn pf_stop<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
 #[tauri::command]
 pub async fn pf_delete<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
     forwarding::delete(&app, id).await
+}
+
+#[tauri::command]
+pub async fn pf_duplicate(state: State<'_, AppState>, id: Uuid) -> Result<PfRuleCard> {
+    forwarding::duplicate(&state, id)
+}
+
+#[tauri::command]
+pub async fn pf_copy_to_vault<R: Runtime>(
+    app: AppHandle<R>,
+    id: Uuid,
+    vault_id: Uuid,
+    move_rule: bool,
+) -> Result<PfRuleCard> {
+    if move_rule {
+        forwarding::move_to_vault(&app, id, vault_id).await
+    } else {
+        forwarding::copy_to_vault(&app.state::<AppState>(), id, vault_id)
+    }
 }
 
 // ───────────────────────────── snippets ─────────────────────────────

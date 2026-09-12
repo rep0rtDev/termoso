@@ -327,6 +327,9 @@ export const pfSave = (form: PfRuleForm) => invoke<PfRuleCard>("pf_save", { form
 export const pfStart = (id: Uuid) => invoke<PfRuleCard>("pf_start", { id });
 export const pfStop = (id: Uuid) => invoke<null>("pf_stop", { id });
 export const pfDelete = (id: Uuid) => invoke<null>("pf_delete", { id });
+export const pfDuplicate = (id: Uuid) => invoke<PfRuleCard>("pf_duplicate", { id });
+export const pfCopyToVault = (id: Uuid, vaultId: Uuid, moveRule: boolean) =>
+  invoke<PfRuleCard>("pf_copy_to_vault", { id, vaultId, moveRule });
 export const onForwardEvent = (cb: (e: ForwardEvent) => void): Promise<UnlistenFn> =>
   listen<ForwardEvent>("forward", (ev) => cb(ev.payload));
 

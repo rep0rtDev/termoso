@@ -100,6 +100,8 @@ pub struct Settings {
     pub theme: String,
     /// `grid` | `list`.
     pub hosts_view: String,
+    /// `grid` | `list` for the Port Forwarding page.
+    pub forwarding_view: String,
     pub terminal_font_size: u16,
     pub terminal_font_family: String,
     /// Line height multiplier (1.0 = font's natural height).
@@ -190,6 +192,7 @@ impl Default for Settings {
         Self {
             theme: "dark".into(),
             hosts_view: "grid".into(),
+            forwarding_view: "grid".into(),
             terminal_font_size: 13,
             terminal_font_family: "JetBrains Mono".into(),
             terminal_line_height: 1.0,
@@ -235,6 +238,9 @@ impl Settings {
         }
         if !matches!(self.hosts_view.as_str(), "grid" | "list") {
             return Err(DesktopError::invalid("hostsView must be grid or list"));
+        }
+        if !matches!(self.forwarding_view.as_str(), "grid" | "list") {
+            return Err(DesktopError::invalid("forwardingView must be grid or list"));
         }
         if !matches!(self.cursor_style.as_str(), "block" | "underline" | "bar") {
             return Err(DesktopError::invalid(
