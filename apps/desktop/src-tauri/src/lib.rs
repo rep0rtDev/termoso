@@ -176,6 +176,8 @@ pub fn run() {
             commands_tools::pf_start,
             commands_tools::pf_stop,
             commands_tools::pf_delete,
+            commands_tools::pf_duplicate,
+            commands_tools::pf_copy_to_vault,
             commands_tools::snippets_list,
             commands_tools::snippet_save,
             commands_tools::snippet_delete,
