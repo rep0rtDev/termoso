@@ -243,11 +243,17 @@ pub async fn hosts_copy_to_vault(
     ids: Vec<Uuid>,
     vault_id: Uuid,
     move_hosts: bool,
+    with_credentials: Option<bool>,
 ) -> Result<Vec<Uuid>> {
-    if move_hosts {
-        hosts::move_to_vault(&state.store, &ids, vault_id)
+    let creds = if with_credentials.unwrap_or(true) {
+        hosts::CopyCredentials::Shared
     } else {
-        hosts::copy_to_vault(&state.store, &ids, vault_id)
+        hosts::CopyCredentials::Personal
+    };
+    if move_hosts {
+        hosts::move_to_vault(&state.store, &ids, vault_id, creds)
+    } else {
+        hosts::copy_to_vault(&state.store, &ids, vault_id, creds)
     }
 }
 

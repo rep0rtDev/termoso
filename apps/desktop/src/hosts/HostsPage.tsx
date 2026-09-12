@@ -66,7 +66,7 @@ import {
   useSettings,
   useTags,
 } from "@/ipc/hooks";
-import { useActiveVault } from "@/app/vault";
+import { openCollaboration, useActiveVault } from "@/app/vault";
 import type { GroupNode, HostCard, HostsView, Uuid } from "@/ipc/types";
 import { errorMessage, hostProtocols } from "@/ipc/types";
 import { openTerminal, useTerminal } from "@/terminal/store";
@@ -545,10 +545,14 @@ export function HostsPage() {
         disabled: many,
       },
       {
-        label: "Collaborate",
+        label: vault.data?.kind === "team" ? "Collaborate" : "Share with a team…",
         icon: <GroupAddOutlinedIcon fontSize="small" />,
-        onClick: () =>
-          snackbar.notify("Sharing needs a team vault — sign in under Settings → Account", "info"),
+        onClick: () => {
+          if (vault.data?.kind === "team") openCollaboration(vault.data);
+          else if (vault.vaults.some((v) => v.kind === "team" && v.unlocked && v.role !== "viewer"))
+            setMoveCopy({ kind: "vault", hosts: targets, move: false });
+          else openCollaboration(vault.data);
+        },
         divider: true,
       },
       {

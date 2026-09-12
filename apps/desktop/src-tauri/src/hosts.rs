@@ -14,6 +14,7 @@ use termoso_core::store::Store;
 use uuid::Uuid;
 
 use crate::error::{DesktopError, Result};
+use crate::keychain;
 
 /// What a host card / list row shows. Effective values already account for
 /// group inheritance.
@@ -1251,12 +1252,42 @@ fn tags_in_vault(store: &Store, tag_ids: &[Uuid], vault_id: Uuid) -> Result<Vec<
 /// `vault_id` / `group_id`. Shared references (visible identity, key, chain,
 /// proxy, snippet) are kept only when they live in the target vault; a visible
 /// identity from another vault is flattened into an inline copy.
+/// What travels with a host copied into another vault.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CopyCredentials {
+    /// Username, password and key go along; keys missing from the target
+    /// vault are copied there too (`copied_keys` dedupes across a batch).
+    Shared,
+    /// Address, settings and tags only — everyone supplies their own login.
+    Personal,
+}
+
 fn copy_host(
     store: &Store,
     id: Uuid,
     vault_id: Uuid,
     group_id: Option<Uuid>,
     label: Option<String>,
+) -> Result<Uuid> {
+    copy_host_with(
+        store,
+        id,
+        vault_id,
+        group_id,
+        label,
+        CopyCredentials::Shared,
+        &mut HashMap::new(),
+    )
+}
+
+fn copy_host_with(
+    store: &Store,
+    id: Uuid,
+    vault_id: Uuid,
+    group_id: Option<Uuid>,
+    label: Option<String>,
+    creds: CopyCredentials,
+    copied_keys: &mut HashMap<Uuid, Uuid>,
 ) -> Result<Uuid> {
     let src = store.require::<Host>(id)?;
     let mut f = form(store, id)?;
@@ -1297,8 +1328,34 @@ fn copy_host(
             tf.password = i.data.password.clone();
         }
     }
+    if creds == CopyCredentials::Personal {
+        f.username = String::new();
+        f.password = None;
+        f.ssh_key_id = None;
+        f.identity_id = None;
+        if let Some(tf) = f.telnet.as_mut() {
+            tf.username = String::new();
+            tf.password = None;
+            tf.identity_id = None;
+        }
+    }
     if !same_vault {
-        f.ssh_key_id = keep_if_in_vault::<SshKey>(store, f.ssh_key_id, vault_id)?;
+        f.ssh_key_id = match f.ssh_key_id {
+            Some(kid) if creds == CopyCredentials::Shared => Some(
+                match keep_if_in_vault::<SshKey>(store, Some(kid), vault_id)? {
+                    Some(k) => k,
+                    None => match copied_keys.get(&kid) {
+                        Some(k) => *k,
+                        None => {
+                            let k = keychain::copy_to_vault(store, kid, vault_id, false)?.id;
+                            copied_keys.insert(kid, k);
+                            k
+                        }
+                    },
+                },
+            ),
+            other => keep_if_in_vault::<SshKey>(store, other, vault_id)?,
+        };
         f.host_chain_id = keep_if_in_vault::<HostChain>(store, f.host_chain_id, vault_id)?;
         f.proxy_id = keep_if_in_vault::<Proxy>(store, f.proxy_id, vault_id)?;
         f.startup_snippet_id = keep_if_in_vault::<Snippet>(store, f.startup_snippet_id, vault_id)?;
@@ -1366,19 +1423,33 @@ pub fn move_hosts(store: &Store, ids: &[Uuid], group_id: Option<Uuid>) -> Result
 }
 
 /// Copy hosts into another vault (top level of that vault). Returns new ids.
-pub fn copy_to_vault(store: &Store, ids: &[Uuid], vault_id: Uuid) -> Result<Vec<Uuid>> {
+pub fn copy_to_vault(
+    store: &Store,
+    ids: &[Uuid],
+    vault_id: Uuid,
+    creds: CopyCredentials,
+) -> Result<Vec<Uuid>> {
     let vault = store.vault(vault_id)?;
     if !vault.unlocked {
         return Err(DesktopError::invalid("target vault is locked"));
     }
+    if !vault.role.can_write() {
+        return Err(DesktopError::invalid("you can only view this vault"));
+    }
+    let mut copied_keys = HashMap::new();
     ids.iter()
-        .map(|id| copy_host(store, *id, vault_id, None, None))
+        .map(|id| copy_host_with(store, *id, vault_id, None, None, creds, &mut copied_keys))
         .collect()
 }
 
 /// Move hosts into another vault: copy, then delete the originals.
-pub fn move_to_vault(store: &Store, ids: &[Uuid], vault_id: Uuid) -> Result<Vec<Uuid>> {
-    let new_ids = copy_to_vault(store, ids, vault_id)?;
+pub fn move_to_vault(
+    store: &Store,
+    ids: &[Uuid],
+    vault_id: Uuid,
+    creds: CopyCredentials,
+) -> Result<Vec<Uuid>> {
+    let new_ids = copy_to_vault(store, ids, vault_id, creds)?;
     for id in ids {
         delete(store, *id)?;
     }

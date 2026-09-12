@@ -336,12 +336,18 @@ export function SectionTitle({
 /** Grouped form section in a side panel (Termius "Address" / "General" cards). */
 export function SectionCard({
   title,
+  description,
   action,
+  tone,
   children,
   sx,
 }: {
   title?: ReactNode;
+  /** Muted line under the title. */
+  description?: ReactNode;
   action?: ReactNode;
+  /** Tinted outline for cards that ask for attention. */
+  tone?: "warning";
   children: ReactNode;
   sx?: SxProps<Theme>;
 }) {
@@ -356,16 +362,31 @@ export function SectionCard({
           flexDirection: "column",
           gap: 1.5,
         },
+        tone === "warning" && {
+          outline: "1px solid",
+          outlineColor: "warning.main",
+          outlineOffset: -1,
+        },
         ...sxList(sx),
       ]}
     >
-      {(title ?? action) && (
-        <Box sx={{ display: "flex", alignItems: "center", minHeight: 24 }}>
-          {title && (
-            <Typography variant="subtitle2" sx={{ flex: 1 }}>
-              {title}
-            </Typography>
-          )}
+      {(title ?? action ?? description) && (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: description ? "flex-start" : "center",
+            minHeight: 24,
+            gap: 1,
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            {title && <Typography variant="subtitle2">{title}</Typography>}
+            {description && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                {description}
+              </Typography>
+            )}
+          </Box>
           {action}
         </Box>
       )}

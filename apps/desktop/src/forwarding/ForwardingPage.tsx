@@ -43,7 +43,7 @@ import {
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
 import { keys, useHosts, usePfRules, useSaveSettings, useSettings, useVaults } from "@/ipc/hooks";
-import { useActiveVault } from "@/app/vault";
+import { openCollaboration, useActiveVault } from "@/app/vault";
 import { useForwardRequests } from "@/app/navigation";
 import {
   errorMessage,
@@ -279,8 +279,8 @@ export function ForwardingPage() {
       {
         label: "Collaborate",
         icon: <GroupAddRoundedIcon fontSize="small" />,
-        onClick: () =>
-          snackbar.notify("Sharing needs a team vault — sign in under Settings → Account", "info"),
+        disabled: vault.data?.kind !== "team",
+        onClick: () => openCollaboration(vault.data),
       },
       {
         label: "Move to",

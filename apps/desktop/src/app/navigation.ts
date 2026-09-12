@@ -27,10 +27,24 @@ interface NavState {
   pendingEdit: Uuid | null;
   /** Host a new port-forwarding rule should be pre-filled with. */
   pendingForwardHost: Uuid | null;
+  /** Something the Team / Vaults settings page should open as soon as it shows. */
+  pendingSettingsIntent: SettingsIntent | null;
 }
 
 export type SettingsPage =
-  "account" | "general" | "terminal" | "keyboard" | "sftp" | "logs" | "updates" | "about";
+  | "team"
+  | "account"
+  | "vaults"
+  | "general"
+  | "terminal"
+  | "keyboard"
+  | "sftp"
+  | "logs"
+  | "updates"
+  | "about";
+
+export type SettingsIntent =
+  { kind: "invite" } | { kind: "newVault"; teamId?: Uuid } | { kind: "vault"; id: Uuid };
 
 export type CreateKind = "host" | "group" | "snippet";
 
@@ -40,6 +54,7 @@ export const navStore = createStore<NavState>({
   pendingCreate: null,
   pendingEdit: null,
   pendingForwardHost: null,
+  pendingSettingsIntent: null,
 });
 
 export const useNav = <S>(selector: (s: NavState) => S) => useStore(navStore, selector);
@@ -56,6 +71,43 @@ export function goToSettings(page?: SettingsPage) {
 
 export function setSettingsPage(page: SettingsPage) {
   navStore.set((s) => (s.settingsPage === page ? s : { ...s, settingsPage: page }));
+}
+
+/** Open Settings → Team with the invite dialog, or Settings → Vaults on a vault / new vault. */
+export function goToSettingsWith(intent: SettingsIntent) {
+  navStore.set((s) => ({
+    ...s,
+    section: "settings",
+    settingsPage: intent.kind === "invite" ? "team" : "vaults",
+    pendingSettingsIntent: intent,
+  }));
+  setActiveTab(HOME_TAB);
+}
+
+/** Run `onIntent` once for the pending settings intent of the given kinds. */
+export function useSettingsIntent(
+  kinds: SettingsIntent["kind"][],
+  onIntent: (intent: SettingsIntent) => void,
+) {
+  const key = kinds.join(",");
+  const cb = useRef(onIntent);
+  useEffect(() => {
+    cb.current = onIntent;
+  });
+  useEffect(() => {
+    const take = () => {
+      const intent = navStore.get().pendingSettingsIntent;
+      if (!intent || !key.split(",").includes(intent.kind)) return;
+      navStore.set((s) => ({ ...s, pendingSettingsIntent: null }));
+      cb.current(intent);
+    };
+    const timer = setTimeout(take, 0);
+    const unsubscribe = navStore.subscribe(take);
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [key]);
 }
 
 export function requestCreate(kind: CreateKind) {

@@ -31,10 +31,13 @@ use termoso_proto::sync::{
     HistoryClearRequest, HistoryKind, HistoryPullResponse, HistoryPushRequest, PullRequest,
     PullResponse, PushRequest, PushResponse,
 };
-use termoso_proto::team::{PendingVaultKeys, TeamList};
+use termoso_proto::team::{
+    CreateInviteRequest, CreateTeamRequest, CreatedInvite, InviteList, PendingVaultKeys, Team,
+    TeamList, TeamMember, TeamMemberList, UpdateTeamMemberRequest, UpdateTeamRequest,
+};
 use termoso_proto::vault::{
-    RotateVaultKeyRequest, RotateVaultKeyResponse, Vault, VaultList, VaultMemberList,
-    VaultMemberUpsert,
+    CreateVaultRequest, RotateVaultKeyRequest, RotateVaultKeyResponse, UpdateVaultRequest, Vault,
+    VaultList, VaultMemberList, VaultMemberUpsert,
 };
 use url::Url;
 use uuid::Uuid;
@@ -351,6 +354,21 @@ impl ApiClient {
             .await
     }
 
+    /// `DELETE /vaults/{id}/members/{user_id}` — revoke access (rotate the key afterwards).
+    pub async fn remove_vault_member(&self, id: Uuid, user_id: Uuid) -> Result<()> {
+        self.delete(&format!("vaults/{id}/members/{user_id}")).await
+    }
+
+    /// `PATCH /vaults/{id}` — rename.
+    pub async fn update_vault(&self, id: Uuid, req: &UpdateVaultRequest) -> Result<Vault> {
+        self.patch(&format!("vaults/{id}"), req).await
+    }
+
+    /// `DELETE /vaults/{id}` — delete a team vault with everything in it.
+    pub async fn delete_vault(&self, id: Uuid) -> Result<()> {
+        self.delete(&format!("vaults/{id}")).await
+    }
+
     /// `POST /vaults/{id}/rotate-key`.
     pub async fn rotate_vault_key(
         &self,
@@ -363,6 +381,90 @@ impl ApiClient {
     /// `GET /teams`.
     pub async fn teams(&self) -> Result<TeamList> {
         self.get("teams").await
+    }
+
+    /// `POST /teams`.
+    pub async fn create_team(&self, req: &CreateTeamRequest) -> Result<Team> {
+        self.post("teams", req).await
+    }
+
+    /// `GET /teams/{id}`.
+    pub async fn team(&self, id: Uuid) -> Result<Team> {
+        self.get(&format!("teams/{id}")).await
+    }
+
+    /// `PATCH /teams/{id}` — rename.
+    pub async fn update_team(&self, id: Uuid, req: &UpdateTeamRequest) -> Result<Team> {
+        self.patch(&format!("teams/{id}"), req).await
+    }
+
+    /// `DELETE /teams/{id}` — owner only; removes the team and its vaults.
+    pub async fn delete_team(&self, id: Uuid) -> Result<()> {
+        self.delete(&format!("teams/{id}")).await
+    }
+
+    /// `POST /teams/{id}/leave`.
+    pub async fn leave_team(&self, id: Uuid) -> Result<()> {
+        self.post_empty(&format!("teams/{id}/leave"), &()).await
+    }
+
+    /// `GET /teams/{id}/members`.
+    pub async fn team_members(&self, id: Uuid) -> Result<TeamMemberList> {
+        self.get(&format!("teams/{id}/members")).await
+    }
+
+    /// `PATCH /teams/{id}/members/{user_id}` — change a member's team role.
+    pub async fn update_team_member(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+        req: &UpdateTeamMemberRequest,
+    ) -> Result<TeamMember> {
+        self.patch(&format!("teams/{id}/members/{user_id}"), req)
+            .await
+    }
+
+    /// `DELETE /teams/{id}/members/{user_id}`.
+    pub async fn remove_team_member(&self, id: Uuid, user_id: Uuid) -> Result<()> {
+        self.delete(&format!("teams/{id}/members/{user_id}")).await
+    }
+
+    /// `GET /teams/{id}/invites` — pending invitations.
+    pub async fn team_invites(&self, id: Uuid) -> Result<InviteList> {
+        self.get(&format!("teams/{id}/invites")).await
+    }
+
+    /// `POST /teams/{id}/invites`.
+    pub async fn create_invite(
+        &self,
+        id: Uuid,
+        req: &CreateInviteRequest,
+    ) -> Result<CreatedInvite> {
+        self.post(&format!("teams/{id}/invites"), req).await
+    }
+
+    /// `DELETE /teams/{id}/invites/{invite_id}` — revoke.
+    pub async fn delete_invite(&self, id: Uuid, invite_id: Uuid) -> Result<()> {
+        self.delete(&format!("teams/{id}/invites/{invite_id}"))
+            .await
+    }
+
+    /// `POST /teams/{id}/vaults` — create a team vault with pre-sealed member keys.
+    pub async fn create_team_vault(&self, id: Uuid, req: &CreateVaultRequest) -> Result<Vault> {
+        self.post(&format!("teams/{id}/vaults"), req).await
+    }
+
+    /// `POST /invites/{token}/accept` — join the team behind an invitation link.
+    pub async fn accept_invite(&self, token: &str) -> Result<Team> {
+        let token = token.trim();
+        if token.is_empty()
+            || !token
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        {
+            return Err(CoreError::Invalid("malformed invitation token".into()));
+        }
+        self.post(&format!("invites/{token}/accept"), &()).await
     }
 
     /// `GET /teams/{id}/pending-keys`.

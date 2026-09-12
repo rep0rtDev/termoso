@@ -15,7 +15,7 @@ use termoso_core::error::CoreError;
 use termoso_core::forward::{Forward, ForwardSpec};
 use termoso_core::model::{Host, PfRule};
 use termoso_core::ssh::SshClient;
-use termoso_core::store::Store;
+use termoso_core::store::{LocalVaultKind, Store};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -448,7 +448,9 @@ pub fn duplicate(state: &AppState, id: Uuid) -> Result<PfRuleCard> {
 
 /// Copy a rule into another (unlocked) vault. The host it goes through is
 /// reused when the target vault already has one with the same label and
-/// address, otherwise copied along with the rule.
+/// address, otherwise copied along with the rule. Into a team vault the host
+/// arrives without credentials: sharing them is an explicit choice made on the
+/// Hosts page, never a side effect of copying a rule.
 pub fn copy_to_vault(state: &AppState, id: Uuid, vault_id: Uuid) -> Result<PfRuleCard> {
     let src = state.store.require::<PfRule>(id)?;
     if src.vault_id == vault_id {
@@ -458,6 +460,11 @@ pub fn copy_to_vault(state: &AppState, id: Uuid, vault_id: Uuid) -> Result<PfRul
     if !vault.unlocked {
         return Err(DesktopError::invalid("target vault is locked"));
     }
+    let creds = if vault.kind == LocalVaultKind::Team {
+        hosts::CopyCredentials::Personal
+    } else {
+        hosts::CopyCredentials::Shared
+    };
     let host = state.store.require::<Host>(src.data.host_id)?;
     let host_id = match state
         .store
@@ -466,7 +473,7 @@ pub fn copy_to_vault(state: &AppState, id: Uuid, vault_id: Uuid) -> Result<PfRul
         .find(|h| h.data.label == host.data.label && h.data.address == host.data.address)
     {
         Some(h) => h.id,
-        None => hosts::copy_to_vault(&state.store, &[host.id], vault_id)?
+        None => hosts::copy_to_vault(&state.store, &[host.id], vault_id, creds)?
             .into_iter()
             .next()
             .ok_or_else(|| DesktopError::not_found(format!("host {}", host.id)))?,

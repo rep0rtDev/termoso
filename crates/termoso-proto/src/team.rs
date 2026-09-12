@@ -135,6 +135,17 @@ schema! {
 }
 
 schema! {
+    /// `POST /teams/{id}/invites` response: the invite plus its share link.
+    pub struct CreatedInvite {
+        /// The pending invitation.
+        #[serde(flatten)]
+        pub invite: Invite,
+        /// Share this link with the invitee (also emailed when SMTP is configured).
+        pub url: String,
+    }
+}
+
+schema! {
     /// `GET /teams/{id}/invites`
     pub struct InviteList {
         /// Invites.
