@@ -5,7 +5,7 @@ import { clampRatio, type SplitNode } from "./layout";
 import { setSplitRatio } from "./store";
 import type { Uuid } from "@/ipc/types";
 
-const DIVIDER = 4;
+const DIVIDER = 6;
 
 interface Props {
   tabId: string;
@@ -98,10 +98,10 @@ function SplitBranch({
         sx={{
           flex: `0 0 ${DIVIDER}px`,
           cursor: horizontal ? "col-resize" : "row-resize",
-          bgcolor: "divider",
           touchAction: "none",
+          borderRadius: 1,
           transition: "background-color 120ms",
-          "&:hover, &:active": { bgcolor: "primary.main" },
+          "&:hover, &:active": { bgcolor: "divider" },
         }}
       />
       <Box

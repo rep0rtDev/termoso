@@ -5,6 +5,7 @@ import { theme } from "./theme/theme";
 import { SnackbarProvider } from "./components/Snackbar";
 import { AppShell } from "./app/AppShell";
 import { ThemeModeSync } from "./app/ThemeModeSync";
+import { WindowFrame } from "./app/WindowFrame";
 
 /** The webview's native context menu (Back/Forward/Reload…) never makes sense in the app. */
 function useSuppressNativeContextMenu() {
@@ -38,7 +39,9 @@ export function App() {
       <QueryClientProvider client={queryClient}>
         <SnackbarProvider>
           <ThemeModeSync />
-          <AppShell />
+          <WindowFrame>
+            <AppShell />
+          </WindowFrame>
         </SnackbarProvider>
       </QueryClientProvider>
     </ThemeProvider>

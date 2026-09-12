@@ -128,6 +128,10 @@ pub mod payload {
             /// Detected OS name.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub os_name: Option<String>,
+            /// Icon chosen by the user (an OS id such as `ubuntu`); overrides
+            /// the detected `os_name` for display.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub icon: Option<String>,
             /// Preferred IP version: `auto`, `4`, `6`.
             #[serde(default)]
             pub ip_version: String,
@@ -243,6 +247,9 @@ pub mod payload {
             /// Flow control: `none`, `software`, `hardware`.
             #[serde(default)]
             pub flow_control: String,
+            /// Text encoding of the device (WHATWG label, e.g. `utf-8`, `koi8-r`); empty = UTF-8.
+            #[serde(default)]
+            pub charset: String,
         }
     }
 
@@ -355,7 +362,7 @@ pub mod payload {
     }
 
     schema! {
-        /// Snippet bound to run on host connect.
+        /// Host a snippet is configured to run on (an execution target).
         #[derive(Default)]
         pub struct HostSnippet {
             /// Host.

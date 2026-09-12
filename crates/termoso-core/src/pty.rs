@@ -51,6 +51,17 @@ fn size(s: TermSize) -> PtySize {
     }
 }
 
+/// Base name of the shell [`LocalTerminal::spawn`] starts when `argv` is
+/// empty (`$SHELL` on Unix, `cmd` on Windows).
+pub fn default_shell_name() -> Option<String> {
+    if cfg!(windows) {
+        return Some("cmd".into());
+    }
+    let shell = std::env::var("SHELL").ok()?;
+    let name = shell.rsplit('/').next()?.trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
 impl LocalTerminal {
     /// Spawn the shell.
     pub fn spawn(opts: LocalShellOptions) -> Result<(Arc<LocalTerminal>, TermEvents)> {

@@ -1,37 +1,33 @@
 import { useState } from "react";
 import {
-  AppBar,
   Avatar,
   Box,
   Chip,
   Divider,
   Drawer,
   IconButton,
-  List,
-  ListItemButton,
   ListItemIcon,
   ListItemText,
-  ListSubheader,
   Menu,
   MenuItem,
-  Toolbar,
   Tooltip,
   Typography,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
-import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
-import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
-import DevicesRoundedIcon from "@mui/icons-material/DevicesRounded";
-import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
-import LockRoundedIcon from "@mui/icons-material/LockRounded";
-import AdminPanelSettingsRoundedIcon from "@mui/icons-material/AdminPanelSettingsRounded";
-import PeopleAltRoundedIcon from "@mui/icons-material/PeopleAltRounded";
+import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
+import ShieldOutlinedIcon from "@mui/icons-material/ShieldOutlined";
+import DevicesOutlinedIcon from "@mui/icons-material/DevicesOutlined";
+import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
+import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
 import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
-import DeleteForeverRoundedIcon from "@mui/icons-material/DeleteForeverRounded";
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
+import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "./ThemeToggle";
@@ -39,8 +35,7 @@ import { useAuthState } from "@/auth/store";
 import { logout } from "@/auth/flows";
 import { useServerInfo } from "@/api/hooks";
 import { UnlockDialog } from "@/auth/UnlockDialog";
-
-const DRAWER_WIDTH = 264;
+import { sizes } from "@/theme/theme";
 
 interface NavItem {
   to: string;
@@ -50,20 +45,20 @@ interface NavItem {
 }
 
 const accountNav: NavItem[] = [
-  { to: "/account", label: "Account", icon: <PersonRoundedIcon /> },
-  { to: "/security", label: "Security", icon: <ShieldRoundedIcon /> },
-  { to: "/devices", label: "Devices", icon: <DevicesRoundedIcon /> },
+  { to: "/account", label: "Account", icon: <PersonOutlineRoundedIcon /> },
+  { to: "/security", label: "Security", icon: <ShieldOutlinedIcon /> },
+  { to: "/devices", label: "Devices", icon: <DevicesOutlinedIcon /> },
 ];
 
 const workspaceNav: NavItem[] = [
-  { to: "/team", label: "Teams", icon: <GroupsRoundedIcon /> },
-  { to: "/vaults", label: "Vaults", icon: <LockRoundedIcon /> },
+  { to: "/team", label: "Teams", icon: <GroupsOutlinedIcon /> },
+  { to: "/vaults", label: "Vaults", icon: <LockOutlinedIcon /> },
 ];
 
 const adminNav: NavItem[] = [
-  { to: "/admin", label: "Overview", icon: <AdminPanelSettingsRoundedIcon />, end: true },
-  { to: "/admin/users", label: "Users", icon: <PeopleAltRoundedIcon /> },
-  { to: "/admin/teams", label: "Teams", icon: <GroupsRoundedIcon /> },
+  { to: "/admin", label: "Overview", icon: <DashboardOutlinedIcon />, end: true },
+  { to: "/admin/users", label: "Users", icon: <PeopleAltOutlinedIcon /> },
+  { to: "/admin/teams", label: "Teams", icon: <GroupsOutlinedIcon /> },
   { to: "/admin/settings", label: "Server settings", icon: <TuneRoundedIcon /> },
 ];
 
@@ -78,34 +73,53 @@ function NavSection({
 }) {
   const location = useLocation();
   return (
-    <List
-      dense
-      subheader={
-        title ? (
-          <ListSubheader disableSticky sx={{ bgcolor: "transparent", lineHeight: "32px" }}>
-            {title}
-          </ListSubheader>
-        ) : undefined
-      }
-    >
-      {items.map((it) => {
-        const selected = it.end
-          ? location.pathname === it.to
-          : location.pathname === it.to || location.pathname.startsWith(it.to + "/");
-        return (
-          <ListItemButton
-            key={it.to}
-            component={NavLink}
-            to={it.to}
-            selected={selected}
-            onClick={onNavigate}
-          >
-            <ListItemIcon>{it.icon}</ListItemIcon>
-            <ListItemText primary={it.label} />
-          </ListItemButton>
-        );
-      })}
-    </List>
+    <Box sx={{ px: 1.5, pt: title ? 2 : 0.5 }}>
+      {title && (
+        <Typography
+          variant="overline"
+          component="div"
+          sx={{ color: "text.disabled", px: 1.25, mb: 0.5, lineHeight: 1.6 }}
+        >
+          {title}
+        </Typography>
+      )}
+      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
+        {items.map((it) => {
+          const selected = it.end
+            ? location.pathname === it.to
+            : location.pathname === it.to || location.pathname.startsWith(it.to + "/");
+          return (
+            <Box
+              key={it.to}
+              component={NavLink}
+              to={it.to}
+              onClick={onNavigate}
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1.25,
+                height: sizes.control,
+                px: 1.25,
+                borderRadius: 1.5,
+                textDecoration: "none",
+                color: selected ? "text.primary" : "text.secondary",
+                bgcolor: selected ? "surface.highest" : "transparent",
+                fontWeight: 500,
+                fontSize: "0.875rem",
+                "&:hover": {
+                  bgcolor: selected ? "surface.highest" : "action.hover",
+                  color: "text.primary",
+                },
+                "& svg": { fontSize: 18, color: selected ? "text.primary" : "text.secondary" },
+              }}
+            >
+              {it.icon}
+              {it.label}
+            </Box>
+          );
+        })}
+      </Box>
+    </Box>
   );
 }
 
@@ -121,10 +135,29 @@ export function AppShell() {
   const closeDrawer = () => setMobileOpen(false);
 
   const drawer = (
-    <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <Toolbar sx={{ px: 2.5 }}>
-        <Logo />
-      </Toolbar>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        bgcolor: "surface.base",
+      }}
+    >
+      <Box
+        component={NavLink}
+        to="/"
+        sx={{
+          height: sizes.topbar,
+          display: "flex",
+          alignItems: "center",
+          px: 2.5,
+          textDecoration: "none",
+          color: "inherit",
+          flexShrink: 0,
+        }}
+      >
+        <Logo size={26} />
+      </Box>
       <Box sx={{ flex: 1, overflowY: "auto", pb: 2 }}>
         <NavSection items={accountNav} onNavigate={closeDrawer} />
         {info.data?.features.teams !== false && (
@@ -134,8 +167,16 @@ export function AppShell() {
           <NavSection title="Administration" items={adminNav} onNavigate={closeDrawer} />
         )}
       </Box>
-      <Divider />
-      <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 1, color: "text.secondary" }}>
+      <Box
+        sx={{
+          px: 2.5,
+          py: 1.5,
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+          color: "text.disabled",
+        }}
+      >
         <Typography variant="caption" sx={{ flex: 1 }} noWrap>
           {info.data ? `${info.data.name} · v${info.data.version}` : "Termoso"}
         </Typography>
@@ -143,10 +184,12 @@ export function AppShell() {
           title={
             privateKey
               ? "Encryption keys unlocked in this tab"
-              : "Encryption keys locked — sign in with password to unlock"
+              : "Encryption keys locked — they unlock with your password when needed"
           }
         >
-          <KeyRoundedIcon fontSize="small" color={privateKey ? "primary" : "disabled"} />
+          <KeyRoundedIcon
+            sx={{ fontSize: 16, color: privateKey ? "primary.main" : "text.disabled" }}
+          />
         </Tooltip>
       </Box>
     </Box>
@@ -155,26 +198,40 @@ export function AppShell() {
   const initials = (user?.display_name ?? user?.email ?? "?").slice(0, 1).toUpperCase();
 
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh" }}>
-      <AppBar
-        position="fixed"
-        color="transparent"
-        sx={{
-          backdropFilter: "blur(12px)",
-          bgcolor: "rgba(var(--mui-palette-background-defaultChannel) / 0.8)",
-          borderBottom: 1,
-          borderColor: "divider",
-          width: { md: `calc(100% - ${DRAWER_WIDTH}px)` },
-          ml: { md: `${DRAWER_WIDTH}px` },
-        }}
-      >
-        <Toolbar sx={{ gap: 1 }}>
+    <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "surface.lowest" }}>
+      <Box component="nav" sx={{ width: { md: sizes.sidebar }, flexShrink: { md: 0 } }}>
+        <Drawer
+          variant={isDesktop ? "permanent" : "temporary"}
+          open={isDesktop || mobileOpen}
+          onClose={closeDrawer}
+          slotProps={{
+            paper: {
+              sx: { width: sizes.sidebar, border: 0, bgcolor: "surface.base" },
+            },
+          }}
+          ModalProps={{ keepMounted: true }}
+        >
+          {drawer}
+        </Drawer>
+      </Box>
+
+      <Box component="main" sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <Box
+          component="header"
+          sx={{
+            position: "sticky",
+            top: 0,
+            zIndex: (t) => t.zIndex.appBar,
+            height: sizes.topbar,
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            px: { xs: 1.5, md: 3 },
+            bgcolor: "surface.lowest",
+          }}
+        >
           {!isDesktop && (
-            <IconButton
-              edge="start"
-              onClick={() => setMobileOpen(true)}
-              aria-label="Open navigation"
-            >
+            <IconButton onClick={() => setMobileOpen(true)} aria-label="Open navigation">
               <MenuRoundedIcon />
             </IconButton>
           )}
@@ -186,23 +243,23 @@ export function AppShell() {
               variant="outlined"
               label="Email not verified"
               onClick={() => navigate("/account#email")}
+              sx={{ cursor: "pointer" }}
             />
           )}
           <ThemeToggle />
           <Tooltip title={user?.email ?? ""}>
             <IconButton
               onClick={(e) => setMenuAnchor(e.currentTarget)}
-              sx={{ p: 0.5 }}
               aria-label="Account menu"
+              sx={{ ml: 0.5 }}
             >
               <Avatar
                 sx={{
-                  width: 32,
-                  height: 32,
+                  width: 26,
+                  height: 26,
+                  fontSize: 12,
                   bgcolor: "primary.main",
                   color: "primary.contrastText",
-                  fontSize: 14,
-                  fontWeight: 700,
                 }}
               >
                 {initials}
@@ -213,9 +270,11 @@ export function AppShell() {
             anchorEl={menuAnchor}
             open={menuAnchor !== null}
             onClose={() => setMenuAnchor(null)}
-            slotProps={{ paper: { sx: { minWidth: 240, mt: 1 } } }}
+            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+            transformOrigin={{ vertical: "top", horizontal: "right" }}
+            slotProps={{ paper: { sx: { minWidth: 240 } } }}
           >
-            <Box sx={{ px: 2, py: 1.5 }}>
+            <Box sx={{ px: 1.5, py: 1 }}>
               <Typography variant="subtitle2" noWrap>
                 {user?.display_name ?? user?.email}
               </Typography>
@@ -223,7 +282,19 @@ export function AppShell() {
                 {user?.email}
               </Typography>
             </Box>
-            <Divider />
+            <Divider sx={{ my: 0.5 }} />
+            <MenuItem
+              component="a"
+              href="https://github.com/rep0rtDev/termoso/releases"
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => setMenuAnchor(null)}
+            >
+              <ListItemIcon>
+                <OpenInNewRoundedIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Download the app</ListItemText>
+            </MenuItem>
             <MenuItem
               onClick={() => {
                 setMenuAnchor(null);
@@ -231,10 +302,11 @@ export function AppShell() {
               }}
             >
               <ListItemIcon>
-                <DeleteForeverRoundedIcon fontSize="small" />
+                <DeleteOutlineRoundedIcon fontSize="small" />
               </ListItemIcon>
               <ListItemText>Delete account</ListItemText>
             </MenuItem>
+            <Divider sx={{ my: 0.5 }} />
             <MenuItem
               onClick={() => {
                 setMenuAnchor(null);
@@ -247,34 +319,17 @@ export function AppShell() {
               <ListItemText>Sign out</ListItemText>
             </MenuItem>
           </Menu>
-        </Toolbar>
-      </AppBar>
-
-      <Box component="nav" sx={{ width: { md: DRAWER_WIDTH }, flexShrink: { md: 0 } }}>
-        <Drawer
-          variant={isDesktop ? "permanent" : "temporary"}
-          open={isDesktop || mobileOpen}
-          onClose={closeDrawer}
-          slotProps={{
-            paper: {
-              sx: {
-                width: DRAWER_WIDTH,
-                borderRight: 1,
-                borderColor: "divider",
-                bgcolor: "background.paper",
-              },
-            },
-          }}
-          ModalProps={{ keepMounted: true }}
-        >
-          {drawer}
-        </Drawer>
-      </Box>
-
-      <Box component="main" sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <Toolbar />
+        </Box>
         <Box
-          sx={{ p: { xs: 2, sm: 3, md: 4 }, maxWidth: 1040, width: "100%", mx: "auto", flex: 1 }}
+          sx={{
+            px: { xs: 2, sm: 3, md: 4 },
+            pt: { xs: 1, md: 2 },
+            pb: 6,
+            maxWidth: sizes.content + 64,
+            width: "100%",
+            mx: "auto",
+            flex: 1,
+          }}
         >
           <Outlet />
         </Box>

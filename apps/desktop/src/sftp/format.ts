@@ -13,6 +13,18 @@ export function formatSize(n: number | null | undefined): string {
   return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
 }
 
+export const formatSpeed = (bytesPerSec: number) => `${formatSize(Math.round(bytesPerSec))}/s`;
+
+/** `0:42`, `3:05`, `1:12:09`. */
+export function formatDuration(secs: number): string {
+  const s = Math.max(0, Math.round(secs));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+  return `${h > 0 ? `${h}:` : ""}${mm}:${String(r).padStart(2, "0")}`;
+}
+
 export function formatMtime(secs: number | null): string {
   if (secs === null) return "";
   const d = new Date(secs * 1000);

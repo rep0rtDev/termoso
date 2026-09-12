@@ -35,7 +35,7 @@ import {
   type Uuid,
 } from "@/ipc/types";
 import { monoFontFamily, sizes } from "@/theme/theme";
-import { CredentialsFields } from "./CredentialsFields";
+import { AgentForwardingRow, CredentialsFields } from "./CredentialsFields";
 import { ChainDialog, ProxyDialog } from "./HostAdvancedDialogs";
 
 interface Props {
@@ -261,21 +261,23 @@ function GroupEditor({
           </Field>
         </SectionCard>
 
-        <SectionCard title="Credentials">
-          <Typography variant="body2" color="text.secondary" sx={{ mt: -1 }}>
-            Hosts in this group use these when their own credentials are left empty.
-          </Typography>
+        <SectionCard>
           <CredentialsFields
             vaultId={vaultId}
             ssh
+            agentForwarding={false}
             inherited={inh}
-            inlineLabel="Credentials set on this group"
+            inlineLabel="Set on this group"
             value={form}
             onChange={patch}
           />
+          <Typography variant="caption" color="text.secondary">
+            Hosts in this group use these when their own credentials are left empty.
+          </Typography>
         </SectionCard>
 
         <SectionCard title="Connection">
+          <AgentForwardingRow value={form} onChange={patch} inherited={inh} />
           <Field label="Port" sx={{ width: 140 }}>
             <TextField
               type="number"

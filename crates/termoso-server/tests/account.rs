@@ -760,6 +760,41 @@ fn device_with_id(id: uuid::Uuid) -> termoso_proto::auth::DeviceInfo {
     d
 }
 
+/// One installation keeps a single client device id across sign-outs; a second
+/// account signing in from it must get its own device record, not a 500.
+#[tokio::test]
+async fn shared_installation_gets_a_device_per_account() {
+    let s = server_with_mail!();
+    let a = register(s, &unique_email("shared-a"), "pw-shared-a-123456").await;
+    let b_email = unique_email("shared-b");
+    let b = register(s, &b_email, "pw-shared-b-123456").await;
+
+    let resp = login_raw(
+        s,
+        &b_email,
+        &b.password,
+        device_with_id(a.session.device_id),
+        None,
+    )
+    .await
+    .unwrap();
+    assert!(
+        matches!(resp, AuthResponse::DeviceApprovalRequired { .. }),
+        "{resp:?}"
+    );
+    let b2 = session(approve_device(s, &b_email, resp).await);
+    assert_ne!(b2.device_id, a.session.device_id);
+
+    let a_devices: DeviceList = s
+        .json(Method::GET, "/account/devices", Some(a.token()), NOBODY)
+        .await;
+    assert_eq!(a_devices.devices.len(), 1);
+    let b_devices: DeviceList = s
+        .json(Method::GET, "/account/devices", Some(&b2.token), NOBODY)
+        .await;
+    assert_eq!(b_devices.devices.len(), 2);
+}
+
 #[tokio::test]
 async fn email_is_a_second_factor_once_another_is_enabled() {
     let s = server_with_mail!();

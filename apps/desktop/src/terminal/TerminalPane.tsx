@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Box, Button, CircularProgress, Stack, Tooltip, Typography, alpha } from "@mui/material";
+import { Box, Button, Stack, Tooltip, Typography, alpha } from "@mui/material";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
@@ -13,6 +13,8 @@ import {
   setActivePane,
   useTerminal,
 } from "./store";
+import { AutocompletePopup } from "./AutocompletePopup";
+import { ConnectionView } from "./ConnectionView";
 import { usePaneTheme } from "./useTerminalTheme";
 import type { TerminalTheme } from "./themes";
 
@@ -25,6 +27,7 @@ interface Props {
 export function TerminalPane({ paneId, active, showFrame }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const pane = useTerminal((s) => s.panes[paneId]);
+  const queued = useTerminal((s) => s.reconnect?.paneIds.includes(paneId) ?? false);
   const theme = usePaneTheme(paneId);
 
   useEffect(() => {
@@ -33,17 +36,23 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
     return mountPane(paneId, host);
   }, [paneId]);
 
+  const status = pane?.status;
   useEffect(() => {
-    if (active) focusPane(paneId);
-  }, [active, paneId]);
+    if (active && status !== "connecting") focusPane(paneId);
+  }, [active, paneId, status]);
 
   if (!pane) return null;
   const finished = pane.status === "exited" || pane.status === "error" || pane.status === "closed";
+  // Never got a session: show the connection view with the failure instead of
+  // an empty terminal. A dropped session keeps its buffer while it reconnects.
+  const failedToConnect =
+    finished && pane.startedAt === null && pane.status !== "exited" && !pane.reconnecting;
+  const connecting = pane.status === "connecting" && !pane.reconnecting;
 
   return (
     <Box
       onMouseDown={() => setActivePane(paneId)}
-      sx={(t) => ({
+      sx={{
         position: "relative",
         flex: 1,
         minWidth: 0,
@@ -53,11 +62,9 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
         display: "flex",
         flexDirection: "column",
         bgcolor: theme.background,
-        outline: showFrame
-          ? `1px solid ${active ? t.palette.primary.main : t.palette.divider}`
-          : "none",
-        outlineOffset: -1,
-      })}
+        borderRadius: 2,
+        overflow: "hidden",
+      }}
     >
       {showFrame && (
         <Stack
@@ -68,32 +75,37 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
             px: 1.25,
             height: 26,
             flexShrink: 0,
-            borderBottom: 1,
-            borderColor: "divider",
-            bgcolor: "background.paper",
+            color: theme.foreground,
+            bgcolor: alpha(theme.foreground, 0.05),
+            opacity: active ? 1 : 0.7,
           }}
         >
           <StatusDot status={pane.status} />
           <Typography variant="caption" noWrap sx={{ flex: 1, fontWeight: 600 }}>
             {pane.title}
           </Typography>
-          <Typography variant="caption" color="text.secondary" noWrap>
+          <Typography variant="caption" noWrap sx={{ opacity: 0.6 }}>
             {pane.subtitle}
           </Typography>
           <PqBadge algorithms={pane.algorithms} size={13} />
         </Stack>
       )}
-      <Box ref={hostRef} sx={{ flex: 1, minHeight: 0, position: "relative" }} />
+      <Box sx={{ flex: 1, minHeight: 0, position: "relative", display: "flex" }}>
+        <Box
+          ref={hostRef}
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            minHeight: 0,
+            position: "relative",
+            visibility: connecting || failedToConnect ? "hidden" : "visible",
+          }}
+        />
+        <AutocompletePopup paneId={paneId} />
+        {(connecting || failedToConnect) && <ConnectionView pane={pane} />}
+      </Box>
 
-      {pane.status === "connecting" && (
-        <Overlay theme={theme}>
-          <CircularProgress size={22} />
-          <Typography variant="body2" sx={{ opacity: 0.8 }}>
-            Connecting to {pane.subtitle || pane.title}…
-          </Typography>
-        </Overlay>
-      )}
-      {finished && (
+      {finished && !failedToConnect && !queued && (
         <Overlay theme={theme} dim>
           <Typography
             variant="body2"
@@ -107,7 +119,7 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
               size="small"
               variant="contained"
               startIcon={<ReplayRoundedIcon />}
-              onClick={() => reconnectPane(paneId)}
+              onClick={() => void reconnectPane(paneId)}
             >
               Reconnect
             </Button>
@@ -143,6 +155,7 @@ function Overlay({
         justifyContent: "flex-end",
         position: "absolute",
         inset: 0,
+        zIndex: 6,
         pb: 4,
         color: theme.foreground,
         pointerEvents: dim ? "auto" : "none",

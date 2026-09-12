@@ -1,12 +1,13 @@
-import { Box, Checkbox, Chip, IconButton, Tooltip } from "@mui/material";
+import { Box, IconButton, Tooltip } from "@mui/material";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
 import type { MouseEvent, ReactNode } from "react";
-import type { GroupNode, HostCard } from "@/ipc/types";
-import { CardGrid, EntityCard, IconTile, SectionTitle } from "@/components/ui";
+import { hostProtocols, type GroupNode, type HostCard } from "@/ipc/types";
+import { CardGrid, CheckTile, EntityCard, IconTile, SectionTitle } from "@/components/ui";
 import { HostAvatar } from "./HostAvatar";
+import type { HostDnd } from "./dnd";
 
 export interface HostCollectionProps {
   groups: GroupNode[];
@@ -24,11 +25,24 @@ export interface HostCollectionProps {
   onToggleHost: (h: HostCard) => void;
   onConnectHost: (h: HostCard) => void;
   onHostContext: (h: HostCard, e: MouseEvent<HTMLElement>) => void;
+  /** Drag hosts onto group cards. */
+  dnd?: HostDnd;
 }
 
+/** Termius' card line: protocols, then username, then tags — `ssh, telnet, stan, api`. */
 export function hostSubtitle(h: HostCard) {
-  const port = h.protocol === "telnet" || h.port !== 22 ? `:${h.port}` : "";
-  return `${h.username ? `${h.username}@` : ""}${h.address}${port}`;
+  const parts: string[] = [...hostProtocols(h)];
+  if (h.username) parts.push(h.username);
+  parts.push(...h.tags);
+  return parts.join(", ");
+}
+
+/** `user@address:port` of the given protocol (primary by default), as typed in a terminal. */
+export function hostTarget(h: HostCard, protocol: string = h.protocol) {
+  if (protocol === "telnet" && h.protocol !== "telnet") {
+    return `${h.address}:${h.telnetPort ?? 23}`;
+  }
+  return `${h.username ? `${h.username}@` : ""}${h.address}:${h.port}`;
 }
 
 export function groupSubtitle(g: GroupNode) {
@@ -38,56 +52,32 @@ export function groupSubtitle(g: GroupNode) {
   return parts.join(", ");
 }
 
-/** Card tile that turns into a checkbox on hover or when checked. */
+/** Card tile that doubles as the selection toggle (see `CheckTile`). */
 export function SelectableTile({
   tile,
   checked,
-  selecting,
   onToggle,
   size,
 }: {
   tile: ReactNode;
   checked: boolean;
-  /** A selection is in progress: always show the checkbox. */
-  selecting: boolean;
   onToggle: () => void;
   size: number;
 }) {
   return (
     <Box
-      className={checked || selecting ? "tile-selecting" : undefined}
-      sx={{
-        position: "relative",
-        width: size,
-        height: size,
-        flexShrink: 0,
-        "& .tile-check": { position: "absolute", inset: 0, opacity: 0, m: 0, p: 0 },
-        "& .tile-icon": { transition: "opacity 100ms" },
-        "&.tile-selecting .tile-check, .entity-card:hover & .tile-check, tr:hover & .tile-check": {
-          opacity: 1,
-        },
-        "&.tile-selecting .tile-icon, .entity-card:hover & .tile-icon, tr:hover & .tile-icon": {
-          opacity: 0,
-        },
+      role="checkbox"
+      aria-checked={checked}
+      aria-label="Select"
+      tabIndex={-1}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
       }}
+      onDoubleClick={(e) => e.stopPropagation()}
+      sx={{ display: "flex", flexShrink: 0, cursor: "pointer" }}
     >
-      <Box className="tile-icon">{tile}</Box>
-      <Checkbox
-        className="tile-check"
-        checked={checked}
-        size="small"
-        aria-label="Select"
-        onClick={(e) => e.stopPropagation()}
-        onDoubleClick={(e) => e.stopPropagation()}
-        onChange={onToggle}
-        sx={{
-          width: size,
-          height: size,
-          borderRadius: size >= 40 ? 2 : 1.5,
-          bgcolor: "surface.highest",
-          "& .MuiSvgIcon-root": { fontSize: Math.round(size * 0.5) },
-        }}
-      />
+      <CheckTile tile={tile} checked={checked} hoverHint size={size} />
     </Box>
   );
 }
@@ -117,7 +107,6 @@ export function GroupTile({ g, size }: { g: GroupNode; size?: number }) {
 }
 
 export function HostGrid(p: HostCollectionProps) {
-  const selecting = p.checked.size > 0;
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
       {p.groups.length > 0 && (
@@ -133,6 +122,8 @@ export function HostGrid(p: HostCollectionProps) {
                 subtitle={groupSubtitle(g)}
                 onClick={() => p.onOpenGroup(g.id)}
                 onContextMenu={(e) => p.onGroupContext(g, e)}
+                drag={p.dnd?.dropGroup(g)}
+                dropping={p.dnd?.dropping === g.id}
                 actions={
                   <IconButton
                     aria-label="Group options"
@@ -163,7 +154,6 @@ export function HostGrid(p: HostCollectionProps) {
                     <SelectableTile
                       tile={<HostAvatar host={h} />}
                       checked={isChecked}
-                      selecting={selecting}
                       onToggle={() => p.onToggleHost(h)}
                       size={40}
                     />
@@ -178,16 +168,8 @@ export function HostGrid(p: HostCollectionProps) {
                   onClick={(e) => p.onOpenHost(h, e)}
                   onDoubleClick={() => p.onConnectHost(h)}
                   onContextMenu={(e) => p.onHostContext(h, e)}
-                  meta={
-                    h.tags.length > 0 ? (
-                      <>
-                        {h.tags.slice(0, 3).map((t) => (
-                          <Chip key={t} size="small" label={t} />
-                        ))}
-                        {h.tags.length > 3 && <Chip size="small" label={`+${h.tags.length - 3}`} />}
-                      </>
-                    ) : undefined
-                  }
+                  drag={p.dnd?.dragHost(h)}
+                  sx={p.dnd?.dragging.has(h.id) ? { opacity: 0.45 } : undefined}
                   actions={
                     <>
                       <Tooltip title="Connect">

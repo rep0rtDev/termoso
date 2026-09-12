@@ -92,7 +92,7 @@ export function ForgotPasswordPage() {
           helperText={mismatch ? "Passwords do not match" : undefined}
           disabled={busy}
         />
-        <Alert severity="info" variant="outlined">
+        <Alert severity="info">
           All other sessions will be signed out and a new recovery key will be generated.
         </Alert>
         <Button type="submit" variant="contained" size="large" disabled={busy || !phraseOk}>

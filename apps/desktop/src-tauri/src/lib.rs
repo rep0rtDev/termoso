@@ -4,9 +4,12 @@
 mod account;
 mod commands;
 mod commands_tools;
+mod complete;
+mod edits;
 mod error;
 mod forwarding;
 mod hosts;
+mod import;
 mod keychain;
 mod logs;
 mod prompts;
@@ -16,6 +19,7 @@ mod snippets;
 mod state;
 mod trust;
 mod update;
+mod workspaces;
 
 use tauri::Manager;
 
@@ -31,7 +35,23 @@ pub fn run() {
         .with_writer(std::io::stderr)
         .init();
 
+    let mut context = tauri::generate_context!();
+    // WebKitGTK strips file:// URIs from HTML5 drops, so OS drops need the
+    // native handler there; WebView2 needs it off for HTML5 drag-and-drop.
+    for window in &mut context.config_mut().app.windows {
+        window.drag_drop_enabled = cfg!(not(windows));
+    }
+
     tauri::Builder::default()
+        // First, so a second launch (e.g. the OS opening an ssh:// link) hands
+        // its arguments to the running instance instead of starting another.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -54,6 +74,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            commands::deep_links_register,
             commands::settings_get,
             commands::settings_set,
             commands::vaults_list,
@@ -70,6 +91,8 @@ pub fn run() {
             commands::hosts_delete,
             commands::host_duplicate,
             commands::hosts_move,
+            commands::serial_ports,
+            commands::local_shells,
             commands::hosts_copy_to_vault,
             commands::host_inherited,
             commands::groups_list,
@@ -79,7 +102,19 @@ pub fn run() {
             commands::group_duplicate,
             commands::group_delete,
             commands::tags_list,
+            commands::tag_update,
+            commands::tag_delete,
+            commands::tags_merge,
             commands::history_connections,
+            commands::history_commands,
+            commands::history_record_command,
+            commands::history_delete,
+            commands::history_clear_commands,
+            complete::terminal_list_dir,
+            complete::terminal_insert_password,
+            complete::terminal_host_identity,
+            workspaces::workspaces_get,
+            workspaces::workspaces_set,
             commands::sessions_list,
             commands::terminal_open,
             commands::terminal_attach,
@@ -102,8 +137,18 @@ pub fn run() {
             commands::local_mkdir,
             commands::local_rename,
             commands::local_remove,
+            commands::local_open,
+            commands::transfer_probe,
             commands::transfer_start,
             commands::transfer_cancel,
+            commands::drop_begin,
+            commands::drop_write,
+            commands::drop_mkdir,
+            commands::drop_abort,
+            commands::edits_list,
+            commands::edit_open,
+            commands::edit_upload_now,
+            commands::edit_close,
             commands_tools::keys_list,
             commands_tools::key_generate,
             commands_tools::key_import,
@@ -130,6 +175,7 @@ pub fn run() {
             commands_tools::snippets_list,
             commands_tools::snippet_save,
             commands_tools::snippet_delete,
+            commands_tools::snippet_set_targets,
             commands_tools::snippet_run,
             commands_tools::snippet_packages,
             commands_tools::snippet_package_save,
@@ -142,6 +188,14 @@ pub fn run() {
             commands_tools::known_hosts_export_text,
             commands_tools::known_hosts_export_file,
             commands_tools::known_hosts_default_path,
+            commands_tools::import_scan_ssh,
+            commands_tools::import_parse_file,
+            commands_tools::import_scan_putty_registry,
+            commands_tools::import_ssh_dir_default,
+            commands_tools::import_csv_template,
+            commands_tools::import_csv_template_save,
+            commands_tools::import_apply,
+            commands_tools::import_discard,
             commands_tools::logs_list,
             commands_tools::log_read,
             commands_tools::log_export,
@@ -163,12 +217,18 @@ pub fn run() {
             commands_tools::account_sync_now,
             commands_tools::account_devices,
             commands_tools::account_device_revoke,
+            commands_tools::account_vault_members,
             commands_tools::update_check,
             commands_tools::update_install,
             commands_tools::update_restart,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Termoso");
+        .build(context)
+        .expect("error while building Termoso")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                app.state::<AppState>().edits.close_all();
+            }
+        });
 }
 
 /// Background work after the window is up: restore the account session,
@@ -176,6 +236,7 @@ pub fn run() {
 async fn startup(app: tauri::AppHandle) {
     let state = app.state::<AppState>();
     let settings = state.settings().unwrap_or_default();
+    edits::sweep_stale();
     match logs::prune(&state.store, settings.log_retention_days) {
         Ok(n) if n > 0 => tracing::info!(pruned = n, "old recordings removed"),
         Ok(_) => {}

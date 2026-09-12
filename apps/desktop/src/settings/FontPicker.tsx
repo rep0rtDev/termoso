@@ -9,16 +9,26 @@ const CUSTOM = "\u0000custom";
 export function FontPicker({
   value,
   onChange,
+  fullWidth = false,
 }: {
   value: string;
   onChange: (name: string) => void;
+  fullWidth?: boolean;
 }) {
   const bundled = bundledFont(value);
   const [custom, setCustom] = useState(!bundled && value.trim() !== "");
   const selectValue = custom || !bundled ? CUSTOM : bundled.name;
+  const width = fullWidth ? "100%" : 280;
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-end" }}>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 1,
+        alignItems: fullWidth ? "stretch" : "flex-end",
+      }}
+    >
       <TextField
         select
         value={selectValue}
@@ -30,7 +40,7 @@ export function FontPicker({
           setCustom(false);
           onChange(e.target.value);
         }}
-        sx={{ width: 280 }}
+        sx={{ width }}
         slotProps={{ select: { MenuProps: { slotProps: { paper: { sx: { maxHeight: 360 } } } } } }}
       >
         {bundledFonts.map((f) => (
@@ -50,7 +60,7 @@ export function FontPicker({
           value={bundled ? "" : value}
           placeholder="Family name, e.g. JetBrainsMono Nerd Font"
           onChange={(e) => onChange(e.target.value)}
-          sx={{ width: 280 }}
+          sx={{ width }}
         />
       )}
     </Box>

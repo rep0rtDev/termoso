@@ -24,6 +24,8 @@ keyring = { version = "4", optional = true }
 russh = { version = "0.63", features = ["rsa"] }
 russh-sftp = "3"
 portable-pty = { version = "0.9", optional = true }
+serialport = { version = "4.9", default-features = false, optional = true }
+encoding_rs = { version = "0.8", optional = true }
 rand = "0.10"
 
 # server api
@@ -45,11 +47,13 @@ sha2 = { workspace = true }
 dirs = "6"
 
 [features]
-default = ["keychain", "local-pty"]
+default = ["keychain", "local-pty", "serial"]
 # Store the local master key in the OS keychain (Secret Service / Credential Manager / Keychain).
 keychain = ["dep:keyring"]
 # Local terminal (spawns the user's shell in a PTY).
 local-pty = ["dep:portable-pty"]
+# Serial console over a COM / tty device.
+serial = ["dep:serialport", "dep:encoding_rs"]
 
 [dev-dependencies]
 tempfile = "3"

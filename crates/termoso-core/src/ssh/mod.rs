@@ -57,6 +57,37 @@ impl SshTarget {
     }
 }
 
+/// Where a connection attempt currently is. Reported through
+/// [`ConnectProgress`] so a UI can show the stage instead of a bare spinner.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ConnectPhase {
+    /// Looking the host name up in DNS.
+    Resolving,
+    /// Opening the TCP connection (directly, through a proxy, or over a jump).
+    Connecting {
+        /// Resolved address, proxy or jump host the socket goes to.
+        via: String,
+    },
+    /// Exchanging protocol versions and keys.
+    Handshake,
+    /// Checking the server's host key against the trust database.
+    HostKey,
+    /// Trying an authentication method (`publickey`, `password`, …).
+    Auth {
+        /// SSH method name being attempted.
+        method: String,
+    },
+    /// Transport is up and authenticated; the caller is opening channels.
+    Authenticated,
+}
+
+/// Receives [`ConnectPhase`] updates while [`SshClient::connect`] runs.
+pub trait ConnectProgress: Send + Sync {
+    /// Called from the connecting task; must not block.
+    fn phase(&self, phase: ConnectPhase);
+}
+
 /// Everything needed to establish a session.
 pub struct ConnectOptions {
     /// Destination.
@@ -85,9 +116,61 @@ pub struct ConnectOptions {
     /// way; turning this off only matters for the rare peer whose KEXINIT
     /// parser chokes on the larger payload.
     pub post_quantum_kex: bool,
+    /// Stage reporter (`None` = nobody is watching).
+    pub progress: Option<Arc<dyn ConnectProgress>>,
+    /// Address family to dial when the host name resolves to both.
+    pub ip_version: IpVersion,
+}
+
+/// Which resolved addresses to try for the direct TCP leg.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IpVersion {
+    /// Resolver order (usually IPv6 first when the network has it).
+    #[default]
+    Auto,
+    /// IPv4 only.
+    V4,
+    /// IPv6 only.
+    V6,
+}
+
+impl IpVersion {
+    /// Parse the stored host setting (`""`/`auto`, `4`/`ipv4`, `6`/`ipv6`).
+    pub fn parse(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "4" | "v4" | "ipv4" => Self::V4,
+            "6" | "v6" | "ipv6" => Self::V6,
+            _ => Self::Auto,
+        }
+    }
+
+    /// Keep the addresses this preference allows, in resolver order.
+    pub fn filter(self, addrs: Vec<std::net::SocketAddr>) -> Vec<std::net::SocketAddr> {
+        match self {
+            Self::Auto => addrs,
+            Self::V4 => addrs.into_iter().filter(|a| a.is_ipv4()).collect(),
+            Self::V6 => addrs.into_iter().filter(|a| a.is_ipv6()).collect(),
+        }
+    }
+
+    /// Human name for error messages (`any`, `IPv4`, `IPv6`).
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "any",
+            Self::V4 => "IPv4",
+            Self::V6 => "IPv6",
+        }
+    }
 }
 
 impl ConnectOptions {
+    pub(super) fn report(&self, phase: ConnectPhase) {
+        if let Some(p) = &self.progress {
+            p.phase(phase);
+        }
+    }
+
     /// Sensible defaults for `target`.
     pub fn new(
         target: SshTarget,
@@ -106,6 +189,8 @@ impl ConnectOptions {
             env: Vec::new(),
             agent_forwarding: false,
             post_quantum_kex: true,
+            progress: None,
+            ip_version: IpVersion::Auto,
         }
     }
 }
@@ -215,12 +300,40 @@ impl SshClient {
     pub async fn connect(opts: ConnectOptions) -> Result<Self> {
         let stream = tokio::time::timeout(opts.timeout, async {
             match &opts.proxy {
-                Some(p) => proxy::connect(p, &opts.target.host, opts.target.port).await,
-                None => Ok(
-                    TcpStream::connect((opts.target.host.as_str(), opts.target.port))
-                        .await
-                        .map(proxy::ProxyStream::Tcp)?,
-                ),
+                Some(p) => {
+                    opts.report(ConnectPhase::Connecting {
+                        via: format!("{} proxy {}:{}", p.kind.label(), p.host, p.port),
+                    });
+                    proxy::connect(p, &opts.target.host, opts.target.port).await
+                }
+                None => {
+                    opts.report(ConnectPhase::Resolving);
+                    let addrs = opts.ip_version.filter(
+                        tokio::net::lookup_host((opts.target.host.as_str(), opts.target.port))
+                            .await?
+                            .collect(),
+                    );
+                    let Some(first) = addrs.first() else {
+                        return Err(CoreError::Ssh(format!(
+                            "{} did not resolve to any {} address",
+                            opts.target.host,
+                            opts.ip_version.label()
+                        )));
+                    };
+                    opts.report(ConnectPhase::Connecting {
+                        via: first.to_string(),
+                    });
+                    let mut last: Option<std::io::Error> = None;
+                    for addr in &addrs {
+                        match TcpStream::connect(addr).await {
+                            Ok(s) => return Ok(proxy::ProxyStream::Tcp(s)),
+                            Err(e) => last = Some(e),
+                        }
+                    }
+                    Err(last
+                        .map(CoreError::from)
+                        .unwrap_or_else(|| CoreError::Ssh("no address to connect to".into())))
+                }
             }
         })
         .await
@@ -232,6 +345,9 @@ impl SshClient {
 
     /// Connect to `opts.target` through an already-connected jump host.
     pub async fn connect_via(jump: &SshClient, opts: ConnectOptions) -> Result<Self> {
+        opts.report(ConnectPhase::Connecting {
+            via: format!("jump host {}", jump.target.display()),
+        });
         let channel = jump
             .handle
             .channel_open_direct_tcpip(
@@ -265,6 +381,18 @@ impl SshClient {
         let prompting = handler.prompting();
         let server_id: peek::ServerId = Default::default();
         let stream = peek::IdPeek::new(stream, server_id.clone());
+        opts.report(ConnectPhase::Handshake);
+        if let Some(p) = &opts.progress {
+            // The host-key check is the only part of the handshake the user
+            // can see (and may be asked about), so surface it as its own step.
+            let p = p.clone();
+            let mut prompting = prompting.clone();
+            tokio::spawn(async move {
+                if prompting.wait_for(|v| *v).await.is_ok() {
+                    p.phase(ConnectPhase::HostKey);
+                }
+            });
+        }
         let mut handle = timeout_unless_prompting(
             opts.timeout,
             prompting,
@@ -279,6 +407,7 @@ impl SshClient {
         })??;
 
         auth::authenticate(&mut handle, &opts).await?;
+        opts.report(ConnectPhase::Authenticated);
 
         let banner = banner.lock().unwrap_or_else(|p| p.into_inner()).clone();
         let server_id = server_id.lock().unwrap_or_else(|p| p.into_inner()).clone();
@@ -507,5 +636,17 @@ mod tests {
             timeout_unless_prompting(Duration::from_secs(5), rx, late).await,
             None
         );
+    }
+
+    #[test]
+    fn ip_version_filters_resolved_addresses() {
+        let addrs: Vec<std::net::SocketAddr> =
+            vec!["[::1]:22".parse().unwrap(), "127.0.0.1:22".parse().unwrap()];
+        assert_eq!(IpVersion::parse(""), IpVersion::Auto);
+        assert_eq!(IpVersion::parse("4"), IpVersion::V4);
+        assert_eq!(IpVersion::parse("IPv6"), IpVersion::V6);
+        assert_eq!(IpVersion::Auto.filter(addrs.clone()), addrs);
+        assert_eq!(IpVersion::V4.filter(addrs.clone()), vec![addrs[1]]);
+        assert_eq!(IpVersion::V6.filter(addrs.clone()), vec![addrs[0]]);
     }
 }

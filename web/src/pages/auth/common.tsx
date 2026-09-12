@@ -15,11 +15,11 @@ import { useLocation } from "react-router";
 export function AuthTitle({ title, subtitle }: { title: string; subtitle?: ReactNode }) {
   return (
     <Box sx={{ mb: 3 }}>
-      <Typography variant="h2" component="h1">
+      <Typography variant="h3" component="h1">
         {title}
       </Typography>
       {subtitle && (
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
           {subtitle}
         </Typography>
       )}
@@ -42,8 +42,13 @@ export function PasswordField(props: Omit<TextFieldProps, "slotProps" | "type">)
                 edge="end"
                 aria-label={show ? "Hide password" : "Show password"}
                 tabIndex={-1}
+                sx={{ mr: -0.5 }}
               >
-                {show ? <VisibilityOffRoundedIcon /> : <VisibilityRoundedIcon />}
+                {show ? (
+                  <VisibilityOffRoundedIcon fontSize="small" />
+                ) : (
+                  <VisibilityRoundedIcon fontSize="small" />
+                )}
               </IconButton>
             </InputAdornment>
           ),
