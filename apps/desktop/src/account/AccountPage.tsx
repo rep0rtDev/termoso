@@ -9,7 +9,6 @@ import BoltRoundedIcon from "@mui/icons-material/BoltRounded";
 import DevicesRoundedIcon from "@mui/icons-material/DevicesRounded";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import LockOpenRoundedIcon from "@mui/icons-material/LockOpenRounded";
-import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
 import BackupRoundedIcon from "@mui/icons-material/BackupRounded";
 import SettingsBackupRestoreRoundedIcon from "@mui/icons-material/SettingsBackupRestoreRounded";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -37,37 +36,6 @@ import {
 } from "@/ipc/types";
 import { PendingForm, SignInForm, invalidateAll, pendingTitle, usePendingLogin } from "./SignIn";
 import { BackupDialog, pickBackupFile, type BackupMode } from "./BackupDialog";
-
-// ───────────────────────────── plan ─────────────────────────────
-
-function PlanCard({ account }: { account: AccountStatus["account"] | undefined }) {
-  const server = account?.serverUrl.replace(/\/+$/, "");
-  return (
-    <SectionCard>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-        <IconTile tone="accent">
-          <WorkspacePremiumRoundedIcon />
-        </IconTile>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="body1" sx={{ fontWeight: 500 }}>
-            Free · {server ? "Self-hosted" : "Offline"}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-            {server ? (
-              <>
-                Every feature, unlimited devices, your own server at <Mono>{server}</Mono>.
-              </>
-            ) : (
-              "Every feature on this device. Sign in to a self-hosted server to sync between devices."
-            )}{" "}
-            No telemetry, ever.
-          </Typography>
-        </Box>
-        <Chip size="small" color="success" label="Open source" />
-      </Box>
-    </SectionCard>
-  );
-}
 
 // ───────────────────────────── backup ─────────────────────────────
 
@@ -387,7 +355,6 @@ export function AccountPage() {
           <Loading />
         ) : (
           <>
-            <PlanCard account={status.data?.account} />
             {status.error ? (
               <Alert severity="error">{errorMessage(status.error)}</Alert>
             ) : status.data.account ? (
