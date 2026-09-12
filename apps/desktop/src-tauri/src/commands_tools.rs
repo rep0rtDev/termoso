@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use tauri::{AppHandle, Manager, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use termoso_core::secrets::MasterKeySource;
 use termoso_proto::account::ServerInfo;
 use termoso_proto::auth::{Device, MfaCredential};
@@ -13,8 +13,10 @@ use termoso_proto::vault::VaultMember;
 use uuid::Uuid;
 
 use crate::account::{
-    self, AccountStatus, LoginForm, LoginOutcome, RegisterForm, Registered, SyncStatus,
+    self, AccountStatus, LoginForm, LoginOutcome, RegisterForm, Registered, SYNC_EVENT, SyncNotice,
+    SyncStatus,
 };
+use crate::backup::{self, BackupSummary};
 use crate::error::Result;
 use crate::forwarding::{self, PfRuleCard, PfRuleForm, PfRuntime};
 use crate::import::{self, ImportPreview, ImportSelection, ImportSource};
@@ -554,6 +556,62 @@ pub async fn import_apply(
 #[tauri::command]
 pub fn import_discard(preview_id: Uuid) {
     import::discard(preview_id)
+}
+
+// ───────────────────────────── export / backup ─────────────────────────────
+
+/// Write hosts as CSV. Passwords are left blank unless `include_passwords`.
+#[tauri::command]
+pub async fn hosts_export_csv(
+    state: State<'_, AppState>,
+    vault_id: Option<Uuid>,
+    include_passwords: bool,
+    path: String,
+) -> Result<backup::CsvExportReport> {
+    backup::export_hosts_csv(&state.store, vault_id, include_passwords, &path)
+}
+
+/// Encrypt the given vaults (all unlocked when empty) into a `.termoso` file.
+#[tauri::command]
+pub async fn backup_export(
+    state: State<'_, AppState>,
+    vault_ids: Vec<Uuid>,
+    password: String,
+    path: String,
+) -> Result<BackupSummary> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        backup::export_file(&store, &vault_ids, &password, &path)
+    })
+    .await
+    .map_err(|e| crate::error::DesktopError::new("backup", e.to_string()))?
+}
+
+/// Decrypt a backup and describe its contents; nothing is written yet.
+#[tauri::command]
+pub async fn backup_inspect(path: String, password: String) -> Result<BackupSummary> {
+    tauri::async_runtime::spawn_blocking(move || backup::inspect_file(&path, &password))
+        .await
+        .map_err(|e| crate::error::DesktopError::new("backup", e.to_string()))?
+}
+
+#[tauri::command]
+pub fn backup_discard(preview_id: Uuid) {
+    backup::discard(preview_id)
+}
+
+/// Restore vault `source` of an inspected backup into `vault_id`.
+#[tauri::command]
+pub async fn backup_restore<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    preview_id: Uuid,
+    source: usize,
+    vault_id: Uuid,
+) -> Result<backup::RestoreReport> {
+    let report = backup::apply(&state.store, preview_id, source, vault_id)?;
+    let _ = app.emit(SYNC_EVENT, SyncNotice::EntitiesChanged { vault_id });
+    Ok(report)
 }
 
 // ───────────────────────────── logs ─────────────────────────────

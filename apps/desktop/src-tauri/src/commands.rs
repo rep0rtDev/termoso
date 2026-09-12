@@ -403,6 +403,13 @@ pub async fn history_clear_commands(state: State<'_, AppState>) -> Result<()> {
 }
 
 #[tauri::command]
+pub async fn history_clear_connections(state: State<'_, AppState>) -> Result<()> {
+    Ok(state
+        .store
+        .clear_history(Some(termoso_proto::sync::HistoryKind::Connection))?)
+}
+
+#[tauri::command]
 pub fn sessions_list(state: State<'_, AppState>) -> Vec<SessionInfo> {
     state.sessions.list()
 }

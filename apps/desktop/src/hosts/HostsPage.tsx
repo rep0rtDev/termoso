@@ -39,6 +39,7 @@ import GroupAddOutlinedIcon from "@mui/icons-material/GroupAddOutlined";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import SelectAllRoundedIcon from "@mui/icons-material/SelectAllRounded";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
+import FileUploadOutlinedIcon from "@mui/icons-material/FileUploadOutlined";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import UsbRoundedIcon from "@mui/icons-material/UsbRounded";
@@ -84,6 +85,7 @@ import { HostEditPanel } from "./HostEditPanel";
 import { DeleteGroupDialog, GroupPanel } from "./GroupPanel";
 import { MoveCopyDialog, type MoveCopyRequest } from "./MoveCopyDialog";
 import { ImportDialog } from "./ImportDialog";
+import { ExportCsvDialog } from "./ExportCsvDialog";
 import { TagManagerDialog } from "./TagManagerDialog";
 import { TagsPopover } from "./TagsPopover";
 import { TagChip, tagColorMap } from "./TagChip";
@@ -173,6 +175,7 @@ export function HostsPage() {
   const [anchorId, setAnchorId] = useState<Uuid | null>(null);
   const [moveCopy, setMoveCopy] = useState<MoveCopyRequest | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<HostCard[] | null>(null);
   const [confirmGroup, setConfirmGroup] = useState<GroupNode | null>(null);
 
@@ -766,6 +769,11 @@ export function HostsPage() {
                 icon: <FileDownloadOutlinedIcon fontSize="small" />,
                 onClick: () => setImportOpen(true),
               },
+              {
+                label: "Export CSV…",
+                icon: <FileUploadOutlinedIcon fontSize="small" />,
+                onClick: () => setExportOpen(true),
+              },
             ]}
           />
           <Button
@@ -1065,6 +1073,13 @@ export function HostsPage() {
           onImported={clearSelection}
         />
       )}
+
+      <ExportCsvDialog
+        open={exportOpen}
+        vault={vault.data ?? null}
+        hostCount={hosts.data?.length ?? 0}
+        onClose={() => setExportOpen(false)}
+      />
 
       <TagManagerDialog open={tagsOpen} vaultId={vaultId} onClose={() => setTagsOpen(false)} />
 

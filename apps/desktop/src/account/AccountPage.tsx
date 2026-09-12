@@ -9,6 +9,9 @@ import BoltRoundedIcon from "@mui/icons-material/BoltRounded";
 import DevicesRoundedIcon from "@mui/icons-material/DevicesRounded";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import LockOpenRoundedIcon from "@mui/icons-material/LockOpenRounded";
+import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
+import BackupRoundedIcon from "@mui/icons-material/BackupRounded";
+import SettingsBackupRestoreRoundedIcon from "@mui/icons-material/SettingsBackupRestoreRounded";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { PageBody } from "@/components/PageHeader";
@@ -33,6 +36,84 @@ import {
   type SyncStatus,
 } from "@/ipc/types";
 import { PendingForm, SignInForm, invalidateAll, pendingTitle, usePendingLogin } from "./SignIn";
+import { BackupDialog, pickBackupFile, type BackupMode } from "./BackupDialog";
+
+// ───────────────────────────── plan ─────────────────────────────
+
+function PlanCard({ account }: { account: AccountStatus["account"] | undefined }) {
+  const server = account?.serverUrl.replace(/\/+$/, "");
+  return (
+    <SectionCard>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+        <IconTile tone="accent">
+          <WorkspacePremiumRoundedIcon />
+        </IconTile>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="body1" sx={{ fontWeight: 500 }}>
+            Free · {server ? "Self-hosted" : "Offline"}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+            {server ? (
+              <>
+                Every feature, unlimited devices, your own server at <Mono>{server}</Mono>.
+              </>
+            ) : (
+              "Every feature on this device. Sign in to a self-hosted server to sync between devices."
+            )}{" "}
+            No telemetry, ever.
+          </Typography>
+        </Box>
+        <Chip size="small" color="success" label="Open source" />
+      </Box>
+    </SectionCard>
+  );
+}
+
+// ───────────────────────────── backup ─────────────────────────────
+
+function BackupCard() {
+  const [mode, setMode] = useState<BackupMode | null>(null);
+  return (
+    <SectionCard title="Backup">
+      <SettingRow
+        label="Export encrypted backup"
+        hint="All unlocked vaults in one password-protected .termoso file. Works offline, no account needed."
+        control={
+          <Button
+            variant="tonal"
+            startIcon={<BackupRoundedIcon />}
+            onClick={() => setMode("export")}
+          >
+            Export…
+          </Button>
+        }
+      />
+      <SettingRow
+        label="Restore from backup"
+        hint="Merges a .termoso file into a vault of this device; nothing is deleted."
+        last
+        control={
+          <Button
+            variant="tonal"
+            startIcon={<SettingsBackupRestoreRoundedIcon />}
+            onClick={() =>
+              void pickBackupFile().then((path) => {
+                if (path) setMode({ kind: "restore", path });
+              })
+            }
+          >
+            Restore…
+          </Button>
+        }
+      />
+      <BackupDialog
+        key={mode === null ? "closed" : typeof mode === "string" ? mode : mode.path}
+        mode={mode}
+        onClose={() => setMode(null)}
+      />
+    </SectionCard>
+  );
+}
 
 // ───────────────────────────── signed out ─────────────────────────────
 
@@ -108,7 +189,7 @@ function SignedIn({
   });
 
   return (
-    <Stack spacing={1.5} sx={{ maxWidth: 760 }}>
+    <>
       <SectionCard>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
           <IconTile tone="accent">{(a.displayName ?? a.email).slice(0, 1).toUpperCase()}</IconTile>
@@ -281,7 +362,7 @@ function SignedIn({
           <b>{confirm.device.name}</b> will be signed out and must log in again to sync.
         </ConfirmDialog>
       )}
-    </Stack>
+    </>
   );
 }
 
@@ -301,17 +382,25 @@ export function AccountPage() {
 
   return (
     <PageBody>
-      {status.isPending ? (
-        <Loading />
-      ) : status.error ? (
-        <Alert severity="error">{errorMessage(status.error)}</Alert>
-      ) : status.data.account ? (
-        <SignedIn status={{ ...status.data, account: status.data.account }} />
-      ) : pending ? (
-        <PendingCard key={pending.step} pending={pending} onOutcome={onOutcome} />
-      ) : (
-        <SignInCard onOutcome={onOutcome} />
-      )}
+      <Stack spacing={1.5} sx={{ maxWidth: 760 }}>
+        {status.isPending ? (
+          <Loading />
+        ) : (
+          <>
+            <PlanCard account={status.data?.account} />
+            {status.error ? (
+              <Alert severity="error">{errorMessage(status.error)}</Alert>
+            ) : status.data.account ? (
+              <SignedIn status={{ ...status.data, account: status.data.account }} />
+            ) : pending ? (
+              <PendingCard key={pending.step} pending={pending} onOutcome={onOutcome} />
+            ) : (
+              <SignInCard onOutcome={onOutcome} />
+            )}
+            <BackupCard />
+          </>
+        )}
+      </Stack>
     </PageBody>
   );
 }
