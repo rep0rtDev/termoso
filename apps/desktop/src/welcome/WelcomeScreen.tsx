@@ -113,7 +113,7 @@ export function WelcomeScreen({ settings }: { settings: Settings }) {
           )}
 
           <Typography variant="caption" color="text.disabled" sx={{ textAlign: "center" }}>
-            Open source ·{" "}
+            Free forever · Open source ·{" "}
             <Link
               component="button"
               type="button"
