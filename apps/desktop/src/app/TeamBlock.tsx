@@ -16,17 +16,15 @@ import {
   Typography,
 } from "@mui/material";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
-import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
 import PersonAddAltRoundedIcon from "@mui/icons-material/PersonAddAltRounded";
+import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
-import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import CloudDoneRoundedIcon from "@mui/icons-material/CloudDoneRounded";
 import CloudOffRoundedIcon from "@mui/icons-material/CloudOffRounded";
 import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import LoginRoundedIcon from "@mui/icons-material/LoginRounded";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { keys, useAccount, useVaultMembers } from "@/ipc/hooks";
 import { useActiveVault } from "./vault";
@@ -34,30 +32,11 @@ import * as ipc from "@/ipc/commands";
 import { errorMessage, type AccountStatus, type VaultMember, type VaultRole } from "@/ipc/types";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
-import { goToSettings } from "./navigation";
-
-const BLOCK = 28;
+import { AVATAR as BLOCK, PersonAvatar, initialsOf } from "@/team/PersonAvatar";
+import { vaultRoleLabel } from "@/team/roles";
+import { goToSettings, goToSettingsWith } from "./navigation";
 
 const serverBase = (url: string) => url.replace(/\/+$/, "");
-
-function initialsOf(name: string | null | undefined, email: string): string {
-  const n = name?.trim();
-  if (n) {
-    return n
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((p) => p[0] ?? "")
-      .join("")
-      .toUpperCase();
-  }
-  return email.slice(0, 1).toUpperCase();
-}
-
-const roleLabel: Record<VaultRole, string> = {
-  viewer: "Viewer",
-  editor: "Editor",
-  manager: "Manager",
-};
 
 /**
  * Right end of the top bar, as in Termius: the square avatar of the signed-in
@@ -69,36 +48,6 @@ export function TeamBlock() {
     <Box sx={{ display: "flex", alignItems: "center" }}>
       <AccountAvatar />
       <TeamButton />
-    </Box>
-  );
-}
-
-function AvatarTile({
-  label,
-  size = BLOCK,
-  signedIn,
-}: {
-  label: string;
-  size?: number;
-  signedIn: boolean;
-}) {
-  return (
-    <Box
-      sx={{
-        width: size,
-        height: size,
-        borderRadius: size >= BLOCK ? "7px" : "6px",
-        display: "grid",
-        placeItems: "center",
-        fontSize: Math.round(size * 0.42),
-        fontWeight: 600,
-        letterSpacing: "0.02em",
-        bgcolor: signedIn ? "primary.dark" : "surface.highest",
-        color: signedIn ? "primary.contrastText" : "text.secondary",
-        flexShrink: 0,
-      }}
-    >
-      {signedIn ? label : <PersonOutlineRoundedIcon sx={{ fontSize: Math.round(size * 0.6) }} />}
     </Box>
   );
 }
@@ -204,8 +153,8 @@ function AccountAvatar() {
             "&:hover": { boxShadow: "0 0 0 2px var(--mui-palette-primary-light)" },
           }}
         >
-          <AvatarTile
-            signedIn={Boolean(account)}
+          <PersonAvatar
+            kind={account ? "account" : "guest"}
             label={account ? initialsOf(account.displayName, account.email) : ""}
           />
           {account && data && <SyncBadge a={data} />}
@@ -323,12 +272,6 @@ function TeamButton() {
   const members = useVaultMembers(anchor ? teamVaultId : null);
   const close = () => setAnchor(null);
 
-  const inviteUrl = account
-    ? v?.team_id
-      ? `${serverBase(account.serverUrl)}/team/${v.team_id}`
-      : `${serverBase(account.serverUrl)}/team`
-    : null;
-
   return (
     <>
       <Tooltip title="Team">
@@ -364,7 +307,7 @@ function TeamButton() {
               <ListItemButton
                 onClick={() => {
                   close();
-                  if (inviteUrl) void openUrl(inviteUrl);
+                  goToSettingsWith({ kind: "invite" });
                 }}
                 sx={{ borderRadius: 1.5, gap: 1.25 }}
               >
@@ -373,10 +316,25 @@ function TeamButton() {
                 </ListItemIcon>
                 <ListItemText
                   primary="Invite team members"
-                  secondary="Opens your account on the server"
+                  secondary="By e-mail, with a link they can open"
                   slotProps={{ primary: { variant: "body2", sx: { fontWeight: 600 } } }}
                 />
-                <OpenInNewRoundedIcon sx={{ fontSize: 14, color: "text.disabled" }} />
+              </ListItemButton>
+              <ListItemButton
+                onClick={() => {
+                  close();
+                  if (teamVaultId) goToSettingsWith({ kind: "vault", id: teamVaultId });
+                  else goToSettings("team");
+                }}
+                sx={{ borderRadius: 1.5, gap: 1.25 }}
+              >
+                <ListItemIcon sx={{ minWidth: 0 }}>
+                  <GroupsRoundedIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText
+                  primary={teamVaultId ? "Who has access to this vault" : "Team settings"}
+                  slotProps={{ primary: { variant: "body2", sx: { fontWeight: 600 } } }}
+                />
               </ListItemButton>
             </List>
             <Divider sx={{ my: 0.5 }} />
@@ -494,7 +452,7 @@ function MemberRow({
 }) {
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, px: 1.5, py: 0.75 }}>
-      <AvatarTile size={24} signedIn label={initialsOf(name, email)} />
+      <PersonAvatar size={24} label={initialsOf(name, email)} />
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
           {name ?? email}
@@ -514,7 +472,7 @@ function MemberRow({
       {pending ? (
         <Chip size="small" label="Pending key" color="warning" variant="outlined" />
       ) : role ? (
-        <Chip size="small" label={roleLabel[role]} variant="outlined" />
+        <Chip size="small" label={vaultRoleLabel[role]} variant="outlined" />
       ) : null}
     </Box>
   );

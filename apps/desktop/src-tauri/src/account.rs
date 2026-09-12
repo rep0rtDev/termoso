@@ -664,7 +664,8 @@ pub async fn reconfigure<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
 
 // ───────────────────────────── devices ─────────────────────────────
 
-async fn api<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<ApiClient>> {
+/// The signed-in API client, or "not signed in".
+pub(crate) async fn api<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<ApiClient>> {
     let state = app.state::<AppState>();
     let inner = state.account.inner.lock().await;
     inner

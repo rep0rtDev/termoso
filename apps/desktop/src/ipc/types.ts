@@ -142,6 +142,52 @@ export interface VaultMember {
   pending: boolean;
 }
 
+export type TeamRole = "member" | "admin" | "owner";
+
+export interface Team {
+  id: Uuid;
+  name: string;
+  created_at: string;
+  my_role: TeamRole;
+  member_count: number;
+}
+
+export interface TeamMember {
+  user_id: Uuid;
+  email: string;
+  display_name: string | null;
+  role: TeamRole;
+  joined_at: string;
+}
+
+export interface TeamInvite {
+  id: Uuid;
+  email: string;
+  role: TeamRole;
+  invited_by: Uuid;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface InviteResult {
+  email: string;
+  invite: TeamInvite | null;
+  url: string | null;
+  error: string | null;
+}
+
+/** Team-vault member still waiting for a manager to hand them the key. */
+export interface PendingVaultKey {
+  vault_id: Uuid;
+  user_id: Uuid;
+  role: VaultRole;
+}
+
+export interface VaultAccess {
+  userId: Uuid;
+  role: VaultRole;
+}
+
 export interface HostCard {
   id: Uuid;
   vaultId: Uuid;

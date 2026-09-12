@@ -55,7 +55,7 @@ import {
   useSshKeys,
   useVaults,
 } from "@/ipc/hooks";
-import { useActiveVault } from "@/app/vault";
+import { openCollaboration, useActiveVault } from "@/app/vault";
 import { errorMessage, type HostsView, type IdentityCard, type KeyCard } from "@/ipc/types";
 import { sizes } from "@/theme/theme";
 import { ExportKeyDialog, ExportToHostDialog, PassphraseDialog } from "./KeyDialogs";
@@ -271,9 +271,8 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
     {
       label: "Collaborate",
       icon: <GroupAddRoundedIcon fontSize="small" />,
-      disabled: (vault.data?.team_id ?? null) === null,
-      onClick: () =>
-        snackbar.notify("Sharing needs a team vault — sign in under Settings → Account", "info"),
+      disabled: vault.data?.kind !== "team",
+      onClick: () => openCollaboration(vault.data),
     },
     {
       label: "Move to",

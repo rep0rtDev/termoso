@@ -448,16 +448,8 @@ pub async fn invites(
     }))
 }
 
-#[derive(serde::Serialize)]
-pub struct CreatedInvite {
-    #[serde(flatten)]
-    pub invite: Invite,
-    /// Share this link with the invitee (also emailed when SMTP is configured).
-    pub url: String,
-}
-
 #[utoipa::path(post, path = "/api/v1/teams/{id}/invites", tag = "teams", params(("id" = Uuid, Path)),
-    request_body = CreateInviteRequest, responses((status = 200)))]
+    request_body = CreateInviteRequest, responses((status = 200, body = CreatedInvite)))]
 pub async fn create_invite(
     State(state): State<AppState>,
     auth: Auth,

@@ -9,7 +9,8 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use termoso_core::secrets::MasterKeySource;
 use termoso_proto::account::ServerInfo;
 use termoso_proto::auth::{Device, MfaCredential};
-use termoso_proto::vault::VaultMember;
+use termoso_proto::team::{Invite, Team, TeamRole};
+use termoso_proto::vault::{VaultMember, VaultRole};
 use uuid::Uuid;
 
 use crate::account::{
@@ -28,6 +29,7 @@ use crate::logs::{self, BookmarkCard, LogBody, LogCard};
 use crate::sessions;
 use crate::snippets::{self, PackageNode, RunResult, SnippetCard, SnippetForm};
 use crate::state::AppState;
+use crate::team::{self, InviteResult, PendingKeyCard, TeamMemberCard, VaultAccess};
 use crate::trust::{self, ImportReport, KnownHostCard};
 use crate::update::{self, UpdateInfo};
 
@@ -745,6 +747,150 @@ pub async fn account_vault_members<R: Runtime>(
     vault_id: Uuid,
 ) -> Result<Vec<VaultMember>> {
     account::vault_members(&app, vault_id).await
+}
+
+// ───────────────────────────── teams ─────────────────────────────
+
+#[tauri::command]
+pub async fn teams_list<R: Runtime>(app: AppHandle<R>) -> Result<Vec<Team>> {
+    team::list(&app).await
+}
+
+#[tauri::command]
+pub async fn team_create<R: Runtime>(app: AppHandle<R>, name: String) -> Result<Team> {
+    team::create(&app, &name).await
+}
+
+#[tauri::command]
+pub async fn team_rename<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    name: String,
+) -> Result<Team> {
+    team::rename(&app, team_id, &name).await
+}
+
+#[tauri::command]
+pub async fn team_delete<R: Runtime>(app: AppHandle<R>, team_id: Uuid) -> Result<()> {
+    team::delete(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_leave<R: Runtime>(app: AppHandle<R>, team_id: Uuid) -> Result<()> {
+    team::leave(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_accept_invite<R: Runtime>(app: AppHandle<R>, link: String) -> Result<Team> {
+    team::accept_invite(&app, &link).await
+}
+
+#[tauri::command]
+pub async fn team_members<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<Vec<TeamMemberCard>> {
+    team::members(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_member_set_role<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    user_id: Uuid,
+    role: TeamRole,
+) -> Result<()> {
+    team::set_member_role(&app, team_id, user_id, role).await
+}
+
+#[tauri::command]
+pub async fn team_member_remove<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    user_id: Uuid,
+) -> Result<()> {
+    team::remove_member(&app, team_id, user_id).await
+}
+
+#[tauri::command]
+pub async fn team_invites<R: Runtime>(app: AppHandle<R>, team_id: Uuid) -> Result<Vec<Invite>> {
+    team::invites(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_invite<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    emails: Vec<String>,
+    role: TeamRole,
+    vault_ids: Vec<Uuid>,
+) -> Result<Vec<InviteResult>> {
+    team::invite(&app, team_id, emails, role, vault_ids).await
+}
+
+#[tauri::command]
+pub async fn team_invite_revoke<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    invite_id: Uuid,
+) -> Result<()> {
+    team::revoke_invite(&app, team_id, invite_id).await
+}
+
+#[tauri::command]
+pub async fn team_pending_keys<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<Vec<PendingKeyCard>> {
+    team::pending_keys(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_vault_create<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    name: String,
+    access: Vec<VaultAccess>,
+) -> Result<()> {
+    team::create_vault(&app, team_id, &name, access).await
+}
+
+#[tauri::command]
+pub async fn team_vault_rename<R: Runtime>(
+    app: AppHandle<R>,
+    vault_id: Uuid,
+    name: String,
+) -> Result<()> {
+    team::rename_vault(&app, vault_id, &name).await
+}
+
+#[tauri::command]
+pub async fn team_vault_delete<R: Runtime>(app: AppHandle<R>, vault_id: Uuid) -> Result<()> {
+    team::delete_vault(&app, vault_id).await
+}
+
+#[tauri::command]
+pub async fn team_vault_set_access<R: Runtime>(
+    app: AppHandle<R>,
+    vault_id: Uuid,
+    user_id: Uuid,
+    role: VaultRole,
+) -> Result<()> {
+    team::set_vault_access(&app, vault_id, user_id, role).await
+}
+
+#[tauri::command]
+pub async fn team_vault_remove_access<R: Runtime>(
+    app: AppHandle<R>,
+    vault_id: Uuid,
+    user_id: Uuid,
+) -> Result<()> {
+    team::remove_vault_access(&app, vault_id, user_id).await
+}
+
+#[tauri::command]
+pub async fn team_vault_rotate_key<R: Runtime>(app: AppHandle<R>, vault_id: Uuid) -> Result<()> {
+    team::rotate_vault_key(&app, vault_id).await
 }
 
 // ───────────────────────────── updates ─────────────────────────────
