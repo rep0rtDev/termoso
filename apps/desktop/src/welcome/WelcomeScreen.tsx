@@ -12,7 +12,7 @@ import { WindowControls } from "@/app/WindowControls";
 const REPO_URL = "https://github.com/rep0rtDev/termoso";
 
 /**
- * First thing shown while nobody is signed in: sign in to the free cloud, to
+ * First thing shown while nobody is signed in: sign in to Termoso Cloud, to
  * your own server, or carry on offline — everything works without an account.
  */
 export function WelcomeScreen({ settings }: { settings: Settings }) {
@@ -113,7 +113,7 @@ export function WelcomeScreen({ settings }: { settings: Settings }) {
           )}
 
           <Typography variant="caption" color="text.disabled" sx={{ textAlign: "center" }}>
-            Free · Open source ·{" "}
+            Open source ·{" "}
             <Link
               component="button"
               type="button"

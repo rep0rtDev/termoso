@@ -73,7 +73,7 @@ export function RecoveryPrompt() {
 }
 
 /**
- * Sign in / create account against the free cloud or a self-hosted server.
+ * Sign in / create account against Termoso Cloud or a self-hosted server.
  * The server is only probed once the user picked it; nothing is contacted
  * before that.
  */
@@ -217,7 +217,7 @@ export function SignInForm({
             >
               {info.data || info.isError || info.isFetching
                 ? serverLine
-                : "Free · end-to-end encrypted · no telemetry"}
+                : "End-to-end encrypted · no telemetry"}
             </Typography>
           </Box>
           {info.isFetching && <CircularProgress size={14} />}

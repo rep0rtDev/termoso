@@ -459,7 +459,7 @@ function RestoreBody({ path, onClose }: { path: string; onClose: () => void }) {
                   select
                   value={targets[i] ?? ""}
                   onChange={(e) => setTargets((t) => ({ ...t, [i]: e.target.value }))}
-                  sx={{ width: 200 }}
+                  sx={{ width: 180, flexShrink: 0 }}
                   disabled={writable.length === 0}
                 >
                   <MenuItem value="">Skip</MenuItem>
