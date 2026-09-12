@@ -9,6 +9,11 @@ import { App } from "./App";
 const root = document.getElementById("root");
 if (!root) throw new Error("#root missing");
 
+// A drop nobody handled must never navigate the webview to the dropped file.
+for (const type of ["dragover", "drop"] as const) {
+  window.addEventListener(type, (e) => e.preventDefault());
+}
+
 createRoot(root).render(
   <StrictMode>
     <App />

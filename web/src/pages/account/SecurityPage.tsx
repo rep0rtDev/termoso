@@ -13,7 +13,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  Paper,
   Stack,
   Table,
   TableBody,
@@ -75,16 +74,16 @@ function CodesDialog({ codes, onClose }: { codes: string[] | null; onClose: () =
         <DialogContentText>
           Each code works once. Store them like a password — they bypass your authenticator.
         </DialogContentText>
-        <Paper
-          variant="outlined"
+        <Box
           sx={{
             p: 2,
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
             gap: 1,
             fontFamily: monoFontFamily,
-            fontSize: "0.95rem",
-            bgcolor: "background.default",
+            fontSize: "0.9rem",
+            borderRadius: 2,
+            bgcolor: "surface.lowest",
           }}
         >
           {(codes ?? []).map((c) => (
@@ -92,7 +91,7 @@ function CodesDialog({ codes, onClose }: { codes: string[] | null; onClose: () =
               {c}
             </Box>
           ))}
-        </Paper>
+        </Box>
         <Button
           variant="outlined"
           onClick={() => void navigator.clipboard.writeText((codes ?? []).join("\n"))}
@@ -157,32 +156,33 @@ function TotpSection({ enabled }: { enabled: boolean }) {
       title="Authenticator app"
       description="Time-based one-time codes (TOTP) from any authenticator app."
       actions={
-        enabled ? (
-          <Button
-            variant="outlined"
-            color="error"
-            onClick={() => {
-              setError(null);
-              setCode("");
-              setDisableOpen(true);
-            }}
-          >
-            Disable
-          </Button>
-        ) : (
-          <Button variant="contained" onClick={openSetup}>
-            Set up
-          </Button>
-        )
+        <>
+          <Chip
+            size="small"
+            color={enabled ? "success" : "default"}
+            label={enabled ? "Enabled" : "Not enabled"}
+            sx={{ alignSelf: "center" }}
+          />
+          {enabled ? (
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={() => {
+                setError(null);
+                setCode("");
+                setDisableOpen(true);
+              }}
+            >
+              Disable
+            </Button>
+          ) : (
+            <Button variant="contained" onClick={openSetup}>
+              Set up
+            </Button>
+          )}
+        </>
       }
     >
-      <Chip
-        size="small"
-        color={enabled ? "success" : "default"}
-        variant={enabled ? "filled" : "outlined"}
-        label={enabled ? "Enabled" : "Not enabled"}
-      />
-
       <Dialog
         open={setupOpen}
         onClose={confirm.isPending ? undefined : () => setSetupOpen(false)}

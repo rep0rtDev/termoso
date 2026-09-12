@@ -29,6 +29,14 @@ pub const DETECT_COMMAND: &str =
 
 const EXEC_TIMEOUT: Duration = Duration::from_secs(8);
 
+/// Prints the login shell. `$SHELL` is exported by every POSIX shell and by
+/// fish; PowerShell / cmd on Windows echo the literal text, which
+/// [`classify_shell`] rejects.
+pub const SHELL_COMMAND: &str = "echo $SHELL";
+
+/// Shells the clients ship an OSC 133 integration script for.
+pub const INTEGRATED_SHELLS: &[&str] = &["bash", "zsh", "fish"];
+
 /// Keyword → OS, most specific first (so "rocky" wins over the "linux" in
 /// "Rocky Linux", and "raspbian" over the "debian" in its `ID_LIKE`).
 const KEYWORDS: &[(&str, &str)] = &[
@@ -145,6 +153,40 @@ fn keyword(text: &str) -> Option<&'static str> {
         .map(|(_, os)| *os)
 }
 
+/// Map the output of [`SHELL_COMMAND`] to the shell's base name
+/// (`/usr/bin/zsh` → `zsh`). Anything that does not look like a path is
+/// rejected: a Windows host echoes `$SHELL` back verbatim.
+pub fn classify_shell(output: &str) -> Option<String> {
+    let line = output.lines().map(str::trim).find(|l| !l.is_empty())?;
+    if !line.starts_with('/') {
+        return None;
+    }
+    let name = line.rsplit('/').next()?.trim_end_matches("-static");
+    (!name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+    .then(|| name.to_string())
+}
+
+/// Ask a connected host which shell its user logs into. Runs on its own
+/// channel like [`detect`]; `None` when the server refuses or the answer
+/// is not a Unix shell.
+pub async fn detect_shell(client: &SshClient) -> Option<String> {
+    let probe = tokio::time::timeout(EXEC_TIMEOUT, client.exec(SHELL_COMMAND, None)).await;
+    match probe {
+        Ok(Ok(out)) => classify_shell(&out.stdout_str()),
+        Ok(Err(e)) => {
+            tracing::debug!("shell probe failed: {e}");
+            None
+        }
+        Err(_) => {
+            tracing::debug!("shell probe timed out");
+            None
+        }
+    }
+}
+
 /// Detect the OS of a connected host. Returns `None` when neither source
 /// says anything recognisable or the server refuses a second channel.
 pub async fn detect(client: &SshClient) -> Option<&'static str> {
@@ -184,6 +226,19 @@ pub async fn detect(client: &SshClient) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shell_from_probe_output() {
+        assert_eq!(classify_shell("/bin/bash\n"), Some("bash".into()));
+        assert_eq!(
+            classify_shell("\n/usr/local/bin/fish\n"),
+            Some("fish".into())
+        );
+        assert_eq!(classify_shell("/bin/zsh-static"), Some("zsh".into()));
+        assert_eq!(classify_shell("$SHELL\r\n"), None);
+        assert_eq!(classify_shell(""), None);
+        assert_eq!(classify_shell("bash: command not found"), None);
+    }
 
     #[test]
     fn server_id_hints() {

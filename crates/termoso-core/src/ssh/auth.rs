@@ -11,7 +11,7 @@ use russh::keys::ssh_key::Certificate;
 use russh::keys::{HashAlg, PrivateKey, PrivateKeyWithHashAlg};
 use zeroize::Zeroizing;
 
-use super::{ClientHandler, ConnectOptions};
+use super::{ClientHandler, ConnectOptions, ConnectPhase};
 use crate::error::{CoreError, Result};
 
 /// One way to prove who we are, tried in the order given.
@@ -124,6 +124,9 @@ pub(super) async fn authenticate(
 
     // Probe with `none` first so we know what the server accepts.
     let mut allowed: Option<Vec<MethodKind>> = None;
+    opts.report(ConnectPhase::Auth {
+        method: "none".into(),
+    });
     let mut last_remaining = match handle.authenticate_none(user.clone()).await? {
         AuthResult::Success => return Ok(()),
         AuthResult::Failure {
@@ -155,6 +158,12 @@ pub(super) async fn authenticate(
             tracing::debug!(?method, "skipped: server does not offer it");
             continue;
         }
+        opts.report(ConnectPhase::Auth {
+            method: match method {
+                AuthMethod::Agent => "ssh-agent".into(),
+                _ => method_name(&kind),
+            },
+        });
 
         let result = match method {
             AuthMethod::None => unreachable!(),

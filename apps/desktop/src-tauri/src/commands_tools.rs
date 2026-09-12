@@ -7,6 +7,7 @@ use tauri::{AppHandle, Runtime, State};
 use termoso_core::secrets::MasterKeySource;
 use termoso_proto::account::ServerInfo;
 use termoso_proto::auth::{Device, MfaCredential};
+use termoso_proto::vault::VaultMember;
 use uuid::Uuid;
 
 use crate::account::{
@@ -14,6 +15,7 @@ use crate::account::{
 };
 use crate::error::Result;
 use crate::forwarding::{self, PfRuleCard, PfRuleForm, PfRuntime};
+use crate::import::{self, ImportPreview, ImportSelection, ImportSource};
 use crate::keychain::{
     self, ExportOutcome, GenerateForm, IdentityCard, IdentityForm, ImportForm, KeyCard,
 };
@@ -302,13 +304,23 @@ pub async fn snippet_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> 
 }
 
 #[tauri::command]
+pub async fn snippet_set_targets(
+    state: State<'_, AppState>,
+    id: Uuid,
+    host_ids: Vec<Uuid>,
+) -> Result<SnippetCard> {
+    snippets::set_targets(&state.store, id, &host_ids)
+}
+
+#[tauri::command]
 pub async fn snippet_run(
     state: State<'_, AppState>,
     id: Uuid,
     session_ids: Vec<Uuid>,
     vars: HashMap<String, String>,
+    paste: Option<bool>,
 ) -> Result<RunResult> {
-    snippets::run(&state, id, &session_ids, &vars).await
+    snippets::run(&state, id, &session_ids, &vars, paste.unwrap_or(false)).await
 }
 
 #[tauri::command]
@@ -381,6 +393,66 @@ pub async fn known_hosts_export_file(state: State<'_, AppState>, path: String) -
 #[tauri::command]
 pub fn known_hosts_default_path() -> Option<String> {
     trust::default_openssh_path()
+}
+
+// ───────────────────────────── import ─────────────────────────────
+
+/// Parse everything in `~/.ssh` (or `dir`) without touching the vault.
+#[tauri::command]
+pub async fn import_scan_ssh(dir: Option<String>) -> Result<ImportPreview> {
+    tauri::async_runtime::spawn_blocking(move || import::scan_ssh_dir(dir.as_deref()))
+        .await
+        .map_err(|e| crate::error::DesktopError::new("import", e.to_string()))?
+        .map(import::remember)
+}
+
+#[tauri::command]
+pub async fn import_parse_file(source: ImportSource, path: String) -> Result<ImportPreview> {
+    tauri::async_runtime::spawn_blocking(move || import::parse_file(source, &path))
+        .await
+        .map_err(|e| crate::error::DesktopError::new("import", e.to_string()))?
+        .map(import::remember)
+}
+
+#[tauri::command]
+pub async fn import_scan_putty_registry() -> Result<ImportPreview> {
+    tauri::async_runtime::spawn_blocking(import::scan_putty_registry)
+        .await
+        .map_err(|e| crate::error::DesktopError::new("import", e.to_string()))?
+        .map(import::remember)
+}
+
+#[tauri::command]
+pub fn import_ssh_dir_default() -> Option<String> {
+    import::default_ssh_dir()
+        .filter(|p| p.is_dir())
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn import_csv_template() -> String {
+    import::csv_template()
+}
+
+#[tauri::command]
+pub fn import_csv_template_save(path: String) -> Result<()> {
+    std::fs::write(&path, import::csv_template())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn import_apply(
+    state: State<'_, AppState>,
+    vault_id: Uuid,
+    preview_id: Uuid,
+    selection: ImportSelection,
+) -> Result<import::ImportReport> {
+    import::apply_cached(&state, vault_id, preview_id, &selection)
+}
+
+#[tauri::command]
+pub fn import_discard(preview_id: Uuid) {
+    import::discard(preview_id)
 }
 
 // ───────────────────────────── logs ─────────────────────────────
@@ -506,6 +578,14 @@ pub async fn account_devices<R: Runtime>(app: AppHandle<R>) -> Result<Vec<Device
 #[tauri::command]
 pub async fn account_device_revoke<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
     account::revoke_device(&app, id).await
+}
+
+#[tauri::command]
+pub async fn account_vault_members<R: Runtime>(
+    app: AppHandle<R>,
+    vault_id: Uuid,
+) -> Result<Vec<VaultMember>> {
+    account::vault_members(&app, vault_id).await
 }
 
 // ───────────────────────────── updates ─────────────────────────────

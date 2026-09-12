@@ -1,5 +1,5 @@
-import { Box, Container, Link, Paper, Typography } from "@mui/material";
-import { Outlet } from "react-router";
+import { Box, Link, Typography } from "@mui/material";
+import { Link as RouterLink, Outlet } from "react-router";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "./ThemeToggle";
 import { useServerInfo } from "@/api/hooks";
@@ -12,8 +12,7 @@ export function AuthLayout() {
         minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
-        background: `radial-gradient(1200px 600px at 10% -10%, rgba(var(--mui-palette-primary-mainChannel) / 0.14), transparent 60%),
-          radial-gradient(900px 500px at 110% 110%, rgba(var(--mui-palette-secondary-mainChannel) / 0.12), transparent 60%)`,
+        bgcolor: "surface.lowest",
       }}
     >
       <Box
@@ -23,21 +22,50 @@ export function AuthLayout() {
           alignItems: "center",
           justifyContent: "space-between",
           px: { xs: 2, sm: 4 },
-          py: 2,
+          height: 60,
         }}
       >
-        <Logo />
+        <Box
+          component={RouterLink}
+          to="/"
+          sx={{ textDecoration: "none", color: "inherit", display: "flex" }}
+        >
+          <Logo size={26} />
+        </Box>
         <ThemeToggle />
       </Box>
-      <Container maxWidth="sm" sx={{ flex: 1, display: "flex", alignItems: "center", py: 4 }}>
-        <Paper variant="outlined" sx={{ width: "100%", p: { xs: 3, sm: 4 }, borderRadius: 4 }}>
+      <Box
+        sx={{
+          flex: 1,
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "center",
+          px: 2,
+          pt: { xs: 2, sm: 6 },
+          pb: 6,
+        }}
+      >
+        <Box
+          sx={{
+            width: "100%",
+            maxWidth: 440,
+            bgcolor: "surface.base",
+            borderRadius: 3,
+            p: { xs: 3, sm: 4 },
+          }}
+        >
           <Outlet />
-        </Paper>
-      </Container>
-      <Box component="footer" sx={{ textAlign: "center", py: 2, color: "text.secondary" }}>
+        </Box>
+      </Box>
+      <Box component="footer" sx={{ textAlign: "center", py: 2.5, color: "text.disabled" }}>
         <Typography variant="caption">
           {info.data?.name ?? "Termoso"} · self-hosted, open source ·{" "}
-          <Link href="https://github.com/rep0rtDev/termoso" target="_blank" rel="noreferrer">
+          <Link
+            href="https://github.com/rep0rtDev/termoso"
+            target="_blank"
+            rel="noreferrer"
+            color="inherit"
+          >
             source
           </Link>
         </Typography>

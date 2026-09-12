@@ -11,10 +11,14 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use termoso_core::error::CoreError;
 use termoso_core::hostkey::KnownHosts;
-use termoso_core::model::{Entity, HostSnippet, Identity, ResolvedHost, Snippet, SshConfig};
+use termoso_core::model::{Entity, Identity, ResolvedHost, Snippet, SshConfig};
 use termoso_core::pty::{LocalShellOptions, LocalTerminal};
+use termoso_core::serial::SerialTerminal;
 use termoso_core::ssh::proxy::{ProxyConfig, ProxyKind};
-use termoso_core::ssh::{Algorithms, AuthMethod, ConnectOptions, SshClient, SshTarget};
+use termoso_core::ssh::{
+    Algorithms, AuthMethod, ConnectOptions, ConnectPhase, ConnectProgress, IpVersion, SshClient,
+    SshTarget,
+};
 use termoso_core::store::{ConnectionHistory, LogMeta};
 use termoso_core::telnet::{TelnetOptions, TelnetTerminal};
 use termoso_core::terminal::{SharedTerminal, TermEvent, TermEvents, TermSize};
@@ -24,21 +28,161 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::error::{DesktopError, Result};
+use crate::hosts::SerialLine;
 use crate::logs::Recorder;
 use crate::prompts::{PromptAnswer, PromptRequest, UiHostKeyPrompt, UiInteractivePrompt};
 use crate::snippets;
 use crate::state::AppState;
 
 pub const SESSION_EVENT: &str = "session";
-const TERM: &str = "xterm-256color";
 const MAX_PASSWORD_ATTEMPTS: usize = 3;
 
+/// Split the `localShell` setting into argv: a program path plus optional
+/// arguments (`wsl.exe -d Ubuntu`); empty = platform default. A bare path
+/// that exists on disk is taken whole, so `C:\Program Files\...\pwsh.exe`
+/// picked from the list works without quoting; otherwise double quotes group
+/// words and `\"` escapes a quote.
+pub fn local_shell_argv(setting: &str) -> Vec<String> {
+    let setting = setting.trim();
+    if setting.is_empty() {
+        return Vec::new();
+    }
+    if std::path::Path::new(setting).is_file() {
+        return vec![setting.to_string()];
+    }
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut quoted = false;
+    let mut has_token = false;
+    let mut chars = setting.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => {
+                quoted = !quoted;
+                has_token = true;
+            }
+            '\\' if quoted && chars.peek() == Some(&'"') => {
+                cur.push('"');
+                chars.next();
+            }
+            c if c.is_whitespace() && !quoted => {
+                if has_token {
+                    out.push(std::mem::take(&mut cur));
+                    has_token = false;
+                }
+            }
+            c => {
+                cur.push(c);
+                has_token = true;
+            }
+        }
+    }
+    if has_token {
+        out.push(cur);
+    }
+    out
+}
+
+/// Shells available for local terminals, login shell first.
+pub fn local_shells() -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |s: String| {
+        if !s.is_empty() && !out.contains(&s) {
+            out.push(s);
+        }
+    };
+    if cfg!(windows) {
+        for name in ["pwsh.exe", "powershell.exe", "cmd.exe"] {
+            if which(name) {
+                push(name.to_string());
+            }
+        }
+        if let Ok(comspec) = std::env::var("COMSPEC") {
+            push(comspec);
+        }
+        for distro in wsl_distros() {
+            push(format!("wsl.exe -d {distro}"));
+        }
+    } else {
+        if let Ok(shell) = std::env::var("SHELL") {
+            push(shell);
+        }
+        if let Ok(list) = std::fs::read_to_string("/etc/shells") {
+            for line in list.lines() {
+                let path = line.trim();
+                if !path.is_empty()
+                    && !path.starts_with('#')
+                    && std::path::Path::new(path).is_file()
+                {
+                    push(path.to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
+fn which(name: &str) -> bool {
+    std::env::var_os("PATH")
+        .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join(name).is_file()))
+        .unwrap_or(false)
+}
+
+/// Installed WSL distributions (`wsl.exe -l -q`, UTF-16LE output); empty when
+/// WSL is absent.
+fn wsl_distros() -> Vec<String> {
+    if !cfg!(windows) {
+        return Vec::new();
+    }
+    let Ok(output) = std::process::Command::new("wsl.exe")
+        .args(["-l", "-q"])
+        .output()
+    else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    let units: Vec<u16> = output
+        .stdout
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
+        .collect();
+    String::from_utf16_lossy(&units)
+        .lines()
+        .map(|l| l.trim_matches(['\r', '\0', ' ']).to_string())
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
+/// Display name of the shell a local terminal runs.
+fn local_shell_name(argv: &[String]) -> Option<String> {
+    match argv.first() {
+        None => termoso_core::pty::default_shell_name(),
+        Some(program) => program
+            .rsplit(['/', '\\'])
+            .next()
+            .map(|n| n.trim_end_matches(".exe"))
+            .filter(|n| !n.is_empty())
+            .map(str::to_string),
+    }
+}
+
 /// What the UI asked to open.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OpenTarget {
-    /// A saved host.
-    Host { host_id: Uuid },
+    /// A saved host; `protocol` picks one of its sections (`ssh` / `telnet`),
+    /// default SSH when the host has it.
+    Host {
+        host_id: Uuid,
+        #[serde(default)]
+        protocol: Option<String>,
+    },
+    /// A local serial console (not a saved host).
+    Serial { path: String, line: SerialLine },
     /// Ad-hoc `user@host:port` typed into the quick-connect bar.
     Quick {
         address: String,
@@ -46,6 +190,9 @@ pub enum OpenTarget {
         username: Option<String>,
         #[serde(default)]
         port: Option<u16>,
+        /// `ssh` (default) or `telnet`.
+        #[serde(default)]
+        protocol: Option<String>,
     },
     /// Shell on this machine.
     Local,
@@ -56,7 +203,7 @@ pub enum OpenTarget {
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {
     pub id: Uuid,
-    /// `ssh` | `telnet` | `local`.
+    /// `ssh` | `telnet` | `serial` | `local`.
     pub protocol: String,
     pub title: String,
     /// `user@host:port` or the local shell.
@@ -70,6 +217,10 @@ pub struct SessionInfo {
     pub via: Vec<String>,
     /// Colour scheme configured on the host (or inherited from its groups).
     pub color_scheme: Option<String>,
+    /// Base name of the user's shell (`bash`, `zsh`, `fish`, …) when known.
+    /// Local shells know it at once; SSH sessions learn it from a probe and
+    /// report it through [`SessionEvent::Shell`].
+    pub shell: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -91,9 +242,21 @@ pub enum SessionEvent {
         id: Uuid,
         info: SessionInfo,
     },
+    /// Where the connection attempt is. `hop` names the jump host being
+    /// dialled when the stage belongs to one of the intermediate hops.
+    Progress {
+        id: Uuid,
+        hop: Option<String>,
+        phase: ConnectPhase,
+    },
     Notice {
         id: Uuid,
         message: String,
+    },
+    /// The remote login shell was identified (see `SessionInfo::shell`).
+    Shell {
+        id: Uuid,
+        shell: String,
     },
     Exit {
         id: Uuid,
@@ -143,6 +306,15 @@ impl Sessions {
             .collect();
         v.sort_by_key(|s| s.started_at);
         v
+    }
+
+    pub fn info(&self, id: Uuid) -> Result<SessionInfo> {
+        self.live
+            .lock()
+            .expect("sessions poisoned")
+            .get(&id)
+            .map(|l| l.info.clone())
+            .ok_or_else(|| DesktopError::not_found(format!("session {id}")))
     }
 
     pub fn terminal(&self, id: Uuid) -> Result<SharedTerminal> {
@@ -264,6 +436,7 @@ pub async fn open<R: Runtime>(
         algorithms: opened.client.as_ref().and_then(|c| c.algorithms().cloned()),
         via: opened.jumps.iter().map(|j| j.target().display()).collect(),
         color_scheme: opened.color_scheme,
+        shell: opened.shell,
     };
     let history_id = state
         .store
@@ -289,7 +462,7 @@ pub async fn open<R: Runtime>(
     let live = Live {
         info: info.clone(),
         term: opened.term.clone(),
-        client: opened.client,
+        client: opened.client.clone(),
         jumps: opened.jumps,
         output,
         pump,
@@ -310,6 +483,9 @@ pub async fn open<R: Runtime>(
             info: info.clone(),
         },
     );
+    if let Some(client) = opened.client {
+        detect_shell_in_background(&app, id, client);
+    }
     if !opened.startup.is_empty() {
         let term = opened.term;
         let script = opened.startup;
@@ -374,24 +550,15 @@ fn finish_recording(state: &AppState, recorder: Option<Arc<Recorder>>) {
     }
 }
 
-/// Startup snippet of the host followed by its bound snippets, in order.
+/// Startup snippet of the host, ready to type once the shell is up.
 fn startup_script(state: &AppState, resolved: &ResolvedHost) -> String {
-    let mut ids: Vec<Uuid> = resolved.host.data.startup_snippet_id.into_iter().collect();
-    if let Ok(mut bound) = state
-        .store
-        .list::<HostSnippet>(Some(resolved.host.vault_id))
-    {
-        bound.retain(|b| b.data.host_id == resolved.host.id);
-        bound.sort_by_key(|b| b.data.sort_order);
-        ids.extend(bound.into_iter().map(|b| b.data.snippet_id));
-    }
-    let mut out = String::new();
-    for id in ids {
-        if let Ok(s) = state.store.require::<Snippet>(id) {
-            out.push_str(&snippets::script_to_send(&s.data.script));
-        }
-    }
-    out
+    resolved
+        .host
+        .data
+        .startup_snippet_id
+        .and_then(|id| state.store.require::<Snippet>(id).ok())
+        .map(|s| snippets::script_to_send(&s.data.script))
+        .unwrap_or_default()
 }
 
 /// Close a session (or abort its connection attempt).
@@ -487,6 +654,7 @@ struct Opened {
     /// Script typed into the shell right after connecting.
     startup: String,
     color_scheme: Option<String>,
+    shell: Option<String>,
 }
 
 async fn connect<R: Runtime>(
@@ -496,12 +664,16 @@ async fn connect<R: Runtime>(
     size: TermSize,
 ) -> Result<Opened> {
     let state = app.state::<AppState>();
+    let settings = state.settings().unwrap_or_default();
+    let term_type = settings.term_type.as_str();
     match target {
         OpenTarget::Local => {
+            let argv = local_shell_argv(&settings.local_shell);
+            let shell = local_shell_name(&argv);
             let (term, events) = LocalTerminal::spawn(LocalShellOptions {
-                argv: Vec::new(),
+                argv,
                 cwd: dirs_home(),
-                env: vec![("TERM".into(), TERM.into())],
+                env: vec![("TERM".into(), term_type.into())],
                 size,
             })?;
             Ok(Opened {
@@ -516,14 +688,53 @@ async fn connect<R: Runtime>(
                 jumps: Vec::new(),
                 startup: String::new(),
                 color_scheme: None,
+                shell,
             })
         }
         OpenTarget::Quick {
             address,
             username,
             port,
+            protocol,
         } => {
-            let (user, host, p) = parse_quick(address, username.as_deref(), *port)?;
+            let telnet = match protocol.as_deref().map(str::trim) {
+                None | Some("") | Some("ssh") => false,
+                Some("telnet") => true,
+                Some(other) => {
+                    return Err(DesktopError::invalid(format!(
+                        "quick connect supports ssh and telnet, not {other}"
+                    )));
+                }
+            };
+            let (user, host, p) =
+                parse_quick(address, username.as_deref(), port.or(telnet.then_some(23)))?;
+            if telnet {
+                let display = format!("{host}:{p}");
+                emit_connecting(app, id, "telnet", &display, &display, None, None);
+                let (term, events) = TelnetTerminal::connect(TelnetOptions {
+                    host,
+                    port: p,
+                    term: term_type.into(),
+                    size,
+                    timeout: Duration::from_secs(20),
+                    ip_version: IpVersion::Auto,
+                })
+                .await?;
+                return Ok(Opened {
+                    protocol: "telnet",
+                    title: display.clone(),
+                    target: display,
+                    host_id: None,
+                    vault_id: None,
+                    term,
+                    events,
+                    client: None,
+                    jumps: Vec::new(),
+                    startup: String::new(),
+                    color_scheme: None,
+                    shell: None,
+                });
+            }
             let target = SshTarget {
                 host,
                 port: p,
@@ -531,8 +742,8 @@ async fn connect<R: Runtime>(
             };
             let display = target.display();
             emit_connecting(app, id, "ssh", &display, &display, None, None);
-            let (client, jumps) = ssh_connect(app, id, target, None, &[], None).await?;
-            let (term, events) = client.shell(TERM, size).await?;
+            let (client, jumps) = ssh_connect(app, id, target, None, &[], None, None).await?;
+            let (term, events) = client.shell(term_type, size).await?;
             Ok(Opened {
                 protocol: "ssh",
                 title: display.clone(),
@@ -545,13 +756,45 @@ async fn connect<R: Runtime>(
                 jumps,
                 startup: String::new(),
                 color_scheme: None,
+                shell: None,
             })
         }
-        OpenTarget::Host { host_id } => {
+        OpenTarget::Serial { path, line } => {
+            let serial = line.clone().into_config(path.trim());
+            termoso_core::serial::validate(&serial)?;
+            let title = serial
+                .path
+                .rsplit(['/', '\\'])
+                .next()
+                .filter(|s| !s.is_empty())
+                .unwrap_or(&serial.path)
+                .to_string();
+            let display = format!(
+                "{} · {}",
+                serial.path,
+                termoso_core::serial::describe(&serial)
+            );
+            emit_connecting(app, id, "serial", &title, &display, None, None);
+            let (term, events) = SerialTerminal::open(&serial)?;
+            Ok(Opened {
+                protocol: "serial",
+                title,
+                target: display,
+                host_id: None,
+                vault_id: None,
+                term,
+                events,
+                client: None,
+                jumps: Vec::new(),
+                startup: String::new(),
+                color_scheme: None,
+                shell: None,
+            })
+        }
+        OpenTarget::Host { host_id, protocol } => {
             let resolved = state.store.resolve_host(*host_id)?;
             let label = resolved.host.data.label.clone();
-            let is_telnet = resolved.telnet.is_some() && resolved.host.data.ssh_config_id.is_none();
-            if is_telnet {
+            if host_protocol(&resolved, protocol.as_deref())? == "telnet" {
                 let telnet = resolved.telnet.clone().unwrap_or_default();
                 let port = telnet.port.unwrap_or(23);
                 let display = format!("{}:{}", resolved.host.data.address, port);
@@ -568,9 +811,10 @@ async fn connect<R: Runtime>(
                 let (term, events) = TelnetTerminal::connect(TelnetOptions {
                     host: resolved.host.data.address.clone(),
                     port,
-                    term: TERM.into(),
+                    term: term_type.into(),
                     size,
                     timeout: Duration::from_secs(20),
+                    ip_version: IpVersion::parse(&resolved.host.data.ip_version),
                 })
                 .await?;
                 return Ok(Opened {
@@ -585,6 +829,7 @@ async fn connect<R: Runtime>(
                     jumps: Vec::new(),
                     startup: startup_script(&state, &resolved),
                     color_scheme: scheme,
+                    shell: None,
                 });
             }
             let target = ssh_target(&resolved);
@@ -600,7 +845,7 @@ async fn connect<R: Runtime>(
                 scheme.clone(),
             );
             let (client, jumps) = connect_resolved(app, id, &resolved).await?;
-            let (term, events) = client.shell(TERM, size).await?;
+            let (term, events) = client.shell(term_type, size).await?;
             detect_os_in_background(app, &resolved, client.clone());
             Ok(Opened {
                 protocol: "ssh",
@@ -614,8 +859,30 @@ async fn connect<R: Runtime>(
                 jumps,
                 startup: startup_script(&state, &resolved),
                 color_scheme: scheme,
+                shell: None,
             })
         }
+    }
+}
+
+fn has_ssh(resolved: &ResolvedHost) -> bool {
+    resolved.host.data.ssh_config_id.is_some() || resolved.telnet.is_none()
+}
+
+/// Which section of a saved host to open: the requested one if the host has
+/// it, otherwise SSH, otherwise Telnet.
+fn host_protocol(resolved: &ResolvedHost, requested: Option<&str>) -> Result<&'static str> {
+    let ssh = has_ssh(resolved);
+    let telnet = resolved.telnet.is_some();
+    match requested.map(str::trim) {
+        Some("telnet") if telnet => Ok("telnet"),
+        Some("telnet") => Err(DesktopError::invalid("this host has no Telnet section")),
+        Some("ssh") if ssh => Ok("ssh"),
+        Some("ssh") => Err(DesktopError::invalid("this host has no SSH section")),
+        None | Some("") => Ok(if ssh { "ssh" } else { "telnet" }),
+        Some(other) => Err(DesktopError::invalid(format!(
+            "hosts open over ssh or telnet, not {other}"
+        ))),
     }
 }
 
@@ -646,8 +913,10 @@ pub async fn connect_host<R: Runtime>(
 ) -> Result<HostConnection> {
     let state = app.state::<AppState>();
     let resolved = state.store.resolve_host(host_id)?;
-    if resolved.telnet.is_some() && resolved.host.data.ssh_config_id.is_none() {
-        return Err(DesktopError::invalid("telnet hosts have no SFTP"));
+    if !has_ssh(&resolved) {
+        return Err(DesktopError::invalid(
+            "SFTP and port forwarding need an SSH section on the host",
+        ));
     }
     let display = ssh_target(&resolved).display();
     let (client, jumps) = connect_resolved(app, session_id, &resolved).await?;
@@ -702,6 +971,40 @@ fn detect_os_in_background<R: Runtime>(
     });
 }
 
+/// Find out which shell the session runs so the UI can install its OSC 133
+/// integration. Off the session path like the OS probe; skipped entirely
+/// when the user turned shell integration off.
+fn detect_shell_in_background<R: Runtime>(app: &AppHandle<R>, id: Uuid, client: Arc<SshClient>) {
+    let state = app.state::<AppState>();
+    let enabled = state
+        .settings()
+        .map(|s| s.shell_integration)
+        .unwrap_or(true);
+    if !enabled {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Some(shell) = termoso_core::osdetect::detect_shell(&client).await else {
+            return;
+        };
+        let state = app.state::<AppState>();
+        let known = {
+            let mut live = state.sessions.live.lock().expect("sessions poisoned");
+            match live.get_mut(&id) {
+                Some(l) => {
+                    l.info.shell = Some(shell.clone());
+                    true
+                }
+                None => false,
+            }
+        };
+        if known {
+            let _ = app.emit(SESSION_EVENT, SessionEvent::Shell { id, shell });
+        }
+    });
+}
+
 fn ssh_target(resolved: &ResolvedHost) -> SshTarget {
     SshTarget {
         host: resolved.host.data.address.clone(),
@@ -722,8 +1025,29 @@ async fn connect_resolved<R: Runtime>(
         Some(resolved),
         &resolved.chain,
         None,
+        None,
     )
     .await
+}
+
+/// Forwards [`ConnectPhase`]s of one SSH leg to the UI as `Progress` events.
+struct UiProgress<R: Runtime> {
+    app: AppHandle<R>,
+    session_id: Uuid,
+    hop: Option<String>,
+}
+
+impl<R: Runtime> ConnectProgress for UiProgress<R> {
+    fn phase(&self, phase: ConnectPhase) {
+        let _ = self.app.emit(
+            SESSION_EVENT,
+            SessionEvent::Progress {
+                id: self.session_id,
+                hop: self.hop.clone(),
+                phase,
+            },
+        );
+    }
 }
 
 fn emit_connecting<R: Runtime>(
@@ -750,6 +1074,7 @@ fn emit_connecting<R: Runtime>(
                 algorithms: None,
                 via: Vec::new(),
                 color_scheme,
+                shell: None,
             },
         },
     );
@@ -808,6 +1133,9 @@ fn parse_quick(
 
 /// Connect to `target`, going through `chain` jump hosts first. Asks the UI
 /// for a password/passphrase when the stored credentials are not enough.
+/// `hop` is the label reported with progress events when this leg is itself
+/// a jump host on the way to the real target.
+#[allow(clippy::too_many_arguments)]
 async fn ssh_connect<R: Runtime>(
     app: &AppHandle<R>,
     session_id: Uuid,
@@ -815,6 +1143,7 @@ async fn ssh_connect<R: Runtime>(
     resolved: Option<&ResolvedHost>,
     chain: &[Entity<termoso_core::model::Host>],
     jump: Option<Arc<SshClient>>,
+    hop: Option<String>,
 ) -> Result<(Arc<SshClient>, Vec<Arc<SshClient>>)> {
     let state = app.state::<AppState>();
     let mut jumps: Vec<Arc<SshClient>> = Vec::new();
@@ -826,8 +1155,8 @@ async fn ssh_connect<R: Runtime>(
     // chain on the target host is the single source of truth for the route,
     // which also rules out cycles.
     let mut via = jump;
-    for hop in chain {
-        let hop_resolved = state.store.resolve_host(hop.id)?;
+    for link in chain {
+        let hop_resolved = state.store.resolve_host(link.id)?;
         let hop_target = SshTarget {
             host: hop_resolved.host.data.address.clone(),
             port: hop_resolved.port(),
@@ -840,6 +1169,7 @@ async fn ssh_connect<R: Runtime>(
             Some(&hop_resolved),
             &[],
             via.clone(),
+            Some(hop_resolved.host.data.label.clone()),
         ))
         .await?;
         jumps.push(client.clone());
@@ -909,6 +1239,14 @@ async fn ssh_connect<R: Runtime>(
             env: ssh_cfg.env_variables.clone(),
             agent_forwarding: ssh_cfg.agent_forwarding,
             post_quantum_kex: state.settings().map(|s| s.post_quantum_kex).unwrap_or(true),
+            progress: Some(Arc::new(UiProgress {
+                app: app.clone(),
+                session_id,
+                hop: hop.clone(),
+            })),
+            ip_version: resolved
+                .map(|r| IpVersion::parse(&r.host.data.ip_version))
+                .unwrap_or_default(),
         };
 
         let result = match &via {
@@ -1059,5 +1397,67 @@ fn remember_password(state: &AppState, resolved: &ResolvedHost, value: &Zeroizin
     })();
     if let Err(e) = result {
         tracing::warn!(error = %e, "could not remember password");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_shell_setting_splits_into_argv_and_names_the_shell() {
+        assert!(local_shell_argv("").is_empty());
+        assert_eq!(local_shell_argv("  /bin/zsh "), ["/bin/zsh"]);
+        assert_eq!(
+            local_shell_argv("wsl.exe -d Ubuntu"),
+            ["wsl.exe", "-d", "Ubuntu"]
+        );
+        assert_eq!(
+            local_shell_name(&local_shell_argv("/usr/bin/fish")).as_deref(),
+            Some("fish")
+        );
+        assert_eq!(
+            local_shell_argv(r#""C:\Program Files\PowerShell\7\pwsh.exe" -NoLogo"#),
+            [r"C:\Program Files\PowerShell\7\pwsh.exe", "-NoLogo"]
+        );
+        assert_eq!(
+            local_shell_name(&local_shell_argv(
+                r#""C:\Program Files\PowerShell\7\pwsh.exe""#
+            ))
+            .as_deref(),
+            Some("pwsh")
+        );
+        assert_eq!(
+            local_shell_argv(r#"sh -c "echo \"hi\"""#),
+            ["sh", "-c", r#"echo "hi""#]
+        );
+    }
+
+    #[test]
+    fn local_shell_existing_path_with_spaces_is_one_program() {
+        let dir = std::env::temp_dir().join(format!("termoso shell {}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("my shell");
+        std::fs::write(&exe, b"").unwrap();
+        let setting = exe.to_string_lossy().into_owned();
+        assert_eq!(local_shell_argv(&setting), std::slice::from_ref(&setting));
+        assert_eq!(
+            local_shell_name(&local_shell_argv(&setting)).as_deref(),
+            Some("my shell")
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn local_shells_lists_the_login_shell_first_without_duplicates() {
+        let shells = local_shells();
+        if let Ok(login) = std::env::var("SHELL")
+            && !cfg!(windows)
+        {
+            assert_eq!(shells.first(), Some(&login));
+        }
+        let mut dedup = shells.clone();
+        dedup.dedup();
+        assert_eq!(dedup, shells);
     }
 }

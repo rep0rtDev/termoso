@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent,
+} from "react";
 import {
   Box,
   Button,
@@ -33,6 +41,9 @@ import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import UploadRoundedIcon from "@mui/icons-material/UploadRounded";
 import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
+import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
+import AppsRoundedIcon from "@mui/icons-material/AppsRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ipc from "@/ipc/commands";
 import type { FsEntry, Listing, Uuid } from "@/ipc/types";
@@ -42,10 +53,19 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ToolIconButton } from "@/components/ui";
 import { monoFontFamily, sizes } from "@/theme/theme";
 import { ChmodDialog, NameDialog } from "./dialogs";
+import { DROP_DEST_ATTR, DROP_SIDE_ATTR, PANE_MIME, hasOsFiles } from "./drop";
 import { formatMode, formatMtime, formatSize, isHidden, joinPath, sortEntries } from "./format";
 import { fsQueryKey } from "./store";
 
 export type Side = "local" | "remote";
+
+/** Payload of a drag that started in a pane. */
+interface DragPayload {
+  side: Side;
+  entries: FsEntry[];
+}
+
+const mimeFor = (side: Side) => `${PANE_MIME}-${side}`;
 
 interface Props {
   side: Side;
@@ -56,7 +76,16 @@ interface Props {
   /** Current directory of the opposite pane (transfer destination). */
   oppositePath: string | null;
   onPathChange: (path: string) => void;
+  /** Send entries of this pane to the opposite pane's current directory. */
   onTransfer: (entries: FsEntry[]) => void;
+  /** Entries dragged over from the opposite pane and dropped on `dest`. */
+  onReceive: (entries: FsEntry[], dest: string) => void;
+  /** Files dropped from the OS onto `dest` (remote side only). */
+  onReceiveFiles?: (dt: DataTransfer, dest: string) => void;
+  /** Open a file locally (`with` asks for the application first). */
+  onOpen: (entry: FsEntry, mode: "default" | "with") => void;
+  /** Paths currently open for editing (remote side). */
+  editing?: ReadonlySet<string>;
   disabled?: boolean;
 }
 
@@ -102,6 +131,10 @@ export function FilePane(props: Props) {
     oppositePath,
     onPathChange,
     onTransfer,
+    onReceive,
+    onReceiveFiles,
+    onOpen,
+    editing,
     disabled = false,
   } = props;
   const api = useMemo(() => apiFor(side, sftpId), [side, sftpId]);
@@ -111,6 +144,9 @@ export function FilePane(props: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<{ x: number; y: number; entry: FsEntry | null } | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
+  /** Directory a drag is currently hovering (pane root or a folder row). */
+  const [dropOver, setDropOver] = useState<string | null>(null);
+  const dragDepth = useRef(0);
   const qc = useQueryClient();
   const snack = useSnackbar();
 
@@ -170,12 +206,71 @@ export function FilePane(props: Props) {
     });
   };
 
+  const isDirLike = (entry: FsEntry) =>
+    entry.kind === "dir" || (entry.kind === "symlink" && entry.link_target !== null);
+
   const openEntry = (entry: FsEntry) => {
-    if (entry.kind === "dir" || (entry.kind === "symlink" && entry.link_target !== null)) {
-      navigate(entry.path);
-    } else {
-      onTransfer([entry]);
+    if (isDirLike(entry)) navigate(entry.path);
+    else onOpen(entry, "default");
+  };
+
+  // ── drag & drop ──
+  const canReceive = !disabled && oppositePath !== null;
+  const accepts = (dt: DataTransfer) =>
+    canReceive &&
+    (Array.from(dt.types).includes(mimeFor(side === "local" ? "remote" : "local")) ||
+      (onReceiveFiles !== undefined && hasOsFiles(dt)));
+
+  const osZone = canReceive && onReceiveFiles !== undefined;
+  const dropZoneAttrs = (dest: string) => ({
+    [DROP_SIDE_ATTR]: side,
+    [DROP_DEST_ATTR]: dest,
+  });
+
+  const onRowDragStart = (e: DragEvent, entry: FsEntry) => {
+    const targets = selected.has(entry.path) ? selectedEntries : [entry];
+    if (!selected.has(entry.path)) setSelected(new Set([entry.path]));
+    const payload: DragPayload = { side, entries: targets };
+    e.dataTransfer.setData(mimeFor(side), JSON.stringify(payload));
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
+  const onDragOverZone = (e: DragEvent, dest: string | null) => {
+    if (!accepts(e.dataTransfer) || dest === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+    if (dropOver !== dest) setDropOver(dest);
+  };
+
+  const onDragEnterPane = (e: DragEvent) => {
+    if (!accepts(e.dataTransfer)) return;
+    dragDepth.current += 1;
+  };
+
+  const onDragLeavePane = (e: DragEvent) => {
+    if (!accepts(e.dataTransfer)) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDropOver(null);
+  };
+
+  const onDropZone = (e: DragEvent, dest: string | null) => {
+    dragDepth.current = 0;
+    setDropOver(null);
+    if (!accepts(e.dataTransfer) || dest === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const raw = e.dataTransfer.getData(mimeFor(side === "local" ? "remote" : "local"));
+    if (raw) {
+      try {
+        const payload = JSON.parse(raw) as DragPayload;
+        if (payload.entries.length > 0) onReceive(payload.entries, dest);
+      } catch {
+        // not ours
+      }
+      return;
     }
+    if (onReceiveFiles && hasOsFiles(e.dataTransfer)) onReceiveFiles(e.dataTransfer, dest);
   };
 
   const onContext = (e: MouseEvent, entry: FsEntry | null) => {
@@ -188,7 +283,10 @@ export function FilePane(props: Props) {
   const TransferIcon = side === "local" ? UploadRoundedIcon : DownloadRoundedIcon;
   const menuTargets = menu?.entry ? (selected.size > 1 ? selectedEntries : [menu.entry]) : [];
   const menuSingle = menuTargets.length === 1 ? menuTargets[0] : undefined;
+  const menuFile = menuSingle && !isDirLike(menuSingle) ? menuSingle : undefined;
   const chmod = api.chmod;
+  const currentDir = listing.data?.path ?? null;
+  const paneOver = dropOver !== null && dropOver === currentDir;
 
   return (
     <Box
@@ -282,13 +380,28 @@ export function FilePane(props: Props) {
       </Stack>
 
       <Box
-        sx={{ flex: 1, minHeight: 0, overflow: "auto", position: "relative" }}
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          overflow: "auto",
+          position: "relative",
+          outline: paneOver ? "2px solid" : "2px solid transparent",
+          outlineColor: paneOver ? "primary.main" : "transparent",
+          outlineOffset: -2,
+          bgcolor: paneOver ? "action.hover" : undefined,
+          transition: "background-color 120ms",
+        }}
         onContextMenu={(e) => {
           if (e.target === e.currentTarget) onContext(e, null);
         }}
         onClick={(e) => {
           if (e.target === e.currentTarget) setSelected(new Set());
         }}
+        onDragEnter={onDragEnterPane}
+        onDragLeave={onDragLeavePane}
+        onDragOver={(e) => onDragOverZone(e, currentDir)}
+        onDrop={(e) => onDropZone(e, currentDir)}
+        {...(osZone && currentDir ? dropZoneAttrs(currentDir) : {})}
       >
         {listing.isPending && !disabled && (
           <Stack sx={{ alignItems: "center", pt: 6 }}>
@@ -325,17 +438,33 @@ export function FilePane(props: Props) {
             <TableBody>
               {entries.map((e) => {
                 const sel = selected.has(e.path);
+                const dir = isDirLike(e);
+                const over = dir && dropOver === e.path;
+                const inEdit = editing?.has(e.path) ?? false;
                 return (
                   <TableRow
                     key={e.path}
                     hover
                     selected={sel}
+                    draggable={!disabled}
+                    onDragStart={(ev) => onRowDragStart(ev, e)}
+                    onDragOver={dir ? (ev) => onDragOverZone(ev, e.path) : undefined}
+                    onDrop={dir ? (ev) => onDropZone(ev, e.path) : undefined}
+                    {...(osZone && dir ? dropZoneAttrs(e.path) : {})}
                     onClick={(ev) => onRowClick(ev, e)}
                     onDoubleClick={() => openEntry(e)}
                     onContextMenu={(ev) => onContext(ev, e)}
                     sx={{
                       cursor: "default",
-                      "& td": { py: 0.4, fontSize: 13, borderColor: "border.light" },
+                      "& td": {
+                        py: 0.4,
+                        fontSize: 13,
+                        borderColor: "border.light",
+                        ...(over && { bgcolor: "action.selected" }),
+                      },
+                      ...(over && {
+                        "& td:first-of-type": { boxShadow: "inset 2px 0 0", color: "primary.main" },
+                      }),
                     }}
                   >
                     <TableCell sx={{ overflow: "hidden" }}>
@@ -344,6 +473,11 @@ export function FilePane(props: Props) {
                         <Typography variant="body2" noWrap sx={{ fontSize: 13 }}>
                           {e.name}
                         </Typography>
+                        {inEdit && (
+                          <Tooltip title="Open in a local application — saves are uploaded back">
+                            <EditRoundedIcon sx={{ fontSize: 14, color: "primary.main" }} />
+                          </Tooltip>
+                        )}
                         {e.link_target && (
                           <Typography variant="caption" color="text.disabled" noWrap>
                             → {e.link_target}
@@ -374,7 +508,7 @@ export function FilePane(props: Props) {
                     colSpan={4}
                     sx={{ color: "text.disabled", textAlign: "center", py: 4 }}
                   >
-                    Empty directory
+                    {canReceive ? "Empty directory — drop files here" : "Empty directory"}
                   </TableCell>
                 </TableRow>
               )}
@@ -394,7 +528,8 @@ export function FilePane(props: Props) {
         }}
       >
         <Typography variant="caption" color="text.secondary">
-          {entries.length} items{selected.size > 0 ? ` · ${selected.size} selected` : ""}
+          {entries.length} {entries.length === 1 ? "item" : "items"}
+          {selected.size > 0 ? ` · ${selected.size} selected` : ""}
         </Typography>
       </Stack>
 
@@ -406,6 +541,23 @@ export function FilePane(props: Props) {
         onClick={() => setMenu(null)}
         slotProps={{ paper: { sx: { minWidth: 200 } } }}
       >
+        {menuFile && (
+          <MenuItem onClick={() => onOpen(menuFile, "default")}>
+            <ListItemIcon>
+              <OpenInNewRoundedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Open</ListItemText>
+          </MenuItem>
+        )}
+        {menuFile && (
+          <MenuItem onClick={() => onOpen(menuFile, "with")}>
+            <ListItemIcon>
+              <AppsRoundedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Open with…</ListItemText>
+          </MenuItem>
+        )}
+        {menuFile && <Divider />}
         {menu?.entry && (
           <MenuItem disabled={oppositePath === null} onClick={() => onTransfer(menuTargets)}>
             <ListItemIcon>

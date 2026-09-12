@@ -45,6 +45,8 @@ pub mod terminal;
 
 #[cfg(feature = "local-pty")]
 pub mod pty;
+#[cfg(feature = "serial")]
+pub mod serial;
 
 pub use error::CoreError;
 pub use termoso_crypto;

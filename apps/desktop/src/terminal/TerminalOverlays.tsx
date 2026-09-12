@@ -10,20 +10,26 @@ import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import PaletteRoundedIcon from "@mui/icons-material/PaletteRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
+import SnoozeRoundedIcon from "@mui/icons-material/SnoozeRounded";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ActionMenu, type MenuAction } from "@/components/ui";
 import { MAX_PANES } from "./layout";
+import { LinkHoverHint, ReconnectSnackbar } from "./ReconnectSnackbar";
 import {
   clearBuffer,
   closeContextMenu,
   confirmPendingClose,
   confirmPendingPaste,
   copySelection,
+  endOfToday,
   movePaneToNewTab,
   paneHasSelection,
   pasteClipboard,
+  pauseSuggestions,
   requestClosePane,
   selectAll,
+  setPaneAutocomplete,
   setSearchOpen,
   setSidePanel,
   splitActivePane,
@@ -34,11 +40,20 @@ import {
 export function TerminalOverlays() {
   const pendingPaste = useTerminal((s) => s.pendingPaste);
   const pendingClose = useTerminal((s) => s.pendingClose);
+  const liveClose = useTerminal(
+    (s) => s.pendingClose?.filter((id) => s.panes[id]?.status === "connected").length ?? 0,
+  );
   const menu = useTerminal((s) => s.contextMenu);
   const tab = useTerminal((s) => {
     const paneId = s.contextMenu?.paneId;
     return paneId ? s.tabs.find((t) => t.paneIds.includes(paneId)) : undefined;
   });
+  const paneSuggest = useTerminal((s) =>
+    s.contextMenu ? (s.panes[s.contextMenu.paneId]?.autocomplete ?? true) : true,
+  );
+  const paused = useTerminal(
+    (s) => s.suggestPausedUntil !== null && s.suggestPausedUntil > Date.now(),
+  );
 
   const items: MenuAction[] = [];
   if (menu && tab) {
@@ -93,7 +108,7 @@ export function TerminalOverlays() {
       {
         label: "Search",
         icon: <SearchRoundedIcon fontSize="small" />,
-        onClick: () => setSearchOpen(tab.id, true),
+        onClick: () => setSearchOpen(true),
       },
       {
         label: "Themes",
@@ -107,6 +122,17 @@ export function TerminalOverlays() {
         onClick: () => setSidePanel("info"),
       },
       {
+        label: paneSuggest ? "Turn off suggestions here" : "Turn on suggestions here",
+        icon: <AutoAwesomeOutlinedIcon fontSize="small" />,
+        onClick: () => setPaneAutocomplete(id, !paneSuggest),
+      },
+      {
+        label: paused ? "Resume suggestions everywhere" : "Pause suggestions until tomorrow",
+        icon: <SnoozeRoundedIcon fontSize="small" />,
+        divider: true,
+        onClick: () => pauseSuggestions(paused ? null : endOfToday()),
+      },
+      {
         label: "Close pane",
         icon: <CloseRoundedIcon fontSize="small" />,
         danger: true,
@@ -117,6 +143,8 @@ export function TerminalOverlays() {
 
   return (
     <>
+      <ReconnectSnackbar />
+      <LinkHoverHint />
       <ActionMenu
         anchor={null}
         position={menu ? { left: menu.left, top: menu.top } : null}
@@ -155,13 +183,17 @@ export function TerminalOverlays() {
 
       <ConfirmDialog
         open={pendingClose !== null}
-        title="Close connected session?"
+        title={
+          liveClose > 1 ? `Close ${liveClose} connected sessions?` : "Close connected session?"
+        }
         confirmLabel="Close"
         danger
         onCancel={() => confirmPendingClose(false)}
         onConfirm={() => confirmPendingClose(true)}
       >
-        The session is still connected. Running processes in it will be terminated.
+        {liveClose > 1
+          ? "These sessions are still connected. Running processes in them will be terminated."
+          : "The session is still connected. Running processes in it will be terminated."}
       </ConfirmDialog>
     </>
   );

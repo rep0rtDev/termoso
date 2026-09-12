@@ -19,6 +19,7 @@ export const keys = {
   proxies: (vaultId: Uuid | null) => ["proxies", vaultId] as const,
   hostChains: (vaultId: Uuid | null) => ["hostChains", vaultId] as const,
   history: ["history"] as const,
+  commandHistory: ["history", "commands"] as const,
   pfRules: (vaultId: Uuid | null) => ["pfRules", vaultId] as const,
   snippets: (vaultId: Uuid | null) => ["snippets", vaultId] as const,
   packages: (vaultId: Uuid | null) => ["packages", vaultId] as const,
@@ -28,6 +29,8 @@ export const keys = {
   bookmarks: (id: Uuid) => ["logs", id, "bookmarks"] as const,
   account: ["account"] as const,
   devices: ["account", "devices"] as const,
+  vaultMembers: (id: Uuid) => ["account", "vault-members", id] as const,
+  serialPorts: ["serialPorts"] as const,
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.app, queryFn: ipc.appInfo });
@@ -121,6 +124,49 @@ export function useCreateTag() {
   });
 }
 
+/** Tag edits change host cards too (labels are denormalised there). */
+function useInvalidateTags() {
+  const qc = useQueryClient();
+  return () =>
+    Promise.all(
+      (["tags", "hosts", "hostForm"] as const).map((k) => qc.invalidateQueries({ queryKey: [k] })),
+    );
+}
+
+export function useUpdateTag() {
+  const invalidate = useInvalidateTags();
+  return useMutation({
+    mutationFn: (a: { id: Uuid; label: string; color: string | null }) =>
+      ipc.tagUpdate(a.id, a.label, a.color),
+    onSuccess: () => invalidate(),
+  });
+}
+
+export function useDeleteTag() {
+  const invalidate = useInvalidateTags();
+  return useMutation({
+    mutationFn: (id: Uuid) => ipc.tagDelete(id),
+    onSuccess: () => invalidate(),
+  });
+}
+
+export function useMergeTags() {
+  const invalidate = useInvalidateTags();
+  return useMutation({
+    mutationFn: (a: { sources: Uuid[]; target: Uuid }) => ipc.tagsMerge(a.sources, a.target),
+    onSuccess: () => invalidate(),
+  });
+}
+
+/** Serial devices present right now; refetched on demand, never in the background. */
+export const useSerialPorts = (enabled: boolean) =>
+  useQuery({
+    queryKey: keys.serialPorts,
+    queryFn: ipc.serialPorts,
+    enabled,
+    staleTime: 10_000,
+  });
+
 export function useDeleteEntity(kind: "proxies" | "hostChains") {
   const qc = useQueryClient();
   return useMutation({
@@ -131,6 +177,22 @@ export function useDeleteEntity(kind: "proxies" | "hostChains") {
 
 export const useHistory = () =>
   useQuery({ queryKey: keys.history, queryFn: () => ipc.historyConnections(50) });
+export const useCommandHistory = () =>
+  useQuery({ queryKey: keys.commandHistory, queryFn: () => ipc.historyCommands(1000) });
+export function useDeleteHistoryItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: Uuid) => ipc.historyDelete(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.history }),
+  });
+}
+export function useClearCommandHistory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => ipc.historyClearCommands(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.history }),
+  });
+}
 
 export const usePfRules = (vaultId: Uuid | null) =>
   useQuery({ queryKey: keys.pfRules(vaultId), queryFn: () => ipc.pfRules(vaultId) });
@@ -158,6 +220,14 @@ export const useAccount = () =>
   useQuery({ queryKey: keys.account, queryFn: ipc.accountStatus, staleTime: 5_000 });
 export const useDevices = (enabled: boolean) =>
   useQuery({ queryKey: keys.devices, queryFn: ipc.accountDevices, enabled });
+/** Members of a team vault; `null` (local / personal vault) asks nothing. */
+export const useVaultMembers = (vaultId: Uuid | null) =>
+  useQuery({
+    queryKey: keys.vaultMembers(vaultId ?? ""),
+    queryFn: () => ipc.accountVaultMembers(vaultId ?? ""),
+    enabled: vaultId !== null,
+    staleTime: 60_000,
+  });
 
 /** Invalidates queries when Rust reports sync / account changes. */
 export function useSyncNotices() {

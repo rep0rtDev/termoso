@@ -37,6 +37,16 @@ export interface AppInfo {
 export type ThemeMode = "dark" | "light" | "system";
 export type HostsView = "grid" | "list";
 export type CursorStyle = "block" | "underline" | "bar";
+export const TERM_TYPES = [
+  "xterm-256color",
+  "xterm",
+  "vt100",
+  "vt220",
+  "linux",
+  "screen-256color",
+  "tmux-256color",
+] as const;
+export type TermType = (typeof TERM_TYPES)[number];
 export type SyncConflict = "newest_wins" | "local_wins" | "server_wins";
 
 export interface Settings {
@@ -56,7 +66,15 @@ export interface Settings {
   confirmCloseTab: boolean;
   confirmPasteMultiline: boolean;
   autocomplete: boolean;
+  /** Install OSC 133 prompt markers into bash / zsh / fish after connecting. */
+  shellIntegration: boolean;
   terminalBell: boolean;
+  brightBold: boolean;
+  termType: TermType;
+  autoReconnect: boolean;
+  keywordHighlight: boolean;
+  /** Program (+ args) for local terminals; empty = login shell. */
+  localShell: string;
   keepAliveSeconds: number;
   /** Probe the OS after the first successful connection to pick the host icon. */
   detectOs: boolean;
@@ -73,6 +91,12 @@ export interface Settings {
   updateCheck: UpdateCheck;
   /** Release feed URL; empty = project default. */
   updateUrl: string;
+  /** Start-up sign-in screen was dismissed with "Continue offline". */
+  welcomeSeen: boolean;
+  /** Shortcut overrides: command id → chord (`ctrl+shift+k`), `""` = unbound. */
+  shortcuts: Record<string, string>;
+  /** SFTP “Open with” associations: lower-case extension (`""` = none) → app. */
+  sftpOpenWith: Record<string, string>;
 }
 
 export type UpdateCheck = "manual" | "startup";
@@ -106,6 +130,16 @@ export interface LocalVault {
   cursor: number;
 }
 
+/** Member of a team vault as the server sees it. */
+export interface VaultMember {
+  user_id: Uuid;
+  email: string;
+  display_name?: string | null;
+  role: VaultRole;
+  key_version: number;
+  pending: boolean;
+}
+
 export interface HostCard {
   id: Uuid;
   vaultId: Uuid;
@@ -113,11 +147,19 @@ export interface HostCard {
   address: string;
   groupId: Uuid | null;
   groupPath: string[];
-  protocol: "ssh" | "telnet";
+  /** Primary protocol: `ssh` unless the host is Telnet-only. */
+  protocol: HostProtocol;
+  /** Effective username of the primary protocol. */
   username: string;
+  /** Effective port of the primary protocol. */
   port: number;
+  /** Effective Telnet port when the host also has a Telnet section. */
+  telnetPort: number | null;
   tags: string[];
   osName: string | null;
+  /** User-chosen icon id; overrides `osName` for display. */
+  icon: string | null;
+  ipVersion: IpVersion;
   notes: string;
   sortOrder: number;
   updatedAt: string;
@@ -131,6 +173,8 @@ export interface HostForm {
   label: string;
   address: string;
   groupId: Uuid | null;
+  /** The host has an SSH section (the SSH fields below belong to it). */
+  ssh: boolean;
   port: number | null;
   username: string;
   password: string | null;
@@ -139,11 +183,15 @@ export interface HostForm {
   tagIds: Uuid[];
   notes: string;
   osName: string | null;
+  /** User-chosen icon id; null follows OS detection. */
+  icon: string | null;
+  ipVersion: IpVersion;
   agentForwarding: boolean;
   startupSnippetId: Uuid | null;
   hostChainId: Uuid | null;
   proxyId: Uuid | null;
-  protocol: HostProtocol;
+  /** Telnet section, when the host is also (or only) reachable over Telnet. */
+  telnet: TelnetForm | null;
   envVariables: [string, string][];
   keepAliveInterval: number | null;
   timeout: number | null;
@@ -152,7 +200,92 @@ export interface HostForm {
   hasPassword: boolean;
 }
 
+export interface TelnetForm {
+  port: number | null;
+  username: string;
+  /** null keeps the stored password when editing; "" clears it. */
+  password: string | null;
+  identityId: Uuid | null;
+  colorScheme: string | null;
+  hasPassword: boolean;
+}
+
+export function emptyTelnetForm(): TelnetForm {
+  return {
+    port: null,
+    username: "",
+    password: null,
+    identityId: null,
+    colorScheme: null,
+    hasPassword: false,
+  };
+}
+
 export type HostProtocol = "ssh" | "telnet";
+
+/** Protocols a saved host can be opened with. */
+export function hostProtocols(h: Pick<HostCard, "protocol" | "telnetPort">): HostProtocol[] {
+  if (h.protocol === "telnet") return ["telnet"];
+  return h.telnetPort === null ? ["ssh"] : ["ssh", "telnet"];
+}
+
+export type IpVersion = "auto" | "4" | "6";
+
+export type SerialParity = "none" | "odd" | "even";
+export type SerialFlowControl = "none" | "software" | "hardware";
+
+export interface SerialLine {
+  baudRate: number;
+  dataBits: 5 | 6 | 7 | 8;
+  stopBits: 1 | 2;
+  parity: SerialParity;
+  flowControl: SerialFlowControl;
+  /** WHATWG encoding label (`utf-8`, `koi8-r`, …); decoded/encoded in the core. */
+  charset: string;
+}
+
+export const SERIAL_BAUD_RATES = [
+  115200, 9600, 19200, 38400, 57600, 230400, 460800, 921600, 1200, 2400, 4800,
+] as const;
+
+/** Mirrors `termoso_core::serial::COMMON_CHARSETS`. */
+export const SERIAL_CHARSETS: readonly { value: string; label: string }[] = [
+  { value: "utf-8", label: "UTF-8" },
+  { value: "iso-8859-1", label: "ISO-8859-1 (Latin-1)" },
+  { value: "iso-8859-2", label: "ISO-8859-2 (Latin-2)" },
+  { value: "iso-8859-15", label: "ISO-8859-15 (Latin-9)" },
+  { value: "windows-1250", label: "Windows-1250" },
+  { value: "windows-1251", label: "Windows-1251" },
+  { value: "windows-1252", label: "Windows-1252" },
+  { value: "koi8-r", label: "KOI8-R" },
+  { value: "koi8-u", label: "KOI8-U" },
+  { value: "gbk", label: "GBK" },
+  { value: "gb18030", label: "GB18030" },
+  { value: "big5", label: "Big5" },
+  { value: "shift_jis", label: "Shift_JIS" },
+  { value: "euc-jp", label: "EUC-JP" },
+  { value: "euc-kr", label: "EUC-KR" },
+];
+
+export function defaultSerialLine(): SerialLine {
+  return {
+    baudRate: 115200,
+    dataBits: 8,
+    stopBits: 1,
+    parity: "none",
+    flowControl: "none",
+    charset: "utf-8",
+  };
+}
+
+/** A serial device found on this machine. */
+export interface SerialPortInfo {
+  path: string;
+  kind: "usb" | "pci" | "bluetooth" | "unknown";
+  manufacturer: string | null;
+  product: string | null;
+  serialNumber: string | null;
+}
 
 /** Raw `proxy` entity payload. */
 export interface ProxyData {
@@ -175,6 +308,7 @@ export function emptyHostForm(vaultId: Uuid, groupId: Uuid | null): HostForm {
     label: "",
     address: "",
     groupId,
+    ssh: true,
     port: null,
     username: "",
     password: null,
@@ -183,11 +317,13 @@ export function emptyHostForm(vaultId: Uuid, groupId: Uuid | null): HostForm {
     tagIds: [],
     notes: "",
     osName: null,
+    icon: null,
+    ipVersion: "auto",
     agentForwarding: false,
     startupSnippetId: null,
     hostChainId: null,
     proxyId: null,
-    protocol: "ssh",
+    telnet: null,
     envVariables: [],
     keepAliveInterval: null,
     timeout: null,
@@ -271,6 +407,8 @@ export interface TagInfo {
   vaultId: Uuid;
   label: string;
   color: string | null;
+  /** Hosts carrying the tag. */
+  hosts: number;
 }
 
 export interface Entity<T> {
@@ -428,6 +566,8 @@ export interface SnippetCard {
   closeAfterRun: boolean;
   sortOrder: number;
   variables: string[];
+  /** Hosts the snippet is configured to run on, in execution order. */
+  targetHostIds: Uuid[];
   updatedAt: string;
   dirty: boolean;
 }
@@ -469,6 +609,98 @@ export interface KnownHostCard {
 
 export interface ImportReport {
   added: number;
+}
+
+// ───────────────────────────── import (ssh_config / PuTTY / CSV) ─────────────────────────────
+
+export type ImportSource = "ssh_config" | "putty" | "csv";
+
+export interface ImportedProxy {
+  kind: string;
+  host: string;
+  port: number;
+  username: string;
+  /** The password itself never reaches the UI. */
+  hasPassword: boolean;
+}
+
+export interface ImportedHost {
+  label: string;
+  address: string;
+  protocol: string;
+  port: number | null;
+  username: string;
+  hasPassword: boolean;
+  groupPath: string[];
+  tags: string[];
+  keyPath: string | null;
+  jumpHosts: string[];
+  proxy: ImportedProxy | null;
+  agentForwarding: boolean;
+  envVariables: [string, string][];
+  keepAliveInterval: number | null;
+  timeout: number | null;
+  warnings: string[];
+}
+
+export interface ImportedKey {
+  path: string;
+  name: string;
+  keyType: string;
+  bits: number;
+  fingerprint: string;
+  encrypted: boolean;
+  publicKey: string;
+}
+
+export interface ImportedKnownHost {
+  hostname: string;
+  keyType: string;
+  fingerprint: string;
+  line: string;
+}
+
+export interface ImportedPfRule {
+  hostLabel: string;
+  kind: PfKind;
+  boundAddress: string;
+  localPort: number;
+  remoteHost: string;
+  remotePort: number;
+}
+
+/** Parsed source; nothing is written until `importApply` with a selection. */
+export interface ImportPreview {
+  id: Uuid;
+  source: ImportSource;
+  origin: string;
+  hosts: ImportedHost[];
+  keys: ImportedKey[];
+  knownHosts: ImportedKnownHost[];
+  pfRules: ImportedPfRule[];
+  warnings: string[];
+}
+
+/** Indexes into the preview lists. */
+export interface ImportSelection {
+  hosts: number[];
+  keys: number[];
+  knownHosts: number[];
+  pfRules: number[];
+}
+
+export interface ImportApplyReport {
+  hosts: number;
+  groups: number;
+  tags: number;
+  keys: number;
+  knownHosts: number;
+  pfRules: number;
+  hostChains: number;
+  proxies: number;
+  skippedHosts: number;
+  skippedKeys: number;
+  warnings: string[];
 }
 
 // ───────────────────────────── session logs ─────────────────────────────
@@ -623,17 +855,28 @@ export interface ConnectionHistory {
   error: string | null;
 }
 
+/** A command line typed in a terminal (encrypted at rest; never the output). */
+export interface CommandHistory {
+  host_id: Uuid | null;
+  command: string;
+}
+
 export interface HistoryItem<T> {
   id: Uuid;
   created_at: string;
   data: T;
 }
 
+export interface DirEntry {
+  name: string;
+  dir: boolean;
+}
+
 export type SessionState = "connecting" | "connected";
 
 export interface SessionInfo {
   id: Uuid;
-  protocol: "ssh" | "telnet" | "local";
+  protocol: "ssh" | "telnet" | "serial" | "local";
   title: string;
   target: string;
   hostId: Uuid | null;
@@ -645,6 +888,8 @@ export interface SessionInfo {
   via: string[];
   /** Colour scheme configured on the host (or inherited); null follows the app setting. */
   colorScheme: string | null;
+  /** Base name of the user's shell (`bash`, `zsh`, …) once known. */
+  shell: string | null;
 }
 
 export interface SshAlgorithms {
@@ -659,18 +904,82 @@ export function isPostQuantumKex(a: SshAlgorithms | null): boolean {
   return !!a && (a.kex.includes("mlkem") || a.kex.includes("sntrup"));
 }
 
+/** Stage of an SSH connection attempt (see `ConnectPhase` in termoso-core). */
+export type ConnectPhase =
+  | { kind: "resolving" }
+  | { kind: "connecting"; via: string }
+  | { kind: "handshake" }
+  | { kind: "host_key" }
+  | { kind: "auth"; method: string }
+  | { kind: "authenticated" };
+
 export type SessionEvent =
   | { type: "connecting"; id: Uuid; info: SessionInfo }
   | { type: "connected"; id: Uuid; info: SessionInfo }
+  | { type: "progress"; id: Uuid; hop: string | null; phase: ConnectPhase }
   | { type: "notice"; id: Uuid; message: string }
   | { type: "exit"; id: Uuid; code: number | null; signal: string | null }
   | { type: "error"; id: Uuid; message: string }
+  | { type: "shell"; id: Uuid; shell: string }
   | { type: "closed"; id: Uuid };
 
 export type OpenTarget =
-  | { kind: "host"; host_id: Uuid }
-  | { kind: "quick"; address: string; username?: string | null; port?: number | null }
+  | {
+      kind: "host";
+      host_id: Uuid;
+      /** Which section to open; defaults to SSH when the host has one. */
+      protocol?: HostProtocol | null;
+    }
+  | { kind: "serial"; path: string; line: SerialLine }
+  | {
+      kind: "quick";
+      address: string;
+      username?: string | null;
+      port?: number | null;
+      /** `ssh` (default) or `telnet`. */
+      protocol?: "ssh" | "telnet" | null;
+    }
   | { kind: "local" };
+
+/** Split tree of a saved tab; leaves are connection targets. */
+export type LayoutTemplate =
+  | { kind: "leaf"; target: OpenTarget }
+  | {
+      kind: "split";
+      direction: "row" | "column";
+      ratio: number;
+      first: LayoutTemplate;
+      second: LayoutTemplate;
+    };
+
+export type TabViewMode = "split" | "list";
+
+export interface WorkspaceTemplate {
+  id: Uuid;
+  name: string;
+  viewMode: TabViewMode;
+  layout: LayoutTemplate;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SnapshotTab {
+  /** Workspace name; `null` for a plain session tab. */
+  name: string | null;
+  viewMode: TabViewMode;
+  templateId: Uuid | null;
+  layout: LayoutTemplate;
+}
+
+export interface SessionSnapshot {
+  savedAt: string;
+  tabs: SnapshotTab[];
+}
+
+export interface WorkspacesState {
+  templates: WorkspaceTemplate[];
+  lastSession: SessionSnapshot | null;
+}
 
 export interface HostKeyInfo {
   host: string;
@@ -749,12 +1058,16 @@ export type SftpEvent = { type: "opened"; id: Uuid; info: SftpInfo } | { type: "
 
 export type Direction = "upload" | "download";
 
+/** What to do with files that already exist at the destination. */
+export type Conflict = "replace" | "skip" | "rename" | "resume";
+
 export interface TransferInfo {
   id: Uuid;
   sftpId: Uuid;
   direction: Direction;
   local: string;
   remote: string;
+  conflict: Conflict;
   startedAt: string;
 }
 
@@ -767,8 +1080,28 @@ export type TransferEvent =
       total: number | null;
       files_done: number;
       files_total: number;
+      files_skipped: number;
       current: string;
     }
-  | { type: "finished"; id: Uuid; bytes: number }
+  | { type: "finished"; id: Uuid; bytes: number; files_skipped: number }
   | { type: "failed"; id: Uuid; message: string }
   | { type: "cancelled"; id: Uuid };
+
+/** A remote file opened locally; saves are uploaded back while it is open. */
+export interface EditInfo {
+  id: Uuid;
+  sftpId: Uuid;
+  remote: string;
+  local: string;
+  name: string;
+  app: string | null;
+  size: number | null;
+  startedAt: string;
+}
+
+export type EditEvent =
+  | { type: "opened"; id: Uuid; info: EditInfo }
+  | { type: "uploading"; id: Uuid }
+  | { type: "uploaded"; id: Uuid; bytes: number; at: string }
+  | { type: "failed"; id: Uuid; message: string }
+  | { type: "closed"; id: Uuid };

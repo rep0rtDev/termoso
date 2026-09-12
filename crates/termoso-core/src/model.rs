@@ -100,6 +100,9 @@ pub struct ResolvedHost {
     pub chain: Vec<Entity<Host>>,
     /// Telnet config when the host is a telnet target.
     pub telnet: Option<TelnetConfig>,
+    /// Serial line settings when the host is a local serial device.
+    #[serde(default)]
+    pub serial: Option<SerialConfig>,
     /// Group labels from root to the host's group.
     pub group_path: Vec<String>,
     /// Tag labels.
@@ -107,6 +110,19 @@ pub struct ResolvedHost {
 }
 
 impl ResolvedHost {
+    /// `ssh` | `telnet` | `serial`, from which config the host carries.
+    pub fn protocol(&self) -> &'static str {
+        if self.host.data.ssh_config_id.is_some() {
+            "ssh"
+        } else if self.serial.is_some() {
+            "serial"
+        } else if self.telnet.is_some() {
+            "telnet"
+        } else {
+            "ssh"
+        }
+    }
+
     /// Effective SSH port.
     pub fn port(&self) -> u16 {
         self.ssh.port.unwrap_or(22)

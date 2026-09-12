@@ -31,7 +31,9 @@ import { Page, PageBody, PageHeader } from "@/components/PageHeader";
 import { EntityCard, Field, IconTile, Loading, Mono, ToolIconButton } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
-import { keys, useDefaultVault, useHosts, usePfRules } from "@/ipc/hooks";
+import { keys, useHosts, usePfRules } from "@/ipc/hooks";
+import { useActiveVault } from "@/app/vault";
+import { useForwardRequests } from "@/app/navigation";
 import {
   errorMessage,
   type HostCard,
@@ -95,6 +97,7 @@ function RuleDialog({
   vaultId,
   hosts,
   initial,
+  hostId,
   busy,
   onCancel,
   onConfirm,
@@ -102,6 +105,8 @@ function RuleDialog({
   vaultId: Uuid;
   hosts: HostCard[];
   initial: PfRuleCard | null;
+  /** Pre-selected host for a new rule. */
+  hostId?: Uuid | null;
   busy: boolean;
   onCancel: () => void;
   onConfirm: (form: PfRuleForm) => void;
@@ -124,7 +129,7 @@ function RuleDialog({
           id: null,
           vaultId,
           label: "",
-          hostId: hosts[0]?.id ?? "",
+          hostId: hostId ?? hosts.find((h) => h.protocol === "ssh")?.id ?? "",
           kind: "local",
           boundAddress: "127.0.0.1",
           localPort: 8080,
@@ -256,18 +261,19 @@ function RuleDialog({
 
 type DialogState =
   | { kind: "none" }
-  | { kind: "edit"; rule: PfRuleCard | null }
+  | { kind: "edit"; rule: PfRuleCard | null; hostId?: Uuid }
   | { kind: "delete"; rule: PfRuleCard };
 
 export function ForwardingPage() {
   const snackbar = useSnackbar();
   const qc = useQueryClient();
-  const vault = useDefaultVault();
+  const vault = useActiveVault();
   const vaultId = vault.data?.id ?? null;
   const rules = usePfRules(vaultId);
   const hosts = useHosts(vaultId);
   const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
   const [busyId, setBusyId] = useState<Uuid | null>(null);
+  useForwardRequests((hostId) => setDialog({ kind: "edit", rule: null, hostId }));
 
   useEffect(() => {
     let active = true;
@@ -441,6 +447,7 @@ export function ForwardingPage() {
           vaultId={vaultId}
           hosts={hosts.data ?? []}
           initial={dialog.rule}
+          hostId={dialog.hostId}
           busy={op.isPending}
           onCancel={() => setDialog({ kind: "none" })}
           onConfirm={(form) =>

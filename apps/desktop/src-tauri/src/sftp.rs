@@ -68,6 +68,21 @@ pub enum Direction {
     Download,
 }
 
+/// What to do when a file already exists at the destination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Conflict {
+    /// Overwrite the existing file.
+    #[default]
+    Replace,
+    /// Leave the existing file alone.
+    Skip,
+    /// Keep both: the incoming item lands next to it as `name (1).ext`.
+    Rename,
+    /// Continue an interrupted copy of the same file.
+    Resume,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransferInfo {
@@ -76,6 +91,7 @@ pub struct TransferInfo {
     pub direction: Direction,
     pub local: String,
     pub remote: String,
+    pub conflict: Conflict,
     pub started_at: DateTime<Utc>,
 }
 
@@ -92,11 +108,13 @@ pub enum TransferEvent {
         total: Option<u64>,
         files_done: usize,
         files_total: usize,
+        files_skipped: usize,
         current: String,
     },
     Finished {
         id: Uuid,
         bytes: u64,
+        files_skipped: usize,
     },
     Failed {
         id: Uuid,
@@ -146,7 +164,7 @@ impl SftpSessions {
             .ok_or_else(|| DesktopError::not_found(format!("sftp session {id}")))
     }
 
-    fn sftp(&self, id: Uuid) -> Result<Arc<Sftp>> {
+    pub(crate) fn sftp(&self, id: Uuid) -> Result<Arc<Sftp>> {
         Ok(self.get(id)?.sftp.clone())
     }
 
@@ -285,6 +303,7 @@ pub async fn close<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
     let state = app.state::<AppState>();
     state.prompts.cancel_session(id);
     if let Some(live) = state.sftp.remove(id) {
+        crate::edits::close_for_sftp(app, id).await;
         let _ = live.sftp.close().await;
         let _ = app.emit(SFTP_EVENT, SftpEvent::Closed { id });
     }
@@ -623,7 +642,7 @@ struct Reporter<R: Runtime> {
 }
 
 impl<R: Runtime> Reporter<R> {
-    fn report(&self, done: u64, files_done: usize, current: &str, force: bool) {
+    fn report(&self, done: u64, files_done: usize, skipped: usize, current: &str, force: bool) {
         let mut s = self.state.lock().expect("reporter poisoned");
         let now = Instant::now();
         if !force && now.duration_since(s.0) < PROGRESS_INTERVAL {
@@ -643,9 +662,25 @@ impl<R: Runtime> Reporter<R> {
                 total: self.total,
                 files_done,
                 files_total: self.files_total,
+                files_skipped: skipped,
                 current: current.to_string(),
             },
         );
+    }
+}
+
+/// The entry currently occupying the destination of a would-be transfer, if
+/// any — the UI asks before starting so it can offer Replace / Skip / Rename.
+pub async fn transfer_probe(
+    state: &AppState,
+    sftp_id: Uuid,
+    direction: Direction,
+    local: String,
+    remote: String,
+) -> Result<Option<RemoteEntry>> {
+    match direction {
+        Direction::Upload => Ok(state.sftp.sftp(sftp_id)?.stat(&remote).await.ok()),
+        Direction::Download => Ok(local_stat(local).await.ok()),
     }
 }
 
@@ -655,10 +690,17 @@ pub fn transfer_start<R: Runtime>(
     direction: Direction,
     local: String,
     remote: String,
-    resume: bool,
+    conflict: Conflict,
+    temp: bool,
 ) -> Result<TransferInfo> {
     let state = app.state::<AppState>();
     let sftp = state.sftp.sftp(sftp_id)?;
+    let local_path = PathBuf::from(&local);
+    if temp && !local_path.starts_with(drop_root()) {
+        return Err(DesktopError::invalid(
+            "temp transfers must come from the drop staging area",
+        ));
+    }
     let id = Uuid::new_v4();
     let cancel = CancellationToken::new();
     state
@@ -673,6 +715,7 @@ pub fn transfer_start<R: Runtime>(
         direction,
         local: local.clone(),
         remote: remote.clone(),
+        conflict,
         started_at: Utc::now(),
     };
     let _ = app.emit(
@@ -684,7 +727,7 @@ pub fn transfer_start<R: Runtime>(
     );
     tauri::async_runtime::spawn(async move {
         let result = tokio::select! {
-            r = run_transfer(&app, id, sftp, direction, PathBuf::from(local), remote, resume, cancel.clone()) => r,
+            r = run_transfer(&app, id, sftp, direction, local_path.clone(), remote, conflict, cancel.clone()) => r,
             _ = cancel.cancelled() => Err(CoreError::Cancelled.into()),
         };
         app.state::<AppState>()
@@ -693,8 +736,15 @@ pub fn transfer_start<R: Runtime>(
             .lock()
             .expect("sftp poisoned")
             .remove(&id);
+        if temp {
+            drop_discard(&local_path).await;
+        }
         let ev = match result {
-            Ok(bytes) => TransferEvent::Finished { id, bytes },
+            Ok((bytes, files_skipped)) => TransferEvent::Finished {
+                id,
+                bytes,
+                files_skipped,
+            },
             Err(e) if e.kind == "cancelled" => TransferEvent::Cancelled { id },
             Err(e) => TransferEvent::Failed {
                 id,
@@ -706,17 +756,82 @@ pub fn transfer_start<R: Runtime>(
     Ok(info)
 }
 
+/// `name (1).ext`, `name (2).ext`, … for the first `n` that keeps `taken` false.
+async fn unique_name<F, Fut>(name: &str, taken: F) -> Result<String>
+where
+    F: Fn(String) -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    let (stem, ext) = match name.rfind('.') {
+        Some(i) if i > 0 => (&name[..i], &name[i..]),
+        _ => (name, ""),
+    };
+    for n in 1..1000 {
+        let candidate = format!("{stem} ({n}){ext}");
+        if !taken(candidate.clone()).await {
+            return Ok(candidate);
+        }
+    }
+    Err(DesktopError::invalid(format!("no free name for {name}")))
+}
+
+fn remote_split(path: &str) -> (String, String) {
+    let trimmed = path.trim_end_matches('/');
+    match trimmed.rfind('/') {
+        Some(i) => (
+            trimmed[..i.max(1)].to_string(),
+            trimmed[i + 1..].to_string(),
+        ),
+        None => (String::new(), trimmed.to_string()),
+    }
+}
+
+async fn unique_remote(sftp: &Sftp, path: &str) -> Result<String> {
+    let (dir, name) = remote_split(path);
+    let fresh = unique_name(&name, |c| {
+        let candidate = remote_join(&dir, &c);
+        async move { sftp.exists(&candidate).await.unwrap_or(true) }
+    })
+    .await?;
+    Ok(remote_join(&dir, &fresh))
+}
+
+async fn unique_local(path: &Path) -> Result<PathBuf> {
+    let dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let fresh = unique_name(&name, |c| {
+        let p = dir.join(c);
+        async move { tokio::fs::symlink_metadata(p).await.is_ok() }
+    })
+    .await?;
+    Ok(dir.join(fresh))
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_transfer<R: Runtime>(
     app: &AppHandle<R>,
     id: Uuid,
     sftp: Arc<Sftp>,
     direction: Direction,
-    local: PathBuf,
-    remote: String,
-    resume: bool,
+    mut local: PathBuf,
+    mut remote: String,
+    conflict: Conflict,
     cancel: CancellationToken,
-) -> Result<u64> {
+) -> Result<(u64, usize)> {
+    if conflict == Conflict::Rename {
+        match direction {
+            Direction::Upload if sftp.exists(&remote).await? => {
+                remote = unique_remote(&sftp, &remote).await?;
+            }
+            Direction::Download if tokio::fs::symlink_metadata(&local).await.is_ok() => {
+                local = unique_local(&local).await?;
+            }
+            _ => {}
+        }
+    }
     let plan = match direction {
         Direction::Upload => {
             let (l, r) = (local.clone(), remote.clone());
@@ -743,20 +858,32 @@ async fn run_transfer<R: Runtime>(
 
     let mut base = 0u64;
     let mut moved = 0u64;
+    let mut skipped = 0usize;
     for (i, item) in plan.files.iter().enumerate() {
         let current = match direction {
             Direction::Upload => item.remote.clone(),
             Direction::Download => item.local.to_string_lossy().into_owned(),
         };
-        reporter.report(base, i, &current, true);
+        reporter.report(base, i, skipped, &current, true);
+        if conflict == Conflict::Skip {
+            let exists = match direction {
+                Direction::Upload => sftp.exists(&item.remote).await?,
+                Direction::Download => tokio::fs::symlink_metadata(&item.local).await.is_ok(),
+            };
+            if exists {
+                skipped += 1;
+                base += item.size.unwrap_or(0);
+                continue;
+            }
+        }
         let rep = reporter.clone();
         let cur = current.clone();
         let opts = TransferOptions {
-            resume,
+            resume: conflict == Conflict::Resume,
             preserve_mtime: true,
             cancel: cancel.clone(),
             progress: Some(Arc::new(move |p: Progress| {
-                rep.report(base + p.done, i, &cur, false);
+                rep.report(base + p.done, i, skipped, &cur, false);
             })),
         };
         moved += match direction {
@@ -765,6 +892,172 @@ async fn run_transfer<R: Runtime>(
         };
         base += item.size.unwrap_or(0);
     }
-    reporter.report(base, plan.files.len(), "", true);
-    Ok(moved)
+    reporter.report(base, plan.files.len(), skipped, "", true);
+    Ok((moved, skipped))
+}
+
+// ───────────────────────────── drops from the OS ─────────────────────────────
+//
+// The webview receives files dragged in from the desktop as `File` blobs
+// without paths, so their bytes are streamed into a private staging directory
+// and uploaded from there; the staged copy is removed once the transfer ends.
+
+fn drop_root() -> PathBuf {
+    std::env::temp_dir().join("termoso-drop")
+}
+
+#[cfg(unix)]
+fn restrict(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+}
+
+#[cfg(not(unix))]
+fn restrict(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// Create a fresh staging directory and return its path.
+pub async fn drop_begin() -> Result<String> {
+    let dir = drop_root().join(Uuid::new_v4().to_string());
+    tokio::task::spawn_blocking({
+        let dir = dir.clone();
+        move || -> std::io::Result<()> {
+            std::fs::create_dir_all(&dir)?;
+            restrict(&dir)
+        }
+    })
+    .await
+    .map_err(|e| DesktopError::new("io", e.to_string()))??;
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+fn staged_path(dir: &str, rel: &str) -> Result<PathBuf> {
+    let root = PathBuf::from(dir);
+    if !root.starts_with(drop_root()) || rel.is_empty() {
+        return Err(DesktopError::invalid("invalid drop target"));
+    }
+    let mut out = root;
+    for seg in rel.split(['/', '\\']) {
+        if seg.is_empty() || seg == "." || seg == ".." {
+            return Err(DesktopError::invalid("invalid drop path"));
+        }
+        out.push(seg);
+    }
+    Ok(out)
+}
+
+/// Append a chunk of a dropped file (creating it and its parents on the first
+/// chunk).
+pub async fn drop_write(dir: String, rel: String, bytes: Vec<u8>, append: bool) -> Result<()> {
+    let path = staged_path(&dir, &rel)?;
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let mut file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(append)
+        .truncate(!append)
+        .open(&path)
+        .await?;
+    tokio::io::AsyncWriteExt::write_all(&mut file, &bytes).await?;
+    tokio::io::AsyncWriteExt::flush(&mut file).await?;
+    Ok(())
+}
+
+/// Materialise an (empty) dropped directory.
+pub async fn drop_mkdir(dir: String, rel: String) -> Result<()> {
+    let path = staged_path(&dir, &rel)?;
+    tokio::fs::create_dir_all(path).await?;
+    Ok(())
+}
+
+/// Remove a staged item and its staging directory once nothing is left there.
+async fn drop_discard(path: &Path) {
+    if !path.starts_with(drop_root()) {
+        return;
+    }
+    match tokio::fs::symlink_metadata(path).await {
+        Ok(m) if m.is_dir() => {
+            let _ = tokio::fs::remove_dir_all(path).await;
+        }
+        Ok(_) => {
+            let _ = tokio::fs::remove_file(path).await;
+        }
+        Err(_) => {}
+    }
+    if let Some(parent) = path.parent()
+        && parent != drop_root()
+    {
+        let _ = tokio::fs::remove_dir(parent).await;
+    }
+}
+
+/// Drop a staging directory the UI gave up on before any transfer started.
+pub async fn drop_abort(dir: String) -> Result<()> {
+    let path = PathBuf::from(dir);
+    if path.parent() != Some(drop_root().as_path()) {
+        return Err(DesktopError::invalid("invalid drop target"));
+    }
+    let _ = tokio::fs::remove_dir_all(path).await;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn unique_name_keeps_extension_and_counts_up() {
+        let taken = |c: String| async move { c == "a (1).txt" || c == "a (2).txt" };
+        assert_eq!(unique_name("a.txt", taken).await.unwrap(), "a (3).txt");
+        let free = |_c: String| async move { false };
+        assert_eq!(unique_name("Makefile", free).await.unwrap(), "Makefile (1)");
+        assert_eq!(unique_name(".env", free).await.unwrap(), ".env (1)");
+    }
+
+    #[test]
+    fn remote_paths_split_and_join() {
+        assert_eq!(
+            remote_split("/srv/www/index.html"),
+            ("/srv/www".into(), "index.html".into())
+        );
+        assert_eq!(remote_split("/top"), ("/".into(), "top".into()));
+        assert_eq!(remote_split("/srv/dir/"), ("/srv".into(), "dir".into()));
+        assert_eq!(remote_join("/", "x"), "/x");
+        assert_eq!(remote_join("/a", "b"), "/a/b");
+    }
+
+    #[test]
+    fn staged_paths_stay_inside_their_directory() {
+        let dir = drop_root().join("test-stage");
+        let dir_s = dir.to_string_lossy().into_owned();
+        assert_eq!(
+            staged_path(&dir_s, "a/b.txt").unwrap(),
+            dir.join("a").join("b.txt")
+        );
+        assert!(staged_path(&dir_s, "../escape").is_err());
+        assert!(staged_path(&dir_s, "a/../../escape").is_err());
+        assert!(staged_path(&dir_s, "").is_err());
+        assert!(staged_path("/tmp/elsewhere", "a").is_err());
+    }
+
+    #[tokio::test]
+    async fn drop_staging_roundtrip() {
+        let dir = drop_begin().await.unwrap();
+        drop_mkdir(dir.clone(), "sub".into()).await.unwrap();
+        drop_write(dir.clone(), "sub/f.bin".into(), b"hel".to_vec(), false)
+            .await
+            .unwrap();
+        drop_write(dir.clone(), "sub/f.bin".into(), b"lo".to_vec(), true)
+            .await
+            .unwrap();
+        let path = PathBuf::from(&dir).join("sub").join("f.bin");
+        assert_eq!(tokio::fs::read(&path).await.unwrap(), b"hello");
+        drop_discard(&PathBuf::from(&dir).join("sub")).await;
+        assert!(!path.exists());
+        assert!(!PathBuf::from(&dir).exists());
+        assert!(drop_abort("/tmp/not-a-drop".into()).await.is_err());
+    }
 }

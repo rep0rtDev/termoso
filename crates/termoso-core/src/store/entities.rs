@@ -12,8 +12,8 @@ use uuid::Uuid;
 use super::{Store, parse_time, parse_uuid};
 use crate::error::{CoreError, Result};
 use crate::model::{
-    AnyEntity, Entity, Group, Host, Identity, Payload, Proxy, ResolvedHost, SshCertificate,
-    SshConfig, SshKey, Tag, TagHost, TelnetConfig,
+    AnyEntity, Entity, Group, Host, Identity, Payload, Proxy, ResolvedHost, SerialConfig,
+    SshCertificate, SshConfig, SshKey, Tag, TagHost, TelnetConfig,
 };
 
 /// Raw local row (ciphertext), as the sync engine sees it.
@@ -570,6 +570,13 @@ impl Store {
             None
         };
 
+        let serial = match host.data.serial_config_id {
+            Some(cid) if host.data.ssh_config_id.is_none() => {
+                self.get::<SerialConfig>(cid)?.map(|c| c.data)
+            }
+            _ => None,
+        };
+
         let identity_id = ssh.identity_id.or_else(|| {
             if host.data.ssh_config_id.is_none() {
                 telnet.as_ref().and_then(|t| t.identity_id)
@@ -633,6 +640,7 @@ impl Store {
             proxy,
             chain,
             telnet,
+            serial,
             group_path,
             tags,
         })

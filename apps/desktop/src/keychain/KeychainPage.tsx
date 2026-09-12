@@ -41,7 +41,8 @@ import {
 } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
-import { useDefaultVault, useHosts, useIdentities, useSshKeys } from "@/ipc/hooks";
+import { useHosts, useIdentities, useSshKeys } from "@/ipc/hooks";
+import { useActiveVault } from "@/app/vault";
 import { errorMessage, type IdentityCard, type KeyCard } from "@/ipc/types";
 import { sizes } from "@/theme/theme";
 import { NameDialog } from "@/sftp/dialogs";
@@ -76,7 +77,7 @@ async function copy(text: string) {
 export function KeychainPage() {
   const snackbar = useSnackbar();
   const qc = useQueryClient();
-  const vault = useDefaultVault();
+  const vault = useActiveVault();
   const vaultId = vault.data?.id ?? null;
   const sshKeys = useSshKeys(vaultId);
   const identities = useIdentities(vaultId);

@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   Box,
   Button,
@@ -20,18 +21,24 @@ import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
-import type { FsEntry, Uuid } from "@/ipc/types";
+import * as ipc from "@/ipc/commands";
+import type { Conflict, Direction, FsEntry, Uuid } from "@/ipc/types";
 import { errorMessage } from "@/ipc/types";
-import { useHosts } from "@/ipc/hooks";
+import { useHosts, useSettings } from "@/ipc/hooks";
 import { useSnackbar } from "@/components/Snackbar";
 import { IconTile, Toolbar } from "@/components/ui";
 import { HostAvatar } from "@/hosts/HostAvatar";
 import { useTerminal } from "@/terminal/store";
-import { FilePane } from "./FilePane";
+import { ConflictDialog, type ConflictDecision, type ConflictPrompt } from "./ConflictDialog";
+import { FilePane, type Side } from "./FilePane";
+import { OpenWithDialog, extensionOf } from "./OpenWithDialog";
 import { TransfersPanel } from "./TransfersPanel";
-import { baseName, joinPath } from "./format";
+import { dropTargetAt, stageDrop, statPaths } from "./drop";
+import { joinPath } from "./format";
 import {
   closeSftp,
+  editingPaths,
+  openEdit,
   openSftpForHost,
   openSftpForSession,
   reconnectSftp,
@@ -39,6 +46,13 @@ import {
   startTransfer,
   useSftp,
 } from "./store";
+
+interface Planned {
+  entry: FsEntry;
+  local: string;
+  remote: string;
+  existing: FsEntry | null;
+}
 
 export function SftpPage() {
   const order = useSftp((s) => s.order);
@@ -48,22 +62,154 @@ export function SftpPage() {
   const [picker, setPicker] = useState(false);
   const [localPath, setLocalPath] = useState<string | null>(null);
   const [remotePath, setRemotePath] = useState<string | null>(null);
+  const [prompt, setPrompt] = useState<ConflictPrompt | null>(null);
+  const [openWith, setOpenWith] = useState<{ side: Side; entry: FsEntry } | null>(null);
   const snack = useSnackbar();
+  const settings = useSettings();
+  const edits = useSftp((s) => s.edits);
+  const editing = useMemo(
+    () => (activeId ? editingPaths(Object.values(edits), activeId) : undefined),
+    [edits, activeId],
+  );
+  /** Batches wait for each other so only one conflict dialog is up at a time. */
+  const queue = useRef(Promise.resolve());
 
   const onLocalPath = useCallback((p: string) => setLocalPath(p), []);
   const onRemotePath = useCallback((p: string) => setRemotePath(p), []);
 
-  const transfer = (direction: "upload" | "download", entries: FsEntry[]) => {
-    if (active?.status !== "open") return;
-    const dest = direction === "upload" ? remotePath : localPath;
-    if (!dest) return;
-    for (const e of entries) {
-      const local = direction === "upload" ? e.path : joinPath(dest, baseName(e.path));
-      const remote = direction === "upload" ? joinPath(dest, baseName(e.path)) : e.path;
-      startTransfer({ sftpId: active.id, direction, local, remote }).catch((err: unknown) =>
-        snack.error(errorMessage(err)),
-      );
+  const ask = (p: Omit<ConflictPrompt, "resolve">) =>
+    new Promise<ConflictDecision | null>((resolve) => {
+      setPrompt({
+        ...p,
+        resolve: (d) => {
+          setPrompt(null);
+          resolve(d);
+        },
+      });
+    });
+
+  const runBatch = async (
+    sftpId: Uuid,
+    direction: Direction,
+    entries: FsEntry[],
+    dest: string,
+    temp: boolean,
+  ) => {
+    const items: Planned[] = await Promise.all(
+      entries.map(async (entry) => {
+        const local = direction === "upload" ? entry.path : joinPath(dest, entry.name);
+        const remote = direction === "upload" ? joinPath(dest, entry.name) : entry.path;
+        const existing = await ipc
+          .transferProbe({ sftpId, direction, local, remote })
+          .catch(() => null);
+        return { entry, local, remote, existing };
+      }),
+    );
+    const conflicts = items.flatMap((i) =>
+      i.existing ? [{ entry: i.entry, existing: i.existing }] : [],
+    );
+    const decisions = new Map<string, Conflict>();
+    let forAll: Conflict | null = null;
+    for (const [i, c] of conflicts.entries()) {
+      if (forAll) {
+        decisions.set(c.entry.path, forAll);
+        continue;
+      }
+      const d = await ask({
+        direction,
+        incoming: c.entry,
+        existing: c.existing,
+        dest,
+        remaining: conflicts.length - i - 1,
+      });
+      if (!d) return false;
+      decisions.set(c.entry.path, d.conflict);
+      if (d.all) forAll = d.conflict;
     }
+    for (const it of items) {
+      await startTransfer({
+        sftpId,
+        direction,
+        local: it.local,
+        remote: it.remote,
+        conflict: decisions.get(it.entry.path) ?? "replace",
+        temp,
+      });
+    }
+    return true;
+  };
+
+  const transfer = (direction: Direction, entries: FsEntry[], dest?: string, staging?: string) => {
+    const target = dest ?? (direction === "upload" ? remotePath : localPath);
+    if (active?.status !== "open" || !target || entries.length === 0) {
+      if (staging) void ipc.dropAbort(staging).catch(() => undefined);
+      return;
+    }
+    const sftpId = active.id;
+    queue.current = queue.current
+      .then(() => runBatch(sftpId, direction, entries, target, staging !== undefined))
+      .then(async (started) => {
+        if (!started && staging) await ipc.dropAbort(staging);
+      })
+      .catch((err: unknown) => {
+        snack.error(errorMessage(err));
+        if (staging) void ipc.dropAbort(staging).catch(() => undefined);
+      });
+  };
+
+  const receiveFiles = (dt: DataTransfer, dest: string) => {
+    stageDrop(dt)
+      .then((staged) => {
+        if (staged) transfer("upload", staged.entries, dest, staged.dir ?? undefined);
+      })
+      .catch((err: unknown) => snack.error(errorMessage(err)));
+  };
+
+  // Native drops (Tauri drag-drop handler) carry real paths and land wherever
+  // the cursor is; the pane marks its drop zones with data attributes.
+  const onPaths = (paths: string[], dest: string) => {
+    statPaths(paths)
+      .then((entries) => transfer("upload", entries, dest))
+      .catch((err: unknown) => snack.error(errorMessage(err)));
+  };
+  const receivePaths = useRef(onPaths);
+  useEffect(() => {
+    receivePaths.current = onPaths;
+  });
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let alive = true;
+    void getCurrentWebview()
+      .onDragDropEvent((e) => {
+        if (e.payload.type !== "drop" || e.payload.paths.length === 0) return;
+        const { x, y } = e.payload.position.toLogical(window.devicePixelRatio);
+        const target = dropTargetAt(x, y);
+        if (target?.side === "remote") receivePaths.current(e.payload.paths, target.dest);
+      })
+      .then((off) => {
+        if (alive) unlisten = off;
+        else off();
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
+  }, []);
+
+  const assoc = useMemo(() => settings.data?.sftpOpenWith ?? {}, [settings.data]);
+  const openEntry = (side: Side, entry: FsEntry, app: string | null) => {
+    const run =
+      side === "local"
+        ? ipc.localOpen(entry.path, app)
+        : active?.status === "open"
+          ? openEdit(active.id, entry.path, app)
+          : Promise.resolve();
+    run.catch((err: unknown) => snack.error(errorMessage(err)));
+  };
+  const onOpen = (side: Side) => (entry: FsEntry, mode: "default" | "with") => {
+    if (mode === "with") setOpenWith({ side, entry });
+    else openEntry(side, entry, assoc[extensionOf(entry.name)] ?? null);
   };
 
   const remoteReady = active?.status === "open";
@@ -112,6 +258,8 @@ export function SftpPage() {
             oppositePath={remoteReady ? remotePath : null}
             onPathChange={onLocalPath}
             onTransfer={(entries) => transfer("upload", entries)}
+            onReceive={(entries, dest) => transfer("download", entries, dest)}
+            onOpen={onOpen("local")}
           />
         </PaneFrame>
         <Box sx={{ width: "1px", bgcolor: "border.light", flexShrink: 0 }} />
@@ -125,6 +273,10 @@ export function SftpPage() {
               oppositePath={localPath}
               onPathChange={onRemotePath}
               onTransfer={(entries) => transfer("download", entries)}
+              onReceive={(entries, dest) => transfer("upload", entries, dest)}
+              onReceiveFiles={receiveFiles}
+              onOpen={onOpen("remote")}
+              editing={editing}
             />
           ) : (
             <RemotePlaceholder
@@ -139,6 +291,16 @@ export function SftpPage() {
 
       <TransfersPanel />
       <ConnectPicker open={picker} onClose={() => setPicker(false)} />
+      <ConflictDialog prompt={prompt} />
+      <OpenWithDialog
+        key={openWith ? `${openWith.side}:${openWith.entry.path}` : ""}
+        entry={openWith?.entry ?? null}
+        onCancel={() => setOpenWith(null)}
+        onConfirm={(app) => {
+          if (openWith) openEntry(openWith.side, openWith.entry, app);
+          setOpenWith(null);
+        }}
+      />
     </Box>
   );
 }

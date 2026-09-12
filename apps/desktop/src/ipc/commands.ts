@@ -7,9 +7,14 @@ import type {
   AgentKeys,
   AppInfo,
   BookmarkCard,
+  CommandHistory,
+  Conflict,
   ConnectionHistory,
+  DirEntry,
   Device,
   Direction,
+  EditEvent,
+  EditInfo,
   Entity,
   ExportToHostResult,
   ForwardEvent,
@@ -23,7 +28,11 @@ import type {
   IdentityCard,
   IdentityForm,
   ImportKeyForm,
+  ImportApplyReport,
+  ImportPreview,
   ImportReport,
+  ImportSelection,
+  ImportSource,
   Inherited,
   KeyCard,
   KnownHostCard,
@@ -48,6 +57,7 @@ import type {
   RunResult,
   ServerInfo,
   SessionEvent,
+  SerialPortInfo,
   SessionInfo,
   Settings,
   SftpEvent,
@@ -63,12 +73,18 @@ import type {
   UpdateEvent,
   UpdateInfo,
   Uuid,
+  VaultMember,
+  WorkspacesState,
 } from "./types";
 
 export const appInfo = () => invoke<AppInfo>("app_info");
 
 export const settingsGet = () => invoke<Settings>("settings_get");
 export const settingsSet = (settings: Settings) => invoke<Settings>("settings_set", { settings });
+
+export const workspacesGet = () => invoke<WorkspacesState>("workspaces_get");
+export const workspacesSet = (workspaces: WorkspacesState) =>
+  invoke<WorkspacesState>("workspaces_set", { workspaces });
 
 export const vaultsList = () => invoke<LocalVault[]>("vaults_list");
 export const vaultDefault = () => invoke<LocalVault>("vault_default");
@@ -109,9 +125,36 @@ export const groupDelete = (id: Uuid, recursive = false) =>
 
 export const tagsList = (vaultId?: Uuid | null) =>
   invoke<TagInfo[]>("tags_list", { vaultId: vaultId ?? null });
+export const tagUpdate = (id: Uuid, label: string, color: string | null) =>
+  invoke<TagInfo>("tag_update", { id, label, color });
+export const tagDelete = (id: Uuid) => invoke<null>("tag_delete", { id });
+export const tagsMerge = (sources: Uuid[], target: Uuid) =>
+  invoke<TagInfo>("tags_merge", { sources, target });
+
+export const serialPorts = () => invoke<SerialPortInfo[]>("serial_ports");
+export const localShells = () => invoke<string[]>("local_shells");
+
+/** Register `termoso://` / `ssh://` / `telnet://` handlers for this user; returns the schemes now registered. */
+export const deepLinksRegister = () => invoke<string[]>("deep_links_register");
 
 export const historyConnections = (limit = 50) =>
   invoke<HistoryItem<ConnectionHistory>[]>("history_connections", { limit });
+export const historyCommands = (limit = 500) =>
+  invoke<HistoryItem<CommandHistory>[]>("history_commands", { limit });
+export const historyRecordCommand = (hostId: Uuid | null, command: string) =>
+  invoke<Uuid | null>("history_record_command", { hostId, command });
+export const historyDelete = (id: Uuid) => invoke<null>("history_delete", { id });
+export const historyClearCommands = () => invoke<null>("history_clear_commands");
+
+/** Directory listing as the session sees it (path completion). */
+export const terminalListDir = (id: Uuid, cwd: string | null, path: string) =>
+  invoke<DirEntry[]>("terminal_list_dir", { id, cwd, path });
+/** Type a stored password (+ Enter) into the session; `null` = the host's own identity. */
+export const terminalInsertPassword = (id: Uuid, identityId: Uuid | null) =>
+  invoke<null>("terminal_insert_password", { id, identityId });
+/** Label of the identity a saved-host session has a password for, if any. */
+export const terminalHostIdentity = (id: Uuid) =>
+  invoke<string | null>("terminal_host_identity", { id });
 
 export const sessionsList = () => invoke<SessionInfo[]>("sessions_list");
 
@@ -182,14 +225,46 @@ export const transferStart = (args: {
   direction: Direction;
   local: string;
   remote: string;
-  resume?: boolean;
+  conflict?: Conflict;
+  temp?: boolean;
 }) => invoke<TransferInfo>("transfer_start", args);
+export const transferProbe = (args: {
+  sftpId: Uuid;
+  direction: Direction;
+  local: string;
+  remote: string;
+}) => invoke<FsEntry | null>("transfer_probe", args);
 export const transferCancel = (id: Uuid) => invoke<boolean>("transfer_cancel", { id });
+export const localOpen = (path: string, withApp: string | null) =>
+  invoke<null>("local_open", { path, with: withApp });
+
+const b64 = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+
+/** Staging area for files dropped from the OS (webviews hand over blobs). */
+export const dropBegin = () => invoke<string>("drop_begin");
+export const dropWrite = (dir: string, rel: string, chunk: Uint8Array, append: boolean) =>
+  invoke<null>("drop_write", chunk, {
+    headers: {
+      "x-drop-dir": b64(dir),
+      "x-drop-path": b64(rel),
+      "x-drop-append": append ? "1" : "0",
+    },
+  });
+export const dropMkdir = (dir: string, rel: string) => invoke<null>("drop_mkdir", { dir, rel });
+export const dropAbort = (dir: string) => invoke<null>("drop_abort", { dir });
+
+export const editsList = () => invoke<EditInfo[]>("edits_list");
+export const editOpen = (sftpId: Uuid, remote: string, withApp: string | null) =>
+  invoke<EditInfo>("edit_open", { sftpId, remote, with: withApp });
+export const editUploadNow = (id: Uuid) => invoke<null>("edit_upload_now", { id });
+export const editClose = (id: Uuid) => invoke<null>("edit_close", { id });
 
 export const onSftpEvent = (cb: (e: SftpEvent) => void): Promise<UnlistenFn> =>
   listen<SftpEvent>("sftp", (ev) => cb(ev.payload));
 export const onTransferEvent = (cb: (e: TransferEvent) => void): Promise<UnlistenFn> =>
   listen<TransferEvent>("transfer", (ev) => cb(ev.payload));
+export const onEditEvent = (cb: (e: EditEvent) => void): Promise<UnlistenFn> =>
+  listen<EditEvent>("sftp_edit", (ev) => cb(ev.payload));
 
 // ───────────────────────────── keychain ─────────────────────────────
 
@@ -257,8 +332,15 @@ export const snippetsList = (vaultId?: Uuid | null) =>
   invoke<SnippetCard[]>("snippets_list", { vaultId: vaultId ?? null });
 export const snippetSave = (form: SnippetForm) => invoke<SnippetCard>("snippet_save", { form });
 export const snippetDelete = (id: Uuid) => invoke<null>("snippet_delete", { id });
-export const snippetRun = (id: Uuid, sessionIds: Uuid[], vars: Record<string, string>) =>
-  invoke<RunResult>("snippet_run", { id, sessionIds, vars });
+export const snippetSetTargets = (id: Uuid, hostIds: Uuid[]) =>
+  invoke<SnippetCard>("snippet_set_targets", { id, hostIds });
+/** `paste` types the script without the final newline so it can be edited first. */
+export const snippetRun = (
+  id: Uuid,
+  sessionIds: Uuid[],
+  vars: Record<string, string>,
+  paste = false,
+) => invoke<RunResult>("snippet_run", { id, sessionIds, vars, paste });
 export const snippetPackages = (vaultId?: Uuid | null) =>
   invoke<PackageNode[]>("snippet_packages", { vaultId: vaultId ?? null });
 export const snippetPackageSave = (args: {
@@ -283,6 +365,20 @@ export const knownHostsExportText = () => invoke<string>("known_hosts_export_tex
 export const knownHostsExportFile = (path: string) =>
   invoke<number>("known_hosts_export_file", { path });
 export const knownHostsDefaultPath = () => invoke<string | null>("known_hosts_default_path");
+
+// import from other tools
+export const importScanSsh = (dir: string | null) =>
+  invoke<ImportPreview>("import_scan_ssh", { dir });
+export const importParseFile = (source: ImportSource, path: string) =>
+  invoke<ImportPreview>("import_parse_file", { source, path });
+export const importScanPuttyRegistry = () => invoke<ImportPreview>("import_scan_putty_registry");
+export const importSshDirDefault = () => invoke<string | null>("import_ssh_dir_default");
+export const importCsvTemplate = () => invoke<string>("import_csv_template");
+export const importCsvTemplateSave = (path: string) =>
+  invoke<null>("import_csv_template_save", { path });
+export const importApply = (vaultId: Uuid, previewId: Uuid, selection: ImportSelection) =>
+  invoke<ImportApplyReport>("import_apply", { vaultId, previewId, selection });
+export const importDiscard = (previewId: Uuid) => invoke<null>("import_discard", { previewId });
 
 // ───────────────────────────── logs ─────────────────────────────
 
@@ -315,6 +411,8 @@ export const accountSignOut = () => invoke<null>("account_sign_out");
 export const accountSyncNow = () => invoke<SyncStatus>("account_sync_now");
 export const accountDevices = () => invoke<Device[]>("account_devices");
 export const accountDeviceRevoke = (id: Uuid) => invoke<null>("account_device_revoke", { id });
+export const accountVaultMembers = (vaultId: Uuid) =>
+  invoke<VaultMember[]>("account_vault_members", { vaultId });
 export const onSyncNotice = (cb: (e: SyncNotice) => void): Promise<UnlistenFn> =>
   listen<SyncNotice>("sync", (ev) => cb(ev.payload));
 
