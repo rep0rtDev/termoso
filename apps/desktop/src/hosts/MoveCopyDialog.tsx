@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
+  Box,
   Button,
   Dialog,
   DialogActions,
@@ -9,10 +10,13 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Radio,
   Typography,
 } from "@mui/material";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
+import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
+import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import { useSnackbar } from "@/components/Snackbar";
 import { useCopyHostsToVault, useGroups, useMoveHosts, useVaults } from "@/ipc/hooks";
 import { errorMessage, type HostCard, type Uuid } from "@/ipc/types";
@@ -59,6 +63,9 @@ function Body({
   const copyToVault = useCopyHostsToVault();
   /** Chosen destination: a group/vault id, `""` for the top level, `null` until picked. */
   const [target, setTarget] = useState<string | null>(null);
+  /** Second step for team vaults: do the credentials travel with the hosts? */
+  const [credStep, setCredStep] = useState(false);
+  const [shared, setShared] = useState(false);
 
   const ids = request.hosts.map((h) => h.id);
   const count = ids.length;
@@ -69,8 +76,16 @@ function Body({
     ? (request.hosts[0]?.groupId ?? "")
     : null;
 
+  const targetVault = (vaults.data ?? []).find((v) => v.id === target);
+  const toTeam = request.kind === "vault" && targetVault?.kind === "team";
+  const move = request.kind === "vault" && request.move;
+
   const run = () => {
     if (target === null) return;
+    if (toTeam && !credStep) {
+      setCredStep(true);
+      return;
+    }
     const done = (msg: string) => {
       snackbar.notify(msg);
       onDone();
@@ -86,10 +101,16 @@ function Body({
       );
     } else if (target !== "") {
       const name = (vaults.data ?? []).find((v) => v.id === target)?.name ?? "vault";
+      const withCredentials = !toTeam || shared;
       copyToVault.mutate(
-        { ids, vaultId: target, move: request.move },
+        { ids, vaultId: target, move, withCredentials },
         {
-          onSuccess: () => done(`${request.move ? "Moved" : "Copied"} ${what} to ${name}`),
+          onSuccess: () =>
+            done(
+              `${move ? "Moved" : "Copied"} ${what} to ${name}${
+                withCredentials ? "" : " without credentials"
+              }`,
+            ),
           onError: fail,
         },
       );
@@ -99,11 +120,57 @@ function Body({
   const title =
     request.kind === "group"
       ? `Move ${what} to…`
-      : request.move
+      : move
         ? `Move ${what} to vault…`
         : `Copy ${what} to vault…`;
 
   const otherVaults = (vaults.data ?? []).filter((v) => v.id !== vaultId);
+
+  if (credStep && targetVault) {
+    return (
+      <>
+        <DialogTitle>Choose where to store credentials</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            {what} {count === 1 ? "is" : "are"} going to {targetVault.name}, a vault the whole team
+            can open. Usernames, passwords and keys are the sensitive part — decide who gets them.
+          </Typography>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            <CredentialsChoice
+              selected={!shared}
+              onSelect={() => setShared(false)}
+              icon={<PersonRoundedIcon fontSize="small" />}
+              title="Personal"
+              text="Your credentials are not shared. Vault members connect with credentials from their personal vaults; the hosts arrive without a username, password or key."
+            />
+            <CredentialsChoice
+              selected={shared}
+              onSelect={() => setShared(true)}
+              icon={<GroupsRoundedIcon fontSize="small" />}
+              title="Team"
+              text={`Your credentials are shared. Everyone with access to ${targetVault.name} can connect with them; keys are re-encrypted into the team vault.`}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button color="inherit" onClick={() => setCredStep(false)} disabled={busy}>
+            Back
+          </Button>
+          <Button variant="contained" onClick={run} disabled={busy}>
+            {busy
+              ? "Working…"
+              : shared
+                ? move
+                  ? "Move with credentials"
+                  : "Copy with credentials"
+                : move
+                  ? "Move without credentials"
+                  : "Copy without credentials"}
+          </Button>
+        </DialogActions>
+      </>
+    );
+  }
 
   return (
     <>
@@ -181,9 +248,68 @@ function Body({
           Cancel
         </Button>
         <Button variant="contained" onClick={run} disabled={busy || target === null}>
-          {busy ? "Working…" : request.kind === "group" || request.move ? "Move" : "Copy"}
+          {busy
+            ? "Working…"
+            : toTeam
+              ? "Next"
+              : request.kind === "group" || request.move
+                ? "Move"
+                : "Copy"}
         </Button>
       </DialogActions>
     </>
+  );
+}
+
+function CredentialsChoice({
+  selected,
+  onSelect,
+  icon,
+  title,
+  text,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  icon: ReactNode;
+  title: string;
+  text: string;
+}) {
+  return (
+    <Box
+      role="radio"
+      aria-checked={selected}
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === " " || e.key === "Enter") onSelect();
+      }}
+      sx={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 1,
+        p: 1.25,
+        pr: 1.5,
+        borderRadius: 2,
+        cursor: "pointer",
+        bgcolor: selected ? "surface.strong" : "surface.high",
+        outline: "1px solid",
+        outlineColor: selected ? "primary.main" : "transparent",
+        outlineOffset: -1,
+        "&:hover": { bgcolor: selected ? "surface.strong" : "surface.highest" },
+      }}
+    >
+      <Radio checked={selected} size="small" sx={{ p: 0.25, mt: -0.25 }} tabIndex={-1} />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+          {icon}
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {title}
+          </Typography>
+        </Box>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
+          {text}
+        </Typography>
+      </Box>
+    </Box>
   );
 }

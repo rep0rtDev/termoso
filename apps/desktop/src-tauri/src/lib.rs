@@ -18,6 +18,7 @@ mod sessions;
 mod sftp;
 mod snippets;
 mod state;
+mod team;
 mod trust;
 mod update;
 mod workspaces;
@@ -239,6 +240,25 @@ pub fn run() {
             commands_tools::account_devices,
             commands_tools::account_device_revoke,
             commands_tools::account_vault_members,
+            commands_tools::teams_list,
+            commands_tools::team_create,
+            commands_tools::team_rename,
+            commands_tools::team_delete,
+            commands_tools::team_leave,
+            commands_tools::team_accept_invite,
+            commands_tools::team_members,
+            commands_tools::team_member_set_role,
+            commands_tools::team_member_remove,
+            commands_tools::team_invites,
+            commands_tools::team_invite,
+            commands_tools::team_invite_revoke,
+            commands_tools::team_pending_keys,
+            commands_tools::team_vault_create,
+            commands_tools::team_vault_rename,
+            commands_tools::team_vault_delete,
+            commands_tools::team_vault_set_access,
+            commands_tools::team_vault_remove_access,
+            commands_tools::team_vault_rotate_key,
             commands_tools::update_check,
             commands_tools::update_install,
             commands_tools::update_restart,

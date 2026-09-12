@@ -30,6 +30,10 @@ export const keys = {
   account: ["account"] as const,
   devices: ["account", "devices"] as const,
   vaultMembers: (id: Uuid) => ["account", "vault-members", id] as const,
+  teams: ["account", "teams"] as const,
+  teamMembers: (id: Uuid) => ["account", "teams", id, "members"] as const,
+  teamInvites: (id: Uuid) => ["account", "teams", id, "invites"] as const,
+  teamPendingKeys: (id: Uuid) => ["account", "teams", id, "pending-keys"] as const,
   serialPorts: ["serialPorts"] as const,
 };
 
@@ -229,6 +233,39 @@ export const useVaultMembers = (vaultId: Uuid | null) =>
     staleTime: 60_000,
   });
 
+export const useTeams = (enabled: boolean) =>
+  useQuery({ queryKey: keys.teams, queryFn: ipc.teamsList, enabled, staleTime: 30_000 });
+export const useTeamMembers = (teamId: Uuid | null) =>
+  useQuery({
+    queryKey: keys.teamMembers(teamId ?? ""),
+    queryFn: () => ipc.teamMembers(teamId ?? ""),
+    enabled: teamId !== null,
+    staleTime: 30_000,
+  });
+export const useTeamInvites = (teamId: Uuid | null, enabled = true) =>
+  useQuery({
+    queryKey: keys.teamInvites(teamId ?? ""),
+    queryFn: () => ipc.teamInvites(teamId ?? ""),
+    enabled: teamId !== null && enabled,
+    staleTime: 30_000,
+  });
+export const useTeamPendingKeys = (teamId: Uuid | null, enabled = true) =>
+  useQuery({
+    queryKey: keys.teamPendingKeys(teamId ?? ""),
+    queryFn: () => ipc.teamPendingKeys(teamId ?? ""),
+    enabled: teamId !== null && enabled,
+    staleTime: 30_000,
+  });
+
+/** Re-reads account, vaults, teams, members and invites after a team mutation. */
+export function useInvalidateTeam() {
+  const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: keys.account });
+    void qc.invalidateQueries({ queryKey: keys.vaults });
+  };
+}
+
 /** Invalidates queries when Rust reports sync / account changes. */
 export function useSyncNotices() {
   const qc = useQueryClient();
@@ -337,8 +374,17 @@ export function useMoveHosts() {
 export function useCopyHostsToVault() {
   const invalidate = useInvalidateVault();
   return useMutation({
-    mutationFn: ({ ids, vaultId, move }: { ids: Uuid[]; vaultId: Uuid; move: boolean }) =>
-      ipc.hostsCopyToVault(ids, vaultId, move),
+    mutationFn: ({
+      ids,
+      vaultId,
+      move,
+      withCredentials,
+    }: {
+      ids: Uuid[];
+      vaultId: Uuid;
+      move: boolean;
+      withCredentials: boolean;
+    }) => ipc.hostsCopyToVault(ids, vaultId, move, withCredentials),
     onSuccess: (_r, v) => invalidate(v.vaultId),
   });
 }

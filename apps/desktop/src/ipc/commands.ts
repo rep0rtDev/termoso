@@ -79,7 +79,15 @@ import type {
   UpdateEvent,
   UpdateInfo,
   Uuid,
+  InviteResult,
+  PendingVaultKey,
+  Team,
+  TeamInvite,
+  TeamMember,
+  TeamRole,
+  VaultAccess,
   VaultMember,
+  VaultRole,
   WorkspacesState,
 } from "./types";
 
@@ -110,8 +118,12 @@ export const hostsDelete = (ids: Uuid[]) => invoke<null>("hosts_delete", { ids }
 export const hostDuplicate = (id: Uuid) => invoke<HostCard>("host_duplicate", { id });
 export const hostsMove = (ids: Uuid[], groupId: Uuid | null) =>
   invoke<null>("hosts_move", { ids, groupId });
-export const hostsCopyToVault = (ids: Uuid[], vaultId: Uuid, moveHosts: boolean) =>
-  invoke<Uuid[]>("hosts_copy_to_vault", { ids, vaultId, moveHosts });
+export const hostsCopyToVault = (
+  ids: Uuid[],
+  vaultId: Uuid,
+  moveHosts: boolean,
+  withCredentials = true,
+) => invoke<Uuid[]>("hosts_copy_to_vault", { ids, vaultId, moveHosts, withCredentials });
 export const hostInherited = (groupId: Uuid | null) =>
   invoke<Inherited>("host_inherited", { groupId });
 
@@ -453,6 +465,39 @@ export const accountVaultMembers = (vaultId: Uuid) =>
   invoke<VaultMember[]>("account_vault_members", { vaultId });
 export const onSyncNotice = (cb: (e: SyncNotice) => void): Promise<UnlistenFn> =>
   listen<SyncNotice>("sync", (ev) => cb(ev.payload));
+
+// ───────────────────────────── teams ─────────────────────────────
+
+export const teamsList = () => invoke<Team[]>("teams_list");
+export const teamCreate = (name: string) => invoke<Team>("team_create", { name });
+export const teamRename = (teamId: Uuid, name: string) =>
+  invoke<Team>("team_rename", { teamId, name });
+export const teamDelete = (teamId: Uuid) => invoke<null>("team_delete", { teamId });
+export const teamLeave = (teamId: Uuid) => invoke<null>("team_leave", { teamId });
+export const teamAcceptInvite = (link: string) => invoke<Team>("team_accept_invite", { link });
+export const teamMembers = (teamId: Uuid) => invoke<TeamMember[]>("team_members", { teamId });
+export const teamMemberSetRole = (teamId: Uuid, userId: Uuid, role: TeamRole) =>
+  invoke<null>("team_member_set_role", { teamId, userId, role });
+export const teamMemberRemove = (teamId: Uuid, userId: Uuid) =>
+  invoke<null>("team_member_remove", { teamId, userId });
+export const teamInvites = (teamId: Uuid) => invoke<TeamInvite[]>("team_invites", { teamId });
+export const teamInvite = (teamId: Uuid, emails: string[], role: TeamRole, vaultIds: Uuid[]) =>
+  invoke<InviteResult[]>("team_invite", { teamId, emails, role, vaultIds });
+export const teamInviteRevoke = (teamId: Uuid, inviteId: Uuid) =>
+  invoke<null>("team_invite_revoke", { teamId, inviteId });
+export const teamPendingKeys = (teamId: Uuid) =>
+  invoke<PendingVaultKey[]>("team_pending_keys", { teamId });
+export const teamVaultCreate = (teamId: Uuid, name: string, access: VaultAccess[]) =>
+  invoke<null>("team_vault_create", { teamId, name, access });
+export const teamVaultRename = (vaultId: Uuid, name: string) =>
+  invoke<null>("team_vault_rename", { vaultId, name });
+export const teamVaultDelete = (vaultId: Uuid) => invoke<null>("team_vault_delete", { vaultId });
+export const teamVaultSetAccess = (vaultId: Uuid, userId: Uuid, role: VaultRole) =>
+  invoke<null>("team_vault_set_access", { vaultId, userId, role });
+export const teamVaultRemoveAccess = (vaultId: Uuid, userId: Uuid) =>
+  invoke<null>("team_vault_remove_access", { vaultId, userId });
+export const teamVaultRotateKey = (vaultId: Uuid) =>
+  invoke<null>("team_vault_rotate_key", { vaultId });
 
 // ───────────────────────────── updates ─────────────────────────────
 

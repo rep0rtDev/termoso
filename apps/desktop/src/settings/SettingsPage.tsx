@@ -12,6 +12,8 @@ import {
   Typography,
 } from "@mui/material";
 import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
+import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
+import LockRoundedIcon from "@mui/icons-material/LockRounded";
 import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import KeyboardRoundedIcon from "@mui/icons-material/KeyboardRounded";
@@ -32,6 +34,8 @@ import { UpdatesCard } from "@/update/UpdatesCard";
 import { FontPicker, FontPreview } from "./FontPicker";
 import { KeyboardPage } from "./KeyboardPage";
 import { SftpPage } from "./SftpPage";
+import { TeamPage } from "@/team/TeamPage";
+import { VaultsPage } from "@/team/VaultsPage";
 import { ThemeGallery } from "./ThemeGallery";
 import {
   errorMessage,
@@ -45,6 +49,8 @@ import {
 
 const PAGES: { id: PageId; label: string; icon: ReactNode }[] = [
   { id: "account", label: "Account & sync", icon: <PersonRoundedIcon /> },
+  { id: "team", label: "Team", icon: <GroupsRoundedIcon /> },
+  { id: "vaults", label: "Vaults", icon: <LockRoundedIcon /> },
   { id: "general", label: "General", icon: <TuneRoundedIcon /> },
   { id: "terminal", label: "Terminal", icon: <TerminalRoundedIcon /> },
   { id: "keyboard", label: "Keyboard", icon: <KeyboardRoundedIcon /> },
@@ -83,12 +89,18 @@ export function SettingsPage() {
           ))}
         </List>
       </Box>
-      <Page>{page === "account" ? <AccountPage /> : <PreferencesPage page={page} />}</Page>
+      {page === "team" ? (
+        <TeamPage />
+      ) : page === "vaults" ? (
+        <VaultsPage />
+      ) : (
+        <Page>{page === "account" ? <AccountPage /> : <PreferencesPage page={page} />}</Page>
+      )}
     </Box>
   );
 }
 
-function PreferencesPage({ page }: { page: Exclude<PageId, "account"> }) {
+function PreferencesPage({ page }: { page: Exclude<PageId, "account" | "team" | "vaults"> }) {
   const snackbar = useSnackbar();
   const settings = useSettings();
   const save = useSaveSettings();

@@ -19,6 +19,7 @@ import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 import type { LocalVault, Uuid } from "@/ipc/types";
 import { useDefaultVault, useVaults } from "@/ipc/hooks";
 import { createStore, useStore } from "@/lib/store";
+import { goToSettings, goToSettingsWith } from "./navigation";
 
 const VAULT_KEY = "termoso.activeVault";
 
@@ -80,6 +81,12 @@ export const vaultHint = (v: LocalVault) =>
         : v.kind === "personal"
           ? "Synced personal vault"
           : "This device only";
+
+/** "Collaborate": who can open this team vault, or the Team page when there is none yet. */
+export function openCollaboration(v: LocalVault | null) {
+  if (v?.kind === "team") goToSettingsWith({ kind: "vault", id: v.id });
+  else goToSettings("team");
+}
 
 const ORIGIN_TOP: PopoverOrigin = { vertical: "top", horizontal: "left" };
 const ORIGIN_BOTTOM: PopoverOrigin = { vertical: "bottom", horizontal: "left" };
