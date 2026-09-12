@@ -29,6 +29,7 @@ import CreateNewFolderRoundedIcon from "@mui/icons-material/CreateNewFolderRound
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
+import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
@@ -58,6 +59,7 @@ import {
 } from "@/ipc/types";
 import { useCreateRequests } from "@/app/navigation";
 import { NameDialog } from "@/sftp/dialogs";
+import { ShellHistoryPanel } from "@/history/ShellHistory";
 import { monoFontFamily, sizes } from "@/theme/theme";
 import { terminalStore, type Pane } from "@/terminal/store";
 import { startRun, summarize, useLastRun, watchRun, type SnippetRun } from "./run";
@@ -577,6 +579,7 @@ export function SnippetsPage() {
   const [pkgFilter, setPkgFilter] = useState<PkgFilter>(ALL);
   const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
   const [selectedId, setSelectedId] = useState<Uuid | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const lastRun = useLastRun(selectedId);
 
   useCreateRequests(["snippet"], () => setDialog({ kind: "edit", snippet: null }));
@@ -640,24 +643,37 @@ export function SnippetsPage() {
     <Page>
       <PageHeader
         actions={
-          <SplitButton
-            label="New snippet"
-            icon={<AddRoundedIcon />}
-            disabled={!vaultId}
-            onClick={() => setDialog({ kind: "edit", snippet: null })}
-            items={[
-              {
-                label: "New snippet",
-                icon: <AddRoundedIcon fontSize="small" />,
-                onClick: () => setDialog({ kind: "edit", snippet: null }),
-              },
-              {
-                label: "New package",
-                icon: <CreateNewFolderRoundedIcon fontSize="small" />,
-                onClick: () => setDialog({ kind: "package", pkg: null }),
-              },
-            ]}
-          />
+          <>
+            <SplitButton
+              label="New snippet"
+              icon={<AddRoundedIcon />}
+              disabled={!vaultId}
+              onClick={() => setDialog({ kind: "edit", snippet: null })}
+              items={[
+                {
+                  label: "New snippet",
+                  icon: <AddRoundedIcon fontSize="small" />,
+                  onClick: () => setDialog({ kind: "edit", snippet: null }),
+                },
+                {
+                  label: "New package",
+                  icon: <CreateNewFolderRoundedIcon fontSize="small" />,
+                  onClick: () => setDialog({ kind: "package", pkg: null }),
+                },
+              ]}
+            />
+            <Button
+              variant={historyOpen ? "tonal" : "text"}
+              color="inherit"
+              startIcon={<HistoryRoundedIcon />}
+              onClick={() => {
+                setHistoryOpen((v) => !v);
+                setSelectedId(null);
+              }}
+            >
+              Shell History
+            </Button>
+          </>
         }
         trailing={
           <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
@@ -762,7 +778,10 @@ export function SnippetsPage() {
                   <EntityCard
                     key={s.id}
                     selected={s.id === selectedId}
-                    onClick={() => setSelectedId(s.id === selectedId ? null : s.id)}
+                    onClick={() => {
+                      setHistoryOpen(false);
+                      setSelectedId(s.id === selectedId ? null : s.id);
+                    }}
                     onDoubleClick={() => setDialog({ kind: "edit", snippet: s })}
                     sx={{ alignItems: "flex-start" }}
                     tile={
@@ -841,6 +860,7 @@ export function SnippetsPage() {
             </Stack>
           )}
         </PageBody>
+        {historyOpen && <ShellHistoryPanel onClose={() => setHistoryOpen(false)} />}
         {selected && (
           <SnippetPanel
             snippet={selected}

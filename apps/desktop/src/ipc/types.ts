@@ -746,6 +746,41 @@ export interface ImportSelection {
   pfRules: number[];
 }
 
+// ───────────────────────────── export / backup ─────────────────────────────
+
+export interface CsvExportReport {
+  hosts: number;
+  /** True when the file contains plaintext passwords. */
+  passwordsIncluded: boolean;
+  path: string;
+}
+
+export interface BackupVaultSummary {
+  id: Uuid;
+  kind: LocalVaultKind;
+  name: string;
+  entities: number;
+  /** Count per entity kind, only kinds that are present. */
+  counts: Record<string, number>;
+}
+
+export interface BackupSummary {
+  /** Token for `backupRestore`; nil UUID when describing a fresh export. */
+  previewId: Uuid;
+  createdAt: string;
+  appVersion: string;
+  vaults: BackupVaultSummary[];
+  path: string | null;
+}
+
+export interface RestoreReport {
+  added: number;
+  replaced: number;
+  /** Entities whose id already lives in another vault; left untouched. */
+  skipped: number;
+  warnings: string[];
+}
+
 export interface ImportApplyReport {
   hosts: number;
   groups: number;

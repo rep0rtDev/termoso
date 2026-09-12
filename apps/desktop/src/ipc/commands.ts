@@ -31,6 +31,9 @@ import type {
   ImportKeyFileForm,
   ImportKeyForm,
   ImportApplyReport,
+  CsvExportReport,
+  BackupSummary,
+  RestoreReport,
   ImportPreview,
   ImportReport,
   ImportSelection,
@@ -148,6 +151,7 @@ export const historyRecordCommand = (hostId: Uuid | null, command: string) =>
   invoke<Uuid | null>("history_record_command", { hostId, command });
 export const historyDelete = (id: Uuid) => invoke<null>("history_delete", { id });
 export const historyClearCommands = () => invoke<null>("history_clear_commands");
+export const historyClearConnections = () => invoke<null>("history_clear_connections");
 
 /** Directory listing as the session sees it (path completion). */
 export const terminalListDir = (id: Uuid, cwd: string | null, path: string) =>
@@ -401,6 +405,18 @@ export const importCsvTemplateSave = (path: string) =>
 export const importApply = (vaultId: Uuid, previewId: Uuid, selection: ImportSelection) =>
   invoke<ImportApplyReport>("import_apply", { vaultId, previewId, selection });
 export const importDiscard = (previewId: Uuid) => invoke<null>("import_discard", { previewId });
+
+// ───────────────────────────── export / backup ─────────────────────────────
+
+export const hostsExportCsv = (vaultId: Uuid | null, includePasswords: boolean, path: string) =>
+  invoke<CsvExportReport>("hosts_export_csv", { vaultId, includePasswords, path });
+export const backupExport = (vaultIds: Uuid[], password: string, path: string) =>
+  invoke<BackupSummary>("backup_export", { vaultIds, password, path });
+export const backupInspect = (path: string, password: string) =>
+  invoke<BackupSummary>("backup_inspect", { path, password });
+export const backupDiscard = (previewId: Uuid) => invoke<null>("backup_discard", { previewId });
+export const backupRestore = (previewId: Uuid, source: number, vaultId: Uuid) =>
+  invoke<RestoreReport>("backup_restore", { previewId, source, vaultId });
 
 // ───────────────────────────── logs ─────────────────────────────
 

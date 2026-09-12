@@ -3,10 +3,6 @@ import {
   Box,
   Button,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Divider,
   IconButton,
   List,
@@ -15,7 +11,6 @@ import {
   Menu,
   MenuItem,
   Stack,
-  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
@@ -29,8 +24,6 @@ import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import TabRoundedIcon from "@mui/icons-material/TabRounded";
 import DnsRoundedIcon from "@mui/icons-material/DnsRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
-import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
-import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import DataObjectRoundedIcon from "@mui/icons-material/DataObjectRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
@@ -41,18 +34,10 @@ import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import RemoveRoundedIcon from "@mui/icons-material/RemoveRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { CommandHistory, HistoryItem, SnippetCard, Uuid } from "@/ipc/types";
+import type { SnippetCard, Uuid } from "@/ipc/types";
 import { errorMessage, isPostQuantumKex } from "@/ipc/types";
 import * as ipc from "@/ipc/commands";
-import {
-  keys,
-  useCommandHistory,
-  useHistory,
-  useHosts,
-  useSaveSettings,
-  useSettings,
-  useSnippets,
-} from "@/ipc/hooks";
+import { useHosts, useSaveSettings, useSettings, useSnippets } from "@/ipc/hooks";
 import { useActiveVault } from "@/app/vault";
 import { goToSection, requestCreate } from "@/app/navigation";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -63,15 +48,14 @@ import { ThemeCard } from "@/settings/ThemeGallery";
 import { FontPicker } from "@/settings/FontPicker";
 import { SearchBar } from "./SearchBar";
 import { VariablesDialog } from "@/snippets/SnippetsPage";
+import { ALL_HOSTS, CommandHistoryList, ConnectionHistoryList } from "@/history/ShellHistory";
 import { RunTargets } from "@/snippets/RunStatus";
 import { startRun, summarize, useRuns, watchRun } from "@/snippets/run";
 import { AUTO_THEME, terminalThemeById, terminalThemes } from "./themes";
 import {
   autocompleteOn,
   copyText,
-  dropHistoryCache,
   endOfToday,
-  openTerminal,
   pauseSuggestions,
   runCommand,
   setPaneAutocomplete,
@@ -558,6 +542,9 @@ function firstLine(script: string): string {
 function HistoryPanel({ pane }: { pane: Pane }) {
   const [mode, setMode] = useState<"commands" | "connections">("commands");
   const [query, setQuery] = useState("");
+  const [thisHost, setThisHost] = useState(true);
+  const filterHost = thisHost && pane.hostId !== null;
+  const connected = pane.status === "connected";
   return (
     <Stack sx={{ p: 1.5, gap: 1.5 }}>
       <ToggleButtonGroup
@@ -577,331 +564,27 @@ function HistoryPanel({ pane }: { pane: Pane }) {
         width={SIDE_PANEL_WIDTH - 24}
       />
       {mode === "commands" ? (
-        <CommandHistoryList pane={pane} query={query} />
+        <CommandHistoryList
+          query={query}
+          host={filterHost && pane.hostId ? { kind: "host", id: pane.hostId } : ALL_HOSTS}
+          onRun={connected ? (cmd) => runCommand(pane.id, cmd) : undefined}
+          emptyHint={filterHost ? "No commands recorded on this host yet." : undefined}
+          leading={
+            <Chip
+              size="small"
+              variant={filterHost ? "filled" : "outlined"}
+              color={filterHost ? "primary" : "default"}
+              label={pane.hostId ? "This host" : "All hosts"}
+              disabled={pane.hostId === null}
+              onClick={() => setThisHost((v) => !v)}
+            />
+          }
+        />
       ) : (
         <ConnectionHistoryList query={query} />
       )}
     </Stack>
   );
-}
-
-/** One row per distinct command (latest occurrence wins), newest first. */
-function dedupeCommands(items: readonly HistoryItem<CommandHistory>[]) {
-  const byCommand = new Map<string, { latest: HistoryItem<CommandHistory>; ids: Uuid[] }>();
-  for (const it of items) {
-    const entry = byCommand.get(it.data.command);
-    if (entry) entry.ids.push(it.id);
-    else byCommand.set(it.data.command, { latest: it, ids: [it.id] });
-  }
-  return [...byCommand.values()];
-}
-
-function CommandHistoryList({ pane, query }: { pane: Pane; query: string }) {
-  const history = useCommandHistory();
-  const hosts = useHosts(null);
-  const vault = useActiveVault();
-  const qc = useQueryClient();
-  const snackbar = useSnackbar();
-  const [thisHost, setThisHost] = useState(true);
-  const [confirmClear, setConfirmClear] = useState(false);
-  const [saving, setSaving] = useState<string | null>(null);
-
-  const refresh = () => {
-    dropHistoryCache();
-    return qc.invalidateQueries({ queryKey: keys.history });
-  };
-  const remove = useMutation({
-    mutationFn: async (ids: Uuid[]) => {
-      for (const id of ids) await ipc.historyDelete(id);
-    },
-    onSuccess: refresh,
-    onError: (e) => snackbar.error(errorMessage(e)),
-  });
-  const clear = useMutation({
-    mutationFn: () => ipc.historyClearCommands(),
-    onSuccess: async () => {
-      setConfirmClear(false);
-      await refresh();
-      snackbar.notify("Command history cleared");
-    },
-    onError: (e) => snackbar.error(errorMessage(e)),
-  });
-  const save = useMutation({
-    mutationFn: (form: { label: string; script: string }) => {
-      if (!vault.data) throw new Error("No vault available");
-      return ipc.snippetSave({
-        id: null,
-        vaultId: vault.data.id,
-        label: form.label,
-        script: form.script,
-        packageId: null,
-        closeAfterRun: false,
-        sortOrder: 0,
-      });
-    },
-    onSuccess: async () => {
-      setSaving(null);
-      await qc.invalidateQueries({ queryKey: keys.snippets(null) });
-      snackbar.notify("Saved as snippet");
-    },
-    onError: (e) => snackbar.error(errorMessage(e)),
-  });
-
-  const hostLabel = useMemo(() => {
-    const m = new Map<Uuid, string>();
-    for (const h of hosts.data ?? []) m.set(h.id, h.label);
-    return m;
-  }, [hosts.data]);
-
-  const q = query.trim().toLowerCase();
-  const filterHost = thisHost && pane.hostId !== null;
-  const rows = useMemo(
-    () =>
-      dedupeCommands(
-        (history.data ?? []).filter(
-          (i) =>
-            (!filterHost || i.data.host_id === pane.hostId) &&
-            (!q || i.data.command.toLowerCase().includes(q)),
-        ),
-      ),
-    [history.data, filterHost, pane.hostId, q],
-  );
-  const connected = pane.status === "connected";
-
-  return (
-    <>
-      <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 1 }}>
-        <Chip
-          size="small"
-          variant={filterHost ? "filled" : "outlined"}
-          color={filterHost ? "primary" : "default"}
-          label={pane.hostId ? "This host" : "All hosts"}
-          disabled={pane.hostId === null}
-          onClick={() => setThisHost((v) => !v)}
-        />
-        <Button
-          size="small"
-          color="inherit"
-          disabled={(history.data ?? []).length === 0}
-          onClick={() => setConfirmClear(true)}
-        >
-          Clear all
-        </Button>
-      </Stack>
-      {history.isPending ? (
-        <Loading pt={4} />
-      ) : history.error ? (
-        <EmptyState
-          compact
-          title="Could not load history"
-          description={errorMessage(history.error)}
-        />
-      ) : rows.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" sx={{ px: 0.5 }}>
-          {q
-            ? `Nothing matches “${query}”.`
-            : filterHost
-              ? "No commands recorded on this host yet."
-              : "No commands yet. Bash, zsh and fish sessions record commands as you run them."}
-        </Typography>
-      ) : (
-        <List dense disablePadding>
-          {rows.map(({ latest, ids }) => (
-            <Stack
-              key={latest.id}
-              direction="row"
-              sx={{
-                alignItems: "center",
-                borderRadius: 1.5,
-                pr: 0.5,
-                "&:hover": { bgcolor: "action.hover" },
-                "&:hover .row-actions": { opacity: 1 },
-              }}
-            >
-              <ListItemButton
-                disabled={!connected}
-                onClick={() => runCommand(pane.id, latest.data.command)}
-                sx={{ borderRadius: 1.5, gap: 1, flex: 1, minWidth: 0, py: 0.5 }}
-              >
-                <ListItemText
-                  primary={latest.data.command}
-                  secondary={`${
-                    latest.data.host_id
-                      ? (hostLabel.get(latest.data.host_id) ?? "Removed host")
-                      : "Local"
-                  } · ${relativeTime(latest.created_at)}${ids.length > 1 ? ` · ×${ids.length}` : ""}`}
-                  slotProps={{
-                    primary: {
-                      variant: "body2",
-                      noWrap: true,
-                      sx: { fontFamily: "monospace", fontSize: 12.5 },
-                    },
-                    secondary: { noWrap: true },
-                  }}
-                />
-              </ListItemButton>
-              <Stack direction="row" className="row-actions" sx={{ opacity: 0, flexShrink: 0 }}>
-                <Tooltip title="Save as snippet">
-                  <IconButton size="small" onClick={() => setSaving(latest.data.command)}>
-                    <DataObjectRoundedIcon sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Delete">
-                  <IconButton
-                    size="small"
-                    disabled={remove.isPending}
-                    onClick={() => remove.mutate(ids)}
-                  >
-                    <DeleteOutlineRoundedIcon sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </Tooltip>
-              </Stack>
-            </Stack>
-          ))}
-        </List>
-      )}
-      <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
-        Stored encrypted on this device; lines that look like they contain a password or token are
-        never recorded.
-      </Typography>
-      <ConfirmDialog
-        open={confirmClear}
-        title="Clear command history?"
-        confirmLabel="Clear"
-        danger
-        busy={clear.isPending}
-        onCancel={() => setConfirmClear(false)}
-        onConfirm={() => clear.mutate()}
-      >
-        Removes every recorded command from this device (and from sync, if enabled).
-      </ConfirmDialog>
-      {saving !== null && (
-        <SaveSnippetDialog
-          script={saving}
-          busy={save.isPending}
-          onCancel={() => setSaving(null)}
-          onConfirm={(label, script) => save.mutate({ label, script })}
-        />
-      )}
-    </>
-  );
-}
-
-function SaveSnippetDialog({
-  script: initialScript,
-  busy,
-  onCancel,
-  onConfirm,
-}: {
-  script: string;
-  busy: boolean;
-  onCancel: () => void;
-  onConfirm: (label: string, script: string) => void;
-}) {
-  const [label, setLabel] = useState(initialScript.split(/\s+/).slice(0, 3).join(" "));
-  const [script, setScript] = useState(initialScript);
-  const ok = label.trim().length > 0 && script.trim().length > 0;
-  return (
-    <Dialog open onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle>Save as snippet</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2} sx={{ pt: 0.5 }}>
-          <TextField
-            label="Name"
-            size="small"
-            autoFocus
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-          />
-          <TextField
-            label="Script"
-            size="small"
-            multiline
-            minRows={2}
-            value={script}
-            onChange={(e) => setScript(e.target.value)}
-            slotProps={{ input: { sx: { fontFamily: "monospace", fontSize: 12.5 } } }}
-          />
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button color="inherit" onClick={onCancel} disabled={busy}>
-          Cancel
-        </Button>
-        <Button
-          variant="contained"
-          disabled={!ok || busy}
-          onClick={() => onConfirm(label.trim(), script)}
-        >
-          Save
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
-
-function ConnectionHistoryList({ query }: { query: string }) {
-  const history = useHistory();
-  const q = query.trim().toLowerCase();
-  const items = (history.data ?? []).filter(
-    (i) => !q || i.data.label.toLowerCase().includes(q) || i.data.target.toLowerCase().includes(q),
-  );
-  return (
-    <>
-      {history.isPending ? (
-        <Loading pt={4} />
-      ) : history.error ? (
-        <EmptyState
-          compact
-          title="Could not load history"
-          description={errorMessage(history.error)}
-        />
-      ) : items.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" sx={{ px: 0.5 }}>
-          {q ? `Nothing matches “${query}”.` : "No connections yet."}
-        </Typography>
-      ) : (
-        <List dense disablePadding>
-          {items.map((item) => (
-            <ListItemButton
-              key={item.id}
-              disabled={!item.data.host_id}
-              onClick={() => {
-                if (item.data.host_id) openTerminal({ kind: "host", host_id: item.data.host_id });
-              }}
-              sx={{ borderRadius: 1.5, gap: 1 }}
-            >
-              {item.data.error ? (
-                <ErrorOutlineRoundedIcon fontSize="small" color="error" />
-              ) : (
-                <TerminalRoundedIcon fontSize="small" sx={{ color: "text.secondary" }} />
-              )}
-              <ListItemText
-                primary={item.data.label}
-                secondary={`${item.data.target} · ${relativeTime(item.created_at)}`}
-                slotProps={{
-                  primary: { variant: "body2", noWrap: true, sx: { fontWeight: 600 } },
-                  secondary: { noWrap: true },
-                }}
-              />
-            </ListItemButton>
-          ))}
-        </List>
-      )}
-    </>
-  );
-}
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.round(diff / 60_000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
-  const d = Math.round(h / 24);
-  if (d < 7) return `${d} d ago`;
-  return new Date(iso).toLocaleDateString();
 }
 
 /* --------------------------------------------------------------- themes */
