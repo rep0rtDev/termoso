@@ -209,16 +209,20 @@ export function SignInForm({
             <Typography variant="body2" sx={{ fontWeight: 500 }}>
               {CLOUD_HOST}
             </Typography>
-            <Typography
-              variant="caption"
-              color={info.isError ? "error" : "text.secondary"}
-              noWrap
-              sx={{ display: "block" }}
-            >
-              {info.data || info.isError || info.isFetching
-                ? serverLine
-                : "End-to-end encrypted · no telemetry"}
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+              Completely free for everyone — no limits, no plans, no strings attached. End-to-end
+              encrypted, no telemetry.
             </Typography>
+            {(info.data !== undefined || info.isError || info.isFetching) && (
+              <Typography
+                variant="caption"
+                color={info.isError ? "error" : "text.disabled"}
+                noWrap
+                sx={{ mt: 0.25 }}
+              >
+                {serverLine}
+              </Typography>
+            )}
           </Box>
           {info.isFetching && <CircularProgress size={14} />}
         </Box>
