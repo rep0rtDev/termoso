@@ -7,6 +7,7 @@ import type {
   AgentKeys,
   AppInfo,
   BookmarkCard,
+  CertificateCard,
   CommandHistory,
   Conflict,
   ConnectionHistory,
@@ -27,6 +28,7 @@ import type {
   HostForm,
   IdentityCard,
   IdentityForm,
+  ImportKeyFileForm,
   ImportKeyForm,
   ImportApplyReport,
   ImportPreview,
@@ -35,6 +37,7 @@ import type {
   ImportSource,
   Inherited,
   KeyCard,
+  KeyPreview,
   KnownHostCard,
   Listing,
   LocalVault,
@@ -276,13 +279,25 @@ export const keysList = (vaultId?: Uuid | null) =>
   invoke<KeyCard[]>("keys_list", { vaultId: vaultId ?? null });
 export const keyGenerate = (form: GenerateKeyForm) => invoke<KeyCard>("key_generate", { form });
 export const keyImport = (form: ImportKeyForm) => invoke<KeyCard>("key_import", { form });
-export const keyImportFile = (args: {
-  vaultId: Uuid;
-  label: string;
-  path: string;
-  passphrase: string | null;
-  rememberPassphrase: boolean;
-}) => invoke<KeyCard>("key_import_file", args);
+/** Private material is read from `path` inside Rust and never crosses IPC. */
+export const keyImportFile = (form: ImportKeyFileForm) =>
+  invoke<KeyCard>("key_import_file", { form });
+/** Public half of pasted private key text; nothing is stored. */
+export const keyInspect = (text: string) => invoke<KeyPreview>("key_inspect", { text });
+export const keyInspectFile = (path: string) => invoke<KeyPreview>("key_inspect_file", { path });
+/** Parse + verify a certificate for preview; nothing is stored. */
+export const certificateInspect = (text: string) =>
+  invoke<CertificateCard>("certificate_inspect", { text });
+export const certificateInspectFile = (path: string) =>
+  invoke<CertificateCard>("certificate_inspect_file", { path });
+export const keyCertificate = (id: Uuid) => invoke<string | null>("key_certificate", { id });
+/** `null` detaches the certificate. */
+export const keySetCertificate = (id: Uuid, certificate: string | null) =>
+  invoke<KeyCard>("key_set_certificate", { id, certificate });
+export const keySetCertificateFile = (id: Uuid, path: string) =>
+  invoke<KeyCard>("key_set_certificate_file", { id, path });
+export const keyCopyToVault = (id: Uuid, vaultId: Uuid, moveKey: boolean) =>
+  invoke<KeyCard>("key_copy_to_vault", { id, vaultId, moveKey });
 export const keyRename = (id: Uuid, label: string) => invoke<KeyCard>("key_rename", { id, label });
 export const keyChangePassphrase = (args: {
   id: Uuid;
