@@ -2,6 +2,7 @@
 //! sessions; the webview only renders and forwards user input.
 
 mod account;
+mod backup;
 mod commands;
 mod commands_tools;
 mod complete;
@@ -110,6 +111,7 @@ pub fn run() {
             commands::history_record_command,
             commands::history_delete,
             commands::history_clear_commands,
+            commands::history_clear_connections,
             complete::terminal_list_dir,
             complete::terminal_insert_password,
             complete::terminal_host_identity,
@@ -210,6 +212,11 @@ pub fn run() {
             commands_tools::import_csv_template_save,
             commands_tools::import_apply,
             commands_tools::import_discard,
+            commands_tools::hosts_export_csv,
+            commands_tools::backup_export,
+            commands_tools::backup_inspect,
+            commands_tools::backup_discard,
+            commands_tools::backup_restore,
             commands_tools::logs_list,
             commands_tools::log_read,
             commands_tools::log_export,

@@ -132,6 +132,38 @@ function SyncIcon({ a }: { a: AccountStatus }) {
   }
 }
 
+/** Corner badge on the avatar: spinner while syncing, red on error, grey when the server is unreachable. */
+function SyncBadge({ a }: { a: AccountStatus }) {
+  const s = a.sync.state;
+  if (s === "idle") return null;
+  return (
+    <Box
+      sx={{
+        position: "absolute",
+        right: -4,
+        bottom: -4,
+        width: 14,
+        height: 14,
+        borderRadius: "50%",
+        display: "grid",
+        placeItems: "center",
+        bgcolor: "surface.base",
+        color: s === "error" ? "error.main" : "text.secondary",
+        boxShadow: "0 0 0 1.5px var(--mui-palette-surface-base)",
+        "& svg": { fontSize: 11 },
+      }}
+    >
+      {s === "syncing" ? (
+        <CircularProgress size={9} thickness={6} />
+      ) : s === "error" ? (
+        <ErrorOutlineRoundedIcon />
+      ) : (
+        <CloudOffRoundedIcon />
+      )}
+    </Box>
+  );
+}
+
 /** The avatar: who is signed in, sync state, quick sign-in / out. */
 function AccountAvatar() {
   const { data } = useAccount();
@@ -159,7 +191,7 @@ function AccountAvatar() {
 
   return (
     <>
-      <Tooltip title={account ? account.email : "Not signed in"}>
+      <Tooltip title={account && data ? `${account.email} · ${syncLine(data)}` : "Not signed in"}>
         <ButtonBase
           onClick={(e) => setAnchor(e.currentTarget)}
           aria-label="Account"
@@ -167,7 +199,7 @@ function AccountAvatar() {
             position: "relative",
             zIndex: 1,
             borderRadius: "7px",
-            boxShadow: "0 0 0 2px var(--mui-palette-primary-main)",
+            boxShadow: `0 0 0 2px var(--mui-palette-${data?.sync.state === "error" ? "error" : "primary"}-main)`,
             transition: "box-shadow 120ms",
             "&:hover": { boxShadow: "0 0 0 2px var(--mui-palette-primary-light)" },
           }}
@@ -176,6 +208,7 @@ function AccountAvatar() {
             signedIn={Boolean(account)}
             label={account ? initialsOf(account.displayName, account.email) : ""}
           />
+          {account && data && <SyncBadge a={data} />}
         </ButtonBase>
       </Tooltip>
       <Menu

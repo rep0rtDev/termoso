@@ -38,6 +38,51 @@ impl Label {
     }
 }
 
+/// Argon2id parameters for password-derived keys (portable backups).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PasswordParams {
+    /// Memory in KiB.
+    pub m_cost: u32,
+    /// Passes.
+    pub t_cost: u32,
+    /// Lanes.
+    pub p_cost: u32,
+}
+
+impl Default for PasswordParams {
+    /// 64 MiB, 3 passes, 1 lane — the same cost as the OPAQUE stretching.
+    fn default() -> Self {
+        Self {
+            m_cost: 64 * 1024,
+            t_cost: 3,
+            p_cost: 1,
+        }
+    }
+}
+
+/// Salt length for [`password_key`].
+pub const PASSWORD_SALT_LEN: usize = 16;
+
+/// Stretch a user password into a 32-byte key with Argon2id. The salt must be
+/// random per encryption and stored next to the ciphertext.
+pub fn password_key(
+    password: &[u8],
+    salt: &[u8],
+    params: PasswordParams,
+) -> Result<SymmetricKey, CryptoError> {
+    use argon2::{Algorithm, Argon2, Params, Version};
+    if salt.len() < 8 {
+        return Err(CryptoError::Kdf);
+    }
+    let params = Params::new(params.m_cost, params.t_cost, params.p_cost, Some(32))
+        .map_err(|_| CryptoError::Kdf)?;
+    let mut out = [0u8; 32];
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+        .hash_password_into(password, salt, &mut out)
+        .map_err(|_| CryptoError::Kdf)?;
+    Ok(SymmetricKey::from_bytes(out))
+}
+
 /// Derive a 32-byte key from `ikm` for the given label.
 pub fn derive_key(ikm: &[u8], label: Label) -> Result<SymmetricKey, CryptoError> {
     derive_key_with_context(ikm, label, &[])
@@ -81,5 +126,22 @@ mod tests {
         let a = derive_key(ikm, Label::LocalDatabase).unwrap();
         let b = derive_key(ikm, Label::LocalDatabase).unwrap();
         assert_eq!(a.as_bytes(), b.as_bytes());
+    }
+
+    #[test]
+    fn password_key_depends_on_salt_and_password() {
+        let cheap = PasswordParams {
+            m_cost: 8 * 1024,
+            t_cost: 1,
+            p_cost: 1,
+        };
+        let a = password_key(b"hunter2", b"0123456789abcdef", cheap).unwrap();
+        let b = password_key(b"hunter2", b"0123456789abcdef", cheap).unwrap();
+        let c = password_key(b"hunter3", b"0123456789abcdef", cheap).unwrap();
+        let d = password_key(b"hunter2", b"fedcba9876543210", cheap).unwrap();
+        assert_eq!(a.as_bytes(), b.as_bytes());
+        assert_ne!(a.as_bytes(), c.as_bytes());
+        assert_ne!(a.as_bytes(), d.as_bytes());
+        assert!(password_key(b"x", b"short", cheap).is_err());
     }
 }

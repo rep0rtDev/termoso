@@ -526,6 +526,14 @@ pub fn parse_file(source: ImportSource, path: &str) -> Result<ImportPreview> {
     Ok(preview)
 }
 
+/// Parse CSV text without touching the filesystem or the cache.
+#[cfg(test)]
+pub fn parse_csv_text(text: &str) -> Result<ImportPreview> {
+    let mut preview = ImportPreview::new(ImportSource::Csv, "text");
+    csv::parse_into(text, &mut preview)?;
+    Ok(preview)
+}
+
 /// Saved sessions of the PuTTY installed on this machine (Windows registry).
 pub fn scan_putty_registry() -> Result<ImportPreview> {
     let text = putty::export_registry()?;
