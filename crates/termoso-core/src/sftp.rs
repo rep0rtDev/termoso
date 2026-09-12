@@ -69,6 +69,8 @@ pub struct RemoteEntry {
     pub atime: Option<u32>,
     /// Link target for symlinks (filled by [`Sftp::list`]).
     pub link_target: Option<String>,
+    /// What a symlink points at; `None` for non-links and dangling links.
+    pub target_kind: Option<EntryKind>,
 }
 
 impl RemoteEntry {
@@ -86,6 +88,7 @@ impl RemoteEntry {
             mtime: a.mtime,
             atime: a.atime,
             link_target: None,
+            target_kind: None,
         }
     }
 }
@@ -187,7 +190,8 @@ impl Sftp {
     }
 
     /// List a directory, sorted directories-first then by name. Symlink
-    /// targets are resolved so the UI can show where they point.
+    /// targets are resolved so the UI can show where they point and whether
+    /// they can be followed.
     pub async fn list(&self, dir: &str) -> Result<Vec<RemoteEntry>> {
         let dir = self.canonicalize(dir).await?;
         let rd = self.session.read_dir(&dir).await.map_err(sftp_err)?;
@@ -199,10 +203,16 @@ impl Sftp {
             }
             let path = join(&dir, &name);
             let mut entry = RemoteEntry::from_attrs(name, path.clone(), &e.metadata());
-            if entry.kind == EntryKind::Symlink
-                && let Ok(target) = self.session.read_link(&path).await
-            {
-                entry.link_target = Some(target);
+            if entry.kind == EntryKind::Symlink {
+                if let Ok(target) = self.session.read_link(&path).await {
+                    entry.link_target = Some(target);
+                }
+                entry.target_kind = self
+                    .session
+                    .metadata(&path)
+                    .await
+                    .ok()
+                    .map(|a| a.file_type().into());
             }
             out.push(entry);
         }

@@ -1035,6 +1035,8 @@ export interface FsEntry {
   mtime: number | null;
   atime: number | null;
   link_target: string | null;
+  /** What a symlink points at; `null` for non-links and dangling links. */
+  target_kind: EntryKind | null;
 }
 
 export interface Listing {
@@ -1073,6 +1075,9 @@ export interface TransferInfo {
 
 export type TransferEvent =
   | { type: "started"; id: Uuid; info: TransferInfo }
+  | { type: "queued"; id: Uuid }
+  | { type: "running"; id: Uuid }
+  | { type: "paused"; id: Uuid }
   | {
       type: "progress";
       id: Uuid;

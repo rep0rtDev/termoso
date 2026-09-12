@@ -11,6 +11,10 @@ import ExpandLessRoundedIcon from "@mui/icons-material/ExpandLessRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import CloudUploadRoundedIcon from "@mui/icons-material/CloudUploadRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
+import PauseRoundedIcon from "@mui/icons-material/PauseRounded";
+import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
+import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
+import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
 import CircularProgress from "@mui/material/CircularProgress";
 import * as ipc from "@/ipc/commands";
 import { ToolIconButton } from "@/components/ui";
@@ -19,6 +23,10 @@ import {
   cancelTransfer,
   clearFinishedTransfers,
   closeEdit,
+  discardTransfer,
+  isActive,
+  pauseTransfer,
+  resumeTransfer,
   uploadEditNow,
   useSftp,
   type Edit,
@@ -37,7 +45,10 @@ export function TransfersPanel() {
 
   const all = order.map((id) => transfers[id]).filter((t): t is Transfer => t !== undefined);
   const running = all.filter((t) => t.status === "running");
+  const queued = all.filter((t) => t.status === "queued").length;
+  const paused = all.filter((t) => t.status === "paused").length;
   const failed = all.filter((t) => t.status === "failed").length;
+  const pending = all.filter((t) => isActive(t.status) || t.status === "paused").length;
   const done = running.reduce((n, t) => n + t.done, 0);
   const total = running.reduce((n, t) => n + (t.total ?? 0), 0);
   const speed = running.reduce((n, t) => n + (t.speed ?? 0), 0);
@@ -50,6 +61,8 @@ export function TransfersPanel() {
       : running.length > 0
         ? [
             `${running.length} active`,
+            queued > 0 ? `${queued} queued` : null,
+            paused > 0 ? `${paused} paused` : null,
             pct !== undefined ? `${Math.round(pct)}%` : null,
             speed > 0 ? formatSpeed(speed) : null,
             pct !== undefined && speed > 0
@@ -58,9 +71,22 @@ export function TransfersPanel() {
           ]
             .filter(Boolean)
             .join(" · ")
-        : all.length > 0
-          ? `${all.length} finished${failed > 0 ? ` · ${failed} failed` : ""}`
-          : `${editing.length} ${editing.length === 1 ? "file" : "files"} open for editing`;
+        : paused > 0 || queued > 0
+          ? [
+              paused > 0 ? `${paused} paused` : null,
+              queued > 0 ? `${queued} queued` : null,
+              failed > 0 ? `${failed} failed` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : all.length > 0
+            ? [
+                all.length - failed > 0 ? `${all.length - failed} finished` : null,
+                failed > 0 ? `${failed} failed` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")
+            : `${editing.length} ${editing.length === 1 ? "file" : "files"} open for editing`;
 
   return (
     <Box
@@ -102,7 +128,7 @@ export function TransfersPanel() {
         <Button
           color="inherit"
           onClick={clearFinishedTransfers}
-          disabled={running.length === all.length}
+          disabled={pending === all.length}
           sx={{ visibility: all.length > 0 ? "visible" : "hidden" }}
         >
           Clear finished
@@ -138,6 +164,10 @@ function detail(t: Transfer): string {
       return t.message ?? "Failed";
     case "cancelled":
       return `Cancelled · ${formatSize(t.done)}`;
+    case "queued":
+      return t.cancelling ? "Cancelling…" : "Waiting…";
+    case "paused":
+      return `Paused · ${formatSize(t.done)}${t.total !== null ? ` / ${formatSize(t.total)}` : ""}`;
     case "done": {
       const secs = ((t.finishedAt ?? Date.now()) - t.startedAt) / 1000;
       const avg = secs > 0.5 ? ` · ${formatSpeed(t.done / secs)}` : "";
@@ -166,23 +196,29 @@ function TransferRow({ t }: { t: Transfer }) {
   const pct = t.total ? Math.min(100, (t.done / t.total) * 100) : undefined;
   const multi = t.filesTotal > 1;
   const running = t.status === "running";
+  const active = isActive(t.status);
+  const resumable = t.status === "paused" || t.status === "failed";
   const skippedAll = t.status === "done" && t.filesSkipped > 0 && t.filesSkipped === t.filesTotal;
   return (
     <Stack direction="row" spacing={1.25} sx={{ alignItems: "center", py: 0.625 }}>
-      <Icon
-        sx={{
-          fontSize: 18,
-          color: running ? "text.secondary" : "text.disabled",
-          flexShrink: 0,
-        }}
-      />
+      {t.status === "queued" ? (
+        <ScheduleRoundedIcon sx={{ fontSize: 18, color: "text.disabled", flexShrink: 0 }} />
+      ) : (
+        <Icon
+          sx={{
+            fontSize: 18,
+            color: running ? "text.secondary" : "text.disabled",
+            flexShrink: 0,
+          }}
+        />
+      )}
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack sx={{ alignItems: "baseline" }} direction="row" spacing={1}>
           <Typography variant="body2" noWrap sx={{ fontSize: 13, flex: 1 }}>
             {baseName(src)}
             {multi ? ` (${t.filesDone}/${t.filesTotal})` : ""}
           </Typography>
-          {running && pct !== undefined && (
+          {(running || t.status === "paused") && pct !== undefined && (
             <Typography
               variant="caption"
               color="text.secondary"
@@ -200,12 +236,17 @@ function TransferRow({ t }: { t: Transfer }) {
             {detail(t)}
           </Typography>
         </Stack>
-        {running && (
+        {(running || t.status === "paused") && (
           <LinearProgress
-            variant={pct === undefined ? "indeterminate" : "determinate"}
-            value={pct}
-            color={t.cancelling ? "inherit" : "primary"}
-            sx={{ mt: 0.5, height: 3, borderRadius: 2, opacity: t.cancelling ? 0.5 : 1 }}
+            variant={pct === undefined && running ? "indeterminate" : "determinate"}
+            value={pct ?? 0}
+            color={t.cancelling || t.status === "paused" ? "inherit" : "primary"}
+            sx={{
+              mt: 0.5,
+              height: 3,
+              borderRadius: 2,
+              opacity: t.cancelling || t.status === "paused" ? 0.5 : 1,
+            }}
           />
         )}
         <Typography
@@ -217,25 +258,53 @@ function TransferRow({ t }: { t: Transfer }) {
           {running && multi && t.current ? t.current : `→ ${dst}`}
         </Typography>
       </Box>
-      <Box sx={{ width: 28, display: "flex", justifyContent: "center", flexShrink: 0 }}>
-        {running ? (
+      <Stack direction="row" sx={{ flexShrink: 0, alignItems: "center", minWidth: 28 }}>
+        {t.status === "failed" && (
+          <ErrorOutlineRoundedIcon sx={{ fontSize: 18, color: "error.main", mr: 0.5 }} />
+        )}
+        {running && (
           <ToolIconButton
-            title="Cancel"
+            title="Pause"
             disabled={t.cancelling}
-            onClick={() => void cancelTransfer(t.id)}
+            onClick={() => void pauseTransfer(t.id)}
+          >
+            <PauseRoundedIcon fontSize="small" />
+          </ToolIconButton>
+        )}
+        {resumable && (
+          <ToolIconButton
+            title={t.status === "paused" ? "Resume" : "Retry"}
+            onClick={() => void resumeTransfer(t.id).catch(() => undefined)}
+          >
+            {t.status === "paused" ? (
+              <PlayArrowRoundedIcon fontSize="small" />
+            ) : (
+              <ReplayRoundedIcon fontSize="small" />
+            )}
+          </ToolIconButton>
+        )}
+        {active || resumable ? (
+          <ToolIconButton
+            title={active ? "Cancel" : "Discard"}
+            disabled={t.cancelling}
+            onClick={() =>
+              void (active ? cancelTransfer(t.id) : discardTransfer(t.id)).catch(() => undefined)
+            }
           >
             <CloseRoundedIcon fontSize="small" />
           </ToolIconButton>
-        ) : skippedAll ? (
-          <BlockRoundedIcon sx={{ fontSize: 18, color: "text.disabled" }} />
-        ) : t.status === "done" ? (
-          <CheckRoundedIcon sx={{ fontSize: 18, color: "success.main" }} />
-        ) : t.status === "failed" ? (
-          <ErrorOutlineRoundedIcon sx={{ fontSize: 18, color: "error.main" }} />
         ) : (
-          <BlockRoundedIcon sx={{ fontSize: 18, color: "text.disabled" }} />
+          <Box sx={{ width: 28, display: "flex", justifyContent: "center" }}>
+            {skippedAll ? (
+              <BlockRoundedIcon sx={{ fontSize: 18, color: "text.disabled" }} />
+            ) : t.status === "done" ? (
+              <CheckRoundedIcon sx={{ fontSize: 18, color: "success.main" }} />
+            ) : (
+              <BlockRoundedIcon sx={{ fontSize: 18, color: "text.disabled" }} />
+            )}
+          </Box>
         )}
-      </Box>
+      </Stack>
     </Stack>
   );
 }

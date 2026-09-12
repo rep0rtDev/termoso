@@ -250,9 +250,10 @@ export function SftpPage() {
       </Toolbar>
 
       <Stack direction="row" sx={{ flex: 1, minHeight: 0 }}>
-        <PaneFrame title="Local">
+        <PaneFrame>
           <FilePane
             side="local"
+            title="Local"
             sftpId={null}
             initialPath={null}
             oppositePath={remoteReady ? remotePath : null}
@@ -263,11 +264,12 @@ export function SftpPage() {
           />
         </PaneFrame>
         <Box sx={{ width: "1px", bgcolor: "border.light", flexShrink: 0 }} />
-        <PaneFrame title={active ? active.title : "Remote"}>
+        <PaneFrame title={active && remoteReady ? undefined : (active?.title ?? "Remote")}>
           {active && remoteReady ? (
             <FilePane
               key={active.id}
               side="remote"
+              title={active.title}
               sftpId={active.id}
               initialPath={active.info?.home ?? null}
               oppositePath={localPath}
@@ -277,6 +279,7 @@ export function SftpPage() {
               onReceiveFiles={receiveFiles}
               onOpen={onOpen("remote")}
               editing={editing}
+              onClose={() => void closeSftp(active.id)}
             />
           ) : (
             <RemotePlaceholder
@@ -305,17 +308,19 @@ export function SftpPage() {
   );
 }
 
-function PaneFrame({ title, children }: { title: string; children: React.ReactNode }) {
+function PaneFrame({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
     <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-      <Typography
-        variant="subtitle2"
-        color="text.secondary"
-        sx={{ px: 1.5, height: 32, display: "flex", alignItems: "center", flexShrink: 0 }}
-        noWrap
-      >
-        {title}
-      </Typography>
+      {title && (
+        <Typography
+          variant="subtitle2"
+          color="text.secondary"
+          sx={{ px: 1.5, height: 36, display: "flex", alignItems: "center", flexShrink: 0 }}
+          noWrap
+        >
+          {title}
+        </Typography>
+      )}
       <Box sx={{ flex: 1, minHeight: 0 }}>{children}</Box>
     </Box>
   );
