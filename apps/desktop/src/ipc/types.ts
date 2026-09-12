@@ -52,6 +52,7 @@ export type SyncConflict = "newest_wins" | "local_wins" | "server_wins";
 export interface Settings {
   theme: ThemeMode;
   hostsView: HostsView;
+  forwardingView: HostsView;
   terminalFontSize: number;
   terminalFontFamily: string;
   /** Line height multiplier (1.0 = natural). */
@@ -507,7 +508,7 @@ export interface IdentityForm {
 // ───────────────────────────── port forwarding ─────────────────────────────
 
 export type PfKind = "local" | "remote" | "dynamic";
-export type PfState = "stopped" | "starting" | "running";
+export type PfState = "stopped" | "starting" | "running" | "reconnecting";
 
 export interface PfRuntime {
   state: PfState;
@@ -518,6 +519,9 @@ export interface PfRuntime {
   bytesIn: number;
   bytesOut: number;
   lastError: string | null;
+  /** Reconnect attempt number while `state === "reconnecting"`. */
+  attempt: number;
+  nextRetryAt: string | null;
 }
 
 export interface PfRuleCard {
