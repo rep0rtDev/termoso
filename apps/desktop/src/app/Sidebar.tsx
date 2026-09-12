@@ -9,6 +9,7 @@ import {
   Typography,
 } from "@mui/material";
 import DnsRoundedIcon from "@mui/icons-material/DnsRounded";
+import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import CodeRoundedIcon from "@mui/icons-material/CodeRounded";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
@@ -23,16 +24,18 @@ import type { ReactNode } from "react";
 import { useAccount, useAppInfo } from "@/ipc/hooks";
 import type { AccountStatus } from "@/ipc/types";
 import { sizes } from "@/theme/theme";
-import { goToSection, goToSettings, useNav, type Section } from "./navigation";
+import { useTerminal } from "@/terminal/store";
+import { goToSection, goToSettings, goToSftp, isSftpTab, useNav, type Section } from "./navigation";
 
 interface Item {
-  id: Section;
+  id: Section | "sftp";
   label: string;
   icon: ReactNode;
 }
 
 const items: Item[] = [
   { id: "hosts", label: "Hosts", icon: <DnsRoundedIcon fontSize="small" /> },
+  { id: "sftp", label: "SFTP", icon: <FolderRoundedIcon fontSize="small" /> },
   { id: "keychain", label: "Keychain", icon: <KeyRoundedIcon fontSize="small" /> },
   { id: "forwarding", label: "Port Forwarding", icon: <SwapHorizRoundedIcon fontSize="small" /> },
   { id: "snippets", label: "Snippets", icon: <CodeRoundedIcon fontSize="small" /> },
@@ -42,6 +45,7 @@ const items: Item[] = [
 
 export function Sidebar() {
   const section = useNav((s) => s.section);
+  const sftp = useTerminal((s) => isSftpTab(s.activeTabId));
   const { data: info } = useAppInfo();
   const { data: account } = useAccount();
 
@@ -63,8 +67,8 @@ export function Sidebar() {
           <NavItem
             key={item.id}
             item={item}
-            selected={section === item.id}
-            onClick={() => goToSection(item.id)}
+            selected={item.id === "sftp" ? sftp : !sftp && section === item.id}
+            onClick={() => (item.id === "sftp" ? goToSftp() : goToSection(item.id))}
           />
         ))}
       </List>
@@ -75,7 +79,7 @@ export function Sidebar() {
             label: "Settings",
             icon: <SettingsRoundedIcon fontSize="small" />,
           }}
-          selected={section === "settings"}
+          selected={!sftp && section === "settings"}
           onClick={() => goToSettings()}
         />
         <Tooltip title={footerTip(account)} placement="right">

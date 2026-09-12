@@ -2,12 +2,13 @@
 //! the `host` + inline `ssh_config` + inline `identity` entities (Termius
 //! layout) and resolves group inheritance for display.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use termoso_core::model::{
-    Entity, Group, Host, HostChain, Identity, Proxy, Snippet, SshConfig, SshKey, Tag, TelnetConfig,
+    Entity, Group, Host, HostChain, HostSnippet, Identity, Proxy, SerialConfig, Snippet, SshConfig,
+    SshKey, Tag, TelnetConfig,
 };
 use termoso_core::store::Store;
 use uuid::Uuid;
@@ -25,12 +26,20 @@ pub struct HostCard {
     pub address: String,
     pub group_id: Option<Uuid>,
     pub group_path: Vec<String>,
-    /// `ssh` | `telnet`.
+    /// Primary protocol, `ssh` unless the host is Telnet-only.
     pub protocol: String,
+    /// Effective SSH (or, for Telnet-only hosts, Telnet) username.
     pub username: String,
+    /// Effective port of the primary protocol.
     pub port: u16,
+    /// Effective Telnet port when the host also has a Telnet configuration.
+    pub telnet_port: Option<u16>,
     pub tags: Vec<String>,
     pub os_name: Option<String>,
+    /// User-chosen icon id; takes precedence over `os_name`.
+    pub icon: Option<String>,
+    /// `auto` | `4` | `6`.
+    pub ip_version: String,
     pub notes: String,
     pub sort_order: i32,
     pub updated_at: DateTime<Utc>,
@@ -40,6 +49,8 @@ pub struct HostCard {
 }
 
 /// Flat editor model. `None` for optional fields means "inherit / unset".
+/// A host carries an SSH configuration (`ssh`), a Telnet one (`telnet`) or
+/// both, like Termius' protocol sections.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostForm {
@@ -48,6 +59,9 @@ pub struct HostForm {
     pub label: String,
     pub address: String,
     pub group_id: Option<Uuid>,
+    /// The host has an SSH section; the SSH fields below belong to it.
+    #[serde(default = "default_true")]
+    pub ssh: bool,
     pub port: Option<u16>,
     pub username: String,
     /// `None` keeps the stored password when editing; `Some("")` clears it.
@@ -58,13 +72,19 @@ pub struct HostForm {
     pub tag_ids: Vec<Uuid>,
     pub notes: String,
     pub os_name: Option<String>,
+    /// User-chosen icon id (`None` = follow detection).
+    #[serde(default)]
+    pub icon: Option<String>,
+    /// `auto` (default) | `4` | `6`.
+    #[serde(default = "default_ip_version")]
+    pub ip_version: String,
     pub agent_forwarding: bool,
     pub startup_snippet_id: Option<Uuid>,
     pub host_chain_id: Option<Uuid>,
     pub proxy_id: Option<Uuid>,
-    /// `ssh` (default) or `telnet`.
-    #[serde(default = "default_protocol")]
-    pub protocol: String,
+    /// Telnet section, when the host is also (or only) reachable over Telnet.
+    #[serde(default)]
+    pub telnet: Option<TelnetForm>,
     #[serde(default)]
     pub env_variables: Vec<(String, String)>,
     #[serde(default)]
@@ -79,8 +99,90 @@ pub struct HostForm {
     pub has_password: bool,
 }
 
-fn default_protocol() -> String {
-    "ssh".to_string()
+fn default_true() -> bool {
+    true
+}
+
+fn default_ip_version() -> String {
+    "auto".to_string()
+}
+
+/// Telnet section of the host editor: port and login.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TelnetForm {
+    pub port: Option<u16>,
+    #[serde(default)]
+    pub username: String,
+    /// `None` keeps the stored password when editing; `Some("")` clears it.
+    #[serde(default)]
+    pub password: Option<String>,
+    /// Reference an existing (visible) identity instead of the inline one.
+    #[serde(default)]
+    pub identity_id: Option<Uuid>,
+    #[serde(default)]
+    pub color_scheme: Option<String>,
+    #[serde(default)]
+    pub has_password: bool,
+}
+
+/// Serial line settings as edited in the Serial tab.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SerialLine {
+    pub baud_rate: u32,
+    pub data_bits: u8,
+    pub stop_bits: u8,
+    /// `none` | `odd` | `even`.
+    pub parity: String,
+    /// `none` | `software` | `hardware`.
+    pub flow_control: String,
+    /// WHATWG encoding label; empty = UTF-8.
+    #[serde(default)]
+    pub charset: String,
+}
+
+impl Default for SerialLine {
+    fn default() -> Self {
+        let d = termoso_core::serial::default_config();
+        Self {
+            baud_rate: d.baud_rate,
+            data_bits: d.data_bits,
+            stop_bits: d.stop_bits,
+            parity: d.parity,
+            flow_control: d.flow_control,
+            charset: d.charset,
+        }
+    }
+}
+
+impl SerialLine {
+    pub fn into_config(self, path: &str) -> SerialConfig {
+        SerialConfig {
+            path: path.to_string(),
+            baud_rate: self.baud_rate,
+            data_bits: self.data_bits,
+            stop_bits: self.stop_bits,
+            parity: self.parity,
+            flow_control: self.flow_control,
+            charset: self.charset,
+        }
+    }
+}
+
+/// Stored `ip_version` (`""`, `4`, `6`) → form value.
+fn ip_version_of(stored: &str) -> String {
+    match stored {
+        "4" | "6" => stored.to_string(),
+        _ => default_ip_version(),
+    }
+}
+
+fn clean_icon(icon: &Option<String>) -> Option<String> {
+    icon.as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != "auto")
+        .map(str::to_string)
 }
 
 /// Empty / whitespace scheme ids mean "follow the app setting".
@@ -92,8 +194,44 @@ fn clean_scheme(scheme: &Option<String>) -> Option<String> {
         .map(str::to_string)
 }
 
-fn is_telnet(h: &Host) -> bool {
+/// Telnet is the primary protocol only when the host has no SSH section.
+fn is_telnet_only(h: &Host) -> bool {
     h.telnet_config_id.is_some() && h.ssh_config_id.is_none()
+}
+
+/// Hidden inline identity flattened into a form section.
+struct FlatIdentity {
+    identity_id: Option<Uuid>,
+    username: String,
+    ssh_key_id: Option<Uuid>,
+    has_password: bool,
+}
+
+fn flatten_identity(store: &Store, id: Option<Uuid>) -> Result<FlatIdentity> {
+    let identity = match id {
+        Some(i) => store.get::<Identity>(i)?,
+        None => None,
+    };
+    Ok(match &identity {
+        Some(i) if i.data.is_visible => FlatIdentity {
+            identity_id: Some(i.id),
+            username: String::new(),
+            ssh_key_id: None,
+            has_password: false,
+        },
+        Some(i) => FlatIdentity {
+            identity_id: None,
+            username: i.data.username.clone(),
+            ssh_key_id: i.data.ssh_key_id,
+            has_password: i.data.password.as_deref().is_some_and(|p| !p.is_empty()),
+        },
+        None => FlatIdentity {
+            identity_id: None,
+            username: String::new(),
+            ssh_key_id: None,
+            has_password: false,
+        },
+    })
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -170,6 +308,8 @@ pub struct TagInfo {
     pub vault_id: Uuid,
     pub label: String,
     pub color: Option<String>,
+    /// Hosts carrying the tag.
+    pub hosts: usize,
 }
 
 /// Newest connection per saved host.
@@ -192,14 +332,12 @@ pub fn cards(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<HostCard>> {
     let mut out = Vec::with_capacity(hosts.len());
     for h in hosts {
         let r = store.resolve_host(h.id)?;
-        let protocol = if r.telnet.is_some() && h.data.ssh_config_id.is_none() {
-            "telnet"
+        let telnet_only = is_telnet_only(&h.data);
+        let telnet_port = r.telnet.as_ref().map(|t| t.port.unwrap_or(23));
+        let port = if telnet_only {
+            telnet_port.unwrap_or(23)
         } else {
-            "ssh"
-        };
-        let port = match protocol {
-            "telnet" => r.telnet.as_ref().and_then(|t| t.port).unwrap_or(23),
-            _ => r.port(),
+            r.port()
         };
         let username = r.username();
         out.push(HostCard {
@@ -209,11 +347,14 @@ pub fn cards(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<HostCard>> {
             address: h.data.address.clone(),
             group_id: h.data.group_id,
             group_path: r.group_path,
-            protocol: protocol.to_string(),
+            protocol: if telnet_only { "telnet" } else { "ssh" }.to_string(),
             username,
             port,
+            telnet_port,
             tags: r.tags,
             os_name: h.data.os_name.clone(),
+            icon: h.data.icon.clone(),
+            ip_version: ip_version_of(&h.data.ip_version),
             notes: h.data.notes.clone(),
             sort_order: h.data.sort_order,
             updated_at: h.updated_at,
@@ -261,22 +402,139 @@ pub fn groups(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<GroupNode>> {
 
 pub fn tags(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<TagInfo>> {
     let tags: Vec<Entity<Tag>> = store.list(vault_id)?;
-    Ok(tags
+    let hosts: Vec<Entity<Host>> = store.list(vault_id)?;
+    let mut counts: HashMap<Uuid, usize> = HashMap::new();
+    for h in &hosts {
+        let mut seen = h.data.tag_ids.clone();
+        seen.sort();
+        seen.dedup();
+        for t in seen {
+            *counts.entry(t).or_default() += 1;
+        }
+    }
+    let mut out: Vec<TagInfo> = tags
         .into_iter()
         .map(|t| TagInfo {
             id: t.id,
             vault_id: t.vault_id,
+            hosts: counts.get(&t.id).copied().unwrap_or(0),
             label: t.data.label,
             color: t.data.color,
         })
-        .collect())
+        .collect();
+    out.sort_by_key(|t| t.label.to_lowercase());
+    Ok(out)
+}
+
+fn normalize_tag_color(color: Option<String>) -> Result<Option<String>> {
+    let Some(c) = color.map(|c| c.trim().to_ascii_lowercase()) else {
+        return Ok(None);
+    };
+    if c.is_empty() {
+        return Ok(None);
+    }
+    let hex = c.strip_prefix('#').unwrap_or(&c);
+    if !matches!(hex.len(), 3 | 6) || !hex.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err(DesktopError::invalid("tag colour must be a hex value"));
+    }
+    Ok(Some(format!("#{hex}")))
+}
+
+/// Rename and/or recolour a tag. Renaming onto an existing label in the same
+/// vault merges into that tag instead (Termius does the same).
+pub fn tag_update(
+    store: &Store,
+    id: Uuid,
+    label: String,
+    color: Option<String>,
+) -> Result<TagInfo> {
+    let mut tag = store.require::<Tag>(id)?;
+    let label = label.trim().to_string();
+    if label.is_empty() {
+        return Err(DesktopError::invalid("tag label is empty"));
+    }
+    let color = normalize_tag_color(color)?;
+    let siblings: Vec<Entity<Tag>> = store.list(Some(tag.vault_id))?;
+    if let Some(other) = siblings
+        .iter()
+        .find(|t| t.id != id && t.data.label.eq_ignore_ascii_case(&label))
+    {
+        let target = other.id;
+        tags_merge(store, &[id], target)?;
+        let mut merged = store.require::<Tag>(target)?;
+        if color.is_some() && merged.data.color != color {
+            merged.data.color = color;
+            store.update(target, &merged.data)?;
+        }
+        return tag_info(store, target);
+    }
+    if tag.data.label != label || tag.data.color != color {
+        tag.data.label = label;
+        tag.data.color = color;
+        store.update(id, &tag.data)?;
+    }
+    tag_info(store, id)
+}
+
+fn tag_info(store: &Store, id: Uuid) -> Result<TagInfo> {
+    let tag = store.require::<Tag>(id)?;
+    tags(store, Some(tag.vault_id))?
+        .into_iter()
+        .find(|t| t.id == id)
+        .ok_or_else(|| DesktopError::not_found("tag"))
+}
+
+/// Remove a tag and unlink it from every host.
+pub fn tag_delete(store: &Store, id: Uuid) -> Result<()> {
+    let tag = store.require::<Tag>(id)?;
+    let hosts: Vec<Entity<Host>> = store.list(Some(tag.vault_id))?;
+    for mut h in hosts {
+        if h.data.tag_ids.contains(&id) {
+            h.data.tag_ids.retain(|t| *t != id);
+            store.update(h.id, &h.data)?;
+        }
+    }
+    Ok(store.delete(id)?)
+}
+
+/// Fold `sources` into `target`: hosts carrying any source tag get the target
+/// tag instead, then the source tags are deleted.
+pub fn tags_merge(store: &Store, sources: &[Uuid], target: Uuid) -> Result<TagInfo> {
+    let target_tag = store.require::<Tag>(target)?;
+    let sources: Vec<Uuid> = sources.iter().copied().filter(|s| *s != target).collect();
+    for s in &sources {
+        let src = store.require::<Tag>(*s)?;
+        if src.vault_id != target_tag.vault_id {
+            return Err(DesktopError::invalid("tags belong to different vaults"));
+        }
+    }
+    let hosts: Vec<Entity<Host>> = store.list(Some(target_tag.vault_id))?;
+    for mut h in hosts {
+        if !h.data.tag_ids.iter().any(|t| sources.contains(t)) {
+            continue;
+        }
+        let mut ids: Vec<Uuid> = h
+            .data
+            .tag_ids
+            .iter()
+            .copied()
+            .map(|t| if sources.contains(&t) { target } else { t })
+            .collect();
+        let mut seen = HashSet::new();
+        ids.retain(|t| seen.insert(*t));
+        h.data.tag_ids = ids;
+        store.update(h.id, &h.data)?;
+    }
+    for s in sources {
+        store.delete(s)?;
+    }
+    tag_info(store, target)
 }
 
 /// Load the editor model for an existing host. Inline (hidden) identities are
 /// flattened into the form; visible ones are referenced by id.
 pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
     let host = store.require::<Host>(id)?;
-    let telnet = is_telnet(&host.data);
     let ssh = match host.data.ssh_config_id {
         Some(c) => store.get::<SshConfig>(c)?.map(|e| e.data),
         None => None,
@@ -285,24 +543,20 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
         Some(c) => store.get::<TelnetConfig>(c)?.map(|e| e.data),
         None => None,
     };
-    let identity_ref = if telnet {
-        telnet_cfg.as_ref().and_then(|t| t.identity_id)
-    } else {
-        ssh.as_ref().and_then(|s| s.identity_id)
-    };
-    let identity = match identity_ref {
-        Some(i) => store.get::<Identity>(i)?,
+    let ssh_login = flatten_identity(store, ssh.as_ref().and_then(|s| s.identity_id))?;
+    let telnet = match &telnet_cfg {
+        Some(t) => {
+            let login = flatten_identity(store, t.identity_id)?;
+            Some(TelnetForm {
+                port: t.port,
+                username: login.username,
+                password: None,
+                identity_id: login.identity_id,
+                color_scheme: t.color_scheme.clone(),
+                has_password: login.has_password,
+            })
+        }
         None => None,
-    };
-    let (identity_id, username, ssh_key_id, has_password) = match &identity {
-        Some(i) if i.data.is_visible => (Some(i.id), String::new(), None, false),
-        Some(i) => (
-            None,
-            i.data.username.clone(),
-            i.data.ssh_key_id,
-            i.data.password.as_deref().is_some_and(|p| !p.is_empty()),
-        ),
-        None => (None, String::new(), None, false),
     };
     Ok(HostForm {
         id: Some(host.id),
@@ -310,44 +564,57 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
         label: host.data.label,
         address: host.data.address,
         group_id: host.data.group_id,
-        port: if telnet {
-            telnet_cfg.as_ref().and_then(|t| t.port)
-        } else {
-            ssh.as_ref().and_then(|s| s.port)
-        },
-        username,
+        // Hosts without any section (legacy rows) edit as SSH.
+        ssh: ssh.is_some() || telnet_cfg.is_none(),
+        port: ssh.as_ref().and_then(|s| s.port),
+        username: ssh_login.username,
         password: None,
-        ssh_key_id,
-        identity_id,
+        ssh_key_id: ssh_login.ssh_key_id,
+        identity_id: ssh_login.identity_id,
         tag_ids: host.data.tag_ids,
         notes: host.data.notes,
         os_name: host.data.os_name,
+        icon: host.data.icon,
+        ip_version: ip_version_of(&host.data.ip_version),
         agent_forwarding: ssh.as_ref().is_some_and(|s| s.agent_forwarding),
         startup_snippet_id: host.data.startup_snippet_id,
         host_chain_id: ssh.as_ref().and_then(|s| s.host_chain_id),
         proxy_id: ssh.as_ref().and_then(|s| s.proxy_id),
-        protocol: if telnet { "telnet" } else { "ssh" }.to_string(),
+        telnet,
         env_variables: ssh
             .as_ref()
             .map(|s| s.env_variables.clone())
             .unwrap_or_default(),
         keep_alive_interval: ssh.as_ref().and_then(|s| s.keep_alive_interval),
         timeout: ssh.as_ref().and_then(|s| s.timeout),
-        color_scheme: if telnet {
-            telnet_cfg.as_ref().and_then(|t| t.color_scheme.clone())
-        } else {
-            ssh.as_ref().and_then(|s| s.color_scheme.clone())
-        },
-        has_password,
+        color_scheme: ssh.as_ref().and_then(|s| s.color_scheme.clone()),
+        has_password: ssh_login.has_password,
     })
 }
 
-/// Create or update a host with its inline ssh_config / identity.
+/// The hidden identity an inline config points at, if any.
+fn inline_identity_of(
+    store: &Store,
+    identity_id: Option<Uuid>,
+) -> Result<Option<Entity<Identity>>> {
+    Ok(match identity_id {
+        Some(i) => store.get::<Identity>(i)?.filter(|e| !e.data.is_visible),
+        None => None,
+    })
+}
+
+/// Create or update a host with its inline ssh_config / telnet_config and
+/// their hidden identities.
 pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
     let label = f.label.trim();
     let address = f.address.trim();
     if address.is_empty() {
         return Err(DesktopError::invalid("address is required"));
+    }
+    if !f.ssh && f.telnet.is_none() {
+        return Err(DesktopError::invalid(
+            "a host needs an SSH or a Telnet section",
+        ));
     }
     if let Some(gid) = f.group_id {
         let g = store.require::<Group>(gid)?;
@@ -355,12 +622,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
             return Err(DesktopError::invalid("group belongs to another vault"));
         }
     }
-
-    let telnet = match f.protocol.as_str() {
-        "ssh" => false,
-        "telnet" => true,
-        other => return Err(DesktopError::invalid(format!("unknown protocol {other}"))),
-    };
+    let identity_label = if label.is_empty() { address } else { label };
 
     let existing = match f.id {
         Some(id) => store.get::<Host>(id)?,
@@ -374,80 +636,100 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
         Some(c) => store.get::<TelnetConfig>(c)?,
         None => None,
     };
-    let existing_identity_ref = existing_ssh
-        .as_ref()
-        .and_then(|s| s.data.identity_id)
-        .or_else(|| existing_telnet.as_ref().and_then(|t| t.data.identity_id));
-    let existing_inline_identity = match existing_identity_ref {
-        Some(i) => store.get::<Identity>(i)?.filter(|e| !e.data.is_visible),
-        None => None,
-    };
-
-    let identity_id = upsert_identity(
+    let ssh_inline_identity = inline_identity_of(
         store,
-        f.vault_id,
-        existing_inline_identity.as_ref(),
-        &Credentials {
-            identity_id: f.identity_id,
-            username: &f.username,
-            password: f.password.as_deref(),
-            ssh_key_id: f.ssh_key_id,
-            label: if label.is_empty() { address } else { label },
-        },
+        existing_ssh.as_ref().and_then(|s| s.data.identity_id),
     )?;
+    let telnet_inline_identity = inline_identity_of(
+        store,
+        existing_telnet.as_ref().and_then(|t| t.data.identity_id),
+    )?;
+    // Serial consoles are no longer saved hosts; drop a leftover config.
+    if let Some(cid) = existing.as_ref().and_then(|h| h.data.serial_config_id)
+        && store.get::<SerialConfig>(cid)?.is_some()
+    {
+        store.delete(cid)?;
+    }
 
-    let port = f.port.filter(|p| *p != 0);
-    let (ssh_config_id, telnet_config_id) = if telnet {
-        // Switching protocol drops the ssh_config so the host resolves as telnet.
-        if let Some(e) = &existing_ssh {
-            store.delete(e.id)?;
-        }
-        let mut t = existing_telnet
-            .as_ref()
-            .map(|e| e.data.clone())
-            .unwrap_or_default();
-        t.port = port;
-        t.identity_id = identity_id;
-        t.color_scheme = clean_scheme(&f.color_scheme);
-        let id = match &existing_telnet {
-            Some(e) => {
-                store.update(e.id, &t)?;
-                e.id
-            }
-            None => store.insert(f.vault_id, &t)?,
-        };
-        (None, Some(id))
-    } else {
-        if let Some(e) = &existing_telnet {
-            store.delete(e.id)?;
-        }
+    let ssh_config_id = if f.ssh {
+        let identity_id = upsert_identity(
+            store,
+            f.vault_id,
+            ssh_inline_identity.as_ref(),
+            &Credentials {
+                identity_id: f.identity_id,
+                username: &f.username,
+                password: f.password.as_deref(),
+                ssh_key_id: f.ssh_key_id,
+                label: identity_label,
+            },
+        )?;
         // Inline ssh_config, keeping fields the form does not edit.
         let mut ssh = existing_ssh
             .as_ref()
             .map(|e| e.data.clone())
             .unwrap_or_default();
-        ssh.port = port;
+        ssh.port = f.port.filter(|p| *p != 0);
         ssh.identity_id = identity_id;
         ssh.agent_forwarding = f.agent_forwarding;
         ssh.host_chain_id = f.host_chain_id;
         ssh.proxy_id = f.proxy_id;
-        ssh.env_variables = f
-            .env_variables
-            .iter()
-            .map(|(k, v)| (k.trim().to_string(), v.clone()))
-            .filter(|(k, _)| !k.is_empty())
-            .collect();
+        ssh.env_variables = clean_env(&f.env_variables);
         ssh.keep_alive_interval = f.keep_alive_interval.filter(|s| *s > 0);
         ssh.timeout = f.timeout.filter(|s| *s > 0);
         ssh.color_scheme = clean_scheme(&f.color_scheme);
-        let id = match &existing_ssh {
+        Some(match &existing_ssh {
             Some(e) => {
                 store.update(e.id, &ssh)?;
                 e.id
             }
             None => store.insert(f.vault_id, &ssh)?,
-        };
-        (Some(id), None)
+        })
+    } else {
+        if let Some(i) = &ssh_inline_identity {
+            store.delete(i.id)?;
+        }
+        if let Some(e) = &existing_ssh {
+            store.delete(e.id)?;
+        }
+        None
+    };
+
+    let telnet_config_id = if let Some(tf) = &f.telnet {
+        let identity_id = upsert_identity(
+            store,
+            f.vault_id,
+            telnet_inline_identity.as_ref(),
+            &Credentials {
+                identity_id: tf.identity_id,
+                username: &tf.username,
+                password: tf.password.as_deref(),
+                ssh_key_id: None,
+                label: identity_label,
+            },
+        )?;
+        let mut t = existing_telnet
+            .as_ref()
+            .map(|e| e.data.clone())
+            .unwrap_or_default();
+        t.port = tf.port.filter(|p| *p != 0);
+        t.identity_id = identity_id;
+        t.color_scheme = clean_scheme(&tf.color_scheme);
+        Some(match &existing_telnet {
+            Some(e) => {
+                store.update(e.id, &t)?;
+                e.id
+            }
+            None => store.insert(f.vault_id, &t)?,
+        })
+    } else {
+        if let Some(i) = &telnet_inline_identity {
+            store.delete(i.id)?;
+        }
+        if let Some(e) = &existing_telnet {
+            store.delete(e.id)?;
+        }
+        None
     };
 
     let mut host = existing
@@ -463,9 +745,19 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
     host.group_id = f.group_id;
     host.ssh_config_id = ssh_config_id;
     host.telnet_config_id = telnet_config_id;
+    host.serial_config_id = None;
     host.tag_ids = f.tag_ids.clone();
     host.notes = f.notes.clone();
-    host.os_name = f.os_name.clone().filter(|s| !s.is_empty());
+    // Detection owns `os_name`; a form loaded before a connection must not
+    // erase what the session learned meanwhile.
+    if existing.is_none() {
+        host.os_name = f.os_name.clone().filter(|s| !s.is_empty());
+    }
+    host.icon = clean_icon(&f.icon);
+    host.ip_version = match f.ip_version.as_str() {
+        "4" | "6" => f.ip_version.clone(),
+        _ => String::new(),
+    };
     host.startup_snippet_id = f.startup_snippet_id;
     let host_id = match &existing {
         Some(e) => {
@@ -499,11 +791,21 @@ pub fn delete(store: &Store, id: Uuid) -> Result<()> {
         identity_refs.extend(cfg.data.identity_id);
         store.delete(cfg.id)?;
     }
+    if let Some(cid) = host.data.serial_config_id
+        && store.get::<SerialConfig>(cid)?.is_some()
+    {
+        store.delete(cid)?;
+    }
     for iid in identity_refs {
         if let Some(i) = store.get::<Identity>(iid)?
             && !i.data.is_visible
         {
             store.delete(i.id)?;
+        }
+    }
+    for hs in store.list::<HostSnippet>(Some(host.vault_id))? {
+        if hs.data.host_id == id {
+            store.delete(hs.id)?;
         }
     }
     store.delete(id)?;
@@ -965,7 +1267,7 @@ fn copy_host(
     f.label = label.unwrap_or_else(|| src.data.label.clone());
     f.password = None;
 
-    // Inline credentials: read the stored identity so the password travels.
+    // Inline credentials: read the stored identities so the passwords travel.
     let ssh = match src.data.ssh_config_id {
         Some(c) => store.get::<SshConfig>(c)?.map(|e| e.data),
         None => None,
@@ -974,23 +1276,25 @@ fn copy_host(
         Some(c) => store.get::<TelnetConfig>(c)?.map(|e| e.data),
         None => None,
     };
-    let identity = match ssh
-        .as_ref()
-        .and_then(|s| s.identity_id)
-        .or_else(|| telnet.as_ref().and_then(|t| t.identity_id))
-    {
-        Some(i) => store.get::<Identity>(i)?,
-        None => None,
-    };
-    if let Some(i) = &identity {
-        let visible_here = i.data.is_visible && i.vault_id == vault_id;
-        if visible_here {
+    if let Some(i) = load_identity(store, ssh.as_ref().and_then(|s| s.identity_id))? {
+        if i.data.is_visible && i.vault_id == vault_id {
             f.identity_id = Some(i.id);
         } else {
             f.identity_id = None;
             f.username = i.data.username.clone();
             f.password = i.data.password.clone();
             f.ssh_key_id = i.data.ssh_key_id;
+        }
+    }
+    if let Some(tf) = f.telnet.as_mut()
+        && let Some(i) = load_identity(store, telnet.as_ref().and_then(|t| t.identity_id))?
+    {
+        if i.data.is_visible && i.vault_id == vault_id {
+            tf.identity_id = Some(i.id);
+        } else {
+            tf.identity_id = None;
+            tf.username = i.data.username.clone();
+            tf.password = i.data.password.clone();
         }
     }
     if !same_vault {
@@ -1002,7 +1306,7 @@ fn copy_host(
     }
     let card = save(store, &f)?;
     // Fields the form does not carry (charset, mosh, colours…) travel raw.
-    if let Some(mut s) = ssh.filter(|_| f.protocol == "ssh")
+    if let Some(mut s) = ssh.filter(|_| f.ssh)
         && let Some(cid) = store.require::<Host>(card.id)?.data.ssh_config_id
         && let Some(saved) = store.get::<SshConfig>(cid)?
     {
@@ -1015,6 +1319,13 @@ fn copy_host(
         store.update(cid, &s)?;
     }
     Ok(card.id)
+}
+
+fn load_identity(store: &Store, id: Option<Uuid>) -> Result<Option<Entity<Identity>>> {
+    Ok(match id {
+        Some(i) => store.get::<Identity>(i)?,
+        None => None,
+    })
 }
 
 /// Duplicate a host next to the original ("<label> copy").
@@ -1135,6 +1446,7 @@ mod tests {
             label: "prod".into(),
             address: "10.0.0.1".into(),
             group_id: None,
+            ssh: true,
             port: Some(2222),
             username: "deploy".into(),
             password: Some("s3cret".into()),
@@ -1143,11 +1455,13 @@ mod tests {
             tag_ids: vec![],
             notes: String::new(),
             os_name: None,
+            icon: None,
+            ip_version: "auto".into(),
             agent_forwarding: false,
             startup_snippet_id: None,
             host_chain_id: None,
             proxy_id: None,
-            protocol: "ssh".into(),
+            telnet: None,
             env_variables: vec![],
             keep_alive_interval: None,
             timeout: None,
@@ -1243,40 +1557,187 @@ mod tests {
         );
         assert_eq!(f.keep_alive_interval, Some(30));
         assert_eq!(f.timeout, None);
-        assert_eq!(f.protocol, "ssh");
+        assert!(f.ssh);
+        assert!(f.telnet.is_none());
     }
 
     #[test]
-    fn telnet_hosts_use_telnet_config() {
+    fn telnet_section_lives_next_to_ssh() {
         let s = store();
         let vault = s.local_vault().unwrap().id;
         let mut f = new_form(vault);
-        f.protocol = "telnet".into();
-        f.port = None;
+        f.telnet = Some(TelnetForm {
+            port: None,
+            username: "admin".into(),
+            password: Some("tel".into()),
+            ..TelnetForm::default()
+        });
+        let card = save(&s, &f).unwrap();
+        assert_eq!(card.protocol, "ssh");
+        assert_eq!(card.port, 2222);
+        assert_eq!(card.username, "deploy");
+        assert_eq!(card.telnet_port, Some(23));
+        let identities: Vec<Entity<Identity>> = s.list(Some(vault)).unwrap();
+        assert_eq!(identities.len(), 2, "one hidden identity per section");
+
+        let f = form(&s, card.id).unwrap();
+        assert!(f.ssh);
+        let t = f.telnet.clone().expect("telnet section");
+        assert_eq!(t.username, "admin");
+        assert!(t.has_password);
+        assert!(t.password.is_none());
+        let r = s.resolve_host(card.id).unwrap();
+        assert_eq!(r.protocol(), "ssh");
+        assert!(r.telnet.is_some());
+
+        // Removing the Telnet section drops its config and hidden identity.
+        let mut f = f;
+        f.telnet = None;
+        let card = save(&s, &f).unwrap();
+        assert_eq!(card.telnet_port, None);
+        let telnets: Vec<Entity<TelnetConfig>> = s.list(Some(vault)).unwrap();
+        assert!(telnets.is_empty());
+        let identities: Vec<Entity<Identity>> = s.list(Some(vault)).unwrap();
+        assert_eq!(identities.len(), 1);
+    }
+
+    #[test]
+    fn telnet_only_hosts_resolve_as_telnet() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let mut f = new_form(vault);
+        f.ssh = false;
+        f.telnet = Some(TelnetForm {
+            port: Some(2323),
+            username: "admin".into(),
+            ..TelnetForm::default()
+        });
         let card = save(&s, &f).unwrap();
         assert_eq!(card.protocol, "telnet");
-        assert_eq!(card.port, 23);
-        assert_eq!(card.username, "deploy");
+        assert_eq!(card.port, 2323);
+        assert_eq!(card.telnet_port, Some(2323));
+        assert_eq!(card.username, "admin");
+        let sshs: Vec<Entity<SshConfig>> = s.list(Some(vault)).unwrap();
+        assert!(sshs.is_empty());
+        let identities: Vec<Entity<Identity>> = s.list(Some(vault)).unwrap();
+        assert_eq!(identities.len(), 1, "the SSH login is not kept");
 
         let mut f = form(&s, card.id).unwrap();
-        assert_eq!(f.protocol, "telnet");
-        f.protocol = "ssh".into();
+        assert!(!f.ssh);
+        assert_eq!(f.username, "");
+        // Adding SSH back makes it the primary protocol again.
+        f.ssh = true;
+        f.username = "deploy".into();
         let card = save(&s, &f).unwrap();
         assert_eq!(card.protocol, "ssh");
         assert_eq!(card.port, 22);
+        assert_eq!(card.username, "deploy");
+        assert_eq!(card.telnet_port, Some(2323));
+
+        // A host needs at least one section.
+        f.ssh = false;
+        f.telnet = None;
+        assert!(save(&s, &f).is_err());
+        delete(&s, card.id).unwrap();
         let telnets: Vec<Entity<TelnetConfig>> = s.list(Some(vault)).unwrap();
         assert!(telnets.is_empty());
+    }
 
-        assert!(
-            save(
-                &s,
-                &HostForm {
-                    protocol: "serial".into(),
-                    ..new_form(vault)
-                }
+    #[test]
+    fn icon_and_ip_version_round_trip() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let mut f = new_form(vault);
+        f.icon = Some("debian".into());
+        f.ip_version = "6".into();
+        let card = save(&s, &f).unwrap();
+        assert_eq!(card.icon.as_deref(), Some("debian"));
+        assert_eq!(card.ip_version, "6");
+        let stored = s.require::<Host>(card.id).unwrap().data;
+        assert_eq!(stored.ip_version, "6");
+
+        let mut f = form(&s, card.id).unwrap();
+        f.icon = Some("auto".into());
+        f.ip_version = "auto".into();
+        let card = save(&s, &f).unwrap();
+        assert_eq!(card.icon, None);
+        assert_eq!(card.ip_version, "auto");
+        assert_eq!(s.require::<Host>(card.id).unwrap().data.ip_version, "");
+    }
+
+    #[test]
+    fn tags_rename_merge_and_delete() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let prod = s
+            .insert(
+                vault,
+                &Tag {
+                    label: "prod".into(),
+                    color: None,
+                },
             )
-            .is_err()
+            .unwrap();
+        let production = s
+            .insert(
+                vault,
+                &Tag {
+                    label: "Production".into(),
+                    color: Some("#10b981".into()),
+                },
+            )
+            .unwrap();
+        let db = s
+            .insert(
+                vault,
+                &Tag {
+                    label: "db".into(),
+                    color: None,
+                },
+            )
+            .unwrap();
+        let mut f = new_form(vault);
+        f.tag_ids = vec![prod, db];
+        let a = save(&s, &f).unwrap();
+        let mut f = new_form(vault);
+        f.address = "10.0.0.2".into();
+        f.tag_ids = vec![prod, production];
+        let b = save(&s, &f).unwrap();
+
+        let list = tags(&s, Some(vault)).unwrap();
+        assert_eq!(list.iter().find(|t| t.id == prod).unwrap().hosts, 2);
+        assert_eq!(list.iter().find(|t| t.id == db).unwrap().hosts, 1);
+
+        // Recolour + rename in place.
+        let t = tag_update(&s, db, " database ".into(), Some("A81D33".into())).unwrap();
+        assert_eq!(t.label, "database");
+        assert_eq!(t.color.as_deref(), Some("#a81d33"));
+        assert!(tag_update(&s, db, "x".into(), Some("red".into())).is_err());
+        assert!(tag_update(&s, db, "  ".into(), None).is_err());
+
+        // Renaming onto an existing label merges into it (case-insensitive).
+        let merged = tag_update(&s, prod, "production".into(), None).unwrap();
+        assert_eq!(merged.id, production);
+        assert_eq!(merged.hosts, 2);
+        assert!(s.get::<Tag>(prod).unwrap().is_none());
+        let b_tags = s.require::<Host>(b.id).unwrap().data.tag_ids;
+        assert_eq!(b_tags, vec![production]);
+        let a_tags = s.require::<Host>(a.id).unwrap().data.tag_ids;
+        assert_eq!(a_tags, vec![production, db]);
+
+        // Explicit merge, then delete unlinks everywhere.
+        let t = tags_merge(&s, &[db, production], production).unwrap();
+        assert_eq!(t.hosts, 2);
+        assert!(s.get::<Tag>(db).unwrap().is_none());
+        tag_delete(&s, production).unwrap();
+        assert!(s.require::<Host>(a.id).unwrap().data.tag_ids.is_empty());
+        assert!(
+            cards(&s, Some(vault))
+                .unwrap()
+                .iter()
+                .all(|c| c.tags.is_empty())
         );
+        assert!(tags(&s, Some(vault)).unwrap().is_empty());
     }
 
     #[test]

@@ -2,11 +2,11 @@ import { createTheme, alpha } from "@mui/material/styles";
 
 declare module "@mui/material/styles" {
   interface Palette {
-    surface: { lowest: string; base: string; high: string; highest: string };
+    surface: { lowest: string; base: string; high: string; highest: string; strong: string };
     border: { light: string; basic: string; strong: string };
   }
   interface PaletteOptions {
-    surface?: { lowest: string; base: string; high: string; highest: string };
+    surface?: { lowest: string; base: string; high: string; highest: string; strong: string };
     border?: { light: string; basic: string; strong: string };
   }
 }
@@ -114,6 +114,7 @@ export const theme = createTheme({
           base: dark.base,
           high: dark.high,
           highest: dark.highest,
+          strong: dark.strong,
         },
         border: {
           light: alpha(grey, 0.1),
@@ -159,6 +160,7 @@ export const theme = createTheme({
           base: light.base,
           high: light.high,
           highest: light.highest,
+          strong: light.strong,
         },
         border: {
           light: alpha("#3B4557", 0.08),
@@ -200,7 +202,8 @@ export const theme = createTheme({
   components: {
     MuiCssBaseline: {
       styleOverrides: {
-        body: { minHeight: "100vh" },
+        html: { backgroundColor: "transparent" },
+        body: { minHeight: "100vh", backgroundColor: "transparent" },
         code: { fontFamily: monoFontFamily },
         "::selection": { backgroundColor: alpha(emerald.main, 0.35) },
       },

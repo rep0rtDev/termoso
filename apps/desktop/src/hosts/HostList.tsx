@@ -1,6 +1,4 @@
 import {
-  Box,
-  Chip,
   IconButton,
   Table,
   TableBody,
@@ -11,6 +9,8 @@ import {
 } from "@mui/material";
 import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
 import { monoFontFamily, sizes } from "@/theme/theme";
+import { hostProtocols } from "@/ipc/types";
+import { PROTOCOL_NAME } from "./ConnectSplit";
 import { HostAvatar } from "./HostAvatar";
 import { GroupTile, groupSubtitle, SelectableTile, type HostCollectionProps } from "./HostGrid";
 
@@ -18,6 +18,11 @@ const rowSx = {
   "& td": { py: 0.5 },
   "& .row-actions": { opacity: 0 },
   "&:hover .row-actions, &.Mui-selected .row-actions": { opacity: 1 },
+} as const;
+
+const droppingSx = {
+  "& td": { bgcolor: "surface.strong" },
+  "& td:first-of-type": { boxShadow: "inset 2px 0 0 var(--mui-palette-primary-main)" },
 } as const;
 
 /** `2h ago`, `3d ago`, or a short date for anything older. */
@@ -37,7 +42,6 @@ export function relativeTime(iso: string | null, now = Date.now()) {
 }
 
 export function HostList(p: HostCollectionProps) {
-  const selecting = p.checked.size > 0;
   return (
     <Table size="small">
       <TableHead>
@@ -45,6 +49,7 @@ export function HostList(p: HostCollectionProps) {
           <TableCell sx={{ width: 48 }} />
           <TableCell>Name</TableCell>
           <TableCell>Address</TableCell>
+          <TableCell>Protocol</TableCell>
           <TableCell>User</TableCell>
           <TableCell align="right">Port</TableCell>
           <TableCell>Tags</TableCell>
@@ -57,9 +62,10 @@ export function HostList(p: HostCollectionProps) {
           <TableRow
             key={g.id}
             hover
-            sx={rowSx}
+            sx={[rowSx, p.dnd?.dropping === g.id ? droppingSx : {}]}
             onClick={() => p.onOpenGroup(g.id)}
             onContextMenu={(e) => p.onGroupContext(g, e)}
+            {...p.dnd?.dropGroup(g)}
           >
             <TableCell>
               <GroupTile g={g} size={sizes.tileSmall} />
@@ -69,7 +75,7 @@ export function HostList(p: HostCollectionProps) {
                 {g.label}
               </Typography>
             </TableCell>
-            <TableCell colSpan={5}>
+            <TableCell colSpan={6}>
               <Typography variant="body2" color="text.secondary">
                 {groupSubtitle(g)}
               </Typography>
@@ -95,16 +101,16 @@ export function HostList(p: HostCollectionProps) {
               key={h.id}
               hover
               selected={isChecked || h.id === p.selectedId}
-              sx={rowSx}
+              sx={[rowSx, p.dnd?.dragging.has(h.id) ? { opacity: 0.45 } : {}]}
               onClick={(e) => p.onOpenHost(h, e)}
               onDoubleClick={() => p.onConnectHost(h)}
               onContextMenu={(e) => p.onHostContext(h, e)}
+              {...p.dnd?.dragHost(h)}
             >
               <TableCell>
                 <SelectableTile
                   tile={<HostAvatar host={h} size={sizes.tileSmall} />}
                   checked={isChecked}
-                  selecting={selecting}
                   onToggle={() => p.onToggleHost(h)}
                   size={sizes.tileSmall}
                 />
@@ -131,20 +137,27 @@ export function HostList(p: HostCollectionProps) {
               </TableCell>
               <TableCell>
                 <Typography variant="body2" color="text.secondary" noWrap>
+                  {hostProtocols(h)
+                    .map((x) => PROTOCOL_NAME[x])
+                    .join(", ")}
+                </Typography>
+              </TableCell>
+              <TableCell>
+                <Typography variant="body2" color="text.secondary" noWrap>
                   {h.username || "—"}
                 </Typography>
               </TableCell>
               <TableCell align="right">
-                <Typography variant="body2" color="text.secondary">
-                  {h.port}
+                <Typography variant="body2" color="text.secondary" noWrap>
+                  {h.telnetPort !== null && h.protocol === "ssh"
+                    ? `${h.port} / ${h.telnetPort}`
+                    : h.port}
                 </Typography>
               </TableCell>
               <TableCell>
-                <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
-                  {h.tags.map((t) => (
-                    <Chip key={t} size="small" label={t} />
-                  ))}
-                </Box>
+                <Typography variant="body2" color="text.secondary" noWrap>
+                  {h.tags.join(", ") || "—"}
+                </Typography>
               </TableCell>
               <TableCell>
                 <Typography variant="body2" color="text.secondary" noWrap>

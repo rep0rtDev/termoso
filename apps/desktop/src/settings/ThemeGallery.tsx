@@ -107,6 +107,65 @@ export function ThemeCard({
   compact?: boolean;
   onClick: () => void;
 }) {
+  if (compact) {
+    return (
+      <ButtonBase
+        onClick={onClick}
+        aria-pressed={selected}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1.25,
+          textAlign: "left",
+          borderRadius: 1.5,
+          px: 0.75,
+          py: 0.5,
+          bgcolor: selected ? "surface.highest" : "transparent",
+          "&:hover": { bgcolor: "surface.highest" },
+        }}
+      >
+        <Box
+          sx={{
+            width: 64,
+            height: 40,
+            flexShrink: 0,
+            borderRadius: 1,
+            bgcolor: theme.background,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            gap: "5px",
+            px: 1,
+          }}
+        >
+          {[
+            { color: theme.ansi[2], w: "100%" },
+            { color: theme.ansi[4], w: "70%" },
+            { color: theme.foreground, w: "45%" },
+          ].map((bar, i) => (
+            <Box
+              key={i}
+              sx={{ height: 4, width: bar.w, borderRadius: 1, bgcolor: bar.color, opacity: 0.9 }}
+            />
+          ))}
+        </Box>
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography
+            variant="body2"
+            noWrap
+            sx={{ fontWeight: 500, color: selected ? "primary.main" : "text.primary" }}
+          >
+            {label}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+            {hint ?? (theme.dark ? "Dark" : "Light")}
+          </Typography>
+        </Box>
+        {selected && <CheckRoundedIcon sx={{ fontSize: 18, color: "primary.main", mr: 0.5 }} />}
+      </ButtonBase>
+    );
+  }
+
   return (
     <ButtonBase
       onClick={onClick}
@@ -118,19 +177,16 @@ export function ThemeCard({
         textAlign: "left",
         borderRadius: 1.5,
         overflow: "hidden",
-        bgcolor: "surface.highest",
-        outline: selected ? 2 : 0,
-        outlineColor: "primary.main",
-        outlineOffset: 0,
-        transition: "outline-color 120ms",
-        "&:hover": { outline: 2, outlineColor: selected ? "primary.main" : "border.strong" },
+        bgcolor: selected ? "surface.strong" : "surface.highest",
+        transition: "background-color 120ms",
+        "&:hover": { bgcolor: "surface.strong" },
       }}
     >
       <Box
         sx={{
-          height: compact ? 46 : 64,
+          height: 64,
           px: 1.25,
-          py: compact ? 0.75 : 1,
+          py: 1,
           bgcolor: theme.background,
           color: theme.foreground,
           fontFamily: "monospace",
@@ -141,7 +197,7 @@ export function ThemeCard({
           position: "relative",
         }}
       >
-        {(compact ? SAMPLE.slice(0, 1) : SAMPLE).map((line, i) => (
+        {SAMPLE.map((line, i) => (
           <Box key={i} component="div">
             {line.map((seg, j) => (
               <Box key={j} component="span" sx={{ color: theme.ansi[seg.color] }}>
@@ -174,15 +230,17 @@ export function ThemeCard({
           </Box>
         )}
       </Box>
-      <Box sx={{ px: 1.25, py: compact ? 0.5 : 0.75, minWidth: 0 }}>
-        <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
+      <Box sx={{ px: 1.25, py: 0.75, minWidth: 0 }}>
+        <Typography
+          variant="body2"
+          noWrap
+          sx={{ fontWeight: 500, color: selected ? "primary.main" : "text.primary" }}
+        >
           {label}
         </Typography>
-        {!compact && (
-          <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-            {hint ?? (theme.dark ? "Dark" : "Light")}
-          </Typography>
-        )}
+        <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+          {hint ?? (theme.dark ? "Dark" : "Light")}
+        </Typography>
       </Box>
     </ButtonBase>
   );

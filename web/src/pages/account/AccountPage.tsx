@@ -70,19 +70,21 @@ function ProfileSection({ displayName, createdAt }: { displayName: string; creat
           e.preventDefault();
           save.mutate();
         }}
-        sx={{ display: "flex", gap: 1.5, flexWrap: "wrap", alignItems: "flex-start" }}
+        sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "flex-start" }}
       >
         <TextField
           label="Display name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          sx={{ minWidth: 280, flex: 1 }}
+          fullWidth={false}
+          sx={{ width: { xs: "100%", sm: 360 } }}
           helperText="Shown to teammates instead of your email."
         />
         <Button
           type="submit"
           variant="contained"
           disabled={save.isPending || name.trim() === displayName.trim()}
+          sx={{ mt: "22px", height: 36 }}
         >
           Save
         </Button>
@@ -131,11 +133,11 @@ function EmailSection({ email, verified }: { email: string; verified: boolean })
     >
       <Stack spacing={2}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
-          <Typography sx={{ fontWeight: 600 }}>{email}</Typography>
+          <Typography sx={{ fontWeight: 500 }}>{email}</Typography>
           {verified ? (
             <Chip size="small" color="success" label="Verified" />
           ) : (
-            <Chip size="small" color="warning" variant="outlined" label="Not verified" />
+            <Chip size="small" color="warning" label="Not verified" />
           )}
         </Box>
         {!verified && emailEnabled && (
@@ -145,34 +147,37 @@ function EmailSection({ email, verified }: { email: string; verified: boolean })
               e.preventDefault();
               confirm.mutate();
             }}
-            sx={{ display: "flex", gap: 1.5, flexWrap: "wrap", alignItems: "center" }}
+            sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}
           >
             <Button
-              variant={sent ? "text" : "contained"}
+              variant={sent ? "text" : "outlined"}
               onClick={() => send.mutate()}
               disabled={send.isPending}
+              sx={{ height: 36 }}
             >
               {sent ? "Resend code" : "Send verification code"}
             </Button>
             <TextField
-              size="small"
-              label="Code from email"
+              placeholder="Code from email"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               inputMode="numeric"
               autoComplete="one-time-code"
+              fullWidth={false}
+              sx={{ width: 180 }}
             />
             <Button
               type="submit"
-              variant="outlined"
+              variant="contained"
               disabled={confirm.isPending || code.trim() === ""}
+              sx={{ height: 36 }}
             >
               Confirm
             </Button>
           </Box>
         )}
         {!verified && !emailEnabled && (
-          <Alert severity="info" variant="outlined">
+          <Alert severity="info">
             This server has no outgoing email configured, so addresses cannot be verified.
           </Alert>
         )}

@@ -198,6 +198,18 @@ impl Store {
         Ok(out)
     }
 
+    /// Delete one history row. A synced row becomes a tombstone.
+    pub fn delete_history(&self, id: Uuid) -> Result<()> {
+        let conn = self.conn();
+        let id = id.to_string();
+        conn.execute(
+            "UPDATE history SET deleted = 1, dirty = 1, data = '' WHERE id = ?1 AND seq > 0",
+            [&id],
+        )?;
+        conn.execute("DELETE FROM history WHERE id = ?1 AND seq = 0", [&id])?;
+        Ok(())
+    }
+
     /// Delete all history of a kind (or all). Synced rows become tombstones.
     pub fn clear_history(&self, kind: Option<HistoryKind>) -> Result<()> {
         let conn = self.conn();
@@ -370,6 +382,10 @@ mod tests {
             s.dirty_history().unwrap().is_empty(),
             "local vault never syncs"
         );
+        s.delete_history(all[0].id).unwrap();
+        let rest = s.commands(10).unwrap();
+        assert_eq!(rest.len(), 3);
+        assert!(rest.iter().all(|i| i.id != all[0].id));
         s.clear_history(Some(HistoryKind::Command)).unwrap();
         assert!(s.commands(10).unwrap().is_empty());
     }

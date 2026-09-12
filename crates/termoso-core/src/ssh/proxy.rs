@@ -38,6 +38,15 @@ impl ProxyKind {
     pub fn supports_password(self) -> bool {
         !matches!(self, Self::Socks4)
     }
+
+    /// Display name (`HTTP`, `SOCKS4`, `SOCKS5`).
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Http => "HTTP",
+            Self::Socks4 => "SOCKS4",
+            Self::Socks5 => "SOCKS5",
+        }
+    }
 }
 
 /// Resolved proxy settings.

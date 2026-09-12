@@ -1,23 +1,21 @@
 import { Chip } from "@mui/material";
 import type { TeamRole, VaultRole } from "@/api/types";
 
-const colors: Record<TeamRole | VaultRole, "default" | "primary" | "secondary" | "warning"> = {
-  owner: "warning",
-  admin: "primary",
-  member: "default",
+/** Owners/managers get the accent; everyone else stays neutral. */
+const accent: Partial<Record<TeamRole | VaultRole, "primary" | "secondary">> = {
+  owner: "primary",
   manager: "primary",
-  editor: "secondary",
-  viewer: "default",
+  admin: "secondary",
 };
 
 export function RoleChip({ role }: { role: TeamRole | VaultRole }) {
+  const color = accent[role];
   return (
     <Chip
       size="small"
-      variant={colors[role] === "default" ? "outlined" : "filled"}
-      color={colors[role]}
+      color={color ?? "default"}
       label={role.charAt(0).toUpperCase() + role.slice(1)}
-      sx={{ textTransform: "none" }}
+      sx={color ? undefined : { color: "text.secondary" }}
     />
   );
 }

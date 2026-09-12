@@ -354,7 +354,7 @@ function MembersSection({
           (members.data?.members.filter((m) => m.role === "manager" && !m.pending).length ?? 0) >
             1 ||
           teamAdmin ? (
-            <Button variant="outlined" color="error" onClick={() => setLeaveOpen(true)}>
+            <Button color="inherit" onClick={() => setLeaveOpen(true)}>
               Leave vault
             </Button>
           ) : null}

@@ -1,5 +1,6 @@
 //! Process-wide application state owned by Rust.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -9,6 +10,7 @@ use termoso_core::store::Store;
 use termoso_core::sync::ConflictPolicy;
 
 use crate::account::AccountRuntime;
+use crate::edits::Edits;
 use crate::error::{DesktopError, Result};
 use crate::forwarding::Forwards;
 use crate::prompts::PromptBroker;
@@ -27,6 +29,7 @@ pub struct AppState {
     pub store: Arc<Store>,
     pub sessions: Sessions,
     pub sftp: SftpSessions,
+    pub edits: Edits,
     pub forwards: Forwards,
     pub prompts: PromptBroker,
     pub account: AccountRuntime,
@@ -49,6 +52,7 @@ impl AppState {
             store: Arc::new(store),
             sessions: Sessions::default(),
             sftp: SftpSessions::default(),
+            edits: Edits::default(),
             forwards: Forwards::default(),
             prompts: PromptBroker::default(),
             account: AccountRuntime::default(),
@@ -112,7 +116,22 @@ pub struct Settings {
     pub confirm_close_tab: bool,
     pub confirm_paste_multiline: bool,
     pub autocomplete: bool,
+    /// Install the OSC 133 prompt markers into bash / zsh / fish after
+    /// connecting: powers command history, autocomplete and prompt navigation.
+    pub shell_integration: bool,
     pub terminal_bell: bool,
+    /// Render bold text with the bright ANSI colours.
+    pub bright_bold: bool,
+    /// `TERM` advertised to remote shells and the local PTY.
+    pub term_type: String,
+    /// Re-establish SSH / Telnet sessions that drop unexpectedly.
+    pub auto_reconnect: bool,
+    /// Colour error / warning / ok / info / debug words and IP / MAC addresses
+    /// in terminal output (client-side, foreground only).
+    pub keyword_highlight: bool,
+    /// Program for local terminals (`/bin/zsh`, `pwsh.exe`, `wsl.exe -d Ubuntu`);
+    /// empty = the user's login shell.
+    pub local_shell: String,
     pub keep_alive_seconds: u32,
     /// Probe a host's OS after the first successful connection to pick its icon.
     pub detect_os: bool,
@@ -139,7 +158,32 @@ pub struct Settings {
     /// Release feed URL; empty = project default. Point it at your own server
     /// to keep updates fully self-hosted.
     pub update_url: String,
+    /// The start-up sign-in screen was dismissed with "Continue offline";
+    /// signing in stays one click away in the account menu.
+    pub welcome_seen: bool,
+    /// Keyboard shortcut overrides: command id → chord (`ctrl+shift+k`), or
+    /// an empty string to unbind. Commands not listed keep their defaults.
+    pub shortcuts: BTreeMap<String, String>,
+    /// SFTP "Open with" associations: lower-case extension (`""` = files
+    /// without one) → application name or path.
+    pub sftp_open_with: BTreeMap<String, String>,
 }
+
+/// Terminal emulation types offered in Settings; all have terminfo entries on
+/// every mainstream distribution.
+pub const TERM_TYPES: &[&str] = &[
+    "xterm-256color",
+    "xterm",
+    "vt100",
+    "vt220",
+    "linux",
+    "screen-256color",
+    "tmux-256color",
+];
+
+const MAX_SHORTCUTS: usize = 256;
+const MAX_SHORTCUT_LEN: usize = 48;
+const MAX_OPEN_WITH: usize = 256;
 
 impl Default for Settings {
     fn default() -> Self {
@@ -158,7 +202,13 @@ impl Default for Settings {
             confirm_close_tab: true,
             confirm_paste_multiline: true,
             autocomplete: true,
+            shell_integration: true,
             terminal_bell: false,
+            bright_bold: false,
+            term_type: "xterm-256color".into(),
+            auto_reconnect: true,
+            keyword_highlight: true,
+            local_shell: String::new(),
             keep_alive_seconds: 30,
             detect_os: true,
             post_quantum_kex: true,
@@ -171,6 +221,9 @@ impl Default for Settings {
             upload_logs: false,
             update_check: "manual".into(),
             update_url: String::new(),
+            welcome_seen: false,
+            shortcuts: BTreeMap::new(),
+            sftp_open_with: BTreeMap::new(),
         }
     }
 }
@@ -202,6 +255,15 @@ impl Settings {
         if self.scrollback > 1_000_000 {
             return Err(DesktopError::invalid("scrollback too large"));
         }
+        if !TERM_TYPES.contains(&self.term_type.as_str()) {
+            return Err(DesktopError::invalid(format!(
+                "termType must be one of {}",
+                TERM_TYPES.join(", ")
+            )));
+        }
+        if self.local_shell.len() > 512 || self.local_shell.contains(['\0', '\n']) {
+            return Err(DesktopError::invalid("localShell is invalid"));
+        }
         if self.keep_alive_seconds > 3600 {
             return Err(DesktopError::invalid("keepAliveSeconds too large"));
         }
@@ -220,6 +282,33 @@ impl Settings {
             ));
         }
         crate::update::feed_url(&self.update_url)?;
+        if self.shortcuts.len() > MAX_SHORTCUTS {
+            return Err(DesktopError::invalid("too many shortcut overrides"));
+        }
+        for (command, chord) in &self.shortcuts {
+            let ok = |s: &str, max: usize| {
+                !s.is_empty()
+                    && s.len() <= max
+                    && s.chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-' | '_'))
+            };
+            if !ok(command, 64) || !(chord.is_empty() || ok(chord, MAX_SHORTCUT_LEN)) {
+                return Err(DesktopError::invalid("invalid shortcut entry"));
+            }
+        }
+        if self.sftp_open_with.len() > MAX_OPEN_WITH {
+            return Err(DesktopError::invalid("too many Open with associations"));
+        }
+        for (ext, app) in &self.sftp_open_with {
+            if ext.len() > 32
+                || ext.contains(['/', '\\', '.'])
+                || app.trim().is_empty()
+                || app.len() > 512
+                || app.contains(['\0', '\n'])
+            {
+                return Err(DesktopError::invalid("invalid Open with association"));
+            }
+        }
         Ok(())
     }
 
@@ -248,7 +337,39 @@ mod tests {
         assert_eq!(s.scrollback, 500);
         assert_eq!(s.cursor_style, "block");
         assert!(!s.record_sessions);
+        assert!(s.shortcuts.is_empty());
         s.validate().unwrap();
+    }
+
+    #[test]
+    fn shortcut_overrides_are_checked() {
+        let mut s = Settings::default();
+        s.shortcuts
+            .insert("palette.commands".into(), "ctrl+k".into());
+        s.shortcuts.insert("tab.new".into(), String::new());
+        s.validate().unwrap();
+        s.shortcuts
+            .insert("tab.close".into(), "ctrl+<script>".into());
+        assert!(s.validate().is_err());
+        s.shortcuts.remove("tab.close");
+        s.shortcuts.insert("bad id!".into(), "ctrl+w".into());
+        assert!(s.validate().is_err());
+    }
+
+    #[test]
+    fn open_with_associations_are_checked() {
+        let mut s = Settings::default();
+        s.sftp_open_with.insert("conf".into(), "code".into());
+        s.sftp_open_with.insert("".into(), "/usr/bin/gedit".into());
+        s.validate().unwrap();
+        s.sftp_open_with.insert("tar.gz".into(), "code".into());
+        assert!(s.validate().is_err());
+        s.sftp_open_with.remove("tar.gz");
+        s.sftp_open_with.insert("txt".into(), "ed\ncat".into());
+        assert!(s.validate().is_err());
+        s.sftp_open_with.remove("txt");
+        s.sftp_open_with.insert("a/b".into(), "code".into());
+        assert!(s.validate().is_err());
     }
 
     #[test]

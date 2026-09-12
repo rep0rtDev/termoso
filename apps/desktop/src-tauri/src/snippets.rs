@@ -27,6 +27,8 @@ pub struct SnippetCard {
     pub sort_order: i32,
     /// `{{name}}` placeholders in the script, in order of first appearance.
     pub variables: Vec<String>,
+    /// Hosts the snippet is configured to run on ("targets for execution").
+    pub target_host_ids: Vec<Uuid>,
     pub updated_at: DateTime<Utc>,
     pub dirty: bool,
 }
@@ -127,11 +129,12 @@ pub fn expand(script: &str, vars: &HashMap<String, String>) -> Result<String> {
     Ok(out)
 }
 
-fn card(e: termoso_core::model::Entity<Snippet>) -> SnippetCard {
+fn card(e: termoso_core::model::Entity<Snippet>, targets: Vec<Uuid>) -> SnippetCard {
     SnippetCard {
         id: e.id,
         vault_id: e.vault_id,
         variables: variables(&e.data.script),
+        target_host_ids: targets,
         label: e.data.label,
         script: e.data.script,
         package_id: e.data.package_id,
@@ -142,11 +145,46 @@ fn card(e: termoso_core::model::Entity<Snippet>) -> SnippetCard {
     }
 }
 
+/// Target hosts per snippet in execution order; bindings whose host is gone
+/// are skipped.
+fn targets_by_snippet(store: &Store, vault_id: Option<Uuid>) -> Result<HashMap<Uuid, Vec<Uuid>>> {
+    let hosts: HashSet<Uuid> = store
+        .list::<Host>(vault_id)?
+        .into_iter()
+        .map(|h| h.id)
+        .collect();
+    let mut bound = store.list::<HostSnippet>(vault_id)?;
+    bound.sort_by_key(|b| b.data.sort_order);
+    let mut out: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+    for b in bound {
+        if !hosts.contains(&b.data.host_id) {
+            continue;
+        }
+        let list = out.entry(b.data.snippet_id).or_default();
+        if !list.contains(&b.data.host_id) {
+            list.push(b.data.host_id);
+        }
+    }
+    Ok(out)
+}
+
+fn card_with_targets(store: &Store, id: Uuid) -> Result<SnippetCard> {
+    let e = store.require::<Snippet>(id)?;
+    let targets = targets_by_snippet(store, Some(e.vault_id))?
+        .remove(&id)
+        .unwrap_or_default();
+    Ok(card(e, targets))
+}
+
 pub fn list(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<SnippetCard>> {
+    let mut targets = targets_by_snippet(store, vault_id)?;
     let mut out: Vec<SnippetCard> = store
         .list::<Snippet>(vault_id)?
         .into_iter()
-        .map(card)
+        .map(|e| {
+            let t = targets.remove(&e.id).unwrap_or_default();
+            card(e, t)
+        })
         .collect();
     out.sort_by(|a, b| {
         a.sort_order
@@ -192,7 +230,39 @@ pub fn save(store: &Store, form: &SnippetForm) -> Result<SnippetCard> {
         }
         None => store.insert(form.vault_id, &data)?,
     };
-    Ok(card(store.require::<Snippet>(id)?))
+    card_with_targets(store, id)
+}
+
+/// Replace the snippet's target hosts. Duplicates collapse; order is kept.
+pub fn set_targets(store: &Store, snippet_id: Uuid, host_ids: &[Uuid]) -> Result<SnippetCard> {
+    let snippet = store.require::<Snippet>(snippet_id)?;
+    let mut wanted: Vec<Uuid> = Vec::new();
+    for &hid in host_ids {
+        if wanted.contains(&hid) {
+            continue;
+        }
+        let host = store.require::<Host>(hid)?;
+        if host.vault_id != snippet.vault_id {
+            return Err(DesktopError::invalid("host belongs to another vault"));
+        }
+        wanted.push(hid);
+    }
+    for hs in store.list::<HostSnippet>(Some(snippet.vault_id))? {
+        if hs.data.snippet_id == snippet_id {
+            store.delete(hs.id)?;
+        }
+    }
+    for (i, hid) in wanted.iter().enumerate() {
+        store.insert(
+            snippet.vault_id,
+            &HostSnippet {
+                host_id: *hid,
+                snippet_id,
+                sort_order: i as i32,
+            },
+        )?;
+    }
+    card_with_targets(store, snippet_id)
 }
 
 /// Delete a snippet and every host binding / startup reference to it.
@@ -317,15 +387,22 @@ pub fn delete_package(store: &Store, id: Uuid) -> Result<()> {
 
 // ───────────────────────────── run ─────────────────────────────
 
-/// Type the expanded script (plus a trailing newline) into each session.
+/// Type the expanded script into each session. `paste` leaves the text on
+/// the command line (no trailing newline) so the user can edit it first.
 pub async fn run(
     state: &AppState,
     snippet_id: Uuid,
     session_ids: &[Uuid],
     vars: &HashMap<String, String>,
+    paste: bool,
 ) -> Result<RunResult> {
     let snippet = state.store.require::<Snippet>(snippet_id)?;
-    let text = script_to_send(&expand(&snippet.data.script, vars)?);
+    let expanded = expand(&snippet.data.script, vars)?;
+    let text = if paste {
+        script_to_paste(&expanded)
+    } else {
+        script_to_send(&expanded)
+    };
     if session_ids.is_empty() {
         return Err(DesktopError::invalid("pick at least one session"));
     }
@@ -337,7 +414,7 @@ pub async fn run(
     }
     Ok(RunResult {
         session_ids: done,
-        close_after_run: snippet.data.close_after_run,
+        close_after_run: snippet.data.close_after_run && !paste,
     })
 }
 
@@ -350,10 +427,18 @@ pub fn script_to_send(script: &str) -> String {
     s
 }
 
+/// Normalise line endings and drop the trailing newline so nothing runs yet.
+pub fn script_to_paste(script: &str) -> String {
+    let s = script.replace("\r\n", "\n");
+    s.trim_end_matches('\n').to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use termoso_core::store::LocalVaultKind;
     use termoso_core::termoso_crypto::keys::SymmetricKey;
+    use termoso_core::termoso_proto::vault::VaultRole;
 
     fn store() -> Store {
         Store::open_in_memory(SymmetricKey::generate()).expect("store")
@@ -378,6 +463,89 @@ mod tests {
         assert_eq!(expand("plain", &vars).unwrap(), "plain");
         assert_eq!(script_to_send("a\r\nb"), "a\nb\n");
         assert_eq!(script_to_send("a\n"), "a\n");
+        assert_eq!(script_to_paste("a\r\nb\n"), "a\nb");
+    }
+
+    #[test]
+    fn targets_are_replaced_deduplicated_and_pruned() {
+        let store = store();
+        let vault = store.local_vault().unwrap().id;
+        let host = |label: &str| {
+            store
+                .insert(
+                    vault,
+                    &Host {
+                        label: label.into(),
+                        address: label.into(),
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+        };
+        let (a, b, c) = (host("a"), host("b"), host("c"));
+        let s = save(
+            &store,
+            &SnippetForm {
+                id: None,
+                vault_id: vault,
+                label: "uptime".into(),
+                script: "uptime".into(),
+                package_id: None,
+                close_after_run: false,
+                sort_order: 0,
+            },
+        )
+        .unwrap();
+        assert!(s.target_host_ids.is_empty());
+
+        let s = set_targets(&store, s.id, &[b, a, b, c]).unwrap();
+        assert_eq!(s.target_host_ids, vec![b, a, c]);
+        assert_eq!(
+            list(&store, Some(vault)).unwrap()[0].target_host_ids,
+            vec![b, a, c]
+        );
+
+        // Replacing keeps only the new set, in the given order.
+        let s = set_targets(&store, s.id, &[c, a]).unwrap();
+        assert_eq!(s.target_host_ids, vec![c, a]);
+        assert_eq!(store.list::<HostSnippet>(Some(vault)).unwrap().len(), 2);
+
+        // A deleted host silently drops out of the targets.
+        crate::hosts::delete(&store, c).unwrap();
+        assert_eq!(
+            list(&store, Some(vault)).unwrap()[0].target_host_ids,
+            vec![a]
+        );
+        assert_eq!(store.list::<HostSnippet>(Some(vault)).unwrap().len(), 1);
+
+        // Hosts from another vault are rejected.
+        let other = Uuid::new_v4();
+        store
+            .upsert_vault(
+                other,
+                LocalVaultKind::Personal,
+                "other",
+                None,
+                VaultRole::Manager,
+                Some(&SymmetricKey::generate()),
+                1,
+            )
+            .unwrap();
+        let foreign = store
+            .insert(
+                other,
+                &Host {
+                    label: "x".into(),
+                    address: "x".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(set_targets(&store, s.id, &[foreign]).is_err());
+
+        // Deleting the snippet removes its bindings.
+        delete(&store, s.id).unwrap();
+        assert!(store.list::<HostSnippet>(Some(vault)).unwrap().is_empty());
     }
 
     #[test]

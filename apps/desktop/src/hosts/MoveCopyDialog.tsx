@@ -13,13 +13,10 @@ import {
 } from "@mui/material";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
-import LockRoundedIcon from "@mui/icons-material/LockRounded";
-import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
-import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
-import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
 import { useSnackbar } from "@/components/Snackbar";
 import { useCopyHostsToVault, useGroups, useMoveHosts, useVaults } from "@/ipc/hooks";
-import { errorMessage, type HostCard, type LocalVault, type Uuid } from "@/ipc/types";
+import { errorMessage, type HostCard, type Uuid } from "@/ipc/types";
+import { vaultHint, vaultIcon } from "@/app/vault";
 import { groupPathLabel } from "./GroupPanel";
 
 export type MoveCopyRequest =
@@ -43,15 +40,6 @@ export function MoveCopyDialog({
     </Dialog>
   );
 }
-
-const vaultIcon = (v: LocalVault) =>
-  v.kind === "team" ? (
-    <GroupsRoundedIcon fontSize="small" />
-  ) : v.kind === "personal" ? (
-    <PersonRoundedIcon fontSize="small" />
-  ) : (
-    <ComputerRoundedIcon fontSize="small" />
-  );
 
 function Body({
   request,
@@ -170,23 +158,8 @@ function Body({
                 onClick={() => setTarget(v.id)}
                 sx={{ borderRadius: 1.5 }}
               >
-                <ListItemIcon sx={{ minWidth: 32 }}>
-                  {v.unlocked ? vaultIcon(v) : <LockRoundedIcon fontSize="small" />}
-                </ListItemIcon>
-                <ListItemText
-                  primary={v.name}
-                  secondary={
-                    !v.unlocked
-                      ? "Locked"
-                      : v.role === "viewer"
-                        ? "Read-only"
-                        : v.kind === "team"
-                          ? "Team vault"
-                          : v.kind === "personal"
-                            ? "Synced personal vault"
-                            : "This device only"
-                  }
-                />
+                <ListItemIcon sx={{ minWidth: 32 }}>{vaultIcon(v)}</ListItemIcon>
+                <ListItemText primary={v.name} secondary={vaultHint(v)} />
               </ListItemButton>
             ))}
           </List>
