@@ -15,17 +15,31 @@ import {
 import { Field } from "@/components/ui";
 import { useAppInfo, useSaveSettings, useSettings } from "@/ipc/hooks";
 import type { FsEntry } from "@/ipc/types";
+import { extensionOf } from "./format";
 
-const SUGGESTED: Record<string, string[]> = {
+export { extensionOf };
+
+/** Well-known editors per platform, offered alongside remembered ones. */
+export const SUGGESTED_APPS: Record<string, string[]> = {
   linux: ["code", "gedit", "kate", "subl", "mousepad", "gimp"],
   windows: ["notepad", "code", "notepad++", "sublime_text"],
   macos: ["Visual Studio Code", "TextEdit", "Sublime Text", "BBEdit"],
 };
 
-/** Lower-case extension used as the association key; `""` when there is none. */
-export function extensionOf(name: string): string {
-  const dot = name.lastIndexOf(".");
-  return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+/** Remembered applications first, then platform suggestions, without duplicates. */
+export function appSuggestions(assoc: Record<string, string>, platform: string | undefined) {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const a of [
+    ...Object.values(assoc),
+    ...(SUGGESTED_APPS[platform ?? "linux"] ?? SUGGESTED_APPS.linux ?? []),
+  ]) {
+    if (!seen.has(a)) {
+      seen.add(a);
+      out.push(a);
+    }
+  }
+  return out;
 }
 
 interface Props {
@@ -47,18 +61,10 @@ export function OpenWithDialog({ entry, onCancel, onConfirm }: Props) {
   const [app, setApp] = useState(assoc[ext] ?? "");
   const [remember, setRemember] = useState(false);
 
-  const options = useMemo(() => {
-    const platform = info.data?.platform ?? "linux";
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (const a of [...Object.values(assoc), ...(SUGGESTED[platform] ?? SUGGESTED.linux ?? [])]) {
-      if (!seen.has(a)) {
-        seen.add(a);
-        out.push(a);
-      }
-    }
-    return out;
-  }, [assoc, info.data?.platform]);
+  const options = useMemo(
+    () => appSuggestions(assoc, info.data?.platform),
+    [assoc, info.data?.platform],
+  );
 
   const valid = app.trim().length > 0;
   const confirm = () => {

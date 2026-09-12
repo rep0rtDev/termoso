@@ -15,6 +15,7 @@ import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import KeyboardRoundedIcon from "@mui/icons-material/KeyboardRounded";
+import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import ArticleRoundedIcon from "@mui/icons-material/ArticleRounded";
 import SystemUpdateAltRoundedIcon from "@mui/icons-material/SystemUpdateAltRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
@@ -30,6 +31,7 @@ import { keys, useAppInfo, useSaveSettings, useSettings } from "@/ipc/hooks";
 import { UpdatesCard } from "@/update/UpdatesCard";
 import { FontPicker, FontPreview } from "./FontPicker";
 import { KeyboardPage } from "./KeyboardPage";
+import { SftpPage } from "./SftpPage";
 import { ThemeGallery } from "./ThemeGallery";
 import {
   errorMessage,
@@ -46,6 +48,7 @@ const PAGES: { id: PageId; label: string; icon: ReactNode }[] = [
   { id: "general", label: "General", icon: <TuneRoundedIcon /> },
   { id: "terminal", label: "Terminal", icon: <TerminalRoundedIcon /> },
   { id: "keyboard", label: "Keyboard", icon: <KeyboardRoundedIcon /> },
+  { id: "sftp", label: "SFTP", icon: <FolderCopyRoundedIcon /> },
   { id: "logs", label: "Session logs", icon: <ArticleRoundedIcon /> },
   { id: "updates", label: "Updates", icon: <SystemUpdateAltRoundedIcon /> },
   { id: "about", label: "About", icon: <InfoOutlinedIcon /> },
@@ -109,6 +112,7 @@ function PreferencesPage({ page }: { page: Exclude<PageId, "account"> }) {
         {page === "general" && <General s={s} update={update} />}
         {page === "terminal" && <Terminal s={s} update={update} />}
         {page === "keyboard" && <KeyboardPage s={s} update={update} />}
+        {page === "sftp" && <SftpPage s={s} update={update} />}
         {page === "logs" && <Logs s={s} update={update} />}
         {page === "updates" && <UpdatesCard settings={s} onChange={update} />}
         {page === "about" && <About />}

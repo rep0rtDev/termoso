@@ -214,6 +214,7 @@ export const sftpChmod = (id: Uuid, path: string, mode: number) =>
 
 export const localHome = () => invoke<string>("local_home");
 export const localList = (path: string | null) => invoke<Listing>("local_list", { path });
+export const localDrives = () => invoke<string[]>("local_drives");
 export const localStat = (path: string) => invoke<FsEntry>("local_stat", { path });
 export const localMkdir = (path: string) => invoke<null>("local_mkdir", { path });
 export const localRename = (from: string, to: string) => invoke<null>("local_rename", { from, to });
@@ -235,6 +236,9 @@ export const transferProbe = (args: {
   remote: string;
 }) => invoke<FsEntry | null>("transfer_probe", args);
 export const transferCancel = (id: Uuid) => invoke<boolean>("transfer_cancel", { id });
+export const transferPause = (id: Uuid) => invoke<boolean>("transfer_pause", { id });
+export const transferResume = (id: Uuid) => invoke<null>("transfer_resume", { id });
+export const transferForget = (id: Uuid) => invoke<null>("transfer_forget", { id });
 export const localOpen = (path: string, withApp: string | null) =>
   invoke<null>("local_open", { path, with: withApp });
 

@@ -548,6 +548,12 @@ pub async fn local_list(path: Option<String>) -> Result<Listing> {
     sftp::local_list(path).await
 }
 
+/// Drive roots for the local pane (Windows only; empty elsewhere).
+#[tauri::command]
+pub fn local_drives() -> Vec<String> {
+    sftp::local_drives()
+}
+
 #[tauri::command]
 pub async fn local_stat(path: String) -> Result<RemoteEntry> {
     sftp::local_stat(path).await
@@ -687,6 +693,29 @@ pub async fn edit_close<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
 }
 
 #[tauri::command]
-pub fn transfer_cancel(state: State<'_, AppState>, id: Uuid) -> bool {
-    state.sftp.cancel_transfer(id)
+pub fn transfer_cancel<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    id: Uuid,
+) -> bool {
+    state.sftp.cancel_transfer(&app, id)
+}
+
+/// Interrupt a queued or running transfer; `transfer_resume` continues it
+/// from the bytes already at the destination.
+#[tauri::command]
+pub fn transfer_pause(state: State<'_, AppState>, id: Uuid) -> bool {
+    state.sftp.pause_transfer(id)
+}
+
+/// Queue a paused or failed transfer again (also serves as retry).
+#[tauri::command]
+pub fn transfer_resume<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
+    sftp::transfer_resume(app, id)
+}
+
+/// Drop a finished, failed or paused transfer from the queue.
+#[tauri::command]
+pub fn transfer_forget(state: State<'_, AppState>, id: Uuid) {
+    state.sftp.forget_transfer(id)
 }

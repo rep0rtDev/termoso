@@ -23,15 +23,21 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TableSortLabel,
   Tooltip,
   Typography,
 } from "@mui/material";
-import ArrowUpwardRoundedIcon from "@mui/icons-material/ArrowUpwardRounded";
-import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
+import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import CreateNewFolderRoundedIcon from "@mui/icons-material/CreateNewFolderRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
+import SelectAllRoundedIcon from "@mui/icons-material/SelectAllRounded";
+import StorageRoundedIcon from "@mui/icons-material/StorageRounded";
+import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
 import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
@@ -54,7 +60,18 @@ import { ToolIconButton } from "@/components/ui";
 import { monoFontFamily, sizes } from "@/theme/theme";
 import { ChmodDialog, NameDialog } from "./dialogs";
 import { DROP_DEST_ATTR, DROP_SIDE_ATTR, PANE_MIME, hasOsFiles } from "./drop";
-import { formatMode, formatMtime, formatSize, isHidden, joinPath, sortEntries } from "./format";
+import {
+  formatMtime,
+  formatSize,
+  isBrokenLink,
+  isDirLike,
+  isHidden,
+  joinPath,
+  kindLabel,
+  sortEntries,
+  type Sort,
+  type SortKey,
+} from "./format";
 import { fsQueryKey } from "./store";
 
 export type Side = "local" | "remote";
@@ -69,6 +86,8 @@ const mimeFor = (side: Side) => `${PANE_MIME}-${side}`;
 
 interface Props {
   side: Side;
+  /** Pane heading: `Local` or the host's title. */
+  title: string;
   /** Remote connection; `null` for the local side. */
   sftpId: Uuid | null;
   /** Directory to start in; `null` = home. */
@@ -86,6 +105,8 @@ interface Props {
   onOpen: (entry: FsEntry, mode: "default" | "with") => void;
   /** Paths currently open for editing (remote side). */
   editing?: ReadonlySet<string>;
+  /** Actions → Close; closes the connection behind a remote pane. */
+  onClose?: () => void;
   disabled?: boolean;
 }
 
@@ -123,9 +144,43 @@ type Dialog =
   | { kind: "chmod"; entry: FsEntry }
   | null;
 
+const COLUMNS: { key: SortKey; label: string; width?: number; align?: "right" }[] = [
+  { key: "name", label: "Name" },
+  { key: "mtime", label: "Date Modified", width: 140 },
+  { key: "size", label: "Size", width: 84, align: "right" },
+  { key: "kind", label: "Kind", width: 96 },
+];
+
+/** `/a/b/c` → `[{label: "/", path: "/"}, {label: "a", path: "/a"}, …]`; Windows drives keep their root. */
+function crumbsOf(path: string): { label: string; path: string }[] {
+  const win = /^[A-Za-z]:[\\/]/.test(path);
+  const sep = win ? "\\" : "/";
+  const parts = path.split(/[\\/]+/).filter((p) => p.length > 0);
+  if (win) {
+    const root = `${parts[0] ?? ""}${sep}`;
+    let acc = root;
+    return [
+      { label: root, path: root },
+      ...parts.slice(1).map((p) => {
+        acc = acc.endsWith(sep) ? acc + p : `${acc}${sep}${p}`;
+        return { label: p, path: acc };
+      }),
+    ];
+  }
+  let acc = "";
+  return [
+    { label: "/", path: "/" },
+    ...parts.map((p) => {
+      acc = `${acc}/${p}`;
+      return { label: p, path: acc };
+    }),
+  ];
+}
+
 export function FilePane(props: Props) {
   const {
     side,
+    title,
     sftpId,
     initialPath,
     oppositePath,
@@ -135,15 +190,25 @@ export function FilePane(props: Props) {
     onReceiveFiles,
     onOpen,
     editing,
+    onClose,
     disabled = false,
   } = props;
   const api = useMemo(() => apiFor(side, sftpId), [side, sftpId]);
   const [path, setPath] = useState<string | null>(initialPath);
+  /** Text of the path field while it is being edited; `null` = breadcrumbs. */
   const [pathDraft, setPathDraft] = useState<string | null>(null);
+  /** Inline name filter; `null` = closed. */
+  const [filter, setFilter] = useState<string | null>(null);
+  const [sort, setSort] = useState<Sort>({ key: "name", dir: "asc" });
   const [showHidden, setShowHidden] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<{ x: number; y: number; entry: FsEntry | null } | null>(null);
+  const [actionsAnchor, setActionsAnchor] = useState<HTMLElement | null>(null);
+  const [drivesAnchor, setDrivesAnchor] = useState<HTMLElement | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
+  /** Visited directories for Back / Forward. */
+  const [history, setHistory] = useState<{ stack: string[]; idx: number }>({ stack: [], idx: -1 });
+  const viaHistory = useRef(false);
   /** Directory a drag is currently hovering (pane root or a folder row). */
   const [dropOver, setDropOver] = useState<string | null>(null);
   const dragDepth = useRef(0);
@@ -157,22 +222,58 @@ export function FilePane(props: Props) {
     staleTime: 5_000,
   });
 
+  const drives = useQuery({
+    queryKey: ["localDrives"],
+    queryFn: ipc.localDrives,
+    enabled: side === "local",
+    staleTime: 60_000,
+  });
+
   const resolvedPath = listing.data?.path ?? null;
   useEffect(() => {
-    if (resolvedPath !== null) onPathChange(resolvedPath);
+    if (resolvedPath === null) return;
+    onPathChange(resolvedPath);
+    if (viaHistory.current) {
+      viaHistory.current = false;
+      return;
+    }
+    setHistory((h) => {
+      if (h.stack[h.idx] === resolvedPath) return h;
+      const stack = [...h.stack.slice(0, h.idx + 1), resolvedPath];
+      return { stack, idx: stack.length - 1 };
+    });
   }, [resolvedPath, onPathChange]);
-  const pathInput = pathDraft ?? resolvedPath ?? "";
 
   const entries = useMemo(() => {
     const all = listing.data?.entries ?? [];
-    return sortEntries(showHidden ? all : all.filter((e) => !isHidden(e)));
-  }, [listing.data, showHidden]);
+    const visible = showHidden ? all : all.filter((e) => !isHidden(e));
+    const needle = filter?.trim().toLowerCase() ?? "";
+    const matched = needle ? visible.filter((e) => e.name.toLowerCase().includes(needle)) : visible;
+    return sortEntries(matched, sort);
+  }, [listing.data, showHidden, filter, sort]);
 
   const navigate = useCallback((next: string | null) => {
     setPath(next);
     setPathDraft(null);
+    setFilter(null);
     setSelected(new Set());
   }, []);
+
+  const step = (delta: number) => {
+    const idx = history.idx + delta;
+    const target = history.stack[idx];
+    if (target === undefined) return;
+    viaHistory.current = true;
+    setHistory((h) => ({ ...h, idx }));
+    navigate(target);
+  };
+
+  const toggleSort = (key: SortKey) =>
+    setSort((s) =>
+      s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" },
+    );
+
+  const selectAll = () => setSelected(new Set(entries.map((e) => e.path)));
 
   const refresh = () => void qc.invalidateQueries({ queryKey: fsQueryKey(side, sftpId, path) });
 
@@ -206,11 +307,13 @@ export function FilePane(props: Props) {
     });
   };
 
-  const isDirLike = (entry: FsEntry) =>
-    entry.kind === "dir" || (entry.kind === "symlink" && entry.link_target !== null);
-
   const openEntry = (entry: FsEntry) => {
     if (isDirLike(entry)) navigate(entry.path);
+    else if (isBrokenLink(entry))
+      snack.error(
+        `Cannot open "${entry.name}": this symbolic link is broken or points to something that no longer exists`,
+      );
+    else if (entry.kind === "other") snack.error(`Cannot open "${entry.name}": not a regular file`);
     else onOpen(entry, "default");
   };
 
@@ -279,106 +382,348 @@ export function FilePane(props: Props) {
     setMenu({ x: e.clientX, y: e.clientY, entry });
   };
 
-  const transferLabel = side === "local" ? "Upload" : "Download";
   const TransferIcon = side === "local" ? UploadRoundedIcon : DownloadRoundedIcon;
   const menuTargets = menu?.entry ? (selected.size > 1 ? selectedEntries : [menu.entry]) : [];
   const menuSingle = menuTargets.length === 1 ? menuTargets[0] : undefined;
   const menuFile = menuSingle && !isDirLike(menuSingle) ? menuSingle : undefined;
+  const actionSingle = selectedEntries.length === 1 ? selectedEntries[0] : undefined;
+  const actionFile = actionSingle && !isDirLike(actionSingle) ? actionSingle : undefined;
   const chmod = api.chmod;
   const currentDir = listing.data?.path ?? null;
   const paneOver = dropOver !== null && dropOver === currentDir;
 
   return (
     <Box
-      sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", height: "100%" }}
+      tabIndex={-1}
+      sx={{
+        flex: 1,
+        minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        outline: "none",
+      }}
       onContextMenu={(e) => {
         if (e.target === e.currentTarget) onContext(e, null);
+      }}
+      onKeyDown={(e) => {
+        if (e.target instanceof HTMLInputElement) return;
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+          e.preventDefault();
+          selectAll();
+        }
       }}
     >
       <Stack
         direction="row"
-
+        spacing={0.5}
+        sx={{ alignItems: "center", pl: 1.5, pr: 0.75, height: 36, flexShrink: 0 }}
+      >
+        <Typography
+          variant="subtitle2"
+          color="text.secondary"
+          noWrap
+          sx={{ flex: filter === null ? 1 : undefined, minWidth: 0 }}
+        >
+          {title}
+        </Typography>
+        {filter !== null ? (
+          <InputBase
+            autoFocus
+            value={filter}
+            placeholder="Filter"
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setFilter(null);
+            }}
+            startAdornment={
+              <SearchRoundedIcon sx={{ fontSize: 16, mr: 0.5, color: "text.secondary" }} />
+            }
+            endAdornment={
+              <ToolIconButton title="Close filter" onClick={() => setFilter(null)}>
+                <CloseRoundedIcon sx={{ fontSize: 14 }} />
+              </ToolIconButton>
+            }
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              px: 1,
+              height: sizes.control,
+              fontSize: 12.5,
+              borderRadius: 1.5,
+              bgcolor: "surface.high",
+              "&.Mui-focused": { outline: "1px solid", outlineColor: "primary.main" },
+            }}
+          />
+        ) : (
+          <Button
+            color="inherit"
+            size="small"
+            disabled={disabled}
+            startIcon={<SearchRoundedIcon />}
+            onClick={() => setFilter("")}
+            sx={{ minWidth: 0, px: 1 }}
+          >
+            Filter
+          </Button>
+        )}
+        <Button
+          color="inherit"
+          size="small"
+          disabled={disabled}
+          endIcon={<ExpandMoreRoundedIcon />}
+          onClick={(e) => setActionsAnchor(e.currentTarget)}
+          sx={{ minWidth: 0, px: 1 }}
+        >
+          Actions
+        </Button>
+      </Stack>
+      <Stack
+        direction="row"
         spacing={0.25}
         sx={{
           alignItems: "center",
           px: 0.75,
-          height: 44,
+          height: 36,
           borderBottom: 1,
           borderColor: "border.light",
           flexShrink: 0,
         }}
       >
         <ToolIconButton
-          title="Parent directory"
-          disabled={disabled || !listing.data?.parent}
-          onClick={() => navigate(listing.data?.parent ?? null)}
+          title="Back"
+          disabled={disabled || history.idx <= 0}
+          onClick={() => step(-1)}
         >
-          <ArrowUpwardRoundedIcon fontSize="small" />
-        </ToolIconButton>
-        <ToolIconButton title="Home" disabled={disabled} onClick={() => navigate(null)}>
-          <HomeRoundedIcon fontSize="small" />
-        </ToolIconButton>
-        <InputBase
-          value={pathInput}
-          disabled={disabled}
-          onChange={(e) => setPathDraft(e.target.value)}
-          onBlur={() => setPathDraft(null)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              const trimmed = pathInput.trim();
-              navigate(trimmed.length > 0 ? trimmed : null);
-            }
-            if (e.key === "Escape") setPathDraft(null);
-          }}
-          sx={{
-            flex: 1,
-            mx: 0.5,
-            px: 1.25,
-            height: sizes.control,
-            fontSize: 12.5,
-            fontFamily: monoFontFamily,
-            borderRadius: 1.5,
-            bgcolor: "surface.high",
-            "&.Mui-focused": { outline: "1px solid", outlineColor: "primary.main" },
-          }}
-        />
-        <ToolIconButton title="Refresh" disabled={disabled} onClick={refresh}>
-          <RefreshRoundedIcon fontSize="small" />
+          <ArrowBackRoundedIcon fontSize="small" />
         </ToolIconButton>
         <ToolIconButton
-          title="New folder"
-          disabled={disabled}
-          onClick={() => setDialog({ kind: "mkdir" })}
+          title="Forward"
+          disabled={disabled || history.idx >= history.stack.length - 1}
+          onClick={() => step(1)}
         >
-          <CreateNewFolderRoundedIcon fontSize="small" />
+          <ArrowForwardRoundedIcon fontSize="small" />
         </ToolIconButton>
-        <ToolIconButton
-          title={showHidden ? "Hide dotfiles" : "Show dotfiles"}
-          active={showHidden}
-          onClick={() => setShowHidden((v) => !v)}
-        >
-          {showHidden ? (
-            <VisibilityRoundedIcon fontSize="small" />
-          ) : (
-            <VisibilityOffRoundedIcon fontSize="small" />
-          )}
-        </ToolIconButton>
-        <Divider orientation="vertical" flexItem sx={{ my: 1.25, mx: 0.5 }} />
-        <Tooltip title={`${transferLabel} selected to ${oppositePath ?? "…"}`}>
-          <span>
-            <Button
-              variant="tonal"
-              startIcon={<TransferIcon />}
-              disabled={disabled || selectedEntries.length === 0 || oppositePath === null}
-              onClick={() => onTransfer(selectedEntries)}
-              sx={{ minWidth: 0, px: 1.25 }}
+        {(drives.data?.length ?? 0) > 0 && (
+          <Button
+            color="inherit"
+            size="small"
+            disabled={disabled}
+            startIcon={<StorageRoundedIcon />}
+            endIcon={<ExpandMoreRoundedIcon />}
+            onClick={(e) => setDrivesAnchor(e.currentTarget)}
+            sx={{ minWidth: 0, px: 1, fontFamily: monoFontFamily, fontSize: 12.5 }}
+          >
+            {crumbsOf(resolvedPath ?? "")[0]?.label ?? "Drives"}
+          </Button>
+        )}
+        {pathDraft !== null ? (
+          <InputBase
+            autoFocus
+            value={pathDraft}
+            disabled={disabled}
+            onChange={(e) => setPathDraft(e.target.value)}
+            onBlur={() => setPathDraft(null)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const trimmed = pathDraft.trim();
+                navigate(trimmed.length > 0 ? trimmed : null);
+              }
+              if (e.key === "Escape") setPathDraft(null);
+            }}
+            sx={{
+              flex: 1,
+              mx: 0.5,
+              px: 1.25,
+              height: sizes.control,
+              fontSize: 12.5,
+              fontFamily: monoFontFamily,
+              borderRadius: 1.5,
+              bgcolor: "surface.high",
+              "&.Mui-focused": { outline: "1px solid", outlineColor: "primary.main" },
+            }}
+          />
+        ) : (
+          <Tooltip title="Click to edit the path" enterDelay={800}>
+            <Stack
+              direction="row"
+              onClick={() => {
+                if (!disabled) setPathDraft(resolvedPath ?? "");
+              }}
+              sx={{
+                flex: 1,
+                minWidth: 0,
+                mx: 0.5,
+                px: 0.75,
+                height: sizes.control,
+                alignItems: "center",
+                overflow: "hidden",
+                borderRadius: 1.5,
+                cursor: disabled ? "default" : "text",
+                fontFamily: monoFontFamily,
+                fontSize: 12.5,
+                "&:hover": { bgcolor: disabled ? undefined : "surface.high" },
+              }}
             >
-              {transferLabel}
-            </Button>
-          </span>
-        </Tooltip>
+              {crumbsOf(resolvedPath ?? "").map((c, i, arr) => (
+                <Stack key={c.path} direction="row" sx={{ alignItems: "center", minWidth: 0 }}>
+                  {i > 0 && (
+                    <Typography component="span" sx={{ color: "text.disabled", px: 0.25 }}>
+                      ›
+                    </Typography>
+                  )}
+                  <Stack
+                    direction="row"
+                    spacing={0.5}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!disabled && i < arr.length - 1) navigate(c.path);
+                    }}
+                    sx={{
+                      alignItems: "center",
+                      minWidth: 0,
+                      px: 0.5,
+                      borderRadius: 1,
+                      color: i === arr.length - 1 ? "text.primary" : "text.secondary",
+                      cursor: i < arr.length - 1 ? "pointer" : "text",
+                      "&:hover": i < arr.length - 1 ? { bgcolor: "action.hover" } : undefined,
+                    }}
+                  >
+                    {i > 0 && <FolderRoundedIcon sx={{ fontSize: 14, color: "secondary.main" }} />}
+                    <Typography
+                      component="span"
+                      noWrap
+                      sx={{ fontFamily: "inherit", fontSize: "inherit" }}
+                    >
+                      {c.label}
+                    </Typography>
+                  </Stack>
+                </Stack>
+              ))}
+            </Stack>
+          </Tooltip>
+        )}
       </Stack>
 
+      <Menu
+        open={drivesAnchor !== null}
+        anchorEl={drivesAnchor}
+        onClose={() => setDrivesAnchor(null)}
+        onClick={() => setDrivesAnchor(null)}
+      >
+        {(drives.data ?? []).map((d) => (
+          <MenuItem
+            key={d}
+            selected={resolvedPath?.toLowerCase().startsWith(d.toLowerCase()) ?? false}
+            onClick={() => navigate(d)}
+            sx={{ fontFamily: monoFontFamily }}
+          >
+            {d}
+          </MenuItem>
+        ))}
+      </Menu>
+
+      <Menu
+        open={actionsAnchor !== null}
+        anchorEl={actionsAnchor}
+        onClose={() => setActionsAnchor(null)}
+        onClick={() => setActionsAnchor(null)}
+        slotProps={{ paper: { sx: { minWidth: 220 } } }}
+      >
+        {actionFile && (
+          <MenuItem onClick={() => onOpen(actionFile, "default")}>
+            <ListItemIcon>
+              <OpenInNewRoundedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Open</ListItemText>
+          </MenuItem>
+        )}
+        {actionFile && (
+          <MenuItem onClick={() => onOpen(actionFile, "with")}>
+            <ListItemIcon>
+              <AppsRoundedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Open with…</ListItemText>
+          </MenuItem>
+        )}
+        {selectedEntries.length > 0 && (
+          <MenuItem disabled={oppositePath === null} onClick={() => onTransfer(selectedEntries)}>
+            <ListItemIcon>
+              <TransferIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>
+              Copy to target directory
+              {selectedEntries.length > 1 ? ` (${selectedEntries.length})` : ""}
+            </ListItemText>
+          </MenuItem>
+        )}
+        {actionSingle && (
+          <MenuItem onClick={() => setDialog({ kind: "rename", entry: actionSingle })}>
+            <ListItemIcon>
+              <DriveFileRenameOutlineRoundedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Rename</ListItemText>
+          </MenuItem>
+        )}
+        {selectedEntries.length > 0 && (
+          <MenuItem
+            onClick={() => setDialog({ kind: "delete", entries: selectedEntries })}
+            sx={{ color: "error.main" }}
+          >
+            <ListItemIcon>
+              <DeleteOutlineRoundedIcon fontSize="small" color="error" />
+            </ListItemIcon>
+            <ListItemText>
+              Delete{selectedEntries.length > 1 ? ` (${selectedEntries.length})` : ""}
+            </ListItemText>
+          </MenuItem>
+        )}
+        {selectedEntries.length > 0 && <Divider />}
+        <MenuItem onClick={refresh}>
+          <ListItemIcon>
+            <RefreshRoundedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Refresh</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => setDialog({ kind: "mkdir" })}>
+          <ListItemIcon>
+            <CreateNewFolderRoundedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>New Folder</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => setShowHidden((v) => !v)}>
+          <ListItemIcon>
+            {showHidden ? (
+              <VisibilityOffRoundedIcon fontSize="small" />
+            ) : (
+              <VisibilityRoundedIcon fontSize="small" />
+            )}
+          </ListItemIcon>
+          <ListItemText>{showHidden ? "Hide Hidden Files" : "Show Hidden Files"}</ListItemText>
+        </MenuItem>
+        {actionSingle && chmod && (
+          <MenuItem onClick={() => setDialog({ kind: "chmod", entry: actionSingle })}>
+            <ListItemIcon>
+              <LockOutlinedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Edit Permissions</ListItemText>
+          </MenuItem>
+        )}
+        <MenuItem disabled={entries.length === 0} onClick={selectAll}>
+          <ListItemIcon>
+            <SelectAllRoundedIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Select All</ListItemText>
+        </MenuItem>
+        {onClose && (
+          <MenuItem onClick={onClose} sx={{ color: "error.main" }}>
+            <ListItemIcon>
+              <CloseRoundedIcon fontSize="small" color="error" />
+            </ListItemIcon>
+            <ListItemText>Close</ListItemText>
+          </MenuItem>
+        )}
+      </Menu>
       <Box
         sx={{
           flex: 1,
@@ -427,12 +772,27 @@ export function FilePane(props: Props) {
                   },
                 }}
               >
-                <TableCell>Name</TableCell>
-                <TableCell align="right" sx={{ width: 84 }}>
-                  Size
-                </TableCell>
-                <TableCell sx={{ width: 140 }}>Modified</TableCell>
-                <TableCell sx={{ width: 104 }}>Permissions</TableCell>
+                {COLUMNS.map((c) => (
+                  <TableCell
+                    key={c.key}
+                    align={c.align}
+                    sortDirection={sort.key === c.key ? sort.dir : false}
+                    sx={{ width: c.width }}
+                  >
+                    <TableSortLabel
+                      active={sort.key === c.key}
+                      direction={sort.key === c.key ? sort.dir : "asc"}
+                      onClick={() => toggleSort(c.key)}
+                      sx={{
+                        fontSize: 12,
+                        "& .MuiTableSortLabel-icon": { fontSize: 14 },
+                        ...(c.align === "right" && { flexDirection: "row-reverse" }),
+                      }}
+                    >
+                      {c.label}
+                    </TableSortLabel>
+                  </TableCell>
+                ))}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -479,25 +839,28 @@ export function FilePane(props: Props) {
                           </Tooltip>
                         )}
                         {e.link_target && (
-                          <Typography variant="caption" color="text.disabled" noWrap>
+                          <Typography
+                            variant="caption"
+                            color={isBrokenLink(e) ? "error" : "text.disabled"}
+                            noWrap
+                          >
                             → {e.link_target}
+                            {isBrokenLink(e) ? " (missing)" : ""}
                           </Typography>
                         )}
                       </Stack>
-                    </TableCell>
-                    <TableCell
-                      align="right"
-                      sx={{ color: "text.secondary", fontVariantNumeric: "tabular-nums" }}
-                    >
-                      {e.kind === "dir" ? "" : formatSize(e.size)}
                     </TableCell>
                     <TableCell sx={{ color: "text.secondary", whiteSpace: "nowrap" }}>
                       {formatMtime(e.mtime)}
                     </TableCell>
                     <TableCell
-                      sx={{ color: "text.secondary", fontFamily: monoFontFamily, fontSize: 12 }}
+                      align="right"
+                      sx={{ color: "text.secondary", fontVariantNumeric: "tabular-nums" }}
                     >
-                      {formatMode(e.mode, e.kind)}
+                      {dir ? "" : formatSize(e.size)}
+                    </TableCell>
+                    <TableCell sx={{ color: "text.secondary", whiteSpace: "nowrap" }}>
+                      {kindLabel(e)}
                     </TableCell>
                   </TableRow>
                 );
@@ -508,7 +871,11 @@ export function FilePane(props: Props) {
                     colSpan={4}
                     sx={{ color: "text.disabled", textAlign: "center", py: 4 }}
                   >
-                    {canReceive ? "Empty directory — drop files here" : "Empty directory"}
+                    {filter
+                      ? "No matching items"
+                      : canReceive
+                        ? "Empty directory — drop files here"
+                        : "Empty directory"}
                   </TableCell>
                 </TableRow>
               )}
@@ -564,8 +931,8 @@ export function FilePane(props: Props) {
               <TransferIcon fontSize="small" />
             </ListItemIcon>
             <ListItemText>
-              {transferLabel}
-              {menuTargets.length > 1 ? ` ${menuTargets.length} items` : ""}
+              Copy to target directory
+              {menuTargets.length > 1 ? ` (${menuTargets.length})` : ""}
             </ListItemText>
           </MenuItem>
         )}
@@ -582,7 +949,7 @@ export function FilePane(props: Props) {
             <ListItemIcon>
               <LockOutlinedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>Permissions…</ListItemText>
+            <ListItemText>Edit Permissions</ListItemText>
           </MenuItem>
         )}
         {menuSingle && (
@@ -616,7 +983,7 @@ export function FilePane(props: Props) {
             <ListItemIcon>
               <CreateNewFolderRoundedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>New folder</ListItemText>
+            <ListItemText>New Folder</ListItemText>
           </MenuItem>
         )}
         {!menu?.entry && (
@@ -704,6 +1071,11 @@ function EntryIcon({ entry }: { entry: FsEntry }) {
   if (entry.kind === "dir")
     return <FolderRoundedIcon fontSize="small" sx={{ color: "secondary.main" }} />;
   if (entry.kind === "symlink")
-    return <LinkRoundedIcon fontSize="small" sx={{ color: "text.disabled" }} />;
+    return (
+      <LinkRoundedIcon
+        fontSize="small"
+        sx={{ color: isBrokenLink(entry) ? "error.main" : "text.disabled" }}
+      />
+    );
   return <InsertDriveFileOutlinedIcon fontSize="small" sx={{ color: "text.disabled" }} />;
 }
