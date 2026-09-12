@@ -3,6 +3,8 @@
 
 use std::collections::HashMap;
 
+use serde::Deserialize;
+
 use tauri::{AppHandle, Manager, Runtime, State};
 use termoso_core::secrets::MasterKeySource;
 use termoso_proto::account::ServerInfo;
@@ -17,7 +19,8 @@ use crate::error::Result;
 use crate::forwarding::{self, PfRuleCard, PfRuleForm, PfRuntime};
 use crate::import::{self, ImportPreview, ImportSelection, ImportSource};
 use crate::keychain::{
-    self, ExportOutcome, GenerateForm, IdentityCard, IdentityForm, ImportForm, KeyCard,
+    self, CertificateCard, ExportOutcome, GenerateForm, IdentityCard, IdentityForm, ImportForm,
+    KeyCard, KeyPreview,
 };
 use crate::logs::{self, BookmarkCard, LogBody, LogCard};
 use crate::sessions;
@@ -43,26 +46,105 @@ pub async fn key_import(state: State<'_, AppState>, form: ImportForm) -> Result<
     keychain::import(&state.store, &form)
 }
 
+/// Import request for a private key file on disk.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportFileForm {
+    pub vault_id: Uuid,
+    pub label: String,
+    pub path: String,
+    #[serde(default)]
+    pub passphrase: Option<String>,
+    #[serde(default)]
+    pub remember_passphrase: bool,
+    /// Pasted certificate text; ignored when `certificate_path` is set.
+    #[serde(default)]
+    pub certificate: Option<String>,
+    /// Path to a `*-cert.pub` to attach.
+    #[serde(default)]
+    pub certificate_path: Option<String>,
+}
+
+/// Import from a file on disk; the private material is read here and never
+/// crosses the IPC boundary.
 #[tauri::command]
-pub async fn key_import_file(
-    state: State<'_, AppState>,
-    vault_id: Uuid,
-    label: String,
-    path: String,
-    passphrase: Option<String>,
-    remember_passphrase: bool,
-) -> Result<KeyCard> {
-    let private_key = std::fs::read_to_string(&path)?;
+pub async fn key_import_file(state: State<'_, AppState>, form: ImportFileForm) -> Result<KeyCard> {
+    let private_key = std::fs::read_to_string(&form.path)?;
+    let certificate = match form.certificate_path {
+        Some(p) => Some(std::fs::read_to_string(&p)?),
+        None => form.certificate,
+    };
     keychain::import(
         &state.store,
         &ImportForm {
-            vault_id,
-            label,
+            vault_id: form.vault_id,
+            label: form.label,
             private_key,
-            passphrase,
-            remember_passphrase,
+            passphrase: form.passphrase,
+            remember_passphrase: form.remember_passphrase,
+            certificate,
         },
     )
+}
+
+/// Public half + format of pasted private key text; nothing is stored.
+#[tauri::command]
+pub async fn key_inspect(text: String) -> Result<KeyPreview> {
+    keychain::inspect_private(&text)
+}
+
+/// Same for a file on disk; the private material stays in Rust.
+#[tauri::command]
+pub async fn key_inspect_file(path: String) -> Result<KeyPreview> {
+    keychain::inspect_private(&std::fs::read_to_string(&path)?)
+}
+
+/// Parse + verify a certificate for the editor preview; nothing is stored.
+#[tauri::command]
+pub async fn certificate_inspect(text: String) -> Result<CertificateCard> {
+    keychain::inspect_certificate(&text)
+}
+
+#[tauri::command]
+pub async fn certificate_inspect_file(path: String) -> Result<CertificateCard> {
+    keychain::inspect_certificate(&std::fs::read_to_string(&path)?)
+}
+
+/// Certificate text attached to a key (public data), for display/copy.
+#[tauri::command]
+pub async fn key_certificate(state: State<'_, AppState>, id: Uuid) -> Result<Option<String>> {
+    keychain::certificate_text(&state.store, id)
+}
+
+/// Attach (`Some(text)`) or detach (`None`) the certificate of a key.
+#[tauri::command]
+pub async fn key_set_certificate(
+    state: State<'_, AppState>,
+    id: Uuid,
+    certificate: Option<String>,
+) -> Result<KeyCard> {
+    keychain::set_certificate(&state.store, id, certificate)
+}
+
+#[tauri::command]
+pub async fn key_set_certificate_file(
+    state: State<'_, AppState>,
+    id: Uuid,
+    path: String,
+) -> Result<KeyCard> {
+    let text = std::fs::read_to_string(&path)?;
+    keychain::set_certificate(&state.store, id, Some(text))
+}
+
+/// Copy or move a key (with its certificate) into another vault.
+#[tauri::command]
+pub async fn key_copy_to_vault(
+    state: State<'_, AppState>,
+    id: Uuid,
+    vault_id: Uuid,
+    move_key: bool,
+) -> Result<KeyCard> {
+    keychain::copy_to_vault(&state.store, id, vault_id, move_key)
 }
 
 #[tauri::command]
