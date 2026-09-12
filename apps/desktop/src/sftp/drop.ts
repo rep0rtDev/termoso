@@ -79,6 +79,7 @@ function fsEntry(path: string, name: string, kind: "dir" | "file", file: File | 
     mtime: file ? Math.floor(file.lastModified / 1000) : null,
     atime: null,
     link_target: null,
+    target_kind: null,
   };
 }
 

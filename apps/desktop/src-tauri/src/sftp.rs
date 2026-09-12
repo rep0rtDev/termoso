@@ -2,7 +2,7 @@
 //! Rust owns the transport, walks directories and moves bytes; the webview
 //! only renders listings and transfer progress.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -13,6 +13,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 use termoso_core::error::CoreError;
 use termoso_core::sftp::{EntryKind, Progress, RemoteEntry, Sftp, TransferOptions};
 use termoso_core::ssh::SshClient;
+use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -23,6 +24,8 @@ use crate::state::AppState;
 pub const SFTP_EVENT: &str = "sftp";
 pub const TRANSFER_EVENT: &str = "transfer";
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(120);
+/// Transfers moving bytes at the same time; the rest wait in the queue.
+const MAX_PARALLEL: usize = 3;
 
 /// What to browse.
 #[derive(Debug, Clone, Deserialize)]
@@ -95,12 +98,24 @@ pub struct TransferInfo {
     pub started_at: DateTime<Utc>,
 }
 
+/// Transfers start `Queued`; `Running` follows once a slot is free.
+/// Pausing or failing keeps the entry so it can be resumed from where the
+/// destination left off.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TransferEvent {
     Started {
         id: Uuid,
         info: TransferInfo,
+    },
+    Queued {
+        id: Uuid,
+    },
+    Running {
+        id: Uuid,
+    },
+    Paused {
+        id: Uuid,
     },
     Progress {
         id: Uuid,
@@ -135,11 +150,49 @@ struct Live {
     jumps: Vec<Arc<SshClient>>,
 }
 
-#[derive(Default)]
+/// A transfer known to the queue: waiting, moving bytes, paused or failed.
+struct Job {
+    info: TransferInfo,
+    temp: bool,
+    local: PathBuf,
+    remote: String,
+    /// Policy for the next run; `Rename` picks its free name once and then
+    /// continues as `Replace`.
+    conflict: Conflict,
+    /// Present while queued or running.
+    cancel: Option<CancellationToken>,
+    /// Cancelled in order to pause, not to discard.
+    pausing: bool,
+    /// What earlier runs of this job already moved, so a continuation after
+    /// pause or failure neither redoes finished files nor blindly appends to
+    /// pre-existing ones.
+    progress: RunProgress,
+}
+
+#[derive(Default, Clone)]
+struct RunProgress {
+    /// Destination paths fully written by this job.
+    completed: HashSet<String>,
+    /// Destination the job was writing when it stopped; continued by offset.
+    partial: Option<String>,
+}
+
 pub struct SftpSessions {
     live: Mutex<HashMap<Uuid, Arc<Live>>>,
     pending: Mutex<HashMap<Uuid, CancellationToken>>,
-    transfers: Mutex<HashMap<Uuid, CancellationToken>>,
+    transfers: Mutex<HashMap<Uuid, Job>>,
+    slots: Arc<Semaphore>,
+}
+
+impl Default for SftpSessions {
+    fn default() -> Self {
+        Self {
+            live: Mutex::default(),
+            pending: Mutex::default(),
+            transfers: Mutex::default(),
+            slots: Arc::new(Semaphore::new(MAX_PARALLEL)),
+        }
+    }
 }
 
 impl SftpSessions {
@@ -200,13 +253,53 @@ impl SftpSessions {
         self.live.lock().expect("sftp poisoned").remove(&id)
     }
 
-    pub fn cancel_transfer(&self, id: Uuid) -> bool {
-        match self.transfers.lock().expect("sftp poisoned").get(&id) {
-            Some(tok) => {
-                tok.cancel();
+    /// Stop a transfer: a queued or running one is interrupted, a paused or
+    /// failed one is dropped from the queue right away.
+    pub fn cancel_transfer<R: Runtime>(&self, app: &AppHandle<R>, id: Uuid) -> bool {
+        let mut jobs = self.transfers.lock().expect("sftp poisoned");
+        let active = match jobs.get_mut(&id) {
+            None => return false,
+            Some(job) => match &job.cancel {
+                Some(tok) => {
+                    job.pausing = false;
+                    tok.cancel();
+                    true
+                }
+                None => false,
+            },
+        };
+        if !active && let Some(job) = jobs.remove(&id) {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if job.temp {
+                    drop_discard(&job.local).await;
+                }
+                let _ = app.emit(TRANSFER_EVENT, TransferEvent::Cancelled { id });
+            });
+        }
+        true
+    }
+
+    /// Interrupt a queued or running transfer, keeping it for `resume`.
+    pub fn pause_transfer(&self, id: Uuid) -> bool {
+        let mut jobs = self.transfers.lock().expect("sftp poisoned");
+        match jobs.get_mut(&id) {
+            Some(job) if job.cancel.is_some() => {
+                job.pausing = true;
+                if let Some(tok) = &job.cancel {
+                    tok.cancel();
+                }
                 true
             }
-            None => false,
+            _ => false,
+        }
+    }
+
+    /// Forget finished/failed/paused transfers the UI has cleared.
+    pub fn forget_transfer(&self, id: Uuid) {
+        let mut jobs = self.transfers.lock().expect("sftp poisoned");
+        if jobs.get(&id).is_some_and(|j| j.cancel.is_none()) {
+            jobs.remove(&id);
         }
     }
 }
@@ -410,6 +503,16 @@ fn local_entry(path: &Path, name: String) -> Option<RemoteEntry> {
     } else {
         EntryKind::Other
     };
+    let target_kind = match &meta {
+        Some(m) if is_link => Some(if m.is_dir() {
+            EntryKind::Dir
+        } else if m.is_file() {
+            EntryKind::File
+        } else {
+            EntryKind::Other
+        }),
+        _ => None,
+    };
     let target_meta = meta.as_ref().unwrap_or(&link_meta);
     let mtime = target_meta
         .modified()
@@ -448,7 +551,24 @@ fn local_entry(path: &Path, name: String) -> Option<RemoteEntry> {
             .then(|| std::fs::read_link(path).ok())
             .flatten()
             .map(|p| p.to_string_lossy().into_owned()),
+        target_kind,
     })
+}
+
+/// Roots the local pane can jump between: drive letters on Windows, nothing
+/// elsewhere (a single `/` needs no picker).
+pub fn local_drives() -> Vec<String> {
+    #[cfg(windows)]
+    {
+        (b'A'..=b'Z')
+            .map(|c| format!("{}:\\", c as char))
+            .filter(|d| Path::new(d).exists())
+            .collect()
+    }
+    #[cfg(not(windows))]
+    {
+        Vec::new()
+    }
 }
 
 fn local_list_sync(path: Option<String>) -> Result<Listing> {
@@ -694,7 +814,7 @@ pub fn transfer_start<R: Runtime>(
     temp: bool,
 ) -> Result<TransferInfo> {
     let state = app.state::<AppState>();
-    let sftp = state.sftp.sftp(sftp_id)?;
+    state.sftp.sftp(sftp_id)?;
     let local_path = PathBuf::from(&local);
     if temp && !local_path.starts_with(drop_root()) {
         return Err(DesktopError::invalid(
@@ -703,12 +823,6 @@ pub fn transfer_start<R: Runtime>(
     }
     let id = Uuid::new_v4();
     let cancel = CancellationToken::new();
-    state
-        .sftp
-        .transfers
-        .lock()
-        .expect("sftp poisoned")
-        .insert(id, cancel.clone());
     let info = TransferInfo {
         id,
         sftp_id,
@@ -718,6 +832,19 @@ pub fn transfer_start<R: Runtime>(
         conflict,
         started_at: Utc::now(),
     };
+    state.sftp.transfers.lock().expect("sftp poisoned").insert(
+        id,
+        Job {
+            info: info.clone(),
+            temp,
+            local: local_path,
+            remote,
+            conflict,
+            cancel: Some(cancel.clone()),
+            pausing: false,
+            progress: RunProgress::default(),
+        },
+    );
     let _ = app.emit(
         TRANSFER_EVENT,
         TransferEvent::Started {
@@ -725,35 +852,168 @@ pub fn transfer_start<R: Runtime>(
             info: info.clone(),
         },
     );
-    tauri::async_runtime::spawn(async move {
-        let result = tokio::select! {
-            r = run_transfer(&app, id, sftp, direction, local_path.clone(), remote, conflict, cancel.clone()) => r,
-            _ = cancel.cancelled() => Err(CoreError::Cancelled.into()),
-        };
-        app.state::<AppState>()
-            .sftp
-            .transfers
-            .lock()
-            .expect("sftp poisoned")
-            .remove(&id);
-        if temp {
-            drop_discard(&local_path).await;
+    spawn_job(app, id, cancel);
+    Ok(info)
+}
+
+/// Put a paused or failed transfer back in the queue; it continues from the
+/// bytes already at the destination.
+pub fn transfer_resume<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
+    let state = app.state::<AppState>();
+    let cancel = CancellationToken::new();
+    {
+        let mut jobs = state.sftp.transfers.lock().expect("sftp poisoned");
+        let job = jobs
+            .get_mut(&id)
+            .ok_or_else(|| DesktopError::not_found(format!("transfer {id}")))?;
+        if job.cancel.is_some() {
+            return Err(DesktopError::invalid("transfer is already active"));
         }
-        let ev = match result {
-            Ok((bytes, files_skipped)) => TransferEvent::Finished {
-                id,
-                bytes,
-                files_skipped,
-            },
-            Err(e) if e.kind == "cancelled" => TransferEvent::Cancelled { id },
-            Err(e) => TransferEvent::Failed {
-                id,
-                message: e.message,
-            },
+        state.sftp.sftp(job.info.sftp_id)?;
+        job.cancel = Some(cancel.clone());
+        job.pausing = false;
+    }
+    let _ = app.emit(TRANSFER_EVENT, TransferEvent::Queued { id });
+    spawn_job(app, id, cancel);
+    Ok(())
+}
+
+/// Wait for a slot, run the job, then record the outcome in the queue.
+fn spawn_job<R: Runtime>(app: AppHandle<R>, id: Uuid, cancel: CancellationToken) {
+    tauri::async_runtime::spawn(async move {
+        let slots = app.state::<AppState>().sftp.slots.clone();
+        let permit = tokio::select! {
+            p = slots.acquire_owned() => p.ok(),
+            _ = cancel.cancelled() => None,
         };
+        let result = match permit {
+            None => Err(CoreError::Cancelled.into()),
+            Some(_permit) => {
+                let _ = app.emit(TRANSFER_EVENT, TransferEvent::Running { id });
+                tokio::select! {
+                    r = run_job(&app, id, cancel.clone()) => r,
+                    _ = cancel.cancelled() => Err(CoreError::Cancelled.into()),
+                }
+            }
+        };
+        let (ev, discard) = {
+            let state = app.state::<AppState>();
+            let mut jobs = state.sftp.transfers.lock().expect("sftp poisoned");
+            let Some(job) = jobs.get_mut(&id) else {
+                return;
+            };
+            let pausing = std::mem::take(&mut job.pausing);
+            job.cancel = None;
+            match result {
+                Ok((bytes, files_skipped)) => {
+                    let job = jobs.remove(&id).expect("present");
+                    (
+                        TransferEvent::Finished {
+                            id,
+                            bytes,
+                            files_skipped,
+                        },
+                        job.temp.then_some(job.local),
+                    )
+                }
+                Err(e) if e.kind == "cancelled" && pausing => (TransferEvent::Paused { id }, None),
+                Err(e) if e.kind == "cancelled" => {
+                    let job = jobs.remove(&id).expect("present");
+                    (
+                        TransferEvent::Cancelled { id },
+                        job.temp.then_some(job.local),
+                    )
+                }
+                Err(e) => (
+                    TransferEvent::Failed {
+                        id,
+                        message: e.message,
+                    },
+                    None,
+                ),
+            }
+        };
+        if let Some(path) = discard {
+            drop_discard(&path).await;
+        }
         let _ = app.emit(TRANSFER_EVENT, ev);
     });
-    Ok(info)
+}
+
+/// Resolve a `Rename` conflict once (so continuations reuse the same name)
+/// and move the job's files.
+async fn run_job<R: Runtime>(
+    app: &AppHandle<R>,
+    id: Uuid,
+    cancel: CancellationToken,
+) -> Result<(u64, usize)> {
+    let state = app.state::<AppState>();
+    let (sftp_id, direction, mut local, mut remote, conflict, progress) = {
+        let jobs = state.sftp.transfers.lock().expect("sftp poisoned");
+        let job = jobs
+            .get(&id)
+            .ok_or_else(|| DesktopError::not_found(format!("transfer {id}")))?;
+        (
+            job.info.sftp_id,
+            job.info.direction,
+            job.local.clone(),
+            job.remote.clone(),
+            job.conflict,
+            job.progress.clone(),
+        )
+    };
+    let sftp = state.sftp.sftp(sftp_id)?;
+    let conflict = if conflict == Conflict::Rename {
+        match direction {
+            Direction::Upload if sftp.exists(&remote).await? => {
+                remote = unique_remote(&sftp, &remote).await?;
+            }
+            Direction::Download if tokio::fs::symlink_metadata(&local).await.is_ok() => {
+                local = unique_local(&local).await?;
+            }
+            _ => {}
+        }
+        let mut jobs = state.sftp.transfers.lock().expect("sftp poisoned");
+        if let Some(job) = jobs.get_mut(&id) {
+            job.local = local.clone();
+            job.remote = remote.clone();
+            job.conflict = Conflict::Replace;
+        }
+        Conflict::Replace
+    } else {
+        conflict
+    };
+    let tracker = ProgressTracker { state: &state, id };
+    run_transfer(
+        app, id, sftp, direction, local, remote, conflict, progress, &tracker, cancel,
+    )
+    .await
+}
+
+/// Records per-file progress into the job so a continuation knows where to pick up.
+struct ProgressTracker<'a> {
+    state: &'a AppState,
+    id: Uuid,
+}
+
+impl ProgressTracker<'_> {
+    fn with(&self, f: impl FnOnce(&mut RunProgress)) {
+        let mut jobs = self.state.sftp.transfers.lock().expect("sftp poisoned");
+        if let Some(job) = jobs.get_mut(&self.id) {
+            f(&mut job.progress);
+        }
+    }
+
+    fn begin(&self, dest: &str) {
+        self.with(|p| p.partial = Some(dest.to_string()));
+    }
+
+    fn complete(&self, dest: &str) {
+        self.with(|p| {
+            p.partial = None;
+            p.completed.insert(dest.to_string());
+        });
+    }
 }
 
 /// `name (1).ext`, `name (2).ext`, … for the first `n` that keeps `taken` false.
@@ -816,22 +1076,13 @@ async fn run_transfer<R: Runtime>(
     id: Uuid,
     sftp: Arc<Sftp>,
     direction: Direction,
-    mut local: PathBuf,
-    mut remote: String,
+    local: PathBuf,
+    remote: String,
     conflict: Conflict,
+    earlier: RunProgress,
+    tracker: &ProgressTracker<'_>,
     cancel: CancellationToken,
 ) -> Result<(u64, usize)> {
-    if conflict == Conflict::Rename {
-        match direction {
-            Direction::Upload if sftp.exists(&remote).await? => {
-                remote = unique_remote(&sftp, &remote).await?;
-            }
-            Direction::Download if tokio::fs::symlink_metadata(&local).await.is_ok() => {
-                local = unique_local(&local).await?;
-            }
-            _ => {}
-        }
-    }
     let plan = match direction {
         Direction::Upload => {
             let (l, r) = (local.clone(), remote.clone());
@@ -865,21 +1116,30 @@ async fn run_transfer<R: Runtime>(
             Direction::Download => item.local.to_string_lossy().into_owned(),
         };
         reporter.report(base, i, skipped, &current, true);
-        if conflict == Conflict::Skip {
-            let exists = match direction {
-                Direction::Upload => sftp.exists(&item.remote).await?,
-                Direction::Download => tokio::fs::symlink_metadata(&item.local).await.is_ok(),
-            };
-            if exists {
-                skipped += 1;
+        let resume = match item_action(conflict, &earlier, &current) {
+            ItemAction::Done => {
                 base += item.size.unwrap_or(0);
                 continue;
             }
-        }
+            ItemAction::SkipIfPresent => {
+                let exists = match direction {
+                    Direction::Upload => sftp.exists(&item.remote).await?,
+                    Direction::Download => tokio::fs::symlink_metadata(&item.local).await.is_ok(),
+                };
+                if exists {
+                    skipped += 1;
+                    base += item.size.unwrap_or(0);
+                    continue;
+                }
+                false
+            }
+            ItemAction::Move { resume } => resume,
+        };
+        tracker.begin(&current);
         let rep = reporter.clone();
         let cur = current.clone();
         let opts = TransferOptions {
-            resume: conflict == Conflict::Resume,
+            resume,
             preserve_mtime: true,
             cancel: cancel.clone(),
             progress: Some(Arc::new(move |p: Progress| {
@@ -890,10 +1150,40 @@ async fn run_transfer<R: Runtime>(
             Direction::Upload => sftp.upload(&item.local, &item.remote, &opts).await?,
             Direction::Download => sftp.download(&item.remote, &item.local, &opts).await?,
         };
+        tracker.complete(&current);
         base += item.size.unwrap_or(0);
     }
     reporter.report(base, plan.files.len(), skipped, "", true);
     Ok((moved, skipped))
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ItemAction {
+    /// Finished by an earlier run of this job.
+    Done,
+    /// Leave alone if the destination already exists.
+    SkipIfPresent,
+    Move {
+        resume: bool,
+    },
+}
+
+/// What to do with one file of the plan given the conflict policy and what
+/// earlier runs already did: finished files are not redone, the file that was
+/// interrupted continues by offset regardless of policy, everything else
+/// follows the policy as if it were a fresh run.
+fn item_action(conflict: Conflict, earlier: &RunProgress, dest: &str) -> ItemAction {
+    if earlier.completed.contains(dest) {
+        return ItemAction::Done;
+    }
+    if earlier.partial.as_deref() == Some(dest) {
+        return ItemAction::Move { resume: true };
+    }
+    match conflict {
+        Conflict::Skip => ItemAction::SkipIfPresent,
+        Conflict::Resume => ItemAction::Move { resume: true },
+        Conflict::Replace | Conflict::Rename => ItemAction::Move { resume: false },
+    }
 }
 
 // ───────────────────────────── drops from the OS ─────────────────────────────
@@ -1041,6 +1331,86 @@ mod tests {
         assert!(staged_path(&dir_s, "a/../../escape").is_err());
         assert!(staged_path(&dir_s, "").is_err());
         assert!(staged_path("/tmp/elsewhere", "a").is_err());
+    }
+
+    #[test]
+    fn continuation_only_resumes_the_interrupted_file() {
+        let earlier = RunProgress {
+            completed: HashSet::from(["/d/a".to_string()]),
+            partial: Some("/d/b".to_string()),
+        };
+        for policy in [
+            Conflict::Replace,
+            Conflict::Skip,
+            Conflict::Resume,
+            Conflict::Rename,
+        ] {
+            assert_eq!(item_action(policy, &earlier, "/d/a"), ItemAction::Done);
+            assert_eq!(
+                item_action(policy, &earlier, "/d/b"),
+                ItemAction::Move { resume: true }
+            );
+        }
+        assert_eq!(
+            item_action(Conflict::Replace, &earlier, "/d/c"),
+            ItemAction::Move { resume: false }
+        );
+        assert_eq!(
+            item_action(Conflict::Skip, &earlier, "/d/c"),
+            ItemAction::SkipIfPresent
+        );
+        assert_eq!(
+            item_action(Conflict::Resume, &earlier, "/d/c"),
+            ItemAction::Move { resume: true }
+        );
+        let fresh = RunProgress::default();
+        assert_eq!(
+            item_action(Conflict::Skip, &fresh, "/d/b"),
+            ItemAction::SkipIfPresent
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn local_entries_classify_symlink_targets() {
+        use std::os::unix::fs::symlink;
+        let dir = std::env::temp_dir().join(format!("termoso-links-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("f.txt"), b"x").unwrap();
+        symlink(dir.join("sub"), dir.join("to-dir")).unwrap();
+        symlink(dir.join("f.txt"), dir.join("to-file")).unwrap();
+        symlink(dir.join("gone"), dir.join("dangling")).unwrap();
+
+        let entry = |n: &str| local_entry(&dir.join(n), n.to_string()).unwrap();
+        let to_dir = entry("to-dir");
+        assert_eq!(to_dir.kind, EntryKind::Symlink);
+        assert_eq!(to_dir.target_kind, Some(EntryKind::Dir));
+        assert!(to_dir.link_target.as_deref().unwrap().ends_with("sub"));
+        let to_file = entry("to-file");
+        assert_eq!(to_file.kind, EntryKind::Symlink);
+        assert_eq!(to_file.target_kind, Some(EntryKind::File));
+        let dangling = entry("dangling");
+        assert_eq!(dangling.kind, EntryKind::Symlink);
+        assert_eq!(dangling.target_kind, None);
+        assert!(dangling.link_target.as_deref().unwrap().ends_with("gone"));
+        assert_eq!(entry("sub").target_kind, None);
+        assert_eq!(entry("f.txt").kind, EntryKind::File);
+
+        let listing = local_list_sync(Some(dir.to_string_lossy().into_owned())).unwrap();
+        let names: Vec<&str> = listing.entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names.len(), 5);
+        assert!(names.contains(&"dangling"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn drives_only_exist_on_windows() {
+        let drives = local_drives();
+        if cfg!(windows) {
+            assert!(drives.iter().all(|d| d.len() == 3 && d.ends_with(":\\")));
+        } else {
+            assert!(drives.is_empty());
+        }
     }
 
     #[tokio::test]

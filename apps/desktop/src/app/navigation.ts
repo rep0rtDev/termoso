@@ -30,7 +30,7 @@ interface NavState {
 }
 
 export type SettingsPage =
-  "account" | "general" | "terminal" | "keyboard" | "logs" | "updates" | "about";
+  "account" | "general" | "terminal" | "keyboard" | "sftp" | "logs" | "updates" | "about";
 
 export type CreateKind = "host" | "group" | "snippet";
 
