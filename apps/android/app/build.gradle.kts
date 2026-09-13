@@ -9,6 +9,26 @@ val rustAbis: List<String> = (findProperty("termoso.abis") as String)
     .map { it.trim() }
     .filter { it.isNotEmpty() }
 
+// One version for the whole project: the workspace Cargo.toml is the source of truth
+// (the desktop release workflow enforces the same for package.json).
+val workspaceVersion: String = rootDir.parentFile.parentFile.resolve("Cargo.toml").useLines { lines ->
+    lines.firstNotNullOfOrNull { Regex("""^version\s*=\s*"([^"]+)"""").find(it)?.groupValues?.get(1) }
+} ?: error("workspace Cargo.toml has no version")
+
+/** `MAJOR.MINOR.PATCH[-pre]` → `MMmmpp`; pre-release suffixes share the code of the final version. */
+fun versionCodeOf(v: String): Int {
+    val (major, minor, patch) = v.substringBefore('-').split('.').map { it.toInt() }
+    require(minor < 100 && patch < 100) { "version $v does not fit MMmmpp" }
+    return major * 10_000 + minor * 100 + patch
+}
+
+// Release signing comes from the environment only (CI secrets or a developer shell);
+// nothing is read from the tree, so a checkout never contains key material.
+val releaseKeystore: File? = System.getenv("TERMOSO_ANDROID_KEYSTORE")?.let(::File)?.takeIf { it.isFile }
+
+// `-Ptermoso.splits=true` produces one APK per ABI plus a universal one (release workflow).
+val abiSplits: Boolean = (findProperty("termoso.splits") as String?)?.toBoolean() ?: false
+
 android {
     namespace = "com.termoso.android"
     compileSdk = 36
@@ -17,12 +37,25 @@ android {
         applicationId = "com.termoso.android"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = versionCodeOf(workspaceVersion)
+        versionName = workspaceVersion
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
         // Only ship the ABIs we build Rust for (JNA's AAR carries mips/armeabi too).
         ndk.abiFilters += rustAbis
+    }
+
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = System.getenv("TERMOSO_ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("TERMOSO_ANDROID_KEY_ALIAS") ?: "termoso"
+                keyPassword = System.getenv("TERMOSO_ANDROID_KEY_PASSWORD") ?: System.getenv("TERMOSO_ANDROID_KEYSTORE_PASSWORD")
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
     }
 
     buildTypes {
@@ -30,9 +63,22 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Without TERMOSO_ANDROID_KEYSTORE the APK is left unsigned (app-release-unsigned.apk)
+            // rather than silently signed with the debug key.
+            signingConfig = signingConfigs.findByName("release")
         }
         debug {
             applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
+    }
+
+    if (abiSplits) {
+        splits.abi {
+            isEnable = true
+            reset()
+            include(*rustAbis.toTypedArray())
+            isUniversalApk = true
         }
     }
 
