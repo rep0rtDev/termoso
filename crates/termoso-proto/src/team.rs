@@ -39,7 +39,17 @@ schema! {
         pub my_role: TeamRole,
         /// Number of members.
         pub member_count: i64,
+        /// Members may share live terminal sessions with each other.
+        #[serde(default = "default_true")]
+        pub multiplayer_enabled: bool,
+        /// Members without two-factor authentication cannot open team vaults.
+        #[serde(default)]
+        pub require_mfa: bool,
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 schema! {
@@ -60,10 +70,17 @@ schema! {
 
 schema! {
     /// `PATCH /teams/{id}`
+    #[derive(Default)]
     pub struct UpdateTeamRequest {
         /// New name.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub name: Option<String>,
+        /// Allow live terminal sharing between members.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub multiplayer_enabled: Option<bool>,
+        /// Require two-factor authentication to open team vaults.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub require_mfa: Option<bool>,
     }
 }
 

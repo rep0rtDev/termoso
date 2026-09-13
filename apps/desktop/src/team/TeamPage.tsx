@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   Alert,
   Box,
@@ -28,6 +28,9 @@ import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
+import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
 import { useMutation } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
@@ -71,9 +74,11 @@ import { PersonAvatar, initialsOf } from "./PersonAvatar";
 import { isTeamAdmin, teamRoleHint, teamRoleLabel, vaultRoleLabel } from "./roles";
 
 /**
- * Settings → Team, laid out like Termius: the team header with its actions,
- * the members table (active and pending), then the team vaults. Everything
- * that touches keys stays in Rust; this page only shows outcomes.
+ * Settings → Team, laid out like Termius: a compact "My Team" card (Member /
+ * Status rows, Resend invite, Copy invitation link) and a Security card
+ * (Multiplayer, Require 2FA). "Manage" opens the full in-app management view
+ * (roles, removal, vaults, rename, leave/delete) where Termius sends you to
+ * its web portal. Everything that touches keys stays in Rust.
  */
 export function TeamPage() {
   const account = useAccount();
@@ -83,6 +88,7 @@ export function TeamPage() {
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [inviting, setInviting] = useState(false);
+  const [managing, setManaging] = useState(false);
 
   const list = teams.data ?? [];
   const team = list.find((t) => t.id === selected) ?? list[0] ?? null;
@@ -140,6 +146,8 @@ export function TeamPage() {
             onJoin={() => setJoining(true)}
             inviting={inviting}
             setInviting={setInviting}
+            managing={managing}
+            setManaging={setManaging}
           />
         ) : (
           <NoTeam onCreate={() => setCreating(true)} onJoin={() => setJoining(true)} />
@@ -197,6 +205,8 @@ function TeamView({
   onJoin,
   inviting,
   setInviting,
+  managing,
+  setManaging,
 }: {
   team: Team;
   teams: Team[];
@@ -206,6 +216,8 @@ function TeamView({
   onJoin: () => void;
   inviting: boolean;
   setInviting: (v: boolean) => void;
+  managing: boolean;
+  setManaging: (v: boolean) => void;
 }) {
   const snackbar = useSnackbar();
   const invalidate = useInvalidateTeam();
@@ -268,8 +280,205 @@ function TeamView({
   const inviteList = invites.data ?? [];
   const pendingList = pending.data ?? [];
 
+  const resend = (inv: TeamInvite) =>
+    op.mutate(async () => {
+      await ipc.teamInviteRevoke(team.id, inv.id);
+      const r = await ipc.teamInvite(team.id, [inv.email], inv.role, []);
+      setResent(r);
+      return null;
+    });
+
+  const pendingKeys = pendingList.length > 0 && (
+    <PendingKeys
+      team={team}
+      pending={pendingList}
+      members={memberList}
+      vaults={teamVaults}
+      onGrant={(k) =>
+        op.mutate(() =>
+          ipc.teamVaultSetAccess(k.vault_id, k.user_id, k.role).then(() => "Key handed over"),
+        )
+      }
+    />
+  );
+
+  const dialogs = (
+    <>
+      <InviteDialog
+        team={team}
+        vaults={managed}
+        open={inviting}
+        onClose={() => setInviting(false)}
+      />
+      <ResentDialog results={resent} onClose={() => setResent(null)} />
+    </>
+  );
+
+  if (!managing) {
+    return (
+      <Stack spacing={1.5} sx={{ maxWidth: 640, mx: "auto", width: "100%" }}>
+        {teams.length > 1 && (
+          <TextField
+            select
+            size="small"
+            value={team.id}
+            onChange={(e) => onSelect(e.target.value)}
+            sx={{ alignSelf: "flex-end", width: 200 }}
+          >
+            {teams.map((t) => (
+              <MenuItem key={t.id} value={t.id}>
+                {t.name}
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
+        {pendingKeys}
+        <SectionCard sx={{ p: 2.5, gap: 1.25 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Typography variant="subtitle1" noWrap sx={{ flex: 1, fontWeight: 600 }}>
+              {team.name}
+            </Typography>
+            <Button
+              size="small"
+              endIcon={<ChevronRightRoundedIcon sx={{ fontSize: 16 }} />}
+              onClick={() => setManaging(true)}
+              sx={{ minWidth: 0, px: 0.75 }}
+            >
+              Manage
+            </Button>
+          </Box>
+          <Box sx={{ borderRadius: 2, overflow: "hidden" }}>
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "1fr 150px",
+                px: 2,
+                py: 1.25,
+                bgcolor: "surface.highest",
+                typography: "body2",
+                fontWeight: 600,
+              }}
+            >
+              <span>Member</span>
+              <span>Status</span>
+            </Box>
+            {members.isPending ? (
+              <Loading pt={2} />
+            ) : (
+              <>
+                {memberList.map((m) => (
+                  <CompactRow
+                    key={m.user_id}
+                    avatar={
+                      <PersonAvatar size={36} seed={m.email} label={initialsOf(null, m.email)} />
+                    }
+                    primary={m.display_name ?? m.email}
+                    owner={m.role === "owner"}
+                    me={m.user_id === myId}
+                    status={
+                      <Typography variant="body2" color="text.secondary">
+                        Active
+                      </Typography>
+                    }
+                  />
+                ))}
+                {inviteList.map((inv) => (
+                  <CompactRow
+                    key={inv.id}
+                    avatar={
+                      <PersonAvatar
+                        size={36}
+                        kind="invite"
+                        seed={inv.email}
+                        label={initialsOf(null, inv.email)}
+                      />
+                    }
+                    primary={inv.email}
+                    muted
+                    status={
+                      admin ? (
+                        <Button
+                          size="small"
+                          onClick={() => resend(inv)}
+                          disabled={op.isPending}
+                          sx={{ minWidth: 0, px: 0, justifyContent: "flex-start" }}
+                        >
+                          Resend invite
+                        </Button>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          Invited
+                        </Typography>
+                      )
+                    }
+                  />
+                ))}
+              </>
+            )}
+          </Box>
+          {admin && (
+            <Button
+              startIcon={<LinkRoundedIcon />}
+              onClick={() => setInviting(true)}
+              sx={{ alignSelf: "flex-start", color: "text.primary", px: 0.5 }}
+            >
+              Copy invitation link
+            </Button>
+          )}
+        </SectionCard>
+
+        <SectionCard sx={{ p: 2.5, gap: 0.5 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+            Security
+          </Typography>
+          <SecurityRow
+            label={
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                Multiplayer
+                <Typography variant="caption" color="text.secondary">
+                  Beta
+                </Typography>
+              </Box>
+            }
+            hint="Members can share a live terminal with each other."
+            enabled={team.multiplayer_enabled}
+            canChange={admin}
+            onChange={(on) =>
+              op.mutate(() =>
+                ipc
+                  .teamSetSecurity(team.id, { multiplayerEnabled: on })
+                  .then(() => (on ? "Multiplayer enabled" : "Multiplayer disabled")),
+              )
+            }
+          />
+          <SecurityRow
+            label="Require 2FA for all team members"
+            hint="Members without two-factor authentication cannot open team vaults."
+            enabled={team.require_mfa}
+            canChange={admin}
+            onChange={(on) =>
+              op.mutate(() =>
+                ipc
+                  .teamSetSecurity(team.id, { requireMfa: on })
+                  .then(() => (on ? "2FA is now required" : "2FA is no longer required")),
+              )
+            }
+          />
+        </SectionCard>
+        {dialogs}
+      </Stack>
+    );
+  }
+
   return (
     <Stack spacing={1.5}>
+      <Button
+        startIcon={<ArrowBackRoundedIcon />}
+        onClick={() => setManaging(false)}
+        sx={{ alignSelf: "flex-start", color: "text.secondary" }}
+      >
+        Back to team
+      </Button>
       <SectionCard>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
           <IconTile tone="accent" size={44}>
@@ -340,19 +549,7 @@ function TeamView({
         </Box>
       </SectionCard>
 
-      {pendingList.length > 0 && (
-        <PendingKeys
-          team={team}
-          pending={pendingList}
-          members={memberList}
-          vaults={teamVaults}
-          onGrant={(k) =>
-            op.mutate(() =>
-              ipc.teamVaultSetAccess(k.vault_id, k.user_id, k.role).then(() => "Key handed over"),
-            )
-          }
-        />
-      )}
+      {pendingKeys}
 
       <SectionCard
         title="Members"
@@ -416,14 +613,7 @@ function TeamView({
                     ipc.teamInviteRevoke(team.id, inv.id).then(() => "Invitation revoked"),
                   )
                 }
-                onResend={() =>
-                  op.mutate(async () => {
-                    await ipc.teamInviteRevoke(team.id, inv.id);
-                    const r = await ipc.teamInvite(team.id, [inv.email], inv.role, []);
-                    setResent(r);
-                    return null;
-                  })
-                }
+                onResend={() => resend(inv)}
               />
             ))}
           </Stack>
@@ -482,13 +672,7 @@ function TeamView({
       </SectionCard>
 
       <ActionMenu anchor={menu} onClose={() => setMenu(null)} items={menuItems} />
-      <InviteDialog
-        team={team}
-        vaults={managed}
-        open={inviting}
-        onClose={() => setInviting(false)}
-      />
-      <ResentDialog results={resent} onClose={() => setResent(null)} />
+      {dialogs}
       <ConfirmDialog
         open={confirm === "leave"}
         title={`Leave ${team.name}?`}
@@ -522,6 +706,110 @@ function TeamView({
         cannot be undone.
       </ConfirmDialog>
     </Stack>
+  );
+}
+
+/** One line of the compact "My Team" table: avatar, name (+ owner crown, YOU), status column. */
+function CompactRow({
+  avatar,
+  primary,
+  owner,
+  me,
+  muted,
+  status,
+}: {
+  avatar: ReactNode;
+  primary: string;
+  owner?: boolean;
+  me?: boolean;
+  muted?: boolean;
+  status: ReactNode;
+}) {
+  return (
+    <Box
+      sx={{
+        display: "grid",
+        gridTemplateColumns: "1fr 150px",
+        alignItems: "center",
+        px: 2,
+        minHeight: 58,
+      }}
+    >
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, minWidth: 0 }}>
+        {avatar}
+        <Typography
+          variant="body2"
+          noWrap
+          sx={{ color: muted ? "text.secondary" : "text.primary", minWidth: 0 }}
+        >
+          {primary}
+        </Typography>
+        {owner && (
+          <Tooltip title="Team owner">
+            <WorkspacePremiumRoundedIcon sx={{ fontSize: 16, color: "info.main" }} />
+          </Tooltip>
+        )}
+        {me && (
+          <Chip
+            size="small"
+            label="YOU"
+            color="info"
+            sx={{ height: 16, fontSize: 9, fontWeight: 700, "& .MuiChip-label": { px: 0.75 } }}
+          />
+        )}
+      </Box>
+      <Box sx={{ minWidth: 0 }}>{status}</Box>
+    </Box>
+  );
+}
+
+/** `Label ……… Enabled ▾` line of the Security card; the dropdown is read-only for non-admins. */
+function SecurityRow({
+  label,
+  hint,
+  enabled,
+  canChange,
+  onChange,
+}: {
+  label: ReactNode;
+  hint: string;
+  enabled: boolean;
+  canChange: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const text = enabled ? "Enabled" : "Disabled";
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: 2, minHeight: 44 }}>
+      <Tooltip title={hint} placement="top-start" enterDelay={600}>
+        <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} component="div">
+          {label}
+        </Typography>
+      </Tooltip>
+      {canChange ? (
+        <Button
+          size="small"
+          color="inherit"
+          endIcon={<ExpandMoreRoundedIcon sx={{ fontSize: 18 }} />}
+          onClick={(e) => setAnchor(e.currentTarget)}
+          sx={{ color: "text.secondary", minWidth: 0, px: 0.75, fontWeight: 400 }}
+        >
+          {text}
+        </Button>
+      ) : (
+        <Typography variant="body2" color="text.secondary">
+          {text}
+        </Typography>
+      )}
+      <ActionMenu
+        anchor={anchor}
+        onClose={() => setAnchor(null)}
+        items={[
+          { label: "Enabled", disabled: enabled, onClick: () => onChange(true) },
+          { label: "Disabled", disabled: !enabled, onClick: () => onChange(false) },
+        ]}
+      />
+    </Box>
   );
 }
 

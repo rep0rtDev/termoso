@@ -150,6 +150,8 @@ export interface Team {
   created_at: string;
   my_role: TeamRole;
   member_count: number;
+  multiplayer_enabled: boolean;
+  require_mfa: boolean;
 }
 
 export interface TeamMember {

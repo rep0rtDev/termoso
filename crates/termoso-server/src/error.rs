@@ -132,6 +132,13 @@ impl Error {
             "Email not verified",
         )
     }
+    pub fn mfa_required() -> Self {
+        Self::new(
+            StatusCode::FORBIDDEN,
+            codes::MFA_REQUIRED,
+            "This team requires two-factor authentication",
+        )
+    }
     pub fn quota_exceeded(msg: impl Into<String>) -> Self {
         Self::new(StatusCode::INSUFFICIENT_STORAGE, "quota_exceeded", msg)
     }

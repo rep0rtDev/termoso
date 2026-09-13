@@ -24,7 +24,14 @@ import { vaultHint, vaultIcon } from "@/app/vault";
 import { groupPathLabel } from "./GroupPanel";
 
 export type MoveCopyRequest =
-  { kind: "group"; hosts: HostCard[] } | { kind: "vault"; hosts: HostCard[]; move: boolean };
+  | { kind: "group"; hosts: HostCard[] }
+  | {
+      kind: "vault";
+      hosts: HostCard[];
+      move: boolean;
+      /** Destination already picked (from the `Copy to ▸` submenu): skip the vault list. */
+      target?: Uuid;
+    };
 
 /** "Move to…" (another group) / "Copy to…" / "Move to vault…" for one or many hosts. */
 export function MoveCopyDialog({
@@ -62,9 +69,11 @@ function Body({
   const moveHosts = useMoveHosts();
   const copyToVault = useCopyHostsToVault();
   /** Chosen destination: a group/vault id, `""` for the top level, `null` until picked. */
-  const [target, setTarget] = useState<string | null>(null);
+  const [target, setTarget] = useState<string | null>(
+    request.kind === "vault" ? (request.target ?? null) : null,
+  );
   /** Second step for team vaults: do the credentials travel with the hosts? */
-  const [credStep, setCredStep] = useState(false);
+  const [credStep, setCredStep] = useState(request.kind === "vault" && !!request.target);
   const [shared, setShared] = useState(false);
 
   const ids = request.hosts.map((h) => h.id);
@@ -127,45 +136,44 @@ function Body({
   const otherVaults = (vaults.data ?? []).filter((v) => v.id !== vaultId);
 
   if (credStep && targetVault) {
+    const preset = request.kind === "vault" && !!request.target;
     return (
       <>
-        <DialogTitle>Choose where to store credentials</DialogTitle>
+        <DialogTitle>
+          {move ? "Move" : "Copy"} {what} to {targetVault.name}
+        </DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            {what} {count === 1 ? "is" : "are"} going to {targetVault.name}, a vault the whole team
-            can open. Usernames, passwords and keys are the sensitive part — decide who gets them.
+            Everyone with access to {targetVault.name} will see{" "}
+            {count === 1 ? "this host" : "these hosts"}. How should they connect?
           </Typography>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            <CredentialsChoice
-              selected={!shared}
-              onSelect={() => setShared(false)}
-              icon={<PersonRoundedIcon fontSize="small" />}
-              title="Personal"
-              text="Your credentials are not shared. Vault members connect with credentials from their personal vaults; the hosts arrive without a username, password or key."
-            />
             <CredentialsChoice
               selected={shared}
               onSelect={() => setShared(true)}
               icon={<GroupsRoundedIcon fontSize="small" />}
-              title="Team"
-              text={`Your credentials are shared. Everyone with access to ${targetVault.name} can connect with them; keys are re-encrypted into the team vault.`}
+              title="Members share one set of credentials"
+              text="Your username, password and keys are copied into the team vault, re-encrypted for its members."
+            />
+            <CredentialsChoice
+              selected={!shared}
+              onSelect={() => setShared(false)}
+              icon={<PersonRoundedIcon fontSize="small" />}
+              title="Members use their own credentials"
+              text="Hosts arrive without a username, password or key; each member connects with credentials from their personal vault."
             />
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button color="inherit" onClick={() => setCredStep(false)} disabled={busy}>
-            Back
+          <Button
+            color="inherit"
+            onClick={() => (preset ? onClose() : setCredStep(false))}
+            disabled={busy}
+          >
+            {preset ? "Cancel" : "Back"}
           </Button>
           <Button variant="contained" onClick={run} disabled={busy}>
-            {busy
-              ? "Working…"
-              : shared
-                ? move
-                  ? "Move with credentials"
-                  : "Copy with credentials"
-                : move
-                  ? "Move without credentials"
-                  : "Copy without credentials"}
+            {busy ? "Working…" : move ? "Move" : "Copy"}
           </Button>
         </DialogActions>
       </>

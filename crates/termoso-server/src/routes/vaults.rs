@@ -30,7 +30,8 @@ pub struct Access {
 
 /// Look up `user_id`'s membership in `vault_id`. Team admins get implicit
 /// manager rights on team vaults (needed to seal keys for new members) but no
-/// data access unless they hold a sealed key.
+/// data access unless they hold a sealed key. Team vaults whose team requires
+/// two-factor authentication are unreachable for members without it.
 pub async fn access<'e, E: PgExecutor<'e>>(
     db: E,
     vault_id: Uuid,
@@ -43,20 +44,30 @@ pub async fn access<'e, E: PgExecutor<'e>>(
         Option<String>,
         Option<bool>,
         Option<String>,
+        Option<bool>,
+        bool,
     )> = sqlx::query_as(
-        "SELECT v.kind, v.team_id, v.key_version, vm.role, vm.sealed_key IS NULL, tm.role
+        "SELECT v.kind, v.team_id, v.key_version, vm.role, vm.sealed_key IS NULL, tm.role,
+                t.require_mfa,
+                EXISTS (SELECT 1 FROM users u WHERE u.id = $2 AND (u.totp_enabled
+                        OR EXISTS (SELECT 1 FROM webauthn_credentials w WHERE w.user_id = u.id)))
          FROM vaults v
          LEFT JOIN vault_members vm ON vm.vault_id = v.id AND vm.user_id = $2
          LEFT JOIN team_members tm ON tm.team_id = v.team_id AND tm.user_id = $2
+         LEFT JOIN teams t ON t.id = v.team_id
          WHERE v.id = $1 AND v.deleted_at IS NULL",
     )
     .bind(vault_id)
     .bind(user_id)
     .fetch_optional(db)
     .await?;
-    let Some((kind, team_id, key_version, vrole, pending, trole)) = row else {
+    let Some((kind, team_id, key_version, vrole, pending, trole, require_mfa, has_mfa)) = row
+    else {
         return Err(Error::not_found("Vault"));
     };
+    if require_mfa.unwrap_or(false) && !has_mfa && (vrole.is_some() || trole.is_some()) {
+        return Err(Error::mfa_required());
+    }
     let kind = if kind == "team" {
         VaultKind::Team
     } else {

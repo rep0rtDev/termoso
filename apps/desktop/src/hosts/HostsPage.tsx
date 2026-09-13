@@ -35,7 +35,6 @@ import AddBoxOutlinedIcon from "@mui/icons-material/AddBoxOutlined";
 import DriveFileMoveOutlinedIcon from "@mui/icons-material/DriveFileMoveOutlined";
 import LibraryAddOutlinedIcon from "@mui/icons-material/LibraryAddOutlined";
 import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
-import GroupAddOutlinedIcon from "@mui/icons-material/GroupAddOutlined";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import SelectAllRoundedIcon from "@mui/icons-material/SelectAllRounded";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
@@ -61,12 +60,13 @@ import {
   useGroups,
   useHosts,
   useKnownHosts,
+  useCopyHostsToVault,
   useMoveHosts,
   useSaveSettings,
   useSettings,
   useTags,
 } from "@/ipc/hooks";
-import { openCollaboration, useActiveVault } from "@/app/vault";
+import { useActiveVault, vaultIcon } from "@/app/vault";
 import type { GroupNode, HostCard, HostsView, Uuid } from "@/ipc/types";
 import { errorMessage, hostProtocols } from "@/ipc/types";
 import { openTerminal, useTerminal } from "@/terminal/store";
@@ -74,6 +74,7 @@ import { addToWorkspace, useWorkspaces, workspaceChoices } from "@/terminal/work
 import { openSftpForHost } from "@/sftp/store";
 import {
   goToSerial,
+  goToSettingsWith,
   goToSftp,
   requestForwardingRule,
   useCreateRequests,
@@ -88,6 +89,7 @@ import { ImportDialog } from "./ImportDialog";
 import { ExportCsvDialog } from "./ExportCsvDialog";
 import { TagManagerDialog } from "./TagManagerDialog";
 import { TagsPopover } from "./TagsPopover";
+import { TeamSteps } from "@/team/TeamSteps";
 import { TagChip, tagColorMap } from "./TagChip";
 import { connectActions } from "./ConnectSplit";
 import { useHostDnd } from "./dnd";
@@ -159,6 +161,7 @@ export function HostsPage() {
   const duplicateHost = useDuplicateHost();
   const duplicateGroup = useDuplicateGroup();
   const moveHosts = useMoveHosts();
+  const copyToVault = useCopyHostsToVault();
 
   const [groupId, setGroupId] = useState<Uuid | null>(null);
   const [search, setSearch] = useState("");
@@ -170,6 +173,7 @@ export function HostsPage() {
   const [panel, setPanel] = useState<Panel>({ mode: "closed" });
   const [tagAnchor, setTagAnchor] = useState<HTMLElement | null>(null);
   const [sortAnchor, setSortAnchor] = useState<HTMLElement | null>(null);
+  const [copyAnchor, setCopyAnchor] = useState<HTMLElement | null>(null);
   const [ctx, setCtx] = useState<Ctx | null>(null);
   const [checked, setChecked] = useState<ReadonlySet<Uuid>>(() => new Set());
   const [anchorId, setAnchorId] = useState<Uuid | null>(null);
@@ -545,25 +549,14 @@ export function HostsPage() {
         disabled: many,
       },
       {
-        label: vault.data?.kind === "team" ? "Collaborate" : "Share with a team…",
-        icon: <GroupAddOutlinedIcon fontSize="small" />,
-        onClick: () => {
-          if (vault.data?.kind === "team") openCollaboration(vault.data);
-          else if (vault.vaults.some((v) => v.kind === "team" && v.unlocked && v.role !== "viewer"))
-            setMoveCopy({ kind: "vault", hosts: targets, move: false });
-          else openCollaboration(vault.data);
-        },
-        divider: true,
-      },
-      {
         label: "Move to…",
         icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
         onClick: () => setMoveCopy({ kind: "group", hosts: targets }),
       },
       {
-        label: "Copy to vault…",
+        label: "Copy to",
         icon: <LibraryAddOutlinedIcon fontSize="small" />,
-        onClick: () => setMoveCopy({ kind: "vault", hosts: targets, move: false }),
+        items: copyToItems(targets),
       },
       {
         label: "Duplicate",
@@ -602,6 +595,41 @@ export function HostsPage() {
         danger: true,
       },
     ];
+  };
+
+  /** `Copy to ▸` — every other vault plus “Add vault”, like Termius. */
+  const copyToItems = (targets: HostCard[]): MenuAction[] => [
+    ...vault.vaults
+      .filter((v) => v.id !== vaultId)
+      .map((v) => ({
+        label: v.name,
+        icon: vaultIcon(v),
+        disabled: !v.unlocked || v.role === "viewer",
+        onClick: () => copyHostsTo(targets, v.id),
+      })),
+    {
+      label: "Add vault",
+      icon: <AddRoundedIcon fontSize="small" />,
+      divider: vault.vaults.length > 1,
+      onClick: () => goToSettingsWith({ kind: "newVault" }),
+    },
+  ];
+
+  const copyHostsTo = (targets: HostCard[], to: Uuid) => {
+    const dest = vault.vaults.find((v) => v.id === to);
+    if (!dest || !vaultId) return;
+    if (dest.kind === "team") {
+      setMoveCopy({ kind: "vault", hosts: targets, move: false, target: to });
+      return;
+    }
+    const what = targets.length === 1 ? `“${targets[0]?.label ?? ""}”` : `${targets.length} hosts`;
+    copyToVault.mutate(
+      { ids: targets.map((t) => t.id), vaultId: to, move: false, withCredentials: true },
+      {
+        onSuccess: () => snackbar.notify(`Copied ${what} to ${dest.name}`),
+        onError: (e) => snackbar.error(errorMessage(e)),
+      },
+    );
   };
 
   const groupMenu = (g: GroupNode): MenuAction[] => [
@@ -859,9 +887,9 @@ export function HostsPage() {
                 variant="text"
                 color="inherit"
                 startIcon={<LibraryAddOutlinedIcon />}
-                onClick={() => setMoveCopy({ kind: "vault", hosts: selectedHosts, move: false })}
+                onClick={(e) => setCopyAnchor(e.currentTarget)}
               >
-                Copy to vault
+                Copy to
               </Button>
               <Button
                 size="small"
@@ -1006,6 +1034,7 @@ export function HostsPage() {
         </Box>
 
         <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 3, pb: 3 }}>
+          {!filtering && groupId === null && <TeamSteps />}
           {loading ? (
             <Loading />
           ) : loadError ? (
@@ -1178,6 +1207,12 @@ export function HostsPage() {
           </MenuItem>
         ))}
       </Menu>
+
+      <ActionMenu
+        anchor={copyAnchor}
+        onClose={() => setCopyAnchor(null)}
+        items={copyToItems(selectedHosts)}
+      />
 
       <ActionMenu
         anchor={null}

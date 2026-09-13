@@ -243,6 +243,7 @@ pub fn run() {
             commands_tools::teams_list,
             commands_tools::team_create,
             commands_tools::team_rename,
+            commands_tools::team_set_security,
             commands_tools::team_delete,
             commands_tools::team_leave,
             commands_tools::team_accept_invite,
