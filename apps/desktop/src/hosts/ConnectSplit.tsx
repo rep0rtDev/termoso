@@ -7,9 +7,13 @@ import type { MenuAction } from "@/components/ui";
 import { goToSftp, requestForwardingRule } from "@/app/navigation";
 import { openSftpForHost } from "@/sftp/store";
 import { openTerminal } from "@/terminal/store";
-import type { HostProtocol, Uuid } from "@/ipc/types";
+import type { ConnectProtocol, Uuid } from "@/ipc/types";
 
-export const PROTOCOL_NAME: Record<HostProtocol, string> = { ssh: "SSH", telnet: "Telnet" };
+export const PROTOCOL_NAME: Record<ConnectProtocol, string> = {
+  ssh: "SSH",
+  mosh: "Mosh",
+  telnet: "Telnet",
+};
 
 /**
  * Termius' `Connect ▸` submenu for a saved host: one entry per protocol
@@ -18,7 +22,7 @@ export const PROTOCOL_NAME: Record<HostProtocol, string> = { ssh: "SSH", telnet:
 export function connectActions(
   hostId: Uuid,
   label: string,
-  protocols: HostProtocol[],
+  protocols: ConnectProtocol[],
 ): MenuAction[] {
   const ssh = protocols.includes("ssh");
   const needsSsh = ssh ? "" : " (needs an SSH section)";
@@ -55,8 +59,8 @@ export function ConnectButton({
   onClick,
 }: {
   hostId: Uuid | null;
-  /** Section to open; `null` lets the host pick (SSH when it has one). */
-  protocol?: HostProtocol | null;
+  /** Section to open; `null` lets the host pick (SSH, or Mosh when enabled). */
+  protocol?: ConnectProtocol | null;
   disabled?: boolean;
   /** Runs instead of opening the saved host (e.g. save first, then connect). */
   onClick?: () => void;

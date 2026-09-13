@@ -691,6 +691,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           menu={editingIdentity ? identityMenu(editingIdentity, true) : []}
           onClose={closePanel}
           onNewKey={() => openPanel({ kind: "newKey", certificate: false })}
+          onNewFido2={() => openPanel({ kind: "fido2" })}
           onSave={(form) =>
             runPanel(async () => {
               const saved = await ipc.identitySave(form);
@@ -702,7 +703,34 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           }
         />
       )}
-      {panel.kind === "fido2" && <Fido2Panel vaultName={vaultName} onClose={closePanel} />}
+      {vaultId && panel.kind === "fido2" && (
+        <Fido2Panel
+          vaultId={vaultId}
+          vaultName={vaultName}
+          busy={panelOp.isPending}
+          error={panelError}
+          onClose={closePanel}
+          onGenerate={(form) =>
+            runPanel(async () => {
+              const k = await ipc.fido2Generate(form);
+              return { msg: `Generated ${k.label}`, next: { kind: "editKey", id: k.id } };
+            })
+          }
+          onLoadResident={(form) =>
+            runPanel(async () => {
+              const keys = await ipc.fido2LoadResident(form);
+              const first = keys[0];
+              return {
+                msg:
+                  keys.length === 0
+                    ? "No new resident keys on this device"
+                    : `Loaded ${keys.length} ${keys.length === 1 ? "key" : "keys"}`,
+                next: first ? { kind: "editKey", id: first.id } : { kind: "none" },
+              };
+            })
+          }
+        />
+      )}
 
       <ActionMenu
         anchor={null}

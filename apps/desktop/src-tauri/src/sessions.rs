@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use termoso_core::error::CoreError;
+use termoso_core::fido2::{self, Fido2Error};
 use termoso_core::hostkey::KnownHosts;
 use termoso_core::live::Publisher;
 use termoso_core::model::{Entity, Identity, ResolvedHost, Snippet, SshConfig};
@@ -33,6 +34,7 @@ use crate::hosts::SerialLine;
 use crate::logs::Recorder;
 use crate::prompts::{PromptAnswer, PromptRequest, UiHostKeyPrompt, UiInteractivePrompt};
 use crate::snippets;
+use crate::sshid;
 use crate::state::AppState;
 
 pub const SESSION_EVENT: &str = "session";
@@ -889,6 +891,9 @@ async fn connect<R: Runtime>(
             let target = ssh_target(&resolved);
             let display = target.display();
             let scheme = resolved.ssh.color_scheme.clone();
+            if host_protocol(&resolved, protocol.as_deref())? == "mosh" {
+                return open_mosh(app, id, &resolved, label, display, scheme, size).await;
+            }
             emit_connecting(
                 app,
                 id,
@@ -919,12 +924,97 @@ async fn connect<R: Runtime>(
     }
 }
 
+/// Mosh: bootstrap `mosh-server` over our SSH connection, then run
+/// `mosh-client` locally. Jump hosts and proxies carry TCP only, so the UDP
+/// session needs a direct route to the host.
+async fn open_mosh<R: Runtime>(
+    app: &AppHandle<R>,
+    id: Uuid,
+    resolved: &ResolvedHost,
+    label: String,
+    display: String,
+    scheme: Option<String>,
+    size: TermSize,
+) -> Result<Opened> {
+    let state = app.state::<AppState>();
+    let settings = state.settings().unwrap_or_default();
+    let host_id = resolved.host.id;
+    let Some(client_bin) = crate::mosh::client_path() else {
+        return Err(DesktopError::new(
+            "mosh_missing",
+            "mosh-client is not installed on this computer — install Mosh (e.g. `apt install mosh`, `brew install mosh`) and try again",
+        ));
+    };
+    if !resolved.chain.is_empty() {
+        return Err(DesktopError::invalid(
+            "Mosh needs a direct UDP path to the host; remove the jump hosts or connect with SSH",
+        ));
+    }
+    if resolved.proxy.is_some() {
+        return Err(DesktopError::invalid(
+            "Mosh cannot go through a proxy; remove it or connect with SSH",
+        ));
+    }
+    emit_connecting(
+        app,
+        id,
+        "mosh",
+        &label,
+        &display,
+        Some(host_id),
+        scheme.clone(),
+    );
+    let (client, jumps) = connect_resolved(app, id, resolved).await?;
+    let _ = app.emit(
+        SESSION_EVENT,
+        SessionEvent::Progress {
+            id,
+            hop: None,
+            phase: ConnectPhase::MoshServer,
+        },
+    );
+    let boot =
+        crate::mosh::start_server(&client, resolved.ssh.mosh_server_command.as_deref()).await;
+    // The SSH leg has done its job either way.
+    let _ = client.disconnect().await;
+    for jump in jumps.into_iter().rev() {
+        let _ = jump.disconnect().await;
+    }
+    let boot = boot?;
+    let ip = match &boot.ip {
+        Some(ip) => ip.clone(),
+        None => {
+            crate::mosh::resolve_ip(
+                &resolved.host.data.address,
+                IpVersion::parse(&resolved.host.data.ip_version),
+            )
+            .await?
+        }
+    };
+    let (term, events) =
+        crate::mosh::spawn_client(client_bin, &ip, &boot, settings.term_type.as_str(), size)?;
+    Ok(Opened {
+        protocol: "mosh",
+        title: label,
+        target: format!("{display} · mosh udp/{}", boot.port),
+        host_id: Some(host_id),
+        vault_id: Some(resolved.host.vault_id),
+        term,
+        events,
+        client: None,
+        jumps: Vec::new(),
+        startup: startup_script(&state, resolved),
+        color_scheme: scheme,
+        shell: None,
+    })
+}
+
 fn has_ssh(resolved: &ResolvedHost) -> bool {
     resolved.host.data.ssh_config_id.is_some() || resolved.telnet.is_none()
 }
 
 /// Which section of a saved host to open: the requested one if the host has
-/// it, otherwise SSH, otherwise Telnet.
+/// it, otherwise SSH (over Mosh when the section says so), otherwise Telnet.
 fn host_protocol(resolved: &ResolvedHost, requested: Option<&str>) -> Result<&'static str> {
     let ssh = has_ssh(resolved);
     let telnet = resolved.telnet.is_some();
@@ -933,9 +1023,19 @@ fn host_protocol(resolved: &ResolvedHost, requested: Option<&str>) -> Result<&'s
         Some("telnet") => Err(DesktopError::invalid("this host has no Telnet section")),
         Some("ssh") if ssh => Ok("ssh"),
         Some("ssh") => Err(DesktopError::invalid("this host has no SSH section")),
-        None | Some("") => Ok(if ssh { "ssh" } else { "telnet" }),
+        Some("mosh") if ssh => Ok("mosh"),
+        Some("mosh") => Err(DesktopError::invalid(
+            "Mosh runs over the SSH section, which this host does not have",
+        )),
+        None | Some("") => Ok(if !ssh {
+            "telnet"
+        } else if resolved.ssh.use_mosh {
+            "mosh"
+        } else {
+            "ssh"
+        }),
         Some(other) => Err(DesktopError::invalid(format!(
-            "hosts open over ssh or telnet, not {other}"
+            "hosts open over ssh, mosh or telnet, not {other}"
         ))),
     }
 }
@@ -1134,7 +1234,7 @@ fn emit_connecting<R: Runtime>(
     );
 }
 
-fn dirs_home() -> Option<std::path::PathBuf> {
+pub(crate) fn dirs_home() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(Into::into)
@@ -1248,18 +1348,34 @@ async fn ssh_connect<R: Runtime>(
         Some(p) => Some(proxy_config(&state, &p.data)?),
         None => None,
     };
+    let mut pin: Option<Zeroizing<String>> = None;
 
     let mut attempts = 0;
     loop {
         let mut auth: Vec<AuthMethod> = Vec::new();
+        if identity.as_ref().is_some_and(|i| i.data.ssh_id) {
+            let preferred = identity.as_ref().and_then(|i| i.data.ssh_id_key_type);
+            auth.extend(sshid::auth_methods(&state.store, preferred, pin.clone())?);
+        }
         if let Some(key) = resolved.and_then(|r| r.key.as_ref()) {
-            auth.push(AuthMethod::Key {
-                private_key: Zeroizing::new(key.data.private_key.clone()),
-                passphrase: passphrase.clone(),
-                certificate: resolved
-                    .and_then(|r| r.certificate.as_ref())
-                    .map(|c| c.data.certificate.clone()),
-            });
+            let certificate = resolved
+                .and_then(|r| r.certificate.as_ref())
+                .map(|c| c.data.certificate.clone());
+            if fido2::is_sk_type(&key.data.key_type) {
+                auth.push(AuthMethod::SecurityKey {
+                    private_key: Zeroizing::new(key.data.private_key.clone()),
+                    passphrase: passphrase.clone(),
+                    pin: pin.clone(),
+                    device: None,
+                    certificate,
+                });
+            } else {
+                auth.push(AuthMethod::Key {
+                    private_key: Zeroizing::new(key.data.private_key.clone()),
+                    passphrase: passphrase.clone(),
+                    certificate,
+                });
+            }
         }
         if state.settings().map(|s| s.use_ssh_agent).unwrap_or(true) {
             auth.push(AuthMethod::Agent);
@@ -1367,6 +1483,41 @@ async fn ssh_connect<R: Runtime>(
                     _ => return Err(CoreError::Cancelled.into()),
                 }
             }
+            Err(CoreError::Fido2(
+                e @ (Fido2Error::PinRequired | Fido2Error::PinInvalid { .. }),
+            )) if attempts < MAX_PASSWORD_ATTEMPTS => {
+                attempts += 1;
+                let label = resolved
+                    .and_then(|r| r.key.as_ref())
+                    .map(|k| k.data.label.clone())
+                    .or_else(|| {
+                        resolved
+                            .and_then(|r| r.ssh_id_handle.as_deref())
+                            .map(|h| format!("SSH ID @{h}"))
+                    })
+                    .unwrap_or_default();
+                let retries = match e {
+                    Fido2Error::PinInvalid { retries } => retries,
+                    _ => None,
+                };
+                let answer = state
+                    .prompts
+                    .ask(
+                        app,
+                        session_id,
+                        display.clone(),
+                        PromptRequest::Pin {
+                            key_label: label,
+                            retry: pin.is_some(),
+                            retries,
+                        },
+                    )
+                    .await;
+                match answer {
+                    Some(PromptAnswer::Secret { value, .. }) => pin = Some(value),
+                    _ => return Err(CoreError::Cancelled.into()),
+                }
+            }
             Err(e) => return Err(e.into()),
         }
     }
@@ -1426,6 +1577,8 @@ fn remember_password(state: &AppState, resolved: &ResolvedHost, value: &Zeroizin
                 ssh_key_id: None,
                 ssh_certificate_id: None,
                 is_visible: false,
+                ssh_id: false,
+                ssh_id_key_type: None,
             },
         )?;
         match resolved.host.data.ssh_config_id {

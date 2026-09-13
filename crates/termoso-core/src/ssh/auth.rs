@@ -31,6 +31,22 @@ pub enum AuthMethod {
         /// Certificate text (`ssh-ed25519-cert-v01@openssh.com AAAA…`).
         certificate: Option<String>,
     },
+    /// FIDO2 security key (`sk-*` OpenSSH key: public part + handle). The
+    /// token signs; the user touches it and, when the key demands user
+    /// verification, enters the PIN.
+    #[cfg(feature = "fido2")]
+    SecurityKey {
+        /// `sk-*` key as stored (OpenSSH format, maybe passphrase-protected).
+        private_key: Zeroizing<String>,
+        /// Passphrase if the stored handle is encrypted.
+        passphrase: Option<Zeroizing<String>>,
+        /// Client PIN (needed for verify-required keys and PIN-protected tokens).
+        pin: Option<Zeroizing<String>>,
+        /// Restrict to one authenticator (path from `fido2::list_devices`).
+        device: Option<String>,
+        /// Certificate text, when the sk key is certified.
+        certificate: Option<String>,
+    },
     /// Keys held by the system SSH agent (`SSH_AUTH_SOCK` / Pageant).
     Agent,
     /// Keyboard-interactive (PAM, OTP). Answers come from
@@ -45,6 +61,8 @@ impl std::fmt::Debug for AuthMethod {
             AuthMethod::None => "none",
             AuthMethod::Password(_) => "password",
             AuthMethod::Key { .. } => "publickey",
+            #[cfg(feature = "fido2")]
+            AuthMethod::SecurityKey { .. } => "publickey (security key)",
             AuthMethod::Agent => "agent",
             AuthMethod::KeyboardInteractive => "keyboard-interactive",
         })
@@ -167,6 +185,8 @@ pub(super) async fn authenticate(
             AuthMethod::None => continue,
             AuthMethod::Password(_) => MethodKind::Password,
             AuthMethod::Key { .. } | AuthMethod::Agent => MethodKind::PublicKey,
+            #[cfg(feature = "fido2")]
+            AuthMethod::SecurityKey { .. } => MethodKind::PublicKey,
             AuthMethod::KeyboardInteractive => MethodKind::KeyboardInteractive,
         };
         if let Some(a) = &allowed
@@ -195,6 +215,25 @@ pub(super) async fn authenticate(
                 certificate,
             } => {
                 let key = load_private_key(private_key, passphrase.as_deref().map(|p| p.as_str()))?;
+                #[cfg(feature = "fido2")]
+                if crate::fido2::is_security_key(key.public_key()) {
+                    let r = sk_auth(handle, opts, &user, key, None, None, certificate.as_deref())
+                        .await?;
+                    match r {
+                        AuthResult::Success => return Ok(()),
+                        AuthResult::Failure {
+                            remaining_methods,
+                            partial_success,
+                        } => {
+                            last_remaining = remaining(&remaining_methods);
+                            partial |= partial_success;
+                            if !remaining_methods.is_empty() {
+                                allowed = Some(remaining_methods.to_vec());
+                            }
+                            continue;
+                        }
+                    }
+                }
                 let hash = if key.algorithm().is_rsa() {
                     handle
                         .best_supported_rsa_hash()
@@ -219,6 +258,31 @@ pub(super) async fn authenticate(
                             .await?
                     }
                 }
+            }
+            #[cfg(feature = "fido2")]
+            AuthMethod::SecurityKey {
+                private_key,
+                passphrase,
+                pin,
+                device,
+                certificate,
+            } => {
+                let key = load_private_key(private_key, passphrase.as_deref().map(|p| p.as_str()))?;
+                if !crate::fido2::is_security_key(key.public_key()) {
+                    return Err(CoreError::Key(
+                        "not a security key (expected an sk-* key)".into(),
+                    ));
+                }
+                sk_auth(
+                    handle,
+                    opts,
+                    &user,
+                    key,
+                    pin.clone(),
+                    device.clone(),
+                    certificate.as_deref(),
+                )
+                .await?
             }
             AuthMethod::Agent => match agent_auth(handle, &user).await {
                 Ok(Some(r)) => r,
@@ -307,6 +371,47 @@ async fn keyboard_interactive(
     Err(CoreError::Ssh(
         "keyboard-interactive: too many rounds".into(),
     ))
+}
+
+/// Public-key auth where the token signs (`authenticate_publickey_with`).
+/// The UI gets [`ConnectPhase::SecurityKeyTouch`] right before each
+/// signature so it can say "touch your key".
+#[cfg(feature = "fido2")]
+async fn sk_auth(
+    handle: &mut Handle<ClientHandler>,
+    opts: &ConnectOptions,
+    user: &str,
+    key: PrivateKey,
+    pin: Option<Zeroizing<String>>,
+    device: Option<String>,
+    certificate: Option<&str>,
+) -> Result<AuthResult> {
+    let public = crate::fido2::public_key_of(&key);
+    let label = public.fingerprint(HashAlg::Sha256).to_string();
+    let progress = opts.progress.clone();
+    let mut signer = crate::fido2::SkSigner {
+        key: Arc::new(key),
+        pin,
+        device,
+        on_touch: Some(Box::new(move || {
+            if let Some(p) = &progress {
+                p.phase(ConnectPhase::SecurityKeyTouch { key: label.clone() });
+            }
+        })),
+    };
+    match certificate {
+        Some(text) => {
+            let cert = Certificate::from_openssh(text.trim())?;
+            handle
+                .authenticate_certificate_with(user, cert, None, &mut signer)
+                .await
+        }
+        None => {
+            handle
+                .authenticate_publickey_with(user, public, None, &mut signer)
+                .await
+        }
+    }
 }
 
 /// Try every identity the system agent holds. `Ok(None)` when the agent is

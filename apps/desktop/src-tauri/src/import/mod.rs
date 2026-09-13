@@ -783,7 +783,12 @@ pub fn apply(
             },
             password: if telnet { None } else { password.clone() },
             ssh_key_id,
+            ssh_certificate_id: None,
             identity_id: None,
+            ssh_id: false,
+            ssh_id_key_type: None,
+            use_mosh: false,
+            mosh_server_command: None,
             tag_ids,
             notes: String::new(),
             os_name: None,
@@ -952,6 +957,7 @@ fn import_key(
             passphrase: None,
             key_type: short_type(&info.key_type),
             fido2_credential_id: None,
+            ssh_id: false,
         }
     } else {
         let material = keys::import(&text, None)?;
@@ -962,6 +968,7 @@ fn import_key(
             passphrase: None,
             key_type: short_type(&material.info.key_type),
             fido2_credential_id: None,
+            ssh_id: false,
         }
     };
     let id = store.insert(vault_id, &key)?;
@@ -1079,6 +1086,8 @@ fn ensure_proxy(
                 ssh_key_id: None,
                 ssh_certificate_id: None,
                 is_visible: false,
+                ssh_id: false,
+                ssh_id_key_type: None,
             },
         )?)
     } else {
@@ -1146,7 +1155,12 @@ fn build_chain(
                     username: user.unwrap_or_default(),
                     password: None,
                     ssh_key_id: None,
+                    ssh_certificate_id: None,
                     identity_id: None,
+                    ssh_id: false,
+                    ssh_id_key_type: None,
+                    use_mosh: false,
+                    mosh_server_command: None,
                     tag_ids: Vec::new(),
                     notes: String::new(),
                     os_name: None,

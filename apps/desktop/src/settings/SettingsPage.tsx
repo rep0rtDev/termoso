@@ -14,6 +14,7 @@ import {
 import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import LockRoundedIcon from "@mui/icons-material/LockRounded";
+import FingerprintRoundedIcon from "@mui/icons-material/FingerprintRounded";
 import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import KeyboardRoundedIcon from "@mui/icons-material/KeyboardRounded";
@@ -36,6 +37,7 @@ import { KeyboardPage } from "./KeyboardPage";
 import { SftpPage } from "./SftpPage";
 import { TeamPage } from "@/team/TeamPage";
 import { VaultsPage } from "@/team/VaultsPage";
+import { SshIdPage } from "@/sshid/SshIdPage";
 import { ThemeGallery } from "./ThemeGallery";
 import {
   errorMessage,
@@ -51,6 +53,7 @@ const PAGES: { id: PageId; label: string; icon: ReactNode }[] = [
   { id: "account", label: "Account & sync", icon: <PersonRoundedIcon /> },
   { id: "team", label: "Team", icon: <GroupsRoundedIcon /> },
   { id: "vaults", label: "Vaults", icon: <LockRoundedIcon /> },
+  { id: "sshid", label: "SSH ID", icon: <FingerprintRoundedIcon /> },
   { id: "general", label: "General", icon: <TuneRoundedIcon /> },
   { id: "terminal", label: "Terminal", icon: <TerminalRoundedIcon /> },
   { id: "keyboard", label: "Keyboard", icon: <KeyboardRoundedIcon /> },
@@ -93,6 +96,8 @@ export function SettingsPage() {
         <TeamPage />
       ) : page === "vaults" ? (
         <VaultsPage />
+      ) : page === "sshid" ? (
+        <SshIdPage />
       ) : (
         <Page>{page === "account" ? <AccountPage /> : <PreferencesPage page={page} />}</Page>
       )}
@@ -100,7 +105,11 @@ export function SettingsPage() {
   );
 }
 
-function PreferencesPage({ page }: { page: Exclude<PageId, "account" | "team" | "vaults"> }) {
+function PreferencesPage({
+  page,
+}: {
+  page: Exclude<PageId, "account" | "team" | "vaults" | "sshid">;
+}) {
   const snackbar = useSnackbar();
   const settings = useSettings();
   const save = useSaveSettings();

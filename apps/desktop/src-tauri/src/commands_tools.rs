@@ -18,17 +18,18 @@ use crate::account::{
     SyncStatus,
 };
 use crate::backup::{self, BackupSummary};
-use crate::error::Result;
+use crate::error::{DesktopError, Result};
 use crate::forwarding::{self, PfRuleCard, PfRuleForm, PfRuntime};
 use crate::import::{self, ImportPreview, ImportSelection, ImportSource};
 use crate::keychain::{
-    self, CertificateCard, ExportOutcome, GenerateForm, IdentityCard, IdentityForm, ImportForm,
-    KeyCard, KeyPreview,
+    self, CertificateCard, ExportOutcome, Fido2GenerateForm, Fido2LoadForm, GenerateForm,
+    IdentityCard, IdentityForm, ImportForm, KeyCard, KeyPreview,
 };
 use crate::logs::{self, BookmarkCard, LogBody, LogCard};
 use crate::multiplayer::{self, ShareInfo};
 use crate::sessions;
 use crate::snippets::{self, PackageNode, RunResult, SnippetCard, SnippetForm};
+use crate::sshid::{self, SshIdFido2Form, SshIdView};
 use crate::state::AppState;
 use crate::team::{self, InviteResult, PendingKeyCard, TeamMemberCard, VaultAccess};
 use crate::trust::{self, ImportReport, KnownHostCard};
@@ -49,6 +50,43 @@ pub async fn key_generate(state: State<'_, AppState>, form: GenerateForm) -> Res
 #[tauri::command]
 pub async fn key_import(state: State<'_, AppState>, form: ImportForm) -> Result<KeyCard> {
     keychain::import(&state.store, &form)
+}
+
+fn blocking_err(e: tokio::task::JoinError) -> DesktopError {
+    DesktopError::new("internal", e.to_string())
+}
+
+/// FIDO2 authenticators plugged in right now (USB HID enumeration; local only).
+#[tauri::command]
+pub async fn fido2_devices() -> Result<Vec<termoso_core::fido2::Fido2Device>> {
+    tokio::task::spawn_blocking(keychain::fido2_devices)
+        .await
+        .map_err(blocking_err)
+}
+
+/// Make a credential on the token and store the `sk-*` key. Blocks until
+/// the user touches the token (or it times out), so it runs off-runtime.
+#[tauri::command]
+pub async fn fido2_generate(
+    state: State<'_, AppState>,
+    form: Fido2GenerateForm,
+) -> Result<KeyCard> {
+    let store = state.store.clone();
+    tokio::task::spawn_blocking(move || keychain::fido2_generate(&store, &form))
+        .await
+        .map_err(blocking_err)?
+}
+
+/// Import the resident SSH credentials of a token into a vault.
+#[tauri::command]
+pub async fn fido2_load_resident(
+    state: State<'_, AppState>,
+    form: Fido2LoadForm,
+) -> Result<Vec<KeyCard>> {
+    let store = state.store.clone();
+    tokio::task::spawn_blocking(move || keychain::fido2_load_resident(&store, &form))
+        .await
+        .map_err(blocking_err)?
 }
 
 /// Import request for a private key file on disk.
@@ -779,6 +817,42 @@ pub async fn account_vault_members<R: Runtime>(
     vault_id: Uuid,
 ) -> Result<Vec<VaultMember>> {
     account::vault_members(&app, vault_id).await
+}
+
+// ───────────────────────────── SSH ID ─────────────────────────────
+
+#[tauri::command]
+pub async fn sshid_view<R: Runtime>(app: AppHandle<R>) -> Result<SshIdView> {
+    sshid::view(&app).await
+}
+
+#[tauri::command]
+pub async fn sshid_create<R: Runtime>(app: AppHandle<R>, handle: String) -> Result<SshIdView> {
+    sshid::create(&app, &handle).await
+}
+
+#[tauri::command]
+pub async fn sshid_delete<R: Runtime>(app: AppHandle<R>) -> Result<SshIdView> {
+    sshid::delete(&app).await
+}
+
+#[tauri::command]
+pub async fn sshid_rotate<R: Runtime>(app: AppHandle<R>) -> Result<SshIdView> {
+    sshid::rotate(&app).await
+}
+
+/// Blocks until the token is touched; the generation runs off-runtime.
+#[tauri::command]
+pub async fn sshid_add_fido2<R: Runtime>(
+    app: AppHandle<R>,
+    form: SshIdFido2Form,
+) -> Result<SshIdView> {
+    sshid::add_fido2(&app, form).await
+}
+
+#[tauri::command]
+pub async fn sshid_remove_key<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<SshIdView> {
+    sshid::remove_key(&app, id).await
 }
 
 // ───────────────────────────── teams ─────────────────────────────

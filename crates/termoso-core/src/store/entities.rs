@@ -616,6 +616,10 @@ impl Store {
                 None => None,
             },
         };
+        let ssh_id_handle = match &identity {
+            Some(i) if i.data.ssh_id => crate::sshid::handle(self)?,
+            _ => None,
+        };
         let proxy = match ssh.proxy_id {
             Some(id) => self.get::<Proxy>(id)?,
             None => None,
@@ -657,6 +661,7 @@ impl Store {
             identity,
             key,
             certificate,
+            ssh_id_handle,
             proxy,
             chain,
             telnet,
