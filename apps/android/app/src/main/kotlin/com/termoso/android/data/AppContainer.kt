@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
 /** Vault lifecycle: locked until the master key is unwrapped and the store opened. */
 sealed interface VaultState {
     data object Locked : VaultState
-    data class Open(val repo: VaultRepository) : VaultState
+    data class Open(val repo: VaultRepository, val sessions: SessionManager) : VaultState
 }
 
 /**
@@ -22,6 +22,7 @@ sealed interface VaultState {
  * Keystore-wrapped master key and the open [TermosoApp] handle.
  */
 class AppContainer(context: Context) {
+    private val appContext = context.applicationContext
     val profileDir: File = File(context.noBackupFilesDir, "profile")
     val masterKeys = MasterKeyStore(context)
 
@@ -43,13 +44,14 @@ class AppContainer(context: Context) {
                 key.fill(0)
             }
             VaultRepository(app)
-        }.also { _vault.value = VaultState.Open(it) }
+        }.also { _vault.value = VaultState.Open(it, SessionManager(appContext, it)) }
     }
 
-    /** Close the store and drop the handle; sessions are closed by Rust. */
+    /** Disconnect every terminal, close the store and drop the handle. */
     suspend fun lockVault() = lock.withLock {
         val open = _vault.value as? VaultState.Open ?: return@withLock
         _vault.value = VaultState.Locked
+        open.sessions.closeAll()
         withContext(Dispatchers.IO) { open.repo.app.close() }
     }
 }

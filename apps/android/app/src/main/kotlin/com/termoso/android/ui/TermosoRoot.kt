@@ -81,6 +81,7 @@ fun TermosoRoot(container: AppContainer, vault: VaultState) {
                 CompositionLocalProvider(LocalViewModelStoreOwner provides session) {
                     MainShell(
                         repo = vault.repo,
+                        sessions = vault.sessions,
                         onCloud = { cloudNotice = true },
                         onLock = {
                             manualLock = true
