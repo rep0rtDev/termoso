@@ -1,0 +1,27 @@
+//! Termoso mobile façade: the API the Android app talks to, exported through
+//! UniFFI. The Rust side owns storage, encryption, SSH and terminal
+//! emulation; Kotlin owns the Keystore-wrapped master key, the UI and the
+//! foreground service.
+//!
+//! Secrets policy: list/card records never carry passwords, passphrases or
+//! private keys. The only calls that return private material are
+//! [`TermosoApp::export_private_key`] (explicit user action) and prompt
+//! answers travelling *into* Rust.
+
+#![forbid(unsafe_code)]
+
+uniffi::setup_scaffolding!("termoso");
+
+mod app;
+mod dto;
+mod error;
+mod session;
+mod settings;
+mod terminal;
+
+pub use app::*;
+pub use dto::*;
+pub use error::{MobileError, Result};
+pub use session::*;
+pub use settings::MobileSettings;
+pub use terminal::{CursorStyle, GridSnapshot, TerminalPalette, flag};

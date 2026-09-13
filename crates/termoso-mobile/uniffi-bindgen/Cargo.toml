@@ -1,0 +1,16 @@
+[package]
+name = "uniffi-bindgen"
+description = "Generates the Kotlin bindings for termoso-mobile"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "main.rs"
+
+[dependencies]
+uniffi = { workspace = true, features = ["cli"] }

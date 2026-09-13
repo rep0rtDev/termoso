@@ -10,9 +10,7 @@ mod complete;
 mod edits;
 mod error;
 mod forwarding;
-mod hosts;
 mod import;
-mod keychain;
 mod logs;
 mod mosh;
 mod multiplayer;
@@ -26,6 +24,8 @@ mod team;
 mod trust;
 mod update;
 mod workspaces;
+
+use termoso_client::{hosts, keychain};
 
 use tauri::Manager;
 
