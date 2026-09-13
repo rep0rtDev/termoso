@@ -55,6 +55,7 @@ fun TerminalView(
     session: TerminalSession,
     controller: TerminalController,
     fontSizeSp: Int,
+    fontFamily: String,
     cursorBlink: Boolean,
     cursorStyle: String,
     modifier: Modifier = Modifier,
@@ -65,7 +66,9 @@ fun TerminalView(
 ) {
     val density = LocalDensity.current
     val context = LocalContext.current
-    val metrics = remember(fontSizeSp, density) { CellMetrics(with(density) { fontSizeSp.sp.toPx() }) }
+    val metrics = remember(fontSizeSp, fontFamily, density) {
+        CellMetrics(with(density) { fontSizeSp.sp.toPx() }, terminalTypefaces(context, fontFamily))
+    }
     val renderer = remember { TerminalRenderer() }
 
     var grid by remember(session) { mutableStateOf<CellGrid?>(null) }

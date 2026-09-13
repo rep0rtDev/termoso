@@ -2,7 +2,6 @@ package com.termoso.android.ui.terminal
 
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Typeface
 import com.termoso.core.CursorStyle
 import com.termoso.core.GridFrame
 import java.nio.ByteBuffer
@@ -50,9 +49,13 @@ class CellGrid(val frame: GridFrame) {
  * Cell metrics for a monospace font at [textSizePx]; every glyph is placed on
  * this grid regardless of its natural advance.
  */
-class CellMetrics(textSizePx: Float, lineSpacing: Float = 1.0f) {
+class CellMetrics(
+    textSizePx: Float,
+    val typefaces: TerminalTypefaces = TerminalTypefaces.system,
+    lineSpacing: Float = 1.0f,
+) {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
-        typeface = Typeface.MONOSPACE
+        typeface = typefaces[0]
         textSize = textSizePx
     }
     val width: Float = paint.measureText("M")
@@ -63,13 +66,6 @@ class CellMetrics(textSizePx: Float, lineSpacing: Float = 1.0f) {
     val underlineY: Float = baseline + fontMetrics.descent * 0.6f
     val strikeY: Float = baseline + fontMetrics.ascent * 0.35f
 }
-
-private val typefaces = arrayOf(
-    Typeface.MONOSPACE,
-    Typeface.create(Typeface.MONOSPACE, Typeface.BOLD),
-    Typeface.create(Typeface.MONOSPACE, Typeface.ITALIC),
-    Typeface.create(Typeface.MONOSPACE, Typeface.BOLD_ITALIC),
-)
 
 /**
  * Draws a [CellGrid] with plain `android.graphics` calls. Backgrounds are drawn
@@ -127,7 +123,7 @@ class TerminalRenderer {
                 val fg = grid.fg(row, col)
                 val style = flags and (FLAG_BOLD or FLAG_ITALIC or FLAG_UNDERLINE or FLAG_STRIKEOUT)
                 if (flags and FLAG_WIDE != 0) {
-                    text.typeface = typefaces[style and 3]
+                    text.typeface = metrics.typefaces[style]
                     text.color = opaque(fg)
                     sb.setLength(0)
                     sb.appendCodePoint(cp)
@@ -150,7 +146,7 @@ class TerminalRenderer {
                     if (c == 0 || f and (FLAG_WIDE_SPACER or FLAG_HIDDEN) != 0) sb.append(' ') else sb.appendCodePoint(c)
                     col++
                 }
-                text.typeface = typefaces[style and 3]
+                text.typeface = metrics.typefaces[style]
                 text.color = opaque(fg)
                 drawRun(canvas, sb, start * cw, baseline, cw)
                 decorate(canvas, style, fg, start * cw, col * cw, top, metrics)
@@ -182,7 +178,7 @@ class TerminalRenderer {
                         val cp = grid.codepoint(cr, cc)
                         if (cp != 0 && cp != ' '.code) {
                             text.color = opaque(grid.bg(cr, cc))
-                            text.typeface = typefaces[grid.flags(cr, cc) and 3]
+                            text.typeface = metrics.typefaces[grid.flags(cr, cc)]
                             sb.setLength(0)
                             sb.appendCodePoint(cp)
                             canvas.drawText(sb, 0, sb.length, x, y + metrics.baseline, text)

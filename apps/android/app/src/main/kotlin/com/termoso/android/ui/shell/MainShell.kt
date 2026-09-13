@@ -33,15 +33,21 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.termoso.android.data.AppContainer
 import com.termoso.android.data.SessionManager
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.connections.ConnectionsScreen
 import com.termoso.android.ui.hosts.HostEditorScreen
 import com.termoso.android.ui.hosts.HostsScreen
+import com.termoso.android.ui.keychain.GenerateKeyScreen
+import com.termoso.android.ui.keychain.IdentityEditorScreen
+import com.termoso.android.ui.keychain.ImportKeyScreen
+import com.termoso.android.ui.keychain.KeyDetailScreen
+import com.termoso.android.ui.keychain.KeychainScreen
 import com.termoso.android.ui.settings.SettingsScreen
+import com.termoso.android.ui.settings.TerminalAppearanceScreen
 import com.termoso.android.ui.terminal.TerminalScreen
 import com.termoso.android.ui.vault.HistoryScreen
-import com.termoso.android.ui.vault.KeychainScreen
 import com.termoso.android.ui.vault.KnownHostsScreen
 import com.termoso.android.ui.vault.VaultScreen
 import kotlinx.coroutines.launch
@@ -54,6 +60,12 @@ object Routes {
     const val HOST_NEW = "hostNew?group={group}"
     const val HOST_EDIT = "hostEdit/{id}"
     const val KEYCHAIN = "keychain"
+    const val KEY_GENERATE = "keyGenerate"
+    const val KEY_IMPORT = "keyImport"
+    const val KEY_DETAIL = "key/{id}"
+    const val IDENTITY_NEW = "identityNew"
+    const val IDENTITY_EDIT = "identity/{id}"
+    const val TERMINAL_APPEARANCE = "terminalAppearance"
     const val KNOWN_HOSTS = "knownHosts"
     const val HISTORY = "history"
     const val TERMINAL = "terminal"
@@ -61,6 +73,8 @@ object Routes {
     fun hosts(group: String?) = if (group == null) "hosts" else "hosts?group=$group"
     fun hostNew(group: String?) = if (group == null) "hostNew" else "hostNew?group=$group"
     fun hostEdit(id: String) = "hostEdit/$id"
+    fun key(id: String) = "key/$id"
+    fun identity(id: String) = "identity/$id"
 }
 
 private class Tab(val route: String, val label: String, val icon: ImageVector, val selectedIcon: ImageVector)
@@ -73,7 +87,7 @@ private val tabs = listOf(
 
 /** Bottom-navigation shell: Vaults · Connections · Settings, with nested host screens. */
 @Composable
-fun MainShell(repo: VaultRepository, sessions: SessionManager, onCloud: () -> Unit, onLock: () -> Unit) {
+fun MainShell(container: AppContainer, repo: VaultRepository, sessions: SessionManager, onCloud: () -> Unit, onLock: () -> Unit) {
     val shell: ShellViewModel = viewModel { ShellViewModel(repo, sessions) }
     val nav = rememberNavController()
     val scope = rememberCoroutineScope()
@@ -146,8 +160,15 @@ fun MainShell(repo: VaultRepository, sessions: SessionManager, onCloud: () -> Un
                 )
             }
             composable(Routes.SETTINGS) {
-                SettingsScreen(shell = shell, onCloud = onCloud, onLock = onLock)
+                SettingsScreen(
+                    shell = shell,
+                    container = container,
+                    onCloud = onCloud,
+                    onLock = onLock,
+                    onTerminalAppearance = { nav.navigate(Routes.TERMINAL_APPEARANCE) },
+                )
             }
+            composable(Routes.TERMINAL_APPEARANCE) { TerminalAppearanceScreen(shell = shell, onBack = { nav.popBackStack() }) }
             composable(Routes.HOSTS, arguments = listOf(groupArg)) { entry ->
                 val group = entry.arguments?.getString("group")
                 HostsScreen(
@@ -176,7 +197,35 @@ fun MainShell(repo: VaultRepository, sessions: SessionManager, onCloud: () -> Un
                     onClose = { nav.popBackStack() },
                 )
             }
-            composable(Routes.KEYCHAIN) { KeychainScreen(shell = shell, onBack = { nav.popBackStack() }) }
+            composable(Routes.KEYCHAIN) {
+                KeychainScreen(
+                    shell = shell,
+                    onBack = { nav.popBackStack() },
+                    onGenerate = { nav.navigate(Routes.KEY_GENERATE) },
+                    onImport = { nav.navigate(Routes.KEY_IMPORT) },
+                    onOpenKey = { nav.navigate(Routes.key(it)) },
+                    onNewIdentity = { nav.navigate(Routes.IDENTITY_NEW) },
+                    onOpenIdentity = { nav.navigate(Routes.identity(it)) },
+                )
+            }
+            val idArg = navArgument("id") { type = NavType.StringType }
+            composable(Routes.KEY_GENERATE) {
+                GenerateKeyScreen(shell = shell, onClose = { nav.popBackStack() }, onSaved = { id ->
+                    nav.navigate(Routes.key(id)) { popUpTo(Routes.KEYCHAIN) }
+                })
+            }
+            composable(Routes.KEY_IMPORT) {
+                ImportKeyScreen(shell = shell, onClose = { nav.popBackStack() }, onSaved = { id ->
+                    nav.navigate(Routes.key(id)) { popUpTo(Routes.KEYCHAIN) }
+                })
+            }
+            composable(Routes.KEY_DETAIL, arguments = listOf(idArg)) { entry ->
+                KeyDetailScreen(shell = shell, keyId = entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() })
+            }
+            composable(Routes.IDENTITY_NEW) { IdentityEditorScreen(shell = shell, identityId = null, onClose = { nav.popBackStack() }) }
+            composable(Routes.IDENTITY_EDIT, arguments = listOf(idArg)) { entry ->
+                IdentityEditorScreen(shell = shell, identityId = entry.arguments?.getString("id"), onClose = { nav.popBackStack() })
+            }
             composable(Routes.KNOWN_HOSTS) { KnownHostsScreen(shell = shell, onBack = { nav.popBackStack() }) }
             composable(Routes.HISTORY) {
                 HistoryScreen(shell = shell, onBack = { nav.popBackStack() }, onOpenHost = { nav.navigate(Routes.hostEdit(it)) })

@@ -143,6 +143,7 @@ pub struct TerminalOptions {
     pub rows: u16,
     /// `TERM` value; empty → from settings (default `xterm-256color`).
     pub term_type: String,
+    /// `None` → the scheme chosen in settings.
     pub palette: Option<TerminalPalette>,
 }
 
@@ -237,7 +238,7 @@ impl SshSession {
         let palette = options
             .palette
             .clone()
-            .unwrap_or_else(TerminalPalette::termoso_dark);
+            .unwrap_or_else(|| crate::themes::palette_for(&settings.terminal_theme));
         let (emulator, signals) = Emulator::new(
             options.cols,
             options.rows,
