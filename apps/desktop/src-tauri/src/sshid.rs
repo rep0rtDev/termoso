@@ -286,6 +286,17 @@ pub async fn remove_key<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<SshI
     view_of(&state.store, profile)
 }
 
+/// Unpublish another device's passkeys by signing that device out: its
+/// server session is revoked (so it cannot re-publish) and the server drops
+/// its SSH ID keys with the session. The current device uses sign out.
+pub async fn remove_device<R: Runtime>(app: &AppHandle<R>, device_id: Uuid) -> Result<SshIdView> {
+    let state = app.state::<AppState>();
+    crate::account::revoke_device(app, device_id).await?;
+    let api = api(app).await?;
+    let profile = api.sshid().await?;
+    view_of(&state.store, profile)
+}
+
 /// Authentication methods for an identity that logs in with SSH ID: this
 /// device's passkeys (preferred type first), then the FIDO2 keys attached to
 /// the SSH ID. Empty when the device holds no SSH ID keys yet.

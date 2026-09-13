@@ -264,6 +264,9 @@ fn config(opts: &ConnectOptions) -> Arc<Config> {
         keepalive_max: 3,
         preferred,
         nodelay: true,
+        // Per-channel receive window: bounds server→client bytes in flight
+        // (throughput ≈ window / RTT), so keep it large for SFTP downloads.
+        window_size: 8 * 1024 * 1024,
         ..Config::default()
     })
 }
