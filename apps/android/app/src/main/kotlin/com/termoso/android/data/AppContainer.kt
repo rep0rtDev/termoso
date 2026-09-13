@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
 /** Vault lifecycle: locked until the master key is unwrapped and the store opened. */
 sealed interface VaultState {
     data object Locked : VaultState
-    data class Open(val app: TermosoApp) : VaultState
+    data class Open(val repo: VaultRepository) : VaultState
 }
 
 /**
@@ -33,15 +33,16 @@ class AppContainer(context: Context) {
     fun hasProfile(): Boolean = masterKeys.exists()
 
     /** Open the encrypted store, creating the master key on first launch. */
-    suspend fun unlock(): TermosoApp = lock.withLock {
-        (_vault.value as? VaultState.Open)?.let { return it.app }
+    suspend fun unlock(): VaultRepository = lock.withLock {
+        (_vault.value as? VaultState.Open)?.let { return it.repo }
         withContext(Dispatchers.IO) {
             val key = if (masterKeys.exists()) masterKeys.unwrap() else masterKeys.create()
-            try {
+            val app = try {
                 TermosoApp.open(profileDir.absolutePath, key)
             } finally {
                 key.fill(0)
             }
+            VaultRepository(app)
         }.also { _vault.value = VaultState.Open(it) }
     }
 
@@ -49,6 +50,6 @@ class AppContainer(context: Context) {
     suspend fun lockVault() = lock.withLock {
         val open = _vault.value as? VaultState.Open ?: return@withLock
         _vault.value = VaultState.Locked
-        withContext(Dispatchers.IO) { open.app.close() }
+        withContext(Dispatchers.IO) { open.repo.app.close() }
     }
 }
