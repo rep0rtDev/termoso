@@ -656,7 +656,7 @@ function AddFido2Dialog({
       <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
         {!device ? (
           <Box sx={{ textAlign: "center", color: "text.secondary", py: 3 }}>
-            <IconTile size={56} tone="neutral">
+            <IconTile size={56} tone="neutral" sx={{ mx: "auto" }}>
               <UsbRoundedIcon />
             </IconTile>
             <Typography variant="subtitle1" color="text.primary" sx={{ mt: 2 }}>
