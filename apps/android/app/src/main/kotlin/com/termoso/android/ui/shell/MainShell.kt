@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -32,15 +33,18 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.termoso.android.data.SessionManager
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.connections.ConnectionsScreen
 import com.termoso.android.ui.hosts.HostEditorScreen
 import com.termoso.android.ui.hosts.HostsScreen
 import com.termoso.android.ui.settings.SettingsScreen
+import com.termoso.android.ui.terminal.TerminalScreen
 import com.termoso.android.ui.vault.HistoryScreen
 import com.termoso.android.ui.vault.KeychainScreen
 import com.termoso.android.ui.vault.KnownHostsScreen
 import com.termoso.android.ui.vault.VaultScreen
+import kotlinx.coroutines.launch
 
 object Routes {
     const val VAULT = "vault"
@@ -52,6 +56,7 @@ object Routes {
     const val KEYCHAIN = "keychain"
     const val KNOWN_HOSTS = "knownHosts"
     const val HISTORY = "history"
+    const val TERMINAL = "terminal"
 
     fun hosts(group: String?) = if (group == null) "hosts" else "hosts?group=$group"
     fun hostNew(group: String?) = if (group == null) "hostNew" else "hostNew?group=$group"
@@ -68,9 +73,10 @@ private val tabs = listOf(
 
 /** Bottom-navigation shell: Vaults · Connections · Settings, with nested host screens. */
 @Composable
-fun MainShell(repo: VaultRepository, onCloud: () -> Unit, onLock: () -> Unit) {
-    val shell: ShellViewModel = viewModel { ShellViewModel(repo) }
+fun MainShell(repo: VaultRepository, sessions: SessionManager, onCloud: () -> Unit, onLock: () -> Unit) {
+    val shell: ShellViewModel = viewModel { ShellViewModel(repo, sessions) }
     val nav = rememberNavController()
+    val scope = rememberCoroutineScope()
     val backStack by nav.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val showBar = tabs.any { it.route == currentRoute }
@@ -81,6 +87,14 @@ fun MainShell(repo: VaultRepository, onCloud: () -> Unit, onLock: () -> Unit) {
         val text = notice ?: return@LaunchedEffect
         snackbar.showSnackbar(text)
         shell.noticeShown()
+    }
+
+    fun openTerminal() {
+        nav.navigate(Routes.TERMINAL) { launchSingleTop = true }
+    }
+
+    fun connectHost(hostId: String) {
+        scope.launch { if (shell.connectHost(hostId) != null) openTerminal() }
     }
 
     Scaffold(
@@ -127,7 +141,8 @@ fun MainShell(repo: VaultRepository, onCloud: () -> Unit, onLock: () -> Unit) {
                 ConnectionsScreen(
                     shell = shell,
                     onAddHost = { nav.navigate(Routes.hostNew(null)) },
-                    onOpenHost = { nav.navigate(Routes.hostEdit(it)) },
+                    onConnectHost = ::connectHost,
+                    onOpenTerminal = ::openTerminal,
                 )
             }
             composable(Routes.SETTINGS) {
@@ -142,6 +157,7 @@ fun MainShell(repo: VaultRepository, onCloud: () -> Unit, onLock: () -> Unit) {
                     onOpenGroup = { nav.navigate(Routes.hosts(it)) },
                     onNewHost = { nav.navigate(Routes.hostNew(group)) },
                     onEditHost = { nav.navigate(Routes.hostEdit(it)) },
+                    onConnect = ::connectHost,
                 )
             }
             composable(Routes.HOST_NEW, arguments = listOf(groupArg)) { entry ->
@@ -164,6 +180,22 @@ fun MainShell(repo: VaultRepository, onCloud: () -> Unit, onLock: () -> Unit) {
             composable(Routes.KNOWN_HOSTS) { KnownHostsScreen(shell = shell, onBack = { nav.popBackStack() }) }
             composable(Routes.HISTORY) {
                 HistoryScreen(shell = shell, onBack = { nav.popBackStack() }, onOpenHost = { nav.navigate(Routes.hostEdit(it)) })
+            }
+            composable(Routes.TERMINAL) {
+                TerminalScreen(
+                    shell = shell,
+                    onBack = { nav.popBackStack() },
+                    onNewSession = {
+                        // Leave the terminal first so it is not part of the
+                        // saved tab state that restoreState would bring back.
+                        nav.popBackStack()
+                        nav.navigate(Routes.CONNECTIONS) {
+                            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                )
             }
         }
     }

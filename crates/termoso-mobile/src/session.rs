@@ -31,8 +31,9 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::error::{MobileError, Result};
+use crate::keys::{KeyMods, SpecialKey, encode_key, encode_text};
 use crate::settings::MobileSettings;
-use crate::terminal::{Emulator, GridSnapshot, TermSignal, TerminalPalette};
+use crate::terminal::{Emulator, GridFrame, GridSnapshot, TermSignal, TerminalPalette};
 
 const MAX_PASSWORD_ATTEMPTS: u32 = 3;
 
@@ -299,6 +300,29 @@ impl SshSession {
             .lock()
             .expect("emulator poisoned")
             .snapshot()
+    }
+
+    /// Current frame, packed for the FFI (see [`GridFrame`]).
+    pub fn frame(&self) -> GridFrame {
+        self.snapshot().pack()
+    }
+
+    /// Encode a special key for the terminal's current cursor mode and send
+    /// it.
+    pub fn send_key(&self, key: SpecialKey, mods: KeyMods) {
+        let app_cursor = self
+            .inner
+            .emulator
+            .lock()
+            .expect("emulator poisoned")
+            .mode()
+            .contains(alacritty_terminal::term::TermMode::APP_CURSOR);
+        self.write(encode_key(key, mods, app_cursor));
+    }
+
+    /// Send typed text, applying Ctrl/Alt from the key panel.
+    pub fn send_text(&self, text: String, mods: KeyMods) {
+        self.write(encode_text(&text, mods));
     }
 
     /// Visible screen as text (for copy / accessibility).
