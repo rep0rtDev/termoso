@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Box,
   Button,
@@ -80,6 +80,7 @@ interface Props {
 /** Loads the form for an existing host (or starts blank) and hands it to the editor. */
 export function HostEditPanel({ vaultId, hostId, initialGroupId, onClose }: Props) {
   const loaded = useHostForm(hostId);
+  const blank = useMemo(() => emptyHostForm(vaultId, initialGroupId), [vaultId, initialGroupId]);
   if (hostId !== null && loaded.data === undefined) {
     return (
       <SidePanel title="Host Details" onClose={onClose} width={sizes.panel}>
@@ -95,7 +96,7 @@ export function HostEditPanel({ vaultId, hostId, initialGroupId, onClose }: Prop
     <HostEditor
       vaultId={vaultId}
       hostId={hostId}
-      initial={loaded.data ?? emptyHostForm(vaultId, initialGroupId)}
+      initial={loaded.data ?? blank}
       onClose={onClose}
     />
   );
@@ -146,11 +147,18 @@ function HostEditor({
   const del = useDeleteHost();
 
   const [form, setForm] = useState<HostForm>(initial);
+  const [seen, setSeen] = useState(initial);
+  const [touched, setTouched] = useState(false);
+  // The host can change underneath an untouched editor (cloud import, sync):
+  // follow the stored form until the user starts editing.
+  if (seen !== initial) {
+    setSeen(initial);
+    if (!touched) setForm(initial);
+  }
   const inherited = useInherited(form.groupId);
   const inh = inherited.data ?? null;
   const inheritedFrom = inh && inh.groupPath.length > 0 ? inh.groupPath.join(" / ") : null;
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [touched, setTouched] = useState(false);
   const [more, setMore] = useState(
     initial.hostChainId !== null ||
       initial.proxyId !== null ||
