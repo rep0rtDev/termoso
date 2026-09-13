@@ -12,6 +12,7 @@ pub mod admin;
 pub mod auth;
 pub mod entities;
 pub mod error;
+pub mod live;
 pub mod logs;
 pub mod sync;
 pub mod team;

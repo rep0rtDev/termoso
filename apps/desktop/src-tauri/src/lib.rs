@@ -13,6 +13,7 @@ mod hosts;
 mod import;
 mod keychain;
 mod logs;
+mod multiplayer;
 mod prompts;
 mod sessions;
 mod sftp;
@@ -260,6 +261,10 @@ pub fn run() {
             commands_tools::team_vault_set_access,
             commands_tools::team_vault_remove_access,
             commands_tools::team_vault_rotate_key,
+            commands_tools::multiplayer_start,
+            commands_tools::multiplayer_stop,
+            commands_tools::multiplayer_info,
+            commands_tools::multiplayer_set_control,
             commands_tools::update_check,
             commands_tools::update_install,
             commands_tools::update_restart,

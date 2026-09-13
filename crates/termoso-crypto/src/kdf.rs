@@ -23,6 +23,10 @@ pub enum Label {
     LocalDatabase,
     /// Server-side key for encrypting secrets at rest (TOTP seeds, OPAQUE seed).
     ServerAtRest,
+    /// Multiplayer: token a viewer presents to the relay, derived from the link secret.
+    LiveJoin,
+    /// Multiplayer: key that encrypts terminal frames end-to-end.
+    LiveStream,
 }
 
 impl Label {
@@ -33,6 +37,8 @@ impl Label {
             Label::RecoveryVerifier => "recovery-verifier",
             Label::LocalDatabase => "local-database",
             Label::ServerAtRest => "server-at-rest",
+            Label::LiveJoin => "live-join",
+            Label::LiveStream => "live-stream",
         };
         format!("{PROTOCOL_VERSION}/{name}").into_bytes()
     }

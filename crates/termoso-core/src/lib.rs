@@ -33,6 +33,7 @@ pub mod error;
 pub mod forward;
 pub mod hostkey;
 pub mod keys;
+pub mod live;
 pub mod model;
 pub mod osdetect;
 pub mod secrets;

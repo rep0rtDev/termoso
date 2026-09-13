@@ -1016,7 +1016,7 @@ export type SessionState = "connecting" | "connected";
 
 export interface SessionInfo {
   id: Uuid;
-  protocol: "ssh" | "telnet" | "serial" | "local";
+  protocol: "ssh" | "telnet" | "serial" | "local" | "multiplayer";
   title: string;
   target: string;
   hostId: Uuid | null;
@@ -1079,7 +1079,41 @@ export type OpenTarget =
       /** `ssh` (default) or `telnet`. */
       protocol?: "ssh" | "telnet" | null;
     }
-  | { kind: "local" };
+  | { kind: "local" }
+  /** Someone else's terminal, from a `termoso://join/…` multiplayer link. */
+  | { kind: "live"; link: string };
+
+// ───────────────────────────── multiplayer ─────────────────────────────
+
+export interface LiveParticipant {
+  userId: Uuid;
+  email: string;
+  displayName: string | null;
+  isHost: boolean;
+  /** Keystrokes of this person reach the shared terminal. */
+  canWrite: boolean;
+  isMe: boolean;
+}
+
+/** A shared (host) or watched (viewer) terminal tab. */
+export interface ShareInfo {
+  /** Local session (pane) id. */
+  id: Uuid;
+  liveId: Uuid;
+  role: "host" | "viewer";
+  /** Host only: the link to hand out. */
+  link: string | null;
+  participants: LiveParticipant[];
+  /** Viewer: whether our keystrokes reach the host terminal. */
+  canWrite: boolean;
+}
+
+export type LiveEvent =
+  | { type: "participants"; id: Uuid; participants: LiveParticipant[] }
+  | { type: "control"; id: Uuid; canWrite: boolean }
+  | { type: "resize"; id: Uuid; cols: number; rows: number }
+  | { type: "title"; id: Uuid; title: string }
+  | { type: "ended"; id: Uuid; reason: "stopped" | "disconnected" | "error"; message: string };
 
 /** Split tree of a saved tab; leaves are connection targets. */
 export type LayoutTemplate =

@@ -43,6 +43,7 @@ import type {
   KeyPreview,
   KnownHostCard,
   Listing,
+  LiveEvent,
   LocalVault,
   LogBody,
   LogCard,
@@ -62,6 +63,7 @@ import type {
   Registered,
   RunResult,
   ServerInfo,
+  ShareInfo,
   SessionEvent,
   SerialPortInfo,
   SessionInfo,
@@ -465,6 +467,16 @@ export const accountVaultMembers = (vaultId: Uuid) =>
   invoke<VaultMember[]>("account_vault_members", { vaultId });
 export const onSyncNotice = (cb: (e: SyncNotice) => void): Promise<UnlistenFn> =>
   listen<SyncNotice>("sync", (ev) => cb(ev.payload));
+
+// ───────────────────────────── multiplayer ─────────────────────────────
+
+export const multiplayerStart = (id: Uuid) => invoke<ShareInfo>("multiplayer_start", { id });
+export const multiplayerStop = (id: Uuid) => invoke<null>("multiplayer_stop", { id });
+export const multiplayerInfo = (id: Uuid) => invoke<ShareInfo | null>("multiplayer_info", { id });
+export const multiplayerSetControl = (id: Uuid, userId: Uuid, enabled: boolean) =>
+  invoke<null>("multiplayer_set_control", { id, userId, enabled });
+export const onLiveEvent = (cb: (e: LiveEvent) => void): Promise<UnlistenFn> =>
+  listen<LiveEvent>("multiplayer", (ev) => cb(ev.payload));
 
 // ───────────────────────────── teams ─────────────────────────────
 

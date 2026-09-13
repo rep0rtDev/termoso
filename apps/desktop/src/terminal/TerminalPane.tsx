@@ -3,6 +3,7 @@ import { Box, Button, Stack, Tooltip, Typography, alpha } from "@mui/material";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
+import KeyboardAltRoundedIcon from "@mui/icons-material/KeyboardAltRounded";
 import type { SshAlgorithms, Uuid } from "@/ipc/types";
 import { isPostQuantumKex } from "@/ipc/types";
 import {
@@ -16,6 +17,7 @@ import {
 import { AutocompletePopup } from "./AutocompletePopup";
 import { ConnectionView } from "./ConnectionView";
 import { usePaneTheme } from "./useTerminalTheme";
+import { dismissControlHint, useMultiplayer } from "./multiplayer";
 import type { TerminalTheme } from "./themes";
 
 interface Props {
@@ -102,6 +104,7 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
           }}
         />
         <AutocompletePopup paneId={paneId} />
+        <RemoteControlHint paneId={paneId} />
         {(connecting || failedToConnect) && <ConnectionView pane={pane} />}
       </Box>
 
@@ -115,14 +118,16 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
             {pane.message ?? "Session ended"}
           </Typography>
           <Stack direction="row" spacing={1}>
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<ReplayRoundedIcon />}
-              onClick={() => void reconnectPane(paneId)}
-            >
-              Reconnect
-            </Button>
+            {pane.target.kind !== "live" && (
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<ReplayRoundedIcon />}
+                onClick={() => void reconnectPane(paneId)}
+              >
+                Reconnect
+              </Button>
+            )}
             <Button
               size="small"
               color="inherit"
@@ -135,6 +140,45 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
         </Overlay>
       )}
     </Box>
+  );
+}
+
+/** Termius-style "You've got remote control" hint on a multiplayer viewer pane. */
+function RemoteControlHint({ paneId }: { paneId: Uuid }) {
+  const shown = useMultiplayer((s) => s.controlHint === paneId);
+  useEffect(() => {
+    if (!shown) return;
+    const t = setTimeout(dismissControlHint, 8_000);
+    return () => clearTimeout(t);
+  }, [shown]);
+  if (!shown) return null;
+  return (
+    <Stack
+      direction="row"
+      spacing={1}
+      onClick={dismissControlHint}
+      sx={{
+        position: "absolute",
+        top: 12,
+        left: 16,
+        zIndex: 2,
+        alignItems: "center",
+        px: 1.5,
+        height: 36,
+        borderRadius: 1.5,
+        cursor: "pointer",
+        color: "info.main",
+        bgcolor: (t) => alpha(t.palette.info.main, 0.12),
+        border: "1px solid",
+        borderColor: "info.main",
+        backdropFilter: "blur(6px)",
+      }}
+    >
+      <KeyboardAltRoundedIcon sx={{ fontSize: 16 }} />
+      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+        You&apos;ve got remote control. Start typing.
+      </Typography>
+    </Stack>
   );
 }
 
