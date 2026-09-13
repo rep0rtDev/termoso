@@ -94,12 +94,19 @@ pub struct ResolvedHost {
     pub key: Option<Entity<SshKey>>,
     /// Certificate referenced by the identity.
     pub certificate: Option<Entity<SshCertificate>>,
+    /// Handle of the account's SSH ID when the identity logs in with it
+    /// (used as the username when the identity has none).
+    #[serde(default)]
+    pub ssh_id_handle: Option<String>,
     /// Proxy, if any.
     pub proxy: Option<Entity<Proxy>>,
     /// Jump hosts in order (each already resolved one level).
     pub chain: Vec<Entity<Host>>,
     /// Telnet config when the host is a telnet target.
     pub telnet: Option<TelnetConfig>,
+    /// Serial line settings when the host is a local serial device.
+    #[serde(default)]
+    pub serial: Option<SerialConfig>,
     /// Group labels from root to the host's group.
     pub group_path: Vec<String>,
     /// Tag labels.
@@ -107,6 +114,19 @@ pub struct ResolvedHost {
 }
 
 impl ResolvedHost {
+    /// `ssh` | `telnet` | `serial`, from which config the host carries.
+    pub fn protocol(&self) -> &'static str {
+        if self.host.data.ssh_config_id.is_some() {
+            "ssh"
+        } else if self.serial.is_some() {
+            "serial"
+        } else if self.telnet.is_some() {
+            "telnet"
+        } else {
+            "ssh"
+        }
+    }
+
     /// Effective SSH port.
     pub fn port(&self) -> u16 {
         self.ssh.port.unwrap_or(22)
@@ -118,6 +138,7 @@ impl ResolvedHost {
             .as_ref()
             .map(|i| i.data.username.clone())
             .filter(|u| !u.is_empty())
+            .or_else(|| self.ssh_id_handle.clone())
             .unwrap_or_else(|| "root".to_string())
     }
 }

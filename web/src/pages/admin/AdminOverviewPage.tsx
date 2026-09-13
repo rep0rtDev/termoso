@@ -1,9 +1,9 @@
-import { Alert, Card, CardContent, Grid, Stack, Typography } from "@mui/material";
-import DevicesRoundedIcon from "@mui/icons-material/DevicesRounded";
-import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
-import LockRoundedIcon from "@mui/icons-material/LockRounded";
-import PeopleAltRoundedIcon from "@mui/icons-material/PeopleAltRounded";
-import StorageRoundedIcon from "@mui/icons-material/StorageRounded";
+import { Alert, Box, Card, CardContent, Grid, Stack, Typography } from "@mui/material";
+import DevicesOutlinedIcon from "@mui/icons-material/DevicesOutlined";
+import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
+import StorageOutlinedIcon from "@mui/icons-material/StorageOutlined";
 import DataObjectRoundedIcon from "@mui/icons-material/DataObjectRounded";
 import TrendingUpRoundedIcon from "@mui/icons-material/TrendingUpRounded";
 import { useQuery } from "@tanstack/react-query";
@@ -11,36 +11,24 @@ import type { ReactNode } from "react";
 import { errorMessage } from "@/api/client";
 import { adminApi } from "@/api/endpoints";
 import { queryKeys, useServerInfo } from "@/api/hooks";
+import { IconTile } from "@/components/IconTile";
 import { Loading } from "@/components/Loading";
 import { PageHeader } from "@/components/PageHeader";
-import { Section } from "@/components/Section";
+import { Section, SettingRow } from "@/components/Section";
 import { formatBytes } from "@/components/format";
 
 function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: string | number }) {
   return (
     <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }}>
       <Card sx={{ height: "100%" }}>
-        <CardContent>
-          <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
-            <Stack
-              sx={{
-                width: 44,
-                height: 44,
-                borderRadius: 2,
-                bgcolor: "primary.main",
-                color: "primary.contrastText",
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: 0.9,
-              }}
-            >
-              {icon}
-            </Stack>
-            <Stack>
-              <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
+        <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+            <IconTile>{icon}</IconTile>
+            <Stack sx={{ minWidth: 0 }}>
+              <Typography variant="h3" component="div" sx={{ lineHeight: 1.2 }}>
                 {typeof value === "number" ? value.toLocaleString() : value}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="body2" color="text.secondary" noWrap>
                 {label}
               </Typography>
             </Stack>
@@ -71,18 +59,18 @@ export function AdminOverviewPage() {
         }
       />
       <Grid container spacing={2} sx={{ mb: 2.5 }}>
-        <Stat icon={<PeopleAltRoundedIcon />} label="Users" value={s.users} />
+        <Stat icon={<PeopleAltOutlinedIcon />} label="Users" value={s.users} />
         <Stat
           icon={<TrendingUpRoundedIcon />}
           label="Active in the last 30 days"
           value={s.active_users_30d}
         />
-        <Stat icon={<DevicesRoundedIcon />} label="Active sessions" value={s.active_sessions} />
-        <Stat icon={<GroupsRoundedIcon />} label="Teams" value={s.teams} />
-        <Stat icon={<LockRoundedIcon />} label="Vaults" value={s.vaults} />
+        <Stat icon={<DevicesOutlinedIcon />} label="Active sessions" value={s.active_sessions} />
+        <Stat icon={<GroupsOutlinedIcon />} label="Teams" value={s.teams} />
+        <Stat icon={<LockOutlinedIcon />} label="Vaults" value={s.vaults} />
         <Stat icon={<DataObjectRoundedIcon />} label="Encrypted records" value={s.entities} />
         <Stat
-          icon={<StorageRoundedIcon />}
+          icon={<StorageOutlinedIcon />}
           label="Session log storage"
           value={formatBytes(s.log_storage_bytes)}
         />
@@ -91,8 +79,9 @@ export function AdminOverviewPage() {
         <Section
           title="Enabled features"
           description="Determined by the server configuration (environment variables)."
+          disablePadding
         >
-          <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
+          <Box sx={{ px: 2.5 }}>
             <Feature on={f.email} label="Outgoing email (SMTP)" />
             <Feature on={f.session_logs} label="Session logs (S3)" />
             <Feature on={f.webauthn} label="WebAuthn / passkeys" />
@@ -101,7 +90,7 @@ export function AdminOverviewPage() {
               on={(info.data?.sso_providers.length ?? 0) > 0}
               label={`SSO (${info.data?.sso_providers.length ?? 0} providers)`}
             />
-          </Stack>
+          </Box>
         </Section>
       )}
     </>
@@ -110,18 +99,23 @@ export function AdminOverviewPage() {
 
 function Feature({ on, label }: { on: boolean; label: string }) {
   return (
-    <Typography
-      variant="body2"
-      sx={{
-        px: 1.5,
-        py: 0.5,
-        borderRadius: 2,
-        border: 1,
-        borderColor: on ? "success.main" : "divider",
-        color: on ? "success.main" : "text.disabled",
-      }}
-    >
-      {on ? "On" : "Off"} · {label}
-    </Typography>
+    <SettingRow
+      label={label}
+      control={
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+          <Box
+            sx={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              bgcolor: on ? "success.main" : "text.disabled",
+            }}
+          />
+          <Typography variant="body2" color={on ? "text.primary" : "text.secondary"}>
+            {on ? "Enabled" : "Off"}
+          </Typography>
+        </Stack>
+      }
+    />
   );
 }

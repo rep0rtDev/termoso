@@ -17,10 +17,15 @@
 //! * [`terminal`] – protocol-agnostic interactive session (SSH shell, local
 //!   PTY, Telnet) that the UI drives with bytes and resize events.
 //! * [`keys`] – SSH key generation, import, export and fingerprints.
+//! * [`fido2`] – security keys (`sk-*`): the private key stays on the token.
 //! * [`agent`] – in-process SSH agent serving the keys in the vault.
+//! * [`osdetect`] – figure out what OS a host runs (for its icon).
+//! * [`cloud`] – list machines at AWS / DigitalOcean / Azure to import them
+//!   as hosts.
 //!
 //! Nothing in this crate phones home: the only network peers are the servers
-//! the user connects to and the Termoso server they configured.
+//! the user connects to, the Termoso server they configured and — only when
+//! they ask for a cloud import — the provider API they gave credentials for.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs, clippy::all)]
@@ -28,21 +33,29 @@
 pub mod account;
 pub mod agent;
 pub mod api;
+pub mod cloud;
 pub mod error;
 pub mod forward;
 pub mod hostkey;
 pub mod keys;
+pub mod live;
 pub mod model;
+pub mod osdetect;
 pub mod secrets;
 pub mod sftp;
 pub mod ssh;
+pub mod sshid;
 pub mod store;
 pub mod sync;
 pub mod telnet;
 pub mod terminal;
 
+#[cfg(feature = "fido2")]
+pub mod fido2;
 #[cfg(feature = "local-pty")]
 pub mod pty;
+#[cfg(feature = "serial")]
+pub mod serial;
 
 pub use error::CoreError;
 pub use termoso_crypto;

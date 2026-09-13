@@ -7,6 +7,7 @@ pub mod history;
 pub mod logs;
 pub mod mfa;
 pub mod server;
+pub mod sshid;
 pub mod sync;
 pub mod teams;
 pub mod vaults;
@@ -81,6 +82,13 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/account/devices", get(account::devices))
         .route("/account/devices/{id}", delete(account::revoke_device))
+        .route(
+            "/account/sshid",
+            get(sshid::get).post(sshid::create).delete(sshid::delete),
+        )
+        .route("/account/sshid/keys/device", put(sshid::put_device_keys))
+        .route("/account/sshid/keys/fido2", post(sshid::add_fido2_key))
+        .route("/account/sshid/keys/{id}", delete(sshid::remove_key))
         .route("/account/security-events", get(account::security_events))
         .route("/account/recovery/rotate", post(account::rotate_recovery))
         // mfa management
@@ -119,6 +127,7 @@ pub fn router(state: AppState) -> Router {
             delete(teams::delete_invite),
         )
         .route("/teams/{id}/pending-keys", get(teams::pending_keys))
+        .route("/teams/{id}/audit", get(crate::audit::list))
         .route("/teams/{id}/vaults", post(vaults::create_team_vault))
         .route("/invites/{token}", get(teams::invite_preview))
         .route("/invites/{token}/accept", post(teams::accept_invite))
@@ -148,6 +157,10 @@ pub fn router(state: AppState) -> Router {
         .route("/logs/{id}/download", get(logs::download))
         // realtime
         .route("/ws", get(crate::ws::handler))
+        // multiplayer
+        .route("/live", get(crate::live::list).post(crate::live::create))
+        .route("/live/{id}/stop", post(crate::live::stop))
+        .route("/live/{id}/ws", get(crate::live::ws))
         // admin
         .route("/admin/stats", get(admin::stats))
         .route("/admin/users", get(admin::users))
@@ -174,6 +187,8 @@ pub fn router(state: AppState) -> Router {
     let mut app = Router::new()
         .route("/healthz", get(server::healthz))
         .route("/readyz", get(server::readyz))
+        .route("/sshid/{handle}", get(sshid::public_default))
+        .route("/sshid/{handle}/{type}", get(sshid::public_typed))
         .nest("/api/v1", api);
 
     if state.cfg.swagger_ui {

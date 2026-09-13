@@ -1,5 +1,5 @@
 import { fileURLToPath, URL } from "node:url";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 // Vite only serves the webview bundle; all IPC goes through Tauri's `invoke`.
@@ -17,5 +17,9 @@ export default defineConfig({
     port: 5174,
     strictPort: true,
     watch: { ignored: ["**/src-tauri/**"] },
+  },
+  test: {
+    include: ["src/**/*.test.ts"],
+    environment: "node",
   },
 });

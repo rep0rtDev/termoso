@@ -1,24 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Checkbox,
-  FormControlLabel,
-  IconButton,
-  InputBase,
-  Paper,
-  Stack,
-  Tooltip,
-  Typography,
-} from "@mui/material";
+import { Box, IconButton, InputBase, Stack, Tooltip, Typography } from "@mui/material";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import KeyboardArrowUpRoundedIcon from "@mui/icons-material/KeyboardArrowUpRounded";
 import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
-import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import type { ISearchOptions } from "@xterm/addon-search";
 import type { Uuid } from "@/ipc/types";
-import { emerald } from "@/theme/theme";
+import { emerald, monoFontFamily } from "@/theme/theme";
 import { focusPane, getRuntime } from "./store";
 
 interface Props {
   paneId: Uuid;
+  /** Escape in the field. */
   onClose: () => void;
 }
 
@@ -31,16 +23,28 @@ const decorations: ISearchOptions["decorations"] = {
   activeMatchColorOverviewRuler: emerald.main,
 };
 
+/**
+ * Buffer search for one pane: field with previous / next (Termius layout) plus
+ * match case, whole word and regex toggles and a result counter.
+ */
 export function SearchBar({ paneId, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
+  const [wholeWord, setWholeWord] = useState(false);
   const [regex, setRegex] = useState(false);
   const [results, setResults] = useState<{ index: number; count: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastOptions = useRef<(incremental: boolean) => ISearchOptions>(null);
 
   const options = useCallback(
-    (incremental: boolean): ISearchOptions => ({ caseSensitive, regex, incremental, decorations }),
-    [caseSensitive, regex],
+    (incremental: boolean): ISearchOptions => ({
+      caseSensitive,
+      wholeWord,
+      regex,
+      incremental,
+      decorations,
+    }),
+    [caseSensitive, wholeWord, regex],
   );
 
   useEffect(() => {
@@ -66,93 +70,113 @@ export function SearchBar({ paneId, onClose }: Props) {
       rt.search.clearDecorations();
       return;
     }
+    // The addon only re-highlights when the term changes, so drop its cache
+    // when the options (case / whole word / regex) change.
+    if (lastOptions.current !== options) rt.search.clearDecorations();
+    lastOptions.current = options;
     rt.search.findNext(query, options(true));
   }, [query, options, paneId]);
 
   const next = () => query && getRuntime(paneId)?.search.findNext(query, options(false));
   const prev = () => query && getRuntime(paneId)?.search.findPrevious(query, options(false));
-  const close = () => {
-    onClose();
-    focusPane(paneId);
-  };
 
   return (
-    <Paper
-      elevation={4}
-      sx={{
-        position: "absolute",
-        top: 8,
-        right: 16,
-        zIndex: 5,
-        px: 1,
-        py: 0.5,
-        display: "flex",
-        alignItems: "center",
-        gap: 0.5,
-        border: 1,
-        borderColor: "divider",
-      }}
-    >
-      <InputBase
-        inputRef={inputRef}
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          if (!e.target.value) setResults(null);
+    <Stack sx={{ gap: 0.75 }}>
+      <Stack
+        direction="row"
+        sx={{
+          alignItems: "center",
+          gap: 0.5,
+          pl: 1,
+          pr: 0.25,
+          height: 32,
+          borderRadius: 1.5,
+          bgcolor: "surface.highest",
         }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            if (e.shiftKey) void prev();
-            else void next();
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            close();
-          }
-        }}
-        placeholder="Find"
-        sx={{ width: 220, px: 1, fontSize: 13 }}
-      />
-      <Typography
-        variant="caption"
-        color="text.secondary"
-        sx={{ minWidth: 48, textAlign: "right" }}
       >
-        {query ? (results ? `${results.index}/${results.count}` : "0/0") : ""}
-      </Typography>
-      <Stack direction="row" sx={{ ml: 0.5 }}>
-        <Tooltip title="Match case">
-          <FormControlLabel
-            sx={{ mr: 0 }}
-            control={
-              <Checkbox
-                size="small"
-                checked={caseSensitive}
-                onChange={(e) => setCaseSensitive(e.target.checked)}
-              />
+        <SearchRoundedIcon sx={{ fontSize: 18, color: "text.secondary" }} />
+        <InputBase
+          inputRef={inputRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (e.shiftKey) void prev();
+              else void next();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              onClose();
+              focusPane(paneId);
             }
-            label={<Typography variant="caption">Aa</Typography>}
-          />
-        </Tooltip>
-        <Tooltip title="Regular expression">
-          <FormControlLabel
-            sx={{ mr: 0 }}
-            control={
-              <Checkbox size="small" checked={regex} onChange={(e) => setRegex(e.target.checked)} />
-            }
-            label={<Typography variant="caption">.*</Typography>}
-          />
-        </Tooltip>
+          }}
+          placeholder="Search"
+          sx={{ flex: 1, minWidth: 0, fontSize: 13 }}
+          inputProps={{ "aria-label": "Search in terminal" }}
+        />
+        <IconButton size="small" onClick={() => void prev()} aria-label="Previous match">
+          <KeyboardArrowUpRoundedIcon sx={{ fontSize: 18 }} />
+        </IconButton>
+        <IconButton size="small" onClick={() => void next()} aria-label="Next match">
+          <KeyboardArrowDownRoundedIcon sx={{ fontSize: 18 }} />
+        </IconButton>
       </Stack>
-      <IconButton size="small" onClick={() => void prev()} aria-label="Previous match">
-        <KeyboardArrowUpRoundedIcon fontSize="small" />
+      <Stack direction="row" sx={{ alignItems: "center", gap: 0.25, px: 0.5 }}>
+        <SearchToggle
+          title="Match case"
+          on={caseSensitive}
+          onClick={() => setCaseSensitive((v) => !v)}
+        >
+          Aa
+        </SearchToggle>
+        <SearchToggle title="Whole word" on={wholeWord} onClick={() => setWholeWord((v) => !v)}>
+          <Box component="span" sx={{ textDecoration: "underline" }}>
+            ab
+          </Box>
+        </SearchToggle>
+        <SearchToggle title="Regular expression" on={regex} onClick={() => setRegex((v) => !v)}>
+          .*
+        </SearchToggle>
+        <Box sx={{ flex: 1 }} />
+        <Typography variant="caption" color="text.secondary">
+          {query ? (results ? `${results.index} of ${results.count}` : "No results") : ""}
+        </Typography>
+      </Stack>
+    </Stack>
+  );
+}
+
+function SearchToggle({
+  title,
+  on,
+  onClick,
+  children,
+}: {
+  title: string;
+  on: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip title={title} enterDelay={600}>
+      <IconButton
+        size="small"
+        aria-label={title}
+        aria-pressed={on}
+        onClick={onClick}
+        sx={{
+          width: 26,
+          height: 22,
+          borderRadius: 1,
+          fontSize: 11,
+          fontWeight: 600,
+          fontFamily: monoFontFamily,
+          color: on ? "primary.main" : "text.secondary",
+          bgcolor: on ? "rgba(43,184,132,0.18)" : "transparent",
+        }}
+      >
+        {children}
       </IconButton>
-      <IconButton size="small" onClick={() => void next()} aria-label="Next match">
-        <KeyboardArrowDownRoundedIcon fontSize="small" />
-      </IconButton>
-      <IconButton size="small" onClick={close} aria-label="Close search">
-        <CloseRoundedIcon fontSize="small" />
-      </IconButton>
-    </Paper>
+    </Tooltip>
   );
 }

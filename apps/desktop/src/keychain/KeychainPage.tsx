@@ -1,106 +1,180 @@
-import { useState } from "react";
+import { useMemo, useState, type MouseEvent, type ReactElement } from "react";
 import {
+  Box,
   Button,
   Chip,
-  ListItemIcon,
-  ListItemText,
-  Menu,
-  MenuItem,
   Stack,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
-import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
-import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
-import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import AutoFixHighRoundedIcon from "@mui/icons-material/AutoFixHighRounded";
+import BadgeOutlinedIcon from "@mui/icons-material/BadgeOutlined";
+import WorkspacePremiumOutlinedIcon from "@mui/icons-material/WorkspacePremiumOutlined";
+import UsbRoundedIcon from "@mui/icons-material/UsbRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import GridViewRoundedIcon from "@mui/icons-material/GridViewRounded";
+import ViewListRoundedIcon from "@mui/icons-material/ViewListRounded";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
-import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
-import DriveFileRenameOutlineRoundedIcon from "@mui/icons-material/DriveFileRenameOutlineRounded";
 import LockResetRoundedIcon from "@mui/icons-material/LockResetRounded";
+import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
-import AddRoundedIcon from "@mui/icons-material/AddRounded";
-import UploadFileRoundedIcon from "@mui/icons-material/UploadFileRounded";
+import DnsRoundedIcon from "@mui/icons-material/DnsRounded";
+import DriveFileMoveOutlinedIcon from "@mui/icons-material/DriveFileMoveOutlined";
+import LibraryAddOutlinedIcon from "@mui/icons-material/LibraryAddOutlined";
+import GroupAddRoundedIcon from "@mui/icons-material/GroupAddRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { save as saveFile } from "@tauri-apps/plugin-dialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
-import { Page, PageBody, PageHeader } from "@/components/PageHeader";
+import { Page } from "@/components/PageHeader";
 import {
+  ActionMenu,
+  CardGrid,
   EntityCard,
-  IconTile,
   Loading,
-  Mono,
+  SearchField,
+  SectionTitle,
   SplitButton,
+  Toolbar,
   ToolIconButton,
   type MenuAction,
 } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
-import { useDefaultVault, useIdentities, useSshKeys } from "@/ipc/hooks";
-import { errorMessage, type IdentityCard, type KeyCard } from "@/ipc/types";
-import { sizes } from "@/theme/theme";
-import { NameDialog } from "@/sftp/dialogs";
-import { IdentityDialog } from "./IdentityDialog";
 import {
-  ExportKeyDialog,
-  GenerateKeyDialog,
-  ImportKeyDialog,
-  PassphraseDialog,
-} from "./KeyDialogs";
+  useHosts,
+  useIdentities,
+  useSaveSettings,
+  useSettings,
+  useSshKeys,
+  useVaults,
+} from "@/ipc/hooks";
+import { openCollaboration, useActiveVault, ViewOnlyChip } from "@/app/vault";
+import {
+  errorMessage,
+  type HostsView,
+  type IdentityCard,
+  type KeyCard,
+  type Uuid,
+} from "@/ipc/types";
+import { sizes } from "@/theme/theme";
+import { ExportKeyDialog, ExportToHostDialog, PassphraseDialog } from "./KeyDialogs";
+import {
+  EditKeyPanel,
+  Fido2Panel,
+  GenerateKeyPanel,
+  IdentityPanel,
+  IdentityTile,
+  KeyTile,
+  NewKeyPanel,
+} from "./KeychainPanels";
+import {
+  certificateState,
+  filterIdentities,
+  filterKeys,
+  identitySubtitle,
+  keyTypeLabel,
+} from "./model";
 
-type KeyDialog =
+type Panel =
   | { kind: "none" }
+  | { kind: "newKey"; certificate: boolean }
   | { kind: "generate" }
-  | { kind: "import" }
-  | { kind: "rename"; card: KeyCard }
+  | { kind: "editKey"; id: string }
+  | { kind: "identity"; id: string | null }
+  | { kind: "fido2" };
+
+type Dialog =
+  | { kind: "none" }
   | { kind: "passphrase"; card: KeyCard }
   | { kind: "export"; card: KeyCard }
-  | { kind: "delete"; card: KeyCard };
+  | { kind: "exportToHost"; card: KeyCard }
+  | { kind: "deleteKey"; card: KeyCard }
+  | { kind: "deleteIdentity"; card: IdentityCard };
 
-type IdDialog =
-  | { kind: "none" }
-  | { kind: "edit"; card: IdentityCard | null }
-  | { kind: "delete"; card: IdentityCard };
+type Ctx =
+  | { kind: "key"; card: KeyCard; left: number; top: number }
+  | { kind: "identity"; card: IdentityCard; left: number; top: number };
 
 async function copy(text: string) {
   await navigator.clipboard.writeText(text);
 }
 
 export function KeychainPage() {
+  const vault = useActiveVault();
+  return <KeychainBody key={vault.data?.id ?? ""} vault={vault} />;
+}
+
+/** Keyed by vault id so panels, dialogs and search reset when the vault changes. */
+function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
   const snackbar = useSnackbar();
   const qc = useQueryClient();
-  const vault = useDefaultVault();
   const vaultId = vault.data?.id ?? null;
+  const vaultName = vault.data?.name ?? "Vault";
+  const readOnly = vault.readOnly;
   const sshKeys = useSshKeys(vaultId);
   const identities = useIdentities(vaultId);
-  const [tab, setTab] = useState<"keys" | "identities">("keys");
-  const [keyDialog, setKeyDialog] = useState<KeyDialog>({ kind: "none" });
-  const [idDialog, setIdDialog] = useState<IdDialog>({ kind: "none" });
-  const [menu, setMenu] = useState<{ anchor: HTMLElement; card: KeyCard } | null>(null);
+  const hosts = useHosts(vaultId);
+  const vaults = useVaults();
+  const settings = useSettings();
+  const saveSettings = useSaveSettings();
+
+  const [panel, setPanel] = useState<Panel>({ kind: "none" });
+  const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
+  const [ctx, setCtx] = useState<Ctx | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const view: HostsView = settings.data?.keychainView ?? "grid";
+  const setView = (v: HostsView | null) => {
+    if (!v || !settings.data) return;
+    saveSettings.mutate(
+      { ...settings.data, keychainView: v },
+      { onError: (e) => snackbar.error(errorMessage(e)) },
+    );
+  };
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["sshKeys"] });
     void qc.invalidateQueries({ queryKey: ["identities"] });
     void qc.invalidateQueries({ queryKey: ["hosts"] });
   };
-  const closeKey = () => setKeyDialog({ kind: "none" });
-  const closeId = () => setIdDialog({ kind: "none" });
+  const closeDialog = () => setDialog({ kind: "none" });
+  const closePanel = () => setPanel({ kind: "none" });
 
+  /** Card / menu actions: errors go to the snackbar. */
   const op = useMutation({
     mutationFn: async (job: () => Promise<string | null>) => job(),
     onSuccess: (msg) => {
       refresh();
-      closeKey();
-      closeId();
+      closeDialog();
       if (msg) snackbar.notify(msg);
     },
     onError: (e) => snackbar.error(errorMessage(e)),
   });
   const run = (job: () => Promise<string | null>) => op.mutate(job);
+
+  /** Panel saves: errors stay inline in the panel (wrong passphrase, bad certificate…). */
+  const panelOp = useMutation({
+    mutationFn: async (job: () => Promise<{ msg: string | null; next: Panel }>) => job(),
+    onSuccess: ({ msg, next }) => {
+      refresh();
+      setPanel(next);
+      if (msg) snackbar.notify(msg);
+    },
+  });
+  const panelError = panelOp.isError ? errorMessage(panelOp.error) : null;
+  const runPanel = (job: () => Promise<{ msg: string | null; next: Panel }>) => panelOp.mutate(job);
+  const openPanel = (p: Panel) => {
+    panelOp.reset();
+    setPanel(p);
+  };
 
   const exportKey = async (
     card: KeyCard,
@@ -135,328 +209,550 @@ export function KeychainPage() {
 
   const loading = vault.isPending || sshKeys.isPending || identities.isPending;
   const loadError = vault.error ?? sshKeys.error ?? identities.error;
+  const keyList = useMemo(() => sshKeys.data ?? [], [sshKeys.data]);
+  const idList = useMemo(() => identities.data ?? [], [identities.data]);
+  const shownKeys = useMemo(() => filterKeys(keyList, query), [keyList, query]);
+  const shownIds = useMemo(() => filterIdentities(idList, query), [idList, query]);
+  const editing =
+    panel.kind === "editKey" ? (keyList.find((k) => k.id === panel.id) ?? null) : null;
+  const editingIdentity =
+    panel.kind === "identity" && panel.id !== null
+      ? (idList.find((i) => i.id === panel.id) ?? null)
+      : null;
 
-  const keyList = sshKeys.data ?? [];
-  const idList = identities.data ?? [];
-  const newKeyItems: MenuAction[] = [
+  const vaultTargets = (
+    card: { id: Uuid; vaultId: Uuid; label: string },
+    move: boolean,
+    copyTo: (id: Uuid, vaultId: Uuid, move: boolean) => Promise<unknown>,
+    panelKind: "editKey" | "identity",
+  ): MenuAction[] => {
+    const others = (vaults.data ?? []).filter((v) => v.id !== card.vaultId);
+    if (others.length === 0) return [{ label: "No other vaults", disabled: true }];
+    return others.map((v) => ({
+      label: v.name,
+      icon: v.unlocked ? undefined : <LockOutlinedIcon fontSize="small" />,
+      disabled: !v.unlocked || v.role === "viewer",
+      onClick: () =>
+        run(async () => {
+          await copyTo(card.id, v.id, move);
+          if (move && panel.kind === panelKind && panel.id === card.id) closePanel();
+          return `${card.label} ${move ? "moved" : "copied"} to ${v.name}`;
+        }),
+    }));
+  };
+
+  const keyMenu = (card: KeyCard, inPanel: boolean): MenuAction[] => [
+    ...(inPanel
+      ? []
+      : [
+          {
+            label: "Edit",
+            icon: <EditOutlinedIcon fontSize="small" />,
+            onClick: () => openPanel({ kind: "editKey", id: card.id }),
+          },
+        ]),
     {
-      label: "Generate key",
-      icon: <AddRoundedIcon fontSize="small" />,
-      onClick: () => setKeyDialog({ kind: "generate" }),
+      label: "Copy public key",
+      icon: <ContentCopyRoundedIcon fontSize="small" />,
+      disabled: card.unreadable,
+      onClick: () =>
+        run(async () => {
+          await copy(await ipc.keyPublic(card.id));
+          return "Public key copied";
+        }),
     },
     {
-      label: "Import key…",
-      icon: <UploadFileRoundedIcon fontSize="small" />,
-      onClick: () => setKeyDialog({ kind: "import" }),
+      label: "Export to host…",
+      icon: <DnsRoundedIcon fontSize="small" />,
+      disabled: card.unreadable,
+      onClick: () => setDialog({ kind: "exportToHost", card }),
     },
     {
-      label: "New identity",
-      icon: <PersonRoundedIcon fontSize="small" />,
-      onClick: () => setIdDialog({ kind: "edit", card: null }),
+      label: "Export private key…",
+      icon: <FileDownloadRoundedIcon fontSize="small" />,
+      disabled: card.unreadable,
+      onClick: () => setDialog({ kind: "export", card }),
+    },
+    {
+      label: "Change passphrase…",
+      icon: <LockResetRoundedIcon fontSize="small" />,
+      disabled: card.unreadable || readOnly,
+      onClick: () => setDialog({ kind: "passphrase", card }),
       divider: true,
+    },
+    {
+      label: "Collaborate",
+      icon: <GroupAddRoundedIcon fontSize="small" />,
+      disabled: vault.data?.kind !== "team",
+      onClick: () => openCollaboration(vault.data),
+    },
+    {
+      label: "Move to",
+      icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
+      disabled: readOnly,
+      items: vaultTargets(card, true, ipc.keyCopyToVault, "editKey"),
+    },
+    {
+      label: "Copy to",
+      icon: <LibraryAddOutlinedIcon fontSize="small" />,
+      items: vaultTargets(card, false, ipc.keyCopyToVault, "editKey"),
+    },
+    {
+      label: "Remove",
+      icon: <DeleteOutlineRoundedIcon fontSize="small" />,
+      danger: true,
+      disabled: readOnly,
+      onClick: () => setDialog({ kind: "deleteKey", card }),
     },
   ];
 
-  return (
-    <Page>
-      <PageHeader
-        actions={
-          <SplitButton
-            label={tab === "keys" ? "New key" : "New identity"}
-            icon={<AddRoundedIcon />}
-            disabled={!vaultId}
-            onClick={() =>
-              tab === "keys"
-                ? setKeyDialog({ kind: "generate" })
-                : setIdDialog({ kind: "edit", card: null })
-            }
-            items={newKeyItems}
+  const identityMenu = (card: IdentityCard, inPanel: boolean): MenuAction[] => [
+    ...(inPanel
+      ? []
+      : [
+          {
+            label: "Edit",
+            icon: <EditOutlinedIcon fontSize="small" />,
+            onClick: () => openPanel({ kind: "identity", id: card.id }),
+            divider: true,
+          },
+        ]),
+    {
+      label: "Collaborate",
+      icon: <GroupAddRoundedIcon fontSize="small" />,
+      disabled: vault.data?.kind !== "team",
+      onClick: () => openCollaboration(vault.data),
+    },
+    {
+      label: "Move to",
+      icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
+      disabled: readOnly,
+      items: vaultTargets(card, true, ipc.identityCopyToVault, "identity"),
+    },
+    {
+      label: "Copy to",
+      icon: <LibraryAddOutlinedIcon fontSize="small" />,
+      items: vaultTargets(card, false, ipc.identityCopyToVault, "identity"),
+    },
+    {
+      label: "Remove",
+      icon: <DeleteOutlineRoundedIcon fontSize="small" />,
+      danger: true,
+      disabled: readOnly,
+      onClick: () => setDialog({ kind: "deleteIdentity", card }),
+    },
+  ];
+
+  const onKeyContext = (e: MouseEvent<HTMLElement>, card: KeyCard) => {
+    e.preventDefault();
+    setCtx({ kind: "key", card, left: e.clientX, top: e.clientY });
+  };
+  const onIdContext = (e: MouseEvent<HTMLElement>, card: IdentityCard) => {
+    e.preventDefault();
+    setCtx({ kind: "identity", card, left: e.clientX, top: e.clientY });
+  };
+
+  const keyTrailing = (k: KeyCard) => {
+    const cs = certificateState(k.certificate, k.certificateUnreadable);
+    const certLabel =
+      cs === "valid"
+        ? "Certificate"
+        : cs === "expired"
+          ? "Certificate expired"
+          : cs === "not_yet"
+            ? "Certificate not yet valid"
+            : "Certificate unreadable";
+    return (
+      <>
+        {k.unreadable && <WarningAmberRoundedIcon fontSize="small" color="warning" />}
+        {cs &&
+          (view === "list" ? (
+            <Chip
+              size="small"
+              variant="outlined"
+              color={cs === "valid" ? "success" : "warning"}
+              icon={<WorkspacePremiumOutlinedIcon />}
+              label={certLabel}
+            />
+          ) : (
+            <WorkspacePremiumOutlinedIcon
+              fontSize="small"
+              color={cs === "valid" ? "success" : "warning"}
+              titleAccess={certLabel}
+            />
+          ))}
+        {k.encrypted && (
+          <LockOutlinedIcon
+            fontSize="small"
+            sx={{ color: "text.disabled" }}
+            titleAccess={k.hasPassphrase ? "Passphrase remembered" : "Asks for passphrase"}
           />
-        }
-        trailing={
-          <ToggleButtonGroup
-            exclusive
-            value={tab}
-            onChange={(_, v: "keys" | "identities" | null) => v && setTab(v)}
+        )}
+      </>
+    );
+  };
+
+  const keyCard = (k: KeyCard) => (
+    <EntityCard
+      key={k.id}
+      dense={view === "list"}
+      tile={<KeyTile card={k} size={view === "list" ? sizes.tileSmall : sizes.tile} />}
+      title={k.label}
+      subtitle={
+        <>
+          {keyTypeLabel(k)}
+          {k.comment && view === "list" && (
+            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+              {k.comment}
+            </Typography>
+          )}
+        </>
+      }
+      trailing={keyTrailing(k)}
+      actions={
+        <ToolIconButton
+          title="Edit"
+          onClick={(e) => {
+            e.stopPropagation();
+            openPanel({ kind: "editKey", id: k.id });
+          }}
+        >
+          <EditOutlinedIcon fontSize="small" />
+        </ToolIconButton>
+      }
+      selected={panel.kind === "editKey" && panel.id === k.id}
+      onClick={() => openPanel({ kind: "editKey", id: k.id })}
+      onContextMenu={(e) => onKeyContext(e, k)}
+    />
+  );
+
+  const identityCard = (i: IdentityCard) => (
+    <EntityCard
+      key={i.id}
+      dense={view === "list"}
+      tile={<IdentityTile size={view === "list" ? sizes.tileSmall : sizes.tile} />}
+      title={i.label}
+      subtitle={identitySubtitle(i)}
+      actions={
+        <ToolIconButton
+          title="Edit"
+          onClick={(e) => {
+            e.stopPropagation();
+            openPanel({ kind: "identity", id: i.id });
+          }}
+        >
+          <EditOutlinedIcon fontSize="small" />
+        </ToolIconButton>
+      }
+      selected={panel.kind === "identity" && panel.id === i.id}
+      onClick={() => openPanel({ kind: "identity", id: i.id })}
+      onContextMenu={(e) => onIdContext(e, i)}
+    />
+  );
+
+  const wrap = (cards: ReactElement[]) =>
+    view === "grid" ? <CardGrid min={300}>{cards}</CardGrid> : <Stack spacing={1}>{cards}</Stack>;
+
+  const newItems: MenuAction[] = [
+    {
+      label: "Generate key",
+      icon: <AutoFixHighRoundedIcon fontSize="small" />,
+      onClick: () => openPanel({ kind: "generate" }),
+    },
+    {
+      label: "New identity",
+      icon: <BadgeOutlinedIcon fontSize="small" />,
+      onClick: () => openPanel({ kind: "identity", id: null }),
+    },
+  ];
+
+  const empty = keyList.length === 0 && idList.length === 0;
+
+  return (
+    <Box sx={{ display: "flex", flex: 1, minHeight: 0 }}>
+      <Page>
+        <Toolbar
+          trailing={
+            <>
+              {searchOpen ? (
+                <SearchField
+                  autoFocus
+                  value={query}
+                  onChange={setQuery}
+                  placeholder="Search keys and identities"
+                />
+              ) : null}
+              <ToolIconButton
+                title="Search"
+                active={searchOpen}
+                onClick={() => {
+                  if (searchOpen) setQuery("");
+                  setSearchOpen((v) => !v);
+                }}
+              >
+                <SearchRoundedIcon fontSize="small" />
+              </ToolIconButton>
+              <ToggleButtonGroup
+                exclusive
+                value={view}
+                onChange={(_e, v: HostsView | null) => setView(v)}
+              >
+                <ToggleButton value="grid" aria-label="Grid view">
+                  <GridViewRoundedIcon sx={{ fontSize: 18 }} />
+                </ToggleButton>
+                <ToggleButton value="list" aria-label="List view">
+                  <ViewListRoundedIcon sx={{ fontSize: 18 }} />
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </>
+          }
+        >
+          <SplitButton
+            label="New key"
+            icon={<AddRoundedIcon />}
+            disabled={!vaultId || readOnly}
+            onClick={() => openPanel({ kind: "newKey", certificate: false })}
+            items={newItems}
+          />
+          <Button
+            variant="tonal"
+            startIcon={<WorkspacePremiumOutlinedIcon />}
+            disabled={!vaultId || readOnly}
+            onClick={() => openPanel({ kind: "newKey", certificate: true })}
           >
-            <ToggleButton value="keys">Keys · {keyList.length}</ToggleButton>
-            <ToggleButton value="identities">Identities · {idList.length}</ToggleButton>
-          </ToggleButtonGroup>
-        }
-      />
-      <PageBody>
-        {loading ? (
-          <Loading />
-        ) : loadError ? (
-          <EmptyState title="Could not open the keychain" description={errorMessage(loadError)} />
-        ) : tab === "keys" ? (
-          keyList.length === 0 ? (
+            Certificate
+          </Button>
+          <Button
+            variant="text"
+            color="inherit"
+            startIcon={<UsbRoundedIcon />}
+            disabled={!vaultId || readOnly}
+            onClick={() => openPanel({ kind: "fido2" })}
+          >
+            FIDO2
+          </Button>
+          {readOnly && <ViewOnlyChip sx={{ ml: 1 }} />}
+        </Toolbar>
+
+        <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 3, py: 2 }}>
+          {loading ? (
+            <Loading />
+          ) : loadError ? (
+            <EmptyState title="Could not open the keychain" description={errorMessage(loadError)} />
+          ) : empty ? (
             <EmptyState
               icon={<KeyRoundedIcon />}
               title="No keys yet"
-              description="Generate an Ed25519 key or import an existing one. Keys are stored encrypted with your master key."
+              description="Paste or drop a private key (OpenSSH, PEM, PuTTY .ppk), generate a new one, or attach a certificate. Everything is stored encrypted with your master key."
               action={
-                <Button variant="contained" onClick={() => setKeyDialog({ kind: "generate" })}>
-                  Generate key
-                </Button>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    variant="contained"
+                    onClick={() => openPanel({ kind: "newKey", certificate: false })}
+                  >
+                    New key
+                  </Button>
+                  <Button variant="tonal" onClick={() => openPanel({ kind: "generate" })}>
+                    Generate key
+                  </Button>
+                </Stack>
               }
             />
           ) : (
-            <Stack spacing={1}>
-              {keyList.map((k) => (
-                <EntityCard
-                  key={k.id}
-                  dense
-                  tile={
-                    <IconTile size={sizes.tileSmall} tone={k.unreadable ? "warning" : "neutral"}>
-                      {k.unreadable ? <WarningAmberRoundedIcon /> : <KeyRoundedIcon />}
-                    </IconTile>
-                  }
-                  title={
-                    <>
-                      {k.label}
-                      {k.comment && (
-                        <Typography
-                          component="span"
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ ml: 1 }}
-                        >
-                          {k.comment}
-                        </Typography>
-                      )}
-                    </>
-                  }
-                  subtitle={
-                    k.unreadable ? (
-                      "Could not parse this key"
-                    ) : (
-                      <>
-                        {k.bits > 0 ? `${k.keyType} ${k.bits}` : k.keyType}
-                        {" · "}
-                        <Mono>{k.fingerprint}</Mono>
-                      </>
-                    )
-                  }
-                  trailing={
-                    <>
-                      {k.encrypted && (
-                        <Chip
-                          size="small"
-                          variant="outlined"
-                          icon={<LockOutlinedIcon />}
-                          label={k.hasPassphrase ? "Passphrase stored" : "Asks for passphrase"}
-                        />
-                      )}
-                      {k.usedBy > 0 && (
-                        <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
-                          {k.usedBy} {k.usedBy === 1 ? "use" : "uses"}
-                        </Typography>
-                      )}
-                      <ToolIconButton
-                        title="Copy public key"
-                        onClick={() =>
-                          run(async () => {
-                            await copy(await ipc.keyPublic(k.id));
-                            return "Public key copied";
-                          })
-                        }
+            <Stack spacing={3}>
+              {(shownKeys.length > 0 || !query) && (
+                <Box>
+                  <SectionTitle>Keys</SectionTitle>
+                  {shownKeys.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      No keys yet — use New key or Generate key above.
+                    </Typography>
+                  ) : (
+                    wrap(shownKeys.map(keyCard))
+                  )}
+                </Box>
+              )}
+              {(shownIds.length > 0 || !query) && (
+                <Box>
+                  <SectionTitle>Identities</SectionTitle>
+                  {shownIds.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      An identity bundles a username with a password, key or certificate so several
+                      hosts can share it.{" "}
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => openPanel({ kind: "identity", id: null })}
                       >
-                        <ContentCopyRoundedIcon fontSize="small" />
-                      </ToolIconButton>
-                      <ToolIconButton
-                        title="More"
-                        onClick={(e) => setMenu({ anchor: e.currentTarget, card: k })}
-                      >
-                        <MoreHorizRoundedIcon fontSize="small" />
-                      </ToolIconButton>
-                    </>
-                  }
+                        New identity
+                      </Button>
+                    </Typography>
+                  ) : (
+                    wrap(shownIds.map(identityCard))
+                  )}
+                </Box>
+              )}
+              {query && shownKeys.length === 0 && shownIds.length === 0 && (
+                <EmptyState
+                  compact
+                  title="Nothing matches"
+                  description={`No key or identity matches “${query}”.`}
                 />
-              ))}
+              )}
             </Stack>
-          )
-        ) : idList.length === 0 ? (
-          <EmptyState
-            icon={<PersonRoundedIcon />}
-            title="No identities"
-            description="An identity bundles a username with a password or key so several hosts can share it."
-            action={
-              <Button variant="contained" onClick={() => setIdDialog({ kind: "edit", card: null })}>
-                New identity
-              </Button>
-            }
-          />
-        ) : (
-          <Stack spacing={1}>
-            {idList.map((i) => (
-              <EntityCard
-                key={i.id}
-                dense
-                onClick={() => setIdDialog({ kind: "edit", card: i })}
-                tile={
-                  <IconTile size={sizes.tileSmall}>
-                    <PersonRoundedIcon />
-                  </IconTile>
-                }
-                title={i.label}
-                subtitle={
-                  <>
-                    <Mono>{i.username}</Mono>
-                    {" · "}
-                    {i.sshKeyLabel
-                      ? `key ${i.sshKeyLabel}`
-                      : i.hasPassword
-                        ? "password"
-                        : "no credentials"}
-                  </>
-                }
-                actions={
-                  <>
-                    <ToolIconButton
-                      title="Edit"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIdDialog({ kind: "edit", card: i });
-                      }}
-                    >
-                      <EditRoundedIcon fontSize="small" />
-                    </ToolIconButton>
-                    <ToolIconButton
-                      title="Delete"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIdDialog({ kind: "delete", card: i });
-                      }}
-                    >
-                      <DeleteOutlineRoundedIcon fontSize="small" />
-                    </ToolIconButton>
-                  </>
-                }
-              />
-            ))}
-          </Stack>
-        )}
-      </PageBody>
+          )}
+        </Box>
+      </Page>
 
-      <Menu open={menu !== null} anchorEl={menu?.anchor} onClose={() => setMenu(null)}>
-        {menu && (
-          <MenuItem
-            onClick={() => {
-              setKeyDialog({ kind: "rename", card: menu.card });
-              setMenu(null);
-            }}
-          >
-            <ListItemIcon>
-              <DriveFileRenameOutlineRoundedIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>Rename</ListItemText>
-          </MenuItem>
-        )}
-        {menu && (
-          <MenuItem
-            disabled={menu.card.unreadable}
-            onClick={() => {
-              setKeyDialog({ kind: "passphrase", card: menu.card });
-              setMenu(null);
-            }}
-          >
-            <ListItemIcon>
-              <LockResetRoundedIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>Change passphrase</ListItemText>
-          </MenuItem>
-        )}
-        {menu && (
-          <MenuItem
-            disabled={menu.card.unreadable}
-            onClick={() => {
-              setKeyDialog({ kind: "export", card: menu.card });
-              setMenu(null);
-            }}
-          >
-            <ListItemIcon>
-              <FileDownloadRoundedIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>Export private key…</ListItemText>
-          </MenuItem>
-        )}
-        {menu && (
-          <MenuItem
-            onClick={() => {
-              setKeyDialog({ kind: "delete", card: menu.card });
-              setMenu(null);
-            }}
-            sx={{ color: "error.main" }}
-          >
-            <ListItemIcon>
-              <DeleteOutlineRoundedIcon fontSize="small" color="error" />
-            </ListItemIcon>
-            <ListItemText>Delete</ListItemText>
-          </MenuItem>
-        )}
-      </Menu>
-
-      {vaultId && keyDialog.kind === "generate" && (
-        <GenerateKeyDialog
-          open
+      {vaultId && panel.kind === "newKey" && (
+        <NewKeyPanel
+          key={panel.certificate ? "cert" : "key"}
           vaultId={vaultId}
-          busy={op.isPending}
-          onCancel={closeKey}
-          onConfirm={(form) =>
-            run(async () => {
-              const k = await ipc.keyGenerate(form);
-              return `Generated ${k.label}`;
-            })
-          }
-        />
-      )}
-      {vaultId && keyDialog.kind === "import" && (
-        <ImportKeyDialog
-          open
-          vaultId={vaultId}
-          busy={op.isPending}
-          onCancel={closeKey}
-          onConfirm={(form) =>
-            run(async () => {
+          vaultName={vaultName}
+          focusCertificate={panel.certificate}
+          busy={panelOp.isPending}
+          error={panelError}
+          onClose={closePanel}
+          onImport={(form) =>
+            runPanel(async () => {
               const k = await ipc.keyImport(form);
-              return `Imported ${k.label}`;
+              return { msg: `Imported ${k.label}`, next: { kind: "editKey", id: k.id } };
             })
           }
-          onConfirmFile={(args) =>
-            run(async () => {
+          onImportFile={(args) =>
+            runPanel(async () => {
               const k = await ipc.keyImportFile(args);
-              return `Imported ${k.label}`;
+              return { msg: `Imported ${k.label}`, next: { kind: "editKey", id: k.id } };
             })
           }
         />
       )}
-      {keyDialog.kind === "rename" && (
-        <NameDialog
-          open
-          title="Rename key"
-          label="Label"
-          initial={keyDialog.card.label}
-          confirmLabel="Rename"
-          busy={op.isPending}
-          onCancel={closeKey}
-          onConfirm={(label) => {
-            const id = keyDialog.card.id;
-            run(async () => {
-              await ipc.keyRename(id, label);
-              return null;
-            });
-          }}
+      {vaultId && panel.kind === "generate" && (
+        <GenerateKeyPanel
+          vaultId={vaultId}
+          vaultName={vaultName}
+          busy={panelOp.isPending}
+          error={panelError}
+          onClose={closePanel}
+          onGenerate={(form) =>
+            runPanel(async () => {
+              const k = await ipc.keyGenerate(form);
+              return { msg: `Generated ${k.label}`, next: { kind: "editKey", id: k.id } };
+            })
+          }
         />
       )}
-      {keyDialog.kind === "passphrase" && (
+      {panel.kind === "editKey" && editing && (
+        <EditKeyPanel
+          key={editing.id}
+          card={editing}
+          vaultName={vaultName}
+          busy={panelOp.isPending || op.isPending}
+          readOnly={readOnly}
+          error={panelError}
+          menu={keyMenu(editing, true)}
+          onClose={closePanel}
+          onRename={(label) =>
+            runPanel(async () => {
+              await ipc.keyRename(editing.id, label);
+              return { msg: null, next: panel };
+            })
+          }
+          onSetCertificate={(text) =>
+            runPanel(async () => {
+              await ipc.keySetCertificate(editing.id, text);
+              return {
+                msg: text === null ? "Certificate removed" : "Certificate attached",
+                next: panel,
+              };
+            })
+          }
+          onSetCertificateFile={(path) =>
+            runPanel(async () => {
+              await ipc.keySetCertificateFile(editing.id, path);
+              return { msg: "Certificate attached", next: panel };
+            })
+          }
+          onExportToHost={() => setDialog({ kind: "exportToHost", card: editing })}
+          onExportPrivate={() => setDialog({ kind: "export", card: editing })}
+          onChangePassphrase={() => setDialog({ kind: "passphrase", card: editing })}
+        />
+      )}
+      {vaultId && panel.kind === "identity" && (panel.id === null || editingIdentity) && (
+        <IdentityPanel
+          key={panel.id ?? "new"}
+          vaultId={vaultId}
+          vaultName={vaultName}
+          initial={editingIdentity}
+          keys={keyList}
+          busy={panelOp.isPending}
+          readOnly={readOnly}
+          error={panelError}
+          menu={editingIdentity ? identityMenu(editingIdentity, true) : []}
+          onClose={closePanel}
+          onNewKey={() => openPanel({ kind: "newKey", certificate: false })}
+          onNewFido2={() => openPanel({ kind: "fido2" })}
+          onSave={(form) =>
+            runPanel(async () => {
+              const saved = await ipc.identitySave(form);
+              return {
+                msg: form.id ? null : `Identity ${saved.label} created`,
+                next: { kind: "identity", id: saved.id },
+              };
+            })
+          }
+        />
+      )}
+      {vaultId && panel.kind === "fido2" && (
+        <Fido2Panel
+          vaultId={vaultId}
+          vaultName={vaultName}
+          busy={panelOp.isPending}
+          error={panelError}
+          onClose={closePanel}
+          onGenerate={(form) =>
+            runPanel(async () => {
+              const k = await ipc.fido2Generate(form);
+              return { msg: `Generated ${k.label}`, next: { kind: "editKey", id: k.id } };
+            })
+          }
+          onLoadResident={(form) =>
+            runPanel(async () => {
+              const keys = await ipc.fido2LoadResident(form);
+              const first = keys[0];
+              return {
+                msg:
+                  keys.length === 0
+                    ? "No new resident keys on this device"
+                    : `Loaded ${keys.length} ${keys.length === 1 ? "key" : "keys"}`,
+                next: first ? { kind: "editKey", id: first.id } : { kind: "none" },
+              };
+            })
+          }
+        />
+      )}
+
+      <ActionMenu
+        anchor={null}
+        position={ctx ? { left: ctx.left, top: ctx.top } : null}
+        onClose={() => setCtx(null)}
+        items={
+          ctx === null
+            ? []
+            : ctx.kind === "key"
+              ? keyMenu(ctx.card, false)
+              : identityMenu(ctx.card, false)
+        }
+      />
+
+      {dialog.kind === "passphrase" && (
         <PassphraseDialog
           open
-          card={keyDialog.card}
+          card={dialog.card}
           busy={op.isPending}
-          onCancel={closeKey}
+          onCancel={closeDialog}
           onConfirm={(args) => {
-            const id = keyDialog.card.id;
+            const id = dialog.card.id;
             run(async () => {
               await ipc.keyChangePassphrase({ id, ...args });
               return "Passphrase updated";
@@ -464,76 +760,80 @@ export function KeychainPage() {
           }}
         />
       )}
-      {keyDialog.kind === "export" && (
+      {dialog.kind === "export" && (
         <ExportKeyDialog
           open
-          card={keyDialog.card}
+          card={dialog.card}
           busy={op.isPending}
-          onCancel={closeKey}
+          onCancel={closeDialog}
           onConfirm={(args) => {
-            const card = keyDialog.card;
+            const card = dialog.card;
             run(() => exportKey(card, args));
           }}
         />
       )}
-      {keyDialog.kind === "delete" && (
+      {dialog.kind === "exportToHost" && (
+        <ExportToHostDialog
+          open
+          card={dialog.card}
+          hosts={hosts.data ?? []}
+          busy={op.isPending}
+          onCancel={closeDialog}
+          onConfirm={(host) => {
+            const card = dialog.card;
+            run(async () => {
+              const r = await ipc.keyExportToHost(card.id, host.id);
+              return r.outcome === "added"
+                ? `${card.label} added to authorized_keys on ${r.target}`
+                : `${card.label} is already authorized on ${r.target}`;
+            });
+          }}
+        />
+      )}
+      {dialog.kind === "deleteKey" && (
         <ConfirmDialog
           open
-          title="Delete key?"
-          confirmLabel="Delete"
+          title="Remove key?"
+          confirmLabel="Remove"
           danger
           busy={op.isPending}
-          onCancel={closeKey}
+          onCancel={closeDialog}
           onConfirm={() => {
-            const card = keyDialog.card;
+            const card = dialog.card;
             run(async () => {
               await ipc.keyDelete(card.id);
-              return `Deleted ${card.label}`;
+              if (panel.kind === "editKey" && panel.id === card.id) closePanel();
+              return `Removed ${card.label}`;
             });
           }}
         >
-          <b>{keyDialog.card.label}</b> will be removed from the vault
-          {keyDialog.card.usedBy > 0 &&
-            ` and detached from ${keyDialog.card.usedBy} host(s) / identit(ies)`}
+          <b>{dialog.card.label}</b>
+          {dialog.card.certificate ? " and its certificate" : ""} will be removed from the vault
+          {dialog.card.usedBy > 0 &&
+            ` and detached from ${dialog.card.usedBy} host(s) / identit(ies)`}
           . This cannot be undone.
         </ConfirmDialog>
       )}
-
-      {vaultId && idDialog.kind === "edit" && (
-        <IdentityDialog
-          open
-          vaultId={vaultId}
-          initial={idDialog.card}
-          keys={sshKeys.data ?? []}
-          busy={op.isPending}
-          onCancel={closeId}
-          onConfirm={(form) =>
-            run(async () => {
-              await ipc.identitySave(form);
-              return null;
-            })
-          }
-        />
-      )}
-      {idDialog.kind === "delete" && (
+      {dialog.kind === "deleteIdentity" && (
         <ConfirmDialog
           open
-          title="Delete identity?"
-          confirmLabel="Delete"
+          title="Remove identity?"
+          confirmLabel="Remove"
           danger
           busy={op.isPending}
-          onCancel={closeId}
+          onCancel={closeDialog}
           onConfirm={() => {
-            const card = idDialog.card;
+            const card = dialog.card;
             run(async () => {
               await ipc.identityDelete(card.id);
-              return `Deleted ${card.label}`;
+              if (panel.kind === "identity" && panel.id === card.id) closePanel();
+              return `Removed ${card.label}`;
             });
           }}
         >
-          Hosts using <b>{idDialog.card.label}</b> will fall back to inline credentials.
+          Hosts using <b>{dialog.card.label}</b> will fall back to inline credentials.
         </ConfirmDialog>
       )}
-    </Page>
+    </Box>
   );
 }

@@ -9,7 +9,7 @@ interface Props {
   mb?: number;
 }
 
-export function PageHeader({ title, subtitle, actions, mb = 3 }: Props) {
+export function PageHeader({ title, subtitle, actions, mb = 2.5 }: Props) {
   return (
     <Box
       sx={{
@@ -22,11 +22,11 @@ export function PageHeader({ title, subtitle, actions, mb = 3 }: Props) {
       }}
     >
       <Box>
-        <Typography variant="h1" component="h1" sx={{ fontSize: { xs: "1.5rem", sm: "1.75rem" } }}>
+        <Typography variant="h2" component="h1">
           {title}
         </Typography>
         {subtitle && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 640 }}>
             {subtitle}
           </Typography>
         )}

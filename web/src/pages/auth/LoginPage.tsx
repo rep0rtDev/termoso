@@ -1,6 +1,5 @@
 import { useState, type SubmitEvent } from "react";
 import { Alert, Box, Button, Divider, Link, Stack, TextField, Typography } from "@mui/material";
-import LoginRoundedIcon from "@mui/icons-material/LoginRounded";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router";
 import { errorMessage } from "@/api/client";
 import { useServerInfo } from "@/api/hooks";
@@ -91,13 +90,7 @@ export function LoginPage() {
             Forgot password?
           </Link>
         </Box>
-        <Button
-          type="submit"
-          variant="contained"
-          size="large"
-          disabled={busy}
-          startIcon={<LoginRoundedIcon />}
-        >
+        <Button type="submit" variant="contained" size="large" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </Button>
 

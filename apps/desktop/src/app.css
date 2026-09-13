@@ -10,6 +10,8 @@ body {
   user-select: none;
   -webkit-user-select: none;
   cursor: default;
+  background: transparent;
+  clip-path: inset(0 round var(--window-radius, 10px));
 }
 
 input,

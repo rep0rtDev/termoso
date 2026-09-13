@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 import {
   Box,
   Button,
@@ -17,6 +17,7 @@ import {
   MenuItem,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import CodeRoundedIcon from "@mui/icons-material/CodeRounded";
@@ -26,24 +27,50 @@ import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import CreateNewFolderRoundedIcon from "@mui/icons-material/CreateNewFolderRounded";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
+import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
+import GroupAddRoundedIcon from "@mui/icons-material/GroupAddRounded";
+import DriveFileMoveOutlinedIcon from "@mui/icons-material/DriveFileMoveOutlined";
+import LibraryAddOutlinedIcon from "@mui/icons-material/LibraryAddOutlined";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { Page, PageBody, PageHeader } from "@/components/PageHeader";
-import { EntityCard, Field, IconTile, Loading, SplitButton, ToolIconButton } from "@/components/ui";
+import {
+  ActionMenu,
+  EntityCard,
+  Field,
+  IconTile,
+  Loading,
+  SectionCard,
+  SidePanel,
+  SplitButton,
+  ToolIconButton,
+  type MenuAction,
+} from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
+import { HostAvatar } from "@/hosts/HostAvatar";
 import * as ipc from "@/ipc/commands";
-import { useDefaultVault, usePackages, useSnippets } from "@/ipc/hooks";
+import { useGroups, useHosts, usePackages, useSnippets, useVaults } from "@/ipc/hooks";
+import { openCollaboration, useActiveVault, ViewOnlyChip } from "@/app/vault";
 import {
   errorMessage,
+  type HostCard,
   type PackageNode,
   type SnippetCard,
   type SnippetForm,
   type Uuid,
 } from "@/ipc/types";
+import { useCreateRequests } from "@/app/navigation";
 import { NameDialog } from "@/sftp/dialogs";
-import { monoFontFamily } from "@/theme/theme";
-import { closePane, terminalStore, type Pane } from "@/terminal/store";
+import { ShellHistoryPanel } from "@/history/ShellHistory";
+import { monoFontFamily, sizes } from "@/theme/theme";
+import { terminalStore, type Pane } from "@/terminal/store";
+import { startRun, summarize, useLastRun, watchRun, type SnippetRun } from "./run";
+import { RunTargets, TargetStateIcon } from "./RunStatus";
+import { TargetsDialog } from "./TargetsDialog";
 
 const VAR_HINT = "Use {{name}} placeholders; you will be asked for values on run.";
 
@@ -135,7 +162,93 @@ function SnippetDialog({
   );
 }
 
-function RunDialog({
+function VariableFields({
+  variables,
+  vars,
+  onChange,
+}: {
+  variables: string[];
+  vars: Record<string, string>;
+  onChange: (vars: Record<string, string>) => void;
+}) {
+  return (
+    <Stack spacing={1.5}>
+      <Typography variant="overline" color="text.secondary">
+        Variables
+      </Typography>
+      {variables.map((v, i) => (
+        <Field key={v} label={v}>
+          <TextField
+            size="small"
+            autoFocus={i === 0}
+            value={vars[v] ?? ""}
+            onChange={(e) => onChange({ ...vars, [v]: e.target.value })}
+          />
+        </Field>
+      ))}
+    </Stack>
+  );
+}
+
+const emptyVars = (snippet: SnippetCard) =>
+  Object.fromEntries(snippet.variables.map((v) => [v, ""]));
+const varsComplete = (snippet: SnippetCard, vars: Record<string, string>) =>
+  snippet.variables.every((v) => (vars[v] ?? "").length > 0);
+
+/** Ask for `{{variable}}` values once before a run fans out to its targets. */
+export function VariablesDialog({
+  snippet,
+  description,
+  onCancel,
+  onConfirm,
+}: {
+  snippet: SnippetCard;
+  description: string;
+  onCancel: () => void;
+  onConfirm: (vars: Record<string, string>) => void;
+}) {
+  const [vars, setVars] = useState<Record<string, string>>(() => emptyVars(snippet));
+  const valid = varsComplete(snippet, vars);
+  return (
+    <Dialog open onClose={onCancel} maxWidth="xs" fullWidth>
+      <DialogTitle>Run “{snippet.label}”</DialogTitle>
+      <DialogContent>
+        <Stack
+          component="form"
+          id="snippet-vars"
+          spacing={2}
+          sx={{ mt: 0.5 }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (valid) onConfirm(vars);
+          }}
+        >
+          <VariableFields variables={snippet.variables} vars={vars} onChange={setVars} />
+          <Typography variant="body2" color="text.secondary">
+            {description}
+          </Typography>
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={onCancel} color="inherit">
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          form="snippet-vars"
+          variant="contained"
+          disabled={!valid}
+          startIcon={<PlayArrowRoundedIcon />}
+        >
+          Run
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/** Pick open terminals to type the snippet into (plus variables if any). */
+export function RunDialog({
   snippet,
   busy,
   onCancel,
@@ -158,9 +271,7 @@ function RunDialog({
   const [selected, setSelected] = useState<Set<Uuid>>(
     () => new Set(activePane && panes.some((p) => p.id === activePane) ? [activePane] : []),
   );
-  const [vars, setVars] = useState<Record<string, string>>(() =>
-    Object.fromEntries(snippet.variables.map((v) => [v, ""])),
-  );
+  const [vars, setVars] = useState<Record<string, string>>(() => emptyVars(snippet));
   const toggle = (id: Uuid) =>
     setSelected((s) => {
       const n = new Set(s);
@@ -168,43 +279,48 @@ function RunDialog({
       else n.add(id);
       return n;
     });
-  const valid = selected.size > 0 && snippet.variables.every((v) => (vars[v] ?? "").length > 0);
+  const valid = selected.size > 0 && varsComplete(snippet, vars);
 
   return (
     <Dialog open onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle>Run “{snippet.label}”</DialogTitle>
+      <DialogTitle>Run “{snippet.label}” in open terminals</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           {snippet.variables.length > 0 && (
-            <Stack spacing={1.5}>
-              <Typography variant="overline" color="text.secondary">
-                Variables
-              </Typography>
-              {snippet.variables.map((v) => (
-                <Field label={v}>
-                  <TextField
-                    key={v}
-                    size="small"
-                    value={vars[v] ?? ""}
-                    onChange={(e) => setVars({ ...vars, [v]: e.target.value })}
-                  />
-                </Field>
-              ))}
-            </Stack>
+            <VariableFields variables={snippet.variables} vars={vars} onChange={setVars} />
           )}
-          <Typography variant="overline" color="text.secondary">
-            Target terminals
-          </Typography>
+          <Box sx={{ display: "flex", alignItems: "center" }}>
+            <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
+              Terminals
+            </Typography>
+            {panes.length > 1 && (
+              <Button
+                size="small"
+                color="inherit"
+                onClick={() =>
+                  setSelected(
+                    selected.size === panes.length ? new Set() : new Set(panes.map((p) => p.id)),
+                  )
+                }
+              >
+                {selected.size === panes.length ? "Clear" : "Select all"}
+              </Button>
+            )}
+          </Box>
           {panes.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
               No connected terminals. Open a host first.
             </Typography>
           ) : (
-            <List dense disablePadding>
+            <List dense disablePadding sx={{ mx: -1 }}>
               {panes.map((p) => (
-                <ListItemButton key={p.id} onClick={() => toggle(p.id)} sx={{ borderRadius: 1 }}>
+                <ListItemButton key={p.id} onClick={() => toggle(p.id)} sx={{ borderRadius: 1.5 }}>
                   <Checkbox edge="start" size="small" checked={selected.has(p.id)} tabIndex={-1} />
-                  <ListItemText primary={p.title} secondary={p.subtitle} />
+                  <ListItemText
+                    primary={p.title}
+                    secondary={p.subtitle}
+                    slotProps={{ primary: { noWrap: true }, secondary: { noWrap: true } }}
+                  />
                 </ListItemButton>
               ))}
             </List>
@@ -228,10 +344,227 @@ function RunDialog({
   );
 }
 
+function Script({ script }: { script: string }) {
+  return (
+    <Box
+      component="pre"
+      sx={{
+        m: 0,
+        fontFamily: monoFontFamily,
+        fontSize: 12,
+        lineHeight: 1.5,
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+        maxHeight: 72,
+        overflow: "hidden",
+      }}
+    >
+      {script}
+    </Box>
+  );
+}
+
+function fmtTime(ts: number) {
+  return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+/** Termius-style detail panel: script, targets for execution, last run. */
+function SnippetPanel({
+  snippet,
+  hosts,
+  packages,
+  lastRun,
+  busy,
+  onClose,
+  onEdit,
+  onDelete,
+  onAddTargets,
+  onRemoveTarget,
+  onRun,
+  onRunInTerminals,
+}: {
+  snippet: SnippetCard;
+  hosts: readonly HostCard[];
+  packages: readonly PackageNode[];
+  lastRun: SnippetRun | undefined;
+  busy: boolean;
+  onClose: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onAddTargets: () => void;
+  onRemoveTarget: (hostId: Uuid) => void;
+  onRun: () => void;
+  onRunInTerminals: () => void;
+}) {
+  const pkg = packages.find((p) => p.id === snippet.packageId);
+  const targets = snippet.targetHostIds
+    .map((id) => hosts.find((h) => h.id === id))
+    .filter((h): h is HostCard => h !== undefined);
+  const openCount = Object.values(terminalStore.get().panes).filter(
+    (p) => p.status === "connected" && p.protocol !== null,
+  ).length;
+  const stateFor = (hostId: Uuid) => lastRun?.targets.find((t) => t.hostId === hostId)?.state;
+
+  return (
+    <SidePanel
+      title={snippet.label}
+      subtitle={pkg ? pkg.label : "No package"}
+      onClose={onClose}
+      actions={
+        <>
+          <ToolIconButton title="Edit" onClick={onEdit}>
+            <EditRoundedIcon fontSize="small" />
+          </ToolIconButton>
+          <ToolIconButton title="Delete" onClick={onDelete}>
+            <DeleteOutlineRoundedIcon fontSize="small" />
+          </ToolIconButton>
+        </>
+      }
+      footer={
+        <>
+          <Button
+            variant="tonal"
+            startIcon={<TerminalRoundedIcon />}
+            disabled={busy || openCount === 0}
+            onClick={onRunInTerminals}
+          >
+            Open terminals
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<PlayArrowRoundedIcon />}
+            disabled={busy || targets.length === 0}
+            onClick={onRun}
+          >
+            Run
+          </Button>
+        </>
+      }
+    >
+      <SectionCard title="Script">
+        <Box
+          component="pre"
+          sx={{
+            m: 0,
+            p: 1.5,
+            borderRadius: 1.5,
+            bgcolor: "surface.base",
+            fontFamily: monoFontFamily,
+            fontSize: 12,
+            lineHeight: 1.6,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            maxHeight: 200,
+            overflow: "auto",
+          }}
+        >
+          {snippet.script}
+        </Box>
+        {(snippet.variables.length > 0 || snippet.closeAfterRun) && (
+          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+            {snippet.variables.map((v) => (
+              <Chip key={v} label={`{{${v}}}`} size="small" sx={{ fontFamily: monoFontFamily }} />
+            ))}
+            {snippet.closeAfterRun && (
+              <Chip label="closes terminal" size="small" variant="outlined" />
+            )}
+          </Box>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title="Targets for execution"
+        action={
+          <Button
+            size="small"
+            startIcon={<AddRoundedIcon />}
+            onClick={onAddTargets}
+            disabled={busy}
+          >
+            Add targets
+          </Button>
+        }
+      >
+        {targets.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            No targets yet. Add hosts or whole groups — Run connects to each of them and types the
+            script.
+          </Typography>
+        ) : (
+          <Stack spacing={0.5} sx={{ mx: -1 }}>
+            {targets.map((h) => {
+              const state = stateFor(h.id);
+              return (
+                <Box
+                  key={h.id}
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1.25,
+                    px: 1,
+                    py: 0.5,
+                    borderRadius: 1.5,
+                    "&:hover": { bgcolor: "surface.highest" },
+                    "&:hover .target-remove": { opacity: 1 },
+                  }}
+                >
+                  <HostAvatar host={h} size={sizes.tileSmall} />
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="body2" noWrap>
+                      {h.label}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      noWrap
+                      sx={{ display: "block" }}
+                    >
+                      {h.username ? `${h.username}@${h.address}` : h.address} ·{" "}
+                      {h.protocol.toUpperCase()}
+                    </Typography>
+                  </Box>
+                  {state && <TargetStateIcon state={state} />}
+                  <Tooltip title="Remove target">
+                    <IconButton
+                      className="target-remove"
+                      size="small"
+                      aria-label={`Remove ${h.label}`}
+                      onClick={() => onRemoveTarget(h.id)}
+                      disabled={busy}
+                      sx={{ opacity: 0, transition: "opacity 120ms" }}
+                    >
+                      <CloseRoundedIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              );
+            })}
+          </Stack>
+        )}
+      </SectionCard>
+
+      {lastRun && (
+        <SectionCard
+          title="Last run"
+          action={
+            <Typography variant="caption" color="text.secondary">
+              {fmtTime(lastRun.startedAt)} · {summarize(lastRun)}
+            </Typography>
+          }
+        >
+          <RunTargets run={lastRun} />
+        </SectionCard>
+      )}
+    </SidePanel>
+  );
+}
+
 type DialogState =
   | { kind: "none" }
   | { kind: "edit"; snippet: SnippetCard | null }
   | { kind: "run"; snippet: SnippetCard }
+  | { kind: "vars"; snippet: SnippetCard }
+  | { kind: "targets"; snippet: SnippetCard }
   | { kind: "delete"; snippet: SnippetCard }
   | { kind: "package"; pkg: PackageNode | null }
   | { kind: "deletePackage"; pkg: PackageNode };
@@ -243,12 +576,31 @@ const NONE: PkgFilter = { kind: "none" };
 export function SnippetsPage() {
   const snackbar = useSnackbar();
   const qc = useQueryClient();
-  const vault = useDefaultVault();
+  const vault = useActiveVault();
   const vaultId = vault.data?.id ?? null;
   const snippets = useSnippets(vaultId);
   const packages = usePackages(vaultId);
+  const hosts = useHosts(vaultId);
+  const groups = useGroups(vaultId);
   const [pkgFilter, setPkgFilter] = useState<PkgFilter>(ALL);
   const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
+  const [selectedId, setSelectedId] = useState<Uuid | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [ctx, setCtx] = useState<
+    | { kind: "snippet"; snippet: SnippetCard; left: number; top: number }
+    | { kind: "package"; pkg: PackageNode; left: number; top: number }
+    | null
+  >(null);
+  const lastRun = useLastRun(selectedId);
+  const vaults = useVaults();
+  const readOnly = vault.readOnly;
+
+  useCreateRequests(["snippet"], () => {
+    if (!readOnly) setDialog({ kind: "edit", snippet: null });
+  });
+
+  // A deleted snippet simply stops matching; the panel closes on its own.
+  const selected = (snippets.data ?? []).find((s) => s.id === selectedId) ?? null;
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ["snippets"] });
@@ -264,6 +616,134 @@ export function SnippetsPage() {
     },
     onError: (e) => snackbar.error(errorMessage(e)),
   });
+
+  const hostList = hosts.data ?? [];
+
+  const vaultTargets = (
+    item: { id: Uuid; vaultId: Uuid; label: string },
+    move: boolean,
+    copyTo: (id: Uuid, vaultId: Uuid, move: boolean) => Promise<unknown>,
+  ): MenuAction[] => {
+    const others = (vaults.data ?? []).filter((v) => v.id !== item.vaultId);
+    if (others.length === 0) return [{ label: "No other vaults", disabled: true }];
+    return others.map((v) => ({
+      label: v.name,
+      icon: v.unlocked ? undefined : <LockOutlinedIcon fontSize="small" />,
+      disabled: !v.unlocked || v.role === "viewer",
+      onClick: () =>
+        op.mutate(async () => {
+          await copyTo(item.id, v.id, move);
+          if (move && selectedId === item.id) setSelectedId(null);
+          if (move && currentPkg === item.id) setPkgFilter(ALL);
+          return `${item.label} ${move ? "moved" : "copied"} to ${v.name}`;
+        }),
+    }));
+  };
+
+  const collaborate: MenuAction = {
+    label: "Collaborate",
+    icon: <GroupAddRoundedIcon fontSize="small" />,
+    disabled: vault.data?.kind !== "team",
+    onClick: () => openCollaboration(vault.data),
+  };
+
+  const snippetMenu = (s: SnippetCard): MenuAction[] => [
+    {
+      label: "Run",
+      icon: <PlayArrowRoundedIcon fontSize="small" />,
+      onClick: () => {
+        if (s.targetHostIds.length > 0) runOnTargets(s);
+        else setDialog({ kind: "run", snippet: s });
+      },
+    },
+    {
+      label: "Edit",
+      icon: <EditRoundedIcon fontSize="small" />,
+      disabled: readOnly,
+      onClick: () => setDialog({ kind: "edit", snippet: s }),
+      divider: true,
+    },
+    collaborate,
+    {
+      label: "Move to",
+      icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
+      disabled: readOnly,
+      items: vaultTargets(s, true, ipc.snippetCopyToVault),
+    },
+    {
+      label: "Copy to",
+      icon: <LibraryAddOutlinedIcon fontSize="small" />,
+      items: vaultTargets(s, false, ipc.snippetCopyToVault),
+    },
+    {
+      label: "Delete",
+      icon: <DeleteOutlineRoundedIcon fontSize="small" />,
+      danger: true,
+      disabled: readOnly,
+      onClick: () => setDialog({ kind: "delete", snippet: s }),
+    },
+  ];
+
+  const packageMenu = (p: PackageNode): MenuAction[] => [
+    {
+      label: "Rename",
+      icon: <EditRoundedIcon fontSize="small" />,
+      disabled: readOnly,
+      onClick: () => setDialog({ kind: "package", pkg: p }),
+      divider: true,
+    },
+    collaborate,
+    {
+      label: "Move to",
+      icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
+      disabled: readOnly,
+      items: vaultTargets(p, true, ipc.snippetPackageCopyToVault),
+    },
+    {
+      label: "Copy to",
+      icon: <LibraryAddOutlinedIcon fontSize="small" />,
+      items: vaultTargets(p, false, ipc.snippetPackageCopyToVault),
+    },
+    {
+      label: "Delete",
+      icon: <DeleteOutlineRoundedIcon fontSize="small" />,
+      danger: true,
+      disabled: readOnly,
+      onClick: () => setDialog({ kind: "deletePackage", pkg: p }),
+    },
+  ];
+
+  const onSnippetContext = (e: MouseEvent<HTMLElement>, snippet: SnippetCard) => {
+    e.preventDefault();
+    setCtx({ kind: "snippet", snippet, left: e.clientX, top: e.clientY });
+  };
+  const onPackageContext = (e: MouseEvent<HTMLElement>, pkg: PackageNode) => {
+    e.preventDefault();
+    setCtx({ kind: "package", pkg, left: e.clientX, top: e.clientY });
+  };
+
+  const launch = (
+    snippet: SnippetCard,
+    vars: Record<string, string>,
+    sessionIds: Uuid[],
+    hostIds: Uuid[],
+  ) => {
+    setDialog({ kind: "none" });
+    setSelectedId(snippet.id);
+    const run = startRun({ snippet, vars, sessionIds, hostIds, hosts: hostList });
+    if (run.targets.length === 0) {
+      snackbar.error("Nothing to run on");
+      return;
+    }
+    watchRun(run.id, (done) => {
+      if (done.targets.some((t) => t.state === "failed")) snackbar.error(summarize(done));
+      else snackbar.notify(summarize(done));
+    });
+  };
+  const runOnTargets = (snippet: SnippetCard) => {
+    if (snippet.variables.length > 0) setDialog({ kind: "vars", snippet });
+    else launch(snippet, {}, [], snippet.targetHostIds);
+  };
 
   const visible = (snippets.data ?? []).filter((s) =>
     pkgFilter.kind === "all"
@@ -282,27 +762,41 @@ export function SnippetsPage() {
     <Page>
       <PageHeader
         actions={
-          <SplitButton
-            label="New snippet"
-            icon={<AddRoundedIcon />}
-            disabled={!vaultId}
-            onClick={() => setDialog({ kind: "edit", snippet: null })}
-            items={[
-              {
-                label: "New snippet",
-                icon: <AddRoundedIcon fontSize="small" />,
-                onClick: () => setDialog({ kind: "edit", snippet: null }),
-              },
-              {
-                label: "New package",
-                icon: <CreateNewFolderRoundedIcon fontSize="small" />,
-                onClick: () => setDialog({ kind: "package", pkg: null }),
-              },
-            ]}
-          />
+          <>
+            <SplitButton
+              label="New snippet"
+              icon={<AddRoundedIcon />}
+              disabled={!vaultId || readOnly}
+              onClick={() => setDialog({ kind: "edit", snippet: null })}
+              items={[
+                {
+                  label: "New snippet",
+                  icon: <AddRoundedIcon fontSize="small" />,
+                  onClick: () => setDialog({ kind: "edit", snippet: null }),
+                },
+                {
+                  label: "New package",
+                  icon: <CreateNewFolderRoundedIcon fontSize="small" />,
+                  onClick: () => setDialog({ kind: "package", pkg: null }),
+                },
+              ]}
+            />
+            <Button
+              variant={historyOpen ? "tonal" : "text"}
+              color="inherit"
+              startIcon={<HistoryRoundedIcon />}
+              onClick={() => {
+                setHistoryOpen((v) => !v);
+                setSelectedId(null);
+              }}
+            >
+              Shell History
+            </Button>
+          </>
         }
         trailing={
           <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+            {readOnly && <ViewOnlyChip sx={{ mr: 1 }} />}
             {pkgFilter.kind === "all"
               ? `${snippets.data?.length ?? 0} ${snippets.data?.length === 1 ? "snippet" : "snippets"}`
               : `${visible.length} of ${snippets.data?.length ?? 0}`}
@@ -347,7 +841,8 @@ export function SnippetsPage() {
                 key={p.id}
                 selected={pkgFilter.kind === "pkg" && pkgFilter.id === p.id}
                 onClick={() => setPkgFilter({ kind: "pkg", id: p.id })}
-                sx={{ pr: 0.5, "&:hover .pkg-actions": { opacity: 1 } }}
+                onContextMenu={(e) => onPackageContext(e, p)}
+                sx={{ pr: 0.5, "&:hover .pkg-actions": { opacity: readOnly ? 0 : 1 } }}
               >
                 <FolderRoundedIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} />
                 <ListItemText primary={p.label} slotProps={{ primary: { noWrap: true } }} />
@@ -386,95 +881,150 @@ export function SnippetsPage() {
             <EmptyState
               icon={<CodeRoundedIcon />}
               title={pkgFilter.kind === "all" ? "No snippets yet" : "Nothing here"}
-              description="Save the commands you type over and over and run them in any connected terminal. Use {{name}} placeholders to be asked for values on run."
+              description="Save the commands you type over and over, pick the hosts they should run on and run them everywhere at once. Use {{name}} placeholders to be asked for values on run."
               action={
-                <Button
-                  variant="contained"
-                  onClick={() => setDialog({ kind: "edit", snippet: null })}
-                >
-                  New snippet
-                </Button>
+                readOnly ? undefined : (
+                  <Button
+                    variant="contained"
+                    onClick={() => setDialog({ kind: "edit", snippet: null })}
+                  >
+                    New snippet
+                  </Button>
+                )
               }
             />
           ) : (
             <Stack spacing={1}>
-              {visible.map((s) => (
-                <EntityCard
-                  key={s.id}
-                  onDoubleClick={() => setDialog({ kind: "edit", snippet: s })}
-                  sx={{ alignItems: "flex-start" }}
-                  tile={
-                    <IconTile tone="purple">
-                      <CodeRoundedIcon />
-                    </IconTile>
-                  }
-                  title={
-                    <>
-                      {s.label}
-                      {s.closeAfterRun && (
-                        <Chip label="closes tab" size="small" variant="outlined" sx={{ ml: 1 }} />
-                      )}
-                    </>
-                  }
-                  subtitle={
-                    <Box
-                      component="pre"
-                      sx={{
-                        m: 0,
-                        fontFamily: monoFontFamily,
-                        fontSize: 12,
-                        lineHeight: 1.5,
-                        whiteSpace: "pre-wrap",
-                        wordBreak: "break-word",
-                        maxHeight: 72,
-                        overflow: "hidden",
-                      }}
-                    >
-                      {s.script}
-                    </Box>
-                  }
-                  meta={
-                    s.variables.length > 0
-                      ? s.variables.map((v) => (
-                          <Chip
-                            key={v}
-                            label={`{{${v}}}`}
-                            size="small"
-                            sx={{ fontFamily: monoFontFamily }}
-                          />
-                        ))
-                      : undefined
-                  }
-                  trailing={
-                    <Button
-                      variant="tonal"
-                      startIcon={<PlayArrowRoundedIcon />}
-                      onClick={() => setDialog({ kind: "run", snippet: s })}
-                    >
-                      Run
-                    </Button>
-                  }
-                  actions={
-                    <>
-                      <ToolIconButton
-                        title="Edit"
-                        onClick={() => setDialog({ kind: "edit", snippet: s })}
+              {visible.map((s) => {
+                const targetCount = s.targetHostIds.length;
+                return (
+                  <EntityCard
+                    key={s.id}
+                    selected={s.id === selectedId}
+                    onClick={() => {
+                      setHistoryOpen(false);
+                      setSelectedId(s.id === selectedId ? null : s.id);
+                    }}
+                    onDoubleClick={() => {
+                      if (!readOnly) setDialog({ kind: "edit", snippet: s });
+                    }}
+                    onContextMenu={(e) => onSnippetContext(e, s)}
+                    sx={{ alignItems: "flex-start" }}
+                    tile={
+                      <IconTile tone="purple">
+                        <CodeRoundedIcon />
+                      </IconTile>
+                    }
+                    title={
+                      <>
+                        {s.label}
+                        {s.closeAfterRun && (
+                          <Chip label="closes tab" size="small" variant="outlined" sx={{ ml: 1 }} />
+                        )}
+                      </>
+                    }
+                    subtitle={<Script script={s.script} />}
+                    meta={
+                      s.variables.length > 0 || targetCount > 0 ? (
+                        <>
+                          {targetCount > 0 && (
+                            <Chip
+                              label={`${targetCount} ${targetCount === 1 ? "target" : "targets"}`}
+                              size="small"
+                              variant="outlined"
+                            />
+                          )}
+                          {s.variables.map((v) => (
+                            <Chip
+                              key={v}
+                              label={`{{${v}}}`}
+                              size="small"
+                              sx={{ fontFamily: monoFontFamily }}
+                            />
+                          ))}
+                        </>
+                      ) : undefined
+                    }
+                    trailing={
+                      <Button
+                        variant="tonal"
+                        startIcon={<PlayArrowRoundedIcon />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (targetCount > 0) runOnTargets(s);
+                          else setDialog({ kind: "run", snippet: s });
+                        }}
                       >
-                        <EditRoundedIcon fontSize="small" />
-                      </ToolIconButton>
-                      <ToolIconButton
-                        title="Delete"
-                        onClick={() => setDialog({ kind: "delete", snippet: s })}
-                      >
-                        <DeleteOutlineRoundedIcon fontSize="small" />
-                      </ToolIconButton>
-                    </>
-                  }
-                />
-              ))}
+                        Run
+                      </Button>
+                    }
+                    actions={
+                      readOnly ? undefined : (
+                        <>
+                          <ToolIconButton
+                            title="Edit"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDialog({ kind: "edit", snippet: s });
+                            }}
+                          >
+                            <EditRoundedIcon fontSize="small" />
+                          </ToolIconButton>
+                          <ToolIconButton
+                            title="Delete"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDialog({ kind: "delete", snippet: s });
+                            }}
+                          >
+                            <DeleteOutlineRoundedIcon fontSize="small" />
+                          </ToolIconButton>
+                        </>
+                      )
+                    }
+                  />
+                );
+              })}
             </Stack>
           )}
         </PageBody>
+        {historyOpen && <ShellHistoryPanel onClose={() => setHistoryOpen(false)} />}
+        <ActionMenu
+          anchor={null}
+          position={ctx ? { left: ctx.left, top: ctx.top } : null}
+          onClose={() => setCtx(null)}
+          items={
+            ctx === null
+              ? []
+              : ctx.kind === "snippet"
+                ? snippetMenu(ctx.snippet)
+                : packageMenu(ctx.pkg)
+          }
+        />
+        {selected && (
+          <SnippetPanel
+            snippet={selected}
+            hosts={hostList}
+            packages={pkgList}
+            lastRun={lastRun}
+            busy={op.isPending}
+            onClose={() => setSelectedId(null)}
+            onEdit={() => setDialog({ kind: "edit", snippet: selected })}
+            onDelete={() => setDialog({ kind: "delete", snippet: selected })}
+            onAddTargets={() => setDialog({ kind: "targets", snippet: selected })}
+            onRemoveTarget={(hostId) =>
+              op.mutate(async () => {
+                await ipc.snippetSetTargets(
+                  selected.id,
+                  selected.targetHostIds.filter((id) => id !== hostId),
+                );
+                return null;
+              })
+            }
+            onRun={() => runOnTargets(selected)}
+            onRunInTerminals={() => setDialog({ kind: "run", snippet: selected })}
+          />
+        )}
       </Box>
 
       {vaultId && dialog.kind === "edit" && (
@@ -487,27 +1037,45 @@ export function SnippetsPage() {
           onCancel={() => setDialog({ kind: "none" })}
           onConfirm={(form) =>
             op.mutate(async () => {
-              await ipc.snippetSave(form);
+              const saved = await ipc.snippetSave(form);
+              setSelectedId(saved.id);
               return null;
             })
           }
         />
       )}
+      {dialog.kind === "targets" && (
+        <TargetsDialog
+          hosts={hostList}
+          groups={groups.data ?? []}
+          initial={dialog.snippet.targetHostIds}
+          busy={op.isPending}
+          onCancel={() => setDialog({ kind: "none" })}
+          onConfirm={(hostIds) => {
+            const id = dialog.snippet.id;
+            op.mutate(async () => {
+              await ipc.snippetSetTargets(id, hostIds);
+              return null;
+            });
+          }}
+        />
+      )}
+      {dialog.kind === "vars" && (
+        <VariablesDialog
+          snippet={dialog.snippet}
+          description={`Runs on ${dialog.snippet.targetHostIds.length} configured ${
+            dialog.snippet.targetHostIds.length === 1 ? "target" : "targets"
+          }.`}
+          onCancel={() => setDialog({ kind: "none" })}
+          onConfirm={(vars) => launch(dialog.snippet, vars, [], dialog.snippet.targetHostIds)}
+        />
+      )}
       {dialog.kind === "run" && (
         <RunDialog
           snippet={dialog.snippet}
-          busy={op.isPending}
+          busy={false}
           onCancel={() => setDialog({ kind: "none" })}
-          onConfirm={(sessionIds, vars) => {
-            const id = dialog.snippet.id;
-            op.mutate(async () => {
-              const res = await ipc.snippetRun(id, sessionIds, vars);
-              if (res.closeAfterRun) {
-                for (const sid of res.sessionIds) void closePane(sid);
-              }
-              return `Sent to ${res.sessionIds.length} terminal(s)`;
-            });
-          }}
+          onConfirm={(sessionIds, vars) => launch(dialog.snippet, vars, sessionIds, [])}
         />
       )}
       {dialog.kind === "delete" && (
@@ -526,7 +1094,7 @@ export function SnippetsPage() {
             });
           }}
         >
-          <b>{dialog.snippet.label}</b> will be removed, including its host bindings.
+          <b>{dialog.snippet.label}</b> will be removed, including its targets and host bindings.
         </ConfirmDialog>
       )}
       {vaultId && dialog.kind === "package" && (

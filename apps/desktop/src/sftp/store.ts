@@ -4,7 +4,10 @@
 import type { QueryClient } from "@tanstack/react-query";
 import * as ipc from "@/ipc/commands";
 import type {
+  Conflict,
   Direction,
+  EditEvent,
+  EditInfo,
   SftpEvent,
   SftpInfo,
   SftpTarget,
@@ -27,7 +30,10 @@ export interface SftpConn {
   info: SftpInfo | null;
 }
 
-export type TransferStatus = "running" | "done" | "failed" | "cancelled";
+export type TransferStatus = "queued" | "running" | "paused" | "done" | "failed" | "cancelled";
+
+/** Still owned by the engine's queue (can be paused, resumed or cancelled). */
+export const isActive = (s: TransferStatus) => s === "queued" || s === "running";
 
 export interface Transfer {
   id: Uuid;
@@ -35,13 +41,32 @@ export interface Transfer {
   direction: Direction;
   local: string;
   remote: string;
+  conflict: Conflict;
   status: TransferStatus;
   done: number;
   total: number | null;
   filesDone: number;
   filesTotal: number;
+  filesSkipped: number;
   current: string;
   message: string | null;
+  startedAt: number;
+  finishedAt: number | null;
+  /** Smoothed throughput in bytes per second; `null` until the first sample. */
+  speed: number | null;
+  /** Cancel requested but the engine has not confirmed yet. */
+  cancelling: boolean;
+}
+
+export type EditStatus = "watching" | "uploading" | "failed";
+
+/** A remote file opened in a local application (Open / Open with…). */
+export interface Edit {
+  info: EditInfo;
+  status: EditStatus;
+  message: string | null;
+  uploadedAt: number | null;
+  uploadedBytes: number | null;
 }
 
 export interface SftpState {
@@ -50,6 +75,10 @@ export interface SftpState {
   activeId: Uuid | null;
   transfers: Record<Uuid, Transfer>;
   transferOrder: Uuid[];
+  edits: Record<Uuid, Edit>;
+  editOrder: Uuid[];
+  /** Files copied so far while staging an OS drop; `null` when idle. */
+  staging: number | null;
 }
 
 export const sftpStore = createStore<SftpState>({
@@ -58,6 +87,9 @@ export const sftpStore = createStore<SftpState>({
   activeId: null,
   transfers: {},
   transferOrder: [],
+  edits: {},
+  editOrder: [],
+  staging: null,
 });
 
 export const useSftp = <S>(selector: (s: SftpState) => S) => useStore(sftpStore, selector);
@@ -166,13 +198,19 @@ function addTransfer(info: TransferInfo) {
       direction: info.direction,
       local: info.local,
       remote: info.remote,
-      status: "running",
+      conflict: info.conflict,
+      status: "queued",
       done: 0,
       total: null,
       filesDone: 0,
       filesTotal: 1,
+      filesSkipped: 0,
       current: "",
       message: null,
+      startedAt: Date.now(),
+      finishedAt: null,
+      speed: null,
+      cancelling: false,
     };
     return {
       ...s,
@@ -187,27 +225,155 @@ export async function startTransfer(args: {
   direction: Direction;
   local: string;
   remote: string;
+  conflict?: Conflict;
+  temp?: boolean;
 }) {
   const info = await ipc.transferStart(args);
   addTransfer(info);
   return info;
 }
 
-export const cancelTransfer = (id: Uuid) => ipc.transferCancel(id);
+export function setStaging(count: number | null) {
+  update((s) => (s.staging === count ? s : { ...s, staging: count }));
+}
 
+export function cancelTransfer(id: Uuid) {
+  patchTransfer(id, { cancelling: true });
+  return ipc.transferCancel(id);
+}
+
+/** Remove a paused or failed transfer from the queue and the list. */
+export async function discardTransfer(id: Uuid) {
+  update((s) => ({
+    ...s,
+    transfers: omit(s.transfers, id),
+    transferOrder: s.transferOrder.filter((x) => x !== id),
+  }));
+  samples.delete(id);
+  await ipc.transferCancel(id);
+}
+
+export function pauseTransfer(id: Uuid) {
+  return ipc.transferPause(id);
+}
+
+/** Resume a paused transfer or retry a failed one from where it stopped. */
+export async function resumeTransfer(id: Uuid) {
+  samples.delete(id);
+  patchTransfer(id, { status: "queued", message: null, finishedAt: null, speed: null });
+  try {
+    await ipc.transferResume(id);
+  } catch (e) {
+    patchTransfer(id, { status: "failed", message: errorMessage(e), finishedAt: Date.now() });
+    throw e;
+  }
+}
+
+/** Last progress sample per transfer, for the throughput estimate. */
+const samples = new Map<Uuid, { at: number; done: number }>();
+
+function sampleSpeed(t: Transfer, done: number): number | null {
+  const now = Date.now();
+  const prev = samples.get(t.id) ?? { at: t.startedAt, done: 0 };
+  const dt = now - prev.at;
+  if (dt < 400) return t.speed;
+  samples.set(t.id, { at: now, done });
+  const inst = ((done - prev.done) * 1000) / dt;
+  return t.speed === null ? inst : t.speed * 0.7 + inst * 0.3;
+}
+
+/** Drop everything that is not queued, running or paused. */
 export function clearFinishedTransfers() {
+  const dropped: Uuid[] = [];
   update((s) => {
     const transfers: Record<Uuid, Transfer> = {};
     const transferOrder = s.transferOrder.filter((id) => {
       const t = s.transfers[id];
-      if (t?.status === "running") {
+      if (t && (isActive(t.status) || t.status === "paused")) {
         transfers[id] = t;
         return true;
       }
+      dropped.push(id);
       return false;
     });
     return { ...s, transfers, transferOrder };
   });
+  for (const id of dropped) void ipc.transferForget(id).catch(() => undefined);
+}
+
+// ───────────────────────────── edits ─────────────────────────────
+
+function addEdit(info: EditInfo) {
+  update((s) => {
+    if (s.edits[info.id]) return s;
+    const e: Edit = {
+      info,
+      status: "watching",
+      message: null,
+      uploadedAt: null,
+      uploadedBytes: null,
+    };
+    return { ...s, edits: { ...s.edits, [info.id]: e }, editOrder: [info.id, ...s.editOrder] };
+  });
+}
+
+function patchEdit(id: Uuid, patch: Partial<Edit>) {
+  update((s) => {
+    const e = s.edits[id];
+    return e ? { ...s, edits: { ...s.edits, [id]: { ...e, ...patch } } } : s;
+  });
+}
+
+export async function openEdit(sftpId: Uuid, remote: string, withApp: string | null) {
+  const info = await ipc.editOpen(sftpId, remote, withApp);
+  addEdit(info);
+  return info;
+}
+
+export const uploadEditNow = (id: Uuid) => ipc.editUploadNow(id);
+
+export async function closeEdit(id: Uuid) {
+  update((s) => ({
+    ...s,
+    edits: omit(s.edits, id),
+    editOrder: s.editOrder.filter((x) => x !== id),
+  }));
+  await ipc.editClose(id).catch(() => undefined);
+}
+
+/** Remote paths currently open for editing on `sftpId`. */
+export function editingPaths(edits: Edit[], sftpId: Uuid): Set<string> {
+  return new Set(edits.filter((e) => e.info.sftpId === sftpId).map((e) => e.info.remote));
+}
+
+function onEditEvent(ev: EditEvent, queryClient: QueryClient) {
+  switch (ev.type) {
+    case "opened":
+      addEdit(ev.info);
+      break;
+    case "uploading":
+      patchEdit(ev.id, { status: "uploading", message: null });
+      break;
+    case "uploaded":
+      patchEdit(ev.id, {
+        status: "watching",
+        message: null,
+        uploadedAt: Date.parse(ev.at) || Date.now(),
+        uploadedBytes: ev.bytes,
+      });
+      void queryClient.invalidateQueries({ queryKey: ["fs", "remote"] });
+      break;
+    case "failed":
+      patchEdit(ev.id, { status: "failed", message: ev.message });
+      break;
+    case "closed":
+      update((s) => ({
+        ...s,
+        edits: omit(s.edits, ev.id),
+        editOrder: s.editOrder.filter((x) => x !== ev.id),
+      }));
+      break;
+  }
 }
 
 // ───────────────────────────── events ─────────────────────────────
@@ -234,23 +400,51 @@ function onTransferEvent(ev: TransferEvent, queryClient: QueryClient) {
     case "started":
       addTransfer(ev.info);
       break;
-    case "progress":
+    case "queued":
+      patchTransfer(ev.id, { status: "queued", message: null, finishedAt: null });
+      break;
+    case "running": {
+      const now = Date.now();
+      samples.set(ev.id, { at: now, done: sftpStore.get().transfers[ev.id]?.done ?? 0 });
+      patchTransfer(ev.id, { status: "running", speed: null, startedAt: now });
+      break;
+    }
+    case "paused": {
+      const t = sftpStore.get().transfers[ev.id];
+      samples.delete(ev.id);
+      patchTransfer(ev.id, { status: "paused", speed: null, cancelling: false });
+      void queryClient.invalidateQueries({
+        queryKey: ["fs", t?.direction === "upload" ? "remote" : "local"],
+      });
+      break;
+    }
+    case "progress": {
+      const t = sftpStore.get().transfers[ev.id];
+      if (!t) break;
       patchTransfer(ev.id, {
         done: ev.done,
         total: ev.total,
         filesDone: ev.files_done,
         filesTotal: ev.files_total,
+        filesSkipped: ev.files_skipped,
         current: ev.current,
+        speed: sampleSpeed(t, ev.done),
       });
       break;
+    }
     case "finished":
     case "failed":
     case "cancelled": {
       const t = sftpStore.get().transfers[ev.id];
+      samples.delete(ev.id);
       patchTransfer(ev.id, {
         status: ev.type === "finished" ? "done" : ev.type,
         message: ev.type === "failed" ? ev.message : null,
         done: ev.type === "finished" ? ev.bytes : (t?.done ?? 0),
+        filesSkipped: ev.type === "finished" ? ev.files_skipped : (t?.filesSkipped ?? 0),
+        filesDone: ev.type === "finished" ? (t?.filesTotal ?? 1) : (t?.filesDone ?? 0),
+        finishedAt: Date.now(),
+        cancelling: false,
       });
       const side = t?.direction === "upload" ? "remote" : "local";
       void queryClient.invalidateQueries({ queryKey: ["fs", side] });
@@ -265,4 +459,9 @@ export function startSftpEvents(queryClient: QueryClient) {
   started = true;
   void ipc.onSftpEvent(onSftpEvent);
   void ipc.onTransferEvent((ev) => onTransferEvent(ev, queryClient));
+  void ipc.onEditEvent((ev) => onEditEvent(ev, queryClient));
+  ipc
+    .editsList()
+    .then((list) => list.forEach(addEdit))
+    .catch(() => undefined);
 }

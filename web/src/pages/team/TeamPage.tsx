@@ -397,7 +397,7 @@ function InvitesSection({ team }: { team: Team }) {
       description="Pending invitations expire automatically. The invitee receives a link by email when SMTP is configured; you can also copy it."
       actions={
         <Button
-          variant="contained"
+          variant="outlined"
           startIcon={<PersonAddAltRoundedIcon />}
           onClick={() => setOpen(true)}
         >
@@ -710,7 +710,7 @@ function TeamVaultsSection({ team }: { team: Team }) {
       description="Each vault has its own key, sealed to every member. You are always the first manager of a vault you create."
       actions={
         admin && (
-          <Button variant="contained" startIcon={<AddRoundedIcon />} onClick={() => setOpen(true)}>
+          <Button variant="outlined" startIcon={<AddRoundedIcon />} onClick={() => setOpen(true)}>
             New vault
           </Button>
         )

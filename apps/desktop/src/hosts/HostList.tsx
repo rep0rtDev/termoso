@@ -1,6 +1,4 @@
 import {
-  Box,
-  Chip,
   IconButton,
   Table,
   TableBody,
@@ -9,18 +7,39 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
-import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
-import { IconTile } from "@/components/ui";
 import { monoFontFamily, sizes } from "@/theme/theme";
+import { hostProtocols } from "@/ipc/types";
+import { PROTOCOL_NAME } from "./ConnectSplit";
 import { HostAvatar } from "./HostAvatar";
-import type { HostCollectionProps } from "./HostGrid";
+import { GroupTile, groupSubtitle, SelectableTile, type HostCollectionProps } from "./HostGrid";
 
 const rowSx = {
   "& td": { py: 0.5 },
   "& .row-actions": { opacity: 0 },
   "&:hover .row-actions, &.Mui-selected .row-actions": { opacity: 1 },
 } as const;
+
+const droppingSx = {
+  "& td": { bgcolor: "surface.strong" },
+  "& td:first-of-type": { boxShadow: "inset 2px 0 0 var(--mui-palette-primary-main)" },
+} as const;
+
+/** `2h ago`, `3d ago`, or a short date for anything older. */
+export function relativeTime(iso: string | null, now = Date.now()) {
+  if (!iso) return "—";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "—";
+  const s = Math.max(0, Math.round((now - t) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.round(h / 24);
+  if (d < 14) return `${d} d ago`;
+  return new Date(t).toLocaleDateString();
+}
 
 export function HostList(p: HostCollectionProps) {
   return (
@@ -30,28 +49,35 @@ export function HostList(p: HostCollectionProps) {
           <TableCell sx={{ width: 48 }} />
           <TableCell>Name</TableCell>
           <TableCell>Address</TableCell>
+          <TableCell>Protocol</TableCell>
           <TableCell>User</TableCell>
           <TableCell align="right">Port</TableCell>
           <TableCell>Tags</TableCell>
+          <TableCell sx={{ width: 130, whiteSpace: "nowrap" }}>Last connected</TableCell>
           <TableCell sx={{ width: 40 }} />
         </TableRow>
       </TableHead>
       <TableBody>
         {p.groups.map((g) => (
-          <TableRow key={g.id} hover sx={rowSx} onClick={() => p.onOpenGroup(g.id)}>
+          <TableRow
+            key={g.id}
+            hover
+            sx={[rowSx, p.dnd?.dropping === g.id ? droppingSx : {}]}
+            onClick={() => p.onOpenGroup(g.id)}
+            onContextMenu={(e) => p.onGroupContext(g, e)}
+            {...p.dnd?.dropGroup(g)}
+          >
             <TableCell>
-              <IconTile size={sizes.tileSmall}>
-                <FolderRoundedIcon />
-              </IconTile>
+              <GroupTile g={g} size={sizes.tileSmall} />
             </TableCell>
             <TableCell>
               <Typography variant="body1" sx={{ fontWeight: 500 }}>
                 {g.label}
               </Typography>
             </TableCell>
-            <TableCell colSpan={4}>
+            <TableCell colSpan={6}>
               <Typography variant="body2" color="text.secondary">
-                {g.hostCount} host{g.hostCount === 1 ? "" : "s"}
+                {groupSubtitle(g)}
               </Typography>
             </TableCell>
             <TableCell align="right">
@@ -60,7 +86,7 @@ export function HostList(p: HostCollectionProps) {
                 aria-label="Group options"
                 onClick={(e) => {
                   e.stopPropagation();
-                  p.onEditGroup(g);
+                  p.onGroupContext(g, e);
                 }}
               >
                 <MoreHorizRoundedIcon fontSize="small" />
@@ -68,70 +94,91 @@ export function HostList(p: HostCollectionProps) {
             </TableCell>
           </TableRow>
         ))}
-        {p.hosts.map((h) => (
-          <TableRow
-            key={h.id}
-            hover
-            selected={h.id === p.selectedId}
-            sx={rowSx}
-            onClick={() => p.onOpenHost(h)}
-            onDoubleClick={() => p.onConnectHost(h)}
-            onContextMenu={(e) => p.onHostContext(h, e)}
-          >
-            <TableCell>
-              <HostAvatar host={h} size={sizes.tileSmall} />
-            </TableCell>
-            <TableCell>
-              <Typography variant="body1" sx={{ fontWeight: 500 }} noWrap>
-                {h.label}
-              </Typography>
-              {p.showPath && h.groupPath.length > 0 && (
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  noWrap
-                  sx={{ display: "block" }}
-                >
-                  {h.groupPath.join(" / ")}
+        {p.hosts.map((h) => {
+          const isChecked = p.checked.has(h.id);
+          return (
+            <TableRow
+              key={h.id}
+              hover
+              selected={isChecked || h.id === p.selectedId}
+              sx={[rowSx, p.dnd?.dragging.has(h.id) ? { opacity: 0.45 } : {}]}
+              onClick={(e) => p.onOpenHost(h, e)}
+              onDoubleClick={() => p.onConnectHost(h)}
+              onContextMenu={(e) => p.onHostContext(h, e)}
+              {...p.dnd?.dragHost(h)}
+            >
+              <TableCell>
+                <SelectableTile
+                  tile={<HostAvatar host={h} size={sizes.tileSmall} />}
+                  checked={isChecked}
+                  onToggle={() => p.onToggleHost(h)}
+                  size={sizes.tileSmall}
+                />
+              </TableCell>
+              <TableCell>
+                <Typography variant="body1" sx={{ fontWeight: 500 }} noWrap>
+                  {h.label}
                 </Typography>
-              )}
-            </TableCell>
-            <TableCell>
-              <Typography variant="body2" sx={{ fontFamily: monoFontFamily }} noWrap>
-                {h.address}
-              </Typography>
-            </TableCell>
-            <TableCell>
-              <Typography variant="body2" color="text.secondary" noWrap>
-                {h.username || "—"}
-              </Typography>
-            </TableCell>
-            <TableCell align="right">
-              <Typography variant="body2" color="text.secondary">
-                {h.port}
-              </Typography>
-            </TableCell>
-            <TableCell>
-              <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
-                {h.tags.map((t) => (
-                  <Chip key={t} size="small" label={t} />
-                ))}
-              </Box>
-            </TableCell>
-            <TableCell align="right">
-              <IconButton
-                className="row-actions"
-                aria-label="Host options"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  p.onHostContext(h, e);
-                }}
-              >
-                <MoreHorizRoundedIcon fontSize="small" />
-              </IconButton>
-            </TableCell>
-          </TableRow>
-        ))}
+                {p.showPath && h.groupPath.length > 0 && (
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    noWrap
+                    sx={{ display: "block" }}
+                  >
+                    {h.groupPath.join(" / ")}
+                  </Typography>
+                )}
+              </TableCell>
+              <TableCell>
+                <Typography variant="body2" sx={{ fontFamily: monoFontFamily }} noWrap>
+                  {h.address}
+                </Typography>
+              </TableCell>
+              <TableCell>
+                <Typography variant="body2" color="text.secondary" noWrap>
+                  {hostProtocols(h)
+                    .map((x) => PROTOCOL_NAME[x])
+                    .join(", ")}
+                </Typography>
+              </TableCell>
+              <TableCell>
+                <Typography variant="body2" color="text.secondary" noWrap>
+                  {h.username || "—"}
+                </Typography>
+              </TableCell>
+              <TableCell align="right">
+                <Typography variant="body2" color="text.secondary" noWrap>
+                  {h.telnetPort !== null && h.protocol === "ssh"
+                    ? `${h.port} / ${h.telnetPort}`
+                    : h.port}
+                </Typography>
+              </TableCell>
+              <TableCell>
+                <Typography variant="body2" color="text.secondary" noWrap>
+                  {h.tags.join(", ") || "—"}
+                </Typography>
+              </TableCell>
+              <TableCell>
+                <Typography variant="body2" color="text.secondary" noWrap>
+                  {relativeTime(h.lastConnected)}
+                </Typography>
+              </TableCell>
+              <TableCell align="right">
+                <IconButton
+                  className="row-actions"
+                  aria-label="Host options"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    p.onHostContext(h, e);
+                  }}
+                >
+                  <MoreHorizRoundedIcon fontSize="small" />
+                </IconButton>
+              </TableCell>
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );

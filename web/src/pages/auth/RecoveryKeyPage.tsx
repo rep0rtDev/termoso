@@ -27,7 +27,7 @@ export function RecoveryKeyPage() {
       />
       <Stack spacing={2.5}>
         <RecoveryPhraseGrid phrase={state.phrase} email={state.email} />
-        <Alert severity="warning" variant="outlined">
+        <Alert severity="warning">
           If you forget your password and lose this key, your encrypted data cannot be recovered.
         </Alert>
         <FormControlLabel

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ipc from "./commands";
-import type { HostChainData, HostForm, ProxyData, Settings, Uuid } from "./types";
+import type { GroupForm, HostChainData, HostForm, ProxyData, Settings, Uuid } from "./types";
 
 export const keys = {
   app: ["app"] as const,
@@ -12,11 +12,14 @@ export const keys = {
   groups: (vaultId: Uuid | null) => ["groups", vaultId] as const,
   tags: (vaultId: Uuid | null) => ["tags", vaultId] as const,
   hostForm: (id: Uuid) => ["hostForm", id] as const,
+  groupForm: (id: Uuid) => ["groupForm", id] as const,
+  inherited: (groupId: Uuid | null) => ["inherited", groupId] as const,
   identities: (vaultId: Uuid | null) => ["identities", vaultId] as const,
   sshKeys: (vaultId: Uuid | null) => ["sshKeys", vaultId] as const,
   proxies: (vaultId: Uuid | null) => ["proxies", vaultId] as const,
   hostChains: (vaultId: Uuid | null) => ["hostChains", vaultId] as const,
   history: ["history"] as const,
+  commandHistory: ["history", "commands"] as const,
   pfRules: (vaultId: Uuid | null) => ["pfRules", vaultId] as const,
   snippets: (vaultId: Uuid | null) => ["snippets", vaultId] as const,
   packages: (vaultId: Uuid | null) => ["packages", vaultId] as const,
@@ -26,6 +29,13 @@ export const keys = {
   bookmarks: (id: Uuid) => ["logs", id, "bookmarks"] as const,
   account: ["account"] as const,
   devices: ["account", "devices"] as const,
+  vaultMembers: (id: Uuid) => ["account", "vault-members", id] as const,
+  teams: ["account", "teams"] as const,
+  sshid: ["account", "sshid"] as const,
+  teamMembers: (id: Uuid) => ["account", "teams", id, "members"] as const,
+  teamInvites: (id: Uuid) => ["account", "teams", id, "invites"] as const,
+  teamPendingKeys: (id: Uuid) => ["account", "teams", id, "pending-keys"] as const,
+  serialPorts: ["serialPorts"] as const,
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.app, queryFn: ipc.appInfo });
@@ -57,6 +67,19 @@ export const useHostForm = (id: Uuid | null) =>
     queryKey: keys.hostForm(id ?? ""),
     queryFn: () => ipc.hostForm(id ?? ""),
     enabled: id !== null,
+  });
+
+export const useGroupForm = (id: Uuid | null) =>
+  useQuery({
+    queryKey: keys.groupForm(id ?? ""),
+    queryFn: () => ipc.groupForm(id ?? ""),
+    enabled: id !== null,
+  });
+
+export const useInherited = (groupId: Uuid | null) =>
+  useQuery({
+    queryKey: keys.inherited(groupId),
+    queryFn: () => ipc.hostInherited(groupId),
   });
 
 export const useIdentities = (vaultId: Uuid | null) =>
@@ -106,6 +129,49 @@ export function useCreateTag() {
   });
 }
 
+/** Tag edits change host cards too (labels are denormalised there). */
+function useInvalidateTags() {
+  const qc = useQueryClient();
+  return () =>
+    Promise.all(
+      (["tags", "hosts", "hostForm"] as const).map((k) => qc.invalidateQueries({ queryKey: [k] })),
+    );
+}
+
+export function useUpdateTag() {
+  const invalidate = useInvalidateTags();
+  return useMutation({
+    mutationFn: (a: { id: Uuid; label: string; color: string | null }) =>
+      ipc.tagUpdate(a.id, a.label, a.color),
+    onSuccess: () => invalidate(),
+  });
+}
+
+export function useDeleteTag() {
+  const invalidate = useInvalidateTags();
+  return useMutation({
+    mutationFn: (id: Uuid) => ipc.tagDelete(id),
+    onSuccess: () => invalidate(),
+  });
+}
+
+export function useMergeTags() {
+  const invalidate = useInvalidateTags();
+  return useMutation({
+    mutationFn: (a: { sources: Uuid[]; target: Uuid }) => ipc.tagsMerge(a.sources, a.target),
+    onSuccess: () => invalidate(),
+  });
+}
+
+/** Serial devices present right now; refetched on demand, never in the background. */
+export const useSerialPorts = (enabled: boolean) =>
+  useQuery({
+    queryKey: keys.serialPorts,
+    queryFn: ipc.serialPorts,
+    enabled,
+    staleTime: 10_000,
+  });
+
 export function useDeleteEntity(kind: "proxies" | "hostChains") {
   const qc = useQueryClient();
   return useMutation({
@@ -116,6 +182,22 @@ export function useDeleteEntity(kind: "proxies" | "hostChains") {
 
 export const useHistory = () =>
   useQuery({ queryKey: keys.history, queryFn: () => ipc.historyConnections(50) });
+export const useCommandHistory = () =>
+  useQuery({ queryKey: keys.commandHistory, queryFn: () => ipc.historyCommands(1000) });
+export function useDeleteHistoryItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: Uuid) => ipc.historyDelete(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.history }),
+  });
+}
+export function useClearCommandHistory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => ipc.historyClearCommands(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.history }),
+  });
+}
 
 export const usePfRules = (vaultId: Uuid | null) =>
   useQuery({ queryKey: keys.pfRules(vaultId), queryFn: () => ipc.pfRules(vaultId) });
@@ -143,6 +225,47 @@ export const useAccount = () =>
   useQuery({ queryKey: keys.account, queryFn: ipc.accountStatus, staleTime: 5_000 });
 export const useDevices = (enabled: boolean) =>
   useQuery({ queryKey: keys.devices, queryFn: ipc.accountDevices, enabled });
+/** Members of a team vault; `null` (local / personal vault) asks nothing. */
+export const useVaultMembers = (vaultId: Uuid | null) =>
+  useQuery({
+    queryKey: keys.vaultMembers(vaultId ?? ""),
+    queryFn: () => ipc.accountVaultMembers(vaultId ?? ""),
+    enabled: vaultId !== null,
+    staleTime: 60_000,
+  });
+
+export const useTeams = (enabled: boolean) =>
+  useQuery({ queryKey: keys.teams, queryFn: ipc.teamsList, enabled, staleTime: 30_000 });
+export const useTeamMembers = (teamId: Uuid | null) =>
+  useQuery({
+    queryKey: keys.teamMembers(teamId ?? ""),
+    queryFn: () => ipc.teamMembers(teamId ?? ""),
+    enabled: teamId !== null,
+    staleTime: 30_000,
+  });
+export const useTeamInvites = (teamId: Uuid | null, enabled = true) =>
+  useQuery({
+    queryKey: keys.teamInvites(teamId ?? ""),
+    queryFn: () => ipc.teamInvites(teamId ?? ""),
+    enabled: teamId !== null && enabled,
+    staleTime: 30_000,
+  });
+export const useTeamPendingKeys = (teamId: Uuid | null, enabled = true) =>
+  useQuery({
+    queryKey: keys.teamPendingKeys(teamId ?? ""),
+    queryFn: () => ipc.teamPendingKeys(teamId ?? ""),
+    enabled: teamId !== null && enabled,
+    staleTime: 30_000,
+  });
+
+/** Re-reads account, vaults, teams, members and invites after a team mutation. */
+export function useInvalidateTeam() {
+  const qc = useQueryClient();
+  return () => {
+    void qc.invalidateQueries({ queryKey: keys.account });
+    void qc.invalidateQueries({ queryKey: keys.vaults });
+  };
+}
 
 /** Invalidates queries when Rust reports sync / account changes. */
 export function useSyncNotices() {
@@ -161,6 +284,8 @@ export function useSyncNotices() {
             "identities",
             "sshKeys",
             "hostForm",
+            "groupForm",
+            "inherited",
             "pfRules",
             "snippets",
             "packages",
@@ -200,9 +325,9 @@ function useInvalidateVault() {
   const qc = useQueryClient();
   return (vaultId: Uuid) =>
     Promise.all(
-      (["hosts", "groups", "tags", "identities", "hostForm"] as const).map((k) =>
-        qc.invalidateQueries({ queryKey: [k] }),
-      ),
+      (
+        ["hosts", "groups", "tags", "identities", "hostForm", "groupForm", "inherited"] as const
+      ).map((k) => qc.invalidateQueries({ queryKey: [k] })),
     ).then(() => qc.invalidateQueries({ queryKey: keys.hosts(vaultId) }));
 }
 
@@ -222,6 +347,49 @@ export function useDeleteHost() {
   });
 }
 
+export function useDeleteHosts() {
+  const invalidate = useInvalidateVault();
+  return useMutation({
+    mutationFn: ({ ids }: { ids: Uuid[]; vaultId: Uuid }) => ipc.hostsDelete(ids),
+    onSuccess: (_r, v) => invalidate(v.vaultId),
+  });
+}
+
+export function useDuplicateHost() {
+  const invalidate = useInvalidateVault();
+  return useMutation({
+    mutationFn: (id: Uuid) => ipc.hostDuplicate(id),
+    onSuccess: (card) => invalidate(card.vaultId),
+  });
+}
+
+export function useMoveHosts() {
+  const invalidate = useInvalidateVault();
+  return useMutation({
+    mutationFn: ({ ids, groupId }: { ids: Uuid[]; groupId: Uuid | null; vaultId: Uuid }) =>
+      ipc.hostsMove(ids, groupId),
+    onSuccess: (_r, v) => invalidate(v.vaultId),
+  });
+}
+
+export function useCopyHostsToVault() {
+  const invalidate = useInvalidateVault();
+  return useMutation({
+    mutationFn: ({
+      ids,
+      vaultId,
+      move,
+      withCredentials,
+    }: {
+      ids: Uuid[];
+      vaultId: Uuid;
+      move: boolean;
+      withCredentials: boolean;
+    }) => ipc.hostsCopyToVault(ids, vaultId, move, withCredentials),
+    onSuccess: (_r, v) => invalidate(v.vaultId),
+  });
+}
+
 export function useSaveGroup() {
   const invalidate = useInvalidateVault();
   return useMutation({
@@ -230,10 +398,27 @@ export function useSaveGroup() {
   });
 }
 
+export function useSaveGroupForm() {
+  const invalidate = useInvalidateVault();
+  return useMutation({
+    mutationFn: (form: GroupForm) => ipc.groupSaveForm(form),
+    onSuccess: (g) => invalidate(g.vaultId),
+  });
+}
+
+export function useDuplicateGroup() {
+  const invalidate = useInvalidateVault();
+  return useMutation({
+    mutationFn: (id: Uuid) => ipc.groupDuplicate(id),
+    onSuccess: (g) => invalidate(g.vaultId),
+  });
+}
+
 export function useDeleteGroup() {
   const invalidate = useInvalidateVault();
   return useMutation({
-    mutationFn: ({ id }: { id: Uuid; vaultId: Uuid }) => ipc.groupDelete(id),
+    mutationFn: ({ id, recursive }: { id: Uuid; vaultId: Uuid; recursive?: boolean }) =>
+      ipc.groupDelete(id, recursive ?? false),
     onSuccess: (_r, v) => invalidate(v.vaultId),
   });
 }

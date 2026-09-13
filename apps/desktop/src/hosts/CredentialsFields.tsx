@@ -1,0 +1,622 @@
+import { useState, type ReactNode } from "react";
+import {
+  Box,
+  Button,
+  IconButton,
+  InputAdornment,
+  Menu,
+  MenuItem,
+  Switch,
+  TextField,
+  Typography,
+} from "@mui/material";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import BadgeOutlinedIcon from "@mui/icons-material/BadgeOutlined";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
+import KeyOutlinedIcon from "@mui/icons-material/KeyOutlined";
+import FingerprintRoundedIcon from "@mui/icons-material/FingerprintRounded";
+import UsbRoundedIcon from "@mui/icons-material/UsbRounded";
+import PasswordRoundedIcon from "@mui/icons-material/PasswordRounded";
+import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
+import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
+import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
+import WorkspacePremiumOutlinedIcon from "@mui/icons-material/WorkspacePremiumOutlined";
+import { SettingRow } from "@/components/ui";
+import { goToSection } from "@/app/navigation";
+import { useIdentities, useSshKeys } from "@/ipc/hooks";
+import { certificateName, certificateSummary, isHardwareKey } from "@/keychain/model";
+import {
+  SSH_ID_DEFAULT_TYPE,
+  SSH_ID_KEY_TYPES,
+  sshIdTypeLabel,
+  type Inherited,
+  type SshIdKeyType,
+  type Uuid,
+} from "@/ipc/types";
+
+/** The credential slice shared by the host and group editors. */
+export interface CredentialValues {
+  identityId: Uuid | null;
+  username: string;
+  /** `null` = keep the stored password (see `hasPassword`). */
+  password: string | null;
+  hasPassword: boolean;
+  sshKeyId: Uuid | null;
+  /** Certificate pinned here; `null` = the key's own certificate. */
+  sshCertificateId: Uuid | null;
+  /** Log in with the account's SSH ID passkeys. */
+  sshId: boolean;
+  sshIdKeyType: SshIdKeyType | null;
+  agentForwarding: boolean;
+}
+
+type AuthRow = "sshid" | "key" | "certificate" | "fido2";
+
+const adornment = (icon: ReactNode) => (
+  <InputAdornment position="start" sx={{ color: "text.secondary" }}>
+    {icon}
+  </InputAdornment>
+);
+
+/**
+ * Credentials the Termius way: a "Credentials" / "Credentials from <identity>"
+ * header, then username and password, and the auth rows only once added via
+ * "+ SSH ID, Key, Certificate, FIDO2" (or when one is already set).
+ */
+export function CredentialsFields({
+  vaultId,
+  value,
+  onChange,
+  ssh,
+  agentForwarding = ssh,
+  inherited,
+  inlineLabel,
+}: {
+  vaultId: Uuid;
+  value: CredentialValues;
+  onChange: (patch: Partial<CredentialValues>) => void;
+  ssh: boolean;
+  /** Render the Agent forwarding switch here (the host panel keeps it under Show more). */
+  agentForwarding?: boolean;
+  /** Effective values coming from the group chain, shown as placeholders. */
+  inherited?: Inherited | null;
+  inlineLabel: string;
+}) {
+  const identities = useIdentities(vaultId);
+  const sshKeys = useSshKeys(vaultId);
+  const [showPassword, setShowPassword] = useState(false);
+  const [keyRow, setKeyRow] = useState<"key" | "fido2" | null>(null);
+  const [certRow, setCertRow] = useState(false);
+  const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
+  const [sourceAnchor, setSourceAnchor] = useState<HTMLElement | null>(null);
+
+  const identity = (identities.data ?? []).find((i) => i.id === value.identityId) ?? null;
+  const usingIdentity = value.identityId !== null;
+  const from = inherited && inherited.groupPath.length > 0 ? inherited.groupPath.join(" / ") : null;
+  const inheritedKey = inherited?.sshKeyLabel ?? null;
+  const allKeys = sshKeys.data ?? [];
+  const selectedKey = value.sshKeyId
+    ? (allKeys.find((k) => k.id === value.sshKeyId) ?? null)
+    : null;
+  const keyKnown = value.sshKeyId === null || selectedKey !== null;
+  const certified = allKeys.filter((k) => k.certificate !== null);
+  const certKey = value.sshCertificateId
+    ? (certified.find((k) => k.certificate?.id === value.sshCertificateId) ?? null)
+    : null;
+  // Which of Key / FIDO2 to render: the stored key decides, else what was added.
+  const shownKeyRow: "key" | "fido2" | null = !ssh
+    ? null
+    : selectedKey
+      ? isHardwareKey(selectedKey)
+        ? "fido2"
+        : "key"
+      : value.sshKeyId
+        ? (keyRow ?? "key")
+        : keyRow;
+  const showSshId = ssh && value.sshId;
+  // Certificates ride on software keys only; a pinned certificate always shows.
+  const showCert = ssh && shownKeyRow !== "fido2" && (value.sshCertificateId !== null || certRow);
+  const missing: AuthRow[] = !ssh
+    ? []
+    : (["sshid", "key", "certificate", "fido2"] as AuthRow[]).filter((r) =>
+        r === "sshid"
+          ? !showSshId
+          : r === "certificate"
+            ? !showCert && shownKeyRow !== "fido2"
+            : shownKeyRow === null,
+      );
+  const rowTitle: Record<AuthRow, string> = {
+    sshid: "SSH ID",
+    key: "Key",
+    certificate: "Certificate",
+    fido2: "FIDO2",
+  };
+  const rowIcon: Record<AuthRow, ReactNode> = {
+    sshid: <FingerprintRoundedIcon fontSize="small" />,
+    key: <KeyOutlinedIcon fontSize="small" />,
+    certificate: <WorkspacePremiumOutlinedIcon fontSize="small" />,
+    fido2: <UsbRoundedIcon fontSize="small" />,
+  };
+  const addRow = (r: AuthRow) => {
+    if (r === "sshid") onChange({ sshId: true, sshIdKeyType: null });
+    else if (r === "certificate") setCertRow(true);
+    else {
+      setKeyRow(r);
+      if (r === "fido2") {
+        setCertRow(false);
+        if (value.sshCertificateId) onChange({ sshCertificateId: null });
+      }
+    }
+    setAddAnchor(null);
+  };
+  const chooseKey = (id: Uuid | null) => {
+    const k = id ? allKeys.find((x) => x.id === id) : undefined;
+    const keepCert =
+      value.sshCertificateId !== null && k?.certificate?.id === value.sshCertificateId;
+    onChange({ sshKeyId: id, sshCertificateId: keepCert ? value.sshCertificateId : null });
+  };
+  const chooseCert = (id: Uuid | null) => {
+    const k = id ? certified.find((c) => c.certificate?.id === id) : undefined;
+    if (k) {
+      setKeyRow("key");
+      onChange({ sshCertificateId: id, sshKeyId: k.id });
+    } else onChange({ sshCertificateId: id });
+  };
+
+  const sourceLabel = usingIdentity
+    ? (identity?.label ?? (identities.data ? "Unknown identity" : "Loading…"))
+    : null;
+  // Nothing set here and the group provides something → the group is the source.
+  const ownEmpty =
+    !usingIdentity &&
+    !value.username &&
+    !value.hasPassword &&
+    !value.password &&
+    !value.sshKeyId &&
+    !value.sshCertificateId &&
+    !value.sshId;
+  const inheritedFrom =
+    ownEmpty &&
+    from &&
+    inherited &&
+    (inherited.username ||
+      inherited.hasPassword ||
+      inherited.sshKeyId ||
+      inherited.identityId ||
+      inherited.sshId)
+      ? from
+      : null;
+
+  return (
+    <>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, minHeight: 28 }}>
+        <Typography variant="subtitle2" noWrap>
+          {usingIdentity || inheritedFrom ? "Credentials from" : "Credentials"}
+        </Typography>
+        {inheritedFrom && (
+          <Typography
+            variant="subtitle2"
+            noWrap
+            sx={{ minWidth: 0, color: "text.secondary", fontWeight: 400 }}
+          >
+            {inheritedFrom}
+          </Typography>
+        )}
+        <Button
+          variant="text"
+          size="small"
+          color="inherit"
+          startIcon={usingIdentity ? <BadgeOutlinedIcon /> : undefined}
+          endIcon={<ExpandMoreRoundedIcon />}
+          onClick={(e) => setSourceAnchor(e.currentTarget)}
+          sx={{ color: "text.secondary", ml: usingIdentity ? 0 : "auto", px: 0.75, flexShrink: 0 }}
+        >
+          {sourceLabel ?? "Identity"}
+        </Button>
+      </Box>
+      <Menu
+        open={sourceAnchor !== null}
+        anchorEl={sourceAnchor}
+        onClose={() => setSourceAnchor(null)}
+        slotProps={{ paper: { sx: { minWidth: 240 } } }}
+      >
+        <MenuItem
+          selected={!usingIdentity}
+          onClick={() => {
+            onChange({ identityId: null });
+            setSourceAnchor(null);
+          }}
+        >
+          {inlineLabel}
+        </MenuItem>
+        {(identities.data ?? []).map((i) => (
+          <MenuItem
+            key={i.id}
+            selected={i.id === value.identityId}
+            onClick={() => {
+              onChange({ identityId: i.id });
+              setSourceAnchor(null);
+            }}
+          >
+            <BadgeOutlinedIcon fontSize="small" sx={{ mr: 1.25, color: "text.secondary" }} />
+            {i.label}
+            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+              {i.username}
+            </Typography>
+          </MenuItem>
+        ))}
+        <MenuItem
+          onClick={() => {
+            setSourceAnchor(null);
+            goToSection("keychain");
+          }}
+          sx={{ color: "primary.main" }}
+        >
+          <AddRoundedIcon fontSize="small" sx={{ mr: 1.25 }} />
+          Open Keychain…
+        </MenuItem>
+      </Menu>
+
+      {usingIdentity ? (
+        <>
+          <TextField
+            value={identity?.username ?? ""}
+            placeholder={identities.data ? "No username" : ""}
+            disabled
+            slotProps={{ input: { startAdornment: adornment(<PersonOutlineRoundedIcon />) } }}
+          />
+          <TextField
+            value={identity?.hasPassword ? "••••••••••••" : ""}
+            placeholder="No password"
+            disabled
+            slotProps={{ input: { startAdornment: adornment(<PasswordRoundedIcon />) } }}
+          />
+          {ssh && identity?.sshId && (
+            <TextField
+              value={`SSH ID · ${sshIdTypeLabel(identity.sshIdKeyType ?? SSH_ID_DEFAULT_TYPE)} first`}
+              disabled
+              slotProps={{ input: { startAdornment: adornment(<FingerprintRoundedIcon />) } }}
+            />
+          )}
+          {ssh && identity?.sshKeyLabel && (
+            <TextField
+              value={identity.sshKeyLabel}
+              disabled
+              slotProps={{ input: { startAdornment: adornment(<KeyOutlinedIcon />) } }}
+            />
+          )}
+          {ssh && identity?.hasCertificate && (
+            <TextField
+              value="Certificate"
+              disabled
+              slotProps={{
+                input: { startAdornment: adornment(<WorkspacePremiumOutlinedIcon />) },
+              }}
+            />
+          )}
+        </>
+      ) : (
+        <>
+          <TextField
+            value={value.username}
+            onChange={(e) => onChange({ username: e.target.value })}
+            autoComplete="off"
+            placeholder={
+              inherited?.username
+                ? `${inherited.username} (inherited)`
+                : showSshId
+                  ? "Username (defaults to your SSH ID handle)"
+                  : "Username"
+            }
+            helperText={!value.username && inherited?.username && from ? `From ${from}` : undefined}
+            slotProps={{
+              input: { startAdornment: adornment(<PersonOutlineRoundedIcon />) },
+              htmlInput: { "aria-label": "Username" },
+            }}
+          />
+          <TextField
+            type={showPassword ? "text" : "password"}
+            value={value.password ?? ""}
+            onChange={(e) => onChange({ password: e.target.value })}
+            autoComplete="new-password"
+            placeholder={
+              value.hasPassword && value.password === null
+                ? "••••••••••••"
+                : inherited?.hasPassword
+                  ? "•••••••• (inherited)"
+                  : "Password"
+            }
+            helperText={
+              value.hasPassword && value.password === null
+                ? "A password is stored. Type to replace it or clear it to remove."
+                : !value.hasPassword && value.password === null && inherited?.hasPassword && from
+                  ? `From ${from}`
+                  : undefined
+            }
+            slotProps={{
+              htmlInput: { "aria-label": "Password" },
+              input: {
+                startAdornment: adornment(<PasswordRoundedIcon />),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    {value.hasPassword && value.password === null && (
+                      <Button
+                        size="small"
+                        color="inherit"
+                        onClick={() => onChange({ password: "" })}
+                      >
+                        Clear
+                      </Button>
+                    )}
+                    <IconButton
+                      size="small"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label="Toggle password visibility"
+                    >
+                      {showPassword ? (
+                        <VisibilityOffRoundedIcon fontSize="small" />
+                      ) : (
+                        <VisibilityRoundedIcon fontSize="small" />
+                      )}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+          {showSshId && (
+            <TextField
+              select
+              value={value.sshIdKeyType ?? ""}
+              onChange={(e) =>
+                onChange({
+                  sshIdKeyType: e.target.value === "" ? null : (e.target.value as SshIdKeyType),
+                })
+              }
+              helperText="Signs in with this account's passkeys (Settings → SSH ID). Pick which one to offer first."
+              slotProps={{
+                htmlInput: { "aria-label": "SSH ID key type" },
+                input: {
+                  startAdornment: adornment(rowIcon.sshid),
+                  endAdornment: (
+                    <InputAdornment position="end" sx={{ mr: 2 }}>
+                      <IconButton
+                        size="small"
+                        aria-label="Remove SSH ID"
+                        onClick={() => onChange({ sshId: false, sshIdKeyType: null })}
+                      >
+                        <CloseRoundedIcon fontSize="small" />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            >
+              <MenuItem value="">
+                {sshIdTypeLabel(SSH_ID_DEFAULT_TYPE)}
+                <Typography
+                  component="span"
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ ml: 1 }}
+                >
+                  Default
+                </Typography>
+              </MenuItem>
+              {SSH_ID_KEY_TYPES.filter((t) => t.value !== SSH_ID_DEFAULT_TYPE).map((t) => (
+                <MenuItem key={t.value} value={t.value}>
+                  {t.label}
+                  <Typography
+                    component="span"
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ ml: 1 }}
+                  >
+                    {t.hint}
+                  </Typography>
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          {shownKeyRow !== null && (
+            <TextField
+              select
+              value={value.sshKeyId ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__new") {
+                  goToSection("keychain");
+                  return;
+                }
+                chooseKey(v === "" ? null : v);
+              }}
+              helperText={
+                shownKeyRow === "fido2"
+                  ? selectedKey
+                    ? "The token must be plugged in to connect; you will be asked to touch it."
+                    : allKeys.filter(isHardwareKey).length === 0
+                      ? "No FIDO2 key in this vault yet — generate one in Keychain → FIDO2."
+                      : undefined
+                  : value.sshKeyId === null && inheritedKey && from
+                    ? `Without a key here “${inheritedKey}” from ${from} is used.`
+                    : undefined
+              }
+              slotProps={{
+                htmlInput: { "aria-label": shownKeyRow === "fido2" ? "FIDO2 key" : "SSH key" },
+                input: {
+                  startAdornment: adornment(rowIcon[shownKeyRow]),
+                  endAdornment: (
+                    <InputAdornment position="end" sx={{ mr: 2 }}>
+                      <IconButton
+                        size="small"
+                        aria-label={shownKeyRow === "fido2" ? "Remove FIDO2" : "Remove SSH key"}
+                        onClick={() => {
+                          onChange({ sshKeyId: null, sshCertificateId: null });
+                          setKeyRow(null);
+                        }}
+                      >
+                        <CloseRoundedIcon fontSize="small" />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            >
+              <MenuItem value="">
+                <em>{shownKeyRow === "fido2" ? "Choose a FIDO2 key" : "Choose a key"}</em>
+              </MenuItem>
+              {!keyKnown && value.sshKeyId && (
+                <MenuItem value={value.sshKeyId}>
+                  <em>{sshKeys.data ? "Unknown key" : "Loading…"}</em>
+                </MenuItem>
+              )}
+              {allKeys
+                .filter((k) => isHardwareKey(k) === (shownKeyRow === "fido2"))
+                .map((k) => (
+                  <MenuItem key={k.id} value={k.id}>
+                    {k.label}
+                    <Typography
+                      component="span"
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ ml: 1 }}
+                    >
+                      {k.keyType}
+                    </Typography>
+                  </MenuItem>
+                ))}
+              <MenuItem value="__new" sx={{ color: "primary.main" }}>
+                <AddRoundedIcon fontSize="small" sx={{ mr: 1.25 }} />
+                {shownKeyRow === "fido2"
+                  ? "Generate FIDO2 key in Keychain…"
+                  : "New key in Keychain…"}
+              </MenuItem>
+            </TextField>
+          )}
+          {showCert && (
+            <TextField
+              select
+              value={value.sshCertificateId ?? ""}
+              onChange={(e) => chooseCert(e.target.value === "" ? null : e.target.value)}
+              helperText={
+                certKey?.certificate
+                  ? certificateSummary(certKey.certificate)
+                  : certified.length === 0
+                    ? "No key has a certificate yet — attach one in Keychain → Edit Key."
+                    : "Selecting a certificate also selects its key."
+              }
+              slotProps={{
+                htmlInput: { "aria-label": "Certificate" },
+                input: {
+                  startAdornment: adornment(rowIcon.certificate),
+                  endAdornment: (
+                    <InputAdornment position="end" sx={{ mr: 2 }}>
+                      <IconButton
+                        size="small"
+                        aria-label="Remove certificate"
+                        onClick={() => {
+                          onChange({ sshCertificateId: null });
+                          setCertRow(false);
+                        }}
+                      >
+                        <CloseRoundedIcon fontSize="small" />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            >
+              <MenuItem value="">
+                <em>Choose a certificate</em>
+              </MenuItem>
+              {certified.map((k) => (
+                <MenuItem key={k.id} value={k.certificate?.id ?? ""}>
+                  {k.label}
+                  <Typography
+                    component="span"
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ ml: 1 }}
+                  >
+                    {k.certificate ? certificateName(k.certificate) : null}
+                  </Typography>
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
+          {missing.length > 0 && (
+            <>
+              <Button
+                variant="text"
+                color="inherit"
+                size="small"
+                startIcon={<AddRoundedIcon />}
+                onClick={(e) => setAddAnchor(e.currentTarget)}
+                sx={{ alignSelf: "flex-start", color: "text.secondary", ml: -0.5 }}
+              >
+                {missing.map((r) => rowTitle[r]).join(", ")}
+                {shownKeyRow === null && inheritedKey && from && (
+                  <Typography
+                    component="span"
+                    variant="caption"
+                    color="text.disabled"
+                    sx={{ ml: 1 }}
+                  >
+                    using “{inheritedKey}” from {from}
+                  </Typography>
+                )}
+              </Button>
+              <Menu
+                anchorEl={addAnchor}
+                open={Boolean(addAnchor)}
+                onClose={() => setAddAnchor(null)}
+              >
+                {missing.map((r) => (
+                  <MenuItem key={r} onClick={() => addRow(r)}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+                      {rowIcon[r]}
+                      {rowTitle[r]}
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Menu>
+            </>
+          )}
+        </>
+      )}
+      {ssh && agentForwarding && (
+        <AgentForwardingRow value={value} onChange={onChange} inherited={inherited} />
+      )}
+    </>
+  );
+}
+
+export function AgentForwardingRow({
+  value,
+  onChange,
+  inherited,
+}: {
+  value: Pick<CredentialValues, "agentForwarding">;
+  onChange: (patch: Pick<CredentialValues, "agentForwarding">) => void;
+  inherited?: Inherited | null;
+}) {
+  const from = inherited && inherited.groupPath.length > 0 ? inherited.groupPath.join(" / ") : null;
+  return (
+    <SettingRow
+      label="Agent forwarding"
+      hint={
+        !value.agentForwarding && inherited?.agentForwarding && from
+          ? `Enabled by ${from}; turning it on here changes nothing.`
+          : "Expose the local SSH agent on the remote side."
+      }
+      last
+      control={
+        <Switch
+          checked={value.agentForwarding}
+          onChange={(e) => onChange({ agentForwarding: e.target.checked })}
+        />
+      }
+    />
+  );
+}

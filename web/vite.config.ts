@@ -10,6 +10,8 @@ export default defineConfig({
     sourcemap: false,
     outDir: "dist",
     emptyOutDir: true,
+    // The server's CSP is `font-src 'self'`; inlined `data:` fonts would be blocked.
+    assetsInlineLimit: 0,
   },
   server: {
     port: 5173,

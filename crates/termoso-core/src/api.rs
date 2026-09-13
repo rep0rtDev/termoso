@@ -23,23 +23,52 @@ use termoso_proto::auth::{
     RegisterFinishRequest, RegisterStartRequest, RegisterStartResponse, WebauthnChallengeRequest,
 };
 use termoso_proto::error::ApiError;
+use termoso_proto::live::{CreateLiveSessionRequest, LiveSession, LiveSessionList};
 use termoso_proto::logs::{
     CreateLogRequest, CreateLogResponse, DownloadLogResponse, LogListResponse, SessionLog,
     UpdateLogRequest,
+};
+use termoso_proto::sshid::{
+    AddFido2KeyRequest, CreateSshIdRequest, PutDeviceKeysRequest, SshIdKey, SshIdProfile,
 };
 use termoso_proto::sync::{
     HistoryClearRequest, HistoryKind, HistoryPullResponse, HistoryPushRequest, PullRequest,
     PullResponse, PushRequest, PushResponse,
 };
-use termoso_proto::team::{PendingVaultKeys, TeamList};
+use termoso_proto::team::{
+    AuditEventList, CreateInviteRequest, CreateTeamRequest, CreatedInvite, InviteList,
+    PendingVaultKeys, Team, TeamList, TeamMember, TeamMemberList, UpdateTeamMemberRequest,
+    UpdateTeamRequest,
+};
 use termoso_proto::vault::{
-    RotateVaultKeyRequest, RotateVaultKeyResponse, Vault, VaultList, VaultMemberList,
-    VaultMemberUpsert,
+    CreateVaultRequest, RotateVaultKeyRequest, RotateVaultKeyResponse, UpdateVaultRequest, Vault,
+    VaultList, VaultMemberList, VaultMemberUpsert,
 };
 use url::Url;
 use uuid::Uuid;
 
 use crate::error::{CoreError, Result};
+
+/// Filters for [`ApiClient::team_audit`]; `None` fields are omitted from the
+/// query string.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct AuditQuery {
+    /// Only events with an id below this (cursor for older pages).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before: Option<i64>,
+    /// Page size (server caps it).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    /// Exact action, or a prefix ending in `.` (e.g. `vault.`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    /// Only events by this user.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actor: Option<Uuid>,
+    /// Only events touching this vault.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault: Option<Uuid>,
+}
 
 /// `GET /account` body (profile + public key material).
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -120,7 +149,16 @@ impl ApiClient {
 
     /// WebSocket endpoint (`ws[s]://…/api/v1/ws`).
     pub fn ws_url(&self) -> Result<Url> {
-        let mut u = self.api_url("ws");
+        self.ws_url_for("ws")
+    }
+
+    /// Multiplayer relay endpoint (`ws[s]://…/api/v1/live/{id}/ws`).
+    pub fn live_ws_url(&self, id: Uuid) -> Result<Url> {
+        self.ws_url_for(&format!("live/{id}/ws"))
+    }
+
+    fn ws_url_for(&self, path: &str) -> Result<Url> {
+        let mut u = self.api_url(path);
         let scheme = match u.scheme() {
             "https" => "wss",
             "http" => "ws",
@@ -327,6 +365,48 @@ impl ApiClient {
         self.delete(&format!("account/devices/{id}")).await
     }
 
+    // ───────────────────────────── SSH ID ─────────────────────────────
+
+    /// `GET /account/sshid` — the account's SSH ID, `None` until claimed.
+    pub async fn sshid(&self) -> Result<Option<SshIdProfile>> {
+        self.get("account/sshid").await
+    }
+
+    /// `POST /account/sshid` — claim `handle`.
+    pub async fn create_sshid(&self, handle: &str) -> Result<SshIdProfile> {
+        self.post(
+            "account/sshid",
+            &CreateSshIdRequest {
+                handle: handle.to_string(),
+            },
+        )
+        .await
+    }
+
+    /// `DELETE /account/sshid` — drop the handle and every published key.
+    pub async fn delete_sshid(&self) -> Result<()> {
+        self.delete("account/sshid").await
+    }
+
+    /// `PUT /account/sshid/keys/device` — replace this device's public keys.
+    pub async fn put_sshid_device_keys(&self, req: &PutDeviceKeysRequest) -> Result<SshIdProfile> {
+        Self::send(
+            self.request(Method::PUT, "account/sshid/keys/device")
+                .json(req),
+        )
+        .await
+    }
+
+    /// `POST /account/sshid/keys/fido2` — publish a security-key public key.
+    pub async fn add_sshid_fido2_key(&self, req: &AddFido2KeyRequest) -> Result<SshIdKey> {
+        self.post("account/sshid/keys/fido2", req).await
+    }
+
+    /// `DELETE /account/sshid/keys/{id}`.
+    pub async fn remove_sshid_key(&self, id: Uuid) -> Result<()> {
+        self.delete(&format!("account/sshid/keys/{id}")).await
+    }
+
     // ───────────────────────────── vaults / teams ─────────────────────────────
 
     /// `GET /vaults` — every vault we are a member of, with our sealed key.
@@ -351,6 +431,21 @@ impl ApiClient {
             .await
     }
 
+    /// `DELETE /vaults/{id}/members/{user_id}` — revoke access (rotate the key afterwards).
+    pub async fn remove_vault_member(&self, id: Uuid, user_id: Uuid) -> Result<()> {
+        self.delete(&format!("vaults/{id}/members/{user_id}")).await
+    }
+
+    /// `PATCH /vaults/{id}` — rename.
+    pub async fn update_vault(&self, id: Uuid, req: &UpdateVaultRequest) -> Result<Vault> {
+        self.patch(&format!("vaults/{id}"), req).await
+    }
+
+    /// `DELETE /vaults/{id}` — delete a team vault with everything in it.
+    pub async fn delete_vault(&self, id: Uuid) -> Result<()> {
+        self.delete(&format!("vaults/{id}")).await
+    }
+
     /// `POST /vaults/{id}/rotate-key`.
     pub async fn rotate_vault_key(
         &self,
@@ -365,9 +460,98 @@ impl ApiClient {
         self.get("teams").await
     }
 
+    /// `POST /teams`.
+    pub async fn create_team(&self, req: &CreateTeamRequest) -> Result<Team> {
+        self.post("teams", req).await
+    }
+
+    /// `GET /teams/{id}`.
+    pub async fn team(&self, id: Uuid) -> Result<Team> {
+        self.get(&format!("teams/{id}")).await
+    }
+
+    /// `PATCH /teams/{id}` — rename.
+    pub async fn update_team(&self, id: Uuid, req: &UpdateTeamRequest) -> Result<Team> {
+        self.patch(&format!("teams/{id}"), req).await
+    }
+
+    /// `DELETE /teams/{id}` — owner only; removes the team and its vaults.
+    pub async fn delete_team(&self, id: Uuid) -> Result<()> {
+        self.delete(&format!("teams/{id}")).await
+    }
+
+    /// `POST /teams/{id}/leave`.
+    pub async fn leave_team(&self, id: Uuid) -> Result<()> {
+        self.post_empty(&format!("teams/{id}/leave"), &()).await
+    }
+
+    /// `GET /teams/{id}/members`.
+    pub async fn team_members(&self, id: Uuid) -> Result<TeamMemberList> {
+        self.get(&format!("teams/{id}/members")).await
+    }
+
+    /// `PATCH /teams/{id}/members/{user_id}` — change a member's team role.
+    pub async fn update_team_member(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+        req: &UpdateTeamMemberRequest,
+    ) -> Result<TeamMember> {
+        self.patch(&format!("teams/{id}/members/{user_id}"), req)
+            .await
+    }
+
+    /// `DELETE /teams/{id}/members/{user_id}`.
+    pub async fn remove_team_member(&self, id: Uuid, user_id: Uuid) -> Result<()> {
+        self.delete(&format!("teams/{id}/members/{user_id}")).await
+    }
+
+    /// `GET /teams/{id}/invites` — pending invitations.
+    pub async fn team_invites(&self, id: Uuid) -> Result<InviteList> {
+        self.get(&format!("teams/{id}/invites")).await
+    }
+
+    /// `POST /teams/{id}/invites`.
+    pub async fn create_invite(
+        &self,
+        id: Uuid,
+        req: &CreateInviteRequest,
+    ) -> Result<CreatedInvite> {
+        self.post(&format!("teams/{id}/invites"), req).await
+    }
+
+    /// `DELETE /teams/{id}/invites/{invite_id}` — revoke.
+    pub async fn delete_invite(&self, id: Uuid, invite_id: Uuid) -> Result<()> {
+        self.delete(&format!("teams/{id}/invites/{invite_id}"))
+            .await
+    }
+
+    /// `POST /teams/{id}/vaults` — create a team vault with pre-sealed member keys.
+    pub async fn create_team_vault(&self, id: Uuid, req: &CreateVaultRequest) -> Result<Vault> {
+        self.post(&format!("teams/{id}/vaults"), req).await
+    }
+
+    /// `POST /invites/{token}/accept` — join the team behind an invitation link.
+    pub async fn accept_invite(&self, token: &str) -> Result<Team> {
+        let token = token.trim();
+        if token.is_empty()
+            || !token
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        {
+            return Err(CoreError::Invalid("malformed invitation token".into()));
+        }
+        self.post(&format!("invites/{token}/accept"), &()).await
+    }
+
     /// `GET /teams/{id}/pending-keys`.
     pub async fn team_pending_keys(&self, team_id: Uuid) -> Result<PendingVaultKeys> {
         self.get(&format!("teams/{team_id}/pending-keys")).await
+    }
+
+    /// `GET /teams/{id}/audit` — team activity log, newest first.
+    pub async fn team_audit(&self, team_id: Uuid, q: &AuditQuery) -> Result<AuditEventList> {
+        self.get_query(&format!("teams/{team_id}/audit"), q).await
     }
 
     // ───────────────────────────── sync ─────────────────────────────
@@ -434,6 +618,25 @@ impl ApiClient {
         self.delete(&format!("logs/{id}")).await
     }
 
+    // ---- multiplayer ------------------------------------------------------
+
+    /// `POST /live` — register a live terminal session. The server only ever
+    /// sees the join token (and stores its hash), never the link secret.
+    pub async fn create_live_session(&self, join_token: String) -> Result<LiveSession> {
+        self.post("live", &CreateLiveSessionRequest { join_token })
+            .await
+    }
+
+    /// `GET /live` — sessions this account is hosting.
+    pub async fn live_sessions(&self) -> Result<LiveSessionList> {
+        self.get("live").await
+    }
+
+    /// `POST /live/{id}/stop`.
+    pub async fn stop_live_session(&self, id: Uuid) -> Result<()> {
+        self.post_empty(&format!("live/{id}/stop"), &()).await
+    }
+
     /// PUT an already-encrypted log body to the presigned URL from
     /// [`ApiClient::create_log`]. No bearer token is sent (object storage
     /// authenticates via the URL).
@@ -467,7 +670,7 @@ impl ApiClient {
     }
 }
 
-fn default_user_agent() -> String {
+pub(crate) fn default_user_agent() -> String {
     format!("termoso-core/{}", env!("CARGO_PKG_VERSION"))
 }
 
