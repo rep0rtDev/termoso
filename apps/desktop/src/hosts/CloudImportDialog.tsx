@@ -199,11 +199,11 @@ function Body({
         port: portNum,
         removeMissing,
       });
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ["hosts"] }),
-        qc.invalidateQueries({ queryKey: ["groups"] }),
-        qc.invalidateQueries({ queryKey: ["tags"] }),
-      ]);
+      await Promise.all(
+        (["hosts", "hostForm", "groups", "tags"] as const).map((k) =>
+          qc.invalidateQueries({ queryKey: [k] }),
+        ),
+      );
       onImported();
       setStep({ kind: "done", report, providerName: step.preview.providerName });
     } catch (e) {
@@ -455,12 +455,15 @@ function Body({
       ["Removed", r.removed],
       ["Skipped", r.skipped],
     ];
+    const n = (count: number) => (count === 1 ? "1 host" : `${count} hosts`);
     const headline =
       r.created > 0
-        ? `${r.created === 1 ? "1 host" : `${r.created} hosts`} added from ${step.providerName}`
+        ? `${n(r.created)} added from ${step.providerName}`
         : r.updated > 0
-          ? `${r.updated === 1 ? "1 host" : `${r.updated} hosts`} updated from ${step.providerName}`
-          : "Hosts are already up to date";
+          ? `${n(r.updated)} updated from ${step.providerName}`
+          : r.removed > 0
+            ? `${n(r.removed)} removed — no longer on ${step.providerName}`
+            : "Hosts are already up to date";
     return (
       <>
         <DialogTitle>Import complete</DialogTitle>
@@ -617,7 +620,9 @@ function Body({
                       return <TagChip key={key} label={t.label} color={t.color} {...props} />;
                     })
                   }
-                  renderInput={(params) => <TextField {...params} placeholder="No tags" />}
+                  renderInput={(params) => (
+                    <TextField {...params} placeholder={tagIds.length ? "" : "No tags"} />
+                  )}
                   disabled={!vaultOk}
                 />
               </Field>

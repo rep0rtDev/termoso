@@ -236,6 +236,7 @@ function Body({
       const report = await ipc.importApply(target, step.preview.id, selection);
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["hosts"] }),
+        qc.invalidateQueries({ queryKey: ["hostForm"] }),
         qc.invalidateQueries({ queryKey: ["groups"] }),
         qc.invalidateQueries({ queryKey: ["tags"] }),
         qc.invalidateQueries({ queryKey: ["sshKeys"] }),
