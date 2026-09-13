@@ -235,6 +235,8 @@ export interface HostCard {
   port: number;
   /** Effective Telnet port when the host also has a Telnet section. */
   telnetPort: number | null;
+  /** The SSH section connects over Mosh by default. */
+  useMosh: boolean;
   tags: string[];
   osName: string | null;
   /** User-chosen icon id; overrides `osName` for display. */
@@ -259,7 +261,13 @@ export interface HostForm {
   username: string;
   password: string | null;
   sshKeyId: Uuid | null;
+  /** Certificate pinned here; null = the key's own certificate, if any. */
+  sshCertificateId: Uuid | null;
   identityId: Uuid | null;
+  /** Log in with the account's SSH ID passkeys. */
+  sshId: boolean;
+  /** Preferred SSH ID key type; null = ED25519 first. */
+  sshIdKeyType: SshIdKeyType | null;
   tagIds: Uuid[];
   notes: string;
   osName: string | null;
@@ -277,6 +285,10 @@ export interface HostForm {
   timeout: number | null;
   /** Terminal colour scheme id; null follows the app setting. */
   colorScheme: string | null;
+  /** Connect with Mosh (mosh-client bootstrapped over this SSH section). */
+  useMosh: boolean;
+  /** Custom `mosh-server` command; null runs the default. */
+  moshServerCommand: string | null;
   hasPassword: boolean;
 }
 
@@ -303,10 +315,20 @@ export function emptyTelnetForm(): TelnetForm {
 
 export type HostProtocol = "ssh" | "telnet";
 
+/** What `Connect ▸` offers: the sections plus Mosh, which rides on the SSH one. */
+export type ConnectProtocol = HostProtocol | "mosh";
+
 /** Protocols a saved host can be opened with. */
 export function hostProtocols(h: Pick<HostCard, "protocol" | "telnetPort">): HostProtocol[] {
   if (h.protocol === "telnet") return ["telnet"];
   return h.telnetPort === null ? ["ssh"] : ["ssh", "telnet"];
+}
+
+/** `hostProtocols` with Mosh slotted after SSH when the host has it enabled. */
+export function connectProtocols(
+  h: Pick<HostCard, "protocol" | "telnetPort" | "useMosh">,
+): ConnectProtocol[] {
+  return hostProtocols(h).flatMap((p) => (p === "ssh" && h.useMosh ? ["ssh", "mosh"] : [p]));
 }
 
 export type IpVersion = "auto" | "4" | "6";
@@ -393,7 +415,10 @@ export function emptyHostForm(vaultId: Uuid, groupId: Uuid | null): HostForm {
     username: "",
     password: null,
     sshKeyId: null,
+    sshCertificateId: null,
     identityId: null,
+    sshId: false,
+    sshIdKeyType: null,
     tagIds: [],
     notes: "",
     osName: null,
@@ -408,6 +433,8 @@ export function emptyHostForm(vaultId: Uuid, groupId: Uuid | null): HostForm {
     keepAliveInterval: null,
     timeout: null,
     colorScheme: null,
+    useMosh: false,
+    moshServerCommand: null,
     hasPassword: false,
   };
 }
@@ -433,7 +460,11 @@ export interface GroupForm {
   username: string;
   password: string | null;
   sshKeyId: Uuid | null;
+  /** Certificate pinned here; null = the key's own certificate, if any. */
+  sshCertificateId: Uuid | null;
   identityId: Uuid | null;
+  sshId: boolean;
+  sshIdKeyType: SshIdKeyType | null;
   hasPassword: boolean;
   agentForwarding: boolean;
   hostChainId: Uuid | null;
@@ -453,7 +484,10 @@ export function emptyGroupForm(vaultId: Uuid, parentId: Uuid | null): GroupForm 
     username: "",
     password: null,
     sshKeyId: null,
+    sshCertificateId: null,
     identityId: null,
+    sshId: false,
+    sshIdKeyType: null,
     hasPassword: false,
     agentForwarding: false,
     hostChainId: null,
@@ -474,6 +508,7 @@ export interface Inherited {
   sshKeyLabel: string | null;
   identityId: Uuid | null;
   identityLabel: string | null;
+  sshId: boolean;
   agentForwarding: boolean;
   hostChainId: Uuid | null;
   proxyId: Uuid | null;
@@ -535,8 +570,62 @@ export interface KeyCard {
   usedBy: number;
   certificate: CertificateCard | null;
   certificateUnreadable: boolean;
+  /** Set for FIDO2 security keys: the token signs, the vault keeps only the handle. */
+  securityKey: SecurityKeyInfo | null;
   updatedAt: string;
   dirty: boolean;
+}
+
+export interface SkFlags {
+  resident: boolean;
+  userPresence: boolean;
+  userVerification: boolean;
+}
+
+/** Public facts about a stored security-key handle; nothing here is secret. */
+export interface SecurityKeyInfo {
+  application: string;
+  /** `null` while the handle is passphrase-protected and locked. */
+  flags: SkFlags | null;
+  credentialId: string | null;
+}
+
+export type SkAlgorithm = "ed25519" | "ecdsa_p256";
+
+/** A FIDO2 authenticator plugged in right now. */
+export interface Fido2Device {
+  path: string;
+  product: string;
+  vendorId: number;
+  productId: number;
+  aaguid: string | null;
+  pinSet: boolean | null;
+  residentKeys: boolean;
+  algorithms: SkAlgorithm[];
+  versions: string[];
+}
+
+export interface Fido2GenerateForm {
+  vaultId: Uuid;
+  label: string;
+  device: string | null;
+  algorithm: SkAlgorithm;
+  resident: boolean;
+  userPresence: boolean;
+  userVerification: boolean;
+  pin: string | null;
+  user: string | null;
+  comment: string;
+  passphrase: string | null;
+  rememberPassphrase: boolean;
+}
+
+export interface Fido2LoadForm {
+  vaultId: Uuid;
+  device: string | null;
+  pin: string;
+  passphrase: string | null;
+  rememberPassphrase: boolean;
 }
 
 /** Public half of pasted/picked private key text (editor preview; not stored). */
@@ -621,6 +710,8 @@ export interface IdentityCard {
   /** Certificate pinned on the identity itself (`null` = the key's own). */
   sshCertificateId: Uuid | null;
   hasCertificate: boolean;
+  sshId: boolean;
+  sshIdKeyType: SshIdKeyType | null;
   updatedAt: string;
 }
 
@@ -634,6 +725,76 @@ export interface IdentityForm {
   sshKeyId: Uuid | null;
   /** Explicit certificate; `null` falls back to the key's own certificate. */
   sshCertificateId: Uuid | null;
+  sshId: boolean;
+  sshIdKeyType: SshIdKeyType | null;
+}
+
+// ───────────────────────────── SSH ID ─────────────────────────────
+
+/** Passkey families an SSH ID publishes (wire form of `SshIdKeyType`). */
+export type SshIdKeyType = "ed25519" | "ecdsa" | "rsa" | "ecdsa_sk" | "ed25519_sk";
+
+export const SSH_ID_KEY_TYPES: {
+  value: SshIdKeyType;
+  label: string;
+  hint: string;
+  hardware: boolean;
+}[] = [
+  { value: "ecdsa_sk", label: "ECDSA-SK", hint: "OpenSSH 8.4+", hardware: true },
+  { value: "ed25519_sk", label: "ED25519-SK", hint: "OpenSSH 8.2+", hardware: true },
+  { value: "ed25519", label: "ED25519", hint: "OpenSSH 6.5+", hardware: false },
+  { value: "ecdsa", label: "ECDSA", hint: "OpenSSH 5.7+", hardware: false },
+  { value: "rsa", label: "RSA", hint: "Legacy devices", hardware: false },
+];
+
+export const SSH_ID_DEFAULT_TYPE: SshIdKeyType = "ed25519";
+
+export function sshIdTypeLabel(t: SshIdKeyType): string {
+  return SSH_ID_KEY_TYPES.find((k) => k.value === t)?.label ?? t.toUpperCase();
+}
+
+/** One published key as the server lists it (snake_case: proto DTO). */
+export interface SshIdKey {
+  id: Uuid;
+  key_type: SshIdKeyType;
+  public_key: string;
+  device_id: Uuid | null;
+  label: string;
+  current_device: boolean;
+  updated_at: string;
+}
+
+export interface SshIdProfile {
+  handle: string;
+  url: string;
+  created_at: string;
+  keys: SshIdKey[];
+}
+
+export interface DeviceKeyCard {
+  keyType: SshIdKeyType;
+  fingerprint: string;
+  publicKey: string;
+  published: boolean;
+}
+
+export interface SshIdView {
+  signedIn: boolean;
+  profile: SshIdProfile | null;
+  deviceKeys: DeviceKeyCard[];
+  provisionCommand: string | null;
+}
+
+export interface SshIdFido2Form {
+  label: string;
+  device: string | null;
+  algorithm: SkAlgorithm;
+  resident: boolean;
+  userPresence: boolean;
+  userVerification: boolean;
+  pin: string | null;
+  user: string | null;
+  comment: string;
 }
 
 // ───────────────────────────── port forwarding ─────────────────────────────
@@ -1046,7 +1207,7 @@ export type SessionState = "connecting" | "connected";
 
 export interface SessionInfo {
   id: Uuid;
-  protocol: "ssh" | "telnet" | "serial" | "local" | "multiplayer";
+  protocol: "ssh" | "mosh" | "telnet" | "serial" | "local" | "multiplayer";
   title: string;
   target: string;
   hostId: Uuid | null;
@@ -1081,7 +1242,9 @@ export type ConnectPhase =
   | { kind: "handshake" }
   | { kind: "host_key" }
   | { kind: "auth"; method: string }
-  | { kind: "authenticated" };
+  | { kind: "security_key_touch"; key: string }
+  | { kind: "authenticated" }
+  | { kind: "mosh_server" };
 
 export type SessionEvent =
   | { type: "connecting"; id: Uuid; info: SessionInfo }
@@ -1097,8 +1260,8 @@ export type OpenTarget =
   | {
       kind: "host";
       host_id: Uuid;
-      /** Which section to open; defaults to SSH when the host has one. */
-      protocol?: HostProtocol | null;
+      /** Which section to open; defaults to SSH (or Mosh when enabled) when the host has one. */
+      protocol?: ConnectProtocol | null;
     }
   | { kind: "serial"; path: string; line: SerialLine }
   | {
@@ -1206,6 +1369,7 @@ export type PromptRequest =
   | { kind: "host_key"; verdict: HostKeyVerdict }
   | { kind: "password"; username: string; retry: boolean }
   | { kind: "passphrase"; key_label: string }
+  | { kind: "pin"; key_label: string; retry: boolean; retries: number | null }
   | { kind: "interactive"; name: string; instructions: string; questions: Question[] };
 
 export type PromptEvent = { id: Uuid; session_id: Uuid; target: string } & PromptRequest;

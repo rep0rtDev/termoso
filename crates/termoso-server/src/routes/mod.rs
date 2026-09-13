@@ -7,6 +7,7 @@ pub mod history;
 pub mod logs;
 pub mod mfa;
 pub mod server;
+pub mod sshid;
 pub mod sync;
 pub mod teams;
 pub mod vaults;
@@ -81,6 +82,13 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/account/devices", get(account::devices))
         .route("/account/devices/{id}", delete(account::revoke_device))
+        .route(
+            "/account/sshid",
+            get(sshid::get).post(sshid::create).delete(sshid::delete),
+        )
+        .route("/account/sshid/keys/device", put(sshid::put_device_keys))
+        .route("/account/sshid/keys/fido2", post(sshid::add_fido2_key))
+        .route("/account/sshid/keys/{id}", delete(sshid::remove_key))
         .route("/account/security-events", get(account::security_events))
         .route("/account/recovery/rotate", post(account::rotate_recovery))
         // mfa management
@@ -179,6 +187,8 @@ pub fn router(state: AppState) -> Router {
     let mut app = Router::new()
         .route("/healthz", get(server::healthz))
         .route("/readyz", get(server::readyz))
+        .route("/sshid/{handle}", get(sshid::public_default))
+        .route("/sshid/{handle}/{type}", get(sshid::public_typed))
         .nest("/api/v1", api);
 
     if state.cfg.swagger_ui {

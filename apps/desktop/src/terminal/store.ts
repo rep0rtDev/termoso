@@ -145,8 +145,12 @@ function phaseLine(p: ConnectProgress): string {
       return `Verifying host key${where}`;
     case "auth":
       return `Authenticating with ${p.phase.method}${where}`;
+    case "security_key_touch":
+      return `Waiting for a touch on the security key (${p.phase.key})${where}`;
     case "authenticated":
       return `Authenticated, opening shell${where}`;
+    case "mosh_server":
+      return "Starting mosh-server over SSH, then switching to UDP";
   }
 }
 
@@ -1647,7 +1651,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 function autoReconnects(pane: Pane): boolean {
   return (
     currentSettings?.autoReconnect !== false &&
-    (pane.protocol === "ssh" || pane.protocol === "telnet") &&
+    (pane.protocol === "ssh" || pane.protocol === "mosh" || pane.protocol === "telnet") &&
     pane.startedAt !== null
   );
 }

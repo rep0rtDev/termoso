@@ -1,17 +1,22 @@
 import type { CertificateCard, IdentityCard, KeyCard } from "@/ipc/types";
 
 /** Card subtitle as Termius prints it: `Type ED25519`, `Type RSA 4096`. */
+/** FIDO2-backed keys (`sk-*`) are picked through the FIDO2 row, not Key. */
+export const isHardwareKey = (k: Pick<KeyCard, "keyType">) => k.keyType.startsWith("sk-");
+
 export function keyTypeLabel(k: Pick<KeyCard, "keyType" | "bits" | "unreadable">): string {
   if (k.unreadable || !k.keyType) return "Type unknown";
   const t = k.keyType.toLowerCase();
-  const name = t.includes("ed25519")
+  const sk = t.startsWith("sk-");
+  const base = t.includes("ed25519")
     ? "ED25519"
     : t.includes("rsa")
       ? "RSA"
       : t.includes("ecdsa")
         ? "ECDSA"
         : k.keyType.toUpperCase();
-  return name === "ED25519" || k.bits === 0 ? `Type ${name}` : `Type ${name} ${k.bits}`;
+  const name = sk ? `${base}-SK` : base;
+  return sk || base === "ED25519" || k.bits === 0 ? `Type ${name}` : `Type ${name} ${k.bits}`;
 }
 
 export type CertificateState = "valid" | "not_yet" | "expired" | "unreadable";

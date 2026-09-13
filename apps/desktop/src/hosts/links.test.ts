@@ -151,6 +151,7 @@ const card = (over: Partial<HostCard>): HostCard => ({
   username: "root",
   protocol: "ssh",
   telnetPort: null,
+  useMosh: false,
   groupId: null,
   groupPath: [],
   tags: [],

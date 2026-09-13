@@ -55,6 +55,14 @@ impl Modify for BearerAuth {
         crate::routes::account::put_settings,
         crate::routes::account::devices,
         crate::routes::account::revoke_device,
+        crate::routes::sshid::get,
+        crate::routes::sshid::create,
+        crate::routes::sshid::delete,
+        crate::routes::sshid::put_device_keys,
+        crate::routes::sshid::add_fido2_key,
+        crate::routes::sshid::remove_key,
+        crate::routes::sshid::public_default,
+        crate::routes::sshid::public_typed,
         crate::routes::account::security_events,
         crate::routes::account::rotate_recovery,
         crate::routes::account::delete_account,
@@ -130,6 +138,7 @@ impl Modify for BearerAuth {
         (name = "logs", description = "Encrypted session logs in S3"),
         (name = "realtime", description = "WebSocket notifications"),
         (name = "live", description = "Multiplayer: end-to-end encrypted live terminal relay"),
+        (name = "sshid", description = "SSH ID: public handle listing device-bound SSH public keys"),
         (name = "admin", description = "Server administration"),
     )
 )]

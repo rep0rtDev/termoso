@@ -109,7 +109,7 @@ fn bits(key: &PublicKey) -> usize {
             EcdsaCurve::NistP384 => 384,
             EcdsaCurve::NistP521 => 521,
         },
-        Algorithm::Ed25519 | Algorithm::SkEd25519 => 256,
+        Algorithm::Ed25519 | Algorithm::SkEd25519 | Algorithm::SkEcdsaSha2NistP256 => 256,
         _ => 0,
     }
 }
@@ -126,7 +126,7 @@ pub fn public_info(key: &PublicKey, encrypted: bool) -> KeyInfo {
     }
 }
 
-fn material(key: &PrivateKey, passphrase: Option<&str>) -> Result<KeyMaterial> {
+pub(crate) fn material(key: &PrivateKey, passphrase: Option<&str>) -> Result<KeyMaterial> {
     let public = key.public_key().clone();
     let to_write = match passphrase {
         Some(p) if !p.is_empty() => key

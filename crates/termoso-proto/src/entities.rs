@@ -273,6 +273,14 @@ pub mod payload {
             /// Hidden from the identities list (inline identity of a host).
             #[serde(default)]
             pub is_visible: bool,
+            /// Authenticate with the account's SSH ID passkeys (this device's
+            /// keys plus the FIDO2 keys attached to the SSH ID). The username
+            /// falls back to the SSH ID handle when empty.
+            #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+            pub ssh_id: bool,
+            /// Passkey type to try first (`None` = ED25519, then the rest).
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub ssh_id_key_type: Option<crate::sshid::SshIdKeyType>,
         }
     }
 
@@ -296,6 +304,10 @@ pub mod payload {
             /// For FIDO2 resident keys: the credential id.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub fido2_credential_id: Option<String>,
+            /// FIDO2 key attached to the account's SSH ID (managed from
+            /// Settings → SSH ID, not listed in the Keychain).
+            #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+            pub ssh_id: bool,
         }
     }
 

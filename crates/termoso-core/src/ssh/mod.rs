@@ -78,8 +78,17 @@ pub enum ConnectPhase {
         /// SSH method name being attempted.
         method: String,
     },
+    /// A FIDO2 security key is about to sign: the user must touch it (and
+    /// may be asked for the PIN by the token).
+    SecurityKeyTouch {
+        /// Fingerprint of the key being used.
+        key: String,
+    },
     /// Transport is up and authenticated; the caller is opening channels.
     Authenticated,
+    /// Starting `mosh-server` on the remote before handing over to
+    /// `mosh-client`.
+    MoshServer,
 }
 
 /// Receives [`ConnectPhase`] updates while [`SshClient::connect`] runs.

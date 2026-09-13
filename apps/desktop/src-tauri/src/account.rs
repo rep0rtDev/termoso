@@ -521,6 +521,12 @@ fn start_engine<R: Runtime>(app: &AppHandle<R>, state: &AppState, inner: &mut In
         }
     });
     let runner = tokio::spawn(engine.clone().run(cancel.clone()));
+    let sshid_app = app.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::sshid::refresh(&sshid_app).await {
+            tracing::debug!("sshid refresh skipped: {e}");
+        }
+    });
     inner.engine = Some(Engine {
         engine,
         cancel,
