@@ -37,8 +37,10 @@ android {
 
 /**
  * `cargo ndk build` of crates/termoso-mobile for every ABI in `termoso.abis`.
- * Always runs (cargo is incremental itself and tracks the whole workspace); debug
- * libraries are stripped of DWARF with the NDK's llvm-strip so the APK stays small.
+ * Always runs (cargo is incremental itself and tracks the whole workspace). An unstripped
+ * copy of the first ABI's library is kept for uniffi-bindgen (it reads the UniFFI metadata
+ * from the symbol table); the packaged libraries are stripped with the NDK's llvm-strip —
+ * DWARF only for debug, everything for release — so the APK stays small.
  */
 abstract class CargoNdkBuild @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
     @get:Input abstract val abis: ListProperty<String>
@@ -46,6 +48,7 @@ abstract class CargoNdkBuild @Inject constructor(private val exec: ExecOperation
     @get:Input @get:Optional abstract val ndkHome: Property<String>
     @get:Internal abstract val workspace: DirectoryProperty
     @get:OutputDirectory abstract val outDir: DirectoryProperty
+    @get:OutputFile abstract val metaLibrary: RegularFileProperty
 
     init {
         outputs.upToDateWhen { false }
@@ -56,25 +59,28 @@ abstract class CargoNdkBuild @Inject constructor(private val exec: ExecOperation
         val args = mutableListOf("cargo", "ndk")
         abis.get().forEach { args += listOf("-t", it) }
         args += listOf("-o", outDir.get().asFile.absolutePath, "build", "-p", "termoso-mobile")
-        if (release.get()) args += "--release"
+        // The workspace release profile strips the symbol table, which also drops the UniFFI metadata.
+        if (release.get()) args += listOf("--release", "--config", "profile.release.strip=\"debuginfo\"")
         exec.exec {
             workingDir = workspace.get().asFile
             ndkHome.orNull?.let { environment("ANDROID_NDK_HOME", it) }
             commandLine(args)
         }
-        if (release.get()) return
+        val libs = outDir.get().asFile.walkTopDown().filter { it.isFile && it.extension == "so" }.toList()
+        val meta = metaLibrary.get().asFile
+        meta.parentFile.mkdirs()
+        libs.first { it.parentFile.name == abis.get().first() }.copyTo(meta, overwrite = true)
         val strip = ndkHome.orNull
             ?.let { File(it, "toolchains/llvm/prebuilt").listFiles()?.firstOrNull() }
             ?.let { File(it, "bin/llvm-strip") }
             ?.takeIf { it.canExecute() }
             ?: return
-        outDir.get().asFile.walkTopDown().filter { it.isFile && it.extension == "so" }.forEach { so ->
-            exec.exec { commandLine(strip.absolutePath, "--strip-debug", so.absolutePath) }
-        }
+        val mode = if (release.get()) "--strip-all" else "--strip-debug"
+        libs.forEach { so -> exec.exec { commandLine(strip.absolutePath, mode, so.absolutePath) } }
     }
 }
 
-/** Kotlin bindings from the compiled library's UniFFI metadata (any ABI works); crates/termoso-mobile/uniffi.toml sets the package. */
+/** Kotlin bindings from the compiled library's UniFFI metadata; crates/termoso-mobile/uniffi.toml sets the package. */
 abstract class UniffiBindgen @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
     @get:Internal abstract val workspace: DirectoryProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.NONE) abstract val library: RegularFileProperty
@@ -107,12 +113,13 @@ androidComponents {
             ndkHome.set(rustNdkHome)
             workspace.set(workspaceDir)
             outDir.set(layout.buildDirectory.dir("rust/${variant.name}/jniLibs"))
+            metaLibrary.set(layout.buildDirectory.file("rust/${variant.name}/meta/libtermoso_mobile.so"))
         }
         val bindgen = tasks.register<UniffiBindgen>("uniffiBindgen$cap") {
             group = "rust"
             description = "Generate Kotlin bindings for termoso-mobile (${variant.name})"
             workspace.set(workspaceDir)
-            library.set(cargo.flatMap { it.outDir.file("${rustAbis.first()}/libtermoso_mobile.so") })
+            library.set(cargo.flatMap { it.metaLibrary })
             outDir.set(layout.buildDirectory.dir("rust/${variant.name}/kotlin"))
         }
         variant.sources.jniLibs?.addGeneratedSourceDirectory(cargo, CargoNdkBuild::outDir)
