@@ -576,7 +576,7 @@ fn local_list_sync(path: Option<String>) -> Result<Listing> {
         Some(p) if !p.trim().is_empty() => PathBuf::from(p.trim()),
         _ => PathBuf::from(local_home()),
     };
-    let dir = std::fs::canonicalize(&raw)?;
+    let dir = dunce::canonicalize(&raw)?;
     if !dir.is_dir() {
         return Err(DesktopError::invalid(format!(
             "{} is not a directory",

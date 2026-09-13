@@ -1795,7 +1795,7 @@ export function Fido2Panel({
       {!device ? (
         <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Box sx={{ textAlign: "center", color: "text.secondary", py: 6 }}>
-            <IconTile size={56} tone="neutral">
+            <IconTile size={56} tone="neutral" sx={{ mx: "auto" }}>
               <UsbRoundedIcon />
             </IconTile>
             <Typography variant="subtitle1" color="text.primary" sx={{ mt: 2 }}>
