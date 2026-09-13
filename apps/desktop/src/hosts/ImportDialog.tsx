@@ -695,7 +695,7 @@ function SourceCard({
   );
 }
 
-function Row({
+export function Row({
   tile,
   tone,
   title,
@@ -706,7 +706,7 @@ function Row({
   onToggle,
 }: {
   tile: ReactNode;
-  tone: TileTone;
+  tone?: TileTone;
   title: ReactNode;
   subtitle?: ReactNode;
   meta?: ReactNode;
@@ -744,7 +744,11 @@ function Row({
         "&:focus-visible": { outlineColor: "primary.main" },
       }}
     >
-      <CheckTile checked={checked} hoverHint tile={<IconTile tone={tone}>{tile}</IconTile>} />
+      <CheckTile
+        checked={checked}
+        hoverHint
+        tile={tone ? <IconTile tone={tone}>{tile}</IconTile> : tile}
+      />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="body1" noWrap sx={{ fontWeight: 500, lineHeight: 1.35 }}>
           {title}
@@ -841,7 +845,7 @@ function HostRow({
   );
 }
 
-function WarningList({
+export function WarningList({
   warnings,
   title = "Warnings",
   open,
@@ -883,7 +887,7 @@ function WarningList({
   );
 }
 
-function VaultSelect({
+export function VaultSelect({
   vaults,
   value,
   onChange,

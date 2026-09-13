@@ -46,6 +46,8 @@ bytes = { workspace = true }
 url = { workspace = true }
 hex = "0.4"
 sha2 = { workspace = true }
+hmac = "0.12"
+quick-xml = "0.41"
 dirs = "6"
 
 [features]
