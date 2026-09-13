@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   Box,
   Breadcrumbs,
@@ -97,6 +98,7 @@ import {
   hostLink,
   looksLikeTarget,
   parseKnownHostName,
+  isLiveLink,
   parseQuickConnect,
   protocolLink,
   quickLabel,
@@ -385,7 +387,9 @@ export function HostsPage() {
     openSftpForHost(h.id, h.label);
     goToSftp();
   };
-  const quickTarget = looksLikeTarget(search.trim()) ? parseQuickConnect(search) : null;
+  const liveLink = isLiveLink(search) ? search.trim() : null;
+  const quickTarget =
+    !liveLink && looksLikeTarget(search.trim()) ? parseQuickConnect(search) : null;
   const knownHosts = useKnownHosts();
   /** Hosts we already trust (known_hosts) but haven't saved, matching the typed address. */
   const knownSuggestions = useMemo(() => {
@@ -412,6 +416,11 @@ export function HostsPage() {
     setSearch("");
   };
   const onSearchEnter = () => {
+    if (liveLink) {
+      openTerminal({ kind: "live", link: liveLink });
+      setSearch("");
+      return;
+    }
     if (visibleHosts.length === 1 && visibleHosts[0]) {
       connectHost(visibleHosts[0]);
       setSearch("");
@@ -458,8 +467,7 @@ export function HostsPage() {
     }
   };
   const copyText = (text: string, what: string) =>
-    navigator.clipboard
-      .writeText(text)
+    copyToClipboard(text)
       .then(() => snackbar.notify(`${what} copied`))
       .catch(() => snackbar.error("Clipboard is not available"));
   const copyLinks = (list: HostCard[]) =>
@@ -1047,11 +1055,13 @@ export function HostsPage() {
               }
               description={
                 filtering
-                  ? quickTarget
-                    ? `Press Enter to connect to ${quickLabel(quickTarget)}.`
-                    : scopedToGroup
-                      ? "Nothing in this group — switch to Everywhere to search the whole vault."
-                      : "Try a different label, address or tag."
+                  ? liveLink
+                    ? "Press Enter to join this multiplayer session."
+                    : quickTarget
+                      ? `Press Enter to connect to ${quickLabel(quickTarget)}.`
+                      : scopedToGroup
+                        ? "Nothing in this group — switch to Everywhere to search the whole vault."
+                        : "Try a different label, address or tag."
                   : "Add your first server — everything is stored encrypted on this device."
               }
               action={

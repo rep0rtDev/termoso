@@ -26,6 +26,7 @@ use crate::keychain::{
     KeyCard, KeyPreview,
 };
 use crate::logs::{self, BookmarkCard, LogBody, LogCard};
+use crate::multiplayer::{self, ShareInfo};
 use crate::sessions;
 use crate::snippets::{self, PackageNode, RunResult, SnippetCard, SnippetForm};
 use crate::state::AppState;
@@ -901,6 +902,33 @@ pub async fn team_vault_remove_access<R: Runtime>(
 #[tauri::command]
 pub async fn team_vault_rotate_key<R: Runtime>(app: AppHandle<R>, vault_id: Uuid) -> Result<()> {
     team::rotate_vault_key(&app, vault_id).await
+}
+
+// ───────────────────────────── multiplayer ─────────────────────────────
+
+#[tauri::command]
+pub async fn multiplayer_start<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<ShareInfo> {
+    multiplayer::start(&app, id).await
+}
+
+#[tauri::command]
+pub async fn multiplayer_stop<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
+    multiplayer::stop(&app, id).await
+}
+
+#[tauri::command]
+pub fn multiplayer_info(state: State<'_, AppState>, id: Uuid) -> Option<ShareInfo> {
+    state.multiplayer.info(id)
+}
+
+#[tauri::command]
+pub fn multiplayer_set_control<R: Runtime>(
+    app: AppHandle<R>,
+    id: Uuid,
+    user_id: Uuid,
+    enabled: bool,
+) -> Result<()> {
+    multiplayer::set_control(&app, id, user_id, enabled)
 }
 
 // ───────────────────────────── updates ─────────────────────────────

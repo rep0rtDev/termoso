@@ -101,6 +101,10 @@ impl Modify for BearerAuth {
         crate::routes::logs::download,
         crate::routes::logs::delete,
         crate::ws::handler,
+        crate::live::create,
+        crate::live::list,
+        crate::live::stop,
+        crate::live::ws,
         crate::routes::admin::stats,
         crate::routes::admin::users,
         crate::routes::admin::user,
@@ -124,6 +128,7 @@ impl Modify for BearerAuth {
         (name = "sync", description = "Encrypted entity and history sync"),
         (name = "logs", description = "Encrypted session logs in S3"),
         (name = "realtime", description = "WebSocket notifications"),
+        (name = "live", description = "Multiplayer: end-to-end encrypted live terminal relay"),
         (name = "admin", description = "Server administration"),
     )
 )]

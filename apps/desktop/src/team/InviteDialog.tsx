@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   Alert,
   Box,
@@ -88,9 +89,9 @@ function Body({
       setResults(r);
       const url = r.find((x) => x.url)?.url;
       if (copy && url) {
-        void navigator.clipboard
-          .writeText(url)
-          .then(() => snackbar.notify("Invitation link copied"));
+        void copyToClipboard(url)
+          .then(() => snackbar.notify("Invitation link copied"))
+          .catch(() => snackbar.error("Clipboard is not available"));
       }
     },
     onError: (e) => snackbar.error(errorMessage(e)),
@@ -378,9 +379,9 @@ export function InviteResultRow({ result: r }: { result: InviteResult }) {
             onClick={() => {
               const url = r.url;
               if (!url) return;
-              void navigator.clipboard
-                .writeText(url)
-                .then(() => snackbar.notify("Invitation link copied"));
+              void copyToClipboard(url)
+                .then(() => snackbar.notify("Invitation link copied"))
+                .catch(() => snackbar.error("Clipboard is not available"));
             }}
           >
             <ContentCopyRoundedIcon fontSize="small" />

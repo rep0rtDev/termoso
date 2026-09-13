@@ -1,4 +1,5 @@
 import { useState, type KeyboardEvent } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   Alert,
   Box,
@@ -325,7 +326,9 @@ export function RecoveryDialog({ phrase, onDone }: { phrase: string; onDone: () 
           startIcon={<ContentCopyRoundedIcon />}
           sx={{ mt: 1 }}
           onClick={() => {
-            void navigator.clipboard.writeText(phrase).then(() => snackbar.notify("Copied"));
+            void copyToClipboard(phrase)
+              .then(() => snackbar.notify("Copied"))
+              .catch(() => snackbar.error("Clipboard is not available"));
           }}
         >
           Copy to clipboard

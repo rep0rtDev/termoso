@@ -20,6 +20,7 @@ import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import type { DragEvent, MouseEvent, ReactNode } from "react";
 import { PqBadge, StatusDot } from "@/terminal/TerminalPane";
+import { MultiplayerTabButton } from "@/terminal/MultiplayerControl";
 import {
   HOME_TAB,
   clearBuffer,
@@ -449,7 +450,10 @@ function TerminalTopTab({
         }
         trailing={
           !workspace && tab.paneIds.length === 1 ? (
-            <PqBadge algorithms={pane.algorithms} size={13} />
+            <>
+              <PqBadge algorithms={pane.algorithms} size={13} />
+              {active && pane.status === "connected" && <MultiplayerTabButton paneId={pane.id} />}
+            </>
           ) : null
         }
         onClose={() => closeTab(tab.id)}

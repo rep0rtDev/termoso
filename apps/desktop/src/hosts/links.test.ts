@@ -195,4 +195,17 @@ describe("links", () => {
     expect(parseLink("ssh://")).toMatchObject({ kind: "unsupported" });
     expect(parseLink("https://example.com")).toMatchObject({ kind: "unsupported" });
   });
+
+  it("parses multiplayer join links", () => {
+    const secret = "A".repeat(43);
+    const link = `termoso://join/${ID}?s=https%3A%2F%2Fcloud.example.com#${secret}`;
+    expect(parseLink(link)).toEqual({ kind: "live", link });
+    expect(parseLink(`termoso://join/${ID}#${secret}`)).toEqual({
+      kind: "live",
+      link: `termoso://join/${ID}#${secret}`,
+    });
+    expect(parseLink(`termoso://join/${ID}`)).toMatchObject({ kind: "unsupported" });
+    expect(parseLink(`termoso://join/${ID}#short`)).toMatchObject({ kind: "unsupported" });
+    expect(parseLink(`termoso://join/nope#${secret}`)).toMatchObject({ kind: "unsupported" });
+  });
 });

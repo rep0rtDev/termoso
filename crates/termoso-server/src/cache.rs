@@ -38,6 +38,11 @@ impl Cache {
         format!("{}events", self.prefix)
     }
 
+    /// Channel carrying multiplayer relay frames between instances.
+    pub fn live_channel(&self) -> String {
+        format!("{}live", self.prefix)
+    }
+
     fn key(&self, key: &str) -> String {
         format!("{}{key}", self.prefix)
     }
@@ -111,5 +116,59 @@ impl Cache {
         let body = serde_json::to_vec(event)?;
         let _: () = c.publish(self.events_channel(), body).await?;
         Ok(())
+    }
+
+    /// Publish an opaque frame on the multiplayer channel.
+    pub async fn publish_live(&self, frame: Vec<u8>) -> ApiResult<()> {
+        let mut c = self.conn.clone();
+        let _: () = c.publish(self.live_channel(), frame).await?;
+        Ok(())
+    }
+
+    pub async fn hset_json<T: Serialize>(
+        &self,
+        key: &str,
+        field: &str,
+        value: &T,
+        ttl: Duration,
+    ) -> ApiResult<()> {
+        let mut c = self.conn.clone();
+        let body = serde_json::to_vec(value)?;
+        let k = self.key(key);
+        let _: () = redis::pipe()
+            .hset(&k, field, body)
+            .ignore()
+            .expire(&k, ttl.as_secs().max(1) as i64)
+            .ignore()
+            .query_async(&mut c)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn hget_json<T: DeserializeOwned>(
+        &self,
+        key: &str,
+        field: &str,
+    ) -> ApiResult<Option<T>> {
+        let mut c = self.conn.clone();
+        let raw: Option<Vec<u8>> = c.hget(self.key(key), field).await?;
+        Ok(match raw {
+            Some(b) => Some(serde_json::from_slice(&b)?),
+            None => None,
+        })
+    }
+
+    pub async fn hdel(&self, key: &str, field: &str) -> ApiResult<()> {
+        let mut c = self.conn.clone();
+        let _: () = c.hdel(self.key(key), field).await?;
+        Ok(())
+    }
+
+    pub async fn hgetall_json<T: DeserializeOwned>(&self, key: &str) -> ApiResult<Vec<T>> {
+        let mut c = self.conn.clone();
+        let raw: Vec<(String, Vec<u8>)> = c.hgetall(self.key(key)).await?;
+        raw.into_iter()
+            .map(|(_, b)| serde_json::from_slice(&b).map_err(Into::into))
+            .collect()
     }
 }

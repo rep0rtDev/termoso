@@ -148,6 +148,10 @@ pub fn router(state: AppState) -> Router {
         .route("/logs/{id}/download", get(logs::download))
         // realtime
         .route("/ws", get(crate::ws::handler))
+        // multiplayer
+        .route("/live", get(crate::live::list).post(crate::live::create))
+        .route("/live/{id}/stop", post(crate::live::stop))
+        .route("/live/{id}/ws", get(crate::live::ws))
         // admin
         .route("/admin/stats", get(admin::stats))
         .route("/admin/users", get(admin::users))

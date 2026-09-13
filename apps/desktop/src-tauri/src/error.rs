@@ -51,6 +51,8 @@ impl From<CoreError> for DesktopError {
                     "conflict"
                 } else if code == codes::RATE_LIMITED {
                     "rate_limited"
+                } else if code == codes::MULTIPLAYER_DISABLED {
+                    "multiplayer_disabled"
                 } else if code == codes::UNAUTHORIZED || code == codes::TOKEN_EXPIRED {
                     "unauthorized"
                 } else {
