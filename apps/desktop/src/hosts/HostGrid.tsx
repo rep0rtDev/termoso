@@ -1,27 +1,116 @@
-import { Box, Chip, IconButton, Tooltip } from "@mui/material";
+import { Box, IconButton, Tooltip } from "@mui/material";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
-import type { MouseEvent } from "react";
-import type { GroupNode, HostCard } from "@/ipc/types";
-import { CardGrid, EntityCard, IconTile, SectionTitle } from "@/components/ui";
+import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
+import type { MouseEvent, ReactNode } from "react";
+import { hostProtocols, type GroupNode, type HostCard } from "@/ipc/types";
+import { CardGrid, CheckTile, EntityCard, IconTile, SectionTitle } from "@/components/ui";
 import { HostAvatar } from "./HostAvatar";
+import type { HostDnd } from "./dnd";
 
 export interface HostCollectionProps {
   groups: GroupNode[];
   hosts: HostCard[];
+  /** Host open in the editor. */
   selectedId: string | null;
+  /** Multi-selection (checkboxes / ⌘-click). */
+  checked: ReadonlySet<string>;
   showPath: boolean;
   onOpenGroup: (id: string) => void;
   onEditGroup: (g: GroupNode) => void;
-  onOpenHost: (h: HostCard) => void;
+  onGroupContext: (g: GroupNode, e: MouseEvent<HTMLElement>) => void;
+  /** Plain click: modifier keys turn it into a selection toggle / range. */
+  onOpenHost: (h: HostCard, e: MouseEvent<HTMLElement>) => void;
+  onToggleHost: (h: HostCard) => void;
   onConnectHost: (h: HostCard) => void;
   onHostContext: (h: HostCard, e: MouseEvent<HTMLElement>) => void;
+  /** Drag hosts onto group cards. */
+  dnd?: HostDnd;
 }
 
+const CLOUD_SHORT: Record<string, string> = {
+  "Amazon AWS": "AWS",
+  DigitalOcean: "DigitalOcean",
+  azure: "Azure",
+};
+
+/** Termius' card line: protocols, then username, then tags, then the cloud it came from. */
 export function hostSubtitle(h: HostCard) {
-  const port = h.protocol === "telnet" || h.port !== 22 ? `:${h.port}` : "";
-  return `${h.username ? `${h.username}@` : ""}${h.address}${port}`;
+  const parts: string[] = [...hostProtocols(h)];
+  if (h.username) parts.push(h.username);
+  parts.push(...h.tags);
+  if (h.cloudProvider) parts.push(CLOUD_SHORT[h.cloudProvider] ?? h.cloudProvider);
+  return parts.join(", ");
+}
+
+/** `user@address:port` of the given protocol (primary by default), as typed in a terminal. */
+export function hostTarget(h: HostCard, protocol: string = h.protocol) {
+  if (protocol === "telnet" && h.protocol !== "telnet") {
+    return `${h.address}:${h.telnetPort ?? 23}`;
+  }
+  return `${h.username ? `${h.username}@` : ""}${h.address}:${h.port}`;
+}
+
+export function groupSubtitle(g: GroupNode) {
+  const parts = [];
+  if (g.groupCount > 0) parts.push(`${g.groupCount} group${g.groupCount === 1 ? "" : "s"}`);
+  parts.push(`${g.hostCount} host${g.hostCount === 1 ? "" : "s"}`);
+  return parts.join(", ");
+}
+
+/** Card tile that doubles as the selection toggle (see `CheckTile`). */
+export function SelectableTile({
+  tile,
+  checked,
+  onToggle,
+  size,
+}: {
+  tile: ReactNode;
+  checked: boolean;
+  onToggle: () => void;
+  size: number;
+}) {
+  return (
+    <Box
+      role="checkbox"
+      aria-checked={checked}
+      aria-label="Select"
+      tabIndex={-1}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      onDoubleClick={(e) => e.stopPropagation()}
+      sx={{ display: "flex", flexShrink: 0, cursor: "pointer" }}
+    >
+      <CheckTile tile={tile} checked={checked} hoverHint size={size} />
+    </Box>
+  );
+}
+
+export function GroupTile({ g, size }: { g: GroupNode; size?: number }) {
+  return (
+    <IconTile size={size} sx={{ position: "relative" }}>
+      <FolderRoundedIcon />
+      {g.hasConfig && (
+        <Tooltip title="Hosts inherit credentials from this group">
+          <KeyRoundedIcon
+            sx={{
+              position: "absolute",
+              right: -3,
+              bottom: -3,
+              fontSize: "12px !important",
+              color: "primary.main",
+              bgcolor: "surface.high",
+              borderRadius: "50%",
+              p: "2px",
+            }}
+          />
+        </Tooltip>
+      )}
+    </IconTile>
+  );
 }
 
 export function HostGrid(p: HostCollectionProps) {
@@ -35,24 +124,19 @@ export function HostGrid(p: HostCollectionProps) {
               <EntityCard
                 key={g.id}
                 dense
-                tile={
-                  <IconTile>
-                    <FolderRoundedIcon />
-                  </IconTile>
-                }
+                tile={<GroupTile g={g} />}
                 title={g.label}
-                subtitle={`${g.hostCount} host${g.hostCount === 1 ? "" : "s"}`}
+                subtitle={groupSubtitle(g)}
                 onClick={() => p.onOpenGroup(g.id)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  p.onEditGroup(g);
-                }}
+                onContextMenu={(e) => p.onGroupContext(g, e)}
+                drag={p.dnd?.dropGroup(g)}
+                dropping={p.dnd?.dropping === g.id}
                 actions={
                   <IconButton
                     aria-label="Group options"
                     onClick={(e) => {
                       e.stopPropagation();
-                      p.onEditGroup(g);
+                      p.onGroupContext(g, e);
                     }}
                   >
                     <MoreHorizRoundedIcon fontSize="small" />
@@ -67,56 +151,59 @@ export function HostGrid(p: HostCollectionProps) {
         <Box>
           {p.groups.length > 0 && <SectionTitle>Hosts</SectionTitle>}
           <CardGrid min={280}>
-            {p.hosts.map((h) => (
-              <EntityCard
-                key={h.id}
-                tile={<HostAvatar host={h} />}
-                title={h.label}
-                subtitle={
-                  p.showPath && h.groupPath.length > 0
-                    ? `${hostSubtitle(h)} · ${h.groupPath.join(" / ")}`
-                    : hostSubtitle(h)
-                }
-                selected={h.id === p.selectedId}
-                onClick={() => p.onOpenHost(h)}
-                onDoubleClick={() => p.onConnectHost(h)}
-                onContextMenu={(e) => p.onHostContext(h, e)}
-                meta={
-                  h.tags.length > 0 ? (
+            {p.hosts.map((h) => {
+              const isChecked = p.checked.has(h.id);
+              return (
+                <EntityCard
+                  key={h.id}
+                  className="entity-card"
+                  tile={
+                    <SelectableTile
+                      tile={<HostAvatar host={h} />}
+                      checked={isChecked}
+                      onToggle={() => p.onToggleHost(h)}
+                      size={40}
+                    />
+                  }
+                  title={h.label}
+                  subtitle={
+                    p.showPath && h.groupPath.length > 0
+                      ? `${hostSubtitle(h)} · ${h.groupPath.join(" / ")}`
+                      : hostSubtitle(h)
+                  }
+                  selected={isChecked || h.id === p.selectedId}
+                  onClick={(e) => p.onOpenHost(h, e)}
+                  onDoubleClick={() => p.onConnectHost(h)}
+                  onContextMenu={(e) => p.onHostContext(h, e)}
+                  drag={p.dnd?.dragHost(h)}
+                  sx={p.dnd?.dragging.has(h.id) ? { opacity: 0.45 } : undefined}
+                  actions={
                     <>
-                      {h.tags.slice(0, 3).map((t) => (
-                        <Chip key={t} size="small" label={t} />
-                      ))}
-                      {h.tags.length > 3 && <Chip size="small" label={`+${h.tags.length - 3}`} />}
-                    </>
-                  ) : undefined
-                }
-                actions={
-                  <>
-                    <Tooltip title="Connect">
+                      <Tooltip title="Connect">
+                        <IconButton
+                          aria-label={`Connect to ${h.label}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            p.onConnectHost(h);
+                          }}
+                        >
+                          <PlayArrowRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                       <IconButton
-                        aria-label={`Connect to ${h.label}`}
+                        aria-label="Host options"
                         onClick={(e) => {
                           e.stopPropagation();
-                          p.onConnectHost(h);
+                          p.onHostContext(h, e);
                         }}
                       >
-                        <PlayArrowRoundedIcon fontSize="small" />
+                        <MoreHorizRoundedIcon fontSize="small" />
                       </IconButton>
-                    </Tooltip>
-                    <IconButton
-                      aria-label="Host options"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        p.onHostContext(h, e);
-                      }}
-                    >
-                      <MoreHorizRoundedIcon fontSize="small" />
-                    </IconButton>
-                  </>
-                }
-              />
-            ))}
+                    </>
+                  }
+                />
+              );
+            })}
           </CardGrid>
         </Box>
       )}

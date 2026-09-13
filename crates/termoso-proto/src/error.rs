@@ -47,4 +47,8 @@ pub mod codes {
     pub const ACCOUNT_DISABLED: &str = "account_disabled";
     /// Email must be verified first.
     pub const EMAIL_UNVERIFIED: &str = "email_unverified";
+    /// The team requires two-factor authentication for vault access.
+    pub const MFA_REQUIRED: &str = "mfa_required";
+    /// A team of the user switched multiplayer off.
+    pub const MULTIPLAYER_DISABLED: &str = "multiplayer_disabled";
 }

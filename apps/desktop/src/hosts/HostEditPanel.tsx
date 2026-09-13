@@ -1,56 +1,74 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Box,
   Button,
-  Chip,
+  Divider,
   IconButton,
-  InputAdornment,
+  ListSubheader,
   MenuItem,
-  Switch,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from "@mui/material";
-import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
-import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
-import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import ExpandLessRoundedIcon from "@mui/icons-material/ExpandLessRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import AddCircleOutlineRoundedIcon from "@mui/icons-material/AddCircleOutlineRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
-import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import LabelOutlinedIcon from "@mui/icons-material/LabelOutlined";
+import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
+import { distroIcon } from "./distroIcons";
+import { DistroGlyph, ProtocolGlyph } from "./HostAvatar";
+import { ConnectButton } from "./ConnectSplit";
+import { TagsPopover } from "./TagsPopover";
+import { AgentForwardingRow, CredentialsFields } from "./CredentialsFields";
+import { Field, IconTile, Loading, SectionCard, SidePanel, ToolIconButton } from "@/components/ui";
 import {
-  Field,
-  Loading,
-  SectionCard,
-  SettingRow,
-  SidePanel,
-  ToolIconButton,
-} from "@/components/ui";
-import {
-  useCreateTag,
   useDeleteHost,
   useGroups,
   useHostChains,
   useHostForm,
-  useIdentities,
+  useInherited,
   useProxies,
   useSaveHost,
   useSnippets,
-  useSshKeys,
   useTags,
 } from "@/ipc/hooks";
-import { emptyHostForm, errorMessage, type HostForm, type Uuid } from "@/ipc/types";
-import { goToSftp } from "@/app/navigation";
+import {
+  emptyHostForm,
+  errorMessage,
+  type ConnectProtocol,
+  type HostForm,
+  type HostProtocol,
+  type IpVersion,
+  type TelnetForm,
+  type Uuid,
+} from "@/ipc/types";
+import { useActiveVault } from "@/app/vault";
 import { openTerminal } from "@/terminal/store";
-import { openSftpForHost } from "@/sftp/store";
+import { terminalThemes } from "@/terminal/themes";
 import { monoFontFamily, sizes } from "@/theme/theme";
 import { ChainDialog, ProxyDialog } from "./HostAdvancedDialogs";
+
+const IP_VERSIONS: { value: IpVersion; label: string }[] = [
+  { value: "auto", label: "Auto" },
+  { value: "4", label: "IPv4" },
+  { value: "6", label: "IPv6" },
+];
+
+const emptyTelnet = (): TelnetForm => ({
+  port: null,
+  username: "",
+  password: null,
+  identityId: null,
+  colorScheme: null,
+  hasPassword: false,
+});
 
 interface Props {
   vaultId: Uuid;
@@ -62,9 +80,10 @@ interface Props {
 /** Loads the form for an existing host (or starts blank) and hands it to the editor. */
 export function HostEditPanel({ vaultId, hostId, initialGroupId, onClose }: Props) {
   const loaded = useHostForm(hostId);
+  const blank = useMemo(() => emptyHostForm(vaultId, initialGroupId), [vaultId, initialGroupId]);
   if (hostId !== null && loaded.data === undefined) {
     return (
-      <SidePanel title="Edit host" onClose={onClose} width={sizes.panel}>
+      <SidePanel title="Host Details" onClose={onClose} width={sizes.panel}>
         {loaded.error ? (
           <Typography color="error">{errorMessage(loaded.error)}</Typography>
         ) : (
@@ -77,11 +96,14 @@ export function HostEditPanel({ vaultId, hostId, initialGroupId, onClose }: Prop
     <HostEditor
       vaultId={vaultId}
       hostId={hostId}
-      initial={loaded.data ?? emptyHostForm(vaultId, initialGroupId)}
+      initial={loaded.data ?? blank}
       onClose={onClose}
     />
   );
 }
+
+/** Same default as the `mosh` wrapper and Termius; shown as the placeholder. */
+const MOSH_DEFAULT_SERVER_COMMAND = "mosh-server new -s -c 256 -l LANG=en_US.UTF-8";
 
 const clampPort = (raw: string) =>
   raw === "" ? null : Math.max(1, Math.min(65535, Number(raw) || 1));
@@ -89,6 +111,21 @@ const clampPort = (raw: string) =>
 const clampSeconds = (raw: string) =>
   raw === "" ? null : Math.max(0, Math.min(86400, Math.floor(Number(raw) || 0)));
 
+const protocolsOf = (f: HostForm): ConnectProtocol[] => [
+  ...(f.ssh ? (["ssh"] as const) : []),
+  ...(f.ssh && f.useMosh ? (["mosh"] as const) : []),
+  ...(f.telnet ? (["telnet"] as const) : []),
+];
+
+/** What the bottom Connect opens: Mosh when enabled, else the first section. */
+const primaryOf = (f: HostForm): ConnectProtocol | null =>
+  f.ssh ? (f.useMosh ? "mosh" : "ssh") : f.telnet ? "telnet" : null;
+
+/**
+ * Host Details laid out the Termius way: Address → General → "SSH on … port"
+ * (credentials, Show more) → "Telnet on … port" (or "+ Add Telnet"), with
+ * Connect pinned at the bottom.
+ */
 function HostEditor({
   vaultId,
   hostId,
@@ -103,8 +140,6 @@ function HostEditor({
   const snackbar = useSnackbar();
   const groups = useGroups(vaultId);
   const tags = useTags(vaultId);
-  const identities = useIdentities(vaultId);
-  const sshKeys = useSshKeys(vaultId);
   const snippets = useSnippets(vaultId);
   const proxies = useProxies(vaultId);
   const chains = useHostChains(vaultId);
@@ -112,57 +147,66 @@ function HostEditor({
   const del = useDeleteHost();
 
   const [form, setForm] = useState<HostForm>(initial);
-  const [showPassword, setShowPassword] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [seen, setSeen] = useState(initial);
   const [touched, setTouched] = useState(false);
+  // The host can change underneath an untouched editor (cloud import, sync):
+  // follow the stored form until the user starts editing.
+  if (seen !== initial) {
+    setSeen(initial);
+    if (!touched) setForm(initial);
+  }
+  const inherited = useInherited(form.groupId);
+  const inh = inherited.data ?? null;
+  const inheritedFrom = inh && inh.groupPath.length > 0 ? inh.groupPath.join(" / ") : null;
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [more, setMore] = useState(
     initial.hostChainId !== null ||
       initial.proxyId !== null ||
       initial.startupSnippetId !== null ||
       initial.envVariables.length > 0 ||
+      initial.agentForwarding ||
       initial.keepAliveInterval !== null ||
-      initial.timeout !== null,
+      initial.timeout !== null ||
+      initial.useMosh ||
+      initial.colorScheme !== null,
   );
   const [dialog, setDialog] = useState<"proxy" | "chain" | null>(null);
-  const [newTag, setNewTag] = useState("");
-  const createTag = useCreateTag();
-
-  const addTag = () => {
-    const label = newTag.trim();
-    if (!label) return;
-    const existing = (tags.data ?? []).find((t) => t.label.toLowerCase() === label.toLowerCase());
-    if (existing) {
-      if (!form.tagIds.includes(existing.id)) set("tagIds", [...form.tagIds, existing.id]);
-      setNewTag("");
-      return;
-    }
-    createTag.mutate(
-      { vaultId, label },
-      {
-        onSuccess: (e) => {
-          set("tagIds", [...form.tagIds, e.id]);
-          setNewTag("");
-        },
-        onError: (err) => snackbar.error(errorMessage(err)),
-      },
-    );
-  };
+  const [tagAnchor, setTagAnchor] = useState<HTMLElement | null>(null);
 
   const set = <K extends keyof HostForm>(k: K, v: HostForm[K]) => {
     setTouched(true);
     setForm((f) => ({ ...f, [k]: v }));
   };
+  const patch = (p: Partial<HostForm>) => {
+    setTouched(true);
+    setForm((f) => ({ ...f, ...p }));
+  };
+  const patchTelnet = (p: Partial<TelnetForm>) => {
+    setTouched(true);
+    setForm((f) => ({ ...f, telnet: { ...(f.telnet ?? emptyTelnet()), ...p } }));
+  };
 
-  const ssh = form.protocol === "ssh";
-  const usingIdentity = form.identityId !== null;
-  const canSave = form.address.trim().length > 0 && !save.isPending;
-  const defaultPort = ssh ? 22 : 23;
+  const readOnly = useActiveVault().readOnly;
+  const protocols = protocolsOf(form);
+  const canSave =
+    form.address.trim().length > 0 && protocols.length > 0 && !save.isPending && !readOnly;
+  const sshPortPlaceholder = String(inh?.port ?? 22);
+  const chainName = (id: Uuid | null) =>
+    (chains.data ?? []).find((c) => c.id === id)?.data.label ?? null;
+  const proxyName = (id: Uuid | null) => {
+    const p = (proxies.data ?? []).find((c) => c.id === id);
+    return p ? `${p.data.kind.toUpperCase()} ${p.data.host}:${p.data.port}` : null;
+  };
+  const icon = distroIcon(form.icon) ?? distroIcon(form.osName);
+  const glyphProtocol: HostProtocol = form.ssh ? "ssh" : "telnet";
+  const selectedTags = (tags.data ?? []).filter((t) => form.tagIds.includes(t.id));
+  const selectedTagIds = new Set(form.tagIds);
 
-  const onSave = (thenConnect: boolean) => {
+  const onSave = (thenConnect: ConnectProtocol | null) => {
     save.mutate(form, {
       onSuccess: (card) => {
         snackbar.notify(hostId ? "Host saved" : `Host “${card.label}” added`);
-        if (thenConnect) openTerminal({ kind: "host", host_id: card.id });
+        if (thenConnect) openTerminal({ kind: "host", host_id: card.id, protocol: thenConnect });
         onClose();
       },
       onError: (e) => snackbar.error(errorMessage(e)),
@@ -186,63 +230,37 @@ function HostEditor({
 
   const footer =
     hostId && !touched ? (
-      <>
-        <Button color="inherit" onClick={onClose}>
-          Close
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={<PlayArrowRoundedIcon />}
-          onClick={() => openTerminal({ kind: "host", host_id: hostId })}
-        >
-          Connect
-        </Button>
-      </>
+      <ConnectButton hostId={hostId} protocol={primaryOf(form)} />
     ) : (
       <>
-        <Button color="inherit" onClick={onClose} disabled={save.isPending}>
-          Cancel
-        </Button>
-        {!hostId && (
-          <Button variant="tonal" disabled={!canSave} onClick={() => onSave(true)}>
-            Save & connect
-          </Button>
-        )}
-        <Button variant="contained" disabled={!canSave} onClick={() => onSave(false)}>
+        <Button
+          variant="tonal"
+          size="large"
+          disabled={!canSave}
+          onClick={() => onSave(null)}
+          sx={{ height: 40, borderRadius: 2.5, flex: "0 0 auto !important", px: 2.5 }}
+        >
           {save.isPending ? "Saving…" : "Save"}
         </Button>
+        <ConnectButton
+          hostId={hostId}
+          disabled={!canSave}
+          onClick={() => onSave(primaryOf(form))}
+        />
       </>
     );
 
   return (
     <SidePanel
-      title={hostId ? form.label || form.address || "Edit host" : "New host"}
-      subtitle={hostId ? (ssh ? "SSH host" : "Telnet host") : undefined}
+      title="Host Details"
+      subtitle={hostId ? form.label || form.address : "New host"}
       onClose={onClose}
       width={sizes.panel}
       actions={
         hostId && (
-          <>
-            {ssh && (
-              <ToolIconButton
-                title={touched ? "Save before opening SFTP" : "Open SFTP"}
-                disabled={touched}
-                onClick={() => {
-                  openSftpForHost(hostId, form.label || form.address);
-                  goToSftp();
-                }}
-              >
-                <FolderCopyRoundedIcon fontSize="small" />
-              </ToolIconButton>
-            )}
-            <ToolIconButton
-              title="Delete host"
-              color="error"
-              onClick={() => setConfirmDelete(true)}
-            >
-              <DeleteOutlineRoundedIcon fontSize="small" />
-            </ToolIconButton>
-          </>
+          <ToolIconButton title="Delete host" color="error" onClick={() => setConfirmDelete(true)}>
+            <DeleteOutlineRoundedIcon fontSize="small" />
+          </ToolIconButton>
         )
       }
       footer={footer}
@@ -251,436 +269,478 @@ function HostEditor({
         component="form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (canSave && (touched || !hostId)) onSave(false);
+          if (canSave && (touched || !hostId)) onSave(null);
         }}
         sx={{ display: "contents" }}
       >
         <SectionCard title="Address">
-          <Field label="Address">
+          <Box sx={{ display: "flex", gap: 1.5, alignItems: "center" }}>
+            <IconTile size={sizes.tile} color={icon?.color}>
+              {icon ? <DistroGlyph icon={icon} /> : <ProtocolGlyph protocol={glyphProtocol} />}
+            </IconTile>
             <TextField
               required
               autoFocus={!hostId}
               value={form.address}
               onChange={(e) => set("address", e.target.value)}
-              placeholder="hostname or IP"
+              placeholder="IP or Hostname"
               slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
               error={touched && form.address.trim().length === 0}
+              sx={{ flex: 1 }}
             />
-          </Field>
-          <Field label="Label">
-            <TextField
-              value={form.label}
-              onChange={(e) => set("label", e.target.value)}
-              placeholder={form.address || "Defaults to the address"}
-            />
-          </Field>
-          <Field label="Group">
-            <TextField
-              select
-              value={form.groupId ?? ""}
-              onChange={(e) => set("groupId", e.target.value === "" ? null : e.target.value)}
+          </Box>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+              IP version
+            </Typography>
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={form.ipVersion}
+              onChange={(_e, v: IpVersion | null) => {
+                if (v) set("ipVersion", v);
+              }}
             >
-              <MenuItem value="">
-                <em>None</em>
-              </MenuItem>
-              {(groups.data ?? []).map((g) => (
-                <MenuItem key={g.id} value={g.id}>
-                  {g.label}
-                </MenuItem>
+              {IP_VERSIONS.map((o) => (
+                <ToggleButton key={o.value} value={o.value} sx={{ px: 1.5 }}>
+                  {o.label}
+                </ToggleButton>
               ))}
-            </TextField>
-          </Field>
-          <Box sx={{ display: "flex", gap: 1.5, alignItems: "flex-end" }}>
-            <Field label="Protocol" sx={{ flex: 1 }}>
-              <ToggleButtonGroup
-                exclusive
-                fullWidth
-                value={form.protocol}
-                onChange={(_e, v: HostForm["protocol"] | null) => {
-                  if (v) set("protocol", v);
-                }}
-              >
-                <ToggleButton value="ssh">SSH</ToggleButton>
-                <ToggleButton value="telnet">Telnet</ToggleButton>
-              </ToggleButtonGroup>
-            </Field>
-            <Field label="Port" sx={{ width: 104, flexShrink: 0 }}>
-              <TextField
-                type="number"
-                value={form.port ?? ""}
-                onChange={(e) => set("port", clampPort(e.target.value))}
-                placeholder={String(defaultPort)}
-                slotProps={{ htmlInput: { min: 1, max: 65535 } }}
-              />
-            </Field>
+            </ToggleButtonGroup>
           </Box>
         </SectionCard>
 
-        <SectionCard title="Credentials">
-          <Field label="Use">
-            <TextField
-              select
-              value={form.identityId ?? "inline"}
-              onChange={(e) => {
-                const v = e.target.value;
-                set("identityId", v === "inline" ? null : v);
-              }}
-            >
-              <MenuItem value="inline">Credentials set on this host</MenuItem>
-              {(identities.data ?? []).map((i) => (
-                <MenuItem key={i.id} value={i.id}>
-                  {i.label}
-                  <Typography
+        <SectionCard title="General">
+          <TextField
+            value={form.label}
+            onChange={(e) => set("label", e.target.value)}
+            placeholder="Label"
+          />
+          <TextField
+            select
+            value={form.groupId ?? ""}
+            onChange={(e) => set("groupId", e.target.value === "" ? null : e.target.value)}
+            slotProps={{
+              select: {
+                displayEmpty: true,
+                renderValue: (v) => {
+                  const g = (groups.data ?? []).find((x) => x.id === v);
+                  return (
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+                      <FolderOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                      <Box component="span" sx={{ color: g ? "text.primary" : "text.disabled" }}>
+                        {g?.label ?? "Parent Group"}
+                      </Box>
+                    </Box>
+                  );
+                },
+              },
+            }}
+          >
+            <MenuItem value="">
+              <em>No group</em>
+            </MenuItem>
+            {(groups.data ?? []).map((g) => (
+              <MenuItem key={g.id} value={g.id}>
+                {g.label}
+              </MenuItem>
+            ))}
+          </TextField>
+          {inheritedFrom &&
+            inh &&
+            (inh.username !== null ||
+              inh.hasPassword ||
+              inh.sshKeyId !== null ||
+              inh.identityId !== null ||
+              inh.port !== null) && (
+              <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+                Inherits credentials and connection defaults from {inheritedFrom}.
+              </Typography>
+            )}
+          <Box
+            component="button"
+            type="button"
+            onClick={(e) => setTagAnchor(e.currentTarget)}
+            aria-label="Tags"
+            sx={{
+              all: "unset",
+              boxSizing: "border-box",
+              display: "flex",
+              alignItems: "center",
+              gap: 1.25,
+              minHeight: sizes.control,
+              px: 1.5,
+              py: 0.5,
+              borderRadius: 1.5,
+              border: 1,
+              borderColor: "border.basic",
+              cursor: "pointer",
+              "&:hover": { borderColor: "border.strong" },
+              "&:focus-visible": { borderColor: "primary.main" },
+            }}
+          >
+            <LabelOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
+            {selectedTags.length === 0 ? (
+              <Typography variant="body1" sx={{ color: "text.disabled" }}>
+                Tags
+              </Typography>
+            ) : (
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, flex: 1 }}>
+                {selectedTags.map((t) => (
+                  <Box
+                    key={t.id}
                     component="span"
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ ml: 1 }}
+                    sx={{
+                      px: 1,
+                      height: 22,
+                      lineHeight: "22px",
+                      borderRadius: 1,
+                      bgcolor: "surface.highest",
+                      fontSize: 12,
+                      fontWeight: 500,
+                    }}
                   >
-                    {i.username}
-                  </Typography>
-                </MenuItem>
-              ))}
-            </TextField>
-          </Field>
-          {!usingIdentity && (
-            <>
-              <Field label="Username">
-                <TextField
-                  value={form.username}
-                  onChange={(e) => set("username", e.target.value)}
-                  autoComplete="off"
-                  placeholder="root"
-                />
-              </Field>
-              <Field
-                label="Password"
-                hint={
-                  form.hasPassword && form.password === null
-                    ? "A password is stored. Type to replace it or clear it to remove."
-                    : undefined
-                }
-              >
-                <TextField
-                  type={showPassword ? "text" : "password"}
-                  value={form.password ?? ""}
-                  onChange={(e) => set("password", e.target.value)}
-                  autoComplete="new-password"
-                  placeholder={form.hasPassword && form.password === null ? "••••••••" : ""}
-                  slotProps={{
-                    input: {
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          {form.hasPassword && form.password === null && (
-                            <Button
-                              size="small"
-                              color="inherit"
-                              onClick={() => set("password", "")}
-                            >
-                              Clear
-                            </Button>
-                          )}
-                          <IconButton
-                            size="small"
-                            onClick={() => setShowPassword((v) => !v)}
-                            aria-label="Toggle password visibility"
-                          >
-                            {showPassword ? (
-                              <VisibilityOffRoundedIcon fontSize="small" />
-                            ) : (
-                              <VisibilityRoundedIcon fontSize="small" />
-                            )}
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    },
-                  }}
-                />
-              </Field>
-              {ssh && (
-                <Field label="SSH key">
+                    {t.label}
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </Box>
+          <TextField
+            multiline
+            minRows={1}
+            maxRows={6}
+            value={form.notes}
+            onChange={(e) => set("notes", e.target.value)}
+            placeholder="Notes"
+          />
+        </SectionCard>
+
+        {form.ssh ? (
+          <SectionCard
+            title={
+              <PortTitle
+                name="SSH"
+                value={form.port}
+                placeholder={sshPortPlaceholder}
+                onChange={(v) => set("port", v)}
+              />
+            }
+            action={
+              form.telnet && (
+                <Tooltip title="Remove SSH">
+                  <IconButton
+                    size="small"
+                    aria-label="Remove SSH"
+                    onClick={() => set("ssh", false)}
+                  >
+                    <CloseRoundedIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              )
+            }
+          >
+            <Divider />
+            <CredentialsFields
+              vaultId={vaultId}
+              ssh
+              agentForwarding={false}
+              inherited={inh}
+              inlineLabel="Set on this host"
+              value={form}
+              onChange={patch}
+            />
+
+            <Button
+              variant="text"
+              color="inherit"
+              onClick={() => setMore((v) => !v)}
+              endIcon={more ? <ExpandLessRoundedIcon /> : <ExpandMoreRoundedIcon />}
+              sx={{ alignSelf: "flex-start", color: "text.secondary", ml: -1 }}
+            >
+              {more ? "Show less" : "Show more"}
+            </Button>
+
+            {more && (
+              <>
+                <AgentForwardingRow value={form} onChange={patch} inherited={inh} />
+                <Field label="Startup snippet" hint="Runs right after the shell opens.">
                   <TextField
                     select
-                    value={form.sshKeyId ?? ""}
-                    onChange={(e) => set("sshKeyId", e.target.value === "" ? null : e.target.value)}
+                    value={form.startupSnippetId ?? ""}
+                    onChange={(e) =>
+                      set("startupSnippetId", e.target.value === "" ? null : e.target.value)
+                    }
                   >
                     <MenuItem value="">
-                      <em>None — password or agent</em>
+                      <em>None</em>
                     </MenuItem>
-                    {(sshKeys.data ?? []).map((k) => (
-                      <MenuItem key={k.id} value={k.id}>
-                        {k.label}
+                    {(snippets.data ?? []).map((s) => (
+                      <MenuItem key={s.id} value={s.id}>
+                        {s.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Field>
+                <Field label="Host Chaining">
+                  <TextField
+                    select
+                    value={form.hostChainId ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "__new") setDialog("chain");
+                      else set("hostChainId", v === "" ? null : v);
+                    }}
+                  >
+                    <MenuItem value="">
+                      <em>
+                        {inh?.hostChainId && chainName(inh.hostChainId)
+                          ? `Inherited — ${chainName(inh.hostChainId)}`
+                          : "Direct connection"}
+                      </em>
+                    </MenuItem>
+                    {(chains.data ?? []).map((c) => (
+                      <MenuItem key={c.id} value={c.id}>
+                        {c.data.label}
                         <Typography
                           component="span"
                           variant="caption"
                           color="text.secondary"
                           sx={{ ml: 1 }}
                         >
-                          {k.keyType}
+                          {c.data.host_ids.length} hop{c.data.host_ids.length === 1 ? "" : "s"}
                         </Typography>
                       </MenuItem>
                     ))}
+                    <MenuItem value="__new" sx={{ color: "primary.main" }}>
+                      <AddRoundedIcon fontSize="small" sx={{ mr: 1 }} />
+                      New host chain…
+                    </MenuItem>
                   </TextField>
                 </Field>
-              )}
-            </>
-          )}
-          {ssh && (
-            <SettingRow
-              label="Agent forwarding"
-              hint="Expose the local SSH agent on the remote side."
-              last
-              control={
-                <Switch
-                  checked={form.agentForwarding}
-                  onChange={(e) => set("agentForwarding", e.target.checked)}
-                />
-              }
-            />
-          )}
-        </SectionCard>
-
-        <SectionCard title="Tags">
-          {(tags.data ?? []).length > 0 && (
-            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
-              {(tags.data ?? []).map((t) => {
-                const on = form.tagIds.includes(t.id);
-                return (
-                  <Chip
-                    key={t.id}
-                    label={t.label}
-                    size="small"
-                    color={on ? "primary" : "default"}
-                    variant={on ? "filled" : "outlined"}
-                    onClick={() =>
-                      set(
-                        "tagIds",
-                        on ? form.tagIds.filter((x) => x !== t.id) : [...form.tagIds, t.id],
-                      )
-                    }
-                  />
-                );
-              })}
-            </Box>
-          )}
-          <TextField
-            value={newTag}
-            onChange={(e) => setNewTag(e.target.value)}
-            placeholder="Add a tag and press Enter"
-            disabled={createTag.isPending}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter") return;
-              e.preventDefault();
-              addTag();
-            }}
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <LabelOutlinedIcon fontSize="small" />
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-        </SectionCard>
-
-        {ssh && (
-          <Button
-            variant="text"
-            color="inherit"
-            onClick={() => setMore((v) => !v)}
-            endIcon={more ? <ExpandLessRoundedIcon /> : <ExpandMoreRoundedIcon />}
-            sx={{ alignSelf: "flex-start", color: "text.secondary" }}
-          >
-            {more ? "Show less" : "Show more"}
-          </Button>
-        )}
-
-        {ssh && more && (
-          <>
-            <SectionCard title="Connection">
-              <Field label="Jump host">
-                <TextField
-                  select
-                  value={form.hostChainId ?? ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === "__new") setDialog("chain");
-                    else set("hostChainId", v === "" ? null : v);
-                  }}
-                >
-                  <MenuItem value="">
-                    <em>Direct connection</em>
-                  </MenuItem>
-                  {(chains.data ?? []).map((c) => (
-                    <MenuItem key={c.id} value={c.id}>
-                      {c.data.label}
-                      <Typography
-                        component="span"
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ ml: 1 }}
-                      >
-                        {c.data.host_ids.length} hop{c.data.host_ids.length === 1 ? "" : "s"}
-                      </Typography>
+                <Field label="Proxy">
+                  <TextField
+                    select
+                    value={form.proxyId ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "__new") setDialog("proxy");
+                      else set("proxyId", v === "" ? null : v);
+                    }}
+                  >
+                    <MenuItem value="">
+                      <em>
+                        {inh?.proxyId && proxyName(inh.proxyId)
+                          ? `Inherited — ${proxyName(inh.proxyId)}`
+                          : "None"}
+                      </em>
                     </MenuItem>
-                  ))}
-                  <MenuItem value="__new" sx={{ color: "primary.main" }}>
-                    <AddRoundedIcon fontSize="small" sx={{ mr: 1 }} />
-                    New host chain…
-                  </MenuItem>
-                </TextField>
-              </Field>
-              <Field label="Proxy">
-                <TextField
-                  select
-                  value={form.proxyId ?? ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === "__new") setDialog("proxy");
-                    else set("proxyId", v === "" ? null : v);
-                  }}
-                >
-                  <MenuItem value="">
-                    <em>None</em>
-                  </MenuItem>
-                  {(proxies.data ?? []).map((p) => (
-                    <MenuItem key={p.id} value={p.id}>
-                      {p.data.kind.toUpperCase()}
-                      <Typography
-                        component="span"
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ ml: 1, fontFamily: monoFontFamily }}
-                      >
-                        {p.data.host}:{p.data.port}
-                      </Typography>
+                    {(proxies.data ?? []).map((p) => (
+                      <MenuItem key={p.id} value={p.id}>
+                        {p.data.kind.toUpperCase()}
+                        <Typography
+                          component="span"
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ ml: 1, fontFamily: monoFontFamily }}
+                        >
+                          {p.data.host}:{p.data.port}
+                        </Typography>
+                      </MenuItem>
+                    ))}
+                    <MenuItem value="__new" sx={{ color: "primary.main" }}>
+                      <AddRoundedIcon fontSize="small" sx={{ mr: 1 }} />
+                      New proxy…
                     </MenuItem>
-                  ))}
-                  <MenuItem value="__new" sx={{ color: "primary.main" }}>
-                    <AddRoundedIcon fontSize="small" sx={{ mr: 1 }} />
-                    New proxy…
-                  </MenuItem>
-                </TextField>
-              </Field>
-              <Field label="Startup snippet" hint="Runs right after the shell opens.">
-                <TextField
-                  select
-                  value={form.startupSnippetId ?? ""}
-                  onChange={(e) =>
-                    set("startupSnippetId", e.target.value === "" ? null : e.target.value)
+                  </TextField>
+                </Field>
+                <Field
+                  label="Environment Variables"
+                  hint={
+                    inh && inh.envVariables.length > 0 && inheritedFrom
+                      ? `From ${inheritedFrom}: ${inh.envVariables.map(([k, v]) => `${k}=${v}`).join(", ")}`
+                      : "Sent with the session; the server must accept them (AcceptEnv)."
                   }
                 >
-                  <MenuItem value="">
-                    <em>None</em>
-                  </MenuItem>
-                  {(snippets.data ?? []).map((s) => (
-                    <MenuItem key={s.id} value={s.id}>
-                      {s.label}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Field>
-              <Box sx={{ display: "flex", gap: 1.5 }}>
-                <Field label="Keep-alive, s" sx={{ flex: 1 }}>
-                  <TextField
-                    type="number"
-                    value={form.keepAliveInterval ?? ""}
-                    onChange={(e) => set("keepAliveInterval", clampSeconds(e.target.value))}
-                    placeholder="default"
-                    slotProps={{ htmlInput: { min: 0, max: 86400 } }}
-                  />
-                </Field>
-                <Field label="Timeout, s" sx={{ flex: 1 }}>
-                  <TextField
-                    type="number"
-                    value={form.timeout ?? ""}
-                    onChange={(e) => set("timeout", clampSeconds(e.target.value))}
-                    placeholder="default"
-                    slotProps={{ htmlInput: { min: 0, max: 86400 } }}
-                  />
-                </Field>
-              </Box>
-            </SectionCard>
-
-            <SectionCard
-              title="Environment variables"
-              action={
-                <Button
-                  size="small"
-                  color="inherit"
-                  startIcon={<AddRoundedIcon />}
-                  onClick={() => set("envVariables", [...form.envVariables, ["", ""]])}
-                >
-                  Add
-                </Button>
-              }
-            >
-              {form.envVariables.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  Sent to the server with the session. The server must accept them (
-                  <code>AcceptEnv</code>).
-                </Typography>
-              ) : (
-                form.envVariables.map(([k, v], i) => (
-                  <Box key={i} sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                    <TextField
-                      value={k}
-                      placeholder="NAME"
-                      onChange={(e) =>
-                        set(
-                          "envVariables",
-                          form.envVariables.map((row, j) =>
-                            j === i ? [e.target.value, row[1]] : row,
-                          ),
-                        )
-                      }
-                      slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
-                      sx={{ flex: 1 }}
-                    />
-                    <TextField
-                      value={v}
-                      placeholder="value"
-                      onChange={(e) =>
-                        set(
-                          "envVariables",
-                          form.envVariables.map((row, j) =>
-                            j === i ? [row[0], e.target.value] : row,
-                          ),
-                        )
-                      }
-                      slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
-                      sx={{ flex: 1.4 }}
-                    />
-                    <IconButton
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                    {form.envVariables.map(([k, v], i) => (
+                      <Box key={i} sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                        <TextField
+                          value={k}
+                          placeholder="NAME"
+                          onChange={(e) =>
+                            set(
+                              "envVariables",
+                              form.envVariables.map((row, j) =>
+                                j === i ? [e.target.value, row[1]] : row,
+                              ),
+                            )
+                          }
+                          slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+                          sx={{ flex: 1 }}
+                        />
+                        <TextField
+                          value={v}
+                          placeholder="value"
+                          onChange={(e) =>
+                            set(
+                              "envVariables",
+                              form.envVariables.map((row, j) =>
+                                j === i ? [row[0], e.target.value] : row,
+                              ),
+                            )
+                          }
+                          slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+                          sx={{ flex: 1.4 }}
+                        />
+                        <IconButton
+                          size="small"
+                          aria-label="Remove variable"
+                          onClick={() =>
+                            set(
+                              "envVariables",
+                              form.envVariables.filter((_row, j) => j !== i),
+                            )
+                          }
+                        >
+                          <CloseRoundedIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                    <Button
                       size="small"
-                      aria-label="Remove variable"
-                      onClick={() =>
-                        set(
-                          "envVariables",
-                          form.envVariables.filter((_row, j) => j !== i),
-                        )
-                      }
+                      color="inherit"
+                      startIcon={<AddRoundedIcon />}
+                      onClick={() => set("envVariables", [...form.envVariables, ["", ""]])}
+                      sx={{ alignSelf: "flex-start", color: "text.secondary" }}
                     >
-                      <CloseRoundedIcon fontSize="small" />
-                    </IconButton>
+                      Add variable
+                    </Button>
                   </Box>
-                ))
-              )}
-            </SectionCard>
-          </>
+                </Field>
+                <Box sx={{ display: "flex", gap: 1.5 }}>
+                  <Field label="Keep-alive, s" sx={{ flex: 1 }}>
+                    <TextField
+                      type="number"
+                      value={form.keepAliveInterval ?? ""}
+                      onChange={(e) => set("keepAliveInterval", clampSeconds(e.target.value))}
+                      placeholder={inh?.keepAliveInterval?.toString() ?? "default"}
+                      slotProps={{ htmlInput: { min: 0, max: 86400 } }}
+                    />
+                  </Field>
+                  <Field label="Timeout, s" sx={{ flex: 1 }}>
+                    <TextField
+                      type="number"
+                      value={form.timeout ?? ""}
+                      onChange={(e) => set("timeout", clampSeconds(e.target.value))}
+                      placeholder={inh?.timeout?.toString() ?? "default"}
+                      slotProps={{ htmlInput: { min: 0, max: 86400 } }}
+                    />
+                  </Field>
+                </Box>
+                <Field
+                  label="Mosh"
+                  hint={
+                    form.useMosh
+                      ? "Connect runs mosh-server over SSH, then hands the session to a local mosh-client (UDP). Needs Mosh on both ends."
+                      : undefined
+                  }
+                >
+                  <TextField
+                    select
+                    value={form.useMosh ? "on" : "off"}
+                    onChange={(e) => set("useMosh", e.target.value === "on")}
+                  >
+                    <MenuItem value="off">Disabled</MenuItem>
+                    <MenuItem value="on">Enabled</MenuItem>
+                  </TextField>
+                </Field>
+                {form.useMosh && (
+                  <Field label="Mosh server command">
+                    <TextField
+                      value={form.moshServerCommand ?? ""}
+                      onChange={(e) => set("moshServerCommand", e.target.value || null)}
+                      placeholder={MOSH_DEFAULT_SERVER_COMMAND}
+                      slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+                    />
+                  </Field>
+                )}
+                <ThemeField value={form.colorScheme} onChange={(v) => set("colorScheme", v)} />
+              </>
+            )}
+          </SectionCard>
+        ) : (
+          <AddSectionButton label="Add SSH" onClick={() => set("ssh", true)} />
         )}
 
-        <SectionCard title="Notes">
-          <TextField
-            multiline
-            minRows={3}
-            value={form.notes}
-            onChange={(e) => set("notes", e.target.value)}
-            placeholder="Anything worth remembering about this host"
-          />
-        </SectionCard>
+        {form.telnet ? (
+          <SectionCard
+            title={
+              <PortTitle
+                name="Telnet"
+                value={form.telnet.port}
+                placeholder="23"
+                onChange={(v) => patchTelnet({ port: v })}
+              />
+            }
+            action={
+              <Tooltip title="Remove Telnet">
+                <IconButton
+                  size="small"
+                  aria-label="Remove Telnet"
+                  onClick={() => set("telnet", null)}
+                >
+                  <CloseRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            }
+          >
+            <Divider />
+            <CredentialsFields
+              vaultId={vaultId}
+              ssh={false}
+              inlineLabel="Set on this host"
+              value={{
+                identityId: form.telnet.identityId,
+                username: form.telnet.username,
+                password: form.telnet.password,
+                hasPassword: form.telnet.hasPassword,
+                sshKeyId: null,
+                sshCertificateId: null,
+                sshId: false,
+                sshIdKeyType: null,
+                agentForwarding: false,
+              }}
+              onChange={({ identityId, username, password }) => {
+                const p: Partial<TelnetForm> = {};
+                if (identityId !== undefined) p.identityId = identityId;
+                if (username !== undefined) p.username = username;
+                if (password !== undefined) p.password = password;
+                patchTelnet(p);
+              }}
+            />
+            <ThemeField
+              value={form.telnet.colorScheme}
+              onChange={(v) => patchTelnet({ colorScheme: v })}
+            />
+          </SectionCard>
+        ) : (
+          <AddSectionButton label="Add Telnet" onClick={() => set("telnet", emptyTelnet())} />
+        )}
       </Box>
+
+      <TagsPopover
+        anchor={tagAnchor}
+        vaultId={vaultId}
+        selected={selectedTagIds}
+        allowCreate
+        onCreated={(id) => set("tagIds", [...form.tagIds, id])}
+        onToggle={(t, on) =>
+          set("tagIds", on ? [...form.tagIds, t.id] : form.tagIds.filter((x) => x !== t.id))
+        }
+        onDeleted={(t) => setForm((f) => ({ ...f, tagIds: f.tagIds.filter((x) => x !== t.id) }))}
+        onClose={() => setTagAnchor(null)}
+      />
 
       <ProxyDialog
         open={dialog === "proxy"}
@@ -708,5 +768,131 @@ function HostEditor({
         “{form.label || form.address}” and its inline credentials will be removed from this device.
       </ConfirmDialog>
     </SidePanel>
+  );
+}
+
+/** "SSH on [22] port" — the section title doubles as the port field. */
+function PortTitle({
+  name,
+  value,
+  placeholder,
+  onChange,
+}: {
+  name: string;
+  value: number | null;
+  placeholder: string;
+  onChange: (v: number | null) => void;
+}) {
+  return (
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+      <Typography variant="subtitle2">{name} on</Typography>
+      <TextField
+        type="number"
+        size="small"
+        value={value ?? ""}
+        onChange={(e) => onChange(clampPort(e.target.value))}
+        placeholder={placeholder}
+        aria-label={`${name} port`}
+        slotProps={{
+          htmlInput: { min: 1, max: 65535, sx: { textAlign: "center", px: 0.5 } },
+          input: { sx: { fontFamily: monoFontFamily, height: 28 } },
+        }}
+        sx={{ width: 72 }}
+      />
+      <Typography variant="subtitle2">port</Typography>
+    </Box>
+  );
+}
+
+/** Full-width tonal "+ Add Telnet" row between the section cards. */
+function AddSectionButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <Button
+      variant="tonal"
+      size="large"
+      startIcon={<AddCircleOutlineRoundedIcon />}
+      onClick={onClick}
+      sx={{ borderRadius: 2, height: 44 }}
+    >
+      {label}
+    </Button>
+  );
+}
+
+/** Colour scheme the terminal opens with for this section; empty follows Settings. */
+function ThemeField({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (v: string | null) => void;
+}) {
+  const dark = terminalThemes.filter((t) => t.dark);
+  const light = terminalThemes.filter((t) => !t.dark);
+  const current = terminalThemes.find((t) => t.id === value) ?? null;
+  return (
+    <TextField
+      select
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
+      slotProps={{
+        select: {
+          displayEmpty: true,
+          renderValue: () => (
+            <Box sx={{ display: "flex", alignItems: "center" }}>
+              {current ? (
+                <>
+                  <ThemeSwatch background={current.background} ansi={current.ansi} />
+                  {current.name}
+                </>
+              ) : (
+                <Box component="span" sx={{ color: "text.disabled" }}>
+                  Terminal theme · app default
+                </Box>
+              )}
+            </Box>
+          ),
+        },
+      }}
+    >
+      <MenuItem value="">
+        <em>App default</em>
+      </MenuItem>
+      <ListSubheader disableSticky>Dark</ListSubheader>
+      {dark.map((t) => (
+        <MenuItem key={t.id} value={t.id}>
+          <ThemeSwatch background={t.background} ansi={t.ansi} />
+          {t.name}
+        </MenuItem>
+      ))}
+      <ListSubheader disableSticky>Light</ListSubheader>
+      {light.map((t) => (
+        <MenuItem key={t.id} value={t.id}>
+          <ThemeSwatch background={t.background} ansi={t.ansi} />
+          {t.name}
+        </MenuItem>
+      ))}
+    </TextField>
+  );
+}
+
+function ThemeSwatch({ background, ansi }: { background: string; ansi: readonly string[] }) {
+  return (
+    <Box
+      sx={{
+        display: "inline-flex",
+        gap: "2px",
+        p: "3px",
+        mr: 1.25,
+        borderRadius: "4px",
+        bgcolor: background,
+        border: 1,
+        borderColor: "border.light",
+      }}
+    >
+      {[1, 2, 3, 4, 5, 6].map((i) => (
+        <Box key={i} sx={{ width: 6, height: 10, borderRadius: "1px", bgcolor: ansi[i] }} />
+      ))}
+    </Box>
   );
 }

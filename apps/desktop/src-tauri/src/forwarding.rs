@@ -4,8 +4,9 @@
 //! sees rule metadata and traffic counters.
 
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -14,16 +15,26 @@ use termoso_core::error::CoreError;
 use termoso_core::forward::{Forward, ForwardSpec};
 use termoso_core::model::{Host, PfRule};
 use termoso_core::ssh::SshClient;
-use termoso_core::store::Store;
+use termoso_core::store::{LocalVaultKind, Store};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::error::{DesktopError, Result};
+use crate::hosts;
 use crate::sessions;
 use crate::state::AppState;
 
 pub const FORWARD_EVENT: &str = "forward";
+
+/// Retries after the SSH transport of a running tunnel drops (when the
+/// `autoReconnect` setting is on). Delays: 2, 4, 8, 16, 32, 60 seconds.
+const RECONNECT_ATTEMPTS: u32 = 6;
+const RECONNECT_MAX_DELAY: Duration = Duration::from_secs(60);
+
+fn reconnect_delay(attempt: u32) -> Duration {
+    Duration::from_secs(2u64 << attempt.saturating_sub(1).min(8)).min(RECONNECT_MAX_DELAY)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -60,6 +71,8 @@ pub enum PfState {
     Stopped,
     Starting,
     Running,
+    /// Transport dropped; a retry is scheduled (`attempt`, `next_retry_at`).
+    Reconnecting,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -75,6 +88,9 @@ pub struct PfRuntime {
     pub bytes_in: u64,
     pub bytes_out: u64,
     pub last_error: Option<String>,
+    /// Reconnect attempt number (0 unless `state == Reconnecting`).
+    pub attempt: u32,
+    pub next_retry_at: Option<DateTime<Utc>>,
 }
 
 impl PfRuntime {
@@ -88,6 +104,8 @@ impl PfRuntime {
             bytes_in: 0,
             bytes_out: 0,
             last_error,
+            attempt: 0,
+            next_retry_at: None,
         }
     }
 }
@@ -146,14 +164,25 @@ struct LiveForward {
     watcher: JoinHandle<()>,
 }
 
+struct Reconnecting {
+    /// Identifies the retry loop that owns this entry.
+    generation: u64,
+    attempt: u32,
+    next_at: DateTime<Utc>,
+    reason: String,
+    cancel: CancellationToken,
+}
+
 #[derive(Default)]
 pub struct Forwards {
     live: Mutex<HashMap<Uuid, Arc<LiveForward>>>,
     pending: Mutex<HashMap<Uuid, CancellationToken>>,
+    reconnecting: Mutex<HashMap<Uuid, Reconnecting>>,
     errors: Mutex<HashMap<Uuid, String>>,
 }
 
 impl Forwards {
+    /// Register a manual / scheduled start. Supersedes a pending retry.
     fn begin(&self, id: Uuid) -> Result<CancellationToken> {
         if self
             .live
@@ -169,8 +198,43 @@ impl Forwards {
         }
         let tok = CancellationToken::new();
         pending.insert(id, tok.clone());
+        self.cancel_reconnect(id);
         self.errors.lock().expect("forwards poisoned").remove(&id);
         Ok(tok)
+    }
+
+    fn set_reconnecting(&self, id: Uuid, entry: Reconnecting) {
+        self.reconnecting
+            .lock()
+            .expect("forwards poisoned")
+            .insert(id, entry);
+    }
+
+    /// Remove the retry entry if it still belongs to loop `generation`.
+    fn take_reconnecting(&self, id: Uuid, generation: u64) -> bool {
+        let mut map = self.reconnecting.lock().expect("forwards poisoned");
+        match map.get(&id) {
+            Some(r) if r.generation == generation => {
+                map.remove(&id);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn cancel_reconnect(&self, id: Uuid) -> bool {
+        match self
+            .reconnecting
+            .lock()
+            .expect("forwards poisoned")
+            .remove(&id)
+        {
+            Some(r) => {
+                r.cancel.cancel();
+                true
+            }
+            None => false,
+        }
     }
 
     fn finish_pending(&self, id: Uuid) -> bool {
@@ -185,6 +249,7 @@ impl Forwards {
         if let Some(tok) = self.pending.lock().expect("forwards poisoned").remove(&id) {
             tok.cancel();
         }
+        self.cancel_reconnect(id);
         self.live.lock().expect("forwards poisoned").remove(&id)
     }
 
@@ -213,6 +278,8 @@ impl Forwards {
                 bytes_in: stats.bytes_in.load(Ordering::Relaxed),
                 bytes_out: stats.bytes_out.load(Ordering::Relaxed),
                 last_error: None,
+                attempt: 0,
+                next_retry_at: None,
             };
         }
         if self
@@ -224,6 +291,19 @@ impl Forwards {
             return PfRuntime {
                 state: PfState::Starting,
                 ..PfRuntime::stopped(None)
+            };
+        }
+        if let Some(r) = self
+            .reconnecting
+            .lock()
+            .expect("forwards poisoned")
+            .get(&id)
+        {
+            return PfRuntime {
+                state: PfState::Reconnecting,
+                attempt: r.attempt,
+                next_retry_at: Some(r.next_at),
+                ..PfRuntime::stopped(Some(r.reason.clone()))
             };
         }
         PfRuntime::stopped(
@@ -247,11 +327,9 @@ impl Forwards {
 
 // ───────────────────────────── rules (store) ─────────────────────────────
 
+/// Labels are optional (an unlabelled card shows its route instead).
 fn validate(form: &PfRuleForm) -> Result<PfRule> {
     let label = form.label.trim();
-    if label.is_empty() {
-        return Err(DesktopError::invalid("label is required"));
-    }
     if form.local_port == 0 {
         return Err(DesktopError::invalid(match form.kind {
             PfKind::Remote => "local port is required",
@@ -357,6 +435,69 @@ pub fn save(state: &AppState, form: &PfRuleForm) -> Result<PfRuleCard> {
     rule(state, id)
 }
 
+/// Duplicate a rule next to the original ("<label> copy"), not running.
+pub fn duplicate(state: &AppState, id: Uuid) -> Result<PfRuleCard> {
+    let src = state.store.require::<PfRule>(id)?;
+    let mut data = src.data.clone();
+    if !data.label.is_empty() {
+        data.label = format!("{} copy", data.label);
+    }
+    let new_id = state.store.insert(src.vault_id, &data)?;
+    rule(state, new_id)
+}
+
+/// Copy a rule into another (unlocked) vault. The host it goes through is
+/// reused when the target vault already has one with the same label and
+/// address, otherwise copied along with the rule. Into a team vault the host
+/// arrives without credentials: sharing them is an explicit choice made on the
+/// Hosts page, never a side effect of copying a rule.
+pub fn copy_to_vault(state: &AppState, id: Uuid, vault_id: Uuid) -> Result<PfRuleCard> {
+    let src = state.store.require::<PfRule>(id)?;
+    if src.vault_id == vault_id {
+        return Err(DesktopError::invalid("rule is already in that vault"));
+    }
+    let vault = state.store.vault(vault_id)?;
+    if !vault.unlocked {
+        return Err(DesktopError::invalid("target vault is locked"));
+    }
+    let creds = if vault.kind == LocalVaultKind::Team {
+        hosts::CopyCredentials::Personal
+    } else {
+        hosts::CopyCredentials::Shared
+    };
+    let host = state.store.require::<Host>(src.data.host_id)?;
+    let host_id = match state
+        .store
+        .list::<Host>(Some(vault_id))?
+        .into_iter()
+        .find(|h| h.data.label == host.data.label && h.data.address == host.data.address)
+    {
+        Some(h) => h.id,
+        None => hosts::copy_to_vault(&state.store, &[host.id], vault_id, creds)?
+            .into_iter()
+            .next()
+            .ok_or_else(|| DesktopError::not_found(format!("host {}", host.id)))?,
+    };
+    let data = PfRule {
+        host_id,
+        ..src.data.clone()
+    };
+    let new_id = state.store.insert(vault_id, &data)?;
+    rule(state, new_id)
+}
+
+/// Move a rule into another vault: copy, stop and delete the original.
+pub async fn move_to_vault<R: Runtime>(
+    app: &AppHandle<R>,
+    id: Uuid,
+    vault_id: Uuid,
+) -> Result<PfRuleCard> {
+    let state = app.state::<AppState>();
+    let copied = copy_to_vault(&state, id, vault_id)?;
+    delete(app, id).await?;
+    Ok(copied)
+}
+
 pub async fn delete<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
     stop(app, id).await?;
     let state = app.state::<AppState>();
@@ -411,6 +552,7 @@ pub async fn start<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<PfRuleCar
         Ok(f) => f,
         Err(err) => {
             let err: DesktopError = err.into();
+            let _ = conn.client.disconnect().await;
             state.forwards.set_error(id, err.message.clone());
             emit(app, id);
             return Err(err);
@@ -424,10 +566,14 @@ pub async fn start<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<PfRuleCar
             let reason = client.closed().await;
             let state = app.state::<AppState>();
             if state.forwards.remove(id).is_some() {
-                state
-                    .forwards
-                    .set_error(id, format!("connection lost: {reason}"));
-                emit(&app, id);
+                let reason = format!("connection lost: {reason}");
+                let retry = state.settings().map(|s| s.auto_reconnect).unwrap_or(false);
+                if retry {
+                    schedule_reconnect(&app, id, reason);
+                } else {
+                    state.forwards.set_error(id, reason);
+                    emit(&app, id);
+                }
             }
         })
     };
@@ -451,13 +597,65 @@ pub async fn start<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<PfRuleCar
     rule(&state, id)
 }
 
+static RECONNECT_GENERATION: AtomicU64 = AtomicU64::new(1);
+
+/// Retry `start` with exponential backoff after the transport dropped. The
+/// loop ends when the tunnel is back, when `stop` / `delete` / a manual start
+/// supersede it, or after `RECONNECT_ATTEMPTS` failures (the rule is then left
+/// stopped with the last error).
+fn schedule_reconnect<R: Runtime>(app: &AppHandle<R>, id: Uuid, reason: String) {
+    let app = app.clone();
+    let generation = RECONNECT_GENERATION.fetch_add(1, Ordering::Relaxed);
+    let cancel = CancellationToken::new();
+    tokio::spawn(async move {
+        let state = app.state::<AppState>();
+        let mut reason = reason;
+        for attempt in 1..=RECONNECT_ATTEMPTS {
+            let delay = reconnect_delay(attempt);
+            let next_at =
+                Utc::now() + chrono::Duration::from_std(delay).unwrap_or(chrono::Duration::zero());
+            state.forwards.set_reconnecting(
+                id,
+                Reconnecting {
+                    generation,
+                    attempt,
+                    next_at,
+                    reason: reason.clone(),
+                    cancel: cancel.clone(),
+                },
+            );
+            emit(&app, id);
+            tokio::select! {
+                _ = tokio::time::sleep(delay) => {}
+                _ = cancel.cancelled() => return,
+            }
+            if !state.forwards.take_reconnecting(id, generation) {
+                return;
+            }
+            match start(&app, id).await {
+                Ok(_) => return,
+                Err(err) if err.kind == "cancelled" || err.kind == "not_found" => return,
+                Err(err) => reason = err.message,
+            }
+        }
+        state.forwards.set_error(
+            id,
+            format!("{reason} (gave up after {RECONNECT_ATTEMPTS} attempts)"),
+        );
+        emit(&app, id);
+    });
+}
+
 pub async fn stop<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
     let state = app.state::<AppState>();
     state.prompts.cancel_session(id);
+    let retrying = state.forwards.cancel_reconnect(id);
     if let Some(live) = state.forwards.remove(id) {
         live.watcher.abort();
         live.forward.stop().await;
         let _ = live.client.disconnect().await;
+        emit(app, id);
+    } else if retrying {
         emit(app, id);
     }
     Ok(())
@@ -527,7 +725,7 @@ mod tests {
         assert!(validate(&f).is_err());
         let mut f = form(PfKind::Remote);
         f.label = "  ".into();
-        assert!(validate(&f).is_err());
+        assert_eq!(validate(&f).unwrap().label, "");
     }
 
     #[test]
@@ -566,5 +764,61 @@ mod tests {
         assert_eq!(rt.last_error.as_deref(), Some("nope"));
         assert!(f.begin(id).is_ok());
         assert!(f.runtime(id).last_error.is_none());
+    }
+
+    #[test]
+    fn reconnect_backoff_is_capped() {
+        let secs: Vec<u64> = (1..=RECONNECT_ATTEMPTS)
+            .map(|a| reconnect_delay(a).as_secs())
+            .collect();
+        assert_eq!(secs, vec![2, 4, 8, 16, 32, 60]);
+        assert_eq!(reconnect_delay(40), RECONNECT_MAX_DELAY);
+    }
+
+    #[test]
+    fn reconnecting_state_is_reported_and_superseded() {
+        let f = Forwards::default();
+        let id = Uuid::new_v4();
+        let cancel = CancellationToken::new();
+        f.set_reconnecting(
+            id,
+            Reconnecting {
+                generation: 7,
+                attempt: 2,
+                next_at: Utc::now(),
+                reason: "connection lost: eof".into(),
+                cancel: cancel.clone(),
+            },
+        );
+        let rt = f.runtime(id);
+        assert_eq!(rt.state, PfState::Reconnecting);
+        assert_eq!(rt.attempt, 2);
+        assert!(rt.next_retry_at.is_some());
+        assert_eq!(rt.last_error.as_deref(), Some("connection lost: eof"));
+
+        // Another loop's generation cannot take the entry.
+        assert!(!f.take_reconnecting(id, 8));
+        // A manual start cancels the scheduled retry.
+        assert!(f.begin(id).is_ok());
+        assert!(cancel.is_cancelled());
+        assert_eq!(f.runtime(id).state, PfState::Starting);
+        assert!(!f.take_reconnecting(id, 7));
+        assert!(f.finish_pending(id));
+
+        let cancel = CancellationToken::new();
+        f.set_reconnecting(
+            id,
+            Reconnecting {
+                generation: 9,
+                attempt: 1,
+                next_at: Utc::now(),
+                reason: String::new(),
+                cancel: cancel.clone(),
+            },
+        );
+        assert!(f.take_reconnecting(id, 9));
+        assert!(!cancel.is_cancelled());
+        assert_eq!(f.runtime(id).state, PfState::Stopped);
+        assert!(!f.cancel_reconnect(id));
     }
 }

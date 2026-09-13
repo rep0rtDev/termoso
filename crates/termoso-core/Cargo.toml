@@ -24,7 +24,11 @@ keyring = { version = "4", optional = true }
 russh = { version = "0.63", features = ["rsa"] }
 russh-sftp = "3"
 portable-pty = { version = "0.9", optional = true }
+serialport = { version = "4.9", default-features = false, optional = true }
+encoding_rs = { version = "0.8", optional = true }
 rand = "0.10"
+# FIDO2 security keys (CTAP2 over USB HID).
+ctap-hid-fido2 = { version = "3.5", optional = true }
 
 # server api
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
@@ -42,14 +46,20 @@ bytes = { workspace = true }
 url = { workspace = true }
 hex = "0.4"
 sha2 = { workspace = true }
+hmac = "0.12"
+quick-xml = "0.41"
 dirs = "6"
 
 [features]
-default = ["keychain", "local-pty"]
+default = ["keychain", "local-pty", "serial", "fido2"]
 # Store the local master key in the OS keychain (Secret Service / Credential Manager / Keychain).
 keychain = ["dep:keyring"]
 # Local terminal (spawns the user's shell in a PTY).
 local-pty = ["dep:portable-pty"]
+# Serial console over a COM / tty device.
+serial = ["dep:serialport", "dep:encoding_rs"]
+# FIDO2 security keys (`sk-ssh-ed25519@openssh.com`, `sk-ecdsa-sha2-nistp256@openssh.com`).
+fido2 = ["dep:ctap-hid-fido2"]
 
 [dev-dependencies]
 tempfile = "3"

@@ -39,7 +39,17 @@ schema! {
         pub my_role: TeamRole,
         /// Number of members.
         pub member_count: i64,
+        /// Members may share live terminal sessions with each other.
+        #[serde(default = "default_true")]
+        pub multiplayer_enabled: bool,
+        /// Members without two-factor authentication cannot open team vaults.
+        #[serde(default)]
+        pub require_mfa: bool,
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 schema! {
@@ -60,10 +70,17 @@ schema! {
 
 schema! {
     /// `PATCH /teams/{id}`
+    #[derive(Default)]
     pub struct UpdateTeamRequest {
         /// New name.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub name: Option<String>,
+        /// Allow live terminal sharing between members.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub multiplayer_enabled: Option<bool>,
+        /// Require two-factor authentication to open team vaults.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub require_mfa: Option<bool>,
     }
 }
 
@@ -135,6 +152,17 @@ schema! {
 }
 
 schema! {
+    /// `POST /teams/{id}/invites` response: the invite plus its share link.
+    pub struct CreatedInvite {
+        /// The pending invitation.
+        #[serde(flatten)]
+        pub invite: Invite,
+        /// Share this link with the invitee (also emailed when SMTP is configured).
+        pub url: String,
+    }
+}
+
+schema! {
     /// `GET /teams/{id}/invites`
     pub struct InviteList {
         /// Invites.
@@ -177,5 +205,62 @@ schema! {
         pub public_key: String,
         /// Role that was granted.
         pub role: crate::vault::VaultRole,
+    }
+}
+
+schema! {
+    /// One entry of the team activity log (`GET /teams/{id}/audit`). The
+    /// server never sees vault payloads, so entries name kinds and ids — the
+    /// client resolves them to labels where it holds the vault key.
+    pub struct AuditEvent {
+        /// Monotonic id; also the paging cursor.
+        pub id: i64,
+        /// Team.
+        pub team_id: Uuid,
+        /// Who did it (`None` once the account is gone).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub actor_id: Option<Uuid>,
+        /// Actor email at query time.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub actor_email: Option<String>,
+        /// Actor display name at query time.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub actor_name: Option<String>,
+        /// Device the request came from.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub device_id: Option<Uuid>,
+        /// What happened: `team.created`, `team.renamed`, `team.settings`,
+        /// `member.role`, `member.removed`, `member.left`, `invite.created`,
+        /// `invite.revoked`, `invite.accepted`, `vault.created`, `vault.renamed`,
+        /// `vault.deleted`, `vault.key_rotated`, `vault.access_granted`,
+        /// `vault.access_changed`, `vault.access_revoked`, `entity.created`,
+        /// `entity.updated`, `entity.deleted`, `multiplayer.started`,
+        /// `multiplayer.joined`, `multiplayer.stopped`.
+        pub action: String,
+        /// Vault involved, if any.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub vault_id: Option<Uuid>,
+        /// Other user involved (member, invitee), if any.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub target_user: Option<Uuid>,
+        /// Target user's email at query time.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub target_email: Option<String>,
+        /// Action-specific metadata (entity kind/id, role, name, counts).
+        #[serde(default)]
+        pub details: serde_json::Value,
+        /// When.
+        pub created_at: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// A page of the team activity log, newest first.
+    pub struct AuditEventList {
+        /// Events.
+        pub events: Vec<AuditEvent>,
+        /// Pass as `before` to fetch the next (older) page.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub next_before: Option<i64>,
     }
 }

@@ -128,6 +128,10 @@ pub mod payload {
             /// Detected OS name.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub os_name: Option<String>,
+            /// Icon chosen by the user (an OS id such as `ubuntu`); overrides
+            /// the detected `os_name` for display.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub icon: Option<String>,
             /// Preferred IP version: `auto`, `4`, `6`.
             #[serde(default)]
             pub ip_version: String,
@@ -151,7 +155,7 @@ pub mod payload {
 
     schema! {
         /// SSH connection settings; may be attached to a host or a group.
-        #[derive(Default)]
+        #[derive(Default, PartialEq, Eq)]
         pub struct SshConfig {
             /// Port (default 22).
             #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -243,6 +247,9 @@ pub mod payload {
             /// Flow control: `none`, `software`, `hardware`.
             #[serde(default)]
             pub flow_control: String,
+            /// Text encoding of the device (WHATWG label, e.g. `utf-8`, `koi8-r`); empty = UTF-8.
+            #[serde(default)]
+            pub charset: String,
         }
     }
 
@@ -266,6 +273,14 @@ pub mod payload {
             /// Hidden from the identities list (inline identity of a host).
             #[serde(default)]
             pub is_visible: bool,
+            /// Authenticate with the account's SSH ID passkeys (this device's
+            /// keys plus the FIDO2 keys attached to the SSH ID). The username
+            /// falls back to the SSH ID handle when empty.
+            #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+            pub ssh_id: bool,
+            /// Passkey type to try first (`None` = ED25519, then the rest).
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub ssh_id_key_type: Option<crate::sshid::SshIdKeyType>,
         }
     }
 
@@ -289,6 +304,10 @@ pub mod payload {
             /// For FIDO2 resident keys: the credential id.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub fido2_credential_id: Option<String>,
+            /// FIDO2 key attached to the account's SSH ID (managed from
+            /// Settings → SSH ID, not listed in the Keychain).
+            #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+            pub ssh_id: bool,
         }
     }
 
@@ -355,7 +374,7 @@ pub mod payload {
     }
 
     schema! {
-        /// Snippet bound to run on host connect.
+        /// Host a snippet is configured to run on (an execution target).
         #[derive(Default)]
         pub struct HostSnippet {
             /// Host.

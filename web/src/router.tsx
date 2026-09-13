@@ -23,8 +23,10 @@ import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
 import { AdminTeamsPage } from "./pages/admin/AdminTeamsPage";
 import { AdminSettingsPage } from "./pages/admin/AdminSettingsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { LandingPage } from "./pages/LandingPage";
 
 export const router = createBrowserRouter([
+  { path: "/", element: <LandingPage /> },
   {
     element: <AuthLayout />,
     children: [
@@ -49,7 +51,6 @@ export const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
-          { index: true, element: <Navigate to="/account" replace /> },
           { path: "/account", element: <AccountPage /> },
           { path: "/confirm/email", element: <Navigate to="/account#email" replace /> },
           { path: "/security", element: <SecurityPage /> },

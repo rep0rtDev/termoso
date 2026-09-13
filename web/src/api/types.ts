@@ -315,6 +315,7 @@ export interface ServerSettings {
   max_entity_bytes: number;
   max_log_bytes: number;
   log_quota_bytes: number;
+  audit_retention_days: number;
 }
 
 export interface AdminTeam {

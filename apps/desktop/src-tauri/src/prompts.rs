@@ -43,6 +43,13 @@ pub enum PromptRequest {
     Passphrase {
         key_label: String,
     },
+    /// FIDO2 security key wants its client PIN. `retries` is what the token
+    /// reported after a wrong PIN, when it did.
+    Pin {
+        key_label: String,
+        retry: bool,
+        retries: Option<i32>,
+    },
     Interactive {
         name: String,
         instructions: String,

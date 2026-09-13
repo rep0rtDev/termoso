@@ -18,6 +18,11 @@ use crate::error::{DesktopError, Result};
 pub const MAX_CAPTURE_BYTES: usize = 64 * 1024 * 1024;
 
 /// In-flight recording of one terminal session.
+///
+/// Only bytes received from the remote side are captured, never keystrokes:
+/// anything typed while the remote has echo turned off (passwords, sudo
+/// prompts) therefore never reaches the log, and auth answers given through
+/// the app's own prompt dialogs are not part of the stream at all.
 pub struct Recorder {
     id: Uuid,
     meta: LogMeta,

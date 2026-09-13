@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Box, Button, Chip, Paper, Stack, Typography } from "@mui/material";
+import { Box, Button, Stack, Typography } from "@mui/material";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
 import { monoFontFamily } from "@/theme/theme";
@@ -42,14 +42,14 @@ export function RecoveryPhraseGrid({ phrase, email }: Props) {
 
   return (
     <Stack spacing={2}>
-      <Paper
-        variant="outlined"
+      <Box
         sx={{
-          p: 2,
+          p: 1.5,
           display: "grid",
-          gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)", md: "repeat(4, 1fr)" },
-          gap: 1,
-          bgcolor: "background.default",
+          gridTemplateColumns: { xs: "repeat(2, 1fr)", sm: "repeat(3, 1fr)" },
+          gap: 0.75,
+          borderRadius: 2.5,
+          bgcolor: "surface.lowest",
         }}
       >
         {words.map((w, i) => (
@@ -61,29 +61,35 @@ export function RecoveryPhraseGrid({ phrase, email }: Props) {
               gap: 1,
               px: 1.25,
               py: 0.75,
-              borderRadius: 2,
-              bgcolor: "background.paper",
-              border: 1,
-              borderColor: "divider",
+              borderRadius: 1.5,
+              bgcolor: "surface.high",
             }}
           >
-            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 18 }}>
+            <Typography
+              variant="caption"
+              color="text.disabled"
+              sx={{ minWidth: 16, fontFamily: monoFontFamily }}
+            >
               {i + 1}
             </Typography>
-            <Typography sx={{ fontFamily: monoFontFamily, fontSize: "0.9rem", userSelect: "all" }}>
+            <Typography
+              sx={{ fontFamily: monoFontFamily, fontSize: "0.875rem", userSelect: "all" }}
+            >
               {w}
             </Typography>
           </Box>
         ))}
-      </Paper>
-      <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
+      </Box>
+      <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center" }}>
         <Button startIcon={<ContentCopyRoundedIcon />} onClick={copy} variant="outlined">
           {copied ? "Copied" : "Copy"}
         </Button>
         <Button startIcon={<DownloadRoundedIcon />} onClick={download} variant="outlined">
           Download .txt
         </Button>
-        <Chip label={`${words.length} words`} size="small" sx={{ alignSelf: "center" }} />
+        <Typography variant="caption" color="text.secondary" sx={{ ml: "auto" }}>
+          {words.length} words
+        </Typography>
       </Stack>
     </Stack>
   );

@@ -12,6 +12,7 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 
 use crate::error::{CoreError, Result};
+use crate::ssh::IpVersion;
 use crate::terminal::{TermEvent, TermEvents, TermSize, TerminalSession, event_channel};
 
 const IAC: u8 = 255;
@@ -41,6 +42,8 @@ pub struct TelnetOptions {
     pub size: TermSize,
     /// Connect timeout.
     pub timeout: Duration,
+    /// Address family to use when the host resolves to both.
+    pub ip_version: IpVersion,
 }
 
 /// A live telnet connection.
@@ -189,10 +192,30 @@ impl Parser {
 impl TelnetTerminal {
     /// Connect.
     pub async fn connect(opts: TelnetOptions) -> Result<(Arc<TelnetTerminal>, TermEvents)> {
-        let stream = tokio::time::timeout(
-            opts.timeout,
-            TcpStream::connect((opts.host.as_str(), opts.port)),
-        )
+        let stream = tokio::time::timeout(opts.timeout, async {
+            let addrs = opts.ip_version.filter(
+                tokio::net::lookup_host((opts.host.as_str(), opts.port))
+                    .await?
+                    .collect(),
+            );
+            if addrs.is_empty() {
+                return Err(CoreError::Terminal(format!(
+                    "telnet: {} did not resolve to any {} address",
+                    opts.host,
+                    opts.ip_version.label()
+                )));
+            }
+            let mut last: Option<std::io::Error> = None;
+            for addr in &addrs {
+                match TcpStream::connect(addr).await {
+                    Ok(s) => return Ok(s),
+                    Err(e) => last = Some(e),
+                }
+            }
+            Err(last
+                .map(CoreError::from)
+                .unwrap_or_else(|| CoreError::Terminal("telnet: no address to connect to".into())))
+        })
         .await
         .map_err(|_| {
             CoreError::Terminal(format!("telnet: timed out connecting to {}", opts.host))
@@ -317,5 +340,37 @@ mod tests {
     #[test]
     fn escapes_user_iac() {
         assert_eq!(escape(&[1, IAC, 2]).as_ref(), &[1, IAC, IAC, 2]);
+    }
+
+    fn opts(host: &str, port: u16, ip_version: IpVersion) -> TelnetOptions {
+        TelnetOptions {
+            host: host.into(),
+            port,
+            term: "xterm".into(),
+            size: TermSize { cols: 80, rows: 24 },
+            timeout: Duration::from_secs(5),
+            ip_version,
+        }
+    }
+
+    #[tokio::test]
+    async fn ip_version_selects_address_family() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let accept = tokio::spawn(async move { listener.accept().await.map(|_| ()) });
+
+        let err = TelnetTerminal::connect(opts("127.0.0.1", port, IpVersion::V6))
+            .await
+            .expect_err("an IPv4 literal has no IPv6 address");
+        assert!(
+            err.to_string().contains("IPv6"),
+            "error should name the requested family: {err}"
+        );
+
+        let (term, _events) = TelnetTerminal::connect(opts("127.0.0.1", port, IpVersion::V4))
+            .await
+            .expect("IPv4 connects to the IPv4 listener");
+        accept.await.unwrap().unwrap();
+        term.close().await.unwrap();
     }
 }

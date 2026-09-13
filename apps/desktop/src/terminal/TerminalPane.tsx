@@ -1,8 +1,11 @@
 import { useEffect, useRef } from "react";
-import { Box, Button, CircularProgress, Stack, Typography, alpha } from "@mui/material";
+import { Box, Button, Stack, Tooltip, Typography, alpha } from "@mui/material";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
-import type { Uuid } from "@/ipc/types";
+import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
+import KeyboardAltRoundedIcon from "@mui/icons-material/KeyboardAltRounded";
+import type { SshAlgorithms, Uuid } from "@/ipc/types";
+import { isPostQuantumKex } from "@/ipc/types";
 import {
   closePane,
   focusPane,
@@ -11,6 +14,11 @@ import {
   setActivePane,
   useTerminal,
 } from "./store";
+import { AutocompletePopup } from "./AutocompletePopup";
+import { ConnectionView } from "./ConnectionView";
+import { usePaneTheme } from "./useTerminalTheme";
+import { dismissControlHint, useMultiplayer } from "./multiplayer";
+import type { TerminalTheme } from "./themes";
 
 interface Props {
   paneId: Uuid;
@@ -21,6 +29,8 @@ interface Props {
 export function TerminalPane({ paneId, active, showFrame }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const pane = useTerminal((s) => s.panes[paneId]);
+  const queued = useTerminal((s) => s.reconnect?.paneIds.includes(paneId) ?? false);
+  const theme = usePaneTheme(paneId);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -28,29 +38,35 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
     return mountPane(paneId, host);
   }, [paneId]);
 
+  const status = pane?.status;
   useEffect(() => {
-    if (active) focusPane(paneId);
-  }, [active, paneId]);
+    if (active && status !== "connecting") focusPane(paneId);
+  }, [active, paneId, status]);
 
   if (!pane) return null;
   const finished = pane.status === "exited" || pane.status === "error" || pane.status === "closed";
+  // Never got a session: show the connection view with the failure instead of
+  // an empty terminal. A dropped session keeps its buffer while it reconnects.
+  const failedToConnect =
+    finished && pane.startedAt === null && pane.status !== "exited" && !pane.reconnecting;
+  const connecting = pane.status === "connecting" && !pane.reconnecting;
 
   return (
     <Box
       onMouseDown={() => setActivePane(paneId)}
-      sx={(t) => ({
+      sx={{
         position: "relative",
         flex: 1,
         minWidth: 0,
         minHeight: 0,
+        width: "100%",
+        height: "100%",
         display: "flex",
         flexDirection: "column",
-        bgcolor: "background.default",
-        outline: showFrame
-          ? `1px solid ${active ? t.palette.primary.main : t.palette.divider}`
-          : "none",
-        outlineOffset: -1,
-      })}
+        bgcolor: theme.background,
+        borderRadius: 2,
+        overflow: "hidden",
+      }}
     >
       {showFrame && (
         <Stack
@@ -61,44 +77,57 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
             px: 1.25,
             height: 26,
             flexShrink: 0,
-            borderBottom: 1,
-            borderColor: "divider",
-            bgcolor: "background.paper",
+            color: theme.foreground,
+            bgcolor: alpha(theme.foreground, 0.05),
+            opacity: active ? 1 : 0.7,
           }}
         >
           <StatusDot status={pane.status} />
           <Typography variant="caption" noWrap sx={{ flex: 1, fontWeight: 600 }}>
             {pane.title}
           </Typography>
-          <Typography variant="caption" color="text.secondary" noWrap>
+          <Typography variant="caption" noWrap sx={{ opacity: 0.6 }}>
             {pane.subtitle}
           </Typography>
+          <PqBadge algorithms={pane.algorithms} size={13} />
         </Stack>
       )}
-      <Box ref={hostRef} sx={{ flex: 1, minHeight: 0, position: "relative" }} />
+      <Box sx={{ flex: 1, minHeight: 0, position: "relative", display: "flex" }}>
+        <Box
+          ref={hostRef}
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            minHeight: 0,
+            position: "relative",
+            visibility: connecting || failedToConnect ? "hidden" : "visible",
+          }}
+        />
+        <AutocompletePopup paneId={paneId} />
+        <RemoteControlHint paneId={paneId} />
+        {(connecting || failedToConnect) && <ConnectionView pane={pane} />}
+      </Box>
 
-      {pane.status === "connecting" && (
-        <Overlay>
-          <CircularProgress size={22} />
-          <Typography variant="body2" color="text.secondary">
-            Connecting to {pane.subtitle || pane.title}…
-          </Typography>
-        </Overlay>
-      )}
-      {finished && (
-        <Overlay dim>
-          <Typography variant="body2" color={pane.status === "error" ? "error" : "text.secondary"}>
+      {finished && !failedToConnect && !queued && (
+        <Overlay theme={theme} dim>
+          <Typography
+            variant="body2"
+            color={pane.status === "error" ? "error" : "inherit"}
+            sx={{ opacity: pane.status === "error" ? 1 : 0.8 }}
+          >
             {pane.message ?? "Session ended"}
           </Typography>
           <Stack direction="row" spacing={1}>
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<ReplayRoundedIcon />}
-              onClick={() => reconnectPane(paneId)}
-            >
-              Reconnect
-            </Button>
+            {pane.target.kind !== "live" && (
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<ReplayRoundedIcon />}
+                onClick={() => void reconnectPane(paneId)}
+              >
+                Reconnect
+              </Button>
+            )}
             <Button
               size="small"
               color="inherit"
@@ -114,24 +143,93 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
   );
 }
 
-function Overlay({ children, dim }: { children: React.ReactNode; dim?: boolean }) {
+/** Termius-style "You've got remote control" hint on a multiplayer viewer pane. */
+function RemoteControlHint({ paneId }: { paneId: Uuid }) {
+  const shown = useMultiplayer((s) => s.controlHint === paneId);
+  useEffect(() => {
+    if (!shown) return;
+    const t = setTimeout(dismissControlHint, 8_000);
+    return () => clearTimeout(t);
+  }, [shown]);
+  if (!shown) return null;
+  return (
+    <Stack
+      direction="row"
+      spacing={1}
+      onClick={dismissControlHint}
+      sx={{
+        position: "absolute",
+        top: 12,
+        left: 16,
+        zIndex: 2,
+        alignItems: "center",
+        px: 1.5,
+        height: 36,
+        borderRadius: 1.5,
+        cursor: "pointer",
+        color: "info.main",
+        bgcolor: (t) => alpha(t.palette.info.main, 0.12),
+        border: "1px solid",
+        borderColor: "info.main",
+        backdropFilter: "blur(6px)",
+      }}
+    >
+      <KeyboardAltRoundedIcon sx={{ fontSize: 16 }} />
+      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+        You&apos;ve got remote control. Start typing.
+      </Typography>
+    </Stack>
+  );
+}
+
+function Overlay({
+  children,
+  theme,
+  dim,
+}: {
+  children: React.ReactNode;
+  theme: TerminalTheme;
+  dim?: boolean;
+}) {
   return (
     <Stack
       spacing={1.5}
-      sx={(t) => ({
+      sx={{
         alignItems: "center",
         justifyContent: "flex-end",
         position: "absolute",
         inset: 0,
+        zIndex: 6,
         pb: 4,
+        color: theme.foreground,
         pointerEvents: dim ? "auto" : "none",
         background: dim
-          ? `linear-gradient(to bottom, transparent 40%, ${alpha(t.palette.background.default, 0.92)})`
+          ? `linear-gradient(to bottom, transparent 40%, ${alpha(theme.background, 0.92)})`
           : "transparent",
-      })}
+      }}
     >
       {children}
     </Stack>
+  );
+}
+
+export function algorithmsSummary(a: SshAlgorithms): string {
+  return `KEX ${a.kex}\nHost key ${a.hostKey}\nCipher ${a.cipher}\nMAC ${a.mac}`;
+}
+
+/** Shield shown when the session negotiated a post-quantum key exchange. */
+export function PqBadge({ algorithms, size }: { algorithms: SshAlgorithms | null; size: number }) {
+  if (!algorithms || !isPostQuantumKex(algorithms)) return null;
+  return (
+    <Tooltip
+      title={
+        <Box sx={{ whiteSpace: "pre-line" }}>
+          {"Quantum-safe key exchange\n" + algorithmsSummary(algorithms)}
+        </Box>
+      }
+    >
+      <ShieldRoundedIcon sx={{ fontSize: size, color: "primary.main" }} />
+    </Tooltip>
   );
 }
 

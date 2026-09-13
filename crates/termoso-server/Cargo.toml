@@ -21,6 +21,7 @@ axum = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 futures = { workspace = true }
+bytes = { workspace = true }
 
 sqlx = { workspace = true }
 redis = { workspace = true }

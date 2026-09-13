@@ -3,21 +3,36 @@
 
 use std::collections::HashMap;
 
-use tauri::{AppHandle, Runtime, State};
+use serde::Deserialize;
+
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use termoso_core::secrets::MasterKeySource;
 use termoso_proto::account::ServerInfo;
 use termoso_proto::auth::{Device, MfaCredential};
+use termoso_proto::team::{Invite, Team, TeamRole};
+use termoso_proto::vault::{VaultMember, VaultRole};
 use uuid::Uuid;
 
 use crate::account::{
-    self, AccountStatus, LoginForm, LoginOutcome, RegisterForm, Registered, SyncStatus,
+    self, AccountStatus, LoginForm, LoginOutcome, RegisterForm, Registered, SYNC_EVENT, SyncNotice,
+    SyncStatus,
 };
-use crate::error::Result;
+use crate::backup::{self, BackupSummary};
+use crate::cloud::{self, CloudImportReport, CloudPreview, CloudSelection};
+use crate::error::{DesktopError, Result};
 use crate::forwarding::{self, PfRuleCard, PfRuleForm, PfRuntime};
-use crate::keychain::{self, GenerateForm, IdentityCard, IdentityForm, ImportForm, KeyCard};
+use crate::import::{self, ImportPreview, ImportSelection, ImportSource};
+use crate::keychain::{
+    self, CertificateCard, ExportOutcome, Fido2GenerateForm, Fido2LoadForm, GenerateForm,
+    IdentityCard, IdentityForm, ImportForm, KeyCard, KeyPreview,
+};
 use crate::logs::{self, BookmarkCard, LogBody, LogCard};
+use crate::multiplayer::{self, ShareInfo};
+use crate::sessions;
 use crate::snippets::{self, PackageNode, RunResult, SnippetCard, SnippetForm};
+use crate::sshid::{self, SshIdFido2Form, SshIdView};
 use crate::state::AppState;
+use crate::team::{self, InviteResult, PendingKeyCard, TeamMemberCard, VaultAccess};
 use crate::trust::{self, ImportReport, KnownHostCard};
 use crate::update::{self, UpdateInfo};
 
@@ -38,26 +53,142 @@ pub async fn key_import(state: State<'_, AppState>, form: ImportForm) -> Result<
     keychain::import(&state.store, &form)
 }
 
+fn blocking_err(e: tokio::task::JoinError) -> DesktopError {
+    DesktopError::new("internal", e.to_string())
+}
+
+/// FIDO2 authenticators plugged in right now (USB HID enumeration; local only).
 #[tauri::command]
-pub async fn key_import_file(
+pub async fn fido2_devices() -> Result<Vec<termoso_core::fido2::Fido2Device>> {
+    tokio::task::spawn_blocking(keychain::fido2_devices)
+        .await
+        .map_err(blocking_err)
+}
+
+/// Make a credential on the token and store the `sk-*` key. Blocks until
+/// the user touches the token (or it times out), so it runs off-runtime.
+#[tauri::command]
+pub async fn fido2_generate(
     state: State<'_, AppState>,
-    vault_id: Uuid,
-    label: String,
-    path: String,
-    passphrase: Option<String>,
-    remember_passphrase: bool,
+    form: Fido2GenerateForm,
 ) -> Result<KeyCard> {
-    let private_key = std::fs::read_to_string(&path)?;
+    let store = state.store.clone();
+    tokio::task::spawn_blocking(move || keychain::fido2_generate(&store, &form))
+        .await
+        .map_err(blocking_err)?
+}
+
+/// Import the resident SSH credentials of a token into a vault.
+#[tauri::command]
+pub async fn fido2_load_resident(
+    state: State<'_, AppState>,
+    form: Fido2LoadForm,
+) -> Result<Vec<KeyCard>> {
+    let store = state.store.clone();
+    tokio::task::spawn_blocking(move || keychain::fido2_load_resident(&store, &form))
+        .await
+        .map_err(blocking_err)?
+}
+
+/// Import request for a private key file on disk.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportFileForm {
+    pub vault_id: Uuid,
+    pub label: String,
+    pub path: String,
+    #[serde(default)]
+    pub passphrase: Option<String>,
+    #[serde(default)]
+    pub remember_passphrase: bool,
+    /// Pasted certificate text; ignored when `certificate_path` is set.
+    #[serde(default)]
+    pub certificate: Option<String>,
+    /// Path to a `*-cert.pub` to attach.
+    #[serde(default)]
+    pub certificate_path: Option<String>,
+}
+
+/// Import from a file on disk; the private material is read here and never
+/// crosses the IPC boundary.
+#[tauri::command]
+pub async fn key_import_file(state: State<'_, AppState>, form: ImportFileForm) -> Result<KeyCard> {
+    let private_key = std::fs::read_to_string(&form.path)?;
+    let certificate = match form.certificate_path {
+        Some(p) => Some(std::fs::read_to_string(&p)?),
+        None => form.certificate,
+    };
     keychain::import(
         &state.store,
         &ImportForm {
-            vault_id,
-            label,
+            vault_id: form.vault_id,
+            label: form.label,
             private_key,
-            passphrase,
-            remember_passphrase,
+            passphrase: form.passphrase,
+            remember_passphrase: form.remember_passphrase,
+            certificate,
         },
     )
+}
+
+/// Public half + format of pasted private key text; nothing is stored.
+#[tauri::command]
+pub async fn key_inspect(text: String) -> Result<KeyPreview> {
+    keychain::inspect_private(&text)
+}
+
+/// Same for a file on disk; the private material stays in Rust.
+#[tauri::command]
+pub async fn key_inspect_file(path: String) -> Result<KeyPreview> {
+    keychain::inspect_private(&std::fs::read_to_string(&path)?)
+}
+
+/// Parse + verify a certificate for the editor preview; nothing is stored.
+#[tauri::command]
+pub async fn certificate_inspect(text: String) -> Result<CertificateCard> {
+    keychain::inspect_certificate(&text)
+}
+
+#[tauri::command]
+pub async fn certificate_inspect_file(path: String) -> Result<CertificateCard> {
+    keychain::inspect_certificate(&std::fs::read_to_string(&path)?)
+}
+
+/// Certificate text attached to a key (public data), for display/copy.
+#[tauri::command]
+pub async fn key_certificate(state: State<'_, AppState>, id: Uuid) -> Result<Option<String>> {
+    keychain::certificate_text(&state.store, id)
+}
+
+/// Attach (`Some(text)`) or detach (`None`) the certificate of a key.
+#[tauri::command]
+pub async fn key_set_certificate(
+    state: State<'_, AppState>,
+    id: Uuid,
+    certificate: Option<String>,
+) -> Result<KeyCard> {
+    keychain::set_certificate(&state.store, id, certificate)
+}
+
+#[tauri::command]
+pub async fn key_set_certificate_file(
+    state: State<'_, AppState>,
+    id: Uuid,
+    path: String,
+) -> Result<KeyCard> {
+    let text = std::fs::read_to_string(&path)?;
+    keychain::set_certificate(&state.store, id, Some(text))
+}
+
+/// Copy or move a key (with its certificate) into another vault.
+#[tauri::command]
+pub async fn key_copy_to_vault(
+    state: State<'_, AppState>,
+    id: Uuid,
+    vault_id: Uuid,
+    move_key: bool,
+) -> Result<KeyCard> {
+    keychain::copy_to_vault(&state.store, id, vault_id, move_key)
 }
 
 #[tauri::command]
@@ -137,6 +268,84 @@ fn write_private(path: &str, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Result of `key_export_to_host`.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportToHostResult {
+    pub outcome: ExportOutcome,
+    pub host_label: String,
+    /// `user@host:port` the key was installed for.
+    pub target: String,
+}
+
+/// `ssh-copy-id`: connect to a saved host with its current credentials and
+/// append the key's public half to `~/.ssh/authorized_keys` there. Prompts
+/// (password, host key) are routed under a throw-away session id; the
+/// transport is closed as soon as the command returns.
+#[tauri::command]
+pub async fn key_export_to_host<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    id: Uuid,
+    host_id: Uuid,
+) -> Result<ExportToHostResult> {
+    let public = keychain::public_key(&state.store, id)?;
+    let conn = sessions::connect_host(&app, Uuid::new_v4(), host_id).await?;
+    let out = conn
+        .client
+        .exec(
+            keychain::EXPORT_COMMAND,
+            Some(bytes::Bytes::from(format!("{public}\n"))),
+        )
+        .await;
+    let (host_label, target) = (conn.label.clone(), conn.display.clone());
+    conn.close().await;
+    let out = out?;
+    let outcome = keychain::export_outcome(out.exit_code, &out.stdout, &out.stderr)?;
+    Ok(ExportToHostResult {
+        outcome,
+        host_label,
+        target,
+    })
+}
+
+/// Keys the system SSH agent currently holds (public halves only). Empty
+/// with `available: false` when no agent is reachable.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentKeys {
+    pub available: bool,
+    /// Why the agent is unavailable (never contains secrets).
+    pub error: Option<String>,
+    pub keys: Vec<termoso_core::agent::AgentKey>,
+}
+
+#[tauri::command]
+pub async fn agent_keys() -> Result<AgentKeys> {
+    let mut agent = match termoso_core::agent::connect_system_agent().await {
+        Ok(a) => a,
+        Err(e) => {
+            return Ok(AgentKeys {
+                available: false,
+                error: Some(e.to_string()),
+                keys: Vec::new(),
+            });
+        }
+    };
+    match termoso_core::agent::list_keys(&mut agent).await {
+        Ok(keys) => Ok(AgentKeys {
+            available: true,
+            error: None,
+            keys,
+        }),
+        Err(e) => Ok(AgentKeys {
+            available: false,
+            error: Some(e.to_string()),
+            keys: Vec::new(),
+        }),
+    }
+}
+
 #[tauri::command]
 pub async fn key_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
     keychain::delete(&state.store, id)
@@ -158,6 +367,17 @@ pub async fn identity_save(state: State<'_, AppState>, form: IdentityForm) -> Re
 #[tauri::command]
 pub async fn identity_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
     keychain::delete_identity(&state.store, id)
+}
+
+/// Copy or move an identity (with its key and certificate) into another vault.
+#[tauri::command]
+pub async fn identity_copy_to_vault(
+    state: State<'_, AppState>,
+    id: Uuid,
+    vault_id: Uuid,
+    move_identity: bool,
+) -> Result<IdentityCard> {
+    keychain::copy_identity_to_vault(&state.store, id, vault_id, move_identity)
 }
 
 #[tauri::command]
@@ -200,6 +420,25 @@ pub async fn pf_delete<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
     forwarding::delete(&app, id).await
 }
 
+#[tauri::command]
+pub async fn pf_duplicate(state: State<'_, AppState>, id: Uuid) -> Result<PfRuleCard> {
+    forwarding::duplicate(&state, id)
+}
+
+#[tauri::command]
+pub async fn pf_copy_to_vault<R: Runtime>(
+    app: AppHandle<R>,
+    id: Uuid,
+    vault_id: Uuid,
+    move_rule: bool,
+) -> Result<PfRuleCard> {
+    if move_rule {
+        forwarding::move_to_vault(&app, id, vault_id).await
+    } else {
+        forwarding::copy_to_vault(&app.state::<AppState>(), id, vault_id)
+    }
+}
+
 // ───────────────────────────── snippets ─────────────────────────────
 
 #[tauri::command]
@@ -221,13 +460,33 @@ pub async fn snippet_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> 
 }
 
 #[tauri::command]
+pub async fn snippet_copy_to_vault(
+    state: State<'_, AppState>,
+    id: Uuid,
+    vault_id: Uuid,
+    move_snippet: bool,
+) -> Result<SnippetCard> {
+    snippets::copy_to_vault(&state.store, id, vault_id, move_snippet)
+}
+
+#[tauri::command]
+pub async fn snippet_set_targets(
+    state: State<'_, AppState>,
+    id: Uuid,
+    host_ids: Vec<Uuid>,
+) -> Result<SnippetCard> {
+    snippets::set_targets(&state.store, id, &host_ids)
+}
+
+#[tauri::command]
 pub async fn snippet_run(
     state: State<'_, AppState>,
     id: Uuid,
     session_ids: Vec<Uuid>,
     vars: HashMap<String, String>,
+    paste: Option<bool>,
 ) -> Result<RunResult> {
-    snippets::run(&state, id, &session_ids, &vars).await
+    snippets::run(&state, id, &session_ids, &vars, paste.unwrap_or(false)).await
 }
 
 #[tauri::command]
@@ -252,6 +511,16 @@ pub async fn snippet_package_save(
 #[tauri::command]
 pub async fn snippet_package_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
     snippets::delete_package(&state.store, id)
+}
+
+#[tauri::command]
+pub async fn snippet_package_copy_to_vault(
+    state: State<'_, AppState>,
+    id: Uuid,
+    vault_id: Uuid,
+    move_package: bool,
+) -> Result<PackageNode> {
+    snippets::copy_package_to_vault(&state.store, id, vault_id, move_package)
 }
 
 // ───────────────────────────── known hosts ─────────────────────────────
@@ -300,6 +569,150 @@ pub async fn known_hosts_export_file(state: State<'_, AppState>, path: String) -
 #[tauri::command]
 pub fn known_hosts_default_path() -> Option<String> {
     trust::default_openssh_path()
+}
+
+// ───────────────────────────── import ─────────────────────────────
+
+/// Parse everything in `~/.ssh` (or `dir`) without touching the vault.
+#[tauri::command]
+pub async fn import_scan_ssh(dir: Option<String>) -> Result<ImportPreview> {
+    tauri::async_runtime::spawn_blocking(move || import::scan_ssh_dir(dir.as_deref()))
+        .await
+        .map_err(|e| crate::error::DesktopError::new("import", e.to_string()))?
+        .map(import::remember)
+}
+
+#[tauri::command]
+pub async fn import_parse_file(source: ImportSource, path: String) -> Result<ImportPreview> {
+    tauri::async_runtime::spawn_blocking(move || import::parse_file(source, &path))
+        .await
+        .map_err(|e| crate::error::DesktopError::new("import", e.to_string()))?
+        .map(import::remember)
+}
+
+#[tauri::command]
+pub async fn import_scan_putty_registry() -> Result<ImportPreview> {
+    tauri::async_runtime::spawn_blocking(import::scan_putty_registry)
+        .await
+        .map_err(|e| crate::error::DesktopError::new("import", e.to_string()))?
+        .map(import::remember)
+}
+
+#[tauri::command]
+pub fn import_ssh_dir_default() -> Option<String> {
+    import::default_ssh_dir()
+        .filter(|p| p.is_dir())
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn import_csv_template() -> String {
+    import::csv_template()
+}
+
+#[tauri::command]
+pub fn import_csv_template_save(path: String) -> Result<()> {
+    std::fs::write(&path, import::csv_template())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn import_apply(
+    state: State<'_, AppState>,
+    vault_id: Uuid,
+    preview_id: Uuid,
+    selection: ImportSelection,
+) -> Result<import::ImportReport> {
+    import::apply_cached(&state, vault_id, preview_id, &selection)
+}
+
+#[tauri::command]
+pub fn import_discard(preview_id: Uuid) {
+    import::discard(preview_id)
+}
+
+// ───────────────────────────── cloud integration ─────────────────────────────
+
+/// List machines at a provider. `config` carries the credentials for this
+/// call only; nothing of it is kept or returned.
+#[tauri::command]
+pub async fn cloud_discover(
+    state: State<'_, AppState>,
+    vault_id: Uuid,
+    config: termoso_core::cloud::CloudConfig,
+) -> Result<CloudPreview> {
+    cloud::discover(&state.store, vault_id, config).await
+}
+
+#[tauri::command]
+pub async fn cloud_import(
+    state: State<'_, AppState>,
+    vault_id: Uuid,
+    preview_id: Uuid,
+    selection: CloudSelection,
+) -> Result<CloudImportReport> {
+    cloud::apply_cached(&state.store, vault_id, preview_id, &selection)
+}
+
+#[tauri::command]
+pub fn cloud_discard(preview_id: Uuid) {
+    cloud::discard(preview_id)
+}
+
+// ───────────────────────────── export / backup ─────────────────────────────
+
+/// Write hosts as CSV. Passwords are left blank unless `include_passwords`.
+#[tauri::command]
+pub async fn hosts_export_csv(
+    state: State<'_, AppState>,
+    vault_id: Option<Uuid>,
+    include_passwords: bool,
+    path: String,
+) -> Result<backup::CsvExportReport> {
+    backup::export_hosts_csv(&state.store, vault_id, include_passwords, &path)
+}
+
+/// Encrypt the given vaults (all unlocked when empty) into a `.termoso` file.
+#[tauri::command]
+pub async fn backup_export(
+    state: State<'_, AppState>,
+    vault_ids: Vec<Uuid>,
+    password: String,
+    path: String,
+) -> Result<BackupSummary> {
+    let store = state.store.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        backup::export_file(&store, &vault_ids, &password, &path)
+    })
+    .await
+    .map_err(|e| crate::error::DesktopError::new("backup", e.to_string()))?
+}
+
+/// Decrypt a backup and describe its contents; nothing is written yet.
+#[tauri::command]
+pub async fn backup_inspect(path: String, password: String) -> Result<BackupSummary> {
+    tauri::async_runtime::spawn_blocking(move || backup::inspect_file(&path, &password))
+        .await
+        .map_err(|e| crate::error::DesktopError::new("backup", e.to_string()))?
+}
+
+#[tauri::command]
+pub fn backup_discard(preview_id: Uuid) {
+    backup::discard(preview_id)
+}
+
+/// Restore vault `source` of an inspected backup into `vault_id`.
+#[tauri::command]
+pub async fn backup_restore<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    preview_id: Uuid,
+    source: usize,
+    vault_id: Uuid,
+) -> Result<backup::RestoreReport> {
+    let report = backup::apply(&state.store, preview_id, source, vault_id)?;
+    let _ = app.emit(SYNC_EVENT, SyncNotice::EntitiesChanged { vault_id });
+    Ok(report)
 }
 
 // ───────────────────────────── logs ─────────────────────────────
@@ -425,6 +838,248 @@ pub async fn account_devices<R: Runtime>(app: AppHandle<R>) -> Result<Vec<Device
 #[tauri::command]
 pub async fn account_device_revoke<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
     account::revoke_device(&app, id).await
+}
+
+#[tauri::command]
+pub async fn account_vault_members<R: Runtime>(
+    app: AppHandle<R>,
+    vault_id: Uuid,
+) -> Result<Vec<VaultMember>> {
+    account::vault_members(&app, vault_id).await
+}
+
+// ───────────────────────────── SSH ID ─────────────────────────────
+
+#[tauri::command]
+pub async fn sshid_view<R: Runtime>(app: AppHandle<R>) -> Result<SshIdView> {
+    sshid::view(&app).await
+}
+
+#[tauri::command]
+pub async fn sshid_create<R: Runtime>(app: AppHandle<R>, handle: String) -> Result<SshIdView> {
+    sshid::create(&app, &handle).await
+}
+
+#[tauri::command]
+pub async fn sshid_delete<R: Runtime>(app: AppHandle<R>) -> Result<SshIdView> {
+    sshid::delete(&app).await
+}
+
+#[tauri::command]
+pub async fn sshid_rotate<R: Runtime>(app: AppHandle<R>) -> Result<SshIdView> {
+    sshid::rotate(&app).await
+}
+
+/// Blocks until the token is touched; the generation runs off-runtime.
+#[tauri::command]
+pub async fn sshid_add_fido2<R: Runtime>(
+    app: AppHandle<R>,
+    form: SshIdFido2Form,
+) -> Result<SshIdView> {
+    sshid::add_fido2(&app, form).await
+}
+
+#[tauri::command]
+pub async fn sshid_remove_key<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<SshIdView> {
+    sshid::remove_key(&app, id).await
+}
+
+#[tauri::command]
+pub async fn sshid_remove_device<R: Runtime>(
+    app: AppHandle<R>,
+    device_id: Uuid,
+) -> Result<SshIdView> {
+    sshid::remove_device(&app, device_id).await
+}
+
+// ───────────────────────────── teams ─────────────────────────────
+
+#[tauri::command]
+pub async fn teams_list<R: Runtime>(app: AppHandle<R>) -> Result<Vec<Team>> {
+    team::list(&app).await
+}
+
+#[tauri::command]
+pub async fn team_create<R: Runtime>(app: AppHandle<R>, name: String) -> Result<Team> {
+    team::create(&app, &name).await
+}
+
+#[tauri::command]
+pub async fn team_rename<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    name: String,
+) -> Result<Team> {
+    team::rename(&app, team_id, &name).await
+}
+
+#[tauri::command]
+pub async fn team_set_security<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    multiplayer_enabled: Option<bool>,
+    require_mfa: Option<bool>,
+) -> Result<Team> {
+    team::set_security(&app, team_id, multiplayer_enabled, require_mfa).await
+}
+
+#[tauri::command]
+pub async fn team_delete<R: Runtime>(app: AppHandle<R>, team_id: Uuid) -> Result<()> {
+    team::delete(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_leave<R: Runtime>(app: AppHandle<R>, team_id: Uuid) -> Result<()> {
+    team::leave(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_accept_invite<R: Runtime>(app: AppHandle<R>, link: String) -> Result<Team> {
+    team::accept_invite(&app, &link).await
+}
+
+#[tauri::command]
+pub async fn team_members<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<Vec<TeamMemberCard>> {
+    team::members(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_member_set_role<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    user_id: Uuid,
+    role: TeamRole,
+) -> Result<()> {
+    team::set_member_role(&app, team_id, user_id, role).await
+}
+
+#[tauri::command]
+pub async fn team_member_remove<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    user_id: Uuid,
+) -> Result<()> {
+    team::remove_member(&app, team_id, user_id).await
+}
+
+#[tauri::command]
+pub async fn team_invites<R: Runtime>(app: AppHandle<R>, team_id: Uuid) -> Result<Vec<Invite>> {
+    team::invites(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_invite<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    emails: Vec<String>,
+    role: TeamRole,
+    vault_ids: Vec<Uuid>,
+) -> Result<Vec<InviteResult>> {
+    team::invite(&app, team_id, emails, role, vault_ids).await
+}
+
+#[tauri::command]
+pub async fn team_invite_revoke<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    invite_id: Uuid,
+) -> Result<()> {
+    team::revoke_invite(&app, team_id, invite_id).await
+}
+
+#[tauri::command]
+pub async fn team_pending_keys<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<Vec<PendingKeyCard>> {
+    team::pending_keys(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_audit<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    filter: Option<team::AuditFilter>,
+) -> Result<team::AuditPage> {
+    team::audit(&app, team_id, filter.unwrap_or_default()).await
+}
+
+#[tauri::command]
+pub async fn team_vault_create<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    name: String,
+    access: Vec<VaultAccess>,
+) -> Result<()> {
+    team::create_vault(&app, team_id, &name, access).await
+}
+
+#[tauri::command]
+pub async fn team_vault_rename<R: Runtime>(
+    app: AppHandle<R>,
+    vault_id: Uuid,
+    name: String,
+) -> Result<()> {
+    team::rename_vault(&app, vault_id, &name).await
+}
+
+#[tauri::command]
+pub async fn team_vault_delete<R: Runtime>(app: AppHandle<R>, vault_id: Uuid) -> Result<()> {
+    team::delete_vault(&app, vault_id).await
+}
+
+#[tauri::command]
+pub async fn team_vault_set_access<R: Runtime>(
+    app: AppHandle<R>,
+    vault_id: Uuid,
+    user_id: Uuid,
+    role: VaultRole,
+) -> Result<()> {
+    team::set_vault_access(&app, vault_id, user_id, role).await
+}
+
+#[tauri::command]
+pub async fn team_vault_remove_access<R: Runtime>(
+    app: AppHandle<R>,
+    vault_id: Uuid,
+    user_id: Uuid,
+) -> Result<()> {
+    team::remove_vault_access(&app, vault_id, user_id).await
+}
+
+#[tauri::command]
+pub async fn team_vault_rotate_key<R: Runtime>(app: AppHandle<R>, vault_id: Uuid) -> Result<()> {
+    team::rotate_vault_key(&app, vault_id).await
+}
+
+// ───────────────────────────── multiplayer ─────────────────────────────
+
+#[tauri::command]
+pub async fn multiplayer_start<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<ShareInfo> {
+    multiplayer::start(&app, id).await
+}
+
+#[tauri::command]
+pub async fn multiplayer_stop<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
+    multiplayer::stop(&app, id).await
+}
+
+#[tauri::command]
+pub fn multiplayer_info(state: State<'_, AppState>, id: Uuid) -> Option<ShareInfo> {
+    state.multiplayer.info(id)
+}
+
+#[tauri::command]
+pub fn multiplayer_set_control<R: Runtime>(
+    app: AppHandle<R>,
+    id: Uuid,
+    user_id: Uuid,
+    enabled: bool,
+) -> Result<()> {
+    multiplayer::set_control(&app, id, user_id, enabled)
 }
 
 // ───────────────────────────── updates ─────────────────────────────
