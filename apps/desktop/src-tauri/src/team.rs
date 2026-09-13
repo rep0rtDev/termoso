@@ -126,7 +126,35 @@ pub async fn rename<R: Runtime>(app: &AppHandle<R>, team_id: Uuid, name: &str) -
     let name = clean_name(name)?;
     let team = api(app)
         .await?
-        .update_team(team_id, &UpdateTeamRequest { name: Some(name) })
+        .update_team(
+            team_id,
+            &UpdateTeamRequest {
+                name: Some(name),
+                ..Default::default()
+            },
+        )
+        .await?;
+    refresh(app).await?;
+    Ok(team)
+}
+
+/// Settings → Team → Security: multiplayer / require-2FA switches (admins only).
+pub async fn set_security<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    multiplayer_enabled: Option<bool>,
+    require_mfa: Option<bool>,
+) -> Result<Team> {
+    let team = api(app)
+        .await?
+        .update_team(
+            team_id,
+            &UpdateTeamRequest {
+                name: None,
+                multiplayer_enabled,
+                require_mfa,
+            },
+        )
         .await?;
     refresh(app).await?;
     Ok(team)

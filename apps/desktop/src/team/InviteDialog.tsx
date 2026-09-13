@@ -3,12 +3,8 @@ import {
   Alert,
   Box,
   Button,
-  Checkbox,
+  Chip,
   Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControlLabel,
   IconButton,
   MenuItem,
   Stack,
@@ -19,11 +15,14 @@ import {
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
+import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
+import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { useMutation } from "@tanstack/react-query";
 import { useSnackbar } from "@/components/Snackbar";
-import { Field, Mono } from "@/components/ui";
+import { Mono } from "@/components/ui";
 import * as ipc from "@/ipc/commands";
-import { useInvalidateTeam } from "@/ipc/hooks";
+import { useAccount, useInvalidateTeam } from "@/ipc/hooks";
 import {
   errorMessage,
   type InviteResult,
@@ -32,12 +31,13 @@ import {
   type TeamRole,
   type Uuid,
 } from "@/ipc/types";
-import { looksLikeEmail, splitEmails, teamRoleHint, teamRoleLabel } from "./roles";
+import { looksLikeEmail, teamRoleLabel } from "./roles";
+import { ShareDataDialog } from "./ShareDataDialog";
 
 /**
- * "Invite members": several addresses at once, one team role for all of them
- * and the team vaults they should be let into once they accept. Ends with the
- * per-address outcome — a link to copy, or why it failed.
+ * “Invite your teammates” (Termius flow): one e-mail per row, `+ Add another`, a compact
+ * role / vault-access line, then the per-address links and an optional “Share data” step.
+ * Invitations are valid for 14 days and only work for the address they were issued to.
  */
 export function InviteDialog({
   team,
@@ -69,111 +69,220 @@ function Body({
 }) {
   const snackbar = useSnackbar();
   const invalidate = useInvalidateTeam();
-  const [text, setText] = useState("");
+  const account = useAccount();
+  const [rows, setRows] = useState<string[]>([""]);
   const [role, setRole] = useState<TeamRole>("member");
   const [vaultIds, setVaultIds] = useState<Set<Uuid>>(() => new Set(vaults.map((v) => v.id)));
   const [results, setResults] = useState<InviteResult[] | null>(null);
+  const [share, setShare] = useState(false);
 
-  const emails = splitEmails(text);
+  const emails = [...new Set(rows.map((r) => r.trim()).filter(Boolean))];
   const bad = emails.filter((e) => !looksLikeEmail(e));
+  const ready = emails.length > 0 && bad.length === 0;
 
   const send = useMutation({
-    mutationFn: () => ipc.teamInvite(team.id, emails, role, [...vaultIds]),
-    onSuccess: (r) => {
+    mutationFn: ({ copy }: { copy: boolean }) =>
+      ipc.teamInvite(team.id, emails, role, [...vaultIds]).then((r) => ({ r, copy })),
+    onSuccess: ({ r, copy }) => {
       invalidate();
       setResults(r);
+      const url = r.find((x) => x.url)?.url;
+      if (copy && url) {
+        void navigator.clipboard
+          .writeText(url)
+          .then(() => snackbar.notify("Invitation link copied"));
+      }
     },
     onError: (e) => snackbar.error(errorMessage(e)),
   });
 
-  if (results) return <Results team={team} results={results} onClose={onClose} />;
+  const personal = (account.data?.vaults ?? []).find((v) => v.kind === "personal" && v.unlocked);
+  const shareTarget = vaults.find((v) => v.unlocked) ?? null;
+
+  if (results) {
+    return (
+      <>
+        <Results
+          team={team}
+          results={results}
+          onClose={onClose}
+          onShare={personal && shareTarget ? () => setShare(true) : undefined}
+        />
+        <ShareDataDialog
+          open={share}
+          source={personal ?? null}
+          target={shareTarget}
+          onClose={() => setShare(false)}
+          onDone={onClose}
+        />
+      </>
+    );
+  }
 
   return (
     <>
-      <DialogTitle>Invite members to {team.name}</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2}>
-          <Field
-            label="E-mail addresses"
-            hint="One or many — separate with commas, spaces or new lines. Each person gets their own link; the invitation is valid for 14 days."
+      <Box sx={{ px: 4, pt: 4, pb: 3, display: "flex", flexDirection: "column", gap: 1 }}>
+        <Box sx={{ display: "flex", justifyContent: "center", mb: 1 }}>
+          <Box
+            sx={{
+              width: 56,
+              height: 56,
+              borderRadius: "50%",
+              display: "grid",
+              placeItems: "center",
+              bgcolor: "surface.high",
+              color: "primary.main",
+            }}
           >
-            <TextField
-              autoFocus
-              multiline
-              minRows={2}
-              maxRows={6}
-              fullWidth
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="alice@example.com, bob@example.com"
-              error={bad.length > 0}
-              helperText={bad.length ? `Not an address: ${bad.join(", ")}` : undefined}
-            />
-          </Field>
-          <Field label="Team role">
-            <TextField
-              select
-              fullWidth
-              value={role}
-              onChange={(e) => setRole(e.target.value as TeamRole)}
-            >
-              {(["member", "admin"] as TeamRole[]).map((r) => (
-                <MenuItem key={r} value={r}>
-                  <Box>
-                    <Typography variant="body2">{teamRoleLabel[r]}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {teamRoleHint[r]}
-                    </Typography>
-                  </Box>
-                </MenuItem>
-              ))}
-            </TextField>
-          </Field>
-          {vaults.length > 0 && (
-            <Field
-              label="Vault access on joining"
-              hint="They are listed as pending until a vault manager hands them the key — you will see a prompt on the Team page."
-            >
-              <Stack>
-                {vaults.map((v) => (
-                  <FormControlLabel
-                    key={v.id}
-                    control={
-                      <Checkbox
-                        checked={vaultIds.has(v.id)}
-                        onChange={(e) => {
-                          const next = new Set(vaultIds);
-                          if (e.target.checked) next.add(v.id);
-                          else next.delete(v.id);
-                          setVaultIds(next);
-                        }}
-                      />
+            <GroupsRoundedIcon sx={{ fontSize: 34 }} />
+          </Box>
+        </Box>
+        <Typography variant="h5" sx={{ fontWeight: 700, textAlign: "center" }}>
+          Invite your teammates
+        </Typography>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ textAlign: "center", maxWidth: 440, mx: "auto" }}
+        >
+          Manage infrastructure together in shared team vaults. Keep your teammates on the same page
+          and boost their productivity.
+        </Typography>
+        <Box sx={{ borderTop: "1px solid", borderColor: "divider", my: 1.5 }} />
+        <Stack spacing={1.25}>
+          {rows.map((value, i) => {
+            const v = value.trim();
+            const invalid = v.length > 0 && !looksLikeEmail(v);
+            return (
+              <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <TextField
+                  autoFocus={i === rows.length - 1}
+                  fullWidth
+                  size="small"
+                  type="email"
+                  label={v ? "Email" : undefined}
+                  placeholder="Email"
+                  value={value}
+                  error={invalid}
+                  helperText={invalid ? "Not an e-mail address" : undefined}
+                  onChange={(e) => setRows((r) => r.map((x, j) => (j === i ? e.target.value : x)))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && v && !invalid && i === rows.length - 1) {
+                      setRows((r) => [...r, ""]);
                     }
-                    label={v.name}
-                  />
-                ))}
-              </Stack>
-            </Field>
-          )}
+                  }}
+                />
+                {rows.length > 1 && (
+                  <IconButton
+                    size="small"
+                    aria-label="Remove"
+                    onClick={() => setRows((r) => r.filter((_, j) => j !== i))}
+                  >
+                    <CloseRoundedIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </Box>
+            );
+          })}
+          <Button
+            size="small"
+            variant="text"
+            sx={{ alignSelf: "flex-start", px: 0.5 }}
+            disabled={rows[rows.length - 1]?.trim() === ""}
+            onClick={() => setRows((r) => [...r, ""])}
+          >
+            + Add another
+          </Button>
         </Stack>
-      </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap", mt: 1.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            Invite as
+          </Typography>
+          <TextField
+            select
+            size="small"
+            value={role}
+            onChange={(e) => setRole(e.target.value as TeamRole)}
+            sx={{ minWidth: 120, "& .MuiSelect-select": { py: 0.5, fontSize: 13 } }}
+          >
+            {(["member", "admin"] as TeamRole[]).map((r) => (
+              <MenuItem key={r} value={r}>
+                {teamRoleLabel[r]}
+              </MenuItem>
+            ))}
+          </TextField>
+          {vaults.length > 0 && (
+            <>
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                with access to
+              </Typography>
+              {vaults.map((v) => {
+                const on = vaultIds.has(v.id);
+                return (
+                  <Chip
+                    key={v.id}
+                    size="small"
+                    icon={<GroupsRoundedIcon />}
+                    label={v.name}
+                    color={on ? "primary" : "default"}
+                    variant={on ? "filled" : "outlined"}
+                    onClick={() => {
+                      const next = new Set(vaultIds);
+                      if (on) next.delete(v.id);
+                      else next.add(v.id);
+                      setVaultIds(next);
+                    }}
+                  />
+                );
+              })}
+            </>
+          )}
+        </Box>
+      </Box>
+      <Footer>
         <Button color="inherit" onClick={onClose} disabled={send.isPending}>
-          Cancel
+          Later
         </Button>
+        <Box sx={{ flex: 1 }} />
+        <Tooltip title="Send the invitation and copy the first link to the clipboard">
+          <span>
+            <Button
+              variant="tonal"
+              endIcon={<LinkRoundedIcon />}
+              disabled={!ready || send.isPending}
+              onClick={() => send.mutate({ copy: true })}
+            >
+              Copy invitation link
+            </Button>
+          </span>
+        </Tooltip>
         <Button
           variant="contained"
-          disabled={send.isPending || emails.length === 0 || bad.length > 0}
-          onClick={() => send.mutate()}
+          disabled={!ready || send.isPending}
+          onClick={() => send.mutate({ copy: false })}
         >
-          {send.isPending
-            ? "Inviting…"
-            : emails.length > 1
-              ? `Invite ${emails.length} people`
-              : "Invite"}
+          {send.isPending ? "Inviting…" : "Continue"}
         </Button>
-      </DialogActions>
+      </Footer>
     </>
+  );
+}
+
+function Footer({ children }: { children: React.ReactNode }) {
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 1,
+        px: 3,
+        py: 1.5,
+        borderTop: "1px solid",
+        borderColor: "divider",
+      }}
+    >
+      {children}
+    </Box>
   );
 }
 
@@ -181,25 +290,27 @@ function Results({
   team,
   results,
   onClose,
+  onShare,
 }: {
   team: Team;
   results: InviteResult[];
   onClose: () => void;
+  onShare?: () => void;
 }) {
   const ok = results.filter((r) => r.url);
   return (
     <>
-      <DialogTitle>
-        {ok.length === results.length
-          ? `Invited to ${team.name}`
-          : `${ok.length} of ${results.length} invited`}
-      </DialogTitle>
-      <DialogContent>
+      <Box sx={{ px: 4, pt: 3, pb: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+          {ok.length === results.length
+            ? `Invited to ${team.name}`
+            : `${ok.length} of ${results.length} invited`}
+        </Typography>
         <Stack spacing={1.5}>
           {ok.length > 0 && (
             <Alert severity="info">
               An e-mail goes out when the server has mail set up. Copy a link to send it yourself —
-              it works only for the address it was issued to.
+              it works only for the address it was issued to and expires in 14 days.
             </Alert>
           )}
           <Stack spacing={1}>
@@ -208,12 +319,18 @@ function Results({
             ))}
           </Stack>
         </Stack>
-      </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button variant="contained" onClick={onClose}>
-          Done
+      </Box>
+      <Footer>
+        <Button color="inherit" onClick={onClose}>
+          {onShare ? "Later" : "Done"}
         </Button>
-      </DialogActions>
+        <Box sx={{ flex: 1 }} />
+        {onShare && (
+          <Button variant="contained" onClick={onShare}>
+            Share data
+          </Button>
+        )}
+      </Footer>
     </>
   );
 }

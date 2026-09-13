@@ -58,6 +58,18 @@ where
     .await?)
 }
 
+/// Whether `user_id` has TOTP or at least one WebAuthn credential enrolled.
+pub async fn mfa_enabled_for(state: &AppState, user_id: Uuid) -> ApiResult<bool> {
+    let (on,): (bool,) = sqlx::query_as(
+        "SELECT u.totp_enabled OR EXISTS (SELECT 1 FROM webauthn_credentials w WHERE w.user_id = u.id)
+         FROM users u WHERE u.id = $1",
+    )
+    .bind(user_id)
+    .fetch_one(&state.db)
+    .await?;
+    Ok(on)
+}
+
 pub async fn mfa_enabled(state: &AppState, user: &UserRow) -> ApiResult<bool> {
     if user.totp_enabled {
         return Ok(true);

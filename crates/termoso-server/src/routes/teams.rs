@@ -94,9 +94,10 @@ fn validate_name(name: &str) -> ApiResult<String> {
 
 #[utoipa::path(get, path = "/api/v1/teams", tag = "teams", responses((status = 200, body = TeamList)))]
 pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<TeamList>> {
-    let rows: Vec<(Uuid, String, DateTime<Utc>, String, i64)> = sqlx::query_as(
+    let rows: Vec<(Uuid, String, DateTime<Utc>, String, i64, bool, bool)> = sqlx::query_as(
         "SELECT t.id, t.name, t.created_at, m.role,
-                (SELECT count(*) FROM team_members x WHERE x.team_id = t.id)
+                (SELECT count(*) FROM team_members x WHERE x.team_id = t.id),
+                t.multiplayer_enabled, t.require_mfa
          FROM teams t JOIN team_members m ON m.team_id = t.id
          WHERE m.user_id = $1 ORDER BY t.created_at",
     )
@@ -106,13 +107,19 @@ pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<T
     Ok(Json(TeamList {
         teams: rows
             .into_iter()
-            .map(|(id, name, created_at, role, member_count)| Team {
-                id,
-                name,
-                created_at,
-                my_role: parse_team_role(&role),
-                member_count,
-            })
+            .map(
+                |(id, name, created_at, role, member_count, multiplayer_enabled, require_mfa)| {
+                    Team {
+                        id,
+                        name,
+                        created_at,
+                        my_role: parse_team_role(&role),
+                        member_count,
+                        multiplayer_enabled,
+                        require_mfa,
+                    }
+                },
+            )
             .collect(),
     }))
 }
@@ -154,6 +161,8 @@ pub async fn create(
         created_at,
         my_role: TeamRole::Owner,
         member_count: 1,
+        multiplayer_enabled: true,
+        require_mfa: false,
     }))
 }
 
@@ -164,8 +173,16 @@ pub async fn get(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Team>> {
     let role = my_role(&state.db, id, auth.user_id()).await?;
-    let (name, created_at, member_count): (String, DateTime<Utc>, i64) = sqlx::query_as(
-        "SELECT name, created_at, (SELECT count(*) FROM team_members WHERE team_id = $1) FROM teams WHERE id = $1",
+    let (name, created_at, member_count, multiplayer_enabled, require_mfa): (
+        String,
+        DateTime<Utc>,
+        i64,
+        bool,
+        bool,
+    ) = sqlx::query_as(
+        "SELECT name, created_at, (SELECT count(*) FROM team_members WHERE team_id = $1),
+                multiplayer_enabled, require_mfa
+         FROM teams WHERE id = $1",
     )
     .bind(id)
     .fetch_one(&state.db)
@@ -176,6 +193,8 @@ pub async fn get(
         created_at,
         my_role: role,
         member_count,
+        multiplayer_enabled,
+        require_mfa,
     }))
 }
 
@@ -193,6 +212,25 @@ pub async fn update(
         sqlx::query("UPDATE teams SET name = $2, updated_at = now() WHERE id = $1")
             .bind(id)
             .bind(&name)
+            .execute(&state.db)
+            .await?;
+    }
+    if let Some(on) = req.multiplayer_enabled {
+        sqlx::query("UPDATE teams SET multiplayer_enabled = $2, updated_at = now() WHERE id = $1")
+            .bind(id)
+            .bind(on)
+            .execute(&state.db)
+            .await?;
+    }
+    if let Some(on) = req.require_mfa {
+        if on && !users::mfa_enabled_for(&state, auth.user_id()).await? {
+            return Err(Error::forbidden(
+                "Turn on two-factor authentication for your own account first",
+            ));
+        }
+        sqlx::query("UPDATE teams SET require_mfa = $2, updated_at = now() WHERE id = $1")
+            .bind(id)
+            .bind(on)
             .execute(&state.db)
             .await?;
     }
