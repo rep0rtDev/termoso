@@ -279,6 +279,7 @@ pub async fn register_finish(
             &inv.role,
             &inv.vault_ids,
             user_id,
+            None,
         )
         .await?;
     }

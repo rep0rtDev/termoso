@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 import {
   Box,
   Button,
@@ -30,11 +30,16 @@ import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
+import GroupAddRoundedIcon from "@mui/icons-material/GroupAddRounded";
+import DriveFileMoveOutlinedIcon from "@mui/icons-material/DriveFileMoveOutlined";
+import LibraryAddOutlinedIcon from "@mui/icons-material/LibraryAddOutlined";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { Page, PageBody, PageHeader } from "@/components/PageHeader";
 import {
+  ActionMenu,
   EntityCard,
   Field,
   IconTile,
@@ -43,12 +48,13 @@ import {
   SidePanel,
   SplitButton,
   ToolIconButton,
+  type MenuAction,
 } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import { HostAvatar } from "@/hosts/HostAvatar";
 import * as ipc from "@/ipc/commands";
-import { useGroups, useHosts, usePackages, useSnippets } from "@/ipc/hooks";
-import { useActiveVault } from "@/app/vault";
+import { useGroups, useHosts, usePackages, useSnippets, useVaults } from "@/ipc/hooks";
+import { openCollaboration, useActiveVault, ViewOnlyChip } from "@/app/vault";
 import {
   errorMessage,
   type HostCard,
@@ -580,9 +586,18 @@ export function SnippetsPage() {
   const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
   const [selectedId, setSelectedId] = useState<Uuid | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [ctx, setCtx] = useState<
+    | { kind: "snippet"; snippet: SnippetCard; left: number; top: number }
+    | { kind: "package"; pkg: PackageNode; left: number; top: number }
+    | null
+  >(null);
   const lastRun = useLastRun(selectedId);
+  const vaults = useVaults();
+  const readOnly = vault.readOnly;
 
-  useCreateRequests(["snippet"], () => setDialog({ kind: "edit", snippet: null }));
+  useCreateRequests(["snippet"], () => {
+    if (!readOnly) setDialog({ kind: "edit", snippet: null });
+  });
 
   // A deleted snippet simply stops matching; the panel closes on its own.
   const selected = (snippets.data ?? []).find((s) => s.id === selectedId) ?? null;
@@ -603,6 +618,110 @@ export function SnippetsPage() {
   });
 
   const hostList = hosts.data ?? [];
+
+  const vaultTargets = (
+    item: { id: Uuid; vaultId: Uuid; label: string },
+    move: boolean,
+    copyTo: (id: Uuid, vaultId: Uuid, move: boolean) => Promise<unknown>,
+  ): MenuAction[] => {
+    const others = (vaults.data ?? []).filter((v) => v.id !== item.vaultId);
+    if (others.length === 0) return [{ label: "No other vaults", disabled: true }];
+    return others.map((v) => ({
+      label: v.name,
+      icon: v.unlocked ? undefined : <LockOutlinedIcon fontSize="small" />,
+      disabled: !v.unlocked || v.role === "viewer",
+      onClick: () =>
+        op.mutate(async () => {
+          await copyTo(item.id, v.id, move);
+          if (move && selectedId === item.id) setSelectedId(null);
+          if (move && currentPkg === item.id) setPkgFilter(ALL);
+          return `${item.label} ${move ? "moved" : "copied"} to ${v.name}`;
+        }),
+    }));
+  };
+
+  const collaborate: MenuAction = {
+    label: "Collaborate",
+    icon: <GroupAddRoundedIcon fontSize="small" />,
+    disabled: vault.data?.kind !== "team",
+    onClick: () => openCollaboration(vault.data),
+  };
+
+  const snippetMenu = (s: SnippetCard): MenuAction[] => [
+    {
+      label: "Run",
+      icon: <PlayArrowRoundedIcon fontSize="small" />,
+      onClick: () => {
+        if (s.targetHostIds.length > 0) runOnTargets(s);
+        else setDialog({ kind: "run", snippet: s });
+      },
+    },
+    {
+      label: "Edit",
+      icon: <EditRoundedIcon fontSize="small" />,
+      disabled: readOnly,
+      onClick: () => setDialog({ kind: "edit", snippet: s }),
+      divider: true,
+    },
+    collaborate,
+    {
+      label: "Move to",
+      icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
+      disabled: readOnly,
+      items: vaultTargets(s, true, ipc.snippetCopyToVault),
+    },
+    {
+      label: "Copy to",
+      icon: <LibraryAddOutlinedIcon fontSize="small" />,
+      items: vaultTargets(s, false, ipc.snippetCopyToVault),
+    },
+    {
+      label: "Delete",
+      icon: <DeleteOutlineRoundedIcon fontSize="small" />,
+      danger: true,
+      disabled: readOnly,
+      onClick: () => setDialog({ kind: "delete", snippet: s }),
+    },
+  ];
+
+  const packageMenu = (p: PackageNode): MenuAction[] => [
+    {
+      label: "Rename",
+      icon: <EditRoundedIcon fontSize="small" />,
+      disabled: readOnly,
+      onClick: () => setDialog({ kind: "package", pkg: p }),
+      divider: true,
+    },
+    collaborate,
+    {
+      label: "Move to",
+      icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
+      disabled: readOnly,
+      items: vaultTargets(p, true, ipc.snippetPackageCopyToVault),
+    },
+    {
+      label: "Copy to",
+      icon: <LibraryAddOutlinedIcon fontSize="small" />,
+      items: vaultTargets(p, false, ipc.snippetPackageCopyToVault),
+    },
+    {
+      label: "Delete",
+      icon: <DeleteOutlineRoundedIcon fontSize="small" />,
+      danger: true,
+      disabled: readOnly,
+      onClick: () => setDialog({ kind: "deletePackage", pkg: p }),
+    },
+  ];
+
+  const onSnippetContext = (e: MouseEvent<HTMLElement>, snippet: SnippetCard) => {
+    e.preventDefault();
+    setCtx({ kind: "snippet", snippet, left: e.clientX, top: e.clientY });
+  };
+  const onPackageContext = (e: MouseEvent<HTMLElement>, pkg: PackageNode) => {
+    e.preventDefault();
+    setCtx({ kind: "package", pkg, left: e.clientX, top: e.clientY });
+  };
+
   const launch = (
     snippet: SnippetCard,
     vars: Record<string, string>,
@@ -647,7 +766,7 @@ export function SnippetsPage() {
             <SplitButton
               label="New snippet"
               icon={<AddRoundedIcon />}
-              disabled={!vaultId}
+              disabled={!vaultId || readOnly}
               onClick={() => setDialog({ kind: "edit", snippet: null })}
               items={[
                 {
@@ -677,6 +796,7 @@ export function SnippetsPage() {
         }
         trailing={
           <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+            {readOnly && <ViewOnlyChip sx={{ mr: 1 }} />}
             {pkgFilter.kind === "all"
               ? `${snippets.data?.length ?? 0} ${snippets.data?.length === 1 ? "snippet" : "snippets"}`
               : `${visible.length} of ${snippets.data?.length ?? 0}`}
@@ -721,7 +841,8 @@ export function SnippetsPage() {
                 key={p.id}
                 selected={pkgFilter.kind === "pkg" && pkgFilter.id === p.id}
                 onClick={() => setPkgFilter({ kind: "pkg", id: p.id })}
-                sx={{ pr: 0.5, "&:hover .pkg-actions": { opacity: 1 } }}
+                onContextMenu={(e) => onPackageContext(e, p)}
+                sx={{ pr: 0.5, "&:hover .pkg-actions": { opacity: readOnly ? 0 : 1 } }}
               >
                 <FolderRoundedIcon fontSize="small" sx={{ mr: 1, color: "text.secondary" }} />
                 <ListItemText primary={p.label} slotProps={{ primary: { noWrap: true } }} />
@@ -762,12 +883,14 @@ export function SnippetsPage() {
               title={pkgFilter.kind === "all" ? "No snippets yet" : "Nothing here"}
               description="Save the commands you type over and over, pick the hosts they should run on and run them everywhere at once. Use {{name}} placeholders to be asked for values on run."
               action={
-                <Button
-                  variant="contained"
-                  onClick={() => setDialog({ kind: "edit", snippet: null })}
-                >
-                  New snippet
-                </Button>
+                readOnly ? undefined : (
+                  <Button
+                    variant="contained"
+                    onClick={() => setDialog({ kind: "edit", snippet: null })}
+                  >
+                    New snippet
+                  </Button>
+                )
               }
             />
           ) : (
@@ -782,7 +905,10 @@ export function SnippetsPage() {
                       setHistoryOpen(false);
                       setSelectedId(s.id === selectedId ? null : s.id);
                     }}
-                    onDoubleClick={() => setDialog({ kind: "edit", snippet: s })}
+                    onDoubleClick={() => {
+                      if (!readOnly) setDialog({ kind: "edit", snippet: s });
+                    }}
+                    onContextMenu={(e) => onSnippetContext(e, s)}
                     sx={{ alignItems: "flex-start" }}
                     tile={
                       <IconTile tone="purple">
@@ -833,26 +959,28 @@ export function SnippetsPage() {
                       </Button>
                     }
                     actions={
-                      <>
-                        <ToolIconButton
-                          title="Edit"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDialog({ kind: "edit", snippet: s });
-                          }}
-                        >
-                          <EditRoundedIcon fontSize="small" />
-                        </ToolIconButton>
-                        <ToolIconButton
-                          title="Delete"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDialog({ kind: "delete", snippet: s });
-                          }}
-                        >
-                          <DeleteOutlineRoundedIcon fontSize="small" />
-                        </ToolIconButton>
-                      </>
+                      readOnly ? undefined : (
+                        <>
+                          <ToolIconButton
+                            title="Edit"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDialog({ kind: "edit", snippet: s });
+                            }}
+                          >
+                            <EditRoundedIcon fontSize="small" />
+                          </ToolIconButton>
+                          <ToolIconButton
+                            title="Delete"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDialog({ kind: "delete", snippet: s });
+                            }}
+                          >
+                            <DeleteOutlineRoundedIcon fontSize="small" />
+                          </ToolIconButton>
+                        </>
+                      )
                     }
                   />
                 );
@@ -861,6 +989,18 @@ export function SnippetsPage() {
           )}
         </PageBody>
         {historyOpen && <ShellHistoryPanel onClose={() => setHistoryOpen(false)} />}
+        <ActionMenu
+          anchor={null}
+          position={ctx ? { left: ctx.left, top: ctx.top } : null}
+          onClose={() => setCtx(null)}
+          items={
+            ctx === null
+              ? []
+              : ctx.kind === "snippet"
+                ? snippetMenu(ctx.snippet)
+                : packageMenu(ctx.pkg)
+          }
+        />
         {selected && (
           <SnippetPanel
             snippet={selected}

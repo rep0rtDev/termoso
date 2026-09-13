@@ -100,7 +100,14 @@ schema! {
         pub max_log_bytes: u64,
         /// Per-user total log storage quota in bytes (0 = unlimited).
         pub log_quota_bytes: u64,
+        /// Keep team activity-log entries this many days (0 = forever).
+        #[serde(default = "default_audit_retention_days")]
+        pub audit_retention_days: u32,
     }
+}
+
+fn default_audit_retention_days() -> u32 {
+    365
 }
 
 impl Default for ServerSettings {
@@ -115,6 +122,7 @@ impl Default for ServerSettings {
             max_entity_bytes: 256 * 1024,
             max_log_bytes: 512 * 1024 * 1024,
             log_quota_bytes: 0,
+            audit_retention_days: default_audit_retention_days(),
         }
     }
 }

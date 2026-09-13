@@ -8,6 +8,7 @@ use termoso_proto::team::*;
 use termoso_proto::vault::VaultRole;
 use uuid::Uuid;
 
+use crate::audit;
 use crate::error::{ApiResult, Error, NoContent};
 use crate::events::{self, Event};
 use crate::extract::{Auth, Json as Body};
@@ -155,6 +156,11 @@ pub async fn create(
         .await?;
     tx.commit().await?;
     metrics::counter!("termoso_teams_created_total").increment(1);
+    audit::record(
+        &state.db,
+        audit::Entry::new(id, &auth, "team.created").details(serde_json::json!({ "name": name })),
+    )
+    .await;
     Ok(Json(Team {
         id,
         name,
@@ -214,6 +220,12 @@ pub async fn update(
             .bind(&name)
             .execute(&state.db)
             .await?;
+        audit::record(
+            &state.db,
+            audit::Entry::new(id, &auth, "team.renamed")
+                .details(serde_json::json!({ "name": name })),
+        )
+        .await;
     }
     if let Some(on) = req.multiplayer_enabled {
         sqlx::query("UPDATE teams SET multiplayer_enabled = $2, updated_at = now() WHERE id = $1")
@@ -221,6 +233,12 @@ pub async fn update(
             .bind(on)
             .execute(&state.db)
             .await?;
+        audit::record(
+            &state.db,
+            audit::Entry::new(id, &auth, "team.settings")
+                .details(serde_json::json!({ "multiplayer_enabled": on })),
+        )
+        .await;
     }
     if let Some(on) = req.require_mfa {
         if on && !users::mfa_enabled_for(&state, auth.user_id()).await? {
@@ -233,6 +251,12 @@ pub async fn update(
             .bind(on)
             .execute(&state.db)
             .await?;
+        audit::record(
+            &state.db,
+            audit::Entry::new(id, &auth, "team.settings")
+                .details(serde_json::json!({ "require_mfa": on })),
+        )
+        .await;
     }
     events::publish(
         &state,
@@ -382,6 +406,16 @@ pub async fn update_member(
                 .await?;
         }
     }
+    audit::record(
+        &state.db,
+        audit::Entry::new(id, &auth, "member.role")
+            .user(user_id)
+            .details(serde_json::json!({
+                "role": team_role_str(req.role),
+                "previous_role": team_role_str(target),
+            })),
+    )
+    .await;
     events::publish(
         &state,
         Event::TeamsUpdated {
@@ -434,7 +468,15 @@ pub async fn remove_member(
     if target == TeamRole::Owner {
         return Err(Error::forbidden("The owner cannot be removed"));
     }
-    remove(&state, id, user_id).await.map(NoContent::from)
+    remove(&state, id, user_id).await?;
+    audit::record(
+        &state.db,
+        audit::Entry::new(id, &auth, "member.removed")
+            .user(user_id)
+            .details(serde_json::json!({ "role": team_role_str(target) })),
+    )
+    .await;
+    Ok(NoContent)
 }
 
 #[utoipa::path(post, path = "/api/v1/teams/{id}/leave", tag = "teams", params(("id" = Uuid, Path)), responses((status = 204)))]
@@ -447,9 +489,14 @@ pub async fn leave(
     if role == TeamRole::Owner {
         return Err(Error::forbidden("Transfer ownership before leaving"));
     }
-    remove(&state, id, auth.user_id())
-        .await
-        .map(NoContent::from)
+    remove(&state, id, auth.user_id()).await?;
+    audit::record(
+        &state.db,
+        audit::Entry::new(id, &auth, "member.left")
+            .details(serde_json::json!({ "role": team_role_str(role) })),
+    )
+    .await;
+    Ok(NoContent)
 }
 
 // ───────────────────────────── invites ─────────────────────────────
@@ -578,6 +625,16 @@ pub async fn create_invite(
             tracing::warn!(error = %e, "could not send invite email");
         }
     }
+    audit::record(
+        &state.db,
+        audit::Entry::new(id, &auth, "invite.created").details(serde_json::json!({
+            "invite_id": invite_id,
+            "email": email,
+            "role": team_role_str(req.role),
+            "vault_ids": req.vault_ids,
+        })),
+    )
+    .await;
     Ok(Json(CreatedInvite {
         invite: Invite {
             id: invite_id,
@@ -599,16 +656,22 @@ pub async fn delete_invite(
     Path((id, invite_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<NoContent> {
     require_admin(&state, id, auth.user_id()).await?;
-    let res = sqlx::query(
-        "DELETE FROM team_invites WHERE id = $1 AND team_id = $2 AND accepted_at IS NULL",
+    let res: Option<(String,)> = sqlx::query_as(
+        "DELETE FROM team_invites WHERE id = $1 AND team_id = $2 AND accepted_at IS NULL RETURNING email",
     )
     .bind(invite_id)
     .bind(id)
-    .execute(&state.db)
+    .fetch_optional(&state.db)
     .await?;
-    if res.rows_affected() == 0 {
+    let Some((email,)) = res else {
         return Err(Error::not_found("Invite"));
-    }
+    };
+    audit::record(
+        &state.db,
+        audit::Entry::new(id, &auth, "invite.revoked")
+            .details(serde_json::json!({ "invite_id": invite_id, "email": email })),
+    )
+    .await;
     Ok(NoContent)
 }
 
@@ -648,6 +711,7 @@ pub async fn apply_invite(
     role: &str,
     vault_ids: &[Uuid],
     user_id: Uuid,
+    device_id: Option<Uuid>,
 ) -> ApiResult<NoContent> {
     let role = if role == "owner" { "member" } else { role };
     sqlx::query(
@@ -676,6 +740,17 @@ pub async fn apply_invite(
         .bind(user_id)
         .execute(&mut **tx)
         .await?;
+    audit::record(
+        &mut **tx,
+        audit::Entry::by(team_id, user_id, device_id, "invite.accepted")
+            .user(user_id)
+            .details(serde_json::json!({
+                "invite_id": invite_id,
+                "role": role,
+                "vault_ids": vault_ids,
+            })),
+    )
+    .await;
     Ok(NoContent)
 }
 
@@ -703,7 +778,16 @@ pub async fn accept_invite(
         ));
     }
     let mut tx = state.db.begin().await?;
-    apply_invite(&mut tx, invite_id, team_id, &role, &vault_ids, me.id).await?;
+    apply_invite(
+        &mut tx,
+        invite_id,
+        team_id,
+        &role,
+        &vault_ids,
+        me.id,
+        Some(auth.device_id()),
+    )
+    .await?;
     tx.commit().await?;
     let mut ids = member_ids(&state.db, team_id).await?;
     ids.push(me.id);

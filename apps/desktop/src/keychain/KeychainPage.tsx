@@ -55,8 +55,14 @@ import {
   useSshKeys,
   useVaults,
 } from "@/ipc/hooks";
-import { openCollaboration, useActiveVault } from "@/app/vault";
-import { errorMessage, type HostsView, type IdentityCard, type KeyCard } from "@/ipc/types";
+import { openCollaboration, useActiveVault, ViewOnlyChip } from "@/app/vault";
+import {
+  errorMessage,
+  type HostsView,
+  type IdentityCard,
+  type KeyCard,
+  type Uuid,
+} from "@/ipc/types";
 import { sizes } from "@/theme/theme";
 import { ExportKeyDialog, ExportToHostDialog, PassphraseDialog } from "./KeyDialogs";
 import {
@@ -111,6 +117,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
   const qc = useQueryClient();
   const vaultId = vault.data?.id ?? null;
   const vaultName = vault.data?.name ?? "Vault";
+  const readOnly = vault.readOnly;
   const sshKeys = useSshKeys(vaultId);
   const identities = useIdentities(vaultId);
   const hosts = useHosts(vaultId);
@@ -213,7 +220,12 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       ? (idList.find((i) => i.id === panel.id) ?? null)
       : null;
 
-  const vaultTargets = (card: KeyCard, move: boolean): MenuAction[] => {
+  const vaultTargets = (
+    card: { id: Uuid; vaultId: Uuid; label: string },
+    move: boolean,
+    copyTo: (id: Uuid, vaultId: Uuid, move: boolean) => Promise<unknown>,
+    panelKind: "editKey" | "identity",
+  ): MenuAction[] => {
     const others = (vaults.data ?? []).filter((v) => v.id !== card.vaultId);
     if (others.length === 0) return [{ label: "No other vaults", disabled: true }];
     return others.map((v) => ({
@@ -222,8 +234,8 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       disabled: !v.unlocked || v.role === "viewer",
       onClick: () =>
         run(async () => {
-          await ipc.keyCopyToVault(card.id, v.id, move);
-          if (move && panel.kind === "editKey" && panel.id === card.id) closePanel();
+          await copyTo(card.id, v.id, move);
+          if (move && panel.kind === panelKind && panel.id === card.id) closePanel();
           return `${card.label} ${move ? "moved" : "copied"} to ${v.name}`;
         }),
     }));
@@ -264,7 +276,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
     {
       label: "Change passphrase…",
       icon: <LockResetRoundedIcon fontSize="small" />,
-      disabled: card.unreadable,
+      disabled: card.unreadable || readOnly,
       onClick: () => setDialog({ kind: "passphrase", card }),
       divider: true,
     },
@@ -277,17 +289,19 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
     {
       label: "Move to",
       icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
-      items: vaultTargets(card, true),
+      disabled: readOnly,
+      items: vaultTargets(card, true, ipc.keyCopyToVault, "editKey"),
     },
     {
       label: "Copy to",
       icon: <LibraryAddOutlinedIcon fontSize="small" />,
-      items: vaultTargets(card, false),
+      items: vaultTargets(card, false, ipc.keyCopyToVault, "editKey"),
     },
     {
       label: "Remove",
       icon: <DeleteOutlineRoundedIcon fontSize="small" />,
       danger: true,
+      disabled: readOnly,
       onClick: () => setDialog({ kind: "deleteKey", card }),
     },
   ];
@@ -300,12 +314,31 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
             label: "Edit",
             icon: <EditOutlinedIcon fontSize="small" />,
             onClick: () => openPanel({ kind: "identity", id: card.id }),
+            divider: true,
           },
         ]),
+    {
+      label: "Collaborate",
+      icon: <GroupAddRoundedIcon fontSize="small" />,
+      disabled: vault.data?.kind !== "team",
+      onClick: () => openCollaboration(vault.data),
+    },
+    {
+      label: "Move to",
+      icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
+      disabled: readOnly,
+      items: vaultTargets(card, true, ipc.identityCopyToVault, "identity"),
+    },
+    {
+      label: "Copy to",
+      icon: <LibraryAddOutlinedIcon fontSize="small" />,
+      items: vaultTargets(card, false, ipc.identityCopyToVault, "identity"),
+    },
     {
       label: "Remove",
       icon: <DeleteOutlineRoundedIcon fontSize="small" />,
       danger: true,
+      disabled: readOnly,
       onClick: () => setDialog({ kind: "deleteIdentity", card }),
     },
   ];
@@ -477,14 +510,14 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           <SplitButton
             label="New key"
             icon={<AddRoundedIcon />}
-            disabled={!vaultId}
+            disabled={!vaultId || readOnly}
             onClick={() => openPanel({ kind: "newKey", certificate: false })}
             items={newItems}
           />
           <Button
             variant="tonal"
             startIcon={<WorkspacePremiumOutlinedIcon />}
-            disabled={!vaultId}
+            disabled={!vaultId || readOnly}
             onClick={() => openPanel({ kind: "newKey", certificate: true })}
           >
             Certificate
@@ -493,11 +526,12 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
             variant="text"
             color="inherit"
             startIcon={<UsbRoundedIcon />}
-            disabled={!vaultId}
+            disabled={!vaultId || readOnly}
             onClick={() => openPanel({ kind: "fido2" })}
           >
             FIDO2
           </Button>
+          {readOnly && <ViewOnlyChip sx={{ ml: 1 }} />}
         </Toolbar>
 
         <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 3, py: 2 }}>
@@ -614,6 +648,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           card={editing}
           vaultName={vaultName}
           busy={panelOp.isPending || op.isPending}
+          readOnly={readOnly}
           error={panelError}
           menu={keyMenu(editing, true)}
           onClose={closePanel}
@@ -651,6 +686,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           initial={editingIdentity}
           keys={keyList}
           busy={panelOp.isPending}
+          readOnly={readOnly}
           error={panelError}
           menu={editingIdentity ? identityMenu(editingIdentity, true) : []}
           onClose={closePanel}

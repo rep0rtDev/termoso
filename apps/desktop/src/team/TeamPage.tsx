@@ -69,6 +69,7 @@ import {
 } from "@/ipc/types";
 import { goToSettings, goToSettingsWith, useSettingsIntent } from "@/app/navigation";
 import { vaultIcon } from "@/app/vault";
+import { ActivityCard, ActivityLog } from "./ActivityLog";
 import { InviteDialog, InviteResultRow } from "./InviteDialog";
 import { PersonAvatar, initialsOf } from "./PersonAvatar";
 import { isTeamAdmin, teamRoleHint, teamRoleLabel, vaultRoleLabel } from "./roles";
@@ -89,6 +90,7 @@ export function TeamPage() {
   const [joining, setJoining] = useState(false);
   const [inviting, setInviting] = useState(false);
   const [managing, setManaging] = useState(false);
+  const [activity, setActivity] = useState(false);
 
   const list = teams.data ?? [];
   const team = list.find((t) => t.id === selected) ?? list[0] ?? null;
@@ -148,6 +150,8 @@ export function TeamPage() {
             setInviting={setInviting}
             managing={managing}
             setManaging={setManaging}
+            activity={activity}
+            setActivity={setActivity}
           />
         ) : (
           <NoTeam onCreate={() => setCreating(true)} onJoin={() => setJoining(true)} />
@@ -207,6 +211,8 @@ function TeamView({
   setInviting,
   managing,
   setManaging,
+  activity,
+  setActivity,
 }: {
   team: Team;
   teams: Team[];
@@ -218,6 +224,8 @@ function TeamView({
   setInviting: (v: boolean) => void;
   managing: boolean;
   setManaging: (v: boolean) => void;
+  activity: boolean;
+  setActivity: (v: boolean) => void;
 }) {
   const snackbar = useSnackbar();
   const invalidate = useInvalidateTeam();
@@ -313,6 +321,21 @@ function TeamView({
       <ResentDialog results={resent} onClose={() => setResent(null)} />
     </>
   );
+
+  if (activity) {
+    return (
+      <Stack spacing={1.5} sx={{ maxWidth: 760, mx: "auto", width: "100%" }}>
+        <Button
+          startIcon={<ArrowBackRoundedIcon />}
+          onClick={() => setActivity(false)}
+          sx={{ alignSelf: "flex-start", color: "text.secondary" }}
+        >
+          Back to team
+        </Button>
+        <ActivityLog team={team} />
+      </Stack>
+    );
+  }
 
   if (!managing) {
     return (
@@ -465,6 +488,7 @@ function TeamView({
             }
           />
         </SectionCard>
+        <ActivityCard team={team} onOpen={() => setActivity(true)} />
         {dialogs}
       </Stack>
     );

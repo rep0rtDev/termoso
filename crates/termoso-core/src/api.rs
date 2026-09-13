@@ -33,8 +33,9 @@ use termoso_proto::sync::{
     PullResponse, PushRequest, PushResponse,
 };
 use termoso_proto::team::{
-    CreateInviteRequest, CreateTeamRequest, CreatedInvite, InviteList, PendingVaultKeys, Team,
-    TeamList, TeamMember, TeamMemberList, UpdateTeamMemberRequest, UpdateTeamRequest,
+    AuditEventList, CreateInviteRequest, CreateTeamRequest, CreatedInvite, InviteList,
+    PendingVaultKeys, Team, TeamList, TeamMember, TeamMemberList, UpdateTeamMemberRequest,
+    UpdateTeamRequest,
 };
 use termoso_proto::vault::{
     CreateVaultRequest, RotateVaultKeyRequest, RotateVaultKeyResponse, UpdateVaultRequest, Vault,
@@ -44,6 +45,27 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::error::{CoreError, Result};
+
+/// Filters for [`ApiClient::team_audit`]; `None` fields are omitted from the
+/// query string.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct AuditQuery {
+    /// Only events with an id below this (cursor for older pages).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before: Option<i64>,
+    /// Page size (server caps it).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    /// Exact action, or a prefix ending in `.` (e.g. `vault.`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    /// Only events by this user.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actor: Option<Uuid>,
+    /// Only events touching this vault.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault: Option<Uuid>,
+}
 
 /// `GET /account` body (profile + public key material).
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -480,6 +502,11 @@ impl ApiClient {
     /// `GET /teams/{id}/pending-keys`.
     pub async fn team_pending_keys(&self, team_id: Uuid) -> Result<PendingVaultKeys> {
         self.get(&format!("teams/{team_id}/pending-keys")).await
+    }
+
+    /// `GET /teams/{id}/audit` — team activity log, newest first.
+    pub async fn team_audit(&self, team_id: Uuid, q: &AuditQuery) -> Result<AuditEventList> {
+        self.get_query(&format!("teams/{team_id}/audit"), q).await
     }
 
     // ───────────────────────────── sync ─────────────────────────────

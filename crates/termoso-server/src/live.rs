@@ -28,6 +28,7 @@ use tokio::sync::broadcast;
 use tokio::time::{interval, timeout};
 use uuid::Uuid;
 
+use crate::audit;
 use crate::error::{ApiResult, Error, NoContent};
 use crate::extract::{Auth, Json as Body};
 use crate::session;
@@ -210,6 +211,33 @@ async fn ensure_allowed(state: &AppState, user_id: Uuid) -> ApiResult<()> {
     Ok(())
 }
 
+/// Record a multiplayer event in every team the host belongs to: the team's
+/// Multiplayer setting governs the host's sessions, so the team gets to see
+/// them.
+async fn audit_multiplayer(
+    state: &AppState,
+    host_user_id: Uuid,
+    actor: Uuid,
+    device_id: Option<Uuid>,
+    action: &'static str,
+    session_id: Uuid,
+) {
+    let teams: Vec<(Uuid,)> = sqlx::query_as("SELECT team_id FROM team_members WHERE user_id = $1")
+        .bind(host_user_id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
+    for (team_id,) in teams {
+        audit::record(
+            &state.db,
+            audit::Entry::by(team_id, actor, device_id, action)
+                .user(host_user_id)
+                .details(serde_json::json!({ "session_id": session_id })),
+        )
+        .await;
+    }
+}
+
 async fn end_session(state: &AppState, row: &Row, by: Uuid) -> ApiResult<()> {
     let updated =
         sqlx::query("UPDATE live_sessions SET ended_at = now() WHERE id = $1 AND ended_at IS NULL")
@@ -326,6 +354,15 @@ pub async fn create(
     .fetch_one(&state.db)
     .await?;
     metrics::counter!("termoso_live_sessions_total").increment(1);
+    audit_multiplayer(
+        &state,
+        user_id,
+        user_id,
+        Some(auth.device_id()),
+        "multiplayer.started",
+        id,
+    )
+    .await;
     Ok((StatusCode::CREATED, Json(row.dto())))
 }
 
@@ -358,6 +395,15 @@ pub async fn stop(
         return Err(Error::forbidden("Only the host can stop multiplayer"));
     }
     end_session(&state, &row, auth.user_id()).await?;
+    audit_multiplayer(
+        &state,
+        row.host_user_id,
+        auth.user_id(),
+        Some(auth.device_id()),
+        "multiplayer.stopped",
+        id,
+    )
+    .await;
     Ok(NoContent)
 }
 
@@ -481,6 +527,17 @@ async fn serve(state: AppState, session_id: Uuid, mut socket: WebSocket) -> anyh
             PRESENCE_TTL,
         )
         .await?;
+    if !is_host {
+        audit_multiplayer(
+            &state,
+            row.host_user_id,
+            conn.user_id,
+            Some(info.device_id),
+            "multiplayer.joined",
+            session_id,
+        )
+        .await;
+    }
     // Subscribe before announcing so we don't miss our own presence frame.
     let rx = state.live.subscribe();
     presence_changed(&state, session_id, conn.user_id).await?;
