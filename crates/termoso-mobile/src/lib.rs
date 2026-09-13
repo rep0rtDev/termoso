@@ -19,6 +19,7 @@ mod keys;
 mod session;
 mod settings;
 mod terminal;
+mod themes;
 
 pub use app::*;
 pub use dto::*;
@@ -27,3 +28,4 @@ pub use keys::{KeyMods, SpecialKey, control_code, encode_key, encode_text};
 pub use session::*;
 pub use settings::MobileSettings;
 pub use terminal::{CELL_BYTES, CursorStyle, GridFrame, GridSnapshot, TerminalPalette, flag};
+pub use themes::{TERMOSO_DARK, TERMOSO_LIGHT, TerminalTheme, terminal_theme, terminal_themes};

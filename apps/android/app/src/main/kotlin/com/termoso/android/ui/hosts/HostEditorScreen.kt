@@ -54,6 +54,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.termoso.android.ui.components.ChevronRow
+import com.termoso.android.ui.components.FormField
+import com.termoso.android.ui.components.PickerRow
 import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
@@ -141,8 +143,8 @@ private fun HostForm(state: HostEditorState, draft: HostDraft, vm: HostEditorVie
 
         SectionCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Field(draft.label, { v -> vm.update { it.copy(label = v) } }, "Alias")
-                Field(
+                FormField(draft.label, { v -> vm.update { it.copy(label = v) } }, "Alias")
+                FormField(
                     draft.address,
                     { v -> vm.update { it.copy(address = v) } },
                     "Hostname or IP address",
@@ -166,7 +168,7 @@ private fun HostForm(state: HostEditorState, draft: HostDraft, vm: HostEditorVie
         SectionLabel("SSH")
         SectionCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Field(
+                FormField(
                     draft.port?.toString() ?: "",
                     { v -> vm.update { it.copy(port = v.filter(Char::isDigit).take(5).toUIntOrNull()?.takeIf { p -> p in 1u..65535u }?.toUShort()) } },
                     "Port",
@@ -175,7 +177,7 @@ private fun HostForm(state: HostEditorState, draft: HostDraft, vm: HostEditorVie
                 )
                 IdentityRow(state, draft, onPick = { id -> vm.update { it.copy(identityId = id) } })
                 if (identity == null) {
-                    Field(
+                    FormField(
                         draft.username,
                         { v -> vm.update { it.copy(username = v) } },
                         "Username",
@@ -218,14 +220,14 @@ private fun HostForm(state: HostEditorState, draft: HostDraft, vm: HostEditorVie
             SectionCard {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     IpVersionRow(draft.ipVersion) { v -> vm.update { it.copy(ipVersion = v) } }
-                    Field(
+                    FormField(
                         draft.keepAliveInterval?.toString() ?: "",
                         { v -> vm.update { it.copy(keepAliveInterval = v.filter(Char::isDigit).take(5).toUIntOrNull()) } },
                         "Keep-alive interval, seconds",
                         placeholder = "App default",
                         keyboard = KeyboardType.Number,
                     )
-                    Field(
+                    FormField(
                         draft.timeout?.toString() ?: "",
                         { v -> vm.update { it.copy(timeout = v.filter(Char::isDigit).take(4).toUIntOrNull()) } },
                         "Connection timeout, seconds",
@@ -310,38 +312,10 @@ private fun tagSummary(draft: HostDraft, tags: List<TagItem>): String {
 }
 
 @Composable
-private fun Field(
-    value: String,
-    onChange: (String) -> Unit,
-    label: String,
-    placeholder: String? = null,
-    keyboard: KeyboardType = KeyboardType.Text,
-    visual: VisualTransformation = VisualTransformation.None,
-    trailing: (@Composable () -> Unit)? = null,
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onChange,
-        label = { Text(label) },
-        placeholder = placeholder?.let { { Text(it) } },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-        keyboardOptions = KeyboardOptions(
-            keyboardType = keyboard,
-            capitalization = KeyboardCapitalization.None,
-            autoCorrectEnabled = false,
-        ),
-        visualTransformation = visual,
-        trailingIcon = trailing,
-        colors = OutlinedTextFieldDefaults.colors(),
-    )
-}
-
-@Composable
 private fun PasswordField(draft: HostDraft, inherited: InheritedInfo?, onChange: (String?) -> Unit) {
     var visible by remember { mutableStateOf(false) }
     val stored = draft.password == null && draft.hasPassword
-    Field(
+    FormField(
         value = draft.password ?: "",
         onChange = { onChange(it) },
         label = if (stored) "Password · saved" else "Password",
@@ -395,46 +369,6 @@ private fun IdentityRow(state: HostEditorState, draft: HostDraft, onPick: (Strin
         onPick = onPick,
         empty = null,
     )
-}
-
-@Composable
-private fun PickerRow(
-    label: String,
-    value: String,
-    options: List<Pair<String?, String>>,
-    selected: String?,
-    onPick: (String?) -> Unit,
-    empty: String?,
-) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        OutlinedTextField(
-            value = value,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            singleLine = true,
-            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Box(Modifier.matchParentSize().clickable { open = true })
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            options.forEach { (id, text) ->
-                DropdownMenuItem(
-                    text = { Text(text) },
-                    trailingIcon = if (id == selected) {
-                        { Icon(Icons.Filled.Check, contentDescription = null) }
-                    } else {
-                        null
-                    },
-                    onClick = { onPick(id); open = false },
-                )
-            }
-            if (options.size == 1 && empty != null) {
-                DropdownMenuItem(text = { Text(empty, color = MaterialTheme.colorScheme.onSurfaceVariant) }, onClick = { open = false })
-            }
-        }
-    }
 }
 
 @Composable

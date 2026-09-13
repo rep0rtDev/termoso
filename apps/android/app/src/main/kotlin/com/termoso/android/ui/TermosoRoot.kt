@@ -1,5 +1,6 @@
 package com.termoso.android.ui
 
+import android.security.keystore.UserNotAuthenticatedException
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -27,6 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelStore
@@ -37,38 +39,77 @@ import com.termoso.android.data.AppContainer
 import com.termoso.android.data.VaultState
 import com.termoso.android.data.userMessage
 import com.termoso.android.ui.components.IconTile
+import com.termoso.android.ui.security.AuthResult
+import com.termoso.android.ui.security.authenticateDevice
+import com.termoso.android.ui.security.findFragmentActivity
 import com.termoso.android.ui.shell.MainShell
 import com.termoso.android.ui.welcome.WelcomeScreen
 import kotlinx.coroutines.launch
 
 /**
- * Entry composable. Opens the vault on launch (the Keystore-wrapped key needs no
- * user input yet; PIN/biometric gating lands with Settings → Security), shows the
- * welcome screen once, then the tabbed shell. An explicit lock from Settings keeps
- * the vault closed until the user taps Unlock.
+ * Entry composable. Opens the vault on launch, shows the welcome screen once,
+ * then the tabbed shell. With app lock on, the Keystore refuses to unwrap the
+ * master key until the user passes the system prompt; returning from the
+ * background after the configured delay covers the shell with the same prompt
+ * while sessions keep running. An explicit lock from Settings closes the store
+ * until the user taps Unlock.
  */
 @Composable
 fun TermosoRoot(container: AppContainer, vault: VaultState) {
+    val context = LocalContext.current
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableIntStateOf(0) }
     var manualLock by remember { mutableStateOf(false) }
+    var needAuth by remember { mutableStateOf(false) }
     var cloudNotice by remember { mutableStateOf(false) }
+    val gated by container.gated.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(attempt, manualLock) {
-        if (vault is VaultState.Locked && !manualLock) {
-            runCatching { container.unlock() }.onFailure { error = it.userMessage() }
+    suspend fun prompt(): Boolean {
+        val activity = context.findFragmentActivity() ?: return false
+        return when (val r = authenticateDevice(activity, "Unlock Termoso", "Use your fingerprint or screen lock")) {
+            AuthResult.Success -> true
+            AuthResult.Cancelled -> false
+            is AuthResult.Failed -> {
+                error = r.message
+                false
+            }
         }
     }
+
+    LaunchedEffect(attempt, manualLock) {
+        if (vault !is VaultState.Locked || manualLock) return@LaunchedEffect
+        if (needAuth && !prompt()) return@LaunchedEffect
+        runCatching { container.unlock() }
+            .onSuccess { needAuth = false }
+            .onFailure {
+                if (it is UserNotAuthenticatedException) {
+                    needAuth = true
+                    if (prompt()) attempt++
+                } else {
+                    error = it.userMessage()
+                }
+            }
+    }
+    LaunchedEffect(gated) {
+        if (gated && prompt()) container.ungate()
+    }
+
     when (vault) {
         is VaultState.Locked -> LockedScreen(
             error = error,
-            manual = manualLock,
+            manual = manualLock || needAuth,
+            authRequired = container.masterKeys.authRequired(),
             onRetry = { error = null; manualLock = false; attempt++ },
         )
         is VaultState.Open -> {
             val settings by vault.repo.settings.collectAsStateWithLifecycle()
-            if (!settings.welcomeSeen) {
+            if (gated) {
+                LockedScreen(error = error, manual = true, authRequired = true, onRetry = {
+                    error = null
+                    scope.launch { if (prompt()) container.ungate() }
+                })
+            } else if (!settings.welcomeSeen) {
                 WelcomeScreen(
                     onCloud = { cloudNotice = true },
                     onContinueOffline = {
@@ -80,6 +121,7 @@ fun TermosoRoot(container: AppContainer, vault: VaultState) {
                 DisposableEffect(session) { onDispose { session.viewModelStore.clear() } }
                 CompositionLocalProvider(LocalViewModelStoreOwner provides session) {
                     MainShell(
+                        container = container,
                         repo = vault.repo,
                         sessions = vault.sessions,
                         onCloud = { cloudNotice = true },
@@ -103,7 +145,7 @@ private class SessionStoreOwner : ViewModelStoreOwner {
 }
 
 @Composable
-private fun LockedScreen(error: String?, manual: Boolean, onRetry: () -> Unit) {
+private fun LockedScreen(error: String?, manual: Boolean, authRequired: Boolean, onRetry: () -> Unit) {
     Scaffold { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
@@ -114,11 +156,15 @@ private fun LockedScreen(error: String?, manual: Boolean, onRetry: () -> Unit) {
                 manual -> {
                     IconTile(Icons.Filled.Lock, size = 64, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(16.dp))
-                    Text("Vault locked", style = MaterialTheme.typography.titleMedium)
+                    Text("Termoso is locked", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "The encrypted database is closed. Unlock to continue.",
+                        error ?: if (authRequired) {
+                            "Unlock with your fingerprint or screen lock to continue."
+                        } else {
+                            "The encrypted vault is closed. Unlock to continue."
+                        },
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                     )
                     Spacer(Modifier.height(16.dp))
