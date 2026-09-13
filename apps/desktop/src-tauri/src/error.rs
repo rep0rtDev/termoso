@@ -2,6 +2,7 @@
 
 use serde::Serialize;
 use termoso_core::error::CoreError;
+use termoso_proto::error::codes;
 
 /// Serialised error. `kind` is stable and machine-readable; `message` is safe
 /// to show (core errors never contain secret material).
@@ -38,7 +39,27 @@ impl std::error::Error for DesktopError {}
 
 impl From<CoreError> for DesktopError {
     fn from(e: CoreError) -> Self {
-        Self::new(e.kind(), e.to_string())
+        match e {
+            CoreError::Api { code, message, .. } => {
+                let kind = if code == codes::MFA_REQUIRED {
+                    "mfa_required"
+                } else if code == codes::FORBIDDEN {
+                    "forbidden"
+                } else if code == codes::NOT_FOUND {
+                    "not_found"
+                } else if code == codes::CONFLICT {
+                    "conflict"
+                } else if code == codes::RATE_LIMITED {
+                    "rate_limited"
+                } else if code == codes::UNAUTHORIZED || code == codes::TOKEN_EXPIRED {
+                    "unauthorized"
+                } else {
+                    "api"
+                };
+                Self::new(kind, message)
+            }
+            other => Self::new(other.kind(), other.to_string()),
+        }
     }
 }
 

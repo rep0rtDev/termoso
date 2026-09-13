@@ -479,6 +479,18 @@ pub fn copy_to_vault(store: &Store, id: Uuid, vault_id: Uuid, mv: bool) -> Resul
     if e.vault_id == vault_id {
         return Err(DesktopError::invalid("key is already in this vault"));
     }
+    // The very same key already there (e.g. brought along by a shared host):
+    // point at it instead of storing a second copy.
+    if let Some(existing) = store
+        .list::<SshKey>(Some(vault_id))?
+        .into_iter()
+        .find(|k| k.data.private_key == e.data.private_key)
+    {
+        if mv {
+            delete(store, id)?;
+        }
+        return key_card(store, existing.id);
+    }
     let cert = certificate_of(store, &e)?;
     let new_id = store.insert(vault_id, &e.data)?;
     if let Some(c) = cert {

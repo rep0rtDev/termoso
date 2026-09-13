@@ -1,11 +1,9 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Box,
   ButtonBase,
-  Chip,
   CircularProgress,
   Divider,
-  List,
   ListItemButton,
   ListItemIcon,
   ListItemText,
@@ -16,7 +14,6 @@ import {
   Typography,
 } from "@mui/material";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
-import PersonAddAltRoundedIcon from "@mui/icons-material/PersonAddAltRounded";
 import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import CloudDoneRoundedIcon from "@mui/icons-material/CloudDoneRounded";
@@ -26,14 +23,14 @@ import ManageAccountsRoundedIcon from "@mui/icons-material/ManageAccountsRounded
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import LoginRoundedIcon from "@mui/icons-material/LoginRounded";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { keys, useAccount, useVaultMembers } from "@/ipc/hooks";
+import { keys, useAccount, useTeamInvites, useTeamMembers, useTeams } from "@/ipc/hooks";
 import { useActiveVault } from "./vault";
 import * as ipc from "@/ipc/commands";
-import { errorMessage, type AccountStatus, type VaultMember, type VaultRole } from "@/ipc/types";
+import { errorMessage, type AccountStatus, type TeamInvite, type TeamMember } from "@/ipc/types";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
 import { AVATAR as BLOCK, PersonAvatar, initialsOf } from "@/team/PersonAvatar";
-import { vaultRoleLabel } from "@/team/roles";
+import { isTeamAdmin, teamRoleLabel } from "@/team/roles";
 import { goToSettings, goToSettingsWith } from "./navigation";
 
 const serverBase = (url: string) => url.replace(/\/+$/, "");
@@ -146,7 +143,7 @@ function AccountAvatar() {
           aria-label="Account"
           sx={{
             position: "relative",
-            zIndex: 1,
+            zIndex: 10,
             borderRadius: "7px",
             boxShadow: `0 0 0 2px var(--mui-palette-${data?.sync.state === "error" ? "error" : "primary"}-main)`,
             transition: "box-shadow 120ms",
@@ -261,36 +258,84 @@ function AccountAvatar() {
   );
 }
 
-/** `+` glued to the avatar: invite people and see who shares the current vault. */
+/**
+ * Teammates glued to the avatar, as in Termius: up to two overlapping tiles for
+ * other members / pending invitees of the current team, then a grey `+`.
+ * Clicking any of them opens the team popover — invite, members, pending invites.
+ */
 function TeamButton() {
   const { data } = useAccount();
   const vault = useActiveVault();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const account = data?.account ?? null;
   const v = vault.data;
-  const teamVaultId = account && v?.kind === "team" ? v.id : null;
-  const members = useVaultMembers(anchor ? teamVaultId : null);
+  const teams = useTeams(account !== null);
+  const team =
+    (v?.kind === "team" ? teams.data?.find((t) => t.id === v.team_id) : undefined) ??
+    teams.data?.[0] ??
+    null;
+  const members = useTeamMembers(team?.id ?? null);
+  const invites = useTeamInvites(team?.id ?? null, team !== null && isTeamAdmin(team.my_role));
   const close = () => setAnchor(null);
+
+  const others: TeamMember[] = (members.data ?? []).filter((m) => m.user_id !== account?.userId);
+  const pending: TeamInvite[] = invites.data ?? [];
+  const stack: { key: string; email: string; name: string | null; invite: boolean }[] = [
+    ...others.map((m) => ({ key: m.user_id, email: m.email, name: m.display_name, invite: false })),
+    ...pending.map((i) => ({ key: i.id, email: i.email, name: null, invite: true })),
+  ].slice(0, 2);
 
   return (
     <>
-      <Tooltip title="Team">
+      <Tooltip title={team ? team.name : "Team"}>
         <ButtonBase
           onClick={(e) => setAnchor(e.currentTarget)}
           aria-label="Team"
           sx={{
-            width: BLOCK + 8,
+            display: "flex",
+            alignItems: "center",
             height: BLOCK,
-            ml: -0.75,
-            pl: 0.75,
             borderRadius: "0 7px 7px 0",
-            bgcolor: "surface.highest",
-            color: "text.primary",
-            transition: "background-color 120ms",
-            "&:hover": { bgcolor: "border.strong" },
+            "&:hover .team-plus": { bgcolor: "border.strong" },
           }}
         >
-          <AddRoundedIcon sx={{ fontSize: 20 }} />
+          {stack.map((p, i) => (
+            <Box
+              key={p.key}
+              sx={{
+                ml: -1,
+                position: "relative",
+                zIndex: stack.length - i,
+                borderRadius: "7px",
+                boxShadow: "0 0 0 2px var(--mui-palette-surface-base)",
+                opacity: p.invite ? 0.85 : 1,
+              }}
+            >
+              <PersonAvatar
+                size={BLOCK}
+                seed={p.email}
+                kind={p.invite ? "invite" : "account"}
+                label={initialsOf(p.name, p.email)}
+              />
+            </Box>
+          ))}
+          <Box
+            className="team-plus"
+            sx={{
+              width: BLOCK + 8,
+              height: BLOCK,
+              ml: -1,
+              pl: 1,
+              display: "grid",
+              placeItems: "center",
+              borderRadius: "0 7px 7px 0",
+              bgcolor: "surface.highest",
+              color: "text.primary",
+              transition: "background-color 120ms",
+            }}
+          >
+            <AddRoundedIcon sx={{ fontSize: 20 }} />
+          </Box>
         </ButtonBase>
       </Tooltip>
       <Popover
@@ -299,68 +344,88 @@ function TeamButton() {
         onClose={close}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: -6, horizontal: "right" }}
-        slotProps={{ paper: { sx: { width: 320, p: 0.5 } } }}
+        slotProps={{ paper: { sx: { width: 300, p: 1 } } }}
       >
         {account ? (
           <>
-            <List dense disablePadding>
+            <ListItemButton
+              onClick={() => {
+                close();
+                goToSettingsWith({ kind: "invite" });
+              }}
+              sx={{ borderRadius: 1.5, gap: 1.25, px: 1, py: 0.75 }}
+            >
+              <ListItemIcon sx={{ minWidth: 0 }}>
+                <PersonAvatar size={28} kind="guest" label="" />
+              </ListItemIcon>
+              <ListItemText
+                primary="Invite team members"
+                slotProps={{ primary: { variant: "body2", sx: { fontWeight: 500 } } }}
+              />
+            </ListItemButton>
+            <MemberRow
+              name={account.displayName ?? null}
+              email={account.email}
+              trailing={
+                team ? (
+                  <Typography variant="caption" color="text.secondary">
+                    {teamRoleLabel[team.my_role]}
+                  </Typography>
+                ) : undefined
+              }
+            />
+            {others.map((m) => (
+              <MemberRow
+                key={m.user_id}
+                name={m.display_name}
+                email={m.email}
+                trailing={
+                  <Typography variant="caption" color="text.secondary">
+                    {teamRoleLabel[m.role]}
+                  </Typography>
+                }
+              />
+            ))}
+            {members.isPending && team && (
+              <Box sx={{ display: "flex", justifyContent: "center", py: 1 }}>
+                <CircularProgress size={16} thickness={5} />
+              </Box>
+            )}
+            {pending.length > 0 && (
+              <>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: "block", px: 1, pt: 1, pb: 0.5 }}
+                >
+                  Pending invites:
+                </Typography>
+                {pending.map((i) => (
+                  <MemberRow key={i.id} name={null} email={i.email} invite />
+                ))}
+              </>
+            )}
+            {!team && !teams.isPending && (
               <ListItemButton
                 onClick={() => {
                   close();
-                  goToSettingsWith({ kind: "invite" });
+                  goToSettings("team");
                 }}
-                sx={{ borderRadius: 1.5, gap: 1.25 }}
-              >
-                <ListItemIcon sx={{ minWidth: 0 }}>
-                  <PersonAddAltRoundedIcon fontSize="small" />
-                </ListItemIcon>
-                <ListItemText
-                  primary="Invite team members"
-                  secondary="By e-mail, with a link they can open"
-                  slotProps={{ primary: { variant: "body2", sx: { fontWeight: 600 } } }}
-                />
-              </ListItemButton>
-              <ListItemButton
-                onClick={() => {
-                  close();
-                  if (teamVaultId) goToSettingsWith({ kind: "vault", id: teamVaultId });
-                  else goToSettings("team");
-                }}
-                sx={{ borderRadius: 1.5, gap: 1.25 }}
+                sx={{ borderRadius: 1.5, gap: 1.25, px: 1, py: 0.75 }}
               >
                 <ListItemIcon sx={{ minWidth: 0 }}>
                   <GroupsRoundedIcon fontSize="small" />
                 </ListItemIcon>
                 <ListItemText
-                  primary={teamVaultId ? "Who has access to this vault" : "Team settings"}
-                  slotProps={{ primary: { variant: "body2", sx: { fontWeight: 600 } } }}
+                  primary="Create a team"
+                  secondary="Share encrypted vaults with colleagues"
+                  slotProps={{ primary: { variant: "body2", sx: { fontWeight: 500 } } }}
                 />
               </ListItemButton>
-            </List>
-            <Divider sx={{ my: 0.5 }} />
-            <Box sx={{ px: 1.5, pt: 0.75, pb: 0.5 }}>
-              <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-                {v ? `${v.name} · ${v.kind === "team" ? "team vault" : "only you"}` : "Vault"}
-              </Typography>
-            </Box>
-            {teamVaultId ? (
-              <MemberList
-                members={members.data}
-                pending={members.isPending}
-                error={members.error ? errorMessage(members.error) : null}
-                selfId={account.userId}
-              />
-            ) : (
-              <MemberRow
-                name={account.displayName ?? null}
-                email={account.email}
-                role={null}
-                self
-              />
             )}
           </>
         ) : (
-          <Box sx={{ px: 1.5, py: 1.25 }}>
+          <Box sx={{ px: 1, py: 0.75 }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.75 }}>
               <LockOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -393,75 +458,28 @@ function TeamButton() {
   );
 }
 
-function MemberList({
-  members,
-  pending,
-  error,
-  selfId,
-}: {
-  members: VaultMember[] | undefined;
-  pending: boolean;
-  error: string | null;
-  selfId: string;
-}) {
-  if (pending && !members) {
-    return (
-      <Box sx={{ display: "flex", justifyContent: "center", py: 1.5 }}>
-        <CircularProgress size={18} thickness={5} />
-      </Box>
-    );
-  }
-  if (error) {
-    return (
-      <Typography variant="caption" color="error" sx={{ display: "block", px: 1.5, pb: 1 }}>
-        {error}
-      </Typography>
-    );
-  }
-  const list = [...(members ?? [])].sort((a, b) =>
-    a.user_id === selfId ? -1 : b.user_id === selfId ? 1 : a.email.localeCompare(b.email),
-  );
-  return (
-    <Box sx={{ maxHeight: 260, overflowY: "auto" }}>
-      {list.map((m) => (
-        <MemberRow
-          key={m.user_id}
-          name={m.display_name ?? null}
-          email={m.email}
-          role={m.role}
-          pending={m.pending}
-          self={m.user_id === selfId}
-        />
-      ))}
-    </Box>
-  );
-}
-
 function MemberRow({
   name,
   email,
-  role,
-  pending,
-  self,
+  invite,
+  trailing,
 }: {
   name: string | null;
   email: string;
-  role: VaultRole | null;
-  pending?: boolean;
-  self?: boolean;
+  invite?: boolean;
+  trailing?: ReactNode;
 }) {
   return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, px: 1.5, py: 0.75 }}>
-      <PersonAvatar size={24} label={initialsOf(name, email)} />
+    <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, px: 1, py: 0.75 }}>
+      <PersonAvatar
+        size={28}
+        seed={email}
+        kind={invite ? "invite" : "account"}
+        label={initialsOf(name, email)}
+      />
       <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
+        <Typography variant="body2" noWrap>
           {name ?? email}
-          {self ? (
-            <Box component="span" sx={{ color: "text.disabled", fontWeight: 400 }}>
-              {" "}
-              · you
-            </Box>
-          ) : null}
         </Typography>
         {name && (
           <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
@@ -469,11 +487,7 @@ function MemberRow({
           </Typography>
         )}
       </Box>
-      {pending ? (
-        <Chip size="small" label="Pending key" color="warning" variant="outlined" />
-      ) : role ? (
-        <Chip size="small" label={vaultRoleLabel[role]} variant="outlined" />
-      ) : null}
+      {trailing}
     </Box>
   );
 }

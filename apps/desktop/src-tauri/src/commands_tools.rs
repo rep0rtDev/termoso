@@ -771,6 +771,16 @@ pub async fn team_rename<R: Runtime>(
 }
 
 #[tauri::command]
+pub async fn team_set_security<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    multiplayer_enabled: Option<bool>,
+    require_mfa: Option<bool>,
+) -> Result<Team> {
+    team::set_security(&app, team_id, multiplayer_enabled, require_mfa).await
+}
+
+#[tauri::command]
 pub async fn team_delete<R: Runtime>(app: AppHandle<R>, team_id: Uuid) -> Result<()> {
     team::delete(&app, team_id).await
 }

@@ -472,6 +472,10 @@ export const teamsList = () => invoke<Team[]>("teams_list");
 export const teamCreate = (name: string) => invoke<Team>("team_create", { name });
 export const teamRename = (teamId: Uuid, name: string) =>
   invoke<Team>("team_rename", { teamId, name });
+export const teamSetSecurity = (
+  teamId: Uuid,
+  patch: { multiplayerEnabled?: boolean; requireMfa?: boolean },
+) => invoke<Team>("team_set_security", { teamId, ...patch });
 export const teamDelete = (teamId: Uuid) => invoke<null>("team_delete", { teamId });
 export const teamLeave = (teamId: Uuid) => invoke<null>("team_leave", { teamId });
 export const teamAcceptInvite = (link: string) => invoke<Team>("team_accept_invite", { link });
