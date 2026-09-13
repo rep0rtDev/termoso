@@ -280,6 +280,7 @@ pub fn run() {
             commands_tools::sshid_rotate,
             commands_tools::sshid_add_fido2,
             commands_tools::sshid_remove_key,
+            commands_tools::sshid_remove_device,
             commands_tools::multiplayer_start,
             commands_tools::multiplayer_stop,
             commands_tools::multiplayer_info,

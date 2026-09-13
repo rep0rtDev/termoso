@@ -884,6 +884,14 @@ pub async fn sshid_remove_key<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result
     sshid::remove_key(&app, id).await
 }
 
+#[tauri::command]
+pub async fn sshid_remove_device<R: Runtime>(
+    app: AppHandle<R>,
+    device_id: Uuid,
+) -> Result<SshIdView> {
+    sshid::remove_device(&app, device_id).await
+}
+
 // ───────────────────────────── teams ─────────────────────────────
 
 #[tauri::command]

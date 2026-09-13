@@ -105,6 +105,7 @@ function useSshIdMutation<A>(fn: (arg: A) => Promise<SshIdView>) {
       qc.setQueryData(keys.sshid, data);
       void qc.invalidateQueries({ queryKey: ["sshKeys"] });
       void qc.invalidateQueries({ queryKey: ["identities"] });
+      void qc.invalidateQueries({ queryKey: keys.devices });
     },
     onError: (e) => snackbar.error(errorMessage(e)),
   });
@@ -218,6 +219,7 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
   const del = useSshIdMutation(ipc.sshidDelete);
   const rotate = useSshIdMutation(ipc.sshidRotate);
   const remove = useSshIdMutation(ipc.sshidRemoveKey);
+  const removeDevice = useSshIdMutation(ipc.sshidRemoveDevice);
 
   const base = baseUrl(view);
   const typeUrl =
@@ -362,7 +364,7 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
               key={k.id}
               k={k}
               onCopy={() => void copy(k.public_key, "Public key")}
-              onRemove={k.device_id === null ? () => setRemoveKey(k) : undefined}
+              onRemove={k.current_device ? undefined : () => setRemoveKey(k)}
             />
           ))
         )}
@@ -462,19 +464,30 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
 
       <ConfirmDialog
         open={removeKey !== null}
-        title="Remove FIDO2 key?"
+        title={removeKey?.device_id === null ? "Remove FIDO2 key?" : "Sign out this device?"}
         danger
-        confirmLabel="Remove"
-        busy={remove.isPending}
+        confirmLabel={removeKey?.device_id === null ? "Remove" : "Sign out"}
+        busy={remove.isPending || removeDevice.isPending}
         onCancel={() => setRemoveKey(null)}
         onConfirm={() => {
-          if (removeKey) remove.mutate(removeKey.id, { onSuccess: () => setRemoveKey(null) });
+          if (!removeKey) return;
+          const done = { onSuccess: () => setRemoveKey(null) };
+          if (removeKey.device_id === null) remove.mutate(removeKey.id, done);
+          else removeDevice.mutate(removeKey.device_id, done);
         }}
       >
-        <Typography variant="body2">
-          <b>{removeKey?.label}</b> is unpublished and the local credential handle is deleted. The
-          token itself is not modified.
-        </Typography>
+        {removeKey?.device_id === null ? (
+          <Typography variant="body2">
+            <b>{removeKey.label}</b> is unpublished and the local credential handle is deleted. The
+            token itself is not modified.
+          </Typography>
+        ) : (
+          <Typography variant="body2">
+            <b>{removeKey?.label}</b> is signed out of your account and all of its passkeys are
+            unpublished. Its private keys stay on that device, so remove them from{" "}
+            <Mono>authorized_keys</Mono> on hosts you provisioned if the device was lost.
+          </Typography>
+        )}
       </ConfirmDialog>
 
       {fido2Open && (
@@ -559,7 +572,7 @@ function KeyRow({
           </IconButton>
         </Tooltip>
         {onRemove && (
-          <Tooltip title="Remove key">
+          <Tooltip title={hardware ? "Remove key" : "Sign out device"}>
             <IconButton size="small" onClick={onRemove} aria-label={`Remove ${k.label}`}>
               <DeleteOutlineRoundedIcon sx={{ fontSize: 16 }} />
             </IconButton>

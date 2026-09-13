@@ -510,6 +510,8 @@ export const sshidRotate = () => invoke<SshIdView>("sshid_rotate");
 export const sshidAddFido2 = (form: SshIdFido2Form) =>
   invoke<SshIdView>("sshid_add_fido2", { form });
 export const sshidRemoveKey = (id: Uuid) => invoke<SshIdView>("sshid_remove_key", { id });
+export const sshidRemoveDevice = (deviceId: Uuid) =>
+  invoke<SshIdView>("sshid_remove_device", { deviceId });
 
 // ───────────────────────────── multiplayer ─────────────────────────────
 
