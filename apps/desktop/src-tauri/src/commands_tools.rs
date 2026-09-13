@@ -18,6 +18,7 @@ use crate::account::{
     SyncStatus,
 };
 use crate::backup::{self, BackupSummary};
+use crate::cloud::{self, CloudImportReport, CloudPreview, CloudSelection};
 use crate::error::{DesktopError, Result};
 use crate::forwarding::{self, PfRuleCard, PfRuleForm, PfRuntime};
 use crate::import::{self, ImportPreview, ImportSelection, ImportSource};
@@ -628,6 +629,34 @@ pub async fn import_apply(
 #[tauri::command]
 pub fn import_discard(preview_id: Uuid) {
     import::discard(preview_id)
+}
+
+// ───────────────────────────── cloud integration ─────────────────────────────
+
+/// List machines at a provider. `config` carries the credentials for this
+/// call only; nothing of it is kept or returned.
+#[tauri::command]
+pub async fn cloud_discover(
+    state: State<'_, AppState>,
+    vault_id: Uuid,
+    config: termoso_core::cloud::CloudConfig,
+) -> Result<CloudPreview> {
+    cloud::discover(&state.store, vault_id, config).await
+}
+
+#[tauri::command]
+pub async fn cloud_import(
+    state: State<'_, AppState>,
+    vault_id: Uuid,
+    preview_id: Uuid,
+    selection: CloudSelection,
+) -> Result<CloudImportReport> {
+    cloud::apply_cached(&state.store, vault_id, preview_id, &selection)
+}
+
+#[tauri::command]
+pub fn cloud_discard(preview_id: Uuid) {
+    cloud::discard(preview_id)
 }
 
 // ───────────────────────────── export / backup ─────────────────────────────

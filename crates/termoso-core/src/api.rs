@@ -670,7 +670,7 @@ impl ApiClient {
     }
 }
 
-fn default_user_agent() -> String {
+pub(crate) fn default_user_agent() -> String {
     format!("termoso-core/{}", env!("CARGO_PKG_VERSION"))
 }
 
