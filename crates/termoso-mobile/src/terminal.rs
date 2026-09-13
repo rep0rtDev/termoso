@@ -158,6 +158,59 @@ pub struct GridSnapshot {
     pub app_cursor: bool,
 }
 
+/// Bytes per cell in [`GridFrame::cells`].
+pub const CELL_BYTES: usize = 12;
+
+/// [`GridSnapshot`] packed for the FFI: one byte array instead of three
+/// boxed lists, so a frame costs a single copy on the Kotlin side.
+///
+/// `cells` holds `cols × rows` little-endian triples of `u32`:
+/// `[code point, flags << 24 | fg RGB, bg RGB]`.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct GridFrame {
+    pub cols: u16,
+    pub rows: u16,
+    pub cells: Vec<u8>,
+    pub cursor_col: u16,
+    pub cursor_row: u16,
+    pub cursor: CursorStyle,
+    pub display_offset: u32,
+    pub history: u32,
+    pub background: u32,
+    pub mouse_reporting: bool,
+    pub alt_screen: bool,
+    pub bracketed_paste: bool,
+    pub app_cursor: bool,
+}
+
+impl GridSnapshot {
+    pub fn pack(self) -> GridFrame {
+        let n = self.chars.len();
+        let mut cells = Vec::with_capacity(n * CELL_BYTES);
+        for i in 0..n {
+            cells.extend_from_slice(&self.chars[i].to_le_bytes());
+            let fg = (self.fg[i] & 0x00FF_FFFF) | ((self.flags[i] as u32) << 24);
+            cells.extend_from_slice(&fg.to_le_bytes());
+            cells.extend_from_slice(&(self.bg[i] & 0x00FF_FFFF).to_le_bytes());
+        }
+        GridFrame {
+            cols: self.cols,
+            rows: self.rows,
+            cells,
+            cursor_col: self.cursor_col,
+            cursor_row: self.cursor_row,
+            cursor: self.cursor,
+            display_offset: self.display_offset,
+            history: self.history,
+            background: self.background,
+            mouse_reporting: self.mouse_reporting,
+            alt_screen: self.alt_screen,
+            bracketed_paste: self.bracketed_paste,
+            app_cursor: self.app_cursor,
+        }
+    }
+}
+
 /// Side effects the emulator raises while parsing.
 #[derive(Debug)]
 pub enum TermSignal {
@@ -558,6 +611,22 @@ mod tests {
         assert!(s.bracketed_paste);
         assert!(s.mouse_reporting);
         assert!(s.app_cursor);
+    }
+
+    #[test]
+    fn packed_frame_round_trips_cells() {
+        let (mut e, _rx) = emu();
+        e.feed(b"\x1b[1;31mR\x1b[0mx");
+        let f = e.snapshot().pack();
+        assert_eq!(f.cells.len(), 20 * 5 * CELL_BYTES);
+        let word = |i: usize| u32::from_le_bytes(f.cells[i * 4..i * 4 + 4].try_into().unwrap());
+        assert_eq!(word(0), 'R' as u32);
+        assert_eq!(word(1) >> 24, flag::BOLD as u32);
+        assert_eq!(word(1) & 0xFF_FFFF, TerminalPalette::termoso_dark().ansi[1]);
+        assert_eq!(word(2), TerminalPalette::termoso_dark().background);
+        assert_eq!(word(3), 'x' as u32);
+        assert_eq!(word(4) >> 24, 0);
+        assert_eq!((f.cursor_col, f.cursor_row), (2, 0));
     }
 
     #[test]

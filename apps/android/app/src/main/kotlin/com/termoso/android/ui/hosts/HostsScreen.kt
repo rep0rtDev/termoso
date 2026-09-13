@@ -83,6 +83,7 @@ fun HostsScreen(
     onOpenGroup: (String) -> Unit,
     onNewHost: () -> Unit,
     onEditHost: (String) -> Unit,
+    onConnect: (String) -> Unit,
 ) {
     val vm: HostsViewModel = viewModel(key = "hosts/${groupId ?: "root"}") {
         HostsViewModel(shell.repo, shell.selectedVaultId, groupId)
@@ -177,7 +178,7 @@ fun HostsScreen(
                 onOpenGroup = onOpenGroup,
                 onGroupLongPress = { dialog = HostsDialog.GroupMenu(it) },
                 onHostTap = { host ->
-                    if (state.selecting) vm.toggle(host.id) else shell.notify("Terminal arrives in the next update — long-press to edit.")
+                    if (state.selecting) vm.toggle(host.id) else onConnect(host.id)
                 },
                 onHostLongPress = { vm.toggle(it.id) },
             )

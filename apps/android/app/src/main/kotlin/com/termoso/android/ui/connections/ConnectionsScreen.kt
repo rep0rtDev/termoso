@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -29,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
@@ -36,8 +38,10 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.userMessage
 import com.termoso.android.ui.components.ChevronRow
+import com.termoso.android.ui.components.HostAvatar
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
@@ -46,15 +50,24 @@ import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.core.HistoryItem
 import com.termoso.core.MobileException
+import com.termoso.core.SessionState
 import com.termoso.core.parseTarget
+import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
-/** Connections tab: quick connect, ways to connect, recent sessions. Live sessions land with the terminal. */
+/** Connections tab: quick connect, active terminals, ways to connect, recent sessions. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConnectionsScreen(shell: ShellViewModel, onAddHost: () -> Unit, onOpenHost: (String) -> Unit) {
+fun ConnectionsScreen(
+    shell: ShellViewModel,
+    onAddHost: () -> Unit,
+    onConnectHost: (String) -> Unit,
+    onOpenTerminal: () -> Unit,
+) {
     val revision by shell.repo.revision.collectAsStateWithLifecycle()
+    val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     var target by remember { mutableStateOf("") }
     var recent by remember { mutableStateOf<List<HistoryItem>>(emptyList()) }
     LaunchedEffect(revision) {
@@ -68,7 +81,12 @@ fun ConnectionsScreen(shell: ShellViewModel, onAddHost: () -> Unit, onOpenHost: 
             shell.notify(e.userMessage())
             return
         }
-        shell.notify("Terminal arrives in the next update — ${parsed.username}@${parsed.host}:${parsed.port} parsed OK.")
+        scope.launch {
+            if (shell.connectQuick(parsed) != null) {
+                target = ""
+                onOpenTerminal()
+            }
+        }
     }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Connections") }) }) { padding ->
@@ -94,6 +112,20 @@ fun ConnectionsScreen(shell: ShellViewModel, onAddHost: () -> Unit, onOpenHost: 
                     }
                 },
             )
+
+            if (sessions.isNotEmpty()) {
+                SectionLabel("Active sessions")
+                SectionCard {
+                    sessions.forEachIndexed { i, s ->
+                        if (i > 0) RowDivider()
+                        ActiveSessionRow(
+                            session = s,
+                            onOpen = { shell.sessions.setActive(s.id); onOpenTerminal() },
+                            onClose = { scope.launch { shell.sessions.close(s.id) } },
+                        )
+                    }
+                }
+            }
 
             SectionLabel("Ways to connect")
             SectionCard {
@@ -121,7 +153,7 @@ fun ConnectionsScreen(shell: ShellViewModel, onAddHost: () -> Unit, onOpenHost: 
                             title = h.label.ifBlank { h.target },
                             subtitle = historySubtitle(h),
                             leading = { IconTile(Icons.Filled.History) },
-                            modifier = if (hostId != null) Modifier.clickable { onOpenHost(hostId) } else Modifier,
+                            modifier = if (hostId != null) Modifier.clickable { onConnectHost(hostId) } else Modifier,
                             titleColor = if (h.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                         )
                     }
@@ -130,6 +162,29 @@ fun ConnectionsScreen(shell: ShellViewModel, onAddHost: () -> Unit, onOpenHost: 
             Spacer(Modifier.height(24.dp))
         }
     }
+}
+
+@Composable
+private fun ActiveSessionRow(session: TerminalSession, onOpen: () -> Unit, onClose: () -> Unit) {
+    val state by session.state.collectAsStateWithLifecycle()
+    val detected by session.detectedOs.collectAsStateWithLifecycle()
+    val title by session.title.collectAsStateWithLifecycle()
+    val subtitle = when (val s = state) {
+        is SessionState.Connecting -> s.detail
+        is SessionState.Connected -> title ?: session.target
+        is SessionState.Closed -> "Closed" + (s.reason?.let { " · $it" } ?: "")
+        is SessionState.Failed -> s.message
+    }
+    ListRow(
+        title = session.label,
+        subtitle = subtitle,
+        leading = { HostAvatar(detected ?: session.savedOsName) },
+        trailing = {
+            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close session") }
+        },
+        modifier = Modifier.clickable(onClick = onOpen),
+        titleColor = if (state is SessionState.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+    )
 }
 
 fun historySubtitle(h: HistoryItem): String {

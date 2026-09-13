@@ -2,15 +2,20 @@ package com.termoso.android.ui.shell
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.termoso.android.data.SessionManager
+import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.VaultRepository
+import com.termoso.android.data.userMessage
+import com.termoso.android.ui.terminal.paletteFor
+import com.termoso.core.QuickTarget
 import com.termoso.core.VaultInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** Cross-tab state: the vault currently shown in Vaults → Hosts, plus one-shot notices. */
-class ShellViewModel(val repo: VaultRepository) : ViewModel() {
+/** Cross-tab state: the vault currently shown in Vaults → Hosts, open terminals, one-shot notices. */
+class ShellViewModel(val repo: VaultRepository, val sessions: SessionManager) : ViewModel() {
     private val _vaults = MutableStateFlow<List<VaultInfo>>(emptyList())
     val vaults: StateFlow<List<VaultInfo>> = _vaults.asStateFlow()
 
@@ -41,6 +46,21 @@ class ShellViewModel(val repo: VaultRepository) : ViewModel() {
     fun notify(message: String) {
         _notice.value = message
     }
+
+    /**
+     * Open a terminal to a saved host. Returns null (after a notice) when Rust
+     * refuses to even start — e.g. the host is missing; connection errors
+     * themselves arrive later through the session state.
+     */
+    suspend fun connectHost(hostId: String): TerminalSession? =
+        runCatching { sessions.connectHost(hostId, paletteFor(repo.settings.value.terminalTheme)) }
+            .onFailure { notify(it.userMessage()) }
+            .getOrNull()
+
+    suspend fun connectQuick(target: QuickTarget): TerminalSession? =
+        runCatching { sessions.connectQuick(target, paletteFor(repo.settings.value.terminalTheme)) }
+            .onFailure { notify(it.userMessage()) }
+            .getOrNull()
 
     fun noticeShown() {
         _notice.value = null
