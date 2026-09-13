@@ -4,12 +4,15 @@
 // locked (sign-out, team left).
 
 import {
+  Chip,
   ListItemIcon,
   ListItemText,
   Menu,
   MenuItem,
   Typography,
   type PopoverOrigin,
+  type SxProps,
+  type Theme,
 } from "@mui/material";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
@@ -41,6 +44,8 @@ export interface ActiveVault {
   data: LocalVault | null;
   /** All vaults on this device, for the dropdown. */
   vaults: LocalVault[];
+  /** Our role in the active vault only allows viewing; pages hide mutations. */
+  readOnly: boolean;
   isPending: boolean;
   error: Error | null;
 }
@@ -55,6 +60,7 @@ export function useActiveVault(): ActiveVault {
   return {
     data: chosen,
     vaults: list,
+    readOnly: chosen?.role === "viewer",
     isPending: vaults.isPending || fallback.isPending,
     error: vaults.error ?? fallback.error,
   };
@@ -81,6 +87,20 @@ export const vaultHint = (v: LocalVault) =>
         : v.kind === "personal"
           ? "Synced personal vault"
           : "This device only";
+
+/** Small “View only” marker for pages whose active vault we can only read. */
+export function ViewOnlyChip({ sx }: { sx?: SxProps<Theme> }) {
+  return (
+    <Chip
+      size="small"
+      variant="outlined"
+      icon={<LockRoundedIcon />}
+      label="View only"
+      title="You can view this vault but not change it"
+      sx={sx}
+    />
+  );
+}
 
 /** "Collaborate": who can open this team vault, or the Team page when there is none yet. */
 export function openCollaboration(v: LocalVault | null) {

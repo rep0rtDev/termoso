@@ -119,6 +119,7 @@ pub fn router(state: AppState) -> Router {
             delete(teams::delete_invite),
         )
         .route("/teams/{id}/pending-keys", get(teams::pending_keys))
+        .route("/teams/{id}/audit", get(crate::audit::list))
         .route("/teams/{id}/vaults", post(vaults::create_team_vault))
         .route("/invites/{token}", get(teams::invite_preview))
         .route("/invites/{token}/accept", post(teams::accept_invite))

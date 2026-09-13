@@ -34,6 +34,7 @@ import {
   type GroupNode,
   type Uuid,
 } from "@/ipc/types";
+import { useActiveVault } from "@/app/vault";
 import { monoFontFamily, sizes } from "@/theme/theme";
 import { AgentForwardingRow, CredentialsFields } from "./CredentialsFields";
 import { ChainDialog, ProxyDialog } from "./HostAdvancedDialogs";
@@ -150,7 +151,8 @@ function GroupEditor({
     setForm((f) => ({ ...f, ...p }));
   };
 
-  const canSave = form.label.trim().length > 0 && !save.isPending;
+  const readOnly = useActiveVault().readOnly;
+  const canSave = form.label.trim().length > 0 && !save.isPending && !readOnly;
   const onSave = () =>
     save.mutate(
       { ...form, label: form.label.trim() },

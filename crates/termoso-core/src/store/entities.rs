@@ -7,9 +7,10 @@ use termoso_crypto::aead::{self, Aad};
 use termoso_proto::entities::SyncEntity;
 use termoso_proto::entities::is_known_kind;
 use termoso_proto::sync::{EntityChange, EntityDelete};
+use termoso_proto::vault::VaultRole;
 use uuid::Uuid;
 
-use super::{Store, parse_time, parse_uuid};
+use super::{LocalVault, Store, parse_time, parse_uuid};
 use crate::error::{CoreError, Result};
 use crate::model::{
     AnyEntity, Entity, Group, Host, Identity, Payload, Proxy, ResolvedHost, SerialConfig,
@@ -134,6 +135,17 @@ fn into_row(
 }
 
 impl Store {
+    /// The vault, provided our role there allows local edits. Viewers get
+    /// `VaultReadOnly` before anything is written, so the store never holds
+    /// changes the server would reject on push.
+    fn writable_vault(&self, vault_id: Uuid) -> Result<LocalVault> {
+        let vault = self.vault(vault_id)?;
+        if vault.kind.is_synced() && vault.role == VaultRole::Viewer {
+            return Err(CoreError::VaultReadOnly(vault_id));
+        }
+        Ok(vault)
+    }
+
     fn encrypt_payload<T: serde::Serialize>(
         &self,
         vault_id: Uuid,
@@ -206,7 +218,7 @@ impl Store {
             return Err(CoreError::Invalid(format!("unknown entity kind {kind}")));
         }
         let (ct, key_version) = self.encrypt_payload(vault_id, kind, id, data)?;
-        let dirty = self.vault(vault_id)?.kind.is_synced();
+        let dirty = self.writable_vault(vault_id)?.kind.is_synced();
         self.conn().execute(
             "INSERT INTO entities (id, kind, vault_id, version, seq, deleted, key_version, data, updated_at, dirty)
              VALUES (?1, ?2, ?3, 0, 0, 0, ?4, ?5, ?6, ?7)
@@ -291,7 +303,7 @@ impl Store {
         let Some(row) = self.row(id)? else {
             return Ok(());
         };
-        let synced = self.vault(row.vault_id)?.kind.is_synced();
+        let synced = self.writable_vault(row.vault_id)?.kind.is_synced();
         let conn = self.conn();
         if synced && row.version > 0 {
             conn.execute(

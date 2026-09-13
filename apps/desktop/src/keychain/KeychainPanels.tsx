@@ -695,6 +695,7 @@ export function EditKeyPanel({
   card,
   vaultName,
   busy,
+  readOnly = false,
   error,
   menu,
   onRename,
@@ -708,6 +709,8 @@ export function EditKeyPanel({
   card: KeyCard;
   vaultName: string;
   busy: boolean;
+  /** Viewer role: label, passphrase and certificate cannot change; export still works. */
+  readOnly?: boolean;
   error: string | null;
   menu: MenuAction[];
   onRename: (label: string) => void;
@@ -768,7 +771,7 @@ export function EditKeyPanel({
           }}
           required
           placeholder="Label *"
-          slotProps={{ htmlInput: { "aria-label": "Label" } }}
+          slotProps={{ htmlInput: { "aria-label": "Label", readOnly } }}
         />
         <Box
           sx={{
@@ -787,7 +790,7 @@ export function EditKeyPanel({
             <ToolIconButton
               title="Change passphrase"
               onClick={onChangePassphrase}
-              disabled={card.unreadable}
+              disabled={card.unreadable || readOnly}
             >
               <PasswordRoundedIcon fontSize="small" />
             </ToolIconButton>
@@ -844,7 +847,7 @@ export function EditKeyPanel({
           card={card}
           stored={storedText}
           loading={hasCert && stored.isPending}
-          busy={busy}
+          busy={busy || readOnly}
           onPickFile={() => void pickCert()}
           onSetCertificate={onSetCertificate}
         />
@@ -1082,6 +1085,7 @@ export function IdentityPanel({
   initial,
   keys,
   busy,
+  readOnly = false,
   error,
   menu,
   onSave,
@@ -1093,6 +1097,7 @@ export function IdentityPanel({
   initial: IdentityCard | null;
   keys: KeyCard[];
   busy: boolean;
+  readOnly?: boolean;
   error: string | null;
   menu: MenuAction[];
   onSave: (form: IdentityForm) => void;
@@ -1146,8 +1151,11 @@ export function IdentityPanel({
     }
   };
 
-  const missing = (["key", "certificate", "fido2"] as AuthRow[]).filter((r) => !rows.includes(r));
+  const missing = readOnly
+    ? []
+    : (["key", "certificate", "fido2"] as AuthRow[]).filter((r) => !rows.includes(r));
   const valid = label.trim().length > 0 && username.trim().length > 0;
+  const lock = { readOnly, disabled: readOnly };
 
   const rowTitle: Record<AuthRow, string> = {
     key: "Key",
@@ -1162,18 +1170,18 @@ export function IdentityPanel({
 
   return (
     <SidePanel
-      title={initial ? "Edit Identity" : "New Identity"}
+      title={readOnly ? "Identity" : initial ? "Edit Identity" : "New Identity"}
       subtitle={vaultName}
       onClose={onClose}
       actions={<PanelMenuButton items={menu} />}
       footer={
         <>
           <Button variant="text" color="inherit" onClick={onClose} disabled={busy}>
-            Cancel
+            {readOnly ? "Close" : "Cancel"}
           </Button>
           <Button
             variant="contained"
-            disabled={!valid || busy}
+            disabled={!valid || busy || readOnly}
             onClick={() =>
               onSave({
                 id: initial?.id ?? null,
@@ -1186,7 +1194,7 @@ export function IdentityPanel({
               })
             }
           >
-            {busy ? "Saving…" : "Save"}
+            {busy && !readOnly ? "Saving…" : "Save"}
           </Button>
         </>
       }
@@ -1195,12 +1203,12 @@ export function IdentityPanel({
         <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
           <IdentityTile />
           <TextField
-            autoFocus
+            autoFocus={!readOnly}
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="Label"
             sx={{ flex: 1 }}
-            slotProps={{ htmlInput: { "aria-label": "Label" } }}
+            slotProps={{ htmlInput: { "aria-label": "Label", readOnly } }}
           />
         </Stack>
         <TextField
@@ -1210,7 +1218,7 @@ export function IdentityPanel({
           required
           placeholder="Username *"
           slotProps={{
-            htmlInput: { "aria-label": "Username" },
+            htmlInput: { "aria-label": "Username", readOnly },
             input: { startAdornment: adornment(<PersonOutlineRoundedIcon fontSize="small" />) },
           }}
         />
@@ -1222,16 +1230,18 @@ export function IdentityPanel({
           placeholder={initial?.hasPassword && password === null ? "••••••••••••" : "Password"}
           helperText={
             initial?.hasPassword && password === null
-              ? "A password is stored. Type to replace it or clear it to remove."
+              ? readOnly
+                ? "A password is stored."
+                : "A password is stored. Type to replace it or clear it to remove."
               : undefined
           }
           slotProps={{
-            htmlInput: { "aria-label": "Password" },
+            htmlInput: { "aria-label": "Password", readOnly },
             input: {
               startAdornment: adornment(<PasswordRoundedIcon fontSize="small" />),
               endAdornment: (
                 <InputAdornment position="end">
-                  {initial?.hasPassword && password === null && (
+                  {initial?.hasPassword && password === null && !readOnly && (
                     <Button size="small" color="inherit" onClick={() => setPassword("")}>
                       Clear
                     </Button>
@@ -1240,6 +1250,7 @@ export function IdentityPanel({
                     size="small"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label="Toggle password visibility"
+                    disabled={readOnly}
                   >
                     {showPassword ? (
                       <VisibilityOffRoundedIcon fontSize="small" />
@@ -1256,6 +1267,7 @@ export function IdentityPanel({
         {rows.includes("key") && (
           <TextField
             select
+            {...lock}
             value={keyId ?? ""}
             onChange={(e) => {
               const v = e.target.value;
@@ -1282,6 +1294,7 @@ export function IdentityPanel({
                       size="small"
                       aria-label="Remove key"
                       onClick={() => removeRow("key")}
+                      disabled={readOnly}
                     >
                       <CloseRoundedIcon fontSize="small" />
                     </IconButton>
@@ -1317,6 +1330,7 @@ export function IdentityPanel({
         {rows.includes("certificate") && (
           <TextField
             select
+            {...lock}
             value={certId ?? ""}
             onChange={(e) => chooseCert(e.target.value === "" ? null : e.target.value)}
             helperText={
@@ -1336,6 +1350,7 @@ export function IdentityPanel({
                       size="small"
                       aria-label="Remove certificate"
                       onClick={() => removeRow("certificate")}
+                      disabled={readOnly}
                     >
                       <CloseRoundedIcon fontSize="small" />
                     </IconButton>
@@ -1386,7 +1401,12 @@ export function IdentityPanel({
                 Not supported yet — hardware keys work through the system ssh-agent.
               </Typography>
             </Box>
-            <IconButton size="small" aria-label="Remove FIDO2" onClick={() => removeRow("fido2")}>
+            <IconButton
+              size="small"
+              aria-label="Remove FIDO2"
+              onClick={() => removeRow("fido2")}
+              disabled={readOnly}
+            >
               <CloseRoundedIcon fontSize="small" />
             </IconButton>
           </Box>

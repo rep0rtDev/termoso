@@ -1310,6 +1310,13 @@ fn copy_host_with(
     if let Some(i) = load_identity(store, ssh.as_ref().and_then(|s| s.identity_id))? {
         if i.data.is_visible && i.vault_id == vault_id {
             f.identity_id = Some(i.id);
+        } else if i.data.is_visible && creds == CopyCredentials::Shared {
+            // A shared identity travels as a shared identity (its key too).
+            let copied = keychain::copy_identity_to_vault(store, i.id, vault_id, false)?;
+            if let (Some(src), Some(dst)) = (i.data.ssh_key_id, copied.ssh_key_id) {
+                copied_keys.insert(src, dst);
+            }
+            f.identity_id = Some(copied.id);
         } else {
             f.identity_id = None;
             f.username = i.data.username.clone();

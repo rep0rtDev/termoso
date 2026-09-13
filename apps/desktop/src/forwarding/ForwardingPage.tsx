@@ -43,7 +43,7 @@ import {
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
 import { keys, useHosts, usePfRules, useSaveSettings, useSettings, useVaults } from "@/ipc/hooks";
-import { openCollaboration, useActiveVault } from "@/app/vault";
+import { openCollaboration, useActiveVault, ViewOnlyChip } from "@/app/vault";
 import { useForwardRequests } from "@/app/navigation";
 import {
   errorMessage,
@@ -112,6 +112,7 @@ export function ForwardingPage() {
   const vault = useActiveVault();
   const vaultId = vault.data?.id ?? null;
   const vaultName = vault.data?.name ?? "";
+  const readOnly = vault.readOnly;
   const rules = usePfRules(vaultId);
   const hosts = useHosts(vaultId);
   const vaults = useVaults();
@@ -285,6 +286,7 @@ export function ForwardingPage() {
       {
         label: "Move to",
         icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
+        disabled: readOnly,
         items: vaultTargets(r, true),
       },
       {
@@ -295,11 +297,13 @@ export function ForwardingPage() {
       {
         label: "Duplicate",
         icon: <ContentCopyRoundedIcon fontSize="small" />,
+        disabled: readOnly,
         onClick: () => duplicate(r),
       },
       {
         label: "Remove",
         icon: <DeleteOutlineRoundedIcon fontSize="small" />,
+        disabled: readOnly,
         onClick: () => setConfirmRemove(r),
         danger: true,
       },
@@ -388,10 +392,11 @@ export function ForwardingPage() {
           <SplitButton
             label="New forwarding"
             icon={<AddRoundedIcon />}
-            disabled={!vaultId}
+            disabled={!vaultId || readOnly}
             onClick={() => openWizard()}
             items={newItems}
           />
+          {readOnly && <ViewOnlyChip sx={{ ml: 1 }} />}
         </Toolbar>
 
         <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 3, py: 2 }}>
@@ -453,6 +458,7 @@ export function ForwardingPage() {
           hosts={hosts.data ?? []}
           vaultName={vaultName}
           saving={save.isPending}
+          readOnly={readOnly}
           onChange={(form) =>
             setPanel(panel.mode === "edit" ? { ...panel, form } : { mode: "new", form })
           }

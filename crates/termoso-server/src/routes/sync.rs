@@ -15,6 +15,7 @@ use termoso_proto::entities::{SyncEntity, is_known_kind};
 use termoso_proto::sync::*;
 use uuid::Uuid;
 
+use crate::audit;
 use crate::error::{ApiResult, Error};
 use crate::events;
 use crate::extract::{Auth, Json as Body};
@@ -87,6 +88,51 @@ async fn next_seq(tx: &mut Transaction<'_, Postgres>, vault_id: Uuid) -> ApiResu
     Ok(seq)
 }
 
+/// Team-vault changes of one push, grouped per (vault, action, kind) so a
+/// bulk sync yields one activity entry per group instead of hundreds.
+#[derive(Default)]
+struct AuditBatch {
+    groups: Vec<(Uuid, Uuid, &'static str, String, Vec<Uuid>)>,
+}
+
+impl AuditBatch {
+    const MAX_IDS: usize = 50;
+
+    fn add(&mut self, a: &Access, action: &'static str, kind: &str, id: Uuid) {
+        let Some(team_id) = a.team_id else {
+            return;
+        };
+        match self
+            .groups
+            .iter_mut()
+            .find(|(v, _, act, k, _)| *v == a.vault_id && *act == action && k == kind)
+        {
+            Some((_, _, _, _, ids)) => ids.push(id),
+            None => self
+                .groups
+                .push((a.vault_id, team_id, action, kind.to_string(), vec![id])),
+        }
+    }
+
+    async fn flush(self, tx: &mut Transaction<'_, Postgres>, auth: &Auth) {
+        for (vault_id, team_id, action, kind, ids) in self.groups {
+            let count = ids.len();
+            let sample: Vec<Uuid> = ids.into_iter().take(Self::MAX_IDS).collect();
+            audit::record(
+                &mut **tx,
+                audit::Entry::new(team_id, auth, action)
+                    .vault(vault_id)
+                    .details(serde_json::json!({
+                        "kind": kind,
+                        "count": count,
+                        "ids": sample,
+                    })),
+            )
+            .await;
+        }
+    }
+}
+
 fn err(id: Uuid, code: &str) -> PushResult {
     PushResult::Error {
         id,
@@ -126,6 +172,7 @@ pub async fn push(
     let device_id = auth.device_id();
     let mut results = Vec::with_capacity(req.changes.len() + req.deletes.len());
     let mut touched: HashMap<Uuid, i64> = HashMap::new();
+    let mut audited = AuditBatch::default();
 
     let mut tx = state.db.begin().await?;
 
@@ -170,6 +217,7 @@ pub async fn push(
                 .execute(&mut *tx)
                 .await?;
                 touched.insert(c.vault_id, seq);
+                audited.add(a, "entity.updated", &c.kind, c.id);
                 results.push(PushResult::Ok {
                     id: c.id,
                     version,
@@ -199,6 +247,7 @@ pub async fn push(
                 .execute(&mut *tx)
                 .await?;
                 touched.insert(c.vault_id, seq);
+                audited.add(a, "entity.created", &c.kind, c.id);
                 results.push(PushResult::Ok {
                     id: c.id,
                     version: 1,
@@ -224,10 +273,10 @@ pub async fn push(
                 a
             }
         };
-        if a.is_none() {
+        let Some(a) = a else {
             results.push(err(d.id, "forbidden"));
             continue;
-        }
+        };
         if e.deleted {
             results.push(PushResult::Ok {
                 id: d.id,
@@ -255,6 +304,7 @@ pub async fn push(
         .execute(&mut *tx)
         .await?;
         touched.insert(e.vault_id, seq);
+        audited.add(&a, "entity.deleted", &e.kind, d.id);
         results.push(PushResult::Ok {
             id: d.id,
             version,
@@ -262,6 +312,7 @@ pub async fn push(
         });
     }
 
+    audited.flush(&mut tx, &auth).await;
     tx.commit().await?;
 
     for (vault_id, seq) in touched {

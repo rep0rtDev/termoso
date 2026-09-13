@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use termoso_core::keys::{self, CertificateInfo, KeyAlgorithm, KeyInfo};
-use termoso_core::model::{Entity, Identity, SshCertificate, SshKey};
+use termoso_core::model::{Entity, Identity, SshCertificate, SshConfig, SshKey, TelnetConfig};
 use termoso_core::store::Store;
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -754,6 +754,105 @@ pub fn save_identity(store: &Store, form: &IdentityForm) -> Result<IdentityCard>
         .ok_or_else(|| DesktopError::not_found(format!("identity {id}")))
 }
 
+/// Copy (or move) a visible identity into `vault_id`. The key it points at is
+/// brought along (deduplicated by material, certificate included) so the
+/// identity works for everyone with access to the target vault; secrets never
+/// leave the store. Moving keeps the source key when other entities still
+/// reference it, and inlines the login into hosts that used the identity.
+pub fn copy_identity_to_vault(
+    store: &Store,
+    id: Uuid,
+    vault_id: Uuid,
+    mv: bool,
+) -> Result<IdentityCard> {
+    let e = store.require::<Identity>(id)?;
+    if !e.data.is_visible {
+        return Err(DesktopError::invalid(
+            "inline identities are managed by their host",
+        ));
+    }
+    if e.vault_id == vault_id {
+        return Err(DesktopError::invalid("identity is already in this vault"));
+    }
+    let src_key = match e.data.ssh_key_id {
+        Some(k) => Some(store.require::<SshKey>(k)?),
+        None => None,
+    };
+    let new_key = match &src_key {
+        Some(k) => Some(copy_to_vault(store, k.id, vault_id, false)?.id),
+        None => None,
+    };
+    let new_cert = match (e.data.ssh_certificate_id, new_key) {
+        (Some(_), Some(nk)) => certificate_of(store, &store.require::<SshKey>(nk)?)?.map(|c| c.id),
+        _ => None,
+    };
+    let same = |other: &Entity<Identity>| {
+        other.data.is_visible
+            && other.data.label == e.data.label
+            && other.data.username == e.data.username
+            && other.data.password == e.data.password
+            && other.data.ssh_key_id == new_key
+    };
+    let new_id = match store
+        .list::<Identity>(Some(vault_id))?
+        .into_iter()
+        .find(same)
+    {
+        Some(existing) => existing.id,
+        None => store.insert(
+            vault_id,
+            &Identity {
+                ssh_key_id: new_key,
+                ssh_certificate_id: new_cert,
+                ..e.data.clone()
+            },
+        )?,
+    };
+    if mv {
+        detach_identity(store, &e)?;
+        store.delete(id)?;
+        if let Some(k) = src_key
+            && !key_referenced(store, &k)?
+        {
+            delete(store, k.id)?;
+        }
+    }
+    identities(store, Some(vault_id))?
+        .into_iter()
+        .find(|c| c.id == new_id)
+        .ok_or_else(|| DesktopError::not_found(format!("identity {new_id}")))
+}
+
+/// Turn every reference to `ident` from SSH / Telnet configs in its vault into
+/// an inline (hidden) copy, so the hosts keep working after the identity goes.
+fn detach_identity(store: &Store, ident: &Entity<Identity>) -> Result<()> {
+    let inline = || Identity {
+        is_visible: false,
+        ..ident.data.clone()
+    };
+    for mut c in store.list::<SshConfig>(Some(ident.vault_id))? {
+        if c.data.identity_id == Some(ident.id) {
+            c.data.identity_id = Some(store.insert(ident.vault_id, &inline())?);
+            store.update(c.id, &c.data)?;
+        }
+    }
+    for mut c in store.list::<TelnetConfig>(Some(ident.vault_id))? {
+        if c.data.identity_id == Some(ident.id) {
+            c.data.identity_id = Some(store.insert(ident.vault_id, &inline())?);
+            store.update(c.id, &c.data)?;
+        }
+    }
+    Ok(())
+}
+
+/// Whether any identity (visible or inline) in the key's vault still points at it.
+fn key_referenced(store: &Store, key: &Entity<SshKey>) -> Result<bool> {
+    Ok(store
+        .list::<Identity>(Some(key.vault_id))?
+        .iter()
+        .any(|i| i.data.ssh_key_id == Some(key.id)))
+}
+
 pub fn delete_identity(store: &Store, id: Uuid) -> Result<()> {
     let e = store.require::<Identity>(id)?;
     if !e.data.is_visible {
@@ -1259,5 +1358,180 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    fn synced_vault(store: &Store, kind: LocalVaultKind, role: VaultRole) -> Uuid {
+        let id = Uuid::new_v4();
+        store
+            .upsert_vault(
+                id,
+                kind,
+                "shared",
+                (kind == LocalVaultKind::Team).then(Uuid::new_v4),
+                role,
+                Some(&SymmetricKey::generate()),
+                1,
+            )
+            .unwrap();
+        id
+    }
+
+    fn identity_with(store: &Store, vault: Uuid, key: Option<Uuid>) -> IdentityCard {
+        save_identity(
+            store,
+            &IdentityForm {
+                id: None,
+                vault_id: vault,
+                label: "deploy".into(),
+                username: "deploy".into(),
+                password: Some("pw".into()),
+                ssh_key_id: key,
+                ssh_certificate_id: None,
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn identity_copy_brings_its_key_and_dedups_on_repeat() {
+        let store = store();
+        let vault = store.local_vault().unwrap().id;
+        let team = synced_vault(&store, LocalVaultKind::Team, VaultRole::Editor);
+        let key = make_key(&store, vault, None, false);
+        let ident = identity_with(&store, vault, Some(key.id));
+
+        let copied = copy_identity_to_vault(&store, ident.id, team, false).unwrap();
+        assert_eq!(copied.vault_id, team);
+        assert!(copied.has_password);
+        let team_keys = keys_list(&store, Some(team)).unwrap();
+        assert_eq!(team_keys.len(), 1);
+        assert_eq!(team_keys[0].fingerprint, key.fingerprint);
+        assert_eq!(copied.ssh_key_id, Some(team_keys[0].id));
+        // Source untouched.
+        assert_eq!(identities(&store, Some(vault)).unwrap().len(), 1);
+        assert_eq!(keys_list(&store, Some(vault)).unwrap().len(), 1);
+
+        // Copying again reuses the identical identity and key instead of duplicating.
+        let again = copy_identity_to_vault(&store, ident.id, team, false).unwrap();
+        assert_eq!(again.id, copied.id);
+        assert_eq!(identities(&store, Some(team)).unwrap().len(), 1);
+        assert_eq!(keys_list(&store, Some(team)).unwrap().len(), 1);
+
+        assert!(copy_identity_to_vault(&store, ident.id, vault, false).is_err());
+        let none = identity_with(&store, vault, None);
+        let c = copy_identity_to_vault(&store, none.id, team, false).unwrap();
+        assert!(c.ssh_key_id.is_none());
+    }
+
+    #[test]
+    fn identity_move_keeps_hosts_working_and_drops_orphan_key() {
+        let store = store();
+        let vault = store.local_vault().unwrap().id;
+        let team = synced_vault(&store, LocalVaultKind::Team, VaultRole::Manager);
+        let key = make_key(&store, vault, None, false);
+        let ident = identity_with(&store, vault, Some(key.id));
+        let cfg = store
+            .insert(
+                vault,
+                &SshConfig {
+                    identity_id: Some(ident.id),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let moved = copy_identity_to_vault(&store, ident.id, team, true).unwrap();
+        assert_eq!(moved.vault_id, team);
+        assert!(store.get::<Identity>(ident.id).unwrap().is_none());
+        // The host got a hidden inline identity with the same credentials...
+        let inline_id = store
+            .get::<SshConfig>(cfg)
+            .unwrap()
+            .unwrap()
+            .data
+            .identity_id
+            .expect("host keeps an identity");
+        let inline = store.require::<Identity>(inline_id).unwrap();
+        assert!(!inline.data.is_visible);
+        assert_eq!(inline.data.username, "deploy");
+        assert_eq!(inline.data.ssh_key_id, Some(key.id));
+        // ...so the source key is still referenced and stays.
+        assert_eq!(keys_list(&store, Some(vault)).unwrap().len(), 1);
+        assert!(identities(&store, Some(vault)).unwrap().is_empty());
+
+        // An identity nobody else uses takes its key along and leaves nothing behind.
+        let key2 = make_key(&store, vault, None, false);
+        let lone = identity_with(&store, vault, Some(key2.id));
+        copy_identity_to_vault(&store, lone.id, team, true).unwrap();
+        assert!(store.get::<SshKey>(key2.id).unwrap().is_none());
+        assert_eq!(keys_list(&store, Some(team)).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn viewer_vault_rejects_writes_but_allows_copying_out() {
+        let store = store();
+        let vault = store.local_vault().unwrap().id;
+        let viewer = synced_vault(&store, LocalVaultKind::Team, VaultRole::Viewer);
+        let key = make_key(&store, vault, None, false);
+
+        let err = copy_to_vault(&store, key.id, viewer, false).unwrap_err();
+        assert_eq!(err.kind, "vault_read_only", "{err}");
+        assert!(keys_list(&store, Some(viewer)).unwrap().is_empty());
+        let err = generate(
+            &store,
+            &GenerateForm {
+                vault_id: viewer,
+                label: "nope".into(),
+                algorithm: KeyAlgorithm::Ed25519,
+                comment: String::new(),
+                passphrase: None,
+                remember_passphrase: false,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(err.kind, "vault_read_only");
+
+        // Something already in a view-only vault (synced down, or written back
+        // when we were still an editor) can be copied elsewhere, but not
+        // renamed, moved or deleted.
+        let team_id = store.vault(viewer).unwrap().team_id;
+        let vault_key = store.vault_key(viewer).unwrap();
+        let set_role = |role: VaultRole| {
+            store
+                .upsert_vault(
+                    viewer,
+                    LocalVaultKind::Team,
+                    "shared",
+                    team_id,
+                    role,
+                    Some(&vault_key),
+                    1,
+                )
+                .unwrap();
+        };
+        set_role(VaultRole::Editor);
+        let shared = copy_to_vault(&store, key.id, viewer, false).unwrap().id;
+        set_role(VaultRole::Viewer);
+        let copied = copy_to_vault(&store, shared, vault, false).unwrap();
+        assert_eq!(copied.vault_id, vault);
+        assert_eq!(copied.id, key.id, "identical key is reused, not duplicated");
+        let fresh = make_key(&store, vault, None, false);
+        set_role(VaultRole::Editor);
+        let fresh_shared = copy_to_vault(&store, fresh.id, viewer, true).unwrap().id;
+        set_role(VaultRole::Viewer);
+        assert_eq!(keys_list(&store, Some(vault)).unwrap().len(), 1);
+        let back = copy_to_vault(&store, fresh_shared, vault, false).unwrap();
+        assert_eq!(back.fingerprint, fresh.fingerprint);
+        assert_eq!(keys_list(&store, Some(vault)).unwrap().len(), 2);
+        assert_eq!(
+            rename(&store, shared, "renamed").unwrap_err().kind,
+            "vault_read_only"
+        );
+        assert_eq!(
+            copy_to_vault(&store, shared, vault, true).unwrap_err().kind,
+            "vault_read_only"
+        );
+        assert_eq!(delete(&store, shared).unwrap_err().kind, "vault_read_only");
+        assert_eq!(keys_list(&store, Some(viewer)).unwrap().len(), 2);
     }
 }

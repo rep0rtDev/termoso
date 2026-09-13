@@ -190,6 +190,36 @@ export interface VaultAccess {
   role: VaultRole;
 }
 
+/** One row of the team activity log (metadata only, never secrets). */
+export interface AuditEvent {
+  id: number;
+  team_id: Uuid;
+  actor_id?: Uuid;
+  actor_email?: string;
+  actor_name?: string;
+  device_id?: Uuid;
+  action: string;
+  vault_id?: Uuid;
+  target_user?: Uuid;
+  target_email?: string;
+  details: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AuditPage {
+  events: AuditEvent[];
+  next_before: number | null;
+}
+
+export interface AuditFilter {
+  before?: number;
+  limit?: number;
+  /** Exact action, or a prefix ending in `.` (e.g. `vault.`). */
+  action?: string;
+  actor?: Uuid;
+  vault?: Uuid;
+}
+
 export interface HostCard {
   id: Uuid;
   vaultId: Uuid;
