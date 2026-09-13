@@ -39,6 +39,7 @@ pub mod encoding;
 pub mod error;
 pub mod kdf;
 pub mod keys;
+pub mod live;
 pub mod opaque;
 pub mod recovery;
 pub mod sealed;

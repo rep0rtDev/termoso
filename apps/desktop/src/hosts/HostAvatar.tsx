@@ -1,31 +1,61 @@
 import DnsRoundedIcon from "@mui/icons-material/DnsRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
-import type { HostCard } from "@/ipc/types";
+import UsbRoundedIcon from "@mui/icons-material/UsbRounded";
+import SvgIcon, { type SvgIconProps } from "@mui/material/SvgIcon";
+import type { HostCard, SessionInfo } from "@/ipc/types";
 import { IconTile } from "@/components/ui";
 import { sizes } from "@/theme/theme";
+import { distroIcon, type DistroIcon } from "./distroIcons";
 
-/** Recognisable OS names get a small brand colour on the tile; everything else stays neutral. */
-const osColors: [RegExp, string][] = [
-  [/ubuntu/i, "#DD4814"],
-  [/debian/i, "#A81D33"],
-  [/fedora|red ?hat|rhel|centos|rocky|alma/i, "#CC0000"],
-  [/arch/i, "#1793D1"],
-  [/alpine/i, "#0D597F"],
-  [/suse/i, "#73BA25"],
-  [/freebsd|openbsd|netbsd/i, "#AB2B28"],
-  [/mac|darwin/i, "#8E8E93"],
-  [/windows/i, "#0078D4"],
-];
-
-function osColor(os: string | null): string | undefined {
-  if (!os) return undefined;
-  return osColors.find(([re]) => re.test(os))?.[1];
+/** Renders a distro glyph as a regular MUI icon (inherits `fontSize` / `color`). */
+export function DistroGlyph({ icon, ...props }: { icon: DistroIcon } & SvgIconProps) {
+  return (
+    <SvgIcon viewBox="0 0 24 24" titleAccess={icon.title} {...props}>
+      <path d={icon.path} />
+    </SvgIcon>
+  );
 }
 
+/** The icon a host shows: the user's pick first, otherwise whatever OS detection found. */
+export function hostIcon(
+  host: Pick<HostCard, "icon" | "osName"> | null | undefined,
+): DistroIcon | null {
+  if (!host) return null;
+  return distroIcon(host.icon) ?? distroIcon(host.osName);
+}
+
+/** Protocols a glyph can stand for: saved-host sections plus the session-only ones. */
+export type GlyphProtocol = SessionInfo["protocol"];
+
+/** Glyph for a host's icon (chosen or detected), or the protocol fallback while unknown. */
+export function HostGlyph({
+  osName,
+  icon: iconId,
+  protocol,
+  ...props
+}: {
+  osName: string | null | undefined;
+  icon?: string | null | undefined;
+  protocol: GlyphProtocol;
+} & SvgIconProps) {
+  const icon = distroIcon(iconId) ?? distroIcon(osName);
+  if (icon) return <DistroGlyph icon={icon} {...props} />;
+  return <ProtocolGlyph protocol={protocol} {...props} />;
+}
+
+/** Neutral glyph for a protocol: server, telnet/local terminal or serial plug. */
+export function ProtocolGlyph({ protocol, ...props }: { protocol: GlyphProtocol } & SvgIconProps) {
+  if (protocol === "telnet" || protocol === "local") return <TerminalRoundedIcon {...props} />;
+  if (protocol === "serial") return <UsbRoundedIcon {...props} />;
+  return <DnsRoundedIcon {...props} />;
+}
+
+/** Host tile: brand-coloured with the distro logo once the OS is known, neutral before. */
 export function HostAvatar({ host, size = sizes.tile }: { host: HostCard; size?: number }) {
+  const icon = hostIcon(host);
   return (
-    <IconTile size={size} color={osColor(host.osName)}>
-      {host.protocol === "telnet" ? <TerminalRoundedIcon /> : <DnsRoundedIcon />}
+    <IconTile size={size} color={icon?.color}>
+      <HostGlyph osName={host.osName} icon={host.icon} protocol={host.protocol} />
     </IconTile>
   );
 }

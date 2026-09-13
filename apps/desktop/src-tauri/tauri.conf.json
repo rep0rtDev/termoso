@@ -21,8 +21,8 @@
         "center": true,
         "resizable": true,
         "decorations": false,
-        "shadow": true,
-        "backgroundColor": "#12151F",
+        "transparent": true,
+        "shadow": false,
         "dragDropEnabled": false
       }
     ],
@@ -61,7 +61,9 @@
       }
     },
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper" }
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
     },
     "createUpdaterArtifacts": true
   },
@@ -69,7 +71,14 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENDMjE2QzA2NTRBQUEzQjgKUldTNG82cFVCbXdoelBNRER5bFBWcy82cWdWYUhwdk5sN3MzUXF5WU5YRnY4TUl5S0NxMHJUY2YK",
       "endpoints": ["https://github.com/rep0rtDev/termoso/releases/latest/download/latest.json"],
-      "windows": { "installMode": "passive" }
+      "windows": {
+        "installMode": "passive"
+      }
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["termoso", "ssh", "telnet"]
+      }
     }
   }
 }

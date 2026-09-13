@@ -9,6 +9,7 @@ use termoso_crypto::encoding::unb64;
 use termoso_proto::vault::*;
 use uuid::Uuid;
 
+use crate::audit;
 use crate::error::{ApiResult, Error, NoContent};
 use crate::events::{self, Event};
 use crate::extract::{Auth, Json as Body};
@@ -30,7 +31,8 @@ pub struct Access {
 
 /// Look up `user_id`'s membership in `vault_id`. Team admins get implicit
 /// manager rights on team vaults (needed to seal keys for new members) but no
-/// data access unless they hold a sealed key.
+/// data access unless they hold a sealed key. Team vaults whose team requires
+/// two-factor authentication are unreachable for members without it.
 pub async fn access<'e, E: PgExecutor<'e>>(
     db: E,
     vault_id: Uuid,
@@ -43,20 +45,30 @@ pub async fn access<'e, E: PgExecutor<'e>>(
         Option<String>,
         Option<bool>,
         Option<String>,
+        Option<bool>,
+        bool,
     )> = sqlx::query_as(
-        "SELECT v.kind, v.team_id, v.key_version, vm.role, vm.sealed_key IS NULL, tm.role
+        "SELECT v.kind, v.team_id, v.key_version, vm.role, vm.sealed_key IS NULL, tm.role,
+                t.require_mfa,
+                EXISTS (SELECT 1 FROM users u WHERE u.id = $2 AND (u.totp_enabled
+                        OR EXISTS (SELECT 1 FROM webauthn_credentials w WHERE w.user_id = u.id)))
          FROM vaults v
          LEFT JOIN vault_members vm ON vm.vault_id = v.id AND vm.user_id = $2
          LEFT JOIN team_members tm ON tm.team_id = v.team_id AND tm.user_id = $2
+         LEFT JOIN teams t ON t.id = v.team_id
          WHERE v.id = $1 AND v.deleted_at IS NULL",
     )
     .bind(vault_id)
     .bind(user_id)
     .fetch_optional(db)
     .await?;
-    let Some((kind, team_id, key_version, vrole, pending, trole)) = row else {
+    let Some((kind, team_id, key_version, vrole, pending, trole, require_mfa, has_mfa)) = row
+    else {
         return Err(Error::not_found("Vault"));
     };
+    if require_mfa.unwrap_or(false) && !has_mfa && (vrole.is_some() || trole.is_some()) {
+        return Err(Error::mfa_required());
+    }
     let kind = if kind == "team" {
         VaultKind::Team
     } else {
@@ -241,6 +253,19 @@ pub async fn create_team_vault(
     let ids: Vec<Uuid> = req.members.iter().map(|m| m.user_id).collect();
     events::publish(&state, Event::VaultsUpdated { user_ids: ids }).await?;
     metrics::counter!("termoso_vaults_created_total").increment(1);
+    audit::record(
+        &state.db,
+        audit::Entry::new(team_id, &auth, "vault.created")
+            .vault(id)
+            .details(serde_json::json!({
+                "name": name,
+                "members": req.members.iter().map(|m| serde_json::json!({
+                    "user_id": m.user_id,
+                    "role": vault_role_str(m.role),
+                })).collect::<Vec<_>>(),
+            })),
+    )
+    .await;
     Ok(Json(Vault {
         id,
         kind: VaultKind::Team,
@@ -261,7 +286,7 @@ pub async fn update(
     Path(id): Path<Uuid>,
     Body(req): Body<UpdateVaultRequest>,
 ) -> ApiResult<Json<Vault>> {
-    require_manage(&state, id, auth.user_id()).await?;
+    let a = require_manage(&state, id, auth.user_id()).await?;
     if let Some(name) = &req.name {
         let name = validate_name(name)?;
         sqlx::query("UPDATE vaults SET name = $2, updated_at = now() WHERE id = $1")
@@ -269,6 +294,15 @@ pub async fn update(
             .bind(&name)
             .execute(&state.db)
             .await?;
+        if let Some(team_id) = a.team_id {
+            audit::record(
+                &state.db,
+                audit::Entry::new(team_id, &auth, "vault.renamed")
+                    .vault(id)
+                    .details(serde_json::json!({ "name": name })),
+            )
+            .await;
+        }
         events::publish(
             &state,
             Event::VaultsUpdated {
@@ -291,6 +325,10 @@ pub async fn delete(
         return Err(Error::forbidden("The personal vault cannot be deleted"));
     }
     let members = member_ids(&state.db, id).await?;
+    let (name,): (String,) = sqlx::query_as("SELECT name FROM vaults WHERE id = $1")
+        .bind(id)
+        .fetch_one(&state.db)
+        .await?;
     let log_keys: Vec<(String,)> =
         sqlx::query_as("SELECT object_key FROM session_logs WHERE vault_id = $1")
             .bind(id)
@@ -300,6 +338,15 @@ pub async fn delete(
         .bind(id)
         .execute(&state.db)
         .await?;
+    if let Some(team_id) = a.team_id {
+        audit::record(
+            &state.db,
+            audit::Entry::new(team_id, &auth, "vault.deleted")
+                .vault(id)
+                .details(serde_json::json!({ "name": name, "members": members.len() })),
+        )
+        .await;
+    }
     if let Some(storage) = &state.storage {
         for (k,) in log_keys {
             if let Err(e) = storage.delete(&k).await {
@@ -402,6 +449,13 @@ pub async fn upsert_member(
             return Err(Error::conflict("A vault needs at least one manager"));
         }
     }
+    let previous: Option<(String, bool)> = sqlx::query_as(
+        "SELECT role, sealed_key IS NULL FROM vault_members WHERE vault_id = $1 AND user_id = $2",
+    )
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?;
     sqlx::query(
         "INSERT INTO vault_members (vault_id, user_id, role, sealed_key, key_version, added_by)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -415,6 +469,23 @@ pub async fn upsert_member(
     .bind(auth.user_id())
     .execute(&state.db)
     .await?;
+    let (action, previous_role) = match previous {
+        // Sealing a pending (invited) member's key is a grant, not a change.
+        None | Some((_, true)) => ("vault.access_granted", None),
+        Some((r, false)) => ("vault.access_changed", Some(r)),
+    };
+    audit::record(
+        &state.db,
+        audit::Entry::new(team_id, &auth, action)
+            .vault(id)
+            .user(user_id)
+            .details(serde_json::json!({
+                "role": vault_role_str(req.role),
+                "previous_role": previous_role,
+                "key_version": a.key_version,
+            })),
+    )
+    .await;
     events::publish(
         &state,
         Event::VaultsUpdated {
@@ -466,13 +537,28 @@ pub async fn remove_member(
             return Err(Error::conflict("A vault needs at least one manager"));
         }
     }
-    let res = sqlx::query("DELETE FROM vault_members WHERE vault_id = $1 AND user_id = $2")
-        .bind(id)
-        .bind(user_id)
-        .execute(&state.db)
-        .await?;
-    if res.rows_affected() == 0 {
+    let res: Option<(String,)> = sqlx::query_as(
+        "DELETE FROM vault_members WHERE vault_id = $1 AND user_id = $2 RETURNING role",
+    )
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?;
+    let Some((previous_role,)) = res else {
         return Err(Error::not_found("Member"));
+    };
+    if let Some(team_id) = a.team_id {
+        audit::record(
+            &state.db,
+            audit::Entry::new(team_id, &auth, "vault.access_revoked")
+                .vault(id)
+                .user(user_id)
+                .details(serde_json::json!({
+                    "previous_role": previous_role,
+                    "self": user_id == auth.user_id(),
+                })),
+        )
+        .await;
     }
     events::publish(
         &state,
@@ -545,6 +631,24 @@ pub async fn rotate_key(
             .await?;
     }
     tx.commit().await?;
+    if let Some(team_id) = a.team_id {
+        let dropped: Vec<Uuid> = current
+            .iter()
+            .copied()
+            .filter(|u| !provided.contains(u))
+            .collect();
+        audit::record(
+            &state.db,
+            audit::Entry::new(team_id, &auth, "vault.key_rotated")
+                .vault(id)
+                .details(serde_json::json!({
+                    "key_version": new_version,
+                    "resealed_for": req.members.iter().map(|m| m.user_id).collect::<Vec<_>>(),
+                    "access_dropped": dropped,
+                })),
+        )
+        .await;
+    }
     events::publish(&state, Event::VaultsUpdated { user_ids: current }).await?;
     users::security_event(
         &state,

@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use russh_sftp::client::SftpSession;
+use russh_sftp::client::{Config as SftpConfig, SftpSession};
 use russh_sftp::protocol::{FileAttributes, FileType, OpenFlags, StatusCode};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
@@ -16,6 +16,9 @@ use crate::ssh::SshClient;
 
 /// Chunk size for transfers.
 const CHUNK: usize = 256 * 1024;
+/// Requests kept in flight per open file; with 256 KiB packets this allows
+/// 8 MiB outstanding, enough to fill a 100+ ms RTT link.
+const IN_FLIGHT: usize = 32;
 
 /// Directory entry kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,6 +72,8 @@ pub struct RemoteEntry {
     pub atime: Option<u32>,
     /// Link target for symlinks (filled by [`Sftp::list`]).
     pub link_target: Option<String>,
+    /// What a symlink points at; `None` for non-links and dangling links.
+    pub target_kind: Option<EntryKind>,
 }
 
 impl RemoteEntry {
@@ -86,6 +91,7 @@ impl RemoteEntry {
             mtime: a.mtime,
             atime: a.atime,
             link_target: None,
+            target_kind: None,
         }
     }
 }
@@ -169,7 +175,14 @@ impl Sftp {
     pub async fn open(client: &SshClient) -> Result<Self> {
         let channel = client.open_session().await?;
         channel.request_subsystem(true, "sftp").await?;
-        let session = SftpSession::new(channel.into_stream())
+        let cfg = SftpConfig {
+            max_packet_len: CHUNK as u32,
+            max_write_packet_len: CHUNK as u32,
+            max_concurrent_reads: IN_FLIGHT,
+            max_concurrent_writes: IN_FLIGHT,
+            ..SftpConfig::default()
+        };
+        let session = SftpSession::new_with_config(channel.into_stream(), cfg)
             .await
             .map_err(sftp_err)?;
         let home = session.canonicalize(".").await.map_err(sftp_err)?;
@@ -187,7 +200,8 @@ impl Sftp {
     }
 
     /// List a directory, sorted directories-first then by name. Symlink
-    /// targets are resolved so the UI can show where they point.
+    /// targets are resolved so the UI can show where they point and whether
+    /// they can be followed.
     pub async fn list(&self, dir: &str) -> Result<Vec<RemoteEntry>> {
         let dir = self.canonicalize(dir).await?;
         let rd = self.session.read_dir(&dir).await.map_err(sftp_err)?;
@@ -199,10 +213,16 @@ impl Sftp {
             }
             let path = join(&dir, &name);
             let mut entry = RemoteEntry::from_attrs(name, path.clone(), &e.metadata());
-            if entry.kind == EntryKind::Symlink
-                && let Ok(target) = self.session.read_link(&path).await
-            {
-                entry.link_target = Some(target);
+            if entry.kind == EntryKind::Symlink {
+                if let Ok(target) = self.session.read_link(&path).await {
+                    entry.link_target = Some(target);
+                }
+                entry.target_kind = self
+                    .session
+                    .metadata(&path)
+                    .await
+                    .ok()
+                    .map(|a| a.file_type().into());
             }
             out.push(entry);
         }

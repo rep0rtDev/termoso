@@ -112,7 +112,7 @@ export function SignupPage() {
           helperText={mismatch ? "Passwords do not match" : undefined}
           disabled={busy}
         />
-        <Alert severity="info" variant="outlined">
+        <Alert severity="info">
           After sign-up you will get a 24-word recovery key. It is the only way to reset a forgotten
           password without losing your data — nobody, including the server operator, can recover it
           for you.

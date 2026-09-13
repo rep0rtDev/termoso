@@ -7,13 +7,14 @@ use termoso_crypto::aead::{self, Aad};
 use termoso_proto::entities::SyncEntity;
 use termoso_proto::entities::is_known_kind;
 use termoso_proto::sync::{EntityChange, EntityDelete};
+use termoso_proto::vault::VaultRole;
 use uuid::Uuid;
 
-use super::{Store, parse_time, parse_uuid};
+use super::{LocalVault, Store, parse_time, parse_uuid};
 use crate::error::{CoreError, Result};
 use crate::model::{
-    AnyEntity, Entity, Group, Host, Identity, Payload, Proxy, ResolvedHost, SshCertificate,
-    SshConfig, SshKey, Tag, TagHost, TelnetConfig,
+    AnyEntity, Entity, Group, Host, Identity, Payload, Proxy, ResolvedHost, SerialConfig,
+    SshCertificate, SshConfig, SshKey, Tag, TagHost, TelnetConfig,
 };
 
 /// Raw local row (ciphertext), as the sync engine sees it.
@@ -134,6 +135,17 @@ fn into_row(
 }
 
 impl Store {
+    /// The vault, provided our role there allows local edits. Viewers get
+    /// `VaultReadOnly` before anything is written, so the store never holds
+    /// changes the server would reject on push.
+    fn writable_vault(&self, vault_id: Uuid) -> Result<LocalVault> {
+        let vault = self.vault(vault_id)?;
+        if vault.kind.is_synced() && vault.role == VaultRole::Viewer {
+            return Err(CoreError::VaultReadOnly(vault_id));
+        }
+        Ok(vault)
+    }
+
     fn encrypt_payload<T: serde::Serialize>(
         &self,
         vault_id: Uuid,
@@ -206,7 +218,7 @@ impl Store {
             return Err(CoreError::Invalid(format!("unknown entity kind {kind}")));
         }
         let (ct, key_version) = self.encrypt_payload(vault_id, kind, id, data)?;
-        let dirty = self.vault(vault_id)?.kind.is_synced();
+        let dirty = self.writable_vault(vault_id)?.kind.is_synced();
         self.conn().execute(
             "INSERT INTO entities (id, kind, vault_id, version, seq, deleted, key_version, data, updated_at, dirty)
              VALUES (?1, ?2, ?3, 0, 0, 0, ?4, ?5, ?6, ?7)
@@ -291,7 +303,7 @@ impl Store {
         let Some(row) = self.row(id)? else {
             return Ok(());
         };
-        let synced = self.vault(row.vault_id)?.kind.is_synced();
+        let synced = self.writable_vault(row.vault_id)?.kind.is_synced();
         let conn = self.conn();
         if synced && row.version > 0 {
             conn.execute(
@@ -475,6 +487,37 @@ impl Store {
 
     // ───────────────────────────── host resolution ─────────────────────────────
 
+    /// Effective SSH config a host placed in `group_id` inherits from its
+    /// group chain (nearer groups win), plus the group path root → leaf.
+    pub fn resolve_group_ssh(&self, group_id: Uuid) -> Result<(SshConfig, Vec<String>)> {
+        let group = self.require::<Group>(group_id)?;
+        let groups: Vec<Entity<Group>> = self.list(Some(group.vault_id))?;
+        let mut path = Vec::new();
+        let mut chain: Vec<Uuid> = Vec::new();
+        let mut cursor = Some(group_id);
+        let mut hops = 0;
+        while let Some(gid) = cursor {
+            hops += 1;
+            if hops > 64 {
+                break;
+            }
+            let Some(g) = groups.iter().find(|g| g.id == gid) else {
+                break;
+            };
+            path.push(g.data.label.clone());
+            chain.extend(g.data.ssh_config_id);
+            cursor = g.data.parent_id;
+        }
+        path.reverse();
+        let mut ssh = SshConfig::default();
+        for cid in chain.iter().rev() {
+            if let Some(c) = self.get::<SshConfig>(*cid)? {
+                merge_ssh(&mut ssh, &c.data);
+            }
+        }
+        Ok((ssh, path))
+    }
+
     /// Resolve everything needed to connect to a host.
     pub fn resolve_host(&self, host_id: Uuid) -> Result<ResolvedHost> {
         let host = self.require::<Host>(host_id)?;
@@ -539,6 +582,13 @@ impl Store {
             None
         };
 
+        let serial = match host.data.serial_config_id {
+            Some(cid) if host.data.ssh_config_id.is_none() => {
+                self.get::<SerialConfig>(cid)?.map(|c| c.data)
+            }
+            _ => None,
+        };
+
         let identity_id = ssh.identity_id.or_else(|| {
             if host.data.ssh_config_id.is_none() {
                 telnet.as_ref().and_then(|t| t.identity_id)
@@ -554,9 +604,21 @@ impl Store {
             Some(id) => self.get::<SshKey>(id)?,
             None => None,
         };
+        // Certificates live next to their key: an explicit identity reference
+        // wins, otherwise the certificate attached to the key is used.
         let certificate = match identity.as_ref().and_then(|i| i.data.ssh_certificate_id) {
             Some(id) => self.get::<SshCertificate>(id)?,
-            None => None,
+            None => match &key {
+                Some(k) => self
+                    .list::<SshCertificate>(Some(k.vault_id))?
+                    .into_iter()
+                    .find(|c| c.data.ssh_key_id == Some(k.id)),
+                None => None,
+            },
+        };
+        let ssh_id_handle = match &identity {
+            Some(i) if i.data.ssh_id => crate::sshid::handle(self)?,
+            _ => None,
         };
         let proxy = match ssh.proxy_id {
             Some(id) => self.get::<Proxy>(id)?,
@@ -599,9 +661,11 @@ impl Store {
             identity,
             key,
             certificate,
+            ssh_id_handle,
             proxy,
             chain,
             telnet,
+            serial,
             group_path,
             tags,
         })
@@ -915,8 +979,38 @@ mod tests {
         let r = s.resolve_host(host).unwrap();
         assert_eq!(r.port(), 22, "host config overrides group");
         assert_eq!(r.username(), "deploy", "identity inherited from root group");
-        assert_eq!(r.key.unwrap().id, key);
+        assert_eq!(r.key.as_ref().unwrap().id, key);
+        assert!(r.certificate.is_none());
         assert_eq!(r.group_path, vec!["Prod", "EU"]);
         assert_eq!(r.tags, vec!["db"]);
+
+        // A certificate attached to the key is picked up even when the
+        // identity does not reference it explicitly.
+        let cert = s
+            .insert(
+                v,
+                &SshCertificate {
+                    label: "k".into(),
+                    certificate: "ssh-ed25519-cert-v01@openssh.com AAAA".into(),
+                    ssh_key_id: Some(key),
+                },
+            )
+            .unwrap();
+        assert_eq!(s.resolve_host(host).unwrap().certificate.unwrap().id, cert);
+        // An explicit identity reference wins.
+        let other = s
+            .insert(
+                v,
+                &SshCertificate {
+                    label: "other".into(),
+                    certificate: "ssh-ed25519-cert-v01@openssh.com BBBB".into(),
+                    ssh_key_id: None,
+                },
+            )
+            .unwrap();
+        let mut i = s.require::<Identity>(ident).unwrap();
+        i.data.ssh_certificate_id = Some(other);
+        s.update(ident, &i.data).unwrap();
+        assert_eq!(s.resolve_host(host).unwrap().certificate.unwrap().id, other);
     }
 }

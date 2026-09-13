@@ -1,124 +1,149 @@
 import { useEffect } from "react";
-import { Box } from "@mui/material";
-import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { TerminalPane } from "./TerminalPane";
-import { SearchBar } from "./SearchBar";
-import {
-  confirmPendingClose,
-  confirmPendingPaste,
-  requestClosePane,
-  setSearchOpen,
-  splitActivePane,
-  useTerminal,
-} from "./store";
+import { Box, IconButton, Tooltip, Typography } from "@mui/material";
+import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import DnsRoundedIcon from "@mui/icons-material/DnsRounded";
+import { SplitView } from "./SplitView";
+import { StatusDot, TerminalPane } from "./TerminalPane";
+import { TerminalSidePanel } from "./TerminalSidePanel";
+import { closePane, focusPane, setActivePane, useTerminal } from "./store";
+import { HostAvatar } from "@/hosts/HostAvatar";
+import { IconTile } from "@/components/ui";
+import { useHosts } from "@/ipc/hooks";
+import type { Uuid } from "@/ipc/types";
 
 interface Props {
   tabId: string;
 }
 
-/** Panes of one tab, laid out as a row/column split (grid beyond two). */
+/**
+ * Panes of one tab — side by side as nested resizable splits, or (workspace
+ * list mode) one at a time with a session list on the left — plus the side panel.
+ */
 export function TerminalWorkspace({ tabId }: Props) {
   const tab = useTerminal((s) => s.tabs.find((t) => t.id === tabId));
-  const pendingPaste = useTerminal((s) => s.pendingPaste);
-  const pendingClose = useTerminal((s) => s.pendingClose);
+  const visible = useTerminal((s) => s.activeTabId === tabId);
+  const activePaneId = tab?.activePaneId;
 
   useEffect(() => {
-    const onKey = (ev: KeyboardEvent) => {
-      const ctrl = ev.ctrlKey || ev.metaKey;
-      if (!ctrl || !ev.shiftKey || !tab) return;
-      switch (ev.code) {
-        case "KeyF":
-          ev.preventDefault();
-          setSearchOpen(tabId, true);
-          break;
-        case "KeyD":
-          ev.preventDefault();
-          splitActivePane(tabId, ev.altKey ? "column" : "row");
-          break;
-        case "KeyW":
-          ev.preventDefault();
-          requestClosePane(tab.activePaneId);
-          break;
-        default:
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [tab, tabId]);
+    if (visible && activePaneId) focusPane(activePaneId);
+  }, [visible, activePaneId]);
 
   if (!tab) return null;
-  const many = tab.paneIds.length > 2;
+  const list = tab.viewMode === "list";
 
   return (
-    <Box sx={{ position: "relative", flex: 1, minHeight: 0, display: "flex" }}>
+    <Box sx={{ flex: 1, minHeight: 0, display: "flex" }}>
+      {list && <SessionList paneIds={tab.paneIds} activePaneId={tab.activePaneId} />}
       <Box
-        sx={{
-          flex: 1,
-          minWidth: 0,
-          minHeight: 0,
-          display: many ? "grid" : "flex",
-          flexDirection: tab.direction,
-          gridTemplateColumns: many ? "repeat(2, minmax(0, 1fr))" : undefined,
-          gridAutoRows: many ? "minmax(0, 1fr)" : undefined,
-          gap: tab.paneIds.length > 1 ? "2px" : 0,
-          bgcolor: "divider",
-        }}
+        sx={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0, display: "flex", p: 0.75 }}
       >
-        {tab.paneIds.map((id) => (
-          <TerminalPane
-            key={id}
-            paneId={id}
-            active={tab.activePaneId === id}
+        {list ? (
+          <TerminalPane key={tab.activePaneId} paneId={tab.activePaneId} active showFrame={false} />
+        ) : (
+          <SplitView
+            tabId={tabId}
+            node={tab.layout}
+            activePaneId={tab.activePaneId}
             showFrame={tab.paneIds.length > 1}
           />
-        ))}
+        )}
       </Box>
-      {tab.searchOpen && (
-        <SearchBar
-          key={tab.activePaneId}
-          paneId={tab.activePaneId}
-          onClose={() => setSearchOpen(tabId, false)}
-        />
+      <TerminalSidePanel tab={tab} />
+    </Box>
+  );
+}
+
+/** Left column of a list-mode workspace: one row per session. */
+function SessionList({ paneIds, activePaneId }: { paneIds: Uuid[]; activePaneId: Uuid }) {
+  return (
+    <Box
+      component="nav"
+      aria-label="Sessions"
+      sx={{
+        width: 224,
+        flexShrink: 0,
+        display: "flex",
+        flexDirection: "column",
+        bgcolor: "surface.base",
+        borderRight: 1,
+        borderColor: "border.light",
+        overflowY: "auto",
+        py: 0.75,
+        px: 0.75,
+        gap: 0.25,
+      }}
+    >
+      {paneIds.map((id) => (
+        <SessionRow key={id} paneId={id} active={id === activePaneId} />
+      ))}
+    </Box>
+  );
+}
+
+function SessionRow({ paneId, active }: { paneId: Uuid; active: boolean }) {
+  const pane = useTerminal((s) => s.panes[paneId]);
+  const hosts = useHosts(null);
+  if (!pane) return null;
+  const host = pane.hostId ? hosts.data?.find((h) => h.id === pane.hostId) : undefined;
+  const subtitle =
+    pane.protocol === "local"
+      ? "Local terminal"
+      : (host?.address ?? (pane.target.kind === "quick" ? pane.target.address : ""));
+  return (
+    <Box
+      role="button"
+      tabIndex={0}
+      onClick={() => setActivePane(paneId)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") setActivePane(paneId);
+      }}
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 1,
+        px: 1,
+        height: 44,
+        borderRadius: 1.5,
+        cursor: "default",
+        bgcolor: active ? "surface.highest" : "transparent",
+        "&:hover": { bgcolor: active ? "surface.highest" : "action.hover" },
+        "&:hover .row-close": { opacity: 1 },
+      }}
+    >
+      {host ? (
+        <HostAvatar host={host} size={28} />
+      ) : (
+        <IconTile size={28}>
+          {pane.protocol === "local" ? (
+            <TerminalRoundedIcon sx={{ fontSize: 16 }} />
+          ) : (
+            <DnsRoundedIcon sx={{ fontSize: 16 }} />
+          )}
+        </IconTile>
       )}
-
-      <ConfirmDialog
-        open={pendingPaste !== null}
-        title="Paste multiple lines?"
-        confirmLabel="Paste"
-        onCancel={() => confirmPendingPaste(false)}
-        onConfirm={() => confirmPendingPaste(true)}
-      >
-        The clipboard contains {pendingPaste ? pendingPaste.text.split(/\r?\n/).length : 0} lines.
-        Each line will be executed as it is pasted.
-        <Box
-          component="pre"
-          sx={{
-            mt: 1.5,
-            p: 1,
-            maxHeight: 160,
-            overflow: "auto",
-            bgcolor: "background.default",
-            borderRadius: 1,
-            fontSize: 12,
-            fontFamily: "monospace",
-            whiteSpace: "pre-wrap",
-            userSelect: "text",
+      <Box sx={{ minWidth: 0, flex: 1 }}>
+        <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
+          {pane.title}
+        </Typography>
+        <Typography variant="caption" noWrap sx={{ color: "text.secondary", display: "block" }}>
+          {subtitle}
+        </Typography>
+      </Box>
+      <StatusDot status={pane.status} />
+      <Tooltip title="Close session">
+        <IconButton
+          className="row-close"
+          onClick={(e) => {
+            e.stopPropagation();
+            void closePane(paneId);
           }}
+          sx={{ width: 22, height: 22, opacity: 0, ml: 0.25 }}
+          aria-label={`Close ${pane.title}`}
         >
-          {pendingPaste?.text}
-        </Box>
-      </ConfirmDialog>
-
-      <ConfirmDialog
-        open={pendingClose !== null}
-        title="Close connected session?"
-        confirmLabel="Close"
-        danger
-        onCancel={() => confirmPendingClose(false)}
-        onConfirm={() => confirmPendingClose(true)}
-      >
-        The session is still connected. Running processes in it will be terminated.
-      </ConfirmDialog>
+          <CloseRoundedIcon sx={{ fontSize: 14 }} />
+        </IconButton>
+      </Tooltip>
     </Box>
   );
 }

@@ -31,6 +31,9 @@ pub enum CoreError {
     /// The vault key for this vault is not available locally.
     #[error("vault {0} is locked (no key)")]
     VaultLocked(uuid::Uuid),
+    /// Our role in this vault only allows viewing.
+    #[error("vault {0} is view-only for you")]
+    VaultReadOnly(uuid::Uuid),
     /// Server API error (`code` is the machine-readable code from the server).
     #[error("server {status}: {code}: {message}")]
     Api {
@@ -75,6 +78,10 @@ pub enum CoreError {
     /// SSH key parsing or generation.
     #[error("ssh key: {0}")]
     Key(String),
+    /// FIDO2 security key (no device, PIN, touch…).
+    #[cfg(feature = "fido2")]
+    #[error("security key: {0}")]
+    Fido2(#[from] crate::fido2::Fido2Error),
     /// Operation was cancelled.
     #[error("cancelled")]
     Cancelled,
@@ -104,6 +111,12 @@ impl From<russh::keys::ssh_key::Error> for CoreError {
     }
 }
 
+impl From<russh::keys::ssh_encoding::Error> for CoreError {
+    fn from(e: russh::keys::ssh_encoding::Error) -> Self {
+        CoreError::Key(e.to_string())
+    }
+}
+
 impl From<russh_sftp::client::error::Error> for CoreError {
     fn from(e: russh_sftp::client::error::Error) -> Self {
         CoreError::Sftp(e.to_string())
@@ -128,6 +141,7 @@ impl CoreError {
             CoreError::NotFound(_) => "not_found",
             CoreError::Invalid(_) => "invalid",
             CoreError::VaultLocked(_) => "vault_locked",
+            CoreError::VaultReadOnly(_) => "vault_read_only",
             CoreError::Api { .. } => "api",
             CoreError::Http(_) => "network",
             CoreError::Ws(_) => "websocket",
@@ -138,6 +152,8 @@ impl CoreError {
             CoreError::Sftp(_) => "sftp",
             CoreError::Terminal(_) => "terminal",
             CoreError::Key(_) => "key",
+            #[cfg(feature = "fido2")]
+            CoreError::Fido2(e) => e.kind(),
             CoreError::Cancelled => "cancelled",
             CoreError::Closed => "closed",
         }

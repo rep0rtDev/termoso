@@ -123,9 +123,14 @@ export function DevicesPage() {
               >
                 <ListItemAvatar>
                   <Avatar
+                    variant="rounded"
                     sx={{
-                      bgcolor: d.current ? "primary.main" : "action.selected",
-                      color: d.current ? "primary.contrastText" : "text.primary",
+                      width: 36,
+                      height: 36,
+                      borderRadius: 2,
+                      bgcolor: "surface.highest",
+                      color: d.current ? "primary.main" : "text.secondary",
+                      "& svg": { fontSize: 20 },
                     }}
                   >
                     {platformIcon(d.platform)}

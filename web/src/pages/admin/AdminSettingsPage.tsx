@@ -1,16 +1,5 @@
 import { useState, type SubmitEvent } from "react";
-import {
-  Alert,
-  Box,
-  Button,
-  Divider,
-  FormControlLabel,
-  Grid,
-  Stack,
-  Switch,
-  TextField,
-  Typography,
-} from "@mui/material";
+import { Alert, Box, Button, Grid, Stack, Switch, TextField, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@/api/client";
 import { adminApi } from "@/api/endpoints";
@@ -19,7 +8,7 @@ import type { ServerSettings } from "@/api/types";
 import { useAuthState } from "@/auth/store";
 import { Loading } from "@/components/Loading";
 import { PageHeader } from "@/components/PageHeader";
-import { Section } from "@/components/Section";
+import { Section, SettingRow } from "@/components/Section";
 import { useSnackbar } from "@/components/Snackbar";
 import { formatBytes } from "@/components/format";
 
@@ -81,51 +70,62 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
         save.mutate();
       }}
     >
-      <Section title="Registration & sign-in">
-        <Stack spacing={1}>
-          <FormControlLabel
+      <Section title="Registration & sign-in" disablePadding>
+        <Box sx={{ px: 2.5, py: 0.5 }}>
+          <SettingRow
+            label="Open registration"
+            description="Anyone who can reach this server can create an account."
             control={
               <Switch
                 checked={s.registration_open}
                 onChange={(e) => set("registration_open", e.target.checked)}
               />
             }
-            label="Open registration (anyone can create an account)"
           />
-          <TextField
+          <SettingRow
             label="Allowed email domains"
-            value={domains}
-            onChange={(e) => setDomains(e.target.value)}
-            helperText="Comma-separated, e.g. example.com, corp.example.org. Leave empty to allow any domain."
+            description="Comma-separated, e.g. example.com, corp.example.org. Empty allows any domain."
+            control={
+              <TextField
+                value={domains}
+                onChange={(e) => setDomains(e.target.value)}
+                placeholder="Any domain"
+                fullWidth={false}
+                sx={{ width: { xs: 180, sm: 280 } }}
+              />
+            }
           />
-          <FormControlLabel
+          <SettingRow
+            label="Require verified email"
+            description="Accounts cannot be used until the address is confirmed."
             control={
               <Switch
                 checked={s.require_email_verification}
                 onChange={(e) => set("require_email_verification", e.target.checked)}
               />
             }
-            label="Require verified email before using the account"
           />
-          <FormControlLabel
+          <SettingRow
+            label="New-device approval"
+            description="Signing in from an unknown device requires a code sent by email."
             control={
               <Switch
                 checked={s.new_device_email_approval}
                 onChange={(e) => set("new_device_email_approval", e.target.checked)}
               />
             }
-            label="Email approval when signing in from a new device"
           />
-          <FormControlLabel
+          <SettingRow
+            label="Users can create teams"
+            description="When off, only administrators create teams."
             control={
               <Switch
                 checked={s.users_can_create_teams}
                 onChange={(e) => set("users_can_create_teams", e.target.checked)}
               />
             }
-            label="Users can create teams"
           />
-        </Stack>
+        </Box>
       </Section>
       <Section title="Sessions & limits">
         <Grid container spacing={2}>
@@ -181,9 +181,21 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
               helperText={formatBytes(s.log_quota_bytes)}
             />
           </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <TextField
+              fullWidth
+              type="number"
+              label="Team activity log retention (days)"
+              value={s.audit_retention_days}
+              onChange={(e) =>
+                set("audit_retention_days", num(e.target.value, s.audit_retention_days))
+              }
+              slotProps={{ htmlInput: { min: 0, max: 3650 } }}
+              helperText={s.audit_retention_days === 0 ? "Kept forever" : undefined}
+            />
+          </Grid>
         </Grid>
-        <Divider sx={{ my: 2 }} />
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} sx={{ mt: 2.5 }}>
           <Button type="submit" variant="contained" disabled={!dirty || save.isPending}>
             Save settings
           </Button>
@@ -220,7 +232,7 @@ function TestEmailSection() {
       description="SMTP is configured through TERMOSO_SMTP_* environment variables."
     >
       {!enabled ? (
-        <Alert severity="info" variant="outlined">
+        <Alert severity="info">
           SMTP is not configured. Email verification, device approval codes, email MFA and
           invitation emails are disabled.
         </Alert>
@@ -231,20 +243,26 @@ function TestEmailSection() {
             e.preventDefault();
             test.mutate();
           }}
-          sx={{ display: "flex", gap: 1.5, flexWrap: "wrap", alignItems: "flex-start" }}
+          sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}
         >
           <TextField
-            label="Send a test email to"
+            placeholder="Send a test email to"
             type="email"
             required
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            sx={{ minWidth: 300 }}
+            fullWidth={false}
+            sx={{ width: { xs: "100%", sm: 320 } }}
           />
-          <Button type="submit" variant="outlined" disabled={test.isPending || to.trim() === ""}>
+          <Button
+            type="submit"
+            variant="outlined"
+            disabled={test.isPending || to.trim() === ""}
+            sx={{ height: 36 }}
+          >
             Send test
           </Button>
-          <Typography variant="caption" color="text.secondary" sx={{ alignSelf: "center" }}>
+          <Typography variant="body2" color="text.secondary">
             Verifies the SMTP connection end-to-end.
           </Typography>
         </Box>

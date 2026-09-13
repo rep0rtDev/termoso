@@ -5,6 +5,7 @@ import {
   CircularProgress,
   IconButton,
   InputAdornment,
+  InputBase,
   Menu,
   MenuItem,
   ListItemIcon,
@@ -17,11 +18,20 @@ import {
   type Theme,
 } from "@mui/material";
 import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import { type MouseEvent, type ReactNode, useState } from "react";
+import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
+import RemoveRoundedIcon from "@mui/icons-material/RemoveRounded";
+import {
+  type DragEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+  useState,
+} from "react";
 import { monoFontFamily, sizes } from "@/theme/theme";
 
 /** Normalises an optional `sx` prop so it can be spread after base styles. */
@@ -84,6 +94,74 @@ export function IconTile({
   );
 }
 
+/**
+ * Entity tile that reports selection the Termius way: when checked the whole
+ * tile fills with the accent colour under a white check (a dash when only part
+ * of a group is picked). `hoverHint` previews a muted check while hovered.
+ */
+export function CheckTile({
+  tile,
+  checked,
+  partial = false,
+  hoverHint = false,
+  size = sizes.tile,
+  sx,
+}: {
+  tile: ReactNode;
+  checked: boolean;
+  partial?: boolean;
+  hoverHint?: boolean;
+  size?: number;
+  sx?: SxProps<Theme>;
+}) {
+  const radius = size >= 40 ? 2 : 1.5;
+  const on = checked || partial;
+  return (
+    <Box
+      className={on ? "tile-checked" : hoverHint ? "tile-hint" : undefined}
+      sx={[
+        {
+          position: "relative",
+          width: size,
+          height: size,
+          flexShrink: 0,
+          borderRadius: radius,
+          overflow: "hidden",
+          "& .tile-icon": { transition: "opacity 120ms" },
+          "& .tile-check": {
+            position: "absolute",
+            inset: 0,
+            display: "grid",
+            placeItems: "center",
+            borderRadius: radius,
+            bgcolor: "primary.main",
+            color: "#fff",
+            opacity: 0,
+            transform: "scale(0.85)",
+            transition: "opacity 120ms, transform 120ms",
+            "& svg": { fontSize: Math.round(size * 0.6) },
+          },
+          "&.tile-checked .tile-check, &.tile-hint:hover .tile-check": {
+            opacity: 1,
+            transform: "scale(1)",
+          },
+          "&.tile-checked .tile-icon, &.tile-hint:hover .tile-icon": { opacity: 0 },
+          "&.tile-hint:hover .tile-check": {
+            bgcolor: "surface.strong",
+            color: "text.secondary",
+          },
+        },
+        ...sxList(sx),
+      ]}
+    >
+      <Box className="tile-icon">{tile}</Box>
+      <Box className="tile-check">
+        {partial && !checked ? <RemoveRoundedIcon /> : <CheckRoundedIcon />}
+      </Box>
+    </Box>
+  );
+}
+
 /* ---------------------------------------------------------------- cards */
 
 /** A list/grid entry: tile + two lines + optional trailing slot. */
@@ -99,7 +177,10 @@ export function EntityCard({
   onDoubleClick,
   onContextMenu,
   dense,
+  className,
   sx,
+  drag,
+  dropping,
 }: {
   tile: ReactNode;
   title: ReactNode;
@@ -111,21 +192,28 @@ export function EntityCard({
   /** Revealed on hover / selection (icon buttons). */
   actions?: ReactNode;
   selected?: boolean;
-  onClick?: () => void;
+  onClick?: (e: MouseEvent<HTMLElement>) => void;
   onDoubleClick?: () => void;
   onContextMenu?: (e: MouseEvent<HTMLElement>) => void;
   dense?: boolean;
+  className?: string;
   sx?: SxProps<Theme>;
+  /** HTML5 drag-and-drop wiring (source and/or target). */
+  drag?: DragHandlers;
+  /** A compatible drag is hovering over this card. */
+  dropping?: boolean;
 }) {
   return (
     <Box
       role="button"
       tabIndex={0}
+      className={className}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
+      {...drag}
       onKeyDown={(e) => {
-        if (e.key === "Enter" && onClick) onClick();
+        if (e.key === "Enter" && onClick && e.target === e.currentTarget) e.currentTarget.click();
       }}
       sx={[
         {
@@ -144,9 +232,12 @@ export function EntityCard({
           "&:hover": { bgcolor: "surface.highest" },
           "&:focus-visible": { outlineColor: "primary.main" },
           ...(selected && {
-            outlineColor: "primary.main",
+            bgcolor: "surface.strong",
+            "&:hover": { bgcolor: "surface.strong" },
             "& .entity-actions": { opacity: 1 },
           }),
+          ...(dropping && { outlineColor: "primary.main", bgcolor: "surface.strong" }),
+          ...(drag?.draggable && { cursor: "grab", "&:active": { cursor: "grabbing" } }),
           "& .entity-actions": { opacity: 0, transition: "opacity 100ms" },
           "&:hover .entity-actions, &:focus-within .entity-actions": { opacity: 1 },
         },
@@ -189,6 +280,17 @@ export function EntityCard({
       )}
     </Box>
   );
+}
+
+/** Subset of the native drag events a card may forward to its root element. */
+export interface DragHandlers {
+  draggable?: boolean;
+  onDragStart?: (e: DragEvent<HTMLElement>) => void;
+  onDragEnd?: (e: DragEvent<HTMLElement>) => void;
+  onDragEnter?: (e: DragEvent<HTMLElement>) => void;
+  onDragOver?: (e: DragEvent<HTMLElement>) => void;
+  onDragLeave?: (e: DragEvent<HTMLElement>) => void;
+  onDrop?: (e: DragEvent<HTMLElement>) => void;
 }
 
 /** Responsive card grid. */
@@ -234,12 +336,18 @@ export function SectionTitle({
 /** Grouped form section in a side panel (Termius "Address" / "General" cards). */
 export function SectionCard({
   title,
+  description,
   action,
+  tone,
   children,
   sx,
 }: {
   title?: ReactNode;
+  /** Muted line under the title. */
+  description?: ReactNode;
   action?: ReactNode;
+  /** Tinted outline for cards that ask for attention. */
+  tone?: "warning";
   children: ReactNode;
   sx?: SxProps<Theme>;
 }) {
@@ -254,16 +362,31 @@ export function SectionCard({
           flexDirection: "column",
           gap: 1.5,
         },
+        tone === "warning" && {
+          outline: "1px solid",
+          outlineColor: "warning.main",
+          outlineOffset: -1,
+        },
         ...sxList(sx),
       ]}
     >
-      {(title ?? action) && (
-        <Box sx={{ display: "flex", alignItems: "center", minHeight: 24 }}>
-          {title && (
-            <Typography variant="subtitle2" sx={{ flex: 1 }}>
-              {title}
-            </Typography>
-          )}
+      {(title ?? action ?? description) && (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: description ? "flex-start" : "center",
+            minHeight: 24,
+            gap: 1,
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            {title && <Typography variant="subtitle2">{title}</Typography>}
+            {description && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                {description}
+              </Typography>
+            )}
+          </Box>
           {action}
         </Box>
       )}
@@ -323,7 +446,7 @@ export function SearchField({
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-  width?: number;
+  width?: number | string;
   autoFocus?: boolean;
 }) {
   return (
@@ -410,10 +533,12 @@ export function Mono({
 export interface MenuAction {
   label: ReactNode;
   icon?: ReactNode;
-  onClick: () => void;
+  onClick?: () => void;
   disabled?: boolean;
   danger?: boolean;
   divider?: boolean;
+  /** Nested actions; the item opens a submenu instead of running `onClick`. */
+  items?: MenuAction[];
 }
 
 /** `[ + New host ] [⌄]` — primary click + dropdown with alternatives. */
@@ -481,35 +606,187 @@ export function ActionMenu({
   items: MenuAction[];
 }) {
   const open = Boolean(anchor) || Boolean(position);
+  const [sub, setSub] = useState<number | null>(null);
+  const close = () => {
+    setSub(null);
+    onClose();
+  };
   return (
     <Menu
       open={open}
       anchorEl={position ? undefined : anchor}
       anchorReference={position ? "anchorPosition" : "anchorEl"}
       anchorPosition={position ?? undefined}
-      onClose={onClose}
+      onClose={close}
       onClick={(e) => e.stopPropagation()}
     >
-      {items.map((it, i) => (
-        <MenuItem
-          key={i}
-          disabled={it.disabled}
-          divider={it.divider}
-          onClick={() => {
-            onClose();
-            it.onClick();
-          }}
-          sx={it.danger ? { color: "error.main" } : undefined}
-        >
-          {it.icon && (
-            <ListItemIcon sx={it.danger ? { color: "error.main" } : undefined}>
-              {it.icon}
-            </ListItemIcon>
-          )}
-          <ListItemText primary={it.label} />
-        </MenuItem>
-      ))}
+      {items.map((it, i) =>
+        it.items ? (
+          <SubMenuItem
+            key={i}
+            action={it}
+            items={it.items}
+            open={sub === i}
+            onOpen={() => setSub(i)}
+            onClose={close}
+          />
+        ) : (
+          <MenuItem
+            key={i}
+            disabled={it.disabled}
+            divider={it.divider}
+            onMouseEnter={() => setSub(null)}
+            onClick={() => {
+              close();
+              it.onClick?.();
+            }}
+            sx={it.danger ? { color: "error.main" } : undefined}
+          >
+            {it.icon && (
+              <ListItemIcon sx={it.danger ? { color: "error.main" } : undefined}>
+                {it.icon}
+              </ListItemIcon>
+            )}
+            <ListItemText primary={it.label} />
+          </MenuItem>
+        ),
+      )}
     </Menu>
+  );
+}
+
+/**
+ * Menu row that opens `items` to its right on hover or click. The parent owns
+ * which submenu is open so that hovering a sibling closes this one.
+ */
+function SubMenuItem({
+  action,
+  items,
+  open,
+  onOpen,
+  onClose,
+}: {
+  action: MenuAction;
+  items: MenuAction[];
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+}) {
+  const [row, setRow] = useState<HTMLElement | null>(null);
+  const show = (e: MouseEvent<HTMLElement>) => {
+    setRow(e.currentTarget);
+    onOpen();
+  };
+  return (
+    <>
+      <MenuItem
+        disabled={action.disabled}
+        divider={action.divider}
+        selected={open}
+        onClick={show}
+        onMouseEnter={show}
+        sx={{ pr: 1 }}
+      >
+        {action.icon && <ListItemIcon>{action.icon}</ListItemIcon>}
+        <ListItemText primary={action.label} />
+        <ChevronRightRoundedIcon fontSize="small" sx={{ ml: 2, color: "text.secondary" }} />
+      </MenuItem>
+      <Menu
+        open={open && row !== null}
+        anchorEl={row}
+        anchorOrigin={{ vertical: "top", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
+        onClose={onClose}
+        onClick={(e) => e.stopPropagation()}
+        slotProps={{
+          root: { sx: { pointerEvents: "none" } },
+          paper: { sx: { pointerEvents: "auto", ml: 0.5 } },
+        }}
+        hideBackdrop
+        disableAutoFocus
+        disableEnforceFocus
+      >
+        {items.map((it, i) => (
+          <MenuItem
+            key={i}
+            disabled={it.disabled}
+            divider={it.divider}
+            onClick={() => {
+              onClose();
+              it.onClick?.();
+            }}
+            sx={it.danger ? { color: "error.main" } : undefined}
+          >
+            {it.icon && (
+              <ListItemIcon sx={it.danger ? { color: "error.main" } : undefined}>
+                {it.icon}
+              </ListItemIcon>
+            )}
+            <ListItemText primary={it.label} />
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
+  );
+}
+
+/**
+ * Single-line name editor: commits on Enter or blur, reverts on Escape.
+ * Looks like plain text until focused so it can replace a label in place.
+ */
+export function InlineName({
+  value,
+  onCommit,
+  onCancel,
+  placeholder,
+  sx,
+}: {
+  value: string;
+  onCommit: (name: string) => void;
+  onCancel: () => void;
+  placeholder?: string;
+  sx?: SxProps<Theme>;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [done, setDone] = useState(false);
+  const finish = (commit: boolean) => {
+    if (done) return;
+    setDone(true);
+    if (commit) onCommit(draft);
+    else onCancel();
+  };
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    if (e.key === "Enter") finish(true);
+    if (e.key === "Escape") finish(false);
+  };
+  return (
+    <InputBase
+      autoFocus
+      value={draft}
+      placeholder={placeholder}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={(e) => e.target.select()}
+      onBlur={() => finish(true)}
+      onKeyDown={onKeyDown}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      inputProps={{ "aria-label": "Name", maxLength: 120 }}
+      sx={[
+        {
+          font: "inherit",
+          fontSize: 13,
+          fontWeight: 500,
+          height: 24,
+          px: 0.75,
+          borderRadius: 1,
+          bgcolor: "surface.high",
+          boxShadow: "0 0 0 1px var(--mui-palette-primary-main)",
+          "& input": { p: 0 },
+        },
+        ...sxList(sx),
+      ]}
+    />
   );
 }
 

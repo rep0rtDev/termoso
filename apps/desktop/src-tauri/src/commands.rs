@@ -4,21 +4,23 @@
 use serde::Serialize;
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Runtime, State};
+use tauri_plugin_deep_link::DeepLinkExt;
 use termoso_core::model::AnyEntity;
 use termoso_core::secrets::MasterKeySource;
 use termoso_core::sftp::RemoteEntry;
-use termoso_core::store::{ConnectionHistory, HistoryItem};
+use termoso_core::store::{CommandHistory, ConnectionHistory, HistoryItem};
 use termoso_core::store::{EntityFilter, LocalVault};
 use termoso_core::terminal::TermSize;
 use termoso_proto::entities::is_known_kind;
 use uuid::Uuid;
 
 use crate::account;
+use crate::edits::{self, EditInfo};
 use crate::error::{DesktopError, Result};
-use crate::hosts::{self, GroupNode, HostCard, HostForm, TagInfo};
+use crate::hosts::{self, GroupForm, GroupNode, HostCard, HostForm, Inherited, TagInfo};
 use crate::prompts::PromptAnswer;
 use crate::sessions::{self, OpenTarget, SessionInfo};
-use crate::sftp::{self, Direction, Listing, SftpInfo, SftpTarget, TransferInfo};
+use crate::sftp::{self, Conflict, Direction, Listing, SftpInfo, SftpTarget, TransferInfo};
 use crate::state::{AppState, Settings};
 
 #[derive(Debug, Clone, Serialize)]
@@ -42,6 +44,22 @@ pub fn app_info(state: State<'_, AppState>) -> Result<AppInfo> {
         signed_in: state.store.account()?.is_some(),
         platform: std::env::consts::OS,
     })
+}
+
+/// Register this binary as the handler for the `termoso://`, `ssh://` and
+/// `telnet://` schemes for the current user. Installers do this already; the command
+/// covers AppImage / portable builds. Returns the schemes now registered.
+#[tauri::command]
+pub fn deep_links_register<R: Runtime>(app: AppHandle<R>) -> Result<Vec<String>> {
+    let links = app.deep_link();
+    links
+        .register_all()
+        .map_err(|e| DesktopError::new("deep_link", e.to_string()))?;
+    Ok(["termoso", "ssh", "telnet"]
+        .into_iter()
+        .filter(|s| links.is_registered(s).unwrap_or(false))
+        .map(str::to_string)
+        .collect())
 }
 
 #[tauri::command]
@@ -198,6 +216,74 @@ pub async fn host_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
 }
 
 #[tauri::command]
+pub async fn hosts_delete(state: State<'_, AppState>, ids: Vec<Uuid>) -> Result<()> {
+    for id in ids {
+        hosts::delete(&state.store, id)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn host_duplicate(state: State<'_, AppState>, id: Uuid) -> Result<HostCard> {
+    hosts::duplicate(&state.store, id)
+}
+
+#[tauri::command]
+pub async fn hosts_move(
+    state: State<'_, AppState>,
+    ids: Vec<Uuid>,
+    group_id: Option<Uuid>,
+) -> Result<()> {
+    hosts::move_hosts(&state.store, &ids, group_id)
+}
+
+#[tauri::command]
+pub async fn hosts_copy_to_vault(
+    state: State<'_, AppState>,
+    ids: Vec<Uuid>,
+    vault_id: Uuid,
+    move_hosts: bool,
+    with_credentials: Option<bool>,
+) -> Result<Vec<Uuid>> {
+    let creds = if with_credentials.unwrap_or(true) {
+        hosts::CopyCredentials::Shared
+    } else {
+        hosts::CopyCredentials::Personal
+    };
+    if move_hosts {
+        hosts::move_to_vault(&state.store, &ids, vault_id, creds)
+    } else {
+        hosts::copy_to_vault(&state.store, &ids, vault_id, creds)
+    }
+}
+
+/// Serial devices on this machine; enumeration is local only.
+#[tauri::command]
+pub async fn serial_ports() -> Result<Vec<termoso_core::serial::PortInfo>> {
+    tokio::task::spawn_blocking(termoso_core::serial::available_ports)
+        .await
+        .map_err(|e| DesktopError::new("internal", e.to_string()))
+}
+
+/// Shells installed on this machine for the "Local terminal" setting: the
+/// login shell first, then `/etc/shells` (Unix) or PowerShell / cmd / WSL
+/// distributions (Windows). Enumeration is local only.
+#[tauri::command]
+pub async fn local_shells() -> Result<Vec<String>> {
+    tokio::task::spawn_blocking(sessions::local_shells)
+        .await
+        .map_err(|e| DesktopError::new("internal", e.to_string()))
+}
+
+#[tauri::command]
+pub async fn host_inherited(
+    state: State<'_, AppState>,
+    group_id: Option<Uuid>,
+) -> Result<Inherited> {
+    hosts::inherited(&state.store, group_id)
+}
+
+#[tauri::command]
 pub async fn groups_list(
     state: State<'_, AppState>,
     vault_id: Option<Uuid>,
@@ -217,13 +303,60 @@ pub async fn group_save(
 }
 
 #[tauri::command]
-pub async fn group_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    hosts::delete_group(&state.store, id)
+pub async fn group_form(state: State<'_, AppState>, id: Uuid) -> Result<GroupForm> {
+    hosts::group_form(&state.store, id)
+}
+
+#[tauri::command]
+pub async fn group_save_form(state: State<'_, AppState>, form: GroupForm) -> Result<GroupNode> {
+    hosts::save_group_form(&state.store, &form)
+}
+
+#[tauri::command]
+pub async fn group_duplicate(state: State<'_, AppState>, id: Uuid) -> Result<GroupNode> {
+    hosts::duplicate_group(&state.store, id)
+}
+
+#[tauri::command]
+pub async fn group_delete(
+    state: State<'_, AppState>,
+    id: Uuid,
+    recursive: Option<bool>,
+) -> Result<()> {
+    if recursive.unwrap_or(false) {
+        hosts::delete_group_recursive(&state.store, id)
+    } else {
+        hosts::delete_group(&state.store, id)
+    }
 }
 
 #[tauri::command]
 pub async fn tags_list(state: State<'_, AppState>, vault_id: Option<Uuid>) -> Result<Vec<TagInfo>> {
     hosts::tags(&state.store, vault_id)
+}
+
+#[tauri::command]
+pub async fn tag_update(
+    state: State<'_, AppState>,
+    id: Uuid,
+    label: String,
+    color: Option<String>,
+) -> Result<TagInfo> {
+    hosts::tag_update(&state.store, id, label, color)
+}
+
+#[tauri::command]
+pub async fn tag_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
+    hosts::tag_delete(&state.store, id)
+}
+
+#[tauri::command]
+pub async fn tags_merge(
+    state: State<'_, AppState>,
+    sources: Vec<Uuid>,
+    target: Uuid,
+) -> Result<TagInfo> {
+    hosts::tags_merge(&state.store, &sources, target)
 }
 
 #[tauri::command]
@@ -234,6 +367,52 @@ pub async fn history_connections(
     Ok(state
         .store
         .connections(limit.unwrap_or(50).clamp(1, 1000))?)
+}
+
+/// Record a command line the user ran in a session. Called by the terminal
+/// when the shell's OSC 133 markers delimit a finished command; only the
+/// command text is stored (encrypted at rest), never the output.
+#[tauri::command]
+pub async fn history_record_command(
+    state: State<'_, AppState>,
+    host_id: Option<Uuid>,
+    command: String,
+) -> Result<Option<Uuid>> {
+    let command = command.trim();
+    if command.is_empty() || command.len() > 4096 {
+        return Ok(None);
+    }
+    Ok(Some(state.store.record_command(&CommandHistory {
+        host_id,
+        command: command.to_string(),
+    })?))
+}
+
+#[tauri::command]
+pub async fn history_commands(
+    state: State<'_, AppState>,
+    limit: Option<usize>,
+) -> Result<Vec<HistoryItem<CommandHistory>>> {
+    Ok(state.store.commands(limit.unwrap_or(500).clamp(1, 5000))?)
+}
+
+#[tauri::command]
+pub async fn history_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
+    Ok(state.store.delete_history(id)?)
+}
+
+#[tauri::command]
+pub async fn history_clear_commands(state: State<'_, AppState>) -> Result<()> {
+    Ok(state
+        .store
+        .clear_history(Some(termoso_proto::sync::HistoryKind::Command))?)
+}
+
+#[tauri::command]
+pub async fn history_clear_connections(state: State<'_, AppState>) -> Result<()> {
+    Ok(state
+        .store
+        .clear_history(Some(termoso_proto::sync::HistoryKind::Connection))?)
 }
 
 #[tauri::command]
@@ -283,11 +462,13 @@ pub async fn terminal_resize(
     rows: u16,
 ) -> Result<()> {
     let term = state.sessions.terminal(id)?;
-    term.resize(TermSize {
+    let size = TermSize {
         cols: cols.max(2),
         rows: rows.max(1),
-    })
-    .await?;
+    };
+    term.resize(size).await?;
+    state.sessions.set_size(id, size);
+    state.multiplayer.resized(id, size);
     Ok(())
 }
 
@@ -382,6 +563,12 @@ pub async fn local_list(path: Option<String>) -> Result<Listing> {
     sftp::local_list(path).await
 }
 
+/// Drive roots for the local pane (Windows only; empty elsewhere).
+#[tauri::command]
+pub fn local_drives() -> Vec<String> {
+    sftp::local_drives()
+}
+
 #[tauri::command]
 pub async fn local_stat(path: String) -> Result<RemoteEntry> {
     sftp::local_stat(path).await
@@ -402,8 +589,28 @@ pub async fn local_remove(path: String, recursive: bool) -> Result<()> {
     sftp::local_remove(path, recursive).await
 }
 
+/// Open a local file with the default application or `with`.
+#[tauri::command]
+pub fn local_open(path: String, with: Option<String>) -> Result<()> {
+    let with = with.map(|w| w.trim().to_string()).filter(|w| !w.is_empty());
+    edits::open_local(std::path::Path::new(&path), with.as_deref())
+}
+
+/// What already sits at the destination of a would-be transfer, if anything.
+#[tauri::command]
+pub async fn transfer_probe(
+    state: State<'_, AppState>,
+    sftp_id: Uuid,
+    direction: Direction,
+    local: String,
+    remote: String,
+) -> Result<Option<RemoteEntry>> {
+    sftp::transfer_probe(&state, sftp_id, direction, local, remote).await
+}
+
 /// Start an upload or download (files or whole directories); progress and
-/// completion arrive as `transfer` events.
+/// completion arrive as `transfer` events. `temp` marks uploads from the
+/// drop staging area, which is cleaned up afterwards.
 #[tauri::command]
 pub fn transfer_start<R: Runtime>(
     app: AppHandle<R>,
@@ -411,7 +618,8 @@ pub fn transfer_start<R: Runtime>(
     direction: Direction,
     local: String,
     remote: String,
-    resume: Option<bool>,
+    conflict: Option<Conflict>,
+    temp: Option<bool>,
 ) -> Result<TransferInfo> {
     sftp::transfer_start(
         app,
@@ -419,11 +627,110 @@ pub fn transfer_start<R: Runtime>(
         direction,
         local,
         remote,
-        resume.unwrap_or(false),
+        conflict.unwrap_or_default(),
+        temp.unwrap_or(false),
     )
 }
 
 #[tauri::command]
-pub fn transfer_cancel(state: State<'_, AppState>, id: Uuid) -> bool {
-    state.sftp.cancel_transfer(id)
+pub async fn drop_begin() -> Result<String> {
+    sftp::drop_begin().await
+}
+
+/// Raw-body command: the chunk is the request body, the target comes in
+/// base64 headers (`x-drop-dir`, `x-drop-path`, `x-drop-append`).
+#[tauri::command]
+pub async fn drop_write(request: tauri::ipc::Request<'_>) -> Result<()> {
+    use base64::Engine;
+    let header = |name: &str| -> Result<String> {
+        let raw = request
+            .headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| DesktopError::invalid(format!("missing {name}")))?;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(raw)
+            .map_err(|_| DesktopError::invalid(format!("bad {name}")))?;
+        String::from_utf8(bytes).map_err(|_| DesktopError::invalid(format!("bad {name}")))
+    };
+    let dir = header("x-drop-dir")?;
+    let rel = header("x-drop-path")?;
+    let append = request
+        .headers()
+        .get("x-drop-append")
+        .is_some_and(|v| v == "1");
+    let bytes = match request.body() {
+        tauri::ipc::InvokeBody::Raw(b) => b.clone(),
+        tauri::ipc::InvokeBody::Json(_) => {
+            return Err(DesktopError::invalid("drop_write expects a raw body"));
+        }
+    };
+    sftp::drop_write(dir, rel, bytes, append).await
+}
+
+#[tauri::command]
+pub async fn drop_mkdir(dir: String, rel: String) -> Result<()> {
+    sftp::drop_mkdir(dir, rel).await
+}
+
+#[tauri::command]
+pub async fn drop_abort(dir: String) -> Result<()> {
+    sftp::drop_abort(dir).await
+}
+
+// ───────────────────────────── edit in place ─────────────────────────────
+
+#[tauri::command]
+pub fn edits_list(state: State<'_, AppState>) -> Vec<EditInfo> {
+    state.edits.list()
+}
+
+/// Download a remote file to a private temp dir, open it locally and upload
+/// every save back; progress arrives as `sftp_edit` events.
+#[tauri::command]
+pub async fn edit_open<R: Runtime>(
+    app: AppHandle<R>,
+    sftp_id: Uuid,
+    remote: String,
+    with: Option<String>,
+) -> Result<EditInfo> {
+    edits::open(app, sftp_id, remote, with).await
+}
+
+#[tauri::command]
+pub fn edit_upload_now(state: State<'_, AppState>, id: Uuid) -> Result<()> {
+    edits::upload_now(&state, id)
+}
+
+#[tauri::command]
+pub async fn edit_close<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
+    edits::close(&app, id).await
+}
+
+#[tauri::command]
+pub fn transfer_cancel<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    id: Uuid,
+) -> bool {
+    state.sftp.cancel_transfer(&app, id)
+}
+
+/// Interrupt a queued or running transfer; `transfer_resume` continues it
+/// from the bytes already at the destination.
+#[tauri::command]
+pub fn transfer_pause(state: State<'_, AppState>, id: Uuid) -> bool {
+    state.sftp.pause_transfer(id)
+}
+
+/// Queue a paused or failed transfer again (also serves as retry).
+#[tauri::command]
+pub fn transfer_resume<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
+    sftp::transfer_resume(app, id)
+}
+
+/// Drop a finished, failed or paused transfer from the queue.
+#[tauri::command]
+pub fn transfer_forget(state: State<'_, AppState>, id: Uuid) {
+    state.sftp.forget_transfer(id)
 }

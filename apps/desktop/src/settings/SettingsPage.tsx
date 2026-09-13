@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Box,
   Button,
@@ -12,12 +12,17 @@ import {
   Typography,
 } from "@mui/material";
 import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
+import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
+import LockRoundedIcon from "@mui/icons-material/LockRounded";
+import FingerprintRoundedIcon from "@mui/icons-material/FingerprintRounded";
 import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
+import KeyboardRoundedIcon from "@mui/icons-material/KeyboardRounded";
+import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import ArticleRoundedIcon from "@mui/icons-material/ArticleRounded";
 import SystemUpdateAltRoundedIcon from "@mui/icons-material/SystemUpdateAltRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AccountPage } from "@/account/AccountPage";
 import { setSettingsPage, useNav, type SettingsPage as PageId } from "@/app/navigation";
 import { EmptyState } from "@/components/EmptyState";
@@ -27,18 +32,32 @@ import { Loading, Mono, SectionCard, SettingRow } from "@/components/ui";
 import * as ipc from "@/ipc/commands";
 import { keys, useAppInfo, useSaveSettings, useSettings } from "@/ipc/hooks";
 import { UpdatesCard } from "@/update/UpdatesCard";
+import { FontPicker, FontPreview } from "./FontPicker";
+import { KeyboardPage } from "./KeyboardPage";
+import { SftpPage } from "./SftpPage";
+import { TeamPage } from "@/team/TeamPage";
+import { VaultsPage } from "@/team/VaultsPage";
+import { SshIdPage } from "@/sshid/SshIdPage";
+import { ThemeGallery } from "./ThemeGallery";
 import {
   errorMessage,
+  TERM_TYPES,
   type CursorStyle,
   type Settings,
   type SyncConflict,
+  type TermType,
   type ThemeMode,
 } from "@/ipc/types";
 
 const PAGES: { id: PageId; label: string; icon: ReactNode }[] = [
   { id: "account", label: "Account & sync", icon: <PersonRoundedIcon /> },
+  { id: "team", label: "Team", icon: <GroupsRoundedIcon /> },
+  { id: "vaults", label: "Vaults", icon: <LockRoundedIcon /> },
+  { id: "sshid", label: "SSH ID", icon: <FingerprintRoundedIcon /> },
   { id: "general", label: "General", icon: <TuneRoundedIcon /> },
   { id: "terminal", label: "Terminal", icon: <TerminalRoundedIcon /> },
+  { id: "keyboard", label: "Keyboard", icon: <KeyboardRoundedIcon /> },
+  { id: "sftp", label: "SFTP", icon: <FolderCopyRoundedIcon /> },
   { id: "logs", label: "Session logs", icon: <ArticleRoundedIcon /> },
   { id: "updates", label: "Updates", icon: <SystemUpdateAltRoundedIcon /> },
   { id: "about", label: "About", icon: <InfoOutlinedIcon /> },
@@ -73,12 +92,24 @@ export function SettingsPage() {
           ))}
         </List>
       </Box>
-      <Page>{page === "account" ? <AccountPage /> : <PreferencesPage page={page} />}</Page>
+      {page === "team" ? (
+        <TeamPage />
+      ) : page === "vaults" ? (
+        <VaultsPage />
+      ) : page === "sshid" ? (
+        <SshIdPage />
+      ) : (
+        <Page>{page === "account" ? <AccountPage /> : <PreferencesPage page={page} />}</Page>
+      )}
     </Box>
   );
 }
 
-function PreferencesPage({ page }: { page: Exclude<PageId, "account"> }) {
+function PreferencesPage({
+  page,
+}: {
+  page: Exclude<PageId, "account" | "team" | "vaults" | "sshid">;
+}) {
   const snackbar = useSnackbar();
   const settings = useSettings();
   const save = useSaveSettings();
@@ -101,6 +132,8 @@ function PreferencesPage({ page }: { page: Exclude<PageId, "account"> }) {
       <Box sx={{ maxWidth: 760, display: "flex", flexDirection: "column", gap: 1.5 }}>
         {page === "general" && <General s={s} update={update} />}
         {page === "terminal" && <Terminal s={s} update={update} />}
+        {page === "keyboard" && <KeyboardPage s={s} update={update} />}
+        {page === "sftp" && <SftpPage s={s} update={update} />}
         {page === "logs" && <Logs s={s} update={update} />}
         {page === "updates" && <UpdatesCard settings={s} onChange={update} />}
         {page === "about" && <About />}
@@ -144,6 +177,37 @@ function NumberInput({
   );
 }
 
+function DeepLinksRow() {
+  const snackbar = useSnackbar();
+  const register = useMutation({
+    mutationFn: ipc.deepLinksRegister,
+    onSuccess: (schemes) =>
+      snackbar.notify(
+        schemes.length
+          ? `Termoso now opens ${schemes.map((s) => `${s}://`).join(", ")} links`
+          : "Registration ran, but the system reports no handler — check your desktop settings",
+      ),
+    onError: (e) => snackbar.error(errorMessage(e)),
+  });
+  return (
+    <SettingRow
+      label="Open ssh://, telnet:// and termoso:// links"
+      hint="Installers register the handler already; use this for AppImage or portable builds. Links open a saved host or a quick connection — passwords in URLs are ignored."
+      last
+      control={
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={() => register.mutate()}
+          disabled={register.isPending}
+        >
+          Register as handler
+        </Button>
+      }
+    />
+  );
+}
+
 function General({ s, update }: SectionProps) {
   return (
     <>
@@ -182,7 +246,6 @@ function General({ s, update }: SectionProps) {
         <SettingRow
           label="Start forwarding rules on launch"
           hint="Rules marked auto-start are brought up when the app opens."
-          last
           control={
             <Toggle
               checked={s.autostartForwarding}
@@ -190,6 +253,29 @@ function General({ s, update }: SectionProps) {
             />
           }
         />
+        <SettingRow
+          label="Detect OS on first connection"
+          hint="Reads /etc/os-release once after connecting to pick the host's icon. Nothing leaves the SSH session."
+          control={<Toggle checked={s.detectOs} onChange={(v) => update({ detectOs: v })} />}
+        />
+        <SettingRow
+          label="Post-quantum key exchange"
+          hint="Offers hybrid ML-KEM-768 + X25519 (mlkem768x25519-sha256) first; servers without it negotiate a classical exchange."
+          control={
+            <Toggle checked={s.postQuantumKex} onChange={(v) => update({ postQuantumKex: v })} />
+          }
+        />
+        <DeepLinksRow />
+      </SectionCard>
+
+      <SectionCard title="SSH agent">
+        <SettingRow
+          label="Use the system SSH agent"
+          hint="Offers keys held by ssh-agent (SSH_AUTH_SOCK), the Windows OpenSSH agent or Pageant after the host's own key. Private keys never leave the agent."
+          last={!s.useSshAgent}
+          control={<Toggle checked={s.useSshAgent} onChange={(v) => update({ useSshAgent: v })} />}
+        />
+        {s.useSshAgent && <AgentKeyList />}
       </SectionCard>
 
       <SectionCard title="Sync">
@@ -228,17 +314,65 @@ function General({ s, update }: SectionProps) {
   );
 }
 
+function AgentKeyList() {
+  const q = useQuery({ queryKey: ["agentKeys"], queryFn: ipc.agentKeys, staleTime: 10_000 });
+  const a = q.data;
+  return (
+    <Box sx={{ py: 1 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: a?.keys.length ? 0.75 : 0 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+          {q.isPending
+            ? "Looking for an agent…"
+            : a?.available
+              ? a.keys.length === 0
+                ? "Agent reachable, no keys loaded (ssh-add to add one)."
+                : `Agent reachable · ${a.keys.length} key${a.keys.length === 1 ? "" : "s"}`
+              : `No agent: ${a?.error ?? errorMessage(q.error)}`}
+        </Typography>
+        <Button
+          size="small"
+          color="inherit"
+          onClick={() => void q.refetch()}
+          disabled={q.isFetching}
+        >
+          Refresh
+        </Button>
+      </Box>
+      {a?.keys.map((k) => (
+        <Box
+          key={k.fingerprint}
+          sx={{ display: "flex", gap: 1.5, alignItems: "baseline", minWidth: 0, py: 0.25 }}
+        >
+          <Mono secondary>{k.keyType}</Mono>
+          <Mono
+            sx={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            {k.fingerprint}
+          </Mono>
+          {k.comment && (
+            <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 200 }}>
+              {k.comment}
+            </Typography>
+          )}
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
 function Terminal({ s, update }: SectionProps) {
   return (
     <>
+      <ThemeGallery value={s.terminalTheme} onChange={(id) => update({ terminalTheme: id })} />
+
       <SectionCard title="Text">
         <SettingRow
           label="Font family"
+          hint="Bundled faces ship with the app; Nerd Font symbols are always available as a fallback."
           control={
-            <TextField
+            <FontPicker
               value={s.terminalFontFamily}
-              onChange={(e) => update({ terminalFontFamily: e.target.value })}
-              sx={{ width: 280 }}
+              onChange={(name) => update({ terminalFontFamily: name })}
             />
           }
         />
@@ -255,6 +389,25 @@ function Terminal({ s, update }: SectionProps) {
           }
         />
         <SettingRow
+          label="Line height"
+          hint="Multiplier of the font's natural height."
+          control={
+            <NumberInput
+              value={s.terminalLineHeight}
+              onChange={(n) => update({ terminalLineHeight: Math.min(2, Math.max(0.8, n)) })}
+              min={0.8}
+              max={2}
+              step={0.05}
+              width={90}
+            />
+          }
+        />
+        <FontPreview
+          family={s.terminalFontFamily}
+          size={s.terminalFontSize}
+          lineHeight={s.terminalLineHeight}
+        />
+        <SettingRow
           label="Scrollback lines"
           last
           control={
@@ -264,6 +417,25 @@ function Terminal({ s, update }: SectionProps) {
               min={100}
               max={1_000_000}
               step={100}
+            />
+          }
+        />
+      </SectionCard>
+
+      <SectionCard title="Colors">
+        <SettingRow
+          label="Bright bold colors"
+          hint="Draw bold text in the bright variant of its color, as classic terminals do."
+          control={<Toggle checked={s.brightBold} onChange={(v) => update({ brightBold: v })} />}
+        />
+        <SettingRow
+          label="Keyword highlighting"
+          hint="Colors Error, Warning, OK, Info and Debug words plus IP and MAC addresses in the output. Applied locally while rendering; nothing is sent to the host."
+          last
+          control={
+            <Toggle
+              checked={s.keywordHighlight}
+              onChange={(v) => update({ keywordHighlight: v })}
             />
           }
         />
@@ -290,6 +462,35 @@ function Terminal({ s, update }: SectionProps) {
           last
           control={<Toggle checked={s.cursorBlink} onChange={(v) => update({ cursorBlink: v })} />}
         />
+      </SectionCard>
+
+      <SectionCard title="Connection">
+        <SettingRow
+          label="Autoreconnect"
+          hint="When an SSH or Telnet session drops, retry up to 6 times (30–60 s apart) while keeping the terminal contents. Sessions you close yourself are left alone."
+          control={
+            <Toggle checked={s.autoReconnect} onChange={(v) => update({ autoReconnect: v })} />
+          }
+        />
+        <SettingRow
+          label="Terminal type"
+          hint="Sent as TERM to the remote side and to the local shell. Takes effect for new sessions."
+          control={
+            <TextField
+              select
+              value={s.termType}
+              onChange={(e) => update({ termType: e.target.value as TermType })}
+              sx={{ width: 200 }}
+            >
+              {TERM_TYPES.map((t) => (
+                <MenuItem key={t} value={t}>
+                  {t}
+                </MenuItem>
+              ))}
+            </TextField>
+          }
+        />
+        <LocalShellRow value={s.localShell} onChange={(v) => update({ localShell: v })} />
       </SectionCard>
 
       <SectionCard title="Behaviour">
@@ -330,8 +531,18 @@ function Terminal({ s, update }: SectionProps) {
           }
         />
         <SettingRow
+          label="Shell integration"
+          hint="Marks prompts and commands in bash, zsh and fish (OSC 133) so history, exit codes and the working directory are tracked. Nothing is written to your dotfiles."
+          control={
+            <Toggle
+              checked={s.shellIntegration}
+              onChange={(v) => update({ shellIntegration: v })}
+            />
+          }
+        />
+        <SettingRow
           label="Command autocomplete"
-          hint="Suggests commands from your history as you type."
+          hint="Offline suggestions from ~500 commands, their options, paths, snippets and your encrypted history. Tab inserts, Esc dismisses. Can be paused per session from the terminal menu."
           last
           control={
             <Toggle checked={s.autocomplete} onChange={(v) => update({ autocomplete: v })} />
@@ -339,6 +550,75 @@ function Terminal({ s, update }: SectionProps) {
         />
       </SectionCard>
     </>
+  );
+}
+
+const CUSTOM_SHELL = "\u0000custom";
+
+/** Shells found on this machine plus a free-form path with arguments. */
+function LocalShellRow({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const shells = useQuery({
+    queryKey: ["localShells"],
+    queryFn: ipc.localShells,
+    staleTime: 60_000,
+  });
+  const found = shells.data ?? [];
+  const listed = value === "" || found.includes(value);
+  const [custom, setCustom] = useState(!listed);
+  const [draft, setDraft] = useState(listed ? "" : value);
+  const selectValue = custom || !listed ? CUSTOM_SHELL : value;
+  const commit = () => {
+    const next = draft.trim();
+    if (next !== value) onChange(next);
+  };
+  return (
+    <SettingRow
+      label="Local terminal shell"
+      hint='Program started by Local Terminal, optionally with arguments. Default is your login shell (or PowerShell on Windows). Quote a path that contains spaces: "C:\Program Files\PowerShell\7\pwsh.exe" -NoLogo.'
+      last
+      control={
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-end" }}>
+          <TextField
+            select
+            value={selectValue}
+            onChange={(e) => {
+              if (e.target.value === CUSTOM_SHELL) {
+                setCustom(true);
+                setDraft(listed ? "" : value);
+                return;
+              }
+              setCustom(false);
+              onChange(e.target.value);
+            }}
+            sx={{ width: 280 }}
+          >
+            <MenuItem value="">Default shell</MenuItem>
+            {found.map((sh) => (
+              <MenuItem key={sh} value={sh} sx={{ fontFamily: "monospace", fontSize: 13 }}>
+                {sh}
+              </MenuItem>
+            ))}
+            <MenuItem value={CUSTOM_SHELL}>Custom command…</MenuItem>
+          </TextField>
+          {(custom || !listed) && (
+            <TextField
+              value={draft}
+              placeholder="/usr/bin/fish --login"
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commit();
+                }
+              }}
+              sx={{ width: 280 }}
+              slotProps={{ htmlInput: { spellCheck: false } }}
+            />
+          )}
+        </Box>
+      }
+    />
   );
 }
 

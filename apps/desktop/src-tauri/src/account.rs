@@ -15,6 +15,7 @@ use termoso_core::store::{LocalVault, StoredAccount};
 use termoso_core::sync::{SyncEngine, SyncEvent, SyncOptions, SyncReport};
 use termoso_proto::account::ServerInfo;
 use termoso_proto::auth::{Device, MfaCredential, MfaMethod};
+use termoso_proto::vault::VaultMember;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -520,6 +521,12 @@ fn start_engine<R: Runtime>(app: &AppHandle<R>, state: &AppState, inner: &mut In
         }
     });
     let runner = tokio::spawn(engine.clone().run(cancel.clone()));
+    let sshid_app = app.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::sshid::refresh(&sshid_app).await {
+            tracing::debug!("sshid refresh skipped: {e}");
+        }
+    });
     inner.engine = Some(Engine {
         engine,
         cancel,
@@ -663,7 +670,8 @@ pub async fn reconfigure<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
 
 // ───────────────────────────── devices ─────────────────────────────
 
-async fn api<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<ApiClient>> {
+/// The signed-in API client, or "not signed in".
+pub(crate) async fn api<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<ApiClient>> {
     let state = app.state::<AppState>();
     let inner = state.account.inner.lock().await;
     inner
@@ -675,6 +683,13 @@ async fn api<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<ApiClient>> {
 
 pub async fn devices<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<Device>> {
     Ok(api(app).await?.devices().await?)
+}
+
+pub async fn vault_members<R: Runtime>(
+    app: &AppHandle<R>,
+    vault_id: Uuid,
+) -> Result<Vec<VaultMember>> {
+    Ok(api(app).await?.vault_members(vault_id).await?.members)
 }
 
 pub async fn revoke_device<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {

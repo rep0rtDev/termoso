@@ -2,11 +2,11 @@ import { createTheme, alpha } from "@mui/material/styles";
 
 declare module "@mui/material/styles" {
   interface Palette {
-    surface: { lowest: string; base: string; high: string; highest: string };
+    surface: { lowest: string; base: string; high: string; highest: string; strong: string };
     border: { light: string; basic: string; strong: string };
   }
   interface PaletteOptions {
-    surface?: { lowest: string; base: string; high: string; highest: string };
+    surface?: { lowest: string; base: string; high: string; highest: string; strong: string };
     border?: { light: string; basic: string; strong: string };
   }
 }
@@ -96,24 +96,25 @@ export const theme = createTheme({
           main: emerald.main,
           dark: emerald.dark,
           light: emerald.light,
-          contrastText: "#08170F",
+          contrastText: "#FFFFFF",
         },
         secondary: {
           main: sky.main,
           dark: sky.dark,
           light: sky.light,
-          contrastText: "#0A1420",
+          contrastText: "#FFFFFF",
         },
-        error: { main: "#F25E61" },
-        warning: { main: "#F8AA4B" },
-        success: { main: emerald.main },
-        info: { main: sky.main },
+        error: { main: "#F25E61", contrastText: "#FFFFFF" },
+        warning: { main: "#F8AA4B", contrastText: "#FFFFFF" },
+        success: { main: emerald.main, contrastText: "#FFFFFF" },
+        info: { main: sky.main, contrastText: "#FFFFFF" },
         background: { default: dark.lowest, paper: dark.base },
         surface: {
           lowest: dark.lowest,
           base: dark.base,
           high: dark.high,
           highest: dark.highest,
+          strong: dark.strong,
         },
         border: {
           light: alpha(grey, 0.1),
@@ -149,16 +150,17 @@ export const theme = createTheme({
           light: sky.main,
           contrastText: "#FFFFFF",
         },
-        error: { main: "#D93F42" },
-        warning: { main: "#C67D1A" },
-        success: { main: emerald.dark },
-        info: { main: sky.dark },
+        error: { main: "#D93F42", contrastText: "#FFFFFF" },
+        warning: { main: "#C67D1A", contrastText: "#FFFFFF" },
+        success: { main: emerald.dark, contrastText: "#FFFFFF" },
+        info: { main: sky.dark, contrastText: "#FFFFFF" },
         background: { default: light.lowest, paper: light.base },
         surface: {
           lowest: light.lowest,
           base: light.base,
           high: light.high,
           highest: light.highest,
+          strong: light.strong,
         },
         border: {
           light: alpha("#3B4557", 0.08),
@@ -198,9 +200,16 @@ export const theme = createTheme({
     overline: { letterSpacing: "0.04em", fontWeight: 600, fontSize: "0.6875rem" },
   },
   components: {
+    MuiTypography: {
+      styleOverrides: {
+        // An inline `<span>` cannot clip, so an ellipsised line must lay out as a block.
+        noWrap: { display: "block" },
+      },
+    },
     MuiCssBaseline: {
       styleOverrides: {
-        body: { minHeight: "100vh" },
+        html: { backgroundColor: "transparent" },
+        body: { minHeight: "100vh", backgroundColor: "transparent" },
         code: { fontFamily: monoFontFamily },
         "::selection": { backgroundColor: alpha(emerald.main, 0.35) },
       },
@@ -411,12 +420,28 @@ export const theme = createTheme({
           fontWeight: 500,
           borderRadius: 6,
           backgroundColor: t.vars.palette.surface.highest,
-          "&.MuiChip-filled.MuiChip-colorPrimary": {
+          "&.MuiChip-filled.MuiChip-colorPrimary, &.MuiChip-filled.MuiChip-colorSuccess": {
             backgroundColor: alpha(emerald.main, 0.18),
             color: emerald.light,
             "&:hover": { backgroundColor: alpha(emerald.main, 0.26) },
             ...t.applyStyles("light", { color: emerald.dark }),
           },
+          "&.MuiChip-filled.MuiChip-colorSecondary, &.MuiChip-filled.MuiChip-colorInfo": {
+            backgroundColor: alpha(sky.main, 0.18),
+            color: sky.light,
+            ...t.applyStyles("light", { color: sky.dark }),
+          },
+          "&.MuiChip-filled.MuiChip-colorWarning": {
+            backgroundColor: alpha("#F8AA4B", 0.18),
+            color: "#F8AA4B",
+            ...t.applyStyles("light", { color: "#C67D1A" }),
+          },
+          "&.MuiChip-filled.MuiChip-colorError": {
+            backgroundColor: alpha("#F25E61", 0.18),
+            color: "#F25E61",
+            ...t.applyStyles("light", { color: "#D93F42" }),
+          },
+          "& .MuiChip-icon, & .MuiChip-deleteIcon": { color: "inherit" },
         }),
         sizeSmall: { height: 22, fontSize: "0.75rem" },
         outlined: ({ theme: t }) => ({

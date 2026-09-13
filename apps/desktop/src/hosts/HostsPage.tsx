@@ -1,16 +1,19 @@
-import { useMemo, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   Box,
   Breadcrumbs,
   Button,
   Chip,
+  IconButton,
   InputAdornment,
   Link,
+  Menu,
   MenuItem,
-  Popover,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
@@ -23,85 +26,168 @@ import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import SellOutlinedIcon from "@mui/icons-material/SellOutlined";
 import SwapVertRoundedIcon from "@mui/icons-material/SwapVertRounded";
 import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
+import FolderOpenRoundedIcon from "@mui/icons-material/FolderOpenRounded";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
+import TabRoundedIcon from "@mui/icons-material/TabRounded";
+import AddBoxOutlinedIcon from "@mui/icons-material/AddBoxOutlined";
+import DriveFileMoveOutlinedIcon from "@mui/icons-material/DriveFileMoveOutlined";
+import LibraryAddOutlinedIcon from "@mui/icons-material/LibraryAddOutlined";
+import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import SelectAllRoundedIcon from "@mui/icons-material/SelectAllRounded";
+import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
+import FileUploadOutlinedIcon from "@mui/icons-material/FileUploadOutlined";
+import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
+import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
+import UsbRoundedIcon from "@mui/icons-material/UsbRounded";
+import CloudOutlinedIcon from "@mui/icons-material/CloudOutlined";
 import { EmptyState } from "@/components/EmptyState";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
-import { ActionMenu, Loading, SplitButton, ToolIconButton, Toolbar } from "@/components/ui";
 import {
-  useDefaultVault,
-  useDeleteHost,
+  ActionMenu,
+  Loading,
+  SplitButton,
+  ToolIconButton,
+  Toolbar,
+  type MenuAction,
+} from "@/components/ui";
+import {
+  useDeleteHosts,
+  useDuplicateGroup,
+  useDuplicateHost,
   useGroups,
   useHosts,
+  useKnownHosts,
+  useCopyHostsToVault,
+  useMoveHosts,
   useSaveSettings,
   useSettings,
   useTags,
 } from "@/ipc/hooks";
-import type { GroupNode, HostCard, HostsView, Uuid } from "@/ipc/types";
-import { errorMessage } from "@/ipc/types";
-import { openTerminal } from "@/terminal/store";
+import { useActiveVault, vaultIcon, ViewOnlyChip } from "@/app/vault";
+import type { CloudProvider, GroupNode, HostCard, HostsView, Uuid } from "@/ipc/types";
+import { connectProtocols, errorMessage, hostProtocols } from "@/ipc/types";
+import { openTerminal, useTerminal } from "@/terminal/store";
+import { addToWorkspace, useWorkspaces, workspaceChoices } from "@/terminal/workspaces";
 import { openSftpForHost } from "@/sftp/store";
-import { goToSftp } from "@/app/navigation";
-import { HostGrid } from "./HostGrid";
+import {
+  goToSerial,
+  goToSettingsWith,
+  goToSftp,
+  requestForwardingRule,
+  useCreateRequests,
+  useEditRequests,
+} from "@/app/navigation";
+import { HostGrid, hostTarget } from "./HostGrid";
 import { HostList } from "./HostList";
 import { HostEditPanel } from "./HostEditPanel";
-import { GroupDialog } from "./GroupDialog";
+import { DeleteGroupDialog, GroupPanel } from "./GroupPanel";
+import { MoveCopyDialog, type MoveCopyRequest } from "./MoveCopyDialog";
+import { ImportDialog } from "./ImportDialog";
+import { CLOUD_PROVIDERS, CloudImportDialog } from "./CloudImportDialog";
+import { ExportCsvDialog } from "./ExportCsvDialog";
+import { TagManagerDialog } from "./TagManagerDialog";
+import { TagsPopover } from "./TagsPopover";
+import { TeamSteps } from "@/team/TeamSteps";
+import { TagChip, tagColorMap } from "./TagChip";
+import { connectActions } from "./ConnectSplit";
+import { useHostDnd } from "./dnd";
+import {
+  hostLink,
+  looksLikeTarget,
+  parseKnownHostName,
+  isLiveLink,
+  parseQuickConnect,
+  protocolLink,
+  quickLabel,
+  type KnownSuggestion,
+} from "./links";
 
-type Editor =
-  { mode: "closed" } | { mode: "new"; groupId: Uuid | null } | { mode: "edit"; id: Uuid };
+type Panel =
+  | { mode: "closed" }
+  | { mode: "new"; groupId: Uuid | null }
+  | { mode: "edit"; id: Uuid }
+  | { mode: "group"; id: Uuid | null; parentId: Uuid | null };
 
-type SortKey = "manual" | "label" | "address" | "updated";
+type SortKey = "manual" | "label" | "address" | "updated" | "lastConnected";
 
 const comparators: Record<SortKey, (a: HostCard, b: HostCard) => number> = {
   manual: (a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label),
   label: (a, b) => a.label.localeCompare(b.label),
   address: (a, b) => a.address.localeCompare(b.address),
   updated: (a, b) => b.updatedAt.localeCompare(a.updatedAt),
+  lastConnected: (a, b) => {
+    if (a.lastConnected && b.lastConnected) {
+      return b.lastConnected.localeCompare(a.lastConnected) || a.label.localeCompare(b.label);
+    }
+    if (a.lastConnected) return -1;
+    if (b.lastConnected) return 1;
+    return a.label.localeCompare(b.label);
+  },
 };
 
-/** `user@host:port` → quick-connect target; bare words are treated as hostnames. */
-export function parseQuickConnect(input: string) {
-  const s = input.trim();
-  if (!s) return null;
-  const m = /^(?:(?<user>[^@\s]+)@)?(?<host>\[[^\]]+\]|[^:\s]+)(?::(?<port>\d{1,5}))?$/.exec(s);
-  const groups = m?.groups;
-  const host = groups?.host?.replace(/^\[|\]$/g, "");
-  if (!groups || !host) return null;
-  const port = groups.port ? Number(groups.port) : null;
-  if (port !== null && (port < 1 || port > 65535)) return null;
-  return { kind: "quick" as const, address: host, username: groups.user ?? null, port };
-}
+const sortLabel: Record<SortKey, string> = {
+  manual: "Manual",
+  label: "Name",
+  address: "Address",
+  updated: "Recently edited",
+  lastConnected: "Recently connected",
+};
 
-/** A search string that looks like something you'd connect to rather than filter by. */
-function looksLikeTarget(s: string) {
-  return /[@:.]/.test(s) || /^\d+$/.test(s) || s === "localhost";
-}
+type Ctx =
+  | { kind: "host"; host: HostCard; left: number; top: number }
+  | { kind: "group"; group: GroupNode; left: number; top: number };
+
+const isEditable = (t: EventTarget | null) =>
+  t instanceof HTMLElement &&
+  (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
 
 export function HostsPage() {
   const snackbar = useSnackbar();
-  const vault = useDefaultVault();
+  const terminalTabs = useTerminal((s) => s.tabs);
+  const templates = useWorkspaces((s) => s.templates);
+  const workspaces = useMemo(
+    () => workspaceChoices(terminalTabs, templates),
+    [terminalTabs, templates],
+  );
+  const vault = useActiveVault();
   const vaultId = vault.data?.id ?? null;
+  const readOnly = vault.readOnly;
   const hosts = useHosts(vaultId);
   const groups = useGroups(vaultId);
   const tags = useTags(vaultId);
   const settings = useSettings();
   const saveSettings = useSaveSettings();
-  const deleteHost = useDeleteHost();
+  const deleteHosts = useDeleteHosts();
+  const duplicateHost = useDuplicateHost();
+  const duplicateGroup = useDuplicateGroup();
+  const moveHosts = useMoveHosts();
+  const copyToVault = useCopyHostsToVault();
 
   const [groupId, setGroupId] = useState<Uuid | null>(null);
   const [search, setSearch] = useState("");
+  /** Search only inside the open group (Termius default) or across the vault. */
+  const [searchEverywhere, setSearchEverywhere] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [sort, setSort] = useState<SortKey>("manual");
-  const [editor, setEditor] = useState<Editor>({ mode: "closed" });
-  const [groupDialog, setGroupDialog] = useState<{ open: boolean; edit: GroupNode | null }>({
-    open: false,
-    edit: null,
-  });
+  const [panel, setPanel] = useState<Panel>({ mode: "closed" });
   const [tagAnchor, setTagAnchor] = useState<HTMLElement | null>(null);
   const [sortAnchor, setSortAnchor] = useState<HTMLElement | null>(null);
-  const [ctx, setCtx] = useState<{ host: HostCard; left: number; top: number } | null>(null);
+  const [copyAnchor, setCopyAnchor] = useState<HTMLElement | null>(null);
+  const [ctx, setCtx] = useState<Ctx | null>(null);
+  const [checked, setChecked] = useState<ReadonlySet<Uuid>>(() => new Set());
+  const [anchorId, setAnchorId] = useState<Uuid | null>(null);
+  const [moveCopy, setMoveCopy] = useState<MoveCopyRequest | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [cloudProvider, setCloudProvider] = useState<CloudProvider | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<HostCard[] | null>(null);
+  const [confirmGroup, setConfirmGroup] = useState<GroupNode | null>(null);
 
   const view: HostsView = settings.data?.hostsView ?? "grid";
   const setView = (v: HostsView | null) => {
@@ -126,8 +212,35 @@ export function HostsPage() {
     return out;
   }, [groupId, groupById]);
 
+  const tagColors = useMemo(() => tagColorMap(tags.data), [tags.data]);
+  const tagFilterIds = useMemo(
+    () =>
+      new Set(
+        (tags.data ?? []).filter((t) => tagFilter.includes(t.label)).map((t) => t.id),
+      ) as ReadonlySet<Uuid>,
+    [tags.data, tagFilter],
+  );
+
   const q = search.trim().toLowerCase();
   const filtering = q.length > 0 || tagFilter.length > 0;
+  /** The open group and everything nested under it. */
+  const subtree = useMemo(() => {
+    if (!groupId) return null;
+    const ids = new Set<Uuid>([groupId]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const g of groups.data ?? []) {
+        if (g.parentId && ids.has(g.parentId) && !ids.has(g.id)) {
+          ids.add(g.id);
+          grew = true;
+        }
+      }
+    }
+    return ids;
+  }, [groups.data, groupId]);
+  const scope = filtering && !searchEverywhere ? subtree : null;
+  const scopedToGroup = scope !== null;
   const childGroups = useMemo(
     () =>
       filtering
@@ -139,26 +252,179 @@ export function HostsPage() {
   );
   const visibleHosts = useMemo(() => {
     const all = hosts.data ?? [];
-    let scoped = filtering ? all : all.filter((h) => h.groupId === groupId);
+    let scoped = filtering
+      ? scope
+        ? all.filter((h) => h.groupId !== null && scope.has(h.groupId))
+        : all
+      : all.filter((h) => h.groupId === groupId);
     if (q) {
       scoped = scoped.filter((h) =>
-        [h.label, h.address, h.username, ...h.tags, ...h.groupPath].some((s) =>
+        [h.label, h.address, h.username, hostTarget(h), ...h.tags, ...h.groupPath].some((s) =>
           s.toLowerCase().includes(q),
         ),
       );
     }
     if (tagFilter.length) scoped = scoped.filter((h) => tagFilter.every((t) => h.tags.includes(t)));
     return [...scoped].sort(comparators[sort]);
-  }, [hosts.data, groupId, q, tagFilter, filtering, sort]);
+  }, [hosts.data, groupId, q, tagFilter, filtering, sort, scope]);
 
-  const openHost = (h: HostCard) => setEditor({ mode: "edit", id: h.id });
-  const connectHost = (h: HostCard) => openTerminal({ kind: "host", host_id: h.id });
+  /* ------------------------------------------------------------ selection */
+
+  // Only hosts currently on screen count as selected, so bulk actions never hit stale ids.
+  const selectedHosts = useMemo(
+    () => visibleHosts.filter((h) => checked.has(h.id)),
+    [visibleHosts, checked],
+  );
+  const visibleChecked = useMemo(
+    () => new Set(selectedHosts.map((h) => h.id)) as ReadonlySet<Uuid>,
+    [selectedHosts],
+  );
+
+  const clearSelection = () => setChecked(new Set());
+  const toggleHost = (h: HostCard) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(h.id)) next.delete(h.id);
+      else next.add(h.id);
+      return next;
+    });
+    setAnchorId(h.id);
+  };
+  const selectRange = (h: HostCard) => {
+    const ids = visibleHosts.map((x) => x.id);
+    const from = anchorId ? ids.indexOf(anchorId) : -1;
+    const to = ids.indexOf(h.id);
+    if (from < 0 || to < 0) return toggleHost(h);
+    const [a, b] = from < to ? [from, to] : [to, from];
+    setChecked((prev) => new Set([...prev, ...ids.slice(a, b + 1)]));
+  };
+  const selectAll = () => {
+    setChecked(new Set(visibleHosts.map((h) => h.id)));
+  };
+  const updateSearch = (s: string) => {
+    setSearch(s);
+    if (visibleChecked.size > 0) clearSelection();
+  };
+  const updateTagFilter = (fn: (f: string[]) => string[]) => {
+    setTagFilter(fn);
+    if (visibleChecked.size > 0) clearSelection();
+  };
+
+  useCreateRequests(["host", "group"], (kind) => {
+    if (kind === "host") setPanel({ mode: "new", groupId });
+    else setPanel({ mode: "group", id: null, parentId: groupId });
+  });
+  useEditRequests((id) => setPanel({ mode: "edit", id }));
+
+  const parentId = crumbs.length > 0 ? (crumbs[crumbs.length - 1]?.parentId ?? null) : null;
+  const goBack = useCallback(() => {
+    if (!groupId) return;
+    setChecked(new Set());
+    setGroupId(parentId);
+  }, [groupId, parentId]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isEditable(e.target)) return;
+      if (e.key === "Escape" && visibleChecked.size > 0) {
+        clearSelection();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && visibleHosts.length) {
+        e.preventDefault();
+        setChecked(new Set(visibleHosts.map((h) => h.id)));
+      } else if (
+        groupId &&
+        !filtering &&
+        (e.key === "Backspace" || (e.altKey && e.key === "ArrowLeft"))
+      ) {
+        e.preventDefault();
+        goBack();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [visibleChecked.size, visibleHosts, groupId, filtering, goBack]);
+
+  /* ------------------------------------------------------------ drag & drop */
+
+  const onDropMove = useCallback(
+    (ids: Uuid[], target: Uuid | null) => {
+      if (!vaultId || readOnly) return;
+      const dest = target ? (groupById.get(target)?.label ?? "group") : "All hosts";
+      moveHosts.mutate(
+        { ids, groupId: target, vaultId },
+        {
+          onSuccess: () => {
+            snackbar.notify(
+              ids.length === 1 ? `Moved to ${dest}` : `Moved ${ids.length} hosts to ${dest}`,
+            );
+            setChecked(new Set());
+          },
+          onError: (e) => snackbar.error(errorMessage(e)),
+        },
+      );
+    },
+    [vaultId, readOnly, groupById, moveHosts, snackbar],
+  );
+  const dnd = useHostDnd({
+    selection: visibleChecked,
+    hosts: hosts.data ?? [],
+    onMove: onDropMove,
+  });
+
+  /* -------------------------------------------------------------- actions */
+
+  const openHost = (h: HostCard, e?: MouseEvent<HTMLElement>) => {
+    if (e && (e.ctrlKey || e.metaKey)) return toggleHost(h);
+    if (e?.shiftKey) return selectRange(h);
+    if (visibleChecked.size > 0) return toggleHost(h);
+    setPanel({ mode: "edit", id: h.id });
+  };
+  const connectHosts = (list: HostCard[], background = false) => {
+    list.forEach((h, i) =>
+      openTerminal({ kind: "host", host_id: h.id }, { background: background || i > 0 }),
+    );
+  };
+  const connectHost = (h: HostCard) => connectHosts([h]);
+  const hostTargets = (list: HostCard[]) =>
+    list.map((h) => ({ kind: "host" as const, host_id: h.id }));
   const sftpHost = (h: HostCard) => {
     openSftpForHost(h.id, h.label);
     goToSftp();
   };
-  const quickTarget = looksLikeTarget(search.trim()) ? parseQuickConnect(search) : null;
+  const liveLink = isLiveLink(search) ? search.trim() : null;
+  const quickTarget =
+    !liveLink && looksLikeTarget(search.trim()) ? parseQuickConnect(search) : null;
+  const knownHosts = useKnownHosts();
+  /** Hosts we already trust (known_hosts) but haven't saved, matching the typed address. */
+  const knownSuggestions = useMemo(() => {
+    if (!quickTarget || quickTarget.address.length < 2) return [];
+    const typed = quickTarget.address.toLowerCase();
+    const saved = new Set((hosts.data ?? []).map((h) => `${h.address.toLowerCase()}:${h.port}`));
+    const seen = new Set<string>();
+    const out: KnownSuggestion[] = [];
+    for (const k of knownHosts.data ?? []) {
+      const s = parseKnownHostName(k.hostname);
+      const name = s.address.toLowerCase();
+      const key = `${name}:${s.port ?? 22}`;
+      const exact = name === typed && (s.port ?? 22) === (quickTarget.port ?? 22);
+      if (exact || !name.includes(typed) || saved.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+      if (out.length === 6) break;
+    }
+    return out;
+  }, [quickTarget, hosts.data, knownHosts.data]);
+  const connectKnown = (s: KnownSuggestion) => {
+    if (!quickTarget) return;
+    openTerminal({ ...quickTarget, address: s.address, port: s.port ?? quickTarget.port });
+    setSearch("");
+  };
   const onSearchEnter = () => {
+    if (liveLink) {
+      openTerminal({ kind: "live", link: liveLink });
+      setSearch("");
+      return;
+    }
     if (visibleHosts.length === 1 && visibleHosts[0]) {
       connectHost(visibleHosts[0]);
       setSearch("");
@@ -169,115 +435,310 @@ export function HostsPage() {
       setSearch("");
     }
   };
-  const removeHost = (h: HostCard) =>
-    deleteHost.mutate(
-      { id: h.id, vaultId: h.vaultId },
+  const removeHosts = (list: HostCard[]) => {
+    if (!vaultId || list.length === 0) return;
+    deleteHosts.mutate(
+      { ids: list.map((h) => h.id), vaultId },
       {
         onSuccess: () => {
-          snackbar.notify(`Deleted ${h.label}`, "info");
-          if (editor.mode === "edit" && editor.id === h.id) setEditor({ mode: "closed" });
+          snackbar.notify(
+            list.length === 1
+              ? `Removed ${list[0]?.label ?? "host"}`
+              : `Removed ${list.length} hosts`,
+            "info",
+          );
+          if (panel.mode === "edit" && list.some((h) => h.id === panel.id)) {
+            setPanel({ mode: "closed" });
+          }
+          clearSelection();
+          setConfirmRemove(null);
         },
         onError: (e) => snackbar.error(errorMessage(e)),
       },
     );
-  const onHostContext = (h: HostCard, e: MouseEvent<HTMLElement>) => {
-    e.preventDefault();
-    setCtx({ host: h, left: e.clientX, top: e.clientY });
+  };
+  const duplicateHosts = async (list: HostCard[]) => {
+    try {
+      for (const h of list) await duplicateHost.mutateAsync(h.id);
+      snackbar.notify(
+        list.length === 1
+          ? `Duplicated ${list[0]?.label ?? "host"}`
+          : `Duplicated ${list.length} hosts`,
+      );
+      clearSelection();
+    } catch (e) {
+      snackbar.error(errorMessage(e));
+    }
+  };
+  const copyText = (text: string, what: string) =>
+    copyToClipboard(text)
+      .then(() => snackbar.notify(`${what} copied`))
+      .catch(() => snackbar.error("Clipboard is not available"));
+  const copyLinks = (list: HostCard[]) =>
+    copyText(list.map(hostLink).join("\n"), list.length === 1 ? "Link" : "Links");
+  const copyProtocolLinks = (list: HostCard[]) => {
+    const links = list.flatMap((h) => {
+      const l = protocolLink(h);
+      return l ? [l] : [];
+    });
+    if (links.length === 0) return;
+    void copyText(links.join("\n"), links.length === 1 ? "Link" : "Links");
   };
 
-  const selectedId = editor.mode === "edit" ? editor.id : null;
+  const onHostContext = (h: HostCard, e: MouseEvent<HTMLElement>) => {
+    e.preventDefault();
+    setCtx({ kind: "host", host: h, left: e.clientX, top: e.clientY });
+  };
+  const onGroupContext = (g: GroupNode, e: MouseEvent<HTMLElement>) => {
+    e.preventDefault();
+    setCtx({ kind: "group", group: g, left: e.clientX, top: e.clientY });
+  };
+  const openGroupPanel = (g: GroupNode) =>
+    setPanel({ mode: "group", id: g.id, parentId: g.parentId });
+  const onDuplicateGroup = (g: GroupNode) =>
+    duplicateGroup.mutate(g.id, {
+      onSuccess: (copy) => snackbar.notify(`Duplicated as “${copy.label}”`),
+      onError: (e) => snackbar.error(errorMessage(e)),
+    });
+
+  /** Context-menu targets: the whole selection when the clicked host is part of it. */
+  const ctxTargets = (h: HostCard) =>
+    visibleChecked.has(h.id) && visibleChecked.size > 1 ? selectedHosts : [h];
+
+  const hostMenu = (h: HostCard): MenuAction[] => {
+    const targets = ctxTargets(h);
+    const many = targets.length > 1;
+    const n = targets.length;
+    return [
+      many
+        ? {
+            label: `Connect ${n} hosts`,
+            icon: <PlayArrowRoundedIcon fontSize="small" />,
+            onClick: () => connectHosts(targets),
+          }
+        : {
+            label: "Connect",
+            icon: <PlayArrowRoundedIcon fontSize="small" />,
+            items: connectActions(h.id, h.label, connectProtocols(h)),
+          },
+      {
+        label: "Add to Workspace",
+        icon: <TabRoundedIcon fontSize="small" />,
+        items: [
+          {
+            label: "New Workspace",
+            icon: <AddBoxOutlinedIcon fontSize="small" />,
+            divider: workspaces.length > 0,
+            onClick: () => addToWorkspace(null, hostTargets(targets)),
+          },
+          ...workspaces.map((w) => ({
+            label: w.name,
+            icon: <GridViewRoundedIcon fontSize="small" />,
+            onClick: () => {
+              addToWorkspace(w, hostTargets(targets), true);
+              snackbar.notify(many ? `${n} hosts added to “${w.name}”` : `Added to “${w.name}”`);
+            },
+          })),
+        ],
+      },
+      {
+        label: "Open SFTP",
+        icon: <FolderCopyRoundedIcon fontSize="small" />,
+        onClick: () => sftpHost(h),
+        disabled: many || !hostProtocols(h).includes("ssh"),
+      },
+      {
+        label: "Port forwarding",
+        icon: <SwapHorizRoundedIcon fontSize="small" />,
+        onClick: () => requestForwardingRule(h.id),
+        disabled: many || !hostProtocols(h).includes("ssh"),
+        divider: true,
+      },
+      {
+        label: "Edit",
+        icon: <EditOutlinedIcon fontSize="small" />,
+        onClick: () => setPanel({ mode: "edit", id: h.id }),
+        disabled: many,
+      },
+      {
+        label: "Move to…",
+        icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
+        disabled: readOnly,
+        onClick: () => setMoveCopy({ kind: "group", hosts: targets }),
+      },
+      {
+        label: "Copy to",
+        icon: <LibraryAddOutlinedIcon fontSize="small" />,
+        items: copyToItems(targets),
+      },
+      {
+        label: "Duplicate",
+        icon: <ContentCopyRoundedIcon fontSize="small" />,
+        disabled: readOnly,
+        onClick: () => void duplicateHosts(targets),
+        divider: true,
+      },
+      {
+        label: many ? "Copy links" : "Copy link",
+        icon: <LinkRoundedIcon fontSize="small" />,
+        items: [
+          {
+            label: "Termoso link",
+            icon: <LinkRoundedIcon fontSize="small" />,
+            onClick: () => void copyLinks(targets),
+          },
+          {
+            label: targets.every((t) => !hostProtocols(t).includes("ssh"))
+              ? "telnet:// link"
+              : "ssh:// link",
+            icon: <TerminalRoundedIcon fontSize="small" />,
+            onClick: () => copyProtocolLinks(targets),
+          },
+        ],
+      },
+      {
+        label: "Copy address",
+        icon: <ContentCopyRoundedIcon fontSize="small" />,
+        onClick: () => void copyText(targets.map((t) => t.address).join("\n"), "Address"),
+        divider: true,
+      },
+      {
+        label: many ? `Remove ${n} hosts` : "Remove",
+        icon: <DeleteOutlineRoundedIcon fontSize="small" />,
+        disabled: readOnly,
+        onClick: () => setConfirmRemove(targets),
+        danger: true,
+      },
+    ];
+  };
+
+  /** `Copy to ▸` — every other vault plus “Add vault”, like Termius. */
+  const copyToItems = (targets: HostCard[]): MenuAction[] => [
+    ...vault.vaults
+      .filter((v) => v.id !== vaultId)
+      .map((v) => ({
+        label: v.name,
+        icon: vaultIcon(v),
+        disabled: !v.unlocked || v.role === "viewer",
+        onClick: () => copyHostsTo(targets, v.id),
+      })),
+    {
+      label: "Add vault",
+      icon: <AddRoundedIcon fontSize="small" />,
+      divider: vault.vaults.length > 1,
+      onClick: () => goToSettingsWith({ kind: "newVault" }),
+    },
+  ];
+
+  const copyHostsTo = (targets: HostCard[], to: Uuid) => {
+    const dest = vault.vaults.find((v) => v.id === to);
+    if (!dest || !vaultId) return;
+    if (dest.kind === "team") {
+      setMoveCopy({ kind: "vault", hosts: targets, move: false, target: to });
+      return;
+    }
+    const what = targets.length === 1 ? `“${targets[0]?.label ?? ""}”` : `${targets.length} hosts`;
+    copyToVault.mutate(
+      { ids: targets.map((t) => t.id), vaultId: to, move: false, withCredentials: true },
+      {
+        onSuccess: () => snackbar.notify(`Copied ${what} to ${dest.name}`),
+        onError: (e) => snackbar.error(errorMessage(e)),
+      },
+    );
+  };
+
+  const groupMenu = (g: GroupNode): MenuAction[] => [
+    {
+      label: "Open",
+      icon: <FolderOpenRoundedIcon fontSize="small" />,
+      onClick: () => setGroupId(g.id),
+    },
+    {
+      label: "Group details",
+      icon: <EditOutlinedIcon fontSize="small" />,
+      onClick: () => openGroupPanel(g),
+      divider: true,
+    },
+    {
+      label: "New host here",
+      icon: <DnsRoundedIcon fontSize="small" />,
+      disabled: readOnly,
+      onClick: () => setPanel({ mode: "new", groupId: g.id }),
+    },
+    {
+      label: "New sub-group",
+      icon: <CreateNewFolderRoundedIcon fontSize="small" />,
+      disabled: readOnly,
+      onClick: () => setPanel({ mode: "group", id: null, parentId: g.id }),
+      divider: true,
+    },
+    {
+      label: "Duplicate",
+      icon: <ContentCopyRoundedIcon fontSize="small" />,
+      disabled: readOnly,
+      onClick: () => onDuplicateGroup(g),
+      divider: true,
+    },
+    {
+      label: "Remove",
+      icon: <DeleteOutlineRoundedIcon fontSize="small" />,
+      disabled: readOnly,
+      onClick: () => setConfirmGroup(g),
+      danger: true,
+    },
+  ];
+
+  const selectedId = panel.mode === "edit" ? panel.id : null;
   const loading = vault.isPending || hosts.isPending || groups.isPending;
   const loadError = vault.error ?? hosts.error ?? groups.error;
   const collection = {
     groups: childGroups,
     hosts: visibleHosts,
     selectedId,
+    checked: visibleChecked,
     showPath: filtering,
-    onOpenGroup: setGroupId,
-    onEditGroup: (g: GroupNode) => setGroupDialog({ open: true, edit: g }),
+    onOpenGroup: (id: Uuid) => {
+      clearSelection();
+      setGroupId(id);
+    },
+    onEditGroup: openGroupPanel,
+    onGroupContext,
     onOpenHost: openHost,
+    onToggleHost: toggleHost,
     onConnectHost: connectHost,
     onHostContext,
+    dnd,
+    tagColors,
   };
-  const sortLabel: Record<SortKey, string> = {
-    manual: "Manual",
-    label: "Name",
-    address: "Address",
-    updated: "Recently edited",
-  };
+
+  const crumbSx = (active: boolean) => ({
+    fontWeight: 600,
+    fontSize: 14,
+    px: 0.5,
+    mx: -0.5,
+    borderRadius: 1,
+    outline: "1px solid transparent",
+    ...(active && { outlineColor: "primary.main", bgcolor: "surface.strong" }),
+  });
+
+  /** Bulk-action bar replaces the breadcrumbs, except mid-drag so the crumbs stay droppable. */
+  const selecting = visibleChecked.size > 0 && dnd.dragging.size === 0;
 
   return (
     <Box sx={{ display: "flex", flex: 1, minHeight: 0 }}>
       <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <Toolbar
-          trailing={
-            <>
-              <Button
-                variant="text"
-                size="small"
-                startIcon={<SwapVertRoundedIcon />}
-                onClick={(e) => setSortAnchor(e.currentTarget)}
-                sx={{ color: "text.secondary" }}
-              >
-                {sortLabel[sort]}
-              </Button>
-              <ToolIconButton
-                title="Filter by tag"
-                active={tagFilter.length > 0}
-                onClick={(e) => setTagAnchor(e.currentTarget)}
-              >
-                <SellOutlinedIcon fontSize="small" />
-              </ToolIconButton>
-              <ToggleButtonGroup
-                exclusive
-                value={view}
-                onChange={(_e, v: HostsView | null) => setView(v)}
-              >
-                <ToggleButton value="grid" aria-label="Grid view">
-                  <GridViewRoundedIcon sx={{ fontSize: 18 }} />
-                </ToggleButton>
-                <ToggleButton value="list" aria-label="List view">
-                  <ViewListRoundedIcon sx={{ fontSize: 18 }} />
-                </ToggleButton>
-              </ToggleButtonGroup>
-            </>
-          }
-        >
-          <SplitButton
-            label="New host"
-            icon={<AddRoundedIcon />}
-            disabled={!vaultId}
-            onClick={() => setEditor({ mode: "new", groupId })}
-            items={[
-              {
-                label: "New host",
-                icon: <DnsRoundedIcon fontSize="small" />,
-                onClick: () => setEditor({ mode: "new", groupId }),
-              },
-              {
-                label: "New group",
-                icon: <CreateNewFolderRoundedIcon fontSize="small" />,
-                onClick: () => setGroupDialog({ open: true, edit: null }),
-              },
-            ]}
-          />
-          <Button
-            variant="tonal"
-            startIcon={<TerminalRoundedIcon />}
-            onClick={() => openTerminal({ kind: "local" })}
-          >
-            Terminal
-          </Button>
-        </Toolbar>
-
-        <Box sx={{ px: 3, pt: 2, pb: 1 }}>
+        <Box sx={{ px: 2, pt: 1.5, pb: 1 }}>
           <TextField
-            placeholder="Search hosts, or type user@host:port and press Enter to connect"
+            placeholder={
+              groupId
+                ? "Search this group, or type user@host:port and press Enter to connect"
+                : "Search hosts, or type user@host:port / ssh:// / telnet:// and press Enter to connect"
+            }
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => updateSearch(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") onSearchEnter();
-              if (e.key === "Escape") setSearch("");
+              if (e.key === "Escape") updateSearch("");
             }}
             slotProps={{
               input: {
@@ -292,7 +753,7 @@ export function HostsPage() {
                       <Chip
                         size="small"
                         icon={<PlayArrowRoundedIcon />}
-                        label={`Connect to ${quickTarget.address}`}
+                        label={`Connect to ${quickLabel(quickTarget)}`}
                         onClick={onSearchEnter}
                         color="primary"
                         sx={{ "& .MuiChip-icon": { fontSize: 16 } }}
@@ -302,56 +763,313 @@ export function HostsPage() {
               },
             }}
           />
-          <Box sx={{ display: "flex", alignItems: "center", mt: 1.5, minHeight: 28, gap: 1 }}>
-            {filtering ? (
-              <Typography variant="body2" color="text.secondary">
-                {visibleHosts.length} result{visibleHosts.length === 1 ? "" : "s"}
-              </Typography>
-            ) : (
-              <Breadcrumbs>
-                <Link
-                  component="button"
-                  underline={groupId ? "hover" : "none"}
-                  color={groupId ? "text.secondary" : "text.primary"}
-                  onClick={() => setGroupId(null)}
-                  sx={{ fontWeight: 600, fontSize: 14 }}
-                >
-                  All hosts
-                </Link>
-                {crumbs.map((g, i) => {
-                  const last = i === crumbs.length - 1;
-                  return (
-                    <Link
-                      key={g.id}
-                      component="button"
-                      underline={last ? "none" : "hover"}
-                      color={last ? "text.primary" : "text.secondary"}
-                      onClick={() => setGroupId(g.id)}
-                      sx={{ fontWeight: 600, fontSize: 14 }}
-                    >
-                      {g.label}
-                    </Link>
-                  );
-                })}
-              </Breadcrumbs>
-            )}
-            {tagFilter.map((t) => (
-              <Chip
-                key={t}
+        </Box>
+
+        <Toolbar
+          trailing={
+            <>
+              <ToggleButtonGroup
+                exclusive
+                value={view}
+                onChange={(_e, v: HostsView | null) => setView(v)}
+              >
+                <ToggleButton value="grid" aria-label="Grid view">
+                  <GridViewRoundedIcon sx={{ fontSize: 18 }} />
+                </ToggleButton>
+                <ToggleButton value="list" aria-label="List view">
+                  <ViewListRoundedIcon sx={{ fontSize: 18 }} />
+                </ToggleButton>
+              </ToggleButtonGroup>
+              <ToolIconButton
+                title="Filter by tag"
+                active={tagFilter.length > 0}
+                onClick={(e) => setTagAnchor(e.currentTarget)}
+              >
+                <SellOutlinedIcon fontSize="small" />
+              </ToolIconButton>
+              <Button
+                variant="text"
                 size="small"
-                label={t}
-                onDelete={() => setTagFilter((f) => f.filter((x) => x !== t))}
-              />
-            ))}
-            {tagFilter.length > 0 && (
-              <Button size="small" variant="text" onClick={() => setTagFilter([])}>
-                Clear
+                startIcon={<SwapVertRoundedIcon />}
+                onClick={(e) => setSortAnchor(e.currentTarget)}
+                sx={{ color: "text.secondary" }}
+              >
+                {sortLabel[sort]}
               </Button>
-            )}
-          </Box>
+            </>
+          }
+        >
+          <SplitButton
+            label="New host"
+            icon={<AddRoundedIcon />}
+            disabled={!vaultId}
+            onClick={() => {
+              if (!readOnly) setPanel({ mode: "new", groupId });
+            }}
+            items={[
+              {
+                label: "New host",
+                icon: <DnsRoundedIcon fontSize="small" />,
+                disabled: readOnly,
+                onClick: () => setPanel({ mode: "new", groupId }),
+              },
+              {
+                label: "New group",
+                icon: <CreateNewFolderRoundedIcon fontSize="small" />,
+                disabled: readOnly,
+                onClick: () => setPanel({ mode: "group", id: null, parentId: groupId }),
+              },
+              {
+                label: "Import…",
+                icon: <FileDownloadOutlinedIcon fontSize="small" />,
+                disabled: readOnly,
+                onClick: () => setImportOpen(true),
+              },
+              {
+                label: "Export CSV…",
+                icon: <FileUploadOutlinedIcon fontSize="small" />,
+                onClick: () => setExportOpen(true),
+              },
+              ...CLOUD_PROVIDERS.map((p, i) => ({
+                label: `${p.short} Integration`,
+                icon: <CloudOutlinedIcon fontSize="small" />,
+                disabled: readOnly,
+                divider: i === 0,
+                onClick: () => setCloudProvider(p.id),
+              })),
+            ]}
+          />
+          <Button
+            variant="tonal"
+            startIcon={<TerminalRoundedIcon />}
+            onClick={() => openTerminal({ kind: "local" })}
+          >
+            Terminal
+          </Button>
+          <Button variant="tonal" startIcon={<UsbRoundedIcon />} onClick={goToSerial}>
+            Serial
+          </Button>
+          {readOnly && <ViewOnlyChip sx={{ ml: 1 }} />}
+        </Toolbar>
+
+        <Box sx={{ px: 3, pt: 1.5, pb: 1 }}>
+          {knownSuggestions.length > 0 && (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1, flexWrap: "wrap" }}>
+              <Typography variant="caption" color="text.secondary">
+                Known hosts:
+              </Typography>
+              {knownSuggestions.map((s) => (
+                <Chip
+                  key={`${s.address}:${s.port ?? ""}`}
+                  size="small"
+                  variant="outlined"
+                  icon={<DnsRoundedIcon />}
+                  label={
+                    quickTarget
+                      ? quickLabel({
+                          ...quickTarget,
+                          address: s.address,
+                          port: s.port ?? quickTarget.port,
+                        })
+                      : s.address
+                  }
+                  onClick={() => connectKnown(s)}
+                  sx={{ "& .MuiChip-icon": { fontSize: 14 } }}
+                />
+              ))}
+            </Box>
+          )}
+          {selecting ? (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                minHeight: 28,
+                gap: 0.5,
+                pl: 1,
+                pr: 0.5,
+                py: 0.25,
+                borderRadius: 1.5,
+                bgcolor: "surface.high",
+              }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 600, mr: 1 }}>
+                {visibleChecked.size} selected
+              </Typography>
+              <Button
+                size="small"
+                variant="text"
+                color="inherit"
+                startIcon={<PlayArrowRoundedIcon />}
+                onClick={() => connectHosts(selectedHosts)}
+              >
+                Connect
+              </Button>
+              <Button
+                size="small"
+                variant="text"
+                color="inherit"
+                startIcon={<DriveFileMoveOutlinedIcon />}
+                disabled={readOnly}
+                onClick={() => setMoveCopy({ kind: "group", hosts: selectedHosts })}
+              >
+                Move to
+              </Button>
+              <Button
+                size="small"
+                variant="text"
+                color="inherit"
+                startIcon={<LibraryAddOutlinedIcon />}
+                onClick={(e) => setCopyAnchor(e.currentTarget)}
+              >
+                Copy to
+              </Button>
+              <Button
+                size="small"
+                variant="text"
+                color="inherit"
+                startIcon={<ContentCopyRoundedIcon />}
+                disabled={readOnly}
+                onClick={() => void duplicateHosts(selectedHosts)}
+              >
+                Duplicate
+              </Button>
+              <Button
+                size="small"
+                variant="text"
+                color="error"
+                startIcon={<DeleteOutlineRoundedIcon />}
+                disabled={readOnly}
+                onClick={() => setConfirmRemove(selectedHosts)}
+              >
+                Remove
+              </Button>
+              <Box sx={{ flex: 1 }} />
+              <Tooltip title="Select all (Ctrl+A)">
+                <IconButton
+                  size="small"
+                  aria-label="Select all"
+                  onClick={selectAll}
+                  disabled={visibleChecked.size === visibleHosts.length}
+                >
+                  <SelectAllRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Clear selection (Esc)">
+                <IconButton size="small" aria-label="Clear selection" onClick={clearSelection}>
+                  <CloseRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          ) : (
+            <Box sx={{ display: "flex", alignItems: "center", minHeight: 28, gap: 1 }}>
+              {filtering ? (
+                <>
+                  <Typography variant="body2" color="text.secondary">
+                    {visibleHosts.length} result{visibleHosts.length === 1 ? "" : "s"}
+                  </Typography>
+                  {subtree !== null && (
+                    <Chip
+                      size="small"
+                      variant={searchEverywhere ? "outlined" : "filled"}
+                      icon={<FolderOpenRoundedIcon />}
+                      label={
+                        searchEverywhere
+                          ? "Everywhere"
+                          : `In ${crumbs[crumbs.length - 1]?.label ?? "group"}`
+                      }
+                      onClick={() => setSearchEverywhere((v) => !v)}
+                      sx={{ "& .MuiChip-icon": { fontSize: 16 } }}
+                    />
+                  )}
+                </>
+              ) : (
+                <>
+                  {groupId && (
+                    <Tooltip title="Back (Backspace)">
+                      <IconButton
+                        size="small"
+                        aria-label="Back"
+                        onClick={goBack}
+                        sx={{ ml: -0.75 }}
+                      >
+                        <ArrowBackRoundedIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                  <Breadcrumbs>
+                    <Link
+                      component="button"
+                      underline={groupId ? "hover" : "none"}
+                      color={groupId ? "text.secondary" : "text.primary"}
+                      onClick={() => {
+                        clearSelection();
+                        setGroupId(null);
+                      }}
+                      sx={crumbSx(dnd.dropping === "root")}
+                      {...(groupId ? dnd.dropInto(null) : {})}
+                    >
+                      All hosts
+                    </Link>
+                    {crumbs.map((g, i) => {
+                      const last = i === crumbs.length - 1;
+                      return (
+                        <Link
+                          key={g.id}
+                          component="button"
+                          underline={last ? "none" : "hover"}
+                          color={last ? "text.primary" : "text.secondary"}
+                          onClick={() => {
+                            if (last) return openGroupPanel(g);
+                            clearSelection();
+                            setGroupId(g.id);
+                          }}
+                          onContextMenu={(e) => onGroupContext(g, e)}
+                          sx={crumbSx(dnd.dropping === g.id)}
+                          {...(last ? {} : dnd.dropInto(g.id))}
+                        >
+                          {g.label}
+                        </Link>
+                      );
+                    })}
+                  </Breadcrumbs>
+                </>
+              )}
+              {!filtering && crumbs.length > 0 && (
+                <Tooltip title="Group details">
+                  <IconButton
+                    size="small"
+                    aria-label="Group details"
+                    onClick={() => {
+                      const g = crumbs[crumbs.length - 1];
+                      if (g) openGroupPanel(g);
+                    }}
+                    sx={{ ml: -0.5 }}
+                  >
+                    <EditOutlinedIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Tooltip>
+              )}
+              {tagFilter.map((t) => (
+                <TagChip
+                  key={t}
+                  label={t}
+                  color={tagColors.get(t)}
+                  variant="filled"
+                  onDelete={() => updateTagFilter((f) => f.filter((x) => x !== t))}
+                />
+              ))}
+              {tagFilter.length > 0 && (
+                <Button size="small" variant="text" onClick={() => updateTagFilter(() => [])}>
+                  Clear
+                </Button>
+              )}
+            </Box>
+          )}
         </Box>
 
         <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 3, pb: 3 }}>
+          {!filtering && groupId === null && <TeamSteps />}
           {loading ? (
             <Loading />
           ) : loadError ? (
@@ -364,9 +1082,13 @@ export function HostsPage() {
               }
               description={
                 filtering
-                  ? quickTarget
-                    ? `Press Enter to connect to ${quickTarget.address}.`
-                    : "Try a different label, address or tag."
+                  ? liveLink
+                    ? "Press Enter to join this multiplayer session."
+                    : quickTarget
+                      ? `Press Enter to connect to ${quickLabel(quickTarget)}.`
+                      : scopedToGroup
+                        ? "Nothing in this group — switch to Everywhere to search the whole vault."
+                        : "Try a different label, address or tag."
                   : "Add your first server — everything is stored encrypted on this device."
               }
               action={
@@ -374,7 +1096,7 @@ export function HostsPage() {
                   <Button
                     variant="contained"
                     startIcon={<AddRoundedIcon />}
-                    onClick={() => setEditor({ mode: "new", groupId })}
+                    onClick={() => setPanel({ mode: "new", groupId })}
                   >
                     New host
                   </Button>
@@ -389,73 +1111,135 @@ export function HostsPage() {
         </Box>
       </Box>
 
-      {editor.mode !== "closed" && vaultId && (
+      {(panel.mode === "new" || panel.mode === "edit") && vaultId && (
         <HostEditPanel
-          key={editor.mode === "edit" ? editor.id : "new"}
+          key={panel.mode === "edit" ? panel.id : "new"}
           vaultId={vaultId}
-          hostId={editor.mode === "edit" ? editor.id : null}
-          initialGroupId={editor.mode === "new" ? editor.groupId : null}
-          onClose={() => setEditor({ mode: "closed" })}
+          hostId={panel.mode === "edit" ? panel.id : null}
+          initialGroupId={panel.mode === "new" ? panel.groupId : null}
+          onClose={() => setPanel({ mode: "closed" })}
+        />
+      )}
+
+      {panel.mode === "group" && vaultId && (
+        <GroupPanel
+          key={panel.id ?? "new-group"}
+          vaultId={vaultId}
+          groupId={panel.id}
+          initialParentId={panel.parentId}
+          onClose={() => setPanel({ mode: "closed" })}
+          onDeleted={(id, parentId) => {
+            if (groupId === id) setGroupId(parentId);
+          }}
+          onDuplicated={(g) => setPanel({ mode: "group", id: g.id, parentId: g.parentId })}
         />
       )}
 
       {vaultId && (
-        <GroupDialog
-          open={groupDialog.open}
+        <ImportDialog
+          open={importOpen}
           vaultId={vaultId}
-          parentId={groupId}
-          group={groupDialog.edit}
-          onClose={() => setGroupDialog({ open: false, edit: null })}
-          onDeleted={(id) => {
-            if (groupId === id) setGroupId(groupDialog.edit?.parentId ?? null);
-          }}
+          onClose={() => setImportOpen(false)}
+          onImported={clearSelection}
         />
       )}
 
-      <Popover
-        open={Boolean(tagAnchor)}
-        anchorEl={tagAnchor}
-        onClose={() => setTagAnchor(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
-      >
-        <Box sx={{ p: 1.5, maxWidth: 320 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-            Filter by tag
-          </Typography>
-          {(tags.data ?? []).length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              No tags yet — add them in the host editor.
-            </Typography>
-          ) : (
-            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75 }}>
-              {(tags.data ?? []).map((t) => {
-                const on = tagFilter.includes(t.label);
-                return (
-                  <Chip
-                    key={t.id}
-                    size="small"
-                    label={t.label}
-                    variant={on ? "filled" : "outlined"}
-                    color={on ? "primary" : "default"}
-                    onClick={() =>
-                      setTagFilter((f) => (on ? f.filter((x) => x !== t.label) : [...f, t.label]))
-                    }
-                  />
-                );
-              })}
-            </Box>
-          )}
-        </Box>
-      </Popover>
+      {vaultId && cloudProvider && (
+        <CloudImportDialog
+          open
+          vaultId={vaultId}
+          provider={cloudProvider}
+          onClose={() => setCloudProvider(null)}
+          onImported={clearSelection}
+        />
+      )}
 
-      <Popover
+      <ExportCsvDialog
+        open={exportOpen}
+        vault={vault.data ?? null}
+        hostCount={hosts.data?.length ?? 0}
+        onClose={() => setExportOpen(false)}
+      />
+
+      <TagManagerDialog open={tagsOpen} vaultId={vaultId} onClose={() => setTagsOpen(false)} />
+
+      {vaultId && (
+        <MoveCopyDialog
+          request={moveCopy}
+          vaultId={vaultId}
+          onClose={() => setMoveCopy(null)}
+          onDone={clearSelection}
+        />
+      )}
+
+      <ConfirmDialog
+        open={confirmRemove !== null}
+        title={
+          confirmRemove && confirmRemove.length > 1
+            ? `Remove ${confirmRemove.length} hosts?`
+            : `Remove ${confirmRemove?.[0]?.label ?? "host"}?`
+        }
+        danger
+        confirmLabel="Remove"
+        busy={deleteHosts.isPending}
+        onCancel={() => setConfirmRemove(null)}
+        onConfirm={() => confirmRemove && removeHosts(confirmRemove)}
+      >
+        {confirmRemove && confirmRemove.length > 1 ? (
+          <>
+            {confirmRemove.slice(0, 6).map((h) => (
+              <Typography key={h.id} variant="body2">
+                {h.label}
+              </Typography>
+            ))}
+            {confirmRemove.length > 6 && (
+              <Typography variant="body2" color="text.secondary">
+                …and {confirmRemove.length - 6} more
+              </Typography>
+            )}
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              Their inline credentials are removed too. Shared identities and keys stay in the
+              Keychain.
+            </Typography>
+          </>
+        ) : (
+          "The host and its inline credentials are removed. Shared identities and keys stay in the Keychain."
+        )}
+      </ConfirmDialog>
+
+      <DeleteGroupDialog
+        group={confirmGroup}
+        onClose={() => setConfirmGroup(null)}
+        onDeleted={(id, parentId) => {
+          if (groupId === id) setGroupId(parentId);
+          if (panel.mode === "group" && panel.id === id) setPanel({ mode: "closed" });
+        }}
+      />
+
+      <TagsPopover
+        anchor={tagAnchor}
+        vaultId={vaultId}
+        title="Filter by tag"
+        selected={tagFilterIds}
+        onToggle={(t, on) =>
+          updateTagFilter((f) => (on ? [...f, t.label] : f.filter((x) => x !== t.label)))
+        }
+        onRenamed={(t, label) => updateTagFilter((f) => f.map((x) => (x === t.label ? label : x)))}
+        onDeleted={(t) => updateTagFilter((f) => f.filter((x) => x !== t.label))}
+        onManage={() => {
+          setTagAnchor(null);
+          setTagsOpen(true);
+        }}
+        onClose={() => setTagAnchor(null)}
+      />
+
+      <Menu
         open={Boolean(sortAnchor)}
         anchorEl={sortAnchor}
         onClose={() => setSortAnchor(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
-        slotProps={{ paper: { sx: { p: 0.5, minWidth: 180 } } }}
+        slotProps={{ paper: { sx: { minWidth: 200 } } }}
       >
         {(Object.keys(sortLabel) as SortKey[]).map((k) => (
           <MenuItem
@@ -469,48 +1253,19 @@ export function HostsPage() {
             {sortLabel[k]}
           </MenuItem>
         ))}
-      </Popover>
+      </Menu>
+
+      <ActionMenu
+        anchor={copyAnchor}
+        onClose={() => setCopyAnchor(null)}
+        items={copyToItems(selectedHosts)}
+      />
 
       <ActionMenu
         anchor={null}
         position={ctx ? { left: ctx.left, top: ctx.top } : null}
         onClose={() => setCtx(null)}
-        items={
-          ctx
-            ? [
-                {
-                  label: "Connect",
-                  icon: <PlayArrowRoundedIcon fontSize="small" />,
-                  onClick: () => connectHost(ctx.host),
-                },
-                {
-                  label: "Open SFTP",
-                  icon: <FolderCopyRoundedIcon fontSize="small" />,
-                  onClick: () => sftpHost(ctx.host),
-                  disabled: ctx.host.protocol !== "ssh",
-                },
-                {
-                  label: "Edit",
-                  icon: <EditOutlinedIcon fontSize="small" />,
-                  onClick: () => openHost(ctx.host),
-                },
-                {
-                  label: "Copy address",
-                  icon: <ContentCopyRoundedIcon fontSize="small" />,
-                  onClick: () => {
-                    void navigator.clipboard.writeText(ctx.host.address);
-                  },
-                  divider: true,
-                },
-                {
-                  label: "Delete",
-                  icon: <DeleteOutlineRoundedIcon fontSize="small" />,
-                  onClick: () => removeHost(ctx.host),
-                  danger: true,
-                },
-              ]
-            : []
-        }
+        items={ctx ? (ctx.kind === "host" ? hostMenu(ctx.host) : groupMenu(ctx.group)) : []}
       />
     </Box>
   );

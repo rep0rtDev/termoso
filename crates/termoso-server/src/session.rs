@@ -63,28 +63,31 @@ pub async fn upsert_device(
     info: &DeviceInfo,
     ip: Option<&str>,
 ) -> ApiResult<(Uuid, bool)> {
+    // A client id owned by another user is not reused: each account gets its own device row.
+    let mut id = Uuid::new_v4();
     if let Some(cid) = info.client_device_id {
-        let existing: Option<(Uuid,)> =
-            sqlx::query_as("SELECT id FROM devices WHERE id = $1 AND user_id = $2")
-                .bind(cid)
-                .bind(user_id)
-                .fetch_optional(db)
-                .await?;
-        if let Some((id,)) = existing {
-            sqlx::query(
-                "UPDATE devices SET name = $2, platform = $3, app_version = $4, last_seen_at = now(), last_ip = $5 WHERE id = $1",
-            )
-            .bind(id)
-            .bind(&info.name)
-            .bind(platform_str(info.platform))
-            .bind(&info.app_version)
-            .bind(ip)
-            .execute(db)
+        let owner: Option<(Uuid,)> = sqlx::query_as("SELECT user_id FROM devices WHERE id = $1")
+            .bind(cid)
+            .fetch_optional(db)
             .await?;
-            return Ok((id, false));
+        match owner {
+            Some((owner,)) if owner == user_id => {
+                sqlx::query(
+                    "UPDATE devices SET name = $2, platform = $3, app_version = $4, last_seen_at = now(), last_ip = $5 WHERE id = $1",
+                )
+                .bind(cid)
+                .bind(&info.name)
+                .bind(platform_str(info.platform))
+                .bind(&info.app_version)
+                .bind(ip)
+                .execute(db)
+                .await?;
+                return Ok((cid, false));
+            }
+            Some(_) => {}
+            None => id = cid,
         }
     }
-    let id = info.client_device_id.unwrap_or_else(Uuid::new_v4);
     sqlx::query(
         "INSERT INTO devices (id, user_id, name, platform, app_version, last_ip) VALUES ($1, $2, $3, $4, $5, $6)",
     )
@@ -195,14 +198,23 @@ pub async fn touch(state: &AppState, info: &SessionInfo, ip: Option<&str>) -> Ap
 }
 
 pub async fn revoke_session(state: &AppState, session_id: Uuid) -> ApiResult<()> {
-    let row: Option<(String, Uuid)> = sqlx::query_as(
-        "UPDATE sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL RETURNING token_hash, user_id",
+    let row: Option<(String, Uuid, Uuid)> = sqlx::query_as(
+        "UPDATE sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL RETURNING token_hash, user_id, device_id",
     )
     .bind(session_id)
     .fetch_optional(&state.db)
     .await?;
-    if let Some((h, user_id)) = row {
+    if let Some((h, user_id, device_id)) = row {
         state.cache.del(&cache_key(&h)).await?;
+        let (live,): (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM sessions WHERE device_id = $1 AND revoked_at IS NULL AND expires_at > now()",
+        )
+        .bind(device_id)
+        .fetch_one(&state.db)
+        .await?;
+        if live == 0 {
+            crate::routes::sshid::forget_device(state, device_id).await?;
+        }
         events::publish(
             state,
             events::Event::SessionRevoked {
@@ -224,6 +236,7 @@ pub async fn revoke_device(state: &AppState, user_id: Uuid, device_id: Uuid) -> 
     .bind(user_id)
     .fetch_all(&state.db)
     .await?;
+    crate::routes::sshid::forget_device(state, device_id).await?;
     for (session_id, h) in rows {
         state.cache.del(&cache_key(&h)).await?;
         events::publish(
