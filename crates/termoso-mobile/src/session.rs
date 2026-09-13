@@ -407,7 +407,8 @@ impl SshSession {
         self.inner.prompts.answer(prompt_id, answer)
     }
 
-    pub fn close(&self) {
+    /// Tear the connection down; the object stays usable for `state()`/`snapshot()`.
+    pub fn disconnect(&self) {
         self.inner.prompts.cancel_all();
         self.inner.closed.notify_waiters();
         self.inner.closed.notify_one();
@@ -427,7 +428,7 @@ impl SshSession {
 
 impl Drop for SshSession {
     fn drop(&mut self) {
-        self.close();
+        self.disconnect();
     }
 }
 

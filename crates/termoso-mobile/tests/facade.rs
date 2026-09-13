@@ -668,7 +668,7 @@ async fn saved_host_keyboard_interactive_and_rejected_key() {
     );
 
     // Local close.
-    s.close();
+    s.disconnect();
     rec.wait_state(|s| matches!(s, SessionState::Closed { .. }));
     assert_eq!(app.history(10).unwrap().len(), 2);
     let h = app.host(host.id).unwrap();
