@@ -102,13 +102,20 @@ export function protocolLink(h: HostCard, protocol: HostProtocol = h.protocol): 
 export type LinkTarget =
   | { kind: "host"; hostId: Uuid }
   | { kind: "quick"; target: QuickTarget }
+  /** Multiplayer invitation (`termoso://join/<session>…#<secret>`). */
+  | { kind: "live"; link: string }
   | { kind: "unsupported"; url: string };
+
+/** Is this a multiplayer invitation link? */
+export const isLiveLink = (s: string) =>
+  /^termoso:\/\/join\/[0-9a-f-]{36}(?:[/?].*)?#[A-Za-z0-9_-]{40,}$/i.test(s.trim());
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Resolve an incoming `termoso://`, `ssh://` or `telnet://` URL. */
 export function parseLink(url: string): LinkTarget {
   const s = url.trim();
+  if (isLiveLink(s)) return { kind: "live", link: s };
   const m = /^termoso:\/\/host\/([^/?#]+)\/?(?:[?#].*)?$/i.exec(s);
   if (m?.[1]) {
     const id = decodeURIComponent(m[1]);

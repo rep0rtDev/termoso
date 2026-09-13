@@ -15,6 +15,7 @@ import { PromptHost } from "@/prompts/PromptHost";
 import { TerminalWorkspace } from "@/terminal/TerminalWorkspace";
 import { TerminalOverlays } from "@/terminal/TerminalOverlays";
 import { startTerminalEvents, useTerminal } from "@/terminal/store";
+import { startMultiplayerEvents } from "@/terminal/multiplayer";
 import { startWorkspaces } from "@/terminal/workspaces";
 import { RestoreBanner } from "@/terminal/RestoreBanner";
 import { startSftpEvents } from "@/sftp/store";
@@ -46,6 +47,7 @@ export function AppShell() {
   useSyncNotices();
   useEffect(() => {
     startTerminalEvents(queryClient);
+    startMultiplayerEvents();
     startWorkspaces();
     startSftpEvents(queryClient);
     startUpdateEvents();

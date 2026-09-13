@@ -11,6 +11,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use termoso_core::error::CoreError;
 use termoso_core::hostkey::KnownHosts;
+use termoso_core::live::Publisher;
 use termoso_core::model::{Entity, Identity, ResolvedHost, Snippet, SshConfig};
 use termoso_core::pty::{LocalShellOptions, LocalTerminal};
 use termoso_core::serial::SerialTerminal;
@@ -196,6 +197,8 @@ pub enum OpenTarget {
     },
     /// Shell on this machine.
     Local,
+    /// Someone else's terminal, via a multiplayer link.
+    Live { link: String },
 }
 
 /// Public view of a session.
@@ -281,6 +284,10 @@ struct Live {
     #[allow(dead_code)]
     jumps: Vec<Arc<SshClient>>,
     output: Arc<Mutex<Channel<InvokeResponseBody>>>,
+    /// Multiplayer mirror of the output stream while the tab is shared.
+    tap: Arc<Mutex<Option<Publisher>>>,
+    /// Last size the UI asked for.
+    size: Mutex<TermSize>,
     pump: JoinHandle<()>,
     cancel: CancellationToken,
     history_id: Option<Uuid>,
@@ -345,6 +352,33 @@ impl Sessions {
             .ok_or_else(|| DesktopError::not_found(format!("session {id}")))?;
         *l.output.lock().expect("output poisoned") = channel;
         Ok(())
+    }
+
+    /// Start (or stop, with `None`) mirroring the output stream of a session.
+    pub fn set_tap(&self, id: Uuid, tap: Option<Publisher>) -> Result<()> {
+        let live = self.live.lock().expect("sessions poisoned");
+        let l = live
+            .get(&id)
+            .ok_or_else(|| DesktopError::not_found(format!("session {id}")))?;
+        *l.tap.lock().expect("tap poisoned") = tap;
+        Ok(())
+    }
+
+    /// Remember the size the UI asked for.
+    pub fn set_size(&self, id: Uuid, size: TermSize) {
+        if let Some(l) = self.live.lock().expect("sessions poisoned").get(&id) {
+            *l.size.lock().expect("size poisoned") = size;
+        }
+    }
+
+    /// Last size the UI asked for.
+    pub fn size(&self, id: Uuid) -> Result<TermSize> {
+        self.live
+            .lock()
+            .expect("sessions poisoned")
+            .get(&id)
+            .map(|l| *l.size.lock().expect("size poisoned"))
+            .ok_or_else(|| DesktopError::not_found(format!("session {id}")))
     }
 
     /// Cancel a connection attempt or close a live session.
@@ -438,25 +472,36 @@ pub async fn open<R: Runtime>(
         color_scheme: opened.color_scheme,
         shell: opened.shell,
     };
-    let history_id = state
-        .store
-        .record_connection(&ConnectionHistory {
-            host_id: info.host_id,
-            label: info.title.clone(),
-            target: info.target.clone(),
-            protocol: info.protocol.clone(),
-            duration_secs: None,
-            error: None,
-        })
-        .ok();
-    let recorder = start_recording(&state, &info, opened.vault_id, size);
+    let viewer = info.protocol == crate::multiplayer::PROTOCOL;
+    let history_id = if viewer {
+        None
+    } else {
+        state
+            .store
+            .record_connection(&ConnectionHistory {
+                host_id: info.host_id,
+                label: info.title.clone(),
+                target: info.target.clone(),
+                protocol: info.protocol.clone(),
+                duration_secs: None,
+                error: None,
+            })
+            .ok()
+    };
+    let recorder = if viewer {
+        None
+    } else {
+        start_recording(&state, &info, opened.vault_id, size)
+    };
 
     let output = Arc::new(Mutex::new(output));
+    let tap: Arc<Mutex<Option<Publisher>>> = Arc::default();
     let pump = tokio::spawn(pump(
         app.clone(),
         id,
         opened.events,
         output.clone(),
+        tap.clone(),
         recorder.clone(),
     ));
     let live = Live {
@@ -465,6 +510,8 @@ pub async fn open<R: Runtime>(
         client: opened.client.clone(),
         jumps: opened.jumps,
         output,
+        tap,
+        size: Mutex::new(size),
         pump,
         cancel,
         history_id,
@@ -565,6 +612,7 @@ fn startup_script(state: &AppState, resolved: &ResolvedHost) -> String {
 pub async fn close<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
     let state = app.state::<AppState>();
     state.prompts.cancel_session(id);
+    state.multiplayer.detach(id);
     if let Some(live) = state.sessions.close(id) {
         live.cancel.cancel();
         let _ = live.term.close().await;
@@ -601,6 +649,7 @@ async fn pump<R: Runtime>(
     id: Uuid,
     mut events: TermEvents,
     output: Arc<Mutex<Channel<InvokeResponseBody>>>,
+    tap: Arc<Mutex<Option<Publisher>>>,
     recorder: Option<Arc<Recorder>>,
 ) {
     let mut error: Option<String> = None;
@@ -609,6 +658,9 @@ async fn pump<R: Runtime>(
             TermEvent::Output(bytes) => {
                 if let Some(rec) = &recorder {
                     rec.append(&bytes);
+                }
+                if let Some(p) = tap.lock().expect("tap poisoned").as_ref() {
+                    p.publish(bytes.clone());
                 }
                 let ch = output.lock().expect("output poisoned").clone();
                 if let Err(e) = ch.send(InvokeResponseBody::Raw(bytes.to_vec())) {
@@ -629,6 +681,7 @@ async fn pump<R: Runtime>(
         }
     }
     let state = app.state::<AppState>();
+    state.multiplayer.detach(id);
     if let Some(live) = state.sessions.close(id) {
         if let Some(hid) = live.history_id {
             finish_history(&state, hid, &live.info, error);
@@ -640,21 +693,21 @@ async fn pump<R: Runtime>(
 
 const STARTUP_SNIPPET_DELAY: Duration = Duration::from_millis(400);
 
-struct Opened {
-    protocol: &'static str,
-    title: String,
-    target: String,
-    host_id: Option<Uuid>,
+pub(crate) struct Opened {
+    pub(crate) protocol: &'static str,
+    pub(crate) title: String,
+    pub(crate) target: String,
+    pub(crate) host_id: Option<Uuid>,
     /// Vault of the host (recordings are stored alongside it).
-    vault_id: Option<Uuid>,
-    term: SharedTerminal,
-    events: TermEvents,
-    client: Option<Arc<SshClient>>,
-    jumps: Vec<Arc<SshClient>>,
+    pub(crate) vault_id: Option<Uuid>,
+    pub(crate) term: SharedTerminal,
+    pub(crate) events: TermEvents,
+    pub(crate) client: Option<Arc<SshClient>>,
+    pub(crate) jumps: Vec<Arc<SshClient>>,
     /// Script typed into the shell right after connecting.
-    startup: String,
-    color_scheme: Option<String>,
-    shell: Option<String>,
+    pub(crate) startup: String,
+    pub(crate) color_scheme: Option<String>,
+    pub(crate) shell: Option<String>,
 }
 
 async fn connect<R: Runtime>(
@@ -667,6 +720,7 @@ async fn connect<R: Runtime>(
     let settings = state.settings().unwrap_or_default();
     let term_type = settings.term_type.as_str();
     match target {
+        OpenTarget::Live { link } => crate::multiplayer::join(app, id, link).await,
         OpenTarget::Local => {
             let argv = local_shell_argv(&settings.local_shell);
             let shell = local_shell_name(&argv);

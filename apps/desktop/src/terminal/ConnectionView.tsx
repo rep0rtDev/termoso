@@ -69,6 +69,8 @@ function paneProtocol(pane: Pane, host: HostCard | undefined): SessionInfo["prot
       return pane.target.protocol ?? "ssh";
     case "host":
       return pane.target.protocol ?? host?.protocol ?? "ssh";
+    case "live":
+      return "multiplayer";
   }
 }
 

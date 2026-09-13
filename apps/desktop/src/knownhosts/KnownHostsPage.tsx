@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   Button,
   Dialog,
@@ -222,9 +223,7 @@ export function KnownHostsPage() {
                         title="Copy public key line"
                         onClick={() =>
                           op.mutate(async () => {
-                            await navigator.clipboard.writeText(
-                              `${h.hostname} ${h.keyType} ${h.publicKey}`,
-                            );
+                            await copyToClipboard(`${h.hostname} ${h.keyType} ${h.publicKey}`);
                             return "Copied";
                           })
                         }

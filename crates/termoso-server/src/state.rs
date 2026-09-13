@@ -37,6 +37,8 @@ pub struct Inner {
     pub sso: SsoRegistry,
     /// Local fan-out of bus events to WebSocket connections on this instance.
     pub events: broadcast::Sender<Event>,
+    /// Local fan-out of multiplayer relay frames (see `live::bus`).
+    pub live: broadcast::Sender<crate::live::BusFrame>,
     pub started_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -104,6 +106,7 @@ impl Inner {
             master_key,
             sso,
             events: broadcast::channel(4096).0,
+            live: broadcast::channel(4096).0,
             started_at: chrono::Utc::now(),
         }))
     }

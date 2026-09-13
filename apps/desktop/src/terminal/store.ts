@@ -3,6 +3,7 @@
 // auth, prompts, history) is made in Rust — this file only moves bytes
 // between the IPC channel and xterm.js.
 
+import { copyToClipboard } from "@/lib/clipboard";
 import { Terminal, type IBuffer, type IDisposable } from "@xterm/xterm";
 import type { QueryClient } from "@tanstack/react-query";
 import { FitAddon } from "@xterm/addon-fit";
@@ -11,10 +12,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import {
-  readText as readNativeClipboard,
-  writeText as writeNativeClipboard,
-} from "@tauri-apps/plugin-clipboard-manager";
+import { readText as readNativeClipboard } from "@tauri-apps/plugin-clipboard-manager";
 import * as ipc from "@/ipc/commands";
 import type {
   ConnectPhase,
@@ -31,6 +29,7 @@ import type {
 import { errorMessage } from "@/ipc/types";
 import { keys } from "@/ipc/hooks";
 import { createStore, omit, useStore } from "@/lib/store";
+import { dismissControlHint, viewerJoined } from "./multiplayer";
 import { commandForEvent, tabDigit } from "@/app/shortcuts";
 import { terminalFontStack } from "./fonts";
 import {
@@ -276,6 +275,8 @@ interface Runtime {
   pathSeq: number;
   /** Label of the saved identity with a stored password, offered on password prompts. */
   identityLabel: string | null;
+  /** Multiplayer viewer: the grid follows the host's size instead of the container. */
+  fixedSize: { cols: number; rows: number } | null;
   /**
    * Shells without OSC 133 (ash, dash, tcsh, PowerShell…): the cursor position
    * where the user started typing after the last unsolicited output. Cleared
@@ -441,13 +442,9 @@ export function selectAll(paneId: Uuid) {
 // Native clipboard first: WebKitGTK only allows `navigator.clipboard.readText()` inside a paste event.
 export async function copyText(text: string) {
   try {
-    await writeNativeClipboard(text);
+    await copyToClipboard(text);
   } catch {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      // clipboard unavailable; selection stays in xterm
-    }
+    // clipboard unavailable; selection stays in xterm
   }
 }
 
@@ -588,6 +585,7 @@ function createRuntime(paneId: Uuid): Runtime {
   const disposables: IDisposable[] = [];
   disposables.push(
     term.onData((data) => {
+      dismissControlHint();
       void sendInput(paneId, data);
     }),
     term.onBinary((data) => {
@@ -680,6 +678,7 @@ function createRuntime(paneId: Uuid): Runtime {
     mutedLine: null,
     pathSeq: 0,
     identityLabel: null,
+    fixedSize: null,
     typedStart: null,
     lastInputAt: 0,
     highlighter: currentSettings?.keywordHighlight === false ? null : new KeywordHighlighter(),
@@ -729,11 +728,20 @@ export function fitPane(paneId: Uuid) {
   const { width, height } = rt.container.getBoundingClientRect();
   if (width < 20 || height < 20) return;
   try {
-    rt.fit.fit();
+    if (rt.fixedSize) rt.term.resize(rt.fixedSize.cols, rt.fixedSize.rows);
+    else rt.fit.fit();
     requestAnimationFrame(() => rt.term.refresh(0, rt.term.rows - 1));
   } catch {
     // container not laid out yet
   }
+}
+
+/** Pin (or release, with `null`) the grid size of a pane — used by multiplayer viewers. */
+export function setPaneFixedSize(paneId: Uuid, size: { cols: number; rows: number } | null) {
+  const rt = runtimes.get(paneId);
+  if (!rt) return;
+  rt.fixedSize = size;
+  fitPane(paneId);
 }
 
 export function focusPane(paneId: Uuid) {
@@ -764,7 +772,7 @@ function disposeRuntime(paneId: Uuid) {
   rt.container.remove();
 }
 
-function writeSystemLine(paneId: Uuid, text: string, color = "90") {
+export function writeSystemLine(paneId: Uuid, text: string, color = "90") {
   const rt = runtimes.get(paneId);
   rt?.term.write(`\r\n\x1b[${color}m${text}\x1b[0m\r\n`);
 }
@@ -1301,6 +1309,8 @@ function describe(target: OpenTarget): { title: string; subtitle: string } {
       return { title: target.path.replace(/^\/dev\//, ""), subtitle: target.path };
     case "host":
       return { title: "Connecting…", subtitle: "" };
+    case "live":
+      return { title: "Multiplayer", subtitle: "joining…" };
   }
 }
 
@@ -1334,6 +1344,10 @@ function startSession(paneId: Uuid, target: OpenTarget) {
       retries.delete(paneId);
       appendLog(paneId, "Session opened");
       applyPaneLook(paneId);
+      if (info.protocol === "multiplayer") {
+        void viewerJoined(paneId);
+        return;
+      }
       const t = runtimes.get(paneId)?.term;
       if (t) ipc.terminalResize(paneId, t.cols, t.rows).catch(() => undefined);
       if (info.shell) scheduleIntegration(paneId, info.shell);

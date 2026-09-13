@@ -13,6 +13,7 @@ use crate::account::AccountRuntime;
 use crate::edits::Edits;
 use crate::error::{DesktopError, Result};
 use crate::forwarding::Forwards;
+use crate::multiplayer::Multiplayer;
 use crate::prompts::PromptBroker;
 use crate::sessions::Sessions;
 use crate::sftp::SftpSessions;
@@ -33,6 +34,7 @@ pub struct AppState {
     pub forwards: Forwards,
     pub prompts: PromptBroker,
     pub account: AccountRuntime,
+    pub multiplayer: Multiplayer,
 }
 
 impl AppState {
@@ -56,6 +58,7 @@ impl AppState {
             forwards: Forwards::default(),
             prompts: PromptBroker::default(),
             account: AccountRuntime::default(),
+            multiplayer: Multiplayer::default(),
         })
     }
 

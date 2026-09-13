@@ -23,6 +23,7 @@ use termoso_proto::auth::{
     RegisterFinishRequest, RegisterStartRequest, RegisterStartResponse, WebauthnChallengeRequest,
 };
 use termoso_proto::error::ApiError;
+use termoso_proto::live::{CreateLiveSessionRequest, LiveSession, LiveSessionList};
 use termoso_proto::logs::{
     CreateLogRequest, CreateLogResponse, DownloadLogResponse, LogListResponse, SessionLog,
     UpdateLogRequest,
@@ -123,7 +124,16 @@ impl ApiClient {
 
     /// WebSocket endpoint (`ws[s]://…/api/v1/ws`).
     pub fn ws_url(&self) -> Result<Url> {
-        let mut u = self.api_url("ws");
+        self.ws_url_for("ws")
+    }
+
+    /// Multiplayer relay endpoint (`ws[s]://…/api/v1/live/{id}/ws`).
+    pub fn live_ws_url(&self, id: Uuid) -> Result<Url> {
+        self.ws_url_for(&format!("live/{id}/ws"))
+    }
+
+    fn ws_url_for(&self, path: &str) -> Result<Url> {
+        let mut u = self.api_url(path);
         let scheme = match u.scheme() {
             "https" => "wss",
             "http" => "ws",
@@ -534,6 +544,25 @@ impl ApiClient {
     /// `DELETE /logs/{id}`.
     pub async fn delete_log(&self, id: Uuid) -> Result<()> {
         self.delete(&format!("logs/{id}")).await
+    }
+
+    // ---- multiplayer ------------------------------------------------------
+
+    /// `POST /live` — register a live terminal session. The server only ever
+    /// sees the join token (and stores its hash), never the link secret.
+    pub async fn create_live_session(&self, join_token: String) -> Result<LiveSession> {
+        self.post("live", &CreateLiveSessionRequest { join_token })
+            .await
+    }
+
+    /// `GET /live` — sessions this account is hosting.
+    pub async fn live_sessions(&self) -> Result<LiveSessionList> {
+        self.get("live").await
+    }
+
+    /// `POST /live/{id}/stop`.
+    pub async fn stop_live_session(&self, id: Uuid) -> Result<()> {
+        self.post_empty(&format!("live/{id}/stop"), &()).await
     }
 
     /// PUT an already-encrypted log body to the presigned URL from

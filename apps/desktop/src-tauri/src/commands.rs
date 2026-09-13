@@ -462,11 +462,13 @@ pub async fn terminal_resize(
     rows: u16,
 ) -> Result<()> {
     let term = state.sessions.terminal(id)?;
-    term.resize(TermSize {
+    let size = TermSize {
         cols: cols.max(2),
         rows: rows.max(1),
-    })
-    .await?;
+    };
+    term.resize(size).await?;
+    state.sessions.set_size(id, size);
+    state.multiplayer.resized(id, size);
     Ok(())
 }
 

@@ -7,6 +7,7 @@ import {
   type DragEvent,
   type MouseEvent,
 } from "react";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   Box,
   Button,
@@ -955,7 +956,7 @@ export function FilePane(props: Props) {
         {menuSingle && (
           <MenuItem
             onClick={() => {
-              void navigator.clipboard.writeText(menuSingle.path).catch(() => undefined);
+              void copyToClipboard(menuSingle.path).catch(() => undefined);
             }}
           >
             <ListItemIcon>

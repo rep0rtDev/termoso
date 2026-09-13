@@ -26,6 +26,11 @@ async function openLink(url: string) {
     toast(`Connecting to ${quickLabel(link.target)}`, "info");
     return;
   }
+  if (link.kind === "live") {
+    openTerminal({ kind: "live", link: link.link });
+    toast("Joining multiplayer session", "info");
+    return;
+  }
   try {
     const host = (await hostsList(null)).find((h) => h.id === link.hostId);
     if (!host) {
