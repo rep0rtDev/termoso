@@ -16,6 +16,7 @@ tauri-build = { version = "2.6", features = [] }
 
 [dependencies]
 termoso-core = { path = "../../../crates/termoso-core" }
+termoso-client = { workspace = true, features = ["fido2"] }
 termoso-crypto = { workspace = true }
 termoso-proto = { workspace = true }
 
