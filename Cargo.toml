@@ -4,6 +4,9 @@ members = [
     "crates/termoso-crypto",
     "crates/termoso-proto",
     "crates/termoso-core",
+    "crates/termoso-client",
+    "crates/termoso-mobile",
+    "crates/termoso-mobile/uniffi-bindgen",
     "crates/termoso-server",
     "crates/termoso-wasm",
     "apps/desktop/src-tauri",
@@ -21,7 +24,12 @@ authors = ["Termoso contributors"]
 [workspace.dependencies]
 termoso-crypto = { path = "crates/termoso-crypto" }
 termoso-proto = { path = "crates/termoso-proto" }
-termoso-core = { path = "crates/termoso-core" }
+termoso-core = { path = "crates/termoso-core", default-features = false }
+termoso-client = { path = "crates/termoso-client", default-features = false }
+
+# mobile bindings
+uniffi = { version = "0.32.0", default-features = false }
+alacritty_terminal = "0.26"
 
 # async / web
 tokio = { version = "1", features = ["full"] }

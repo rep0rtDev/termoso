@@ -15,8 +15,7 @@ use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 use termoso_core::cloud::{
-    AddressType, AwsService, CloudClient, CloudConfig, CloudError, CloudInstance, CloudProvider,
-    Endpoints,
+    AddressType, AwsService, CloudClient, CloudConfig, CloudInstance, CloudProvider, Endpoints,
 };
 use termoso_core::model::{Entity, Group, Host, Tag};
 use termoso_core::store::Store;
@@ -110,12 +109,6 @@ pub fn endpoints() -> Endpoints {
             }
         },
         _ => Endpoints::default(),
-    }
-}
-
-impl From<CloudError> for DesktopError {
-    fn from(e: CloudError) -> Self {
-        DesktopError::new(e.kind(), e.to_string())
     }
 }
 
@@ -384,6 +377,7 @@ fn refresh(store: &Store, h: &Entity<Host>, inst: &CloudInstance, address: &str)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use termoso_core::cloud::CloudError;
     use termoso_core::model::{Identity, SshConfig};
     use termoso_core::termoso_crypto::keys::SymmetricKey;
 

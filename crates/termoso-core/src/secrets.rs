@@ -15,6 +15,7 @@ use termoso_crypto::keys::SymmetricKey;
 
 use crate::error::{CoreError, Result};
 
+#[cfg(feature = "keychain")]
 const SERVICE: &str = "termoso";
 const FILE_NAME: &str = "master.key";
 

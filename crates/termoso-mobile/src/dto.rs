@@ -1,0 +1,550 @@
+//! Records crossing the FFI. Ids are UUID strings, timestamps are Unix
+//! milliseconds. No DTO here carries a password, passphrase or private key:
+//! those stay in the encrypted store and only travel in the explicit drafts
+//! the UI submits.
+
+use chrono::{DateTime, Utc};
+use termoso_client::{hosts, keychain};
+use termoso_core::store::{LocalVault, LocalVaultKind};
+use termoso_proto::vault::VaultRole;
+use uuid::Uuid;
+
+use crate::error::{MobileError, Result};
+
+pub(crate) fn parse_id(s: &str) -> Result<Uuid> {
+    Uuid::parse_str(s.trim()).map_err(MobileError::from)
+}
+
+pub(crate) fn parse_opt_id(s: &Option<String>) -> Result<Option<Uuid>> {
+    match s.as_deref().map(str::trim) {
+        None | Some("") => Ok(None),
+        Some(v) => Ok(Some(parse_id(v)?)),
+    }
+}
+
+pub(crate) fn parse_ids(ids: &[String]) -> Result<Vec<Uuid>> {
+    ids.iter().map(|s| parse_id(s)).collect()
+}
+
+pub(crate) fn millis(t: DateTime<Utc>) -> i64 {
+    t.timestamp_millis()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum VaultKind {
+    Local,
+    Personal,
+    Team,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum VaultAccess {
+    View,
+    Edit,
+    Manage,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct VaultInfo {
+    pub id: String,
+    pub kind: VaultKind,
+    pub name: String,
+    pub team_id: Option<String>,
+    pub access: VaultAccess,
+    pub locked: bool,
+}
+
+impl From<LocalVault> for VaultInfo {
+    fn from(v: LocalVault) -> Self {
+        Self {
+            id: v.id.to_string(),
+            kind: match v.kind {
+                LocalVaultKind::Local => VaultKind::Local,
+                LocalVaultKind::Personal => VaultKind::Personal,
+                LocalVaultKind::Team => VaultKind::Team,
+            },
+            name: v.name,
+            team_id: v.team_id.map(|t| t.to_string()),
+            access: match v.role {
+                VaultRole::Viewer => VaultAccess::View,
+                VaultRole::Editor => VaultAccess::Edit,
+                VaultRole::Manager => VaultAccess::Manage,
+            },
+            locked: !v.unlocked,
+        }
+    }
+}
+
+/// One row of the hosts list. Effective values already include group
+/// inheritance.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct HostItem {
+    pub id: String,
+    pub vault_id: String,
+    pub label: String,
+    pub address: String,
+    pub group_id: Option<String>,
+    pub group_path: Vec<String>,
+    /// `ssh` | `telnet`.
+    pub protocol: String,
+    pub username: String,
+    pub port: u16,
+    pub tags: Vec<String>,
+    pub os_name: Option<String>,
+    pub icon: Option<String>,
+    pub notes: String,
+    pub updated_at: i64,
+    pub last_connected: Option<i64>,
+    pub dirty: bool,
+}
+
+impl From<hosts::HostCard> for HostItem {
+    fn from(c: hosts::HostCard) -> Self {
+        Self {
+            id: c.id.to_string(),
+            vault_id: c.vault_id.to_string(),
+            label: c.label,
+            address: c.address,
+            group_id: c.group_id.map(|g| g.to_string()),
+            group_path: c.group_path,
+            protocol: c.protocol,
+            username: c.username,
+            port: c.port,
+            tags: c.tags,
+            os_name: c.os_name,
+            icon: c.icon,
+            notes: c.notes,
+            updated_at: millis(c.updated_at),
+            last_connected: c.last_connected.map(millis),
+            dirty: c.dirty,
+        }
+    }
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct EnvVar {
+    pub name: String,
+    pub value: String,
+}
+
+/// What the host editor edits. `None` for optional fields means "inherit /
+/// unset". Fields the mobile editor does not expose (proxy, jump chain,
+/// Telnet section, Mosh, SSH ID, colour scheme…) are preserved on save.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct HostDraft {
+    pub id: Option<String>,
+    pub vault_id: String,
+    pub label: String,
+    pub address: String,
+    pub group_id: Option<String>,
+    pub port: Option<u16>,
+    pub username: String,
+    /// `None` keeps the stored password when editing; `Some("")` clears it.
+    pub password: Option<String>,
+    pub ssh_key_id: Option<String>,
+    /// Use an existing identity instead of the inline username/password/key.
+    pub identity_id: Option<String>,
+    pub tag_ids: Vec<String>,
+    pub notes: String,
+    pub os_name: Option<String>,
+    pub icon: Option<String>,
+    /// `auto` | `4` | `6`.
+    pub ip_version: String,
+    pub agent_forwarding: bool,
+    pub env_variables: Vec<EnvVar>,
+    pub keep_alive_interval: Option<u32>,
+    pub timeout: Option<u32>,
+    /// Set by the core when the stored inline identity has a password.
+    pub has_password: bool,
+}
+
+impl HostDraft {
+    /// Empty draft for a new host in `vault_id`.
+    pub fn blank(vault_id: Uuid, group_id: Option<Uuid>) -> Self {
+        Self {
+            id: None,
+            vault_id: vault_id.to_string(),
+            label: String::new(),
+            address: String::new(),
+            group_id: group_id.map(|g| g.to_string()),
+            port: None,
+            username: String::new(),
+            password: None,
+            ssh_key_id: None,
+            identity_id: None,
+            tag_ids: Vec::new(),
+            notes: String::new(),
+            os_name: None,
+            icon: None,
+            ip_version: "auto".into(),
+            agent_forwarding: false,
+            env_variables: Vec::new(),
+            keep_alive_interval: None,
+            timeout: None,
+            has_password: false,
+        }
+    }
+}
+
+impl From<hosts::HostForm> for HostDraft {
+    fn from(f: hosts::HostForm) -> Self {
+        Self {
+            id: f.id.map(|i| i.to_string()),
+            vault_id: f.vault_id.to_string(),
+            label: f.label,
+            address: f.address,
+            group_id: f.group_id.map(|g| g.to_string()),
+            port: f.port,
+            username: f.username,
+            password: None,
+            ssh_key_id: f.ssh_key_id.map(|k| k.to_string()),
+            identity_id: f.identity_id.map(|i| i.to_string()),
+            tag_ids: f.tag_ids.iter().map(ToString::to_string).collect(),
+            notes: f.notes,
+            os_name: f.os_name,
+            icon: f.icon,
+            ip_version: f.ip_version,
+            agent_forwarding: f.agent_forwarding,
+            env_variables: f
+                .env_variables
+                .into_iter()
+                .map(|(name, value)| EnvVar { name, value })
+                .collect(),
+            keep_alive_interval: f.keep_alive_interval,
+            timeout: f.timeout,
+            has_password: f.has_password,
+        }
+    }
+}
+
+impl HostDraft {
+    /// Overlay this draft on `base` (the stored form for edits, a fresh SSH
+    /// form for new hosts) so untouched sections survive the round trip.
+    pub(crate) fn apply(self, mut base: hosts::HostForm) -> Result<hosts::HostForm> {
+        base.id = parse_opt_id(&self.id)?;
+        base.vault_id = parse_id(&self.vault_id)?;
+        base.label = self.label;
+        base.address = self.address;
+        base.group_id = parse_opt_id(&self.group_id)?;
+        base.ssh = true;
+        base.port = self.port;
+        base.username = self.username;
+        base.password = self.password;
+        base.ssh_key_id = parse_opt_id(&self.ssh_key_id)?;
+        base.identity_id = parse_opt_id(&self.identity_id)?;
+        base.tag_ids = parse_ids(&self.tag_ids)?;
+        base.notes = self.notes;
+        base.os_name = self.os_name;
+        base.icon = self.icon;
+        base.ip_version = self.ip_version;
+        base.agent_forwarding = self.agent_forwarding;
+        base.env_variables = self
+            .env_variables
+            .into_iter()
+            .map(|e| (e.name, e.value))
+            .collect();
+        base.keep_alive_interval = self.keep_alive_interval;
+        base.timeout = self.timeout;
+        Ok(base)
+    }
+}
+
+pub(crate) fn blank_form(vault_id: Uuid) -> hosts::HostForm {
+    hosts::HostForm {
+        id: None,
+        vault_id,
+        label: String::new(),
+        address: String::new(),
+        group_id: None,
+        ssh: true,
+        port: None,
+        username: String::new(),
+        password: None,
+        ssh_key_id: None,
+        ssh_certificate_id: None,
+        identity_id: None,
+        ssh_id: false,
+        ssh_id_key_type: None,
+        use_mosh: false,
+        mosh_server_command: None,
+        tag_ids: Vec::new(),
+        notes: String::new(),
+        os_name: None,
+        icon: None,
+        ip_version: "auto".into(),
+        agent_forwarding: false,
+        startup_snippet_id: None,
+        host_chain_id: None,
+        proxy_id: None,
+        telnet: None,
+        env_variables: Vec::new(),
+        keep_alive_interval: None,
+        timeout: None,
+        color_scheme: None,
+        has_password: false,
+    }
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct GroupItem {
+    pub id: String,
+    pub vault_id: String,
+    pub label: String,
+    pub parent_id: Option<String>,
+    pub host_count: u32,
+    pub group_count: u32,
+    pub has_config: bool,
+}
+
+impl From<hosts::GroupNode> for GroupItem {
+    fn from(g: hosts::GroupNode) -> Self {
+        Self {
+            id: g.id.to_string(),
+            vault_id: g.vault_id.to_string(),
+            label: g.label,
+            parent_id: g.parent_id.map(|p| p.to_string()),
+            host_count: g.host_count as u32,
+            group_count: g.group_count as u32,
+            has_config: g.has_config,
+        }
+    }
+}
+
+/// What a host in `group_id` inherits from the group chain (placeholders in
+/// the editor).
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct InheritedInfo {
+    pub group_path: Vec<String>,
+    pub port: Option<u16>,
+    pub username: Option<String>,
+    pub has_password: bool,
+    pub ssh_key_id: Option<String>,
+    pub ssh_key_label: Option<String>,
+    pub identity_id: Option<String>,
+    pub identity_label: Option<String>,
+}
+
+impl From<hosts::Inherited> for InheritedInfo {
+    fn from(i: hosts::Inherited) -> Self {
+        Self {
+            group_path: i.group_path,
+            port: i.port,
+            username: i.username,
+            has_password: i.has_password,
+            ssh_key_id: i.ssh_key_id.map(|k| k.to_string()),
+            ssh_key_label: i.ssh_key_label,
+            identity_id: i.identity_id.map(|k| k.to_string()),
+            identity_label: i.identity_label,
+        }
+    }
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct TagItem {
+    pub id: String,
+    pub vault_id: String,
+    pub label: String,
+    pub hosts: u32,
+}
+
+impl From<hosts::TagInfo> for TagItem {
+    fn from(t: hosts::TagInfo) -> Self {
+        Self {
+            id: t.id.to_string(),
+            vault_id: t.vault_id.to_string(),
+            label: t.label,
+            hosts: t.hosts as u32,
+        }
+    }
+}
+
+/// A key as listed in the Keychain: public half and metadata only.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct KeyItem {
+    pub id: String,
+    pub vault_id: String,
+    pub label: String,
+    pub key_type: String,
+    pub bits: u32,
+    pub fingerprint: String,
+    pub public_key: String,
+    pub comment: String,
+    /// The private key is passphrase-protected.
+    pub encrypted: bool,
+    /// The passphrase is remembered in the vault.
+    pub has_passphrase: bool,
+    pub unreadable: bool,
+    /// Identities using this key.
+    pub used_by: u32,
+    pub has_certificate: bool,
+    pub updated_at: i64,
+}
+
+impl From<keychain::KeyCard> for KeyItem {
+    fn from(k: keychain::KeyCard) -> Self {
+        Self {
+            id: k.id.to_string(),
+            vault_id: k.vault_id.to_string(),
+            label: k.label,
+            key_type: k.key_type,
+            bits: k.bits as u32,
+            fingerprint: k.fingerprint,
+            public_key: k.public_key,
+            comment: k.comment,
+            encrypted: k.encrypted,
+            has_passphrase: k.has_passphrase,
+            unreadable: k.unreadable,
+            used_by: k.used_by as u32,
+            has_certificate: k.certificate.is_some(),
+            updated_at: millis(k.updated_at),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum KeyAlgorithm {
+    Ed25519,
+    Rsa { bits: u32 },
+    EcdsaP256,
+    EcdsaP384,
+}
+
+impl From<KeyAlgorithm> for termoso_core::keys::KeyAlgorithm {
+    fn from(a: KeyAlgorithm) -> Self {
+        match a {
+            KeyAlgorithm::Ed25519 => Self::Ed25519,
+            KeyAlgorithm::Rsa { bits } => Self::Rsa {
+                bits: bits as usize,
+            },
+            KeyAlgorithm::EcdsaP256 => Self::EcdsaP256,
+            KeyAlgorithm::EcdsaP384 => Self::EcdsaP384,
+        }
+    }
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct KeyGenerateDraft {
+    pub vault_id: String,
+    pub label: String,
+    pub algorithm: KeyAlgorithm,
+    pub comment: String,
+    pub passphrase: Option<String>,
+    pub remember_passphrase: bool,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct KeyImportDraft {
+    pub vault_id: String,
+    pub label: String,
+    /// OpenSSH / PKCS#8 / PEM / PuTTY `.ppk` text.
+    pub private_key: String,
+    pub passphrase: Option<String>,
+    pub remember_passphrase: bool,
+    pub certificate: Option<String>,
+}
+
+/// What a pasted private key looks like before importing it.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct KeyPreview {
+    pub key_type: String,
+    pub bits: u32,
+    pub fingerprint: String,
+    pub public_key: String,
+    pub comment: String,
+    pub encrypted: bool,
+    pub putty: bool,
+}
+
+impl From<keychain::KeyPreview> for KeyPreview {
+    fn from(p: keychain::KeyPreview) -> Self {
+        Self {
+            key_type: p.key_type,
+            bits: p.bits as u32,
+            fingerprint: p.fingerprint,
+            public_key: p.public_key,
+            comment: p.comment,
+            encrypted: p.encrypted,
+            putty: p.putty,
+        }
+    }
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct IdentityItem {
+    pub id: String,
+    pub vault_id: String,
+    pub label: String,
+    pub username: String,
+    pub has_password: bool,
+    pub ssh_key_id: Option<String>,
+    pub ssh_key_label: Option<String>,
+    pub has_certificate: bool,
+    pub updated_at: i64,
+}
+
+impl From<keychain::IdentityCard> for IdentityItem {
+    fn from(i: keychain::IdentityCard) -> Self {
+        Self {
+            id: i.id.to_string(),
+            vault_id: i.vault_id.to_string(),
+            label: i.label,
+            username: i.username,
+            has_password: i.has_password,
+            ssh_key_id: i.ssh_key_id.map(|k| k.to_string()),
+            ssh_key_label: i.ssh_key_label,
+            has_certificate: i.has_certificate,
+            updated_at: millis(i.updated_at),
+        }
+    }
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct IdentityDraft {
+    pub id: Option<String>,
+    pub vault_id: String,
+    pub label: String,
+    pub username: String,
+    /// `None` keeps the stored password, `Some("")` clears it.
+    pub password: Option<String>,
+    pub ssh_key_id: Option<String>,
+}
+
+impl IdentityDraft {
+    pub(crate) fn into_form(self) -> Result<keychain::IdentityForm> {
+        Ok(keychain::IdentityForm {
+            id: parse_opt_id(&self.id)?,
+            vault_id: parse_id(&self.vault_id)?,
+            label: self.label,
+            username: self.username,
+            password: self.password,
+            ssh_key_id: parse_opt_id(&self.ssh_key_id)?,
+            ssh_certificate_id: None,
+            ssh_id: false,
+            ssh_id_key_type: None,
+        })
+    }
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct KnownHostItem {
+    pub id: String,
+    /// `host[:port]`.
+    pub hostname: String,
+    pub key_type: String,
+    pub fingerprint: String,
+    pub updated_at: i64,
+}
+
+/// A past connection, newest first.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct HistoryItem {
+    pub id: String,
+    pub host_id: Option<String>,
+    pub label: String,
+    /// `user@address:port`.
+    pub target: String,
+    pub protocol: String,
+    pub started_at: i64,
+    pub duration_secs: Option<u64>,
+    pub error: Option<String>,
+}
