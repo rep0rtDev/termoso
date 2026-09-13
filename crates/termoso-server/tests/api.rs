@@ -22,7 +22,7 @@ use termoso_proto::sync::{
     EntityChange, EntityDelete, HistoryEntry, HistoryKind, HistoryPullResponse, HistoryPushRequest,
     PullRequest, PullResponse, PushRequest, PushResponse, PushResult,
 };
-use termoso_proto::team::{CreateInviteRequest, CreateTeamRequest, Team, TeamRole};
+use termoso_proto::team::{AuditEventList, CreateInviteRequest, CreateTeamRequest, Team, TeamRole};
 use termoso_proto::vault::{
     CreateVaultRequest, Vault, VaultKind, VaultList, VaultMemberUpsert, VaultRole,
 };
@@ -696,6 +696,122 @@ async fn teams_vaults_invites_and_sharing() {
         .await;
     assert_eq!(p.entities.len(), 1);
     assert_eq!(p.entities[0].updated_by_device, Some(bob.session.device_id));
+
+    // Team activity log: every step above left a metadata-only entry.
+    let audit_path = format!("/teams/{}/audit", team.id);
+    s.expect_status(
+        Method::GET,
+        &audit_path,
+        Some(mallory.token()),
+        NOBODY,
+        StatusCode::NOT_FOUND,
+    )
+    .await;
+    let raw = s
+        .call(Method::GET, &audit_path, Some(owner.token()), NOBODY)
+        .await
+        .text()
+        .await
+        .unwrap();
+    assert!(!raw.contains(&bv.sealed_key.clone().unwrap()));
+    assert!(!raw.contains(&p.entities[0].data));
+    let log: AuditEventList = serde_json::from_str(&raw).unwrap();
+    assert!(log.next_before.is_none());
+    let actions: Vec<&str> = log.events.iter().map(|e| e.action.as_str()).collect();
+    for expected in [
+        "team.created",
+        "vault.created",
+        "invite.created",
+        "invite.accepted",
+        "vault.access_granted",
+        "entity.created",
+    ] {
+        assert!(
+            actions.contains(&expected),
+            "{expected} missing in {actions:?}"
+        );
+    }
+    assert!(
+        log.events.windows(2).all(|w| w[0].id > w[1].id),
+        "newest first"
+    );
+    let created = log
+        .events
+        .iter()
+        .find(|e| e.action == "entity.created")
+        .unwrap();
+    assert_eq!(created.actor_id, Some(bob.id()));
+    assert_eq!(created.actor_email.as_deref(), Some(bob_email.as_str()));
+    assert_eq!(created.vault_id, Some(vault.id));
+    assert_eq!(created.device_id, Some(bob.session.device_id));
+    assert_eq!(created.details["kind"], "host");
+    assert_eq!(created.details["count"], 1);
+    assert_eq!(created.details["ids"][0], host_id.to_string());
+    let granted = log
+        .events
+        .iter()
+        .find(|e| e.action == "vault.access_granted")
+        .unwrap();
+    assert_eq!(granted.actor_id, Some(owner.id()));
+    assert_eq!(granted.target_user, Some(bob.id()));
+    assert_eq!(granted.target_email.as_deref(), Some(bob_email.as_str()));
+    assert_eq!(granted.details["role"], "editor");
+
+    // Members see the log too, but device ids only on their own entries.
+    let bobs_log: AuditEventList = s
+        .json(Method::GET, &audit_path, Some(bob.token()), NOBODY)
+        .await;
+    assert_eq!(bobs_log.events.len(), log.events.len());
+    for e in &bobs_log.events {
+        assert_eq!(e.device_id.is_some(), e.actor_id == Some(bob.id()), "{e:?}");
+    }
+
+    // Filters: action prefix, vault, actor; pagination via `before`.
+    let only_vault: AuditEventList = s
+        .json(
+            Method::GET,
+            &format!("{audit_path}?action=vault.&vault={}", vault.id),
+            Some(owner.token()),
+            NOBODY,
+        )
+        .await;
+    assert!(!only_vault.events.is_empty());
+    assert!(
+        only_vault
+            .events
+            .iter()
+            .all(|e| e.action.starts_with("vault.") && e.vault_id == Some(vault.id))
+    );
+    let by_bob: AuditEventList = s
+        .json(
+            Method::GET,
+            &format!("{audit_path}?actor={}", bob.id()),
+            Some(owner.token()),
+            NOBODY,
+        )
+        .await;
+    assert!(by_bob.events.iter().all(|e| e.actor_id == Some(bob.id())));
+    assert!(by_bob.events.iter().any(|e| e.action == "invite.accepted"));
+    let page1: AuditEventList = s
+        .json(
+            Method::GET,
+            &format!("{audit_path}?limit=2"),
+            Some(owner.token()),
+            NOBODY,
+        )
+        .await;
+    assert_eq!(page1.events.len(), 2);
+    let before = page1.next_before.expect("more pages");
+    let page2: AuditEventList = s
+        .json(
+            Method::GET,
+            &format!("{audit_path}?limit=2&before={before}"),
+            Some(owner.token()),
+            NOBODY,
+        )
+        .await;
+    assert!(page2.events.iter().all(|e| e.id < before));
+    assert_eq!(page1.events[1].id, before);
 
     // Bob (member) cannot delete the team; owner can, and the vault disappears.
     s.expect_status(

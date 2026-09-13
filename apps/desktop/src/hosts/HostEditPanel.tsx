@@ -48,6 +48,7 @@ import {
   type TelnetForm,
   type Uuid,
 } from "@/ipc/types";
+import { useActiveVault } from "@/app/vault";
 import { openTerminal } from "@/terminal/store";
 import { terminalThemes } from "@/terminal/themes";
 import { monoFontFamily, sizes } from "@/theme/theme";
@@ -167,8 +168,10 @@ function HostEditor({
     setForm((f) => ({ ...f, telnet: { ...(f.telnet ?? emptyTelnet()), ...p } }));
   };
 
+  const readOnly = useActiveVault().readOnly;
   const protocols = protocolsOf(form);
-  const canSave = form.address.trim().length > 0 && protocols.length > 0 && !save.isPending;
+  const canSave =
+    form.address.trim().length > 0 && protocols.length > 0 && !save.isPending && !readOnly;
   const sshPortPlaceholder = String(inh?.port ?? 22);
   const chainName = (id: Uuid | null) =>
     (chains.data ?? []).find((c) => c.id === id)?.data.label ?? null;

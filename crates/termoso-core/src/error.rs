@@ -31,6 +31,9 @@ pub enum CoreError {
     /// The vault key for this vault is not available locally.
     #[error("vault {0} is locked (no key)")]
     VaultLocked(uuid::Uuid),
+    /// Our role in this vault only allows viewing.
+    #[error("vault {0} is view-only for you")]
+    VaultReadOnly(uuid::Uuid),
     /// Server API error (`code` is the machine-readable code from the server).
     #[error("server {status}: {code}: {message}")]
     Api {
@@ -128,6 +131,7 @@ impl CoreError {
             CoreError::NotFound(_) => "not_found",
             CoreError::Invalid(_) => "invalid",
             CoreError::VaultLocked(_) => "vault_locked",
+            CoreError::VaultReadOnly(_) => "vault_read_only",
             CoreError::Api { .. } => "api",
             CoreError::Http(_) => "network",
             CoreError::Ws(_) => "websocket",

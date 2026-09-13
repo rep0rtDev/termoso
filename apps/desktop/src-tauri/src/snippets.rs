@@ -385,6 +385,99 @@ pub fn delete_package(store: &Store, id: Uuid) -> Result<()> {
     Ok(())
 }
 
+// ───────────────────────────── vaults ─────────────────────────────
+
+/// Copy (or move) a snippet into `vault_id`, at the top level. Host targets
+/// stay behind (hosts belong to the source vault); a startup reference from a
+/// host in the source vault is cleared on move.
+pub fn copy_to_vault(store: &Store, id: Uuid, vault_id: Uuid, mv: bool) -> Result<SnippetCard> {
+    let e = store.require::<Snippet>(id)?;
+    if e.vault_id == vault_id {
+        return Err(DesktopError::invalid("snippet is already in this vault"));
+    }
+    let new_id = store.insert(
+        vault_id,
+        &Snippet {
+            package_id: None,
+            ..e.data.clone()
+        },
+    )?;
+    if mv {
+        delete(store, id)?;
+    }
+    card_with_targets(store, new_id)
+}
+
+/// Copy (or move) a package with its whole subtree (sub-packages and
+/// snippets) into `vault_id`, at the top level.
+pub fn copy_package_to_vault(
+    store: &Store,
+    id: Uuid,
+    vault_id: Uuid,
+    mv: bool,
+) -> Result<PackageNode> {
+    let root = store.require::<SnippetPackage>(id)?;
+    if root.vault_id == vault_id {
+        return Err(DesktopError::invalid("package is already in this vault"));
+    }
+    let all_pkgs = store.list::<SnippetPackage>(Some(root.vault_id))?;
+    let all_snips = store.list::<Snippet>(Some(root.vault_id))?;
+
+    // Breadth-first over the subtree so parents are created before children.
+    let mut mapping: HashMap<Uuid, Uuid> = HashMap::new();
+    let mut queue = vec![(root.id, None::<Uuid>)];
+    while !queue.is_empty() {
+        let mut next = Vec::new();
+        for (src_id, new_parent) in queue {
+            let src = all_pkgs
+                .iter()
+                .find(|p| p.id == src_id)
+                .ok_or_else(|| DesktopError::not_found(format!("package {src_id}")))?;
+            let new_id = store.insert(
+                vault_id,
+                &SnippetPackage {
+                    label: src.data.label.clone(),
+                    parent_id: new_parent,
+                },
+            )?;
+            mapping.insert(src_id, new_id);
+            for child in all_pkgs.iter().filter(|p| p.data.parent_id == Some(src_id)) {
+                if mapping.contains_key(&child.id) {
+                    return Err(DesktopError::invalid("package tree has a cycle"));
+                }
+                next.push((child.id, Some(new_id)));
+            }
+        }
+        queue = next;
+    }
+    let moved_snippets: Vec<_> = all_snips
+        .into_iter()
+        .filter(|s| s.data.package_id.is_some_and(|p| mapping.contains_key(&p)))
+        .collect();
+    for s in &moved_snippets {
+        store.insert(
+            vault_id,
+            &Snippet {
+                package_id: s.data.package_id.and_then(|p| mapping.get(&p).copied()),
+                ..s.data.clone()
+            },
+        )?;
+    }
+    if mv {
+        for s in moved_snippets {
+            delete(store, s.id)?;
+        }
+        for p in mapping.keys() {
+            store.delete(*p)?;
+        }
+    }
+    let new_root = mapping[&root.id];
+    packages(store, Some(vault_id))?
+        .into_iter()
+        .find(|p| p.id == new_root)
+        .ok_or_else(|| DesktopError::not_found(format!("package {new_root}")))
+}
+
 // ───────────────────────────── run ─────────────────────────────
 
 /// Type the expanded script into each session. `paste` leaves the text on
@@ -615,5 +708,148 @@ mod tests {
                 .is_none()
         );
         assert!(list(&store, Some(vault)).unwrap().is_empty());
+    }
+
+    fn team_vault(store: &Store, role: VaultRole) -> Uuid {
+        let id = Uuid::new_v4();
+        store
+            .upsert_vault(
+                id,
+                LocalVaultKind::Team,
+                "team",
+                Some(Uuid::new_v4()),
+                role,
+                Some(&SymmetricKey::generate()),
+                1,
+            )
+            .unwrap();
+        id
+    }
+
+    fn snippet(store: &Store, vault: Uuid, label: &str, package_id: Option<Uuid>) -> SnippetCard {
+        save(
+            store,
+            &SnippetForm {
+                id: None,
+                vault_id: vault,
+                label: label.into(),
+                script: format!("echo {label}"),
+                package_id,
+                close_after_run: false,
+                sort_order: 0,
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn snippet_copy_and_move_between_vaults() {
+        let store = store();
+        let vault = store.local_vault().unwrap().id;
+        let team = team_vault(&store, VaultRole::Editor);
+        let pkg = save_package(&store, vault, None, "ops", None).unwrap();
+        let s = snippet(&store, vault, "restart", Some(pkg.id));
+        let host = store
+            .insert(
+                vault,
+                &Host {
+                    label: "h".into(),
+                    address: "h".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        set_targets(&store, s.id, &[host]).unwrap();
+
+        // Copy: lands at the top level of the other vault, without host bindings.
+        let copied = copy_to_vault(&store, s.id, team, false).unwrap();
+        assert_eq!(copied.vault_id, team);
+        assert_eq!(copied.script, "echo restart");
+        assert!(copied.package_id.is_none());
+        assert!(copied.target_host_ids.is_empty());
+        assert_eq!(list(&store, Some(vault)).unwrap().len(), 1);
+        assert_eq!(store.list::<HostSnippet>(None).unwrap().len(), 1);
+        assert!(copy_to_vault(&store, s.id, vault, false).is_err());
+
+        // Move: source and its bindings are gone.
+        let moved = copy_to_vault(&store, s.id, team, true).unwrap();
+        assert_eq!(moved.vault_id, team);
+        assert!(list(&store, Some(vault)).unwrap().is_empty());
+        assert!(store.list::<HostSnippet>(None).unwrap().is_empty());
+        assert_eq!(list(&store, Some(team)).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn package_subtree_copy_and_move_remap_parents() {
+        let store = store();
+        let vault = store.local_vault().unwrap().id;
+        let team = team_vault(&store, VaultRole::Manager);
+        let root = save_package(&store, vault, None, "ops", None).unwrap();
+        let child = save_package(&store, vault, None, "db", Some(root.id)).unwrap();
+        let grandchild = save_package(&store, vault, None, "pg", Some(child.id)).unwrap();
+        let sibling = save_package(&store, vault, None, "web", None).unwrap();
+        snippet(&store, vault, "top", Some(root.id));
+        snippet(&store, vault, "deep", Some(grandchild.id));
+        snippet(&store, vault, "other", Some(sibling.id));
+        snippet(&store, vault, "loose", None);
+
+        let new_root = copy_package_to_vault(&store, root.id, team, false).unwrap();
+        assert_eq!(new_root.vault_id, team);
+        assert!(new_root.parent_id.is_none());
+        let team_pkgs = packages(&store, Some(team)).unwrap();
+        assert_eq!(team_pkgs.len(), 3);
+        let by_label = |l: &str| team_pkgs.iter().find(|p| p.label == l).unwrap().clone();
+        assert_eq!(by_label("db").parent_id, Some(new_root.id));
+        assert_eq!(by_label("pg").parent_id, Some(by_label("db").id));
+        let team_snips = list(&store, Some(team)).unwrap();
+        assert_eq!(team_snips.len(), 2);
+        assert_eq!(
+            team_snips
+                .iter()
+                .find(|s| s.label == "deep")
+                .unwrap()
+                .package_id,
+            Some(by_label("pg").id)
+        );
+        // Untouched: everything outside the subtree, and the source itself.
+        assert_eq!(packages(&store, Some(vault)).unwrap().len(), 4);
+        assert_eq!(list(&store, Some(vault)).unwrap().len(), 4);
+        assert!(copy_package_to_vault(&store, root.id, vault, false).is_err());
+
+        // Move removes the subtree and its snippets, leaving the rest alone.
+        copy_package_to_vault(&store, root.id, team, true).unwrap();
+        let left: Vec<String> = packages(&store, Some(vault))
+            .unwrap()
+            .into_iter()
+            .map(|p| p.label)
+            .collect();
+        assert_eq!(left, vec!["web"]);
+        let left: Vec<String> = list(&store, Some(vault))
+            .unwrap()
+            .into_iter()
+            .map(|s| s.label)
+            .collect();
+        assert_eq!(left, vec!["loose", "other"]);
+        assert_eq!(packages(&store, Some(team)).unwrap().len(), 6);
+    }
+
+    #[test]
+    fn viewer_vault_is_read_only_for_snippets() {
+        let store = store();
+        let vault = store.local_vault().unwrap().id;
+        let viewer = team_vault(&store, VaultRole::Viewer);
+        let s = snippet(&store, vault, "restart", None);
+        assert_eq!(
+            copy_to_vault(&store, s.id, viewer, false).unwrap_err().kind,
+            "vault_read_only"
+        );
+        assert_eq!(
+            save_package(&store, viewer, None, "ops", None)
+                .unwrap_err()
+                .kind,
+            "vault_read_only"
+        );
+        assert!(list(&store, Some(viewer)).unwrap().is_empty());
+        assert!(packages(&store, Some(viewer)).unwrap().is_empty());
     }
 }

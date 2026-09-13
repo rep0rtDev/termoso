@@ -83,6 +83,8 @@ import type {
   Uuid,
   InviteResult,
   PendingVaultKey,
+  AuditFilter,
+  AuditPage,
   Team,
   TeamInvite,
   TeamMember,
@@ -348,6 +350,8 @@ export const identitiesList = (vaultId?: Uuid | null) =>
   invoke<IdentityCard[]>("identities_list", { vaultId: vaultId ?? null });
 export const identitySave = (form: IdentityForm) => invoke<IdentityCard>("identity_save", { form });
 export const identityDelete = (id: Uuid) => invoke<null>("identity_delete", { id });
+export const identityCopyToVault = (id: Uuid, vaultId: Uuid, moveIdentity: boolean) =>
+  invoke<IdentityCard>("identity_copy_to_vault", { id, vaultId, moveIdentity });
 
 export const masterKeyMigrate = () => invoke<MasterKeySource>("master_key_migrate");
 
@@ -390,6 +394,10 @@ export const snippetPackageSave = (args: {
   parentId: Uuid | null;
 }) => invoke<PackageNode>("snippet_package_save", args);
 export const snippetPackageDelete = (id: Uuid) => invoke<null>("snippet_package_delete", { id });
+export const snippetCopyToVault = (id: Uuid, vaultId: Uuid, moveSnippet: boolean) =>
+  invoke<SnippetCard>("snippet_copy_to_vault", { id, vaultId, moveSnippet });
+export const snippetPackageCopyToVault = (id: Uuid, vaultId: Uuid, movePackage: boolean) =>
+  invoke<PackageNode>("snippet_package_copy_to_vault", { id, vaultId, movePackage });
 
 // ───────────────────────────── known hosts ─────────────────────────────
 
@@ -503,6 +511,8 @@ export const teamInviteRevoke = (teamId: Uuid, inviteId: Uuid) =>
   invoke<null>("team_invite_revoke", { teamId, inviteId });
 export const teamPendingKeys = (teamId: Uuid) =>
   invoke<PendingVaultKey[]>("team_pending_keys", { teamId });
+export const teamAudit = (teamId: Uuid, filter: AuditFilter = {}) =>
+  invoke<AuditPage>("team_audit", { teamId, filter });
 export const teamVaultCreate = (teamId: Uuid, name: string, access: VaultAccess[]) =>
   invoke<null>("team_vault_create", { teamId, name, access });
 export const teamVaultRename = (vaultId: Uuid, name: string) =>

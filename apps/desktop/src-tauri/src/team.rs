@@ -8,12 +8,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use termoso_core::account as core;
-use termoso_core::api::ApiClient;
+use termoso_core::api::{ApiClient, AuditQuery};
 use termoso_core::termoso_crypto::keys::{SymmetricKey, public_key_from_b64};
 use termoso_core::termoso_crypto::sealed;
 use termoso_proto::team::{
-    CreateInviteRequest, CreateTeamRequest, Invite, Team, TeamRole, UpdateTeamMemberRequest,
-    UpdateTeamRequest,
+    AuditEvent, CreateInviteRequest, CreateTeamRequest, Invite, Team, TeamRole,
+    UpdateTeamMemberRequest, UpdateTeamRequest,
 };
 use termoso_proto::vault::{
     CreateVaultRequest, RotateVaultKeyRequest, SealedKeyFor, UpdateVaultRequest, VaultMemberUpsert,
@@ -43,6 +43,24 @@ pub struct PendingKeyCard {
     pub vault_id: Uuid,
     pub user_id: Uuid,
     pub role: VaultRole,
+}
+
+/// One page of the team activity log (server order: newest first).
+#[derive(Debug, Clone, Serialize)]
+pub struct AuditPage {
+    pub events: Vec<AuditEvent>,
+    pub next_before: Option<i64>,
+}
+
+/// Filters for [`audit`].
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditFilter {
+    pub before: Option<i64>,
+    pub limit: Option<u32>,
+    pub action: Option<String>,
+    pub actor: Option<Uuid>,
+    pub vault: Option<Uuid>,
 }
 
 /// Outcome of one invitation in a batch.
@@ -302,6 +320,25 @@ pub async fn revoke_invite<R: Runtime>(
 ) -> Result<()> {
     api(app).await?.delete_invite(team_id, invite_id).await?;
     Ok(())
+}
+
+pub async fn audit<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    f: AuditFilter,
+) -> Result<AuditPage> {
+    let q = AuditQuery {
+        before: f.before,
+        limit: f.limit,
+        action: f.action.filter(|a| !a.is_empty()),
+        actor: f.actor,
+        vault: f.vault,
+    };
+    let page = api(app).await?.team_audit(team_id, &q).await?;
+    Ok(AuditPage {
+        events: page.events,
+        next_before: page.next_before,
+    })
 }
 
 // ───────────────────────────── vaults ─────────────────────────────

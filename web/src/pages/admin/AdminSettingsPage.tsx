@@ -181,6 +181,19 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
               helperText={formatBytes(s.log_quota_bytes)}
             />
           </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <TextField
+              fullWidth
+              type="number"
+              label="Team activity log retention (days)"
+              value={s.audit_retention_days}
+              onChange={(e) =>
+                set("audit_retention_days", num(e.target.value, s.audit_retention_days))
+              }
+              slotProps={{ htmlInput: { min: 0, max: 3650 } }}
+              helperText={s.audit_retention_days === 0 ? "Kept forever" : undefined}
+            />
+          </Grid>
         </Grid>
         <Stack direction="row" spacing={1} sx={{ mt: 2.5 }}>
           <Button type="submit" variant="contained" disabled={!dirty || save.isPending}>

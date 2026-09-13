@@ -175,12 +175,14 @@ function PortField({
   onChange,
   required,
   autoFocus,
+  readOnly,
 }: {
   label: string;
   value: number;
   onChange: (n: number) => void;
   required?: boolean;
   autoFocus?: boolean;
+  readOnly?: boolean;
 }) {
   return (
     <Field label={required ? `${label} *` : label}>
@@ -190,7 +192,7 @@ function PortField({
         value={value > 0 ? String(value) : ""}
         onChange={(e) => onChange(parsePort(e.target.value))}
         placeholder="1–65535"
-        slotProps={{ htmlInput: { inputMode: "numeric" } }}
+        slotProps={{ htmlInput: { inputMode: "numeric", readOnly } }}
       />
     </Field>
   );
@@ -202,11 +204,13 @@ function HostField({
   host,
   onPick,
   onClear,
+  readOnly,
 }: {
   label: string;
   host: HostCard | null;
   onPick: () => void;
   onClear: () => void;
+  readOnly?: boolean;
 }) {
   return (
     <Field label={`${label} *`}>
@@ -215,10 +219,12 @@ function HostField({
           fullWidth
           value={host?.label ?? ""}
           placeholder="Select a host"
-          onClick={onPick}
-          slotProps={{ input: { readOnly: true, sx: { cursor: "pointer" } } }}
+          onClick={readOnly ? undefined : onPick}
+          slotProps={{
+            input: { readOnly: true, sx: readOnly ? undefined : { cursor: "pointer" } },
+          }}
         />
-        {host ? (
+        {readOnly ? null : host ? (
           <Button
             variant="text"
             size="small"
@@ -368,6 +374,7 @@ export function RuleEditor({
   hosts,
   vaultName,
   saving,
+  readOnly = false,
   onChange,
   onSave,
   onClose,
@@ -380,6 +387,7 @@ export function RuleEditor({
   hosts: HostCard[];
   vaultName: string;
   saving: boolean;
+  readOnly?: boolean;
   onChange: (f: PfRuleForm) => void;
   onSave: () => void;
   onClose: () => void;
@@ -391,6 +399,7 @@ export function RuleEditor({
   const host = hosts.find((h) => h.id === form.hostId) ?? null;
   const problem = formProblem(form);
   const set = (patch: Partial<PfRuleForm>) => onChange({ ...form, ...patch });
+  const locked = saving || readOnly;
 
   if (picking) {
     return (
@@ -414,12 +423,13 @@ export function RuleEditor({
       host={host}
       onPick={() => setPicking(true)}
       onClear={() => set({ hostId: "" })}
+      readOnly={readOnly}
     />
   );
 
   return (
     <SidePanel
-      title={rule ? "Edit Port Forwarding" : "New Port Forwarding"}
+      title={readOnly ? "Port Forwarding" : rule ? "Edit Port Forwarding" : "New Port Forwarding"}
       subtitle={vaultName}
       onClose={onClose}
       actions={
@@ -436,7 +446,7 @@ export function RuleEditor({
               variant="tonal"
               size="large"
               fullWidth
-              disabled={Boolean(problem) || saving}
+              disabled={Boolean(problem) || locked}
               onClick={onSave}
               sx={{ height: 40, borderRadius: 2.5 }}
             >
@@ -450,7 +460,7 @@ export function RuleEditor({
         component="form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!problem && !saving) onSave();
+          if (!problem && !locked) onSave();
         }}
         sx={{ display: "flex", flexDirection: "column", gap: 2 }}
       >
@@ -470,6 +480,7 @@ export function RuleEditor({
               value={form.label}
               onChange={(e) => set({ label: e.target.value })}
               placeholder="Label"
+              slotProps={{ htmlInput: { readOnly } }}
             />
           </Field>
         </Box>
@@ -482,6 +493,7 @@ export function RuleEditor({
               required
               value={form.remotePort}
               onChange={(remotePort) => set({ remotePort })}
+              readOnly={readOnly}
             />
             <Field label="Bind address">
               <TextField
@@ -489,6 +501,7 @@ export function RuleEditor({
                 value={form.boundAddress}
                 onChange={(e) => set({ boundAddress: e.target.value })}
                 placeholder="127.0.0.1"
+                slotProps={{ htmlInput: { readOnly } }}
               />
             </Field>
             <Field label="Destination address *">
@@ -497,6 +510,7 @@ export function RuleEditor({
                 value={form.remoteHost}
                 onChange={(e) => set({ remoteHost: e.target.value })}
                 placeholder="127.0.0.1"
+                slotProps={{ htmlInput: { readOnly } }}
               />
             </Field>
             <PortField
@@ -504,6 +518,7 @@ export function RuleEditor({
               required
               value={form.localPort}
               onChange={(localPort) => set({ localPort })}
+              readOnly={readOnly}
             />
           </>
         ) : (
@@ -513,6 +528,7 @@ export function RuleEditor({
               required
               value={form.localPort}
               onChange={(localPort) => set({ localPort })}
+              readOnly={readOnly}
             />
             <Field label="Bind address">
               <TextField
@@ -520,6 +536,7 @@ export function RuleEditor({
                 value={form.boundAddress}
                 onChange={(e) => set({ boundAddress: e.target.value })}
                 placeholder="127.0.0.1"
+                slotProps={{ htmlInput: { readOnly } }}
               />
             </Field>
             {hostField}
@@ -531,6 +548,7 @@ export function RuleEditor({
                     value={form.remoteHost}
                     onChange={(e) => set({ remoteHost: e.target.value })}
                     placeholder="localhost"
+                    slotProps={{ htmlInput: { readOnly } }}
                   />
                 </Field>
                 <PortField
@@ -538,6 +556,7 @@ export function RuleEditor({
                   required
                   value={form.remotePort}
                   onChange={(remotePort) => set({ remotePort })}
+                  readOnly={readOnly}
                 />
               </>
             )}
@@ -549,6 +568,7 @@ export function RuleEditor({
             <Checkbox
               checked={form.autoStart}
               onChange={(e) => set({ autoStart: e.target.checked })}
+              disabled={readOnly}
             />
           }
           label="Start automatically when Termoso launches"

@@ -5,6 +5,7 @@
 // dozens of one-off named types.
 #![allow(clippy::type_complexity)]
 
+pub mod audit;
 pub mod cache;
 pub mod codes;
 pub mod config;

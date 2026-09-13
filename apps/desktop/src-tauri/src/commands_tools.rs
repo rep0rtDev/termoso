@@ -330,6 +330,17 @@ pub async fn identity_delete(state: State<'_, AppState>, id: Uuid) -> Result<()>
     keychain::delete_identity(&state.store, id)
 }
 
+/// Copy or move an identity (with its key and certificate) into another vault.
+#[tauri::command]
+pub async fn identity_copy_to_vault(
+    state: State<'_, AppState>,
+    id: Uuid,
+    vault_id: Uuid,
+    move_identity: bool,
+) -> Result<IdentityCard> {
+    keychain::copy_identity_to_vault(&state.store, id, vault_id, move_identity)
+}
+
 #[tauri::command]
 pub fn master_key_migrate(state: State<'_, AppState>) -> Result<MasterKeySource> {
     state.migrate_master_key()
@@ -410,6 +421,16 @@ pub async fn snippet_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> 
 }
 
 #[tauri::command]
+pub async fn snippet_copy_to_vault(
+    state: State<'_, AppState>,
+    id: Uuid,
+    vault_id: Uuid,
+    move_snippet: bool,
+) -> Result<SnippetCard> {
+    snippets::copy_to_vault(&state.store, id, vault_id, move_snippet)
+}
+
+#[tauri::command]
 pub async fn snippet_set_targets(
     state: State<'_, AppState>,
     id: Uuid,
@@ -451,6 +472,16 @@ pub async fn snippet_package_save(
 #[tauri::command]
 pub async fn snippet_package_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
     snippets::delete_package(&state.store, id)
+}
+
+#[tauri::command]
+pub async fn snippet_package_copy_to_vault(
+    state: State<'_, AppState>,
+    id: Uuid,
+    vault_id: Uuid,
+    move_package: bool,
+) -> Result<PackageNode> {
+    snippets::copy_package_to_vault(&state.store, id, vault_id, move_package)
 }
 
 // ───────────────────────────── known hosts ─────────────────────────────
@@ -854,6 +885,15 @@ pub async fn team_pending_keys<R: Runtime>(
     team_id: Uuid,
 ) -> Result<Vec<PendingKeyCard>> {
     team::pending_keys(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_audit<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    filter: Option<team::AuditFilter>,
+) -> Result<team::AuditPage> {
+    team::audit(&app, team_id, filter.unwrap_or_default()).await
 }
 
 #[tauri::command]

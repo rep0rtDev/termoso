@@ -67,7 +67,7 @@ import {
   useSettings,
   useTags,
 } from "@/ipc/hooks";
-import { useActiveVault, vaultIcon } from "@/app/vault";
+import { useActiveVault, vaultIcon, ViewOnlyChip } from "@/app/vault";
 import type { GroupNode, HostCard, HostsView, Uuid } from "@/ipc/types";
 import { errorMessage, hostProtocols } from "@/ipc/types";
 import { openTerminal, useTerminal } from "@/terminal/store";
@@ -154,6 +154,7 @@ export function HostsPage() {
   );
   const vault = useActiveVault();
   const vaultId = vault.data?.id ?? null;
+  const readOnly = vault.readOnly;
   const hosts = useHosts(vaultId);
   const groups = useGroups(vaultId);
   const tags = useTags(vaultId);
@@ -344,7 +345,7 @@ export function HostsPage() {
 
   const onDropMove = useCallback(
     (ids: Uuid[], target: Uuid | null) => {
-      if (!vaultId) return;
+      if (!vaultId || readOnly) return;
       const dest = target ? (groupById.get(target)?.label ?? "group") : "All hosts";
       moveHosts.mutate(
         { ids, groupId: target, vaultId },
@@ -359,7 +360,7 @@ export function HostsPage() {
         },
       );
     },
-    [vaultId, groupById, moveHosts, snackbar],
+    [vaultId, readOnly, groupById, moveHosts, snackbar],
   );
   const dnd = useHostDnd({
     selection: visibleChecked,
@@ -559,6 +560,7 @@ export function HostsPage() {
       {
         label: "Move to…",
         icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
+        disabled: readOnly,
         onClick: () => setMoveCopy({ kind: "group", hosts: targets }),
       },
       {
@@ -569,6 +571,7 @@ export function HostsPage() {
       {
         label: "Duplicate",
         icon: <ContentCopyRoundedIcon fontSize="small" />,
+        disabled: readOnly,
         onClick: () => void duplicateHosts(targets),
         divider: true,
       },
@@ -599,6 +602,7 @@ export function HostsPage() {
       {
         label: many ? `Remove ${n} hosts` : "Remove",
         icon: <DeleteOutlineRoundedIcon fontSize="small" />,
+        disabled: readOnly,
         onClick: () => setConfirmRemove(targets),
         danger: true,
       },
@@ -655,23 +659,27 @@ export function HostsPage() {
     {
       label: "New host here",
       icon: <DnsRoundedIcon fontSize="small" />,
+      disabled: readOnly,
       onClick: () => setPanel({ mode: "new", groupId: g.id }),
     },
     {
       label: "New sub-group",
       icon: <CreateNewFolderRoundedIcon fontSize="small" />,
+      disabled: readOnly,
       onClick: () => setPanel({ mode: "group", id: null, parentId: g.id }),
       divider: true,
     },
     {
       label: "Duplicate",
       icon: <ContentCopyRoundedIcon fontSize="small" />,
+      disabled: readOnly,
       onClick: () => onDuplicateGroup(g),
       divider: true,
     },
     {
       label: "Remove",
       icon: <DeleteOutlineRoundedIcon fontSize="small" />,
+      disabled: readOnly,
       onClick: () => setConfirmGroup(g),
       danger: true,
     },
@@ -792,21 +800,26 @@ export function HostsPage() {
             label="New host"
             icon={<AddRoundedIcon />}
             disabled={!vaultId}
-            onClick={() => setPanel({ mode: "new", groupId })}
+            onClick={() => {
+              if (!readOnly) setPanel({ mode: "new", groupId });
+            }}
             items={[
               {
                 label: "New host",
                 icon: <DnsRoundedIcon fontSize="small" />,
+                disabled: readOnly,
                 onClick: () => setPanel({ mode: "new", groupId }),
               },
               {
                 label: "New group",
                 icon: <CreateNewFolderRoundedIcon fontSize="small" />,
+                disabled: readOnly,
                 onClick: () => setPanel({ mode: "group", id: null, parentId: groupId }),
               },
               {
                 label: "Import…",
                 icon: <FileDownloadOutlinedIcon fontSize="small" />,
+                disabled: readOnly,
                 onClick: () => setImportOpen(true),
               },
               {
@@ -826,6 +839,7 @@ export function HostsPage() {
           <Button variant="tonal" startIcon={<UsbRoundedIcon />} onClick={goToSerial}>
             Serial
           </Button>
+          {readOnly && <ViewOnlyChip sx={{ ml: 1 }} />}
         </Toolbar>
 
         <Box sx={{ px: 3, pt: 1.5, pb: 1 }}>
@@ -886,6 +900,7 @@ export function HostsPage() {
                 variant="text"
                 color="inherit"
                 startIcon={<DriveFileMoveOutlinedIcon />}
+                disabled={readOnly}
                 onClick={() => setMoveCopy({ kind: "group", hosts: selectedHosts })}
               >
                 Move to
@@ -904,6 +919,7 @@ export function HostsPage() {
                 variant="text"
                 color="inherit"
                 startIcon={<ContentCopyRoundedIcon />}
+                disabled={readOnly}
                 onClick={() => void duplicateHosts(selectedHosts)}
               >
                 Duplicate
@@ -913,6 +929,7 @@ export function HostsPage() {
                 variant="text"
                 color="error"
                 startIcon={<DeleteOutlineRoundedIcon />}
+                disabled={readOnly}
                 onClick={() => setConfirmRemove(selectedHosts)}
               >
                 Remove

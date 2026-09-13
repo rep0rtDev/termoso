@@ -81,6 +81,7 @@ impl Modify for BearerAuth {
         crate::routes::teams::invite_preview,
         crate::routes::teams::accept_invite,
         crate::routes::teams::pending_keys,
+        crate::audit::list,
         crate::routes::vaults::list,
         crate::routes::vaults::get,
         crate::routes::vaults::create_team_vault,
