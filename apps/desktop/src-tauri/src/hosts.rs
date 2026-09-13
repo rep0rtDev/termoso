@@ -7,10 +7,11 @@ use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use termoso_core::model::{
-    Entity, Group, Host, HostChain, HostSnippet, Identity, Proxy, SerialConfig, Snippet, SshConfig,
-    SshKey, Tag, TelnetConfig,
+    Entity, Group, Host, HostChain, HostSnippet, Identity, Proxy, SerialConfig, Snippet,
+    SshCertificate, SshConfig, SshKey, Tag, TelnetConfig,
 };
 use termoso_core::store::Store;
+use termoso_proto::sshid::SshIdKeyType;
 use uuid::Uuid;
 
 use crate::error::{DesktopError, Result};
@@ -35,6 +36,8 @@ pub struct HostCard {
     pub port: u16,
     /// Effective Telnet port when the host also has a Telnet configuration.
     pub telnet_port: Option<u16>,
+    /// The SSH section connects over Mosh by default.
+    pub use_mosh: bool,
     pub tags: Vec<String>,
     pub os_name: Option<String>,
     /// User-chosen icon id; takes precedence over `os_name`.
@@ -68,8 +71,23 @@ pub struct HostForm {
     /// `None` keeps the stored password when editing; `Some("")` clears it.
     pub password: Option<String>,
     pub ssh_key_id: Option<Uuid>,
+    /// Certificate pinned on the host (`None` = the key's own, if any).
+    #[serde(default)]
+    pub ssh_certificate_id: Option<Uuid>,
     /// Reference an existing (visible) identity instead of the inline one.
     pub identity_id: Option<Uuid>,
+    /// Log in with the account's SSH ID passkeys.
+    #[serde(default)]
+    pub ssh_id: bool,
+    /// Passkey type to try first when `ssh_id` is set.
+    #[serde(default)]
+    pub ssh_id_key_type: Option<SshIdKeyType>,
+    /// Connect with Mosh (bootstrapped over this SSH section).
+    #[serde(default)]
+    pub use_mosh: bool,
+    /// Custom `mosh-server` command line; `None` = default.
+    #[serde(default)]
+    pub mosh_server_command: Option<String>,
     pub tag_ids: Vec<Uuid>,
     pub notes: String,
     pub os_name: Option<String>,
@@ -205,7 +223,10 @@ struct FlatIdentity {
     identity_id: Option<Uuid>,
     username: String,
     ssh_key_id: Option<Uuid>,
+    ssh_certificate_id: Option<Uuid>,
     has_password: bool,
+    ssh_id: bool,
+    ssh_id_key_type: Option<SshIdKeyType>,
 }
 
 fn flatten_identity(store: &Store, id: Option<Uuid>) -> Result<FlatIdentity> {
@@ -218,19 +239,28 @@ fn flatten_identity(store: &Store, id: Option<Uuid>) -> Result<FlatIdentity> {
             identity_id: Some(i.id),
             username: String::new(),
             ssh_key_id: None,
+            ssh_certificate_id: None,
             has_password: false,
+            ssh_id: false,
+            ssh_id_key_type: None,
         },
         Some(i) => FlatIdentity {
             identity_id: None,
             username: i.data.username.clone(),
             ssh_key_id: i.data.ssh_key_id,
+            ssh_certificate_id: i.data.ssh_certificate_id,
             has_password: i.data.password.as_deref().is_some_and(|p| !p.is_empty()),
+            ssh_id: i.data.ssh_id,
+            ssh_id_key_type: i.data.ssh_id_key_type,
         },
         None => FlatIdentity {
             identity_id: None,
             username: String::new(),
             ssh_key_id: None,
+            ssh_certificate_id: None,
             has_password: false,
+            ssh_id: false,
+            ssh_id_key_type: None,
         },
     })
 }
@@ -264,9 +294,15 @@ pub struct GroupForm {
     /// `None` keeps the stored password when editing; `Some("")` clears it.
     pub password: Option<String>,
     pub ssh_key_id: Option<Uuid>,
+    #[serde(default)]
+    pub ssh_certificate_id: Option<Uuid>,
     pub identity_id: Option<Uuid>,
     #[serde(default)]
     pub has_password: bool,
+    #[serde(default)]
+    pub ssh_id: bool,
+    #[serde(default)]
+    pub ssh_id_key_type: Option<SshIdKeyType>,
     #[serde(default)]
     pub agent_forwarding: bool,
     pub host_chain_id: Option<Uuid>,
@@ -294,6 +330,8 @@ pub struct Inherited {
     /// A visible (shared) identity is inherited.
     pub identity_id: Option<Uuid>,
     pub identity_label: Option<String>,
+    /// The inherited credentials log in with SSH ID.
+    pub ssh_id: bool,
     pub agent_forwarding: bool,
     pub host_chain_id: Option<Uuid>,
     pub proxy_id: Option<Uuid>,
@@ -352,6 +390,7 @@ pub fn cards(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<HostCard>> {
             username,
             port,
             telnet_port,
+            use_mosh: !telnet_only && r.ssh.use_mosh,
             tags: r.tags,
             os_name: h.data.os_name.clone(),
             icon: h.data.icon.clone(),
@@ -571,7 +610,12 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
         username: ssh_login.username,
         password: None,
         ssh_key_id: ssh_login.ssh_key_id,
+        ssh_certificate_id: ssh_login.ssh_certificate_id,
         identity_id: ssh_login.identity_id,
+        ssh_id: ssh_login.ssh_id,
+        ssh_id_key_type: ssh_login.ssh_id_key_type,
+        use_mosh: ssh.as_ref().is_some_and(|s| s.use_mosh),
+        mosh_server_command: ssh.as_ref().and_then(|s| s.mosh_server_command.clone()),
         tag_ids: host.data.tag_ids,
         notes: host.data.notes,
         os_name: host.data.os_name,
@@ -662,6 +706,9 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
                 username: &f.username,
                 password: f.password.as_deref(),
                 ssh_key_id: f.ssh_key_id,
+                ssh_certificate_id: f.ssh_certificate_id,
+                ssh_id: f.ssh_id,
+                ssh_id_key_type: f.ssh_id_key_type,
                 label: identity_label,
             },
         )?;
@@ -672,6 +719,13 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
             .unwrap_or_default();
         ssh.port = f.port.filter(|p| *p != 0);
         ssh.identity_id = identity_id;
+        ssh.use_mosh = f.use_mosh;
+        ssh.mosh_server_command = f
+            .mosh_server_command
+            .as_deref()
+            .map(str::trim)
+            .filter(|c| !c.is_empty())
+            .map(str::to_string);
         ssh.agent_forwarding = f.agent_forwarding;
         ssh.host_chain_id = f.host_chain_id;
         ssh.proxy_id = f.proxy_id;
@@ -706,6 +760,9 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
                 username: &tf.username,
                 password: tf.password.as_deref(),
                 ssh_key_id: None,
+                ssh_certificate_id: None,
+                ssh_id: false,
+                ssh_id_key_type: None,
                 label: identity_label,
             },
         )?;
@@ -819,6 +876,9 @@ struct Credentials<'a> {
     username: &'a str,
     password: Option<&'a str>,
     ssh_key_id: Option<Uuid>,
+    ssh_certificate_id: Option<Uuid>,
+    ssh_id: bool,
+    ssh_id_key_type: Option<SshIdKeyType>,
     label: &'a str,
 }
 
@@ -843,7 +903,26 @@ fn upsert_identity(
         }
         return Ok(Some(vis));
     }
-    if let Some(k) = c.ssh_key_id {
+    // A certificate implies its key; picking one without a key selects that key.
+    let mut ssh_key_id = c.ssh_key_id;
+    if let Some(cid) = c.ssh_certificate_id {
+        let cert = store.require::<SshCertificate>(cid)?;
+        if cert.vault_id != vault_id {
+            return Err(DesktopError::invalid(
+                "certificate belongs to another vault",
+            ));
+        }
+        match (cert.data.ssh_key_id, ssh_key_id) {
+            (Some(ck), Some(k)) if ck != k => {
+                return Err(DesktopError::invalid(
+                    "certificate was issued for a different key",
+                ));
+            }
+            (Some(ck), None) => ssh_key_id = Some(ck),
+            _ => {}
+        }
+    }
+    if let Some(k) = ssh_key_id {
         let key = store.require::<SshKey>(k)?;
         if key.vault_id != vault_id {
             return Err(DesktopError::invalid("SSH key belongs to another vault"));
@@ -856,7 +935,7 @@ fn upsert_identity(
         (None, Some(old)) => old.data.password.clone(),
         (None, None) => None,
     };
-    if username.is_empty() && password.is_none() && c.ssh_key_id.is_none() {
+    if username.is_empty() && password.is_none() && ssh_key_id.is_none() && !c.ssh_id {
         if let Some(old) = existing_inline {
             store.delete(old.id)?;
         }
@@ -866,9 +945,11 @@ fn upsert_identity(
         label: c.label.to_string(),
         username,
         password,
-        ssh_key_id: c.ssh_key_id,
-        ssh_certificate_id: None,
+        ssh_key_id,
+        ssh_certificate_id: c.ssh_certificate_id.filter(|_| ssh_key_id.is_some()),
         is_visible: false,
+        ssh_id: c.ssh_id,
+        ssh_id_key_type: c.ssh_id_key_type.filter(|_| c.ssh_id),
     };
     Ok(Some(match existing_inline {
         Some(old) => {
@@ -1019,7 +1100,10 @@ pub fn group_form(store: &Store, id: Uuid) -> Result<GroupForm> {
         password: None,
         has_password: inline.as_ref().is_some_and(|i| i.password.is_some()),
         ssh_key_id: inline.as_ref().and_then(|i| i.ssh_key_id),
+        ssh_certificate_id: inline.as_ref().and_then(|i| i.ssh_certificate_id),
         identity_id,
+        ssh_id: inline.as_ref().is_some_and(|i| i.ssh_id),
+        ssh_id_key_type: inline.as_ref().and_then(|i| i.ssh_id_key_type),
         agent_forwarding: ssh.agent_forwarding,
         host_chain_id: ssh.host_chain_id,
         proxy_id: ssh.proxy_id,
@@ -1060,6 +1144,9 @@ pub fn save_group_form(store: &Store, f: &GroupForm) -> Result<GroupNode> {
             username: &f.username,
             password: f.password.as_deref(),
             ssh_key_id: f.ssh_key_id,
+            ssh_certificate_id: f.ssh_certificate_id,
+            ssh_id: f.ssh_id,
+            ssh_id_key_type: f.ssh_id_key_type,
             label,
         },
     )?;
@@ -1184,6 +1271,7 @@ pub fn inherited(store: &Store, group_id: Option<Uuid>) -> Result<Inherited> {
         ssh_key_label: key_label,
         identity_id,
         identity_label,
+        ssh_id: identity.as_ref().is_some_and(|i| i.data.ssh_id),
         agent_forwarding: ssh.agent_forwarding,
         host_chain_id: ssh.host_chain_id,
         proxy_id: ssh.proxy_id,
@@ -1322,6 +1410,8 @@ fn copy_host_with(
             f.username = i.data.username.clone();
             f.password = i.data.password.clone();
             f.ssh_key_id = i.data.ssh_key_id;
+            f.ssh_id = i.data.ssh_id;
+            f.ssh_id_key_type = i.data.ssh_id_key_type;
         }
     }
     if let Some(tf) = f.telnet.as_mut()
@@ -1340,6 +1430,8 @@ fn copy_host_with(
         f.password = None;
         f.ssh_key_id = None;
         f.identity_id = None;
+        f.ssh_id = false;
+        f.ssh_id_key_type = None;
         if let Some(tf) = f.telnet.as_mut() {
             tf.username = String::new();
             tf.password = None;
@@ -1529,7 +1621,12 @@ mod tests {
             username: "deploy".into(),
             password: Some("s3cret".into()),
             ssh_key_id: None,
+            ssh_certificate_id: None,
             identity_id: None,
+            ssh_id: false,
+            ssh_id_key_type: None,
+            use_mosh: false,
+            mosh_server_command: None,
             tag_ids: vec![],
             notes: String::new(),
             os_name: None,
@@ -1833,8 +1930,11 @@ mod tests {
                 username: "ops".into(),
                 password: Some("pw".into()),
                 ssh_key_id: None,
+                ssh_certificate_id: None,
                 identity_id: None,
                 has_password: false,
+                ssh_id: false,
+                ssh_id_key_type: None,
                 agent_forwarding: true,
                 host_chain_id: None,
                 proxy_id: None,

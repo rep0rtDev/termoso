@@ -83,6 +83,25 @@ function PromptDialog({
           onCancel={cancel}
         />
       );
+    case "pin":
+      return (
+        <SecretPrompt
+          title="Please enter PIN for key"
+          target={prompt.target}
+          label={`PIN for ${prompt.key_label}`}
+          numeric
+          rememberLabel={null}
+          warning={
+            prompt.retry
+              ? prompt.retries === null
+                ? "Wrong PIN. Try again."
+                : `Wrong PIN. ${prompt.retries} ${prompt.retries === 1 ? "attempt" : "attempts"} left before the key locks.`
+              : null
+          }
+          onAnswer={onAnswer}
+          onCancel={cancel}
+        />
+      );
     case "interactive":
       return <InteractivePrompt prompt={prompt} onAnswer={onAnswer} />;
   }
@@ -189,6 +208,8 @@ function SecretPrompt({
   target,
   label,
   warning,
+  numeric,
+  rememberLabel = "Save to this host in the vault",
   onAnswer,
   onCancel,
 }: {
@@ -196,6 +217,9 @@ function SecretPrompt({
   target: string;
   label: string;
   warning?: string | null;
+  numeric?: boolean;
+  /** `null` hides the remember checkbox (the secret is used once, never stored). */
+  rememberLabel?: string | null;
   onAnswer: (a: PromptAnswer) => void;
   onCancel: () => void;
 }) {
@@ -226,14 +250,17 @@ function SecretPrompt({
               onChange={(e) => setValue(e.target.value)}
               fullWidth
               autoComplete="off"
+              inputMode={numeric ? "numeric" : undefined}
             />
           </Field>
-          <FormControlLabel
-            control={
-              <Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-            }
-            label="Save to this host in the vault"
-          />
+          {rememberLabel !== null && (
+            <FormControlLabel
+              control={
+                <Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+              }
+              label={rememberLabel}
+            />
+          )}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>

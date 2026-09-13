@@ -28,6 +28,9 @@ use termoso_proto::logs::{
     CreateLogRequest, CreateLogResponse, DownloadLogResponse, LogListResponse, SessionLog,
     UpdateLogRequest,
 };
+use termoso_proto::sshid::{
+    AddFido2KeyRequest, CreateSshIdRequest, PutDeviceKeysRequest, SshIdKey, SshIdProfile,
+};
 use termoso_proto::sync::{
     HistoryClearRequest, HistoryKind, HistoryPullResponse, HistoryPushRequest, PullRequest,
     PullResponse, PushRequest, PushResponse,
@@ -360,6 +363,48 @@ impl ApiClient {
     /// `DELETE /account/devices/{id}`.
     pub async fn revoke_device(&self, id: Uuid) -> Result<()> {
         self.delete(&format!("account/devices/{id}")).await
+    }
+
+    // ───────────────────────────── SSH ID ─────────────────────────────
+
+    /// `GET /account/sshid` — the account's SSH ID, `None` until claimed.
+    pub async fn sshid(&self) -> Result<Option<SshIdProfile>> {
+        self.get("account/sshid").await
+    }
+
+    /// `POST /account/sshid` — claim `handle`.
+    pub async fn create_sshid(&self, handle: &str) -> Result<SshIdProfile> {
+        self.post(
+            "account/sshid",
+            &CreateSshIdRequest {
+                handle: handle.to_string(),
+            },
+        )
+        .await
+    }
+
+    /// `DELETE /account/sshid` — drop the handle and every published key.
+    pub async fn delete_sshid(&self) -> Result<()> {
+        self.delete("account/sshid").await
+    }
+
+    /// `PUT /account/sshid/keys/device` — replace this device's public keys.
+    pub async fn put_sshid_device_keys(&self, req: &PutDeviceKeysRequest) -> Result<SshIdProfile> {
+        Self::send(
+            self.request(Method::PUT, "account/sshid/keys/device")
+                .json(req),
+        )
+        .await
+    }
+
+    /// `POST /account/sshid/keys/fido2` — publish a security-key public key.
+    pub async fn add_sshid_fido2_key(&self, req: &AddFido2KeyRequest) -> Result<SshIdKey> {
+        self.post("account/sshid/keys/fido2", req).await
+    }
+
+    /// `DELETE /account/sshid/keys/{id}`.
+    pub async fn remove_sshid_key(&self, id: Uuid) -> Result<()> {
+        self.delete(&format!("account/sshid/keys/{id}")).await
     }
 
     // ───────────────────────────── vaults / teams ─────────────────────────────

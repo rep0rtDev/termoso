@@ -9,9 +9,11 @@ import {
   FormControlLabel,
   IconButton,
   InputAdornment,
+  ListItemText,
   Menu,
   MenuItem,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from "@mui/material";
@@ -21,6 +23,7 @@ import BadgeOutlinedIcon from "@mui/icons-material/BadgeOutlined";
 import BadgeRoundedIcon from "@mui/icons-material/BadgeRounded";
 import WorkspacePremiumOutlinedIcon from "@mui/icons-material/WorkspacePremiumOutlined";
 import UsbRoundedIcon from "@mui/icons-material/UsbRounded";
+import FingerprintRoundedIcon from "@mui/icons-material/FingerprintRounded";
 import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
 import PasswordRoundedIcon from "@mui/icons-material/PasswordRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
@@ -37,8 +40,14 @@ import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import * as ipc from "@/ipc/commands";
 import {
+  SSH_ID_DEFAULT_TYPE,
+  SSH_ID_KEY_TYPES,
   errorMessage,
+  sshIdTypeLabel,
   type CertificateCard,
+  type Fido2Device,
+  type Fido2GenerateForm,
+  type Fido2LoadForm,
   type GenerateKeyForm,
   type IdentityCard,
   type IdentityForm,
@@ -46,6 +55,8 @@ import {
   type KeyAlgorithm,
   type KeyCard,
   type KeyPreview,
+  type SkAlgorithm,
+  type SshIdKeyType,
   type Uuid,
 } from "@/ipc/types";
 import {
@@ -53,6 +64,7 @@ import {
   IconTile,
   Mono,
   SectionCard,
+  SettingRow,
   SidePanel,
   ToolIconButton,
   type MenuAction,
@@ -63,6 +75,7 @@ import {
   certificateState,
   certificateSummary,
   droppedKind,
+  isHardwareKey,
   keyTypeLabel,
   labelFromPath,
 } from "./model";
@@ -72,7 +85,7 @@ import {
 export function KeyTile({ card, size = sizes.tile }: { card?: KeyCard; size?: number }) {
   return (
     <IconTile size={size} tone={card?.unreadable ? "warning" : "info"}>
-      <KeyRoundedIcon />
+      {card?.securityKey ? <UsbRoundedIcon /> : <KeyRoundedIcon />}
     </IconTile>
   );
 }
@@ -810,13 +823,19 @@ export function EditKeyPanel({
           >
             {card.unreadable
               ? "Stored, but could not be parsed"
-              : `${keyTypeLabel(card)} · stored encrypted in the vault${
-                  card.encrypted
-                    ? card.hasPassphrase
-                      ? " · passphrase remembered"
-                      : " · asks for passphrase"
-                    : ""
-                }`}
+              : card.securityKey
+                ? `${keyTypeLabel(card)} · private key stays on the security key${
+                    card.securityKey.flags?.resident ? " · resident" : ""
+                  }${card.securityKey.flags?.userPresence ? " · touch" : ""}${
+                    card.securityKey.flags?.userVerification ? " · PIN" : ""
+                  }${card.encrypted && !card.hasPassphrase ? " · asks for passphrase" : ""}`
+                : `${keyTypeLabel(card)} · stored encrypted in the vault${
+                    card.encrypted
+                      ? card.hasPassphrase
+                        ? " · passphrase remembered"
+                        : " · asks for passphrase"
+                      : ""
+                  }`}
           </Typography>
         </Box>
         <TextField
@@ -1075,7 +1094,7 @@ export function GenerateKeyPanel({
 
 /* ---------------------------------------------------------- identity */
 
-type AuthRow = "key" | "certificate" | "fido2";
+type AuthRow = "sshid" | "key" | "certificate" | "fido2";
 
 /** Termius "New / Edit Identity": label, username, password and the auth
  *  method rows added through "+ Key, Certificate, FIDO2". */
@@ -1090,6 +1109,7 @@ export function IdentityPanel({
   menu,
   onSave,
   onNewKey,
+  onNewFido2,
   onClose,
 }: {
   vaultId: Uuid;
@@ -1102,6 +1122,7 @@ export function IdentityPanel({
   menu: MenuAction[];
   onSave: (form: IdentityForm) => void;
   onNewKey: () => void;
+  onNewFido2: () => void;
   onClose: () => void;
 }) {
   const [label, setLabel] = useState(initial?.label ?? "");
@@ -1110,32 +1131,55 @@ export function IdentityPanel({
   const [showPassword, setShowPassword] = useState(false);
   const [keyId, setKeyId] = useState<Uuid | null>(initial?.sshKeyId ?? null);
   const [certId, setCertId] = useState<Uuid | null>(initial?.sshCertificateId ?? null);
+  const [sshId, setSshId] = useState(initial?.sshId ?? false);
+  const [sshIdType, setSshIdType] = useState<SshIdKeyType | null>(initial?.sshIdKeyType ?? null);
   const [rows, setRows] = useState<AuthRow[]>(() => {
     const r: AuthRow[] = [];
-    if (initial?.sshKeyId) r.push("key");
+    if (initial?.sshId) r.push("sshid");
+    if (initial?.sshKeyId) {
+      const k = keys.find((x) => x.id === initial.sshKeyId);
+      r.push(k && isHardwareKey(k) ? "fido2" : "key");
+    }
     if (initial?.sshCertificateId) r.push("certificate");
     return r;
   });
   const [addAnchor, setAddAnchor] = useState<HTMLElement | null>(null);
 
   const certified = useMemo(() => keys.filter((k) => k.certificate !== null), [keys]);
+  const softwareKeys = useMemo(() => keys.filter((k) => !isHardwareKey(k)), [keys]);
+  const hardwareKeys = useMemo(() => keys.filter(isHardwareKey), [keys]);
   const keyById = useMemo(() => new Map(keys.map((k) => [k.id, k])), [keys]);
   const selectedKey = keyId ? (keyById.get(keyId) ?? null) : null;
   const certKey = certId ? (certified.find((k) => k.certificate?.id === certId) ?? null) : null;
   const keyCertId = selectedKey?.certificate?.id ?? null;
 
   const addRow = (r: AuthRow) => {
-    setRows((rs) => (rs.includes(r) ? rs : [...rs, r]));
+    setRows((rs) => {
+      // Key and FIDO2 both fill `sshKeyId`; adding one drops the other.
+      const other: AuthRow | null = r === "key" ? "fido2" : r === "fido2" ? "key" : null;
+      const base = other ? rs.filter((x) => x !== other) : rs;
+      return base.includes(r) ? base : [...base, r];
+    });
+    if (r === "key" || r === "fido2") {
+      setKeyId(null);
+      setCertId(null);
+      setRows((rs) => rs.filter((x) => x !== "certificate"));
+    }
+    if (r === "sshid") setSshId(true);
     setAddAnchor(null);
   };
   const removeRow = (r: AuthRow) => {
     setRows((rs) => rs.filter((x) => x !== r));
-    if (r === "key") {
+    if (r === "key" || r === "fido2") {
       setKeyId(null);
       setCertId(null);
       setRows((rs) => rs.filter((x) => x !== "certificate"));
     }
     if (r === "certificate") setCertId(null);
+    if (r === "sshid") {
+      setSshId(false);
+      setSshIdType(null);
+    }
   };
   const chooseKey = (id: Uuid | null) => {
     setKeyId(id);
@@ -1153,16 +1197,24 @@ export function IdentityPanel({
 
   const missing = readOnly
     ? []
-    : (["key", "certificate", "fido2"] as AuthRow[]).filter((r) => !rows.includes(r));
-  const valid = label.trim().length > 0 && username.trim().length > 0;
+    : (["sshid", "key", "certificate", "fido2"] as AuthRow[]).filter(
+        (r) =>
+          !rows.includes(r) &&
+          // one of Key / FIDO2 at a time
+          !(r === "key" && rows.includes("fido2")) &&
+          !(r === "fido2" && rows.includes("key")),
+      );
+  const valid = label.trim().length > 0 && (sshId || username.trim().length > 0);
   const lock = { readOnly, disabled: readOnly };
 
   const rowTitle: Record<AuthRow, string> = {
+    sshid: "SSH ID",
     key: "Key",
     certificate: "Certificate",
     fido2: "FIDO2",
   };
   const rowIcon: Record<AuthRow, ReactNode> = {
+    sshid: <FingerprintRoundedIcon fontSize="small" />,
     key: <KeyOutlinedIcon fontSize="small" />,
     certificate: <WorkspacePremiumOutlinedIcon fontSize="small" />,
     fido2: <UsbRoundedIcon fontSize="small" />,
@@ -1191,6 +1243,8 @@ export function IdentityPanel({
                 password,
                 sshKeyId: keyId,
                 sshCertificateId: certId,
+                sshId,
+                sshIdKeyType: sshId ? sshIdType : null,
               })
             }
           >
@@ -1215,8 +1269,8 @@ export function IdentityPanel({
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           autoComplete="off"
-          required
-          placeholder="Username *"
+          required={!sshId}
+          placeholder={sshId ? "Username (defaults to your SSH ID handle)" : "Username *"}
           slotProps={{
             htmlInput: { "aria-label": "Username", readOnly },
             input: { startAdornment: adornment(<PersonOutlineRoundedIcon fontSize="small" />) },
@@ -1264,6 +1318,56 @@ export function IdentityPanel({
           }}
         />
 
+        {rows.includes("sshid") && (
+          <TextField
+            select
+            {...lock}
+            value={sshIdType ?? ""}
+            onChange={(e) =>
+              setSshIdType(e.target.value === "" ? null : (e.target.value as SshIdKeyType))
+            }
+            helperText="Signs in with this account's passkeys (Settings → SSH ID). Pick which one to offer first."
+            slotProps={{
+              htmlInput: { "aria-label": "SSH ID key type" },
+              input: {
+                startAdornment: adornment(rowIcon.sshid),
+                endAdornment: (
+                  <InputAdornment position="end" sx={{ mr: 2 }}>
+                    <IconButton
+                      size="small"
+                      aria-label="Remove SSH ID"
+                      onClick={() => removeRow("sshid")}
+                      disabled={readOnly}
+                    >
+                      <CloseRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              },
+            }}
+          >
+            <MenuItem value="">
+              {sshIdTypeLabel(SSH_ID_DEFAULT_TYPE)}
+              <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                Default
+              </Typography>
+            </MenuItem>
+            {SSH_ID_KEY_TYPES.filter((t) => t.value !== SSH_ID_DEFAULT_TYPE).map((t) => (
+              <MenuItem key={t.value} value={t.value}>
+                {t.label}
+                <Typography
+                  component="span"
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ ml: 1 }}
+                >
+                  {t.hint}
+                </Typography>
+              </MenuItem>
+            ))}
+          </TextField>
+        )}
+
         {rows.includes("key") && (
           <TextField
             select
@@ -1306,7 +1410,7 @@ export function IdentityPanel({
             <MenuItem value="">
               <em>Choose a key</em>
             </MenuItem>
-            {keys.map((k) => (
+            {softwareKeys.map((k) => (
               <MenuItem key={k.id} value={k.id}>
                 {k.label}
                 <Typography
@@ -1379,37 +1483,65 @@ export function IdentityPanel({
         )}
 
         {rows.includes("fido2") && (
-          <Box
-            sx={{
-              border: 1,
-              borderColor: "border.light",
-              borderRadius: 1.5,
-              px: 1.5,
-              py: 1,
-              display: "flex",
-              alignItems: "center",
-              gap: 1.25,
-              color: "text.secondary",
+          <TextField
+            select
+            {...lock}
+            value={keyId ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "__new") {
+                onNewFido2();
+                return;
+              }
+              chooseKey(v === "" ? null : v);
+            }}
+            helperText={
+              selectedKey
+                ? "The token must be plugged in to connect; you will be asked to touch it."
+                : hardwareKeys.length === 0
+                  ? "No FIDO2 key in this vault yet — generate one on your security key."
+                  : undefined
+            }
+            slotProps={{
+              htmlInput: { "aria-label": "FIDO2 key" },
+              input: {
+                startAdornment: adornment(rowIcon.fido2),
+                endAdornment: (
+                  <InputAdornment position="end" sx={{ mr: 2 }}>
+                    <IconButton
+                      size="small"
+                      aria-label="Remove FIDO2"
+                      onClick={() => removeRow("fido2")}
+                      disabled={readOnly}
+                    >
+                      <CloseRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              },
             }}
           >
-            {rowIcon.fido2}
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="body2" color="text.primary">
-                Insert FIDO2 device
-              </Typography>
-              <Typography variant="caption">
-                Not supported yet — hardware keys work through the system ssh-agent.
-              </Typography>
-            </Box>
-            <IconButton
-              size="small"
-              aria-label="Remove FIDO2"
-              onClick={() => removeRow("fido2")}
-              disabled={readOnly}
-            >
-              <CloseRoundedIcon fontSize="small" />
-            </IconButton>
-          </Box>
+            <MenuItem value="">
+              <em>Choose a FIDO2 key</em>
+            </MenuItem>
+            {hardwareKeys.map((k) => (
+              <MenuItem key={k.id} value={k.id}>
+                {k.label}
+                <Typography
+                  component="span"
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ ml: 1 }}
+                >
+                  {keyTypeLabel(k).replace(/^Type /, "")}
+                </Typography>
+              </MenuItem>
+            ))}
+            <MenuItem value="__new" sx={{ color: "primary.main" }}>
+              <AddRoundedIcon fontSize="small" sx={{ mr: 1.25 }} />
+              Generate FIDO2 key…
+            </MenuItem>
+          </TextField>
         )}
 
         {missing.length > 0 && (
@@ -1448,25 +1580,359 @@ export function IdentityPanel({
 
 /* -------------------------------------------------------------- fido2 */
 
-/** Honest placeholder: FIDO2 resident keys are not implemented yet. */
-export function Fido2Panel({ vaultName, onClose }: { vaultName: string; onClose: () => void }) {
+const SK_ALGORITHMS: { value: SkAlgorithm; label: string; hint: string }[] = [
+  { value: "ed25519", label: "ED25519-SK", hint: "sk-ssh-ed25519@openssh.com" },
+  { value: "ecdsa_p256", label: "ECDSA-SK", hint: "sk-ecdsa-sha2-nistp256@openssh.com" },
+];
+
+function deviceName(d: Fido2Device): string {
+  return d.product.trim() || `USB ${d.vendorId.toString(16)}:${d.productId.toString(16)}`;
+}
+
+/** Generate a key on a FIDO2 security key. Polls for tokens every 2 s while
+ *  open; the private key never leaves the token — the vault stores the
+ *  public half plus the credential handle (like `~/.ssh/id_ed25519_sk`). */
+export function Fido2Panel({
+  vaultId,
+  vaultName,
+  busy,
+  error,
+  onGenerate,
+  onLoadResident,
+  onClose,
+}: {
+  vaultId: Uuid;
+  vaultName: string;
+  busy: boolean;
+  error: string | null;
+  onGenerate: (form: Fido2GenerateForm) => void;
+  onLoadResident: (form: Fido2LoadForm) => void;
+  onClose: () => void;
+}) {
+  const devices = useQuery({
+    queryKey: ["fido2", "devices"],
+    queryFn: ipc.fido2Devices,
+    refetchInterval: busy ? false : 2000,
+    refetchIntervalInBackground: false,
+  });
+  const list = devices.data ?? [];
+  const [devicePath, setDevicePath] = useState<string | null>(null);
+  const device = list.find((d) => d.path === devicePath) ?? list[0] ?? null;
+
+  const [label, setLabel] = useState("");
+  const [algorithmPref, setAlgorithm] = useState<SkAlgorithm>("ed25519");
+  const [resident, setResident] = useState(false);
+  const [userPresence, setUserPresence] = useState(true);
+  const [userVerification, setUserVerification] = useState(false);
+  const [pin, setPin] = useState("");
+  const [showPin, setShowPin] = useState(false);
+  const [passphrase, setPassphrase] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [show, setShow] = useState(false);
+  const [remember, setRemember] = useState(true);
+  const [mode, setMode] = useState<"generate" | "load">("generate");
+
+  const supported = device?.algorithms ?? [];
+  const algorithm: SkAlgorithm =
+    supported.length === 0 || supported.includes(algorithmPref)
+      ? algorithmPref
+      : (supported[0] ?? algorithmPref);
+  const canResident = device?.residentKeys ?? false;
+  const pinNeeded = device?.pinSet === true || resident || userVerification || mode === "load";
+  const mismatch = passphrase.length > 0 && passphrase !== confirm;
+  const valid =
+    device !== null &&
+    !mismatch &&
+    (!pinNeeded || pin.length >= 4) &&
+    (mode === "load" || label.trim().length > 0);
+
+  const pinField = (
+    <TextField
+      type={showPin ? "text" : "password"}
+      value={pin}
+      onChange={(e) => setPin(e.target.value)}
+      placeholder="PIN"
+      autoComplete="off"
+      inputMode="numeric"
+      helperText={
+        device?.pinSet === false
+          ? "This token has no PIN yet; set one with your vendor tool or ssh-keygen -O verify-required."
+          : undefined
+      }
+      slotProps={{
+        htmlInput: { "aria-label": "PIN" },
+        input: {
+          startAdornment: adornment(<PasswordRoundedIcon fontSize="small" />),
+          endAdornment: (
+            <InputAdornment position="end">
+              <IconButton
+                size="small"
+                onClick={() => setShowPin((v) => !v)}
+                aria-label="Toggle PIN visibility"
+              >
+                {showPin ? (
+                  <VisibilityOffRoundedIcon fontSize="small" />
+                ) : (
+                  <VisibilityRoundedIcon fontSize="small" />
+                )}
+              </IconButton>
+            </InputAdornment>
+          ),
+        },
+      }}
+    />
+  );
+
+  const passphraseFields = (
+    <>
+      <TextField
+        type={show ? "text" : "password"}
+        value={passphrase}
+        onChange={(e) => setPassphrase(e.target.value)}
+        placeholder="Passphrase"
+        autoComplete="new-password"
+        helperText="Protects the stored key handle, like OpenSSH does. Optional."
+        slotProps={{
+          htmlInput: { "aria-label": "Passphrase" },
+          input: {
+            startAdornment: adornment(<LockOutlinedIcon fontSize="small" />),
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  size="small"
+                  onClick={() => setShow((v) => !v)}
+                  aria-label="Toggle passphrase visibility"
+                >
+                  {show ? (
+                    <VisibilityOffRoundedIcon fontSize="small" />
+                  ) : (
+                    <VisibilityRoundedIcon fontSize="small" />
+                  )}
+                </IconButton>
+              </InputAdornment>
+            ),
+          },
+        }}
+      />
+      {passphrase.length > 0 && (
+        <>
+          <TextField
+            type={show ? "text" : "password"}
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder="Confirm passphrase"
+            autoComplete="new-password"
+            error={mismatch}
+            helperText={mismatch ? "Passphrases differ" : undefined}
+            slotProps={{
+              htmlInput: { "aria-label": "Confirm passphrase" },
+              input: { startAdornment: adornment(<LockOutlinedIcon fontSize="small" />) },
+            }}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+            }
+            label={<Typography variant="body2">Save passphrase in the vault</Typography>}
+          />
+        </>
+      )}
+    </>
+  );
+
+  const submit = () => {
+    if (!device) return;
+    const pass = passphrase.length > 0 ? passphrase : null;
+    if (mode === "load") {
+      onLoadResident({
+        vaultId,
+        device: device.path,
+        pin,
+        passphrase: pass,
+        rememberPassphrase: pass !== null && remember,
+      });
+      return;
+    }
+    onGenerate({
+      vaultId,
+      label: label.trim(),
+      device: device.path,
+      algorithm,
+      resident,
+      userPresence,
+      userVerification,
+      pin: pin.length > 0 ? pin : null,
+      user: null,
+      comment: "",
+      passphrase: pass,
+      rememberPassphrase: pass !== null && remember,
+    });
+  };
+
   return (
-    <SidePanel title="Generate FIDO2 Key" subtitle={vaultName} onClose={onClose}>
-      <SectionCard>
-        <Box sx={{ textAlign: "center", py: 4, color: "text.secondary" }}>
-          <UsbRoundedIcon sx={{ fontSize: 40, mb: 1.5, opacity: 0.6 }} />
-          <Typography variant="subtitle2" color="text.primary">
-            Insert FIDO2 device
-          </Typography>
-          <Typography variant="body2" sx={{ mt: 0.5 }}>
-            Connect your FIDO2 device to show here.
-          </Typography>
+    <SidePanel
+      title={mode === "load" ? "Load FIDO2 Keys" : "Generate FIDO2 Key"}
+      subtitle={vaultName}
+      onClose={onClose}
+      footer={
+        device ? (
+          <>
+            <Button
+              variant="text"
+              color="inherit"
+              onClick={() => (mode === "load" ? setMode("generate") : onClose())}
+              disabled={busy}
+            >
+              {mode === "load" ? "Back" : "Cancel"}
+            </Button>
+            <Button variant="contained" disabled={!valid || busy} onClick={submit}>
+              {busy ? "Touch your security key…" : mode === "load" ? "Load" : "Generate"}
+            </Button>
+          </>
+        ) : undefined
+      }
+    >
+      {!device ? (
+        <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Box sx={{ textAlign: "center", color: "text.secondary", py: 6 }}>
+            <IconTile size={56} tone="neutral">
+              <UsbRoundedIcon />
+            </IconTile>
+            <Typography variant="subtitle1" color="text.primary" sx={{ mt: 2 }}>
+              Insert FIDO2 device
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 0.5 }}>
+              {devices.isError
+                ? errorMessage(devices.error)
+                : "Connect your FIDO2 device to show here."}
+            </Typography>
+          </Box>
         </Box>
-        <Alert severity="info" variant="outlined">
-          Generating <Mono>ed25519-sk</Mono> / <Mono>ecdsa-sk</Mono> keys inside Termoso is planned.
-          Until then, keys living on a security key are picked up from the system ssh-agent.
-        </Alert>
-      </SectionCard>
+      ) : (
+        <>
+          <SectionCard>
+            <TextField
+              select
+              label="Security key"
+              value={device.path}
+              onChange={(e) => setDevicePath(e.target.value)}
+              slotProps={{ htmlInput: { "aria-label": "Security key" } }}
+            >
+              {list.map((d) => (
+                <MenuItem key={d.path} value={d.path}>
+                  {deviceName(d)}
+                </MenuItem>
+              ))}
+            </TextField>
+            <Stack direction="row" spacing={0.75} useFlexGap sx={{ flexWrap: "wrap" }}>
+              {device.versions.map((v) => (
+                <Chip key={v} size="small" variant="outlined" label={v} />
+              ))}
+              {device.pinSet === true && <Chip size="small" variant="outlined" label="PIN set" />}
+              {device.residentKeys && (
+                <Chip size="small" variant="outlined" label="Resident keys" />
+              )}
+            </Stack>
+            {mode === "generate" && canResident && (
+              <Button
+                variant="text"
+                size="small"
+                sx={{ alignSelf: "flex-start" }}
+                onClick={() => setMode("load")}
+              >
+                Load resident keys from this device…
+              </Button>
+            )}
+          </SectionCard>
+
+          {mode === "generate" ? (
+            <>
+              <SectionCard>
+                <TextField
+                  autoFocus
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  required
+                  placeholder="Label *"
+                  slotProps={{ htmlInput: { "aria-label": "Label" } }}
+                />
+                <TextField
+                  select
+                  label="Key type"
+                  value={algorithm}
+                  onChange={(e) => setAlgorithm(e.target.value as SkAlgorithm)}
+                  slotProps={{ htmlInput: { "aria-label": "Key type" } }}
+                >
+                  {SK_ALGORITHMS.map((a) => (
+                    <MenuItem
+                      key={a.value}
+                      value={a.value}
+                      disabled={supported.length > 0 && !supported.includes(a.value)}
+                    >
+                      <ListItemText primary={a.label} secondary={a.hint} />
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <SettingRow
+                  label="Require User Presence"
+                  hint="Touch the key for every connection"
+                  control={
+                    <Switch
+                      checked={userPresence}
+                      onChange={(e) => setUserPresence(e.target.checked)}
+                      slotProps={{ input: { "aria-label": "Require User Presence" } }}
+                    />
+                  }
+                />
+                <SettingRow
+                  label="Require PIN Code"
+                  hint="Ask for the PIN for every connection"
+                  control={
+                    <Switch
+                      checked={userVerification}
+                      onChange={(e) => setUserVerification(e.target.checked)}
+                      slotProps={{ input: { "aria-label": "Require PIN Code" } }}
+                    />
+                  }
+                />
+                <SettingRow
+                  label="Resident key"
+                  hint={
+                    canResident
+                      ? "Store the credential on the token so it can be loaded on another machine"
+                      : "This token cannot store resident credentials"
+                  }
+                  last
+                  control={
+                    <Switch
+                      checked={resident && canResident}
+                      disabled={!canResident}
+                      onChange={(e) => setResident(e.target.checked)}
+                      slotProps={{ input: { "aria-label": "Resident key" } }}
+                    />
+                  }
+                />
+                {pinNeeded && pinField}
+              </SectionCard>
+              <SectionCard>{passphraseFields}</SectionCard>
+            </>
+          ) : (
+            <SectionCard>
+              <Typography variant="body2" color="text.secondary">
+                Resident SSH credentials on this token are imported into <b>{vaultName}</b>. The PIN
+                is required to list them.
+              </Typography>
+              {pinField}
+              {passphraseFields}
+            </SectionCard>
+          )}
+          {error && (
+            <Alert severity="error" variant="outlined">
+              {error}
+            </Alert>
+          )}
+        </>
+      )}
     </SidePanel>
   );
 }

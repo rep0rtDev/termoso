@@ -43,6 +43,7 @@ const key = (over: Partial<KeyCard> = {}): KeyCard => ({
   usedBy: 0,
   certificate: null,
   certificateUnreadable: false,
+  securityKey: null,
   updatedAt: "2026-01-01T00:00:00Z",
   dirty: false,
   ...over,
@@ -58,6 +59,8 @@ const identity = (over: Partial<IdentityCard> = {}): IdentityCard => ({
   sshKeyLabel: null,
   sshCertificateId: null,
   hasCertificate: false,
+  sshId: false,
+  sshIdKeyType: null,
   updatedAt: "2026-01-01T00:00:00Z",
   ...over,
 });

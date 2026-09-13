@@ -31,6 +31,7 @@ export const keys = {
   devices: ["account", "devices"] as const,
   vaultMembers: (id: Uuid) => ["account", "vault-members", id] as const,
   teams: ["account", "teams"] as const,
+  sshid: ["account", "sshid"] as const,
   teamMembers: (id: Uuid) => ["account", "teams", id, "members"] as const,
   teamInvites: (id: Uuid) => ["account", "teams", id, "invites"] as const,
   teamPendingKeys: (id: Uuid) => ["account", "teams", id, "pending-keys"] as const,

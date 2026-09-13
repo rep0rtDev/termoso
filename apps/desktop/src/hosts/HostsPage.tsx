@@ -69,7 +69,7 @@ import {
 } from "@/ipc/hooks";
 import { useActiveVault, vaultIcon, ViewOnlyChip } from "@/app/vault";
 import type { GroupNode, HostCard, HostsView, Uuid } from "@/ipc/types";
-import { errorMessage, hostProtocols } from "@/ipc/types";
+import { connectProtocols, errorMessage, hostProtocols } from "@/ipc/types";
 import { openTerminal, useTerminal } from "@/terminal/store";
 import { addToWorkspace, useWorkspaces, workspaceChoices } from "@/terminal/workspaces";
 import { openSftpForHost } from "@/sftp/store";
@@ -516,7 +516,7 @@ export function HostsPage() {
         : {
             label: "Connect",
             icon: <PlayArrowRoundedIcon fontSize="small" />,
-            items: connectActions(h.id, h.label, hostProtocols(h)),
+            items: connectActions(h.id, h.label, connectProtocols(h)),
           },
       {
         label: "Add to Workspace",

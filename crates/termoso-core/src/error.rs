@@ -78,6 +78,10 @@ pub enum CoreError {
     /// SSH key parsing or generation.
     #[error("ssh key: {0}")]
     Key(String),
+    /// FIDO2 security key (no device, PIN, touch…).
+    #[cfg(feature = "fido2")]
+    #[error("security key: {0}")]
+    Fido2(#[from] crate::fido2::Fido2Error),
     /// Operation was cancelled.
     #[error("cancelled")]
     Cancelled,
@@ -103,6 +107,12 @@ impl From<russh::keys::Error> for CoreError {
 
 impl From<russh::keys::ssh_key::Error> for CoreError {
     fn from(e: russh::keys::ssh_key::Error) -> Self {
+        CoreError::Key(e.to_string())
+    }
+}
+
+impl From<russh::keys::ssh_encoding::Error> for CoreError {
+    fn from(e: russh::keys::ssh_encoding::Error) -> Self {
         CoreError::Key(e.to_string())
     }
 }
@@ -142,6 +152,8 @@ impl CoreError {
             CoreError::Sftp(_) => "sftp",
             CoreError::Terminal(_) => "terminal",
             CoreError::Key(_) => "key",
+            #[cfg(feature = "fido2")]
+            CoreError::Fido2(e) => e.kind(),
             CoreError::Cancelled => "cancelled",
             CoreError::Closed => "closed",
         }

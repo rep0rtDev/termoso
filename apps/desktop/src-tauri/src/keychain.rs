@@ -8,9 +8,11 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use termoso_core::fido2::{self, Fido2Device, GenerateOptions, SecurityKeyInfo};
 use termoso_core::keys::{self, CertificateInfo, KeyAlgorithm, KeyInfo};
 use termoso_core::model::{Entity, Identity, SshCertificate, SshConfig, SshKey, TelnetConfig};
 use termoso_core::store::Store;
+use termoso_proto::sshid::SshIdKeyType;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -85,8 +87,36 @@ pub struct KeyCard {
     pub certificate: Option<CertificateCard>,
     /// A certificate is attached but cannot be parsed (foreign import).
     pub certificate_unreadable: bool,
+    /// FIDO2 security key: the token signs, the vault holds only the
+    /// public half and the credential handle.
+    pub security_key: Option<SecurityKeyInfo>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
     pub dirty: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Fido2GenerateForm {
+    pub vault_id: Uuid,
+    pub label: String,
+    #[serde(flatten)]
+    pub options: GenerateOptions,
+    /// Keep the passphrase in the vault so connections do not prompt.
+    #[serde(default)]
+    pub remember_passphrase: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Fido2LoadForm {
+    pub vault_id: Uuid,
+    #[serde(default)]
+    pub device: Option<String>,
+    pub pin: Zeroizing<String>,
+    #[serde(default)]
+    pub passphrase: Option<Zeroizing<String>>,
+    #[serde(default)]
+    pub remember_passphrase: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -137,6 +167,9 @@ pub struct IdentityCard {
     /// The selected key carries a certificate (or one is referenced
     /// explicitly), so connections authenticate with it.
     pub has_certificate: bool,
+    /// Logs in with the account's SSH ID passkeys.
+    pub ssh_id: bool,
+    pub ssh_id_key_type: Option<SshIdKeyType>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -155,6 +188,12 @@ pub struct IdentityForm {
     /// Explicit certificate; `None` falls back to the key's own certificate.
     #[serde(default)]
     pub ssh_certificate_id: Option<Uuid>,
+    /// Log in with the account's SSH ID passkeys (username may be empty:
+    /// the handle is used).
+    #[serde(default)]
+    pub ssh_id: bool,
+    #[serde(default)]
+    pub ssh_id_key_type: Option<SshIdKeyType>,
 }
 
 fn label_of(s: &str, what: &str) -> Result<String> {
@@ -262,6 +301,7 @@ fn card(
         used_by,
         certificate: cert_info.and_then(|c| c.ok()),
         certificate_unreadable,
+        security_key: fido2::describe(&k.private_key, k.passphrase.as_deref()),
         updated_at: entity.updated_at,
         dirty: entity.dirty,
     }
@@ -273,6 +313,7 @@ pub fn keys_list(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<KeyCard>> 
     let mut out: Vec<KeyCard> = store
         .list::<SshKey>(vault_id)?
         .iter()
+        .filter(|e| !e.data.ssh_id)
         .map(|e| card(e, usage.get(&e.id).copied().unwrap_or(0), certs.get(&e.id)))
         .collect();
     out.sort_by_key(|a| a.label.to_lowercase());
@@ -294,9 +335,102 @@ fn short_type(info: &KeyInfo) -> String {
     match info.key_type.as_str() {
         "ssh-ed25519" => "ed25519".into(),
         "ssh-rsa" => "rsa".into(),
+        "sk-ssh-ed25519@openssh.com" => "sk-ed25519".into(),
+        "sk-ecdsa-sha2-nistp256@openssh.com" => "sk-ecdsa".into(),
         t if t.starts_with("ecdsa") => "ecdsa".into(),
         t => t.to_string(),
     }
+}
+
+/// Connected FIDO2 authenticators. Blocking USB I/O; callers run it off
+/// the async runtime.
+pub fn fido2_devices() -> Vec<Fido2Device> {
+    fido2::list_devices()
+}
+
+/// Persist a security-key handle. `passphrase` is what the handle is
+/// encrypted with (if anything); it is remembered in the vault only when
+/// `remember` is set. The stored block is public key + credential handle —
+/// the token never releases the signing key.
+fn store_sk(
+    store: &Store,
+    vault_id: Uuid,
+    label: String,
+    material: &keys::KeyMaterial,
+    passphrase: Option<&str>,
+    remember: bool,
+) -> Result<KeyCard> {
+    let credential =
+        fido2::describe(&material.private_key, passphrase).and_then(|s| s.credential_id);
+    let key = SshKey {
+        label,
+        private_key: material.private_key.to_string(),
+        public_key: Some(material.public_key.clone()),
+        passphrase: passphrase.filter(|_| remember).map(str::to_string),
+        key_type: short_type(&material.info),
+        fido2_credential_id: credential,
+        ssh_id: false,
+    };
+    let id = store.insert(vault_id, &key)?;
+    key_card(store, id)
+}
+
+/// Create a credential on the token (waits for the touch) and store the
+/// resulting `sk-*` key. The token keeps the private key.
+pub fn fido2_generate(store: &Store, form: &Fido2GenerateForm) -> Result<KeyCard> {
+    let label = label_of(&form.label, "key")?;
+    let mut opts = form.options.clone();
+    opts.passphrase = opts.passphrase.filter(|p| !p.is_empty());
+    if opts.comment.trim().is_empty() {
+        opts.comment = label.clone();
+    }
+    let material = fido2::generate(&opts)?;
+    let passphrase = opts.passphrase.as_deref().map(|p| p.as_str());
+    store_sk(
+        store,
+        form.vault_id,
+        label,
+        &material,
+        passphrase,
+        form.remember_passphrase,
+    )
+}
+
+/// Load the resident SSH credentials from a token (`ssh-keygen -K`) into
+/// the vault. Credentials already present (same public key) are skipped.
+pub fn fido2_load_resident(store: &Store, form: &Fido2LoadForm) -> Result<Vec<KeyCard>> {
+    let passphrase = form
+        .passphrase
+        .as_deref()
+        .map(|p| p.as_str())
+        .filter(|p| !p.is_empty());
+    let found = fido2::load_resident(form.device.as_deref(), &form.pin, passphrase)?;
+    let existing: std::collections::HashSet<String> = store
+        .list::<SshKey>(Some(form.vault_id))?
+        .into_iter()
+        .filter_map(|k| keys::inspect(&k.data.private_key).ok())
+        .map(|i| i.fingerprint)
+        .collect();
+    let mut out = Vec::new();
+    for (n, material) in found.iter().enumerate() {
+        if existing.contains(&material.info.fingerprint) {
+            continue;
+        }
+        let label = if material.info.comment.trim().is_empty() {
+            format!("Resident key {}", n + 1)
+        } else {
+            material.info.comment.trim().to_string()
+        };
+        out.push(store_sk(
+            store,
+            form.vault_id,
+            label,
+            material,
+            passphrase,
+            form.remember_passphrase,
+        )?);
+    }
+    Ok(out)
 }
 
 pub fn generate(store: &Store, form: &GenerateForm) -> Result<KeyCard> {
@@ -314,6 +448,7 @@ pub fn generate(store: &Store, form: &GenerateForm) -> Result<KeyCard> {
         },
         key_type: short_type(&material.info),
         fido2_credential_id: None,
+        ssh_id: false,
     };
     let id = store.insert(form.vault_id, &key)?;
     key_card(store, id)
@@ -345,6 +480,7 @@ pub fn import(store: &Store, form: &ImportForm) -> Result<KeyCard> {
         },
         key_type: short_type(&material.info),
         fido2_credential_id: None,
+        ssh_id: false,
     };
     let id = store.insert(form.vault_id, &key)?;
     if let Some(c) = certificate {
@@ -685,6 +821,8 @@ pub fn identities(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<IdentityC
             ssh_certificate_id: i.data.ssh_certificate_id,
             has_certificate: i.data.ssh_certificate_id.is_some()
                 || i.data.ssh_key_id.is_some_and(|k| certs.contains_key(&k)),
+            ssh_id: i.data.ssh_id,
+            ssh_id_key_type: i.data.ssh_id_key_type,
             updated_at: i.updated_at,
         })
         .collect();
@@ -695,7 +833,7 @@ pub fn identities(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<IdentityC
 pub fn save_identity(store: &Store, form: &IdentityForm) -> Result<IdentityCard> {
     let label = label_of(&form.label, "identity")?;
     let username = form.username.trim().to_string();
-    if username.is_empty() {
+    if username.is_empty() && !form.ssh_id {
         return Err(DesktopError::invalid("username is required"));
     }
     // A certificate is only usable together with the key it certifies, so
@@ -740,6 +878,8 @@ pub fn save_identity(store: &Store, form: &IdentityForm) -> Result<IdentityCard>
         ssh_key_id,
         ssh_certificate_id: form.ssh_certificate_id,
         is_visible: true,
+        ssh_id: form.ssh_id,
+        ssh_id_key_type: form.ssh_id_key_type.filter(|_| form.ssh_id),
     };
     let id = match existing {
         Some(e) => {
@@ -1167,6 +1307,8 @@ mod tests {
                 password: None,
                 ssh_key_id: Some(card.id),
                 ssh_certificate_id: None,
+                ssh_id: false,
+                ssh_id_key_type: None,
             },
         )
         .unwrap();
@@ -1183,6 +1325,8 @@ mod tests {
                 password: None,
                 ssh_key_id: None,
                 ssh_certificate_id: cert.id,
+                ssh_id: false,
+                ssh_id_key_type: None,
             },
         )
         .unwrap();
@@ -1212,6 +1356,8 @@ mod tests {
                     password: None,
                     ssh_key_id: Some(rsa.id),
                     ssh_certificate_id: cert.id,
+                    ssh_id: false,
+                    ssh_id_key_type: None,
                 },
             )
             .is_err()
@@ -1302,6 +1448,8 @@ mod tests {
                 password: Some("pw".into()),
                 ssh_key_id: Some(key.id),
                 ssh_certificate_id: None,
+                ssh_id: false,
+                ssh_id_key_type: None,
             },
         )
         .unwrap();
@@ -1320,6 +1468,8 @@ mod tests {
                 password: None,
                 ssh_key_id: Some(key.id),
                 ssh_certificate_id: None,
+                ssh_id: false,
+                ssh_id_key_type: None,
             },
         )
         .unwrap();
@@ -1334,6 +1484,8 @@ mod tests {
                 password: Some(String::new()),
                 ssh_key_id: Some(key.id),
                 ssh_certificate_id: None,
+                ssh_id: false,
+                ssh_id_key_type: None,
             },
         )
         .unwrap();
@@ -1354,6 +1506,8 @@ mod tests {
                     password: None,
                     ssh_key_id: None,
                     ssh_certificate_id: None,
+                    ssh_id: false,
+                    ssh_id_key_type: None,
                 },
             )
             .is_err()
@@ -1387,6 +1541,8 @@ mod tests {
                 password: Some("pw".into()),
                 ssh_key_id: key,
                 ssh_certificate_id: None,
+                ssh_id: false,
+                ssh_id_key_type: None,
             },
         )
         .unwrap()

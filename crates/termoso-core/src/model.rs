@@ -94,6 +94,10 @@ pub struct ResolvedHost {
     pub key: Option<Entity<SshKey>>,
     /// Certificate referenced by the identity.
     pub certificate: Option<Entity<SshCertificate>>,
+    /// Handle of the account's SSH ID when the identity logs in with it
+    /// (used as the username when the identity has none).
+    #[serde(default)]
+    pub ssh_id_handle: Option<String>,
     /// Proxy, if any.
     pub proxy: Option<Entity<Proxy>>,
     /// Jump hosts in order (each already resolved one level).
@@ -134,6 +138,7 @@ impl ResolvedHost {
             .as_ref()
             .map(|i| i.data.username.clone())
             .filter(|u| !u.is_empty())
+            .or_else(|| self.ssh_id_handle.clone())
             .unwrap_or_else(|| "root".to_string())
     }
 }

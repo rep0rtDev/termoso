@@ -35,6 +35,7 @@ export type SettingsPage =
   | "team"
   | "account"
   | "vaults"
+  | "sshid"
   | "general"
   | "terminal"
   | "keyboard"

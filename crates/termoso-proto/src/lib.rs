@@ -14,6 +14,7 @@ pub mod entities;
 pub mod error;
 pub mod live;
 pub mod logs;
+pub mod sshid;
 pub mod sync;
 pub mod team;
 pub mod vault;

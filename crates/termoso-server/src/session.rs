@@ -198,14 +198,23 @@ pub async fn touch(state: &AppState, info: &SessionInfo, ip: Option<&str>) -> Ap
 }
 
 pub async fn revoke_session(state: &AppState, session_id: Uuid) -> ApiResult<()> {
-    let row: Option<(String, Uuid)> = sqlx::query_as(
-        "UPDATE sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL RETURNING token_hash, user_id",
+    let row: Option<(String, Uuid, Uuid)> = sqlx::query_as(
+        "UPDATE sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL RETURNING token_hash, user_id, device_id",
     )
     .bind(session_id)
     .fetch_optional(&state.db)
     .await?;
-    if let Some((h, user_id)) = row {
+    if let Some((h, user_id, device_id)) = row {
         state.cache.del(&cache_key(&h)).await?;
+        let (live,): (i64,) = sqlx::query_as(
+            "SELECT count(*) FROM sessions WHERE device_id = $1 AND revoked_at IS NULL AND expires_at > now()",
+        )
+        .bind(device_id)
+        .fetch_one(&state.db)
+        .await?;
+        if live == 0 {
+            crate::routes::sshid::forget_device(state, device_id).await?;
+        }
         events::publish(
             state,
             events::Event::SessionRevoked {
@@ -227,6 +236,7 @@ pub async fn revoke_device(state: &AppState, user_id: Uuid, device_id: Uuid) -> 
     .bind(user_id)
     .fetch_all(&state.db)
     .await?;
+    crate::routes::sshid::forget_device(state, device_id).await?;
     for (session_id, h) in rows {
         state.cache.del(&cache_key(&h)).await?;
         events::publish(

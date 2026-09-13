@@ -42,6 +42,7 @@ import {
 import {
   emptyHostForm,
   errorMessage,
+  type ConnectProtocol,
   type HostForm,
   type HostProtocol,
   type IpVersion,
@@ -100,16 +101,24 @@ export function HostEditPanel({ vaultId, hostId, initialGroupId, onClose }: Prop
   );
 }
 
+/** Same default as the `mosh` wrapper and Termius; shown as the placeholder. */
+const MOSH_DEFAULT_SERVER_COMMAND = "mosh-server new -s -c 256 -l LANG=en_US.UTF-8";
+
 const clampPort = (raw: string) =>
   raw === "" ? null : Math.max(1, Math.min(65535, Number(raw) || 1));
 
 const clampSeconds = (raw: string) =>
   raw === "" ? null : Math.max(0, Math.min(86400, Math.floor(Number(raw) || 0)));
 
-const protocolsOf = (f: HostForm): HostProtocol[] => [
+const protocolsOf = (f: HostForm): ConnectProtocol[] => [
   ...(f.ssh ? (["ssh"] as const) : []),
+  ...(f.ssh && f.useMosh ? (["mosh"] as const) : []),
   ...(f.telnet ? (["telnet"] as const) : []),
 ];
+
+/** What the bottom Connect opens: Mosh when enabled, else the first section. */
+const primaryOf = (f: HostForm): ConnectProtocol | null =>
+  f.ssh ? (f.useMosh ? "mosh" : "ssh") : f.telnet ? "telnet" : null;
 
 /**
  * Host Details laid out the Termius way: Address → General → "SSH on … port"
@@ -150,6 +159,7 @@ function HostEditor({
       initial.agentForwarding ||
       initial.keepAliveInterval !== null ||
       initial.timeout !== null ||
+      initial.useMosh ||
       initial.colorScheme !== null,
   );
   const [dialog, setDialog] = useState<"proxy" | "chain" | null>(null);
@@ -184,7 +194,7 @@ function HostEditor({
   const selectedTags = (tags.data ?? []).filter((t) => form.tagIds.includes(t.id));
   const selectedTagIds = new Set(form.tagIds);
 
-  const onSave = (thenConnect: HostProtocol | null) => {
+  const onSave = (thenConnect: ConnectProtocol | null) => {
     save.mutate(form, {
       onSuccess: (card) => {
         snackbar.notify(hostId ? "Host saved" : `Host “${card.label}” added`);
@@ -212,7 +222,7 @@ function HostEditor({
 
   const footer =
     hostId && !touched ? (
-      <ConnectButton hostId={hostId} protocol={protocols[0] ?? null} />
+      <ConnectButton hostId={hostId} protocol={primaryOf(form)} />
     ) : (
       <>
         <Button
@@ -227,7 +237,7 @@ function HostEditor({
         <ConnectButton
           hostId={hostId}
           disabled={!canSave}
-          onClick={() => onSave(protocols[0] ?? null)}
+          onClick={() => onSave(primaryOf(form))}
         />
       </>
     );
@@ -620,6 +630,33 @@ function HostEditor({
                     />
                   </Field>
                 </Box>
+                <Field
+                  label="Mosh"
+                  hint={
+                    form.useMosh
+                      ? "Connect runs mosh-server over SSH, then hands the session to a local mosh-client (UDP). Needs Mosh on both ends."
+                      : undefined
+                  }
+                >
+                  <TextField
+                    select
+                    value={form.useMosh ? "on" : "off"}
+                    onChange={(e) => set("useMosh", e.target.value === "on")}
+                  >
+                    <MenuItem value="off">Disabled</MenuItem>
+                    <MenuItem value="on">Enabled</MenuItem>
+                  </TextField>
+                </Field>
+                {form.useMosh && (
+                  <Field label="Mosh server command">
+                    <TextField
+                      value={form.moshServerCommand ?? ""}
+                      onChange={(e) => set("moshServerCommand", e.target.value || null)}
+                      placeholder={MOSH_DEFAULT_SERVER_COMMAND}
+                      slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+                    />
+                  </Field>
+                )}
                 <ThemeField value={form.colorScheme} onChange={(v) => set("colorScheme", v)} />
               </>
             )}
@@ -661,6 +698,9 @@ function HostEditor({
                 password: form.telnet.password,
                 hasPassword: form.telnet.hasPassword,
                 sshKeyId: null,
+                sshCertificateId: null,
+                sshId: false,
+                sshIdKeyType: null,
                 agentForwarding: false,
               }}
               onChange={({ identityId, username, password }) => {

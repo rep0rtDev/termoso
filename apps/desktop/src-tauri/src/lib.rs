@@ -13,11 +13,13 @@ mod hosts;
 mod import;
 mod keychain;
 mod logs;
+mod mosh;
 mod multiplayer;
 mod prompts;
 mod sessions;
 mod sftp;
 mod snippets;
+mod sshid;
 mod state;
 mod team;
 mod trust;
@@ -160,6 +162,9 @@ pub fn run() {
             commands_tools::keys_list,
             commands_tools::key_generate,
             commands_tools::key_import,
+            commands_tools::fido2_devices,
+            commands_tools::fido2_generate,
+            commands_tools::fido2_load_resident,
             commands_tools::key_import_file,
             commands_tools::key_inspect,
             commands_tools::key_inspect_file,
@@ -265,6 +270,12 @@ pub fn run() {
             commands_tools::team_vault_set_access,
             commands_tools::team_vault_remove_access,
             commands_tools::team_vault_rotate_key,
+            commands_tools::sshid_view,
+            commands_tools::sshid_create,
+            commands_tools::sshid_delete,
+            commands_tools::sshid_rotate,
+            commands_tools::sshid_add_fido2,
+            commands_tools::sshid_remove_key,
             commands_tools::multiplayer_start,
             commands_tools::multiplayer_stop,
             commands_tools::multiplayer_info,

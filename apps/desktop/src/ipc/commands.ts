@@ -18,6 +18,9 @@ import type {
   EditInfo,
   Entity,
   ExportToHostResult,
+  Fido2Device,
+  Fido2GenerateForm,
+  Fido2LoadForm,
   ForwardEvent,
   FsEntry,
   GenerateKeyForm,
@@ -93,6 +96,8 @@ import type {
   VaultMember,
   VaultRole,
   WorkspacesState,
+  SshIdFido2Form,
+  SshIdView,
 } from "./types";
 
 export const appInfo = () => invoke<AppInfo>("app_info");
@@ -299,6 +304,13 @@ export const keysList = (vaultId?: Uuid | null) =>
   invoke<KeyCard[]>("keys_list", { vaultId: vaultId ?? null });
 export const keyGenerate = (form: GenerateKeyForm) => invoke<KeyCard>("key_generate", { form });
 export const keyImport = (form: ImportKeyForm) => invoke<KeyCard>("key_import", { form });
+/** USB HID enumeration of FIDO2 authenticators; local only. */
+export const fido2Devices = () => invoke<Fido2Device[]>("fido2_devices");
+/** Resolves after the token has been touched (or the operation timed out). */
+export const fido2Generate = (form: Fido2GenerateForm) =>
+  invoke<KeyCard>("fido2_generate", { form });
+export const fido2LoadResident = (form: Fido2LoadForm) =>
+  invoke<KeyCard[]>("fido2_load_resident", { form });
 /** Private material is read from `path` inside Rust and never crosses IPC. */
 export const keyImportFile = (form: ImportKeyFileForm) =>
   invoke<KeyCard>("key_import_file", { form });
@@ -475,6 +487,16 @@ export const accountVaultMembers = (vaultId: Uuid) =>
   invoke<VaultMember[]>("account_vault_members", { vaultId });
 export const onSyncNotice = (cb: (e: SyncNotice) => void): Promise<UnlistenFn> =>
   listen<SyncNotice>("sync", (ev) => cb(ev.payload));
+
+// ───────────────────────────── SSH ID ─────────────────────────────
+
+export const sshidView = () => invoke<SshIdView>("sshid_view");
+export const sshidCreate = (handle: string) => invoke<SshIdView>("sshid_create", { handle });
+export const sshidDelete = () => invoke<SshIdView>("sshid_delete");
+export const sshidRotate = () => invoke<SshIdView>("sshid_rotate");
+export const sshidAddFido2 = (form: SshIdFido2Form) =>
+  invoke<SshIdView>("sshid_add_fido2", { form });
+export const sshidRemoveKey = (id: Uuid) => invoke<SshIdView>("sshid_remove_key", { id });
 
 // ───────────────────────────── multiplayer ─────────────────────────────
 

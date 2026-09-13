@@ -52,9 +52,20 @@ function statusLine(pane: Pane): string {
       return "Waiting for you to verify the host key";
     case "auth":
       return `Authenticating with ${p.phase.method}${where}…`;
+    case "security_key_touch":
+      return "Touch your security key to continue";
     case "authenticated":
       return "Authenticated — opening shell…";
+    case "mosh_server":
+      return "Starting mosh-server on the host…";
   }
+}
+
+/** Sub-steps of a stage (touching a FIDO2 key is still "Authenticate"). */
+function stageOf(kind: ConnectPhase["kind"]): Stage["key"] {
+  if (kind === "security_key_touch") return "auth";
+  if (kind === "mosh_server") return "authenticated";
+  return kind;
 }
 
 /** Protocol the pane is (or will be) speaking: reported by the session, else from the target. */
@@ -101,12 +112,12 @@ export function ConnectionView({ pane }: { pane: Pane }) {
   const logOpen = logPref ?? failed;
 
   const current = pane.progress
-    ? STAGES.findIndex((s) => s.key === pane.progress?.phase.kind)
+    ? STAGES.findIndex((s) => s.key === stageOf(pane.progress?.phase.kind ?? "resolving"))
     : pane.status === "connecting"
       ? -1
       : 0;
   const proto = paneProtocol(pane, host);
-  const stepper = proto === "ssh";
+  const stepper = proto === "ssh" || proto === "mosh";
   const brand = hostIcon(host)?.color;
   const title = host?.label ?? pane.title;
   const address = pane.subtitle || (host ? hostTarget(host, proto) : "");

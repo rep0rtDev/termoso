@@ -17,6 +17,7 @@
 //! * [`terminal`] – protocol-agnostic interactive session (SSH shell, local
 //!   PTY, Telnet) that the UI drives with bytes and resize events.
 //! * [`keys`] – SSH key generation, import, export and fingerprints.
+//! * [`fido2`] – security keys (`sk-*`): the private key stays on the token.
 //! * [`agent`] – in-process SSH agent serving the keys in the vault.
 //! * [`osdetect`] – figure out what OS a host runs (for its icon).
 //!
@@ -39,11 +40,14 @@ pub mod osdetect;
 pub mod secrets;
 pub mod sftp;
 pub mod ssh;
+pub mod sshid;
 pub mod store;
 pub mod sync;
 pub mod telnet;
 pub mod terminal;
 
+#[cfg(feature = "fido2")]
+pub mod fido2;
 #[cfg(feature = "local-pty")]
 pub mod pty;
 #[cfg(feature = "serial")]
