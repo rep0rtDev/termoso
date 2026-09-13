@@ -100,7 +100,6 @@ class TerminalSession(
     val quick: QuickTarget?,
     /** OS saved on the host; [detectedOs] supersedes it once the shell opens. */
     val savedOsName: String?,
-    val palette: TerminalPalette?,
     val rust: SshSession,
     private val bridge: SessionBridge,
 ) {
@@ -136,10 +135,10 @@ class SessionManager(private val context: Context, private val repo: VaultReposi
         if (_sessions.value.any { it.id == id }) _activeId.value = id
     }
 
-    suspend fun connectHost(hostId: String, palette: TerminalPalette?): TerminalSession {
+    suspend fun connectHost(hostId: String): TerminalSession {
         val host: HostItem = repo.read { host(hostId) }
         val bridge = SessionBridge()
-        val rust = repo.read { connectHost(hostId, options(palette), bridge) }
+        val rust = repo.read { connectHost(hostId, options(), bridge) }
         val user = host.username.takeIf { it.isNotBlank() }?.let { "$it@" } ?: ""
         val target = "$user${host.address}:${host.port}"
         return register(
@@ -150,26 +149,25 @@ class SessionManager(private val context: Context, private val repo: VaultReposi
                 hostId,
                 null,
                 host.osName,
-                palette,
                 rust,
                 bridge,
             ),
         )
     }
 
-    suspend fun connectQuick(target: QuickTarget, palette: TerminalPalette?): TerminalSession {
+    suspend fun connectQuick(target: QuickTarget): TerminalSession {
         val bridge = SessionBridge()
-        val rust = repo.read { connectQuick(target, options(palette), bridge) }
+        val rust = repo.read { connectQuick(target, options(), bridge) }
         val text = "${target.username}@${target.host}:${target.port}"
-        return register(TerminalSession(rust.id(), target.host, text, null, target, null, palette, rust, bridge))
+        return register(TerminalSession(rust.id(), target.host, text, null, target, null, rust, bridge))
     }
 
     /** Replace a closed/failed session with a fresh connection to the same target. */
     suspend fun reconnect(id: String): TerminalSession? {
         val old = find(id) ?: return null
         val fresh = when {
-            old.hostId != null -> connectHost(old.hostId, old.palette)
-            old.quick != null -> connectQuick(old.quick, old.palette)
+            old.hostId != null -> connectHost(old.hostId)
+            old.quick != null -> connectQuick(old.quick)
             else -> return null
         }
         _sessions.update { list -> list.filterNot { it.id == fresh.id }.map { if (it.id == id) fresh else it } }
@@ -178,11 +176,16 @@ class SessionManager(private val context: Context, private val repo: VaultReposi
         return fresh
     }
 
-    private fun options(palette: TerminalPalette?) = TerminalOptions(
+    /** Recolour every open terminal after the scheme changed in Settings. */
+    suspend fun applyPalette(palette: TerminalPalette) = withContext(Dispatchers.IO) {
+        _sessions.value.forEach { runCatching { it.rust.setPalette(palette) } }
+    }
+
+    private fun options() = TerminalOptions(
         cols = 80u,
         rows = 24u,
         termType = "",
-        palette = palette,
+        palette = null,
     )
 
     private fun register(session: TerminalSession): TerminalSession {

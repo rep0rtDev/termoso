@@ -6,7 +6,6 @@ import com.termoso.android.data.SessionManager
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
-import com.termoso.android.ui.terminal.paletteFor
 import com.termoso.core.QuickTarget
 import com.termoso.core.VaultInfo
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,12 +52,12 @@ class ShellViewModel(val repo: VaultRepository, val sessions: SessionManager) : 
      * themselves arrive later through the session state.
      */
     suspend fun connectHost(hostId: String): TerminalSession? =
-        runCatching { sessions.connectHost(hostId, paletteFor(repo.settings.value.terminalTheme)) }
+        runCatching { sessions.connectHost(hostId) }
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
 
     suspend fun connectQuick(target: QuickTarget): TerminalSession? =
-        runCatching { sessions.connectQuick(target, paletteFor(repo.settings.value.terminalTheme)) }
+        runCatching { sessions.connectQuick(target) }
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
 

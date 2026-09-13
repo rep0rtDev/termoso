@@ -1,6 +1,10 @@
 package com.termoso.android.data
 
 import android.content.Context
+import android.os.SystemClock
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.termoso.core.TermosoApp
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -26,9 +30,57 @@ class AppContainer(context: Context) {
     val profileDir: File = File(context.noBackupFilesDir, "profile")
     val masterKeys = MasterKeyStore(context)
 
+    /** Whether opening the vault needs device authentication (auth-bound Keystore wrapper). */
+    private val _appLock = MutableStateFlow(masterKeys.authRequired())
+    val appLock: StateFlow<Boolean> = _appLock.asStateFlow()
+
     private val _vault = MutableStateFlow<VaultState>(VaultState.Locked)
     val vault: StateFlow<VaultState> = _vault.asStateFlow()
     private val lock = Mutex()
+
+    /**
+     * In-use app lock: the vault stays open (SSH sessions keep running under the
+     * foreground service) but the UI is covered until the user authenticates.
+     * Raised when the app returns from the background after the configured delay.
+     */
+    private val _gated = MutableStateFlow(false)
+    val gated: StateFlow<Boolean> = _gated.asStateFlow()
+    private var backgroundedAt = 0L
+
+    init {
+        ProcessLifecycleOwner.get().lifecycle.addObserver(
+            object : DefaultLifecycleObserver {
+                override fun onStop(owner: LifecycleOwner) {
+                    backgroundedAt = SystemClock.elapsedRealtime()
+                }
+
+                override fun onStart(owner: LifecycleOwner) {
+                    val open = _vault.value as? VaultState.Open ?: return
+                    val settings = open.repo.settings.value
+                    if (!settings.lockOnBackground || !masterKeys.authRequired() || backgroundedAt == 0L) return
+                    val away = (SystemClock.elapsedRealtime() - backgroundedAt) / 1000
+                    if (away >= settings.lockAfterSeconds.toLong()) _gated.value = true
+                }
+            },
+        )
+    }
+
+    fun gate() {
+        if (_vault.value is VaultState.Open && masterKeys.authRequired()) _gated.value = true
+    }
+
+    /** Blocking Keystore work; call off the main thread after the user authenticated. */
+    fun setAppLock(enabled: Boolean) {
+        try {
+            masterKeys.setAuthRequired(enabled)
+        } finally {
+            _appLock.value = masterKeys.authRequired()
+        }
+    }
+
+    fun ungate() {
+        _gated.value = false
+    }
 
     /** True when a profile exists on disk (returning user), false on first launch. */
     fun hasProfile(): Boolean = masterKeys.exists()
@@ -51,6 +103,7 @@ class AppContainer(context: Context) {
     suspend fun lockVault() = lock.withLock {
         val open = _vault.value as? VaultState.Open ?: return@withLock
         _vault.value = VaultState.Locked
+        _gated.value = false
         open.sessions.closeAll()
         withContext(Dispatchers.IO) { open.repo.app.close() }
     }

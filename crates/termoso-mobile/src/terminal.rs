@@ -44,12 +44,12 @@ impl TerminalPalette {
     /// Termoso Dark.
     pub fn termoso_dark() -> Self {
         Self {
-            foreground: 0xE6EDF3,
-            background: 0x0D1117,
-            cursor: 0x2EA043,
+            foreground: 0xF1F3F8,
+            background: 0x141826,
+            cursor: 0x2BB884,
             ansi: vec![
-                0x161B22, 0xFF7B72, 0x3FB950, 0xD29922, 0x58A6FF, 0xBC8CFF, 0x39C5CF, 0xB1BAC4,
-                0x6E7681, 0xFFA198, 0x56D364, 0xE3B341, 0x79C0FF, 0xD2A8FF, 0x56D4DD, 0xF0F6FC,
+                0x1A1E2B, 0xF25E61, 0x2BB884, 0xF2C94C, 0x5AA9E6, 0xC58AF9, 0x4FD1C5, 0xC9CDDA,
+                0x5A6076, 0xFF8285, 0x5FD0A4, 0xFFDB7A, 0x8CC5F0, 0xDBB3FF, 0x84E7DD, 0xF2F4FA,
             ],
         }
     }

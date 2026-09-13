@@ -38,6 +38,7 @@ import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
+import com.termoso.android.ui.components.SubScreen
 import com.termoso.android.ui.connections.historySubtitle
 import com.termoso.android.ui.hosts.ConfirmDialog
 import com.termoso.android.ui.shell.ShellViewModel
@@ -46,93 +47,6 @@ import com.termoso.core.IdentityItem
 import com.termoso.core.KeyItem
 import com.termoso.core.KnownHostItem
 import kotlinx.coroutines.launch
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SubScreen(
-    title: String,
-    onBack: () -> Unit,
-    actions: @Composable () -> Unit = {},
-    content: @Composable (PaddingValues) -> Unit,
-) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(title) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
-                },
-                actions = { actions() },
-            )
-        },
-    ) { content(it) }
-}
-
-/** Keys and identities of the selected vault (read-only until the keychain editor lands). */
-@Composable
-fun KeychainScreen(shell: ShellViewModel, onBack: () -> Unit) {
-    val vaultId by shell.selectedVaultId.collectAsStateWithLifecycle()
-    val revision by shell.repo.revision.collectAsStateWithLifecycle()
-    var keys by remember { mutableStateOf<List<KeyItem>>(emptyList()) }
-    var identities by remember { mutableStateOf<List<IdentityItem>>(emptyList()) }
-    LaunchedEffect(vaultId, revision) {
-        runCatching { shell.repo.read { keys(vaultId) to identities(vaultId) } }
-            .onSuccess { (k, i) -> keys = k; identities = i }
-            .onFailure { shell.notify(it.userMessage()) }
-    }
-
-    SubScreen("Keychain", onBack) { padding ->
-        if (keys.isEmpty() && identities.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding)) {
-                EmptyState(
-                    title = "Keychain is empty",
-                    hint = "Generating and importing keys on Android arrives in the next update. Keys synced from desktop will appear here.",
-                )
-            }
-            return@SubScreen
-        }
-        LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
-            if (keys.isNotEmpty()) {
-                item { SectionLabel("Keys") }
-                item {
-                    SectionCard {
-                        keys.forEachIndexed { i, k ->
-                            if (i > 0) RowDivider()
-                            ListRow(
-                                title = k.label,
-                                subtitle = listOfNotNull(
-                                    "${k.keyType.uppercase()} ${k.bits}",
-                                    k.fingerprint.takeIf { it.isNotBlank() },
-                                    if (k.encrypted) "passphrase" else null,
-                                ).joinToString(" · "),
-                                leading = { IconTile(Icons.Filled.Key) },
-                            )
-                        }
-                    }
-                }
-            }
-            if (identities.isNotEmpty()) {
-                item { SectionLabel("Identities") }
-                item {
-                    SectionCard {
-                        identities.forEachIndexed { i, id ->
-                            if (i > 0) RowDivider()
-                            ListRow(
-                                title = id.label,
-                                subtitle = listOfNotNull(
-                                    id.username.takeIf { it.isNotBlank() },
-                                    if (id.hasPassword) "password" else null,
-                                    id.sshKeyLabel,
-                                ).joinToString(" · "),
-                                leading = { IconTile(Icons.Filled.Person) },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 /** Trusted server keys; swipe-free removal via the trailing trash icon. */
 @Composable
