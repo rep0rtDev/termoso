@@ -5,9 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termoso.android.data.AppContainer
@@ -27,10 +28,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun App(container: AppContainer) {
     val vault by container.vault.collectAsStateWithLifecycle()
-    var theme by remember { mutableStateOf("system") }
-    (vault as? VaultState.Open)?.let { open ->
-        theme = runCatching { open.app.settings().appTheme }.getOrDefault(theme)
-    }
+    var theme by rememberSaveable { mutableStateOf("system") }
+    val openTheme = (vault as? VaultState.Open)
+        ?.repo?.settings?.collectAsStateWithLifecycle()?.value?.appTheme
+    LaunchedEffect(openTheme) { if (openTheme != null) theme = openTheme }
     TermosoTheme(appTheme = theme) {
         TermosoRoot(container = container, vault = vault)
     }
