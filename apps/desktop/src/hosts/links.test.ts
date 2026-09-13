@@ -162,6 +162,7 @@ const card = (over: Partial<HostCard>): HostCard => ({
   sortOrder: 0,
   updatedAt: "",
   lastConnected: null,
+  cloudProvider: null,
   dirty: false,
   ...over,
 });

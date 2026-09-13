@@ -49,6 +49,8 @@ pub struct HostCard {
     pub updated_at: DateTime<Utc>,
     /// Most recent connection to this host, if any.
     pub last_connected: Option<DateTime<Utc>>,
+    /// Provider the host was imported from (`Host::cloud_instance_type`).
+    pub cloud_provider: Option<String>,
     pub dirty: bool,
 }
 
@@ -399,6 +401,7 @@ pub fn cards(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<HostCard>> {
             sort_order: h.data.sort_order,
             updated_at: h.updated_at,
             last_connected: recent.get(&h.id).copied(),
+            cloud_provider: h.data.cloud_instance_type.clone(),
             dirty: h.dirty,
         });
     }

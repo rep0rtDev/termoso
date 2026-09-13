@@ -29,11 +29,18 @@ export interface HostCollectionProps {
   dnd?: HostDnd;
 }
 
-/** Termius' card line: protocols, then username, then tags — `ssh, telnet, stan, api`. */
+const CLOUD_SHORT: Record<string, string> = {
+  "Amazon AWS": "AWS",
+  DigitalOcean: "DigitalOcean",
+  azure: "Azure",
+};
+
+/** Termius' card line: protocols, then username, then tags, then the cloud it came from. */
 export function hostSubtitle(h: HostCard) {
   const parts: string[] = [...hostProtocols(h)];
   if (h.username) parts.push(h.username);
   parts.push(...h.tags);
+  if (h.cloudProvider) parts.push(CLOUD_SHORT[h.cloudProvider] ?? h.cloudProvider);
   return parts.join(", ");
 }
 

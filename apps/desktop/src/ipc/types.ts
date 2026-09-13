@@ -246,6 +246,8 @@ export interface HostCard {
   sortOrder: number;
   updatedAt: string;
   lastConnected: string | null;
+  /** Provider the host was imported from (`Amazon AWS`, `DigitalOcean`, `azure`). */
+  cloudProvider: string | null;
   dirty: boolean;
 }
 
@@ -983,6 +985,76 @@ export interface ImportSelection {
   keys: number[];
   knownHosts: number[];
   pfRules: number[];
+}
+
+// ───────────────────────────── cloud integration ─────────────────────────────
+
+export type CloudProvider = "aws" | "digital_ocean" | "azure";
+export type AwsService = "ec2" | "lightsail";
+export type CloudAddressType = "public" | "private";
+
+/**
+ * Provider credentials for a single discovery call. They travel to Rust once,
+ * are used for the API request and dropped; nothing in them is stored or
+ * echoed back.
+ */
+export type CloudConfig =
+  | {
+      provider: "aws";
+      region: string;
+      access_key_id: string;
+      secret_access_key: string;
+      service: AwsService;
+      address_type: CloudAddressType;
+    }
+  | { provider: "digital_ocean"; token: string }
+  | { provider: "azure"; tenant_id: string; client_id: string; client_secret: string };
+
+/** What would happen to a discovered machine on import. */
+export type CloudAction = "new" | "update" | "no_address";
+
+export interface CloudInstance {
+  instanceId: string;
+  label: string;
+  address: string | null;
+  state: string | null;
+  region: string | null;
+  size: string | null;
+  os: string | null;
+  osName: string | null;
+  action: CloudAction;
+  /** Host already linked to this machine (`action === "update"`). */
+  hostId: Uuid | null;
+}
+
+export interface CloudPreview {
+  id: Uuid;
+  provider: CloudProvider;
+  providerName: string;
+  service: AwsService | null;
+  addressType: CloudAddressType | null;
+  instances: CloudInstance[];
+}
+
+export interface CloudSelection {
+  /** Indexes into `CloudPreview.instances`. */
+  instances: number[];
+  groupId: Uuid | null;
+  tagIds: Uuid[];
+  /** SSH username for newly created hosts. */
+  username: string;
+  port: number | null;
+  /** Delete hosts previously imported from this provider that are gone. */
+  removeMissing: boolean;
+}
+
+export interface CloudImportReport {
+  created: number;
+  updated: number;
+  unchanged: number;
+  removed: number;
+  skipped: number;
+  warnings: string[];
 }
 
 // ───────────────────────────── export / backup ─────────────────────────────

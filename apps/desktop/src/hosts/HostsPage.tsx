@@ -43,6 +43,7 @@ import FileUploadOutlinedIcon from "@mui/icons-material/FileUploadOutlined";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import UsbRoundedIcon from "@mui/icons-material/UsbRounded";
+import CloudOutlinedIcon from "@mui/icons-material/CloudOutlined";
 import { EmptyState } from "@/components/EmptyState";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
@@ -68,7 +69,7 @@ import {
   useTags,
 } from "@/ipc/hooks";
 import { useActiveVault, vaultIcon, ViewOnlyChip } from "@/app/vault";
-import type { GroupNode, HostCard, HostsView, Uuid } from "@/ipc/types";
+import type { CloudProvider, GroupNode, HostCard, HostsView, Uuid } from "@/ipc/types";
 import { connectProtocols, errorMessage, hostProtocols } from "@/ipc/types";
 import { openTerminal, useTerminal } from "@/terminal/store";
 import { addToWorkspace, useWorkspaces, workspaceChoices } from "@/terminal/workspaces";
@@ -87,6 +88,7 @@ import { HostEditPanel } from "./HostEditPanel";
 import { DeleteGroupDialog, GroupPanel } from "./GroupPanel";
 import { MoveCopyDialog, type MoveCopyRequest } from "./MoveCopyDialog";
 import { ImportDialog } from "./ImportDialog";
+import { CLOUD_PROVIDERS, CloudImportDialog } from "./CloudImportDialog";
 import { ExportCsvDialog } from "./ExportCsvDialog";
 import { TagManagerDialog } from "./TagManagerDialog";
 import { TagsPopover } from "./TagsPopover";
@@ -182,6 +184,7 @@ export function HostsPage() {
   const [anchorId, setAnchorId] = useState<Uuid | null>(null);
   const [moveCopy, setMoveCopy] = useState<MoveCopyRequest | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [cloudProvider, setCloudProvider] = useState<CloudProvider | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<HostCard[] | null>(null);
   const [confirmGroup, setConfirmGroup] = useState<GroupNode | null>(null);
@@ -827,6 +830,13 @@ export function HostsPage() {
                 icon: <FileUploadOutlinedIcon fontSize="small" />,
                 onClick: () => setExportOpen(true),
               },
+              ...CLOUD_PROVIDERS.map((p, i) => ({
+                label: `${p.short} Integration`,
+                icon: <CloudOutlinedIcon fontSize="small" />,
+                disabled: readOnly,
+                divider: i === 0,
+                onClick: () => setCloudProvider(p.id),
+              })),
             ]}
           />
           <Button
@@ -1130,6 +1140,16 @@ export function HostsPage() {
           open={importOpen}
           vaultId={vaultId}
           onClose={() => setImportOpen(false)}
+          onImported={clearSelection}
+        />
+      )}
+
+      {vaultId && cloudProvider && (
+        <CloudImportDialog
+          open
+          vaultId={vaultId}
+          provider={cloudProvider}
+          onClose={() => setCloudProvider(null)}
           onImported={clearSelection}
         />
       )}

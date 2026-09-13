@@ -8,6 +8,10 @@ import type {
   AppInfo,
   BookmarkCard,
   CertificateCard,
+  CloudConfig,
+  CloudImportReport,
+  CloudPreview,
+  CloudSelection,
   CommandHistory,
   Conflict,
   ConnectionHistory,
@@ -439,6 +443,15 @@ export const importCsvTemplateSave = (path: string) =>
 export const importApply = (vaultId: Uuid, previewId: Uuid, selection: ImportSelection) =>
   invoke<ImportApplyReport>("import_apply", { vaultId, previewId, selection });
 export const importDiscard = (previewId: Uuid) => invoke<null>("import_discard", { previewId });
+
+// ───────────────────────────── cloud integration ─────────────────────────────
+
+/** Lists machines at the provider; `config` is used for this call only. */
+export const cloudDiscover = (vaultId: Uuid, config: CloudConfig) =>
+  invoke<CloudPreview>("cloud_discover", { vaultId, config });
+export const cloudImport = (vaultId: Uuid, previewId: Uuid, selection: CloudSelection) =>
+  invoke<CloudImportReport>("cloud_import", { vaultId, previewId, selection });
+export const cloudDiscard = (previewId: Uuid) => invoke<null>("cloud_discard", { previewId });
 
 // ───────────────────────────── export / backup ─────────────────────────────
 

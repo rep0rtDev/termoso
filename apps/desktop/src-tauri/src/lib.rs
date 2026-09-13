@@ -3,6 +3,7 @@
 
 mod account;
 mod backup;
+mod cloud;
 mod commands;
 mod commands_tools;
 mod complete;
@@ -222,6 +223,9 @@ pub fn run() {
             commands_tools::import_csv_template_save,
             commands_tools::import_apply,
             commands_tools::import_discard,
+            commands_tools::cloud_discover,
+            commands_tools::cloud_import,
+            commands_tools::cloud_discard,
             commands_tools::hosts_export_csv,
             commands_tools::backup_export,
             commands_tools::backup_inspect,

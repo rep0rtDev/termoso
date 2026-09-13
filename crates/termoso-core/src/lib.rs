@@ -20,9 +20,12 @@
 //! * [`fido2`] – security keys (`sk-*`): the private key stays on the token.
 //! * [`agent`] – in-process SSH agent serving the keys in the vault.
 //! * [`osdetect`] – figure out what OS a host runs (for its icon).
+//! * [`cloud`] – list machines at AWS / DigitalOcean / Azure to import them
+//!   as hosts.
 //!
 //! Nothing in this crate phones home: the only network peers are the servers
-//! the user connects to and the Termoso server they configured.
+//! the user connects to, the Termoso server they configured and — only when
+//! they ask for a cloud import — the provider API they gave credentials for.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs, clippy::all)]
@@ -30,6 +33,7 @@
 pub mod account;
 pub mod agent;
 pub mod api;
+pub mod cloud;
 pub mod error;
 pub mod forward;
 pub mod hostkey;
