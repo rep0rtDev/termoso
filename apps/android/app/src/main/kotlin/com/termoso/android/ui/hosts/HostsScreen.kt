@@ -18,6 +18,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -86,6 +87,7 @@ fun HostsScreen(
     onNewHost: () -> Unit,
     onEditHost: (String) -> Unit,
     onConnect: (String) -> Unit,
+    onConnectMosh: (String) -> Unit,
     onSftp: (String) -> Unit,
     onForward: (String) -> Unit,
 ) {
@@ -119,6 +121,11 @@ fun HostsScreen(
                         val id = state.selected.first()
                         vm.clearSelection()
                         onSftp(id)
+                    },
+                    onMosh = {
+                        val id = state.selected.first()
+                        vm.clearSelection()
+                        onConnectMosh(id)
                     },
                     onForward = {
                         val id = state.selected.first()
@@ -326,7 +333,9 @@ private fun groupSubtitle(g: GroupItem): String? {
 
 private fun hostSubtitle(h: HostItem): String {
     val target = if (h.username.isNotBlank()) "${h.username}@${h.address}" else h.address
-    return if (h.protocol.equals("ssh", true) && h.port == 22.toUShort()) target else "$target · ${h.protocol.uppercase()} ${h.port}"
+    val ssh = h.protocol.equals("ssh", true)
+    val base = if (ssh && h.port == 22.toUShort()) target else "$target · ${h.protocol.uppercase()} ${h.port}"
+    return if (ssh && h.useMosh) "$base · Mosh" else base
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -338,6 +347,7 @@ private fun SelectionBar(
     onSelectAll: () -> Unit,
     onEdit: () -> Unit,
     onSftp: () -> Unit,
+    onMosh: () -> Unit,
     onForward: () -> Unit,
     onDuplicate: () -> Unit,
     onMove: () -> Unit,
@@ -374,6 +384,11 @@ private fun SelectionBar(
                         onClick = { menu = false; onDuplicate() },
                     )
                     if (singleSsh) {
+                        DropdownMenuItem(
+                            text = { Text("Connect with Mosh") },
+                            leadingIcon = { Icon(Icons.Filled.Bolt, null) },
+                            onClick = { menu = false; onMosh() },
+                        )
                         DropdownMenuItem(
                             text = { Text("Port forwarding…") },
                             leadingIcon = { Icon(Icons.Filled.SwapHoriz, null) },

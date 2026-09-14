@@ -12,6 +12,7 @@ import com.termoso.android.data.userMessage
 import com.termoso.core.QuickTarget
 import com.termoso.core.SessionState
 import com.termoso.core.SnippetRun
+import com.termoso.core.Transport
 import com.termoso.core.VaultInfo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -69,8 +70,8 @@ class ShellViewModel(
      * refuses to even start — e.g. the host is missing; connection errors
      * themselves arrive later through the session state.
      */
-    suspend fun connectHost(hostId: String): TerminalSession? =
-        runCatching { sessions.connectHost(hostId) }
+    suspend fun connectHost(hostId: String, transport: Transport = Transport.AUTO): TerminalSession? =
+        runCatching { sessions.connectHost(hostId, transport) }
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
 

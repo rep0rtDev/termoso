@@ -41,6 +41,7 @@ pub mod hostkey;
 pub mod keys;
 pub mod live;
 pub mod model;
+pub mod mosh;
 pub mod osdetect;
 pub mod secrets;
 pub mod sftp;

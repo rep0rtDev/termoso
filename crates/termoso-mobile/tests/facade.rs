@@ -14,13 +14,45 @@ use termoso_mobile::{
     HostKeyChoice, IdentityDraft, KeyAlgorithm, KeyGenerateDraft, KeyImportDraft, LiveEndReason,
     LiveListener, LiveParticipantCard, MobileError, PfKind, PfRuleDraft, PromptAnswer,
     PromptRequest, QuickTarget, SessionListener, SessionState, SshIdKeyKind, SshSession,
-    TerminalOptions, TermosoApp, TunnelListener, TunnelState, VaultKind, flag, generate_master_key,
-    is_live_link, parse_target, profile_exists, sshid_handle_valid,
+    TerminalOptions, TermosoApp, Transport, TunnelListener, TunnelState, VaultKind, flag,
+    generate_master_key, is_live_link, parse_target, profile_exists, sshid_handle_valid,
 };
 use tokio::net::TcpListener;
 
 const USER: &str = "tester";
 const PASSWORD: &str = "s3cret";
+
+/// Detached `mosh-server` processes the test sshd started; killed on exit.
+static MOSH_PIDS: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+
+struct KillMoshServers;
+
+impl Drop for KillMoshServers {
+    fn drop(&mut self) {
+        for pid in MOSH_PIDS.lock().unwrap().drain(..) {
+            let _ = std::process::Command::new("kill")
+                .arg(pid.to_string())
+                .stderr(std::process::Stdio::null())
+                .status();
+        }
+    }
+}
+
+fn mosh_server_installed() -> bool {
+    let ok = std::process::Command::new("sh")
+        .args(["-c", "command -v mosh-server"])
+        .stdout(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    if !ok {
+        assert!(
+            std::env::var("TERMOSO_TEST_REQUIRE_MOSH").is_err(),
+            "mosh-server not installed but TERMOSO_TEST_REQUIRE_MOSH is set"
+        );
+        eprintln!("mosh-server not installed; skipping");
+    }
+    ok
+}
 
 // ---- tiny SSH server ------------------------------------------------------
 
@@ -165,6 +197,32 @@ impl russh::server::Handler for Handler {
                 channel,
                 Bytes::from_static(b"Linux\nPRETTY_NAME=\"Ubuntu 24.04\"\nID=ubuntu\n"),
             )?;
+        } else if cmd.starts_with(b"mosh-server") {
+            // Run the real thing so the bootstrap banner and the UDP side
+            // come from the reference implementation.
+            let out = tokio::process::Command::new("sh")
+                .arg("-c")
+                .arg(String::from_utf8_lossy(cmd).into_owned())
+                .env("SSH_CONNECTION", "127.0.0.1 1 127.0.0.1 22")
+                .env("TERM", "xterm-256color")
+                .stdin(std::process::Stdio::null())
+                .output()
+                .await
+                .expect("run mosh-server");
+            for l in String::from_utf8_lossy(&out.stderr).lines() {
+                if let Some(pid) = l
+                    .strip_prefix("[mosh-server detached, pid = ")
+                    .and_then(|r| r.trim_end_matches(']').trim().parse::<u32>().ok())
+                {
+                    MOSH_PIDS.lock().unwrap().push(pid);
+                }
+            }
+            session.data(channel, Bytes::from(out.stdout))?;
+            session.extended_data(channel, 1, Bytes::from(out.stderr))?;
+            session.exit_status_request(channel, out.status.code().unwrap_or(1) as u32)?;
+            session.eof(channel)?;
+            session.close(channel)?;
+            return Ok(());
         }
         session.exit_status_request(channel, 0)?;
         session.eof(channel)?;
@@ -301,6 +359,7 @@ fn opts() -> TerminalOptions {
         rows: 6,
         term_type: String::new(),
         palette: None,
+        transport: Transport::Auto,
     }
 }
 
@@ -800,6 +859,111 @@ async fn saved_host_keyboard_interactive_and_rejected_key() {
     };
     assert_eq!(kind, "cancelled");
     assert!(!s.answer(id, PromptAnswer::Cancel), "stale prompt id");
+}
+
+// ---- Mosh -----------------------------------------------------------------
+
+/// A saved host with Mosh on: the usual SSH prompts, then `mosh-server` is
+/// started over that connection and the terminal continues over UDP with the
+/// same grid, input queue and history entry.
+#[tokio::test(flavor = "multi_thread")]
+async fn saved_host_over_mosh() {
+    if !mosh_server_installed() {
+        return;
+    }
+    let _cleanup = KillMoshServers;
+    let port = start(false).await;
+    let (app, _dir) = app();
+    let vault = app.local_vault().unwrap().id;
+    let mut d = app.new_host_draft(vault, None).unwrap();
+    d.label = "roaming".into();
+    d.address = "127.0.0.1".into();
+    d.port = Some(port);
+    d.username = USER.into();
+    d.password = Some(PASSWORD.into());
+    d.use_mosh = true;
+    // Loopback-only server with a shell that evaluates whole lines.
+    d.mosh_server_command = Some(
+        "mosh-server new -s -i 127.0.0.1 -c 256 -l LANG=C.UTF-8 -- sh -c 'stty -echo; printf READY_%s\\\\n MARK; while IFS= read -r l; do eval \"$l\"; done'"
+            .into(),
+    );
+    let host = app.save_host(d).unwrap();
+    let card = app.host(host.id.clone()).unwrap();
+    assert!(card.use_mosh);
+    let draft = app.host_draft(host.id.clone()).unwrap();
+    assert!(draft.use_mosh);
+    assert!(
+        draft
+            .mosh_server_command
+            .as_deref()
+            .is_some_and(|c| c.starts_with("mosh-server new -s -i 127.0.0.1"))
+    );
+
+    let rec = Arc::new(Recorder::default());
+    let s = app
+        .connect_host(host.id.clone(), opts(), rec.clone())
+        .unwrap();
+    let (id, _) = rec.wait_prompt(0);
+    assert!(s.answer(
+        id,
+        PromptAnswer::HostKey {
+            decision: HostKeyChoice::AcceptAndSave
+        }
+    ));
+    rec.wait_state(|st| matches!(st, SessionState::Connected));
+    assert!(rec.states.lock().unwrap().iter().any(|st| matches!(
+        st,
+        SessionState::Connecting { detail } if detail.starts_with("Starting mosh-server")
+    )));
+    wait_text(&s, "READY_MARK");
+
+    // Keystrokes travel over UDP and are evaluated by the remote shell.
+    s.write(b"printf '%s%s\\n' PONG _OK\n".to_vec());
+    wait_text(&s, "PONG_OK");
+    // So does the window size.
+    s.resize(60, 10);
+    s.write(b"printf 'SIZE=%s\\n' \"$(stty size)\"\n".to_vec());
+    wait_text(&s, "SIZE=10 60");
+
+    // Local disconnect shuts the Mosh session down and lands in history as mosh.
+    s.disconnect();
+    rec.wait_state(|st| matches!(st, SessionState::Closed { .. }));
+    let hist = app.history(10).unwrap();
+    assert_eq!(hist.len(), 1);
+    assert_eq!(hist[0].protocol, "mosh");
+    assert!(hist[0].error.is_none());
+    let t = Instant::now();
+    while MOSH_PIDS
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|pid| std::path::Path::new(&format!("/proc/{pid}")).exists())
+    {
+        assert!(
+            t.elapsed() < Duration::from_secs(10),
+            "mosh-server still running after disconnect"
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    // Explicit transport selection wins over the host setting: SSH-only
+    // opens the plain shell of the test server.
+    let rec = Arc::new(Recorder::default());
+    let s = app
+        .connect_host(
+            host.id.clone(),
+            TerminalOptions {
+                transport: Transport::Ssh,
+                ..opts()
+            },
+            rec.clone(),
+        )
+        .unwrap();
+    rec.wait_state(|st| matches!(st, SessionState::Connected));
+    wait_text(&s, "prompt$");
+    s.disconnect();
+    rec.wait_state(|st| matches!(st, SessionState::Closed { .. }));
+    assert_eq!(app.history(10).unwrap()[0].protocol, "ssh");
 }
 
 // ---- port forwarding ------------------------------------------------------

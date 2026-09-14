@@ -68,6 +68,7 @@ import com.termoso.core.HostDraft
 import com.termoso.core.InheritedInfo
 import com.termoso.core.TagItem
 import com.termoso.core.VaultInfo
+import com.termoso.core.moshDefaultServerCommand
 
 /** New / edit host form. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -211,6 +212,23 @@ private fun HostForm(state: HostEditorState, draft: HostDraft, vm: HostEditorVie
                 checked = draft.agentForwarding,
                 onCheckedChange = { v -> vm.update { it.copy(agentForwarding = v) } },
             )
+            RowDivider()
+            SwitchRow(
+                title = "Mosh",
+                subtitle = "Roaming UDP session; SSH only starts mosh-server on the host",
+                checked = draft.useMosh,
+                onCheckedChange = { v -> vm.update { it.copy(useMosh = v) } },
+            )
+            if (draft.useMosh) {
+                Box(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+                    FormField(
+                        draft.moshServerCommand ?: "",
+                        { v -> vm.update { it.copy(moshServerCommand = v.takeIf { c -> c.isNotBlank() }) } },
+                        "mosh-server command",
+                        placeholder = remember { moshDefaultServerCommand() },
+                    )
+                }
+            }
             if (state.snippets.isNotEmpty() || draft.startupSnippetId != null) {
                 RowDivider()
                 Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
