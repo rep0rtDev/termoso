@@ -109,9 +109,11 @@ class SftpConnection(
     /** Run a blocking Rust call off the main thread. */
     suspend fun <T> io(block: SftpSession.() -> T): T = withContext(Dispatchers.IO) { rust.block() }
 
-    suspend fun dismissTransfer(id: ULong) {
-        io { dismissTransfer(id) }
-        bridge.dismissed(id)
+    /** Forget a finished card; `false` if it is still queued, running or paused. */
+    suspend fun dismissTransfer(id: ULong): Boolean {
+        val gone = io { dismissTransfer(id) }
+        if (gone) bridge.dismissed(id)
+        return gone
     }
 
     /** A fresh scratch path for one transfer, under this connection's cache. */

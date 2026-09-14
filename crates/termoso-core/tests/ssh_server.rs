@@ -1428,6 +1428,110 @@ async fn sftp_end_to_end() {
     assert_eq!(n, (payload.len() - 300_000) as u64);
     assert_eq!(std::fs::read(&out).unwrap(), payload);
 
+    // Partial remote copy → resume uploads only the tail.
+    h.files.lock().await.insert(
+        "/home/tester/a/part.bin".into(),
+        payload[..200_000].to_vec(),
+    );
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let s2 = seen.clone();
+    let opts = TransferOptions {
+        resume: true,
+        progress: Some(Arc::new(move |p| s2.lock().unwrap().push(p))),
+        ..TransferOptions::default()
+    };
+    let n = sftp.upload(&local, "a/part.bin", &opts).await.unwrap();
+    assert_eq!(n, (payload.len() - 200_000) as u64);
+    assert_eq!(seen.lock().unwrap()[0].done, 200_000);
+    assert_eq!(
+        h.files.lock().await.get("/home/tester/a/part.bin").unwrap(),
+        &payload
+    );
+
+    // Remote longer than local → start over instead of appending garbage.
+    let mut longer = payload.clone();
+    longer.extend_from_slice(b"stale tail");
+    h.files
+        .lock()
+        .await
+        .insert("/home/tester/a/long.bin".into(), longer);
+    let opts = TransferOptions {
+        resume: true,
+        ..TransferOptions::default()
+    };
+    let n = sftp.upload(&local, "a/long.bin", &opts).await.unwrap();
+    assert_eq!(n, payload.len() as u64);
+    assert_eq!(
+        h.files.lock().await.get("/home/tester/a/long.bin").unwrap(),
+        &payload
+    );
+
+    // Cancel mid-download: the partial file stays and a resume finishes it.
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let c2 = cancel.clone();
+    let part = dir.path().join("part.bin");
+    let opts = TransferOptions {
+        cancel,
+        progress: Some(Arc::new(move |p| {
+            if p.done > 0 {
+                c2.cancel();
+            }
+        })),
+        ..TransferOptions::default()
+    };
+    assert!(matches!(
+        sftp.download("a/big.bin", &part, &opts).await,
+        Err(CoreError::Cancelled)
+    ));
+    let have = std::fs::metadata(&part).unwrap().len();
+    assert!(have > 0 && have < payload.len() as u64, "{have}");
+    assert_eq!(
+        &std::fs::read(&part).unwrap()[..],
+        &payload[..have as usize]
+    );
+    let opts = TransferOptions {
+        resume: true,
+        ..TransferOptions::default()
+    };
+    let n = sftp.download("a/big.bin", &part, &opts).await.unwrap();
+    assert_eq!(n, payload.len() as u64 - have);
+    assert_eq!(std::fs::read(&part).unwrap(), payload);
+
+    // Cancel mid-upload likewise keeps the remote prefix intact.
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let c2 = cancel.clone();
+    let opts = TransferOptions {
+        cancel,
+        progress: Some(Arc::new(move |p| {
+            if p.done > 0 {
+                c2.cancel();
+            }
+        })),
+        ..TransferOptions::default()
+    };
+    assert!(matches!(
+        sftp.upload(&local, "a/cut.bin", &opts).await,
+        Err(CoreError::Cancelled)
+    ));
+    let have = h
+        .files
+        .lock()
+        .await
+        .get("/home/tester/a/cut.bin")
+        .unwrap()
+        .len();
+    assert!(have > 0 && have < payload.len(), "{have}");
+    let opts = TransferOptions {
+        resume: true,
+        ..TransferOptions::default()
+    };
+    let n = sftp.upload(&local, "a/cut.bin", &opts).await.unwrap();
+    assert_eq!(n, (payload.len() - have) as u64);
+    assert_eq!(
+        h.files.lock().await.get("/home/tester/a/cut.bin").unwrap(),
+        &payload
+    );
+
     // Cancel before start.
     let cancel = tokio_util::sync::CancellationToken::new();
     cancel.cancel();
