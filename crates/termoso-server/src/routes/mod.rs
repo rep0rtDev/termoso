@@ -8,6 +8,7 @@ pub mod logs;
 pub mod mfa;
 pub mod server;
 pub mod sshid;
+pub mod start_over;
 pub mod sync;
 pub mod teams;
 pub mod vaults;
@@ -53,6 +54,21 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/password/start", post(auth::password_start))
         .route("/auth/password/finish", post(auth::password_finish))
         .route("/auth/logout", post(auth::logout))
+        .route("/auth/reauth/start", post(auth::reauth_start))
+        .route("/auth/reauth/finish", post(auth::reauth_finish))
+        .route("/auth/start-over/request", post(start_over::request))
+        .route("/auth/start-over/confirm", post(start_over::confirm))
+        .route("/auth/start-over/cancel", post(start_over::cancel))
+        .route(
+            "/auth/start-over/password/start",
+            post(start_over::password_start),
+        )
+        .route("/auth/start-over/finish", post(start_over::finish))
+        .route("/auth/start-over/{token}", get(start_over::status))
+        .route(
+            "/account/start-over/cancel",
+            post(start_over::cancel_authenticated),
+        )
         .route("/auth/sso/providers", get(auth::sso_providers))
         .route("/auth/sso/callback", get(auth::sso_callback))
         .route("/auth/sso/flow/{flow_id}", get(auth::sso_poll))

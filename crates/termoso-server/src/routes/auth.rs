@@ -36,6 +36,8 @@ const P_MFA_EMAIL: &str = "mfa_email";
 const P_WEBAUTHN_AUTH: &str = "webauthn_auth";
 const P_APPROVE: &str = "device_approve";
 const P_RECOVERY: &str = "recovery";
+const P_REAUTH: &str = "reauth";
+const P_REAUTH_EMAIL: &str = "reauth_email";
 pub const P_EMAIL_VERIFY: &str = "email_verify";
 
 // ───────────────────────────── helpers ─────────────────────────────
@@ -56,7 +58,7 @@ fn valid_display_name(name: &Option<String>) -> ApiResult<Option<String>> {
     }
 }
 
-fn validate_keys(k: &AccountKeysUpload) -> ApiResult<()> {
+pub(crate) fn validate_keys(k: &AccountKeysUpload) -> ApiResult<()> {
     unb64_array::<32>(&k.public_key)
         .map_err(|_| Error::bad_request("public_key must be 32 bytes"))?;
     unb64_array::<32>(&k.recovery_verifier)
@@ -80,7 +82,7 @@ fn validate_keys(k: &AccountKeysUpload) -> ApiResult<()> {
     Ok(())
 }
 
-fn validate_device(d: &DeviceInfo) -> ApiResult<()> {
+pub(crate) fn validate_device(d: &DeviceInfo) -> ApiResult<()> {
     if d.name.trim().is_empty() || d.name.chars().count() > 120 {
         return Err(Error::bad_request("Invalid device name"));
     }
@@ -90,7 +92,11 @@ fn validate_device(d: &DeviceInfo) -> ApiResult<()> {
     Ok(())
 }
 
-async fn build_session(state: &AppState, user: &UserRow, device_id: Uuid) -> ApiResult<Session> {
+pub(crate) async fn build_session(
+    state: &AppState,
+    user: &UserRow,
+    device_id: Uuid,
+) -> ApiResult<Session> {
     let (token, expires_at) = session::issue(state, user.id, device_id).await?;
     let mfa = users::mfa_enabled(state, user).await?;
     Ok(Session {
@@ -102,7 +108,7 @@ async fn build_session(state: &AppState, user: &UserRow, device_id: Uuid) -> Api
     })
 }
 
-async fn send_code_email(
+pub(crate) async fn send_code_email(
     state: &AppState,
     to: &str,
     purpose: &str,
@@ -332,8 +338,13 @@ struct LoginFlow {
 #[derive(Serialize, Deserialize)]
 struct MfaFlow {
     user_id: Uuid,
-    device: DeviceInfo,
+    /// Device signing in; `None` for a step-up of an existing session.
+    #[serde(default)]
+    device: Option<DeviceInfo>,
     sso_verified: bool,
+    /// Step-up: the session to mark re-authenticated once the factor passes.
+    #[serde(default)]
+    reauth_session: Option<Uuid>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -445,8 +456,9 @@ async fn continue_login(
             P_MFA,
             &MfaFlow {
                 user_id: user.id,
-                device,
+                device: Some(device),
                 sso_verified,
+                reauth_session: None,
             },
             MFA_TTL,
         )
@@ -729,7 +741,173 @@ pub async fn mfa_verify(
         return Err(Error::invalid_mfa());
     }
     codes::del_flow(&state, P_MFA, &req.mfa_token).await?;
-    let resp = continue_login(&state, &client, &user, flow.device, flow.sso_verified, true).await?;
+    if let Some(session_id) = flow.reauth_session {
+        let resp = complete_step_up(&state, &client, &user, session_id).await?;
+        return Ok(Json(resp));
+    }
+    let device = flow
+        .device
+        .ok_or_else(|| Error::bad_request("Invalid MFA flow"))?;
+    let resp = continue_login(&state, &client, &user, device, flow.sso_verified, true).await?;
+    Ok(Json(resp))
+}
+
+// ───────────────────────────── step-up ─────────────────────────────
+
+#[derive(Serialize, Deserialize)]
+struct ReauthFlow {
+    session_id: Uuid,
+    user_id: Uuid,
+    method: ReauthMethod,
+    /// OPAQUE server login state (`method == password`).
+    server_state: Option<String>,
+}
+
+async fn complete_step_up(
+    state: &AppState,
+    client: &Client,
+    user: &UserRow,
+    session_id: Uuid,
+) -> ApiResult<AuthResponse> {
+    let reauth_expires_at = session::mark_step_up(state, session_id).await?;
+    users::security_event(
+        state,
+        user.id,
+        "reauth",
+        None,
+        client.ip.as_deref(),
+        client.user_agent.as_deref(),
+        None,
+    )
+    .await?;
+    Ok(AuthResponse::Reauthenticated { reauth_expires_at })
+}
+
+#[utoipa::path(post, path = "/api/v1/auth/reauth/start", tag = "auth",
+    request_body = ReauthStartRequest, responses((status = 200, body = ReauthStartResponse)))]
+pub async fn reauth_start(
+    State(state): State<AppState>,
+    auth: Auth,
+    Body(req): Body<ReauthStartRequest>,
+) -> ApiResult<Json<ReauthStartResponse>> {
+    let user = users::by_id(&state.db, auth.user_id()).await?;
+    ratelimit::check(&state, ratelimit::AUTH_ACCOUNT, &user.email).await?;
+    let mut flow = ReauthFlow {
+        session_id: auth.session.session_id,
+        user_id: user.id,
+        method: ReauthMethod::None,
+        server_state: None,
+    };
+    let mut opaque_response = None;
+    let mut email_hint = None;
+    if let Some(record) = user.opaque_record.as_deref() {
+        let request = req
+            .opaque_request
+            .as_deref()
+            .ok_or_else(|| Error::bad_request("opaque_request is required"))?;
+        let (resp, server_state) = state
+            .opaque
+            .login_start(&user.email, Some(record), request)?;
+        flow.method = ReauthMethod::Password;
+        flow.server_state = Some(b64(&server_state));
+        opaque_response = Some(resp);
+    } else if state.mailer.is_some() && user.email_verified {
+        flow.method = ReauthMethod::Email;
+        email_hint = Some(mask_email(&user.email));
+    } else if !users::mfa_enabled(&state, &user).await? {
+        // Nothing this account could prove ownership with; refusing beats
+        // letting a bare bearer token perform destructive changes.
+        return Err(Error::bad_request(
+            "Re-authentication is not available: this account has no password, \
+             no verified email and no second factor",
+        ));
+    }
+    let reauth_id = codes::put_flow(&state, P_REAUTH, &flow, MFA_TTL).await?;
+    if flow.method == ReauthMethod::Email {
+        let code = codes::issue_for(&state, P_REAUTH_EMAIL, &reauth_id, &user.id, MFA_TTL).await?;
+        send_code_email(&state, &user.email, "confirm it's you", &code, MFA_TTL).await?;
+    }
+    Ok(Json(ReauthStartResponse {
+        reauth_id,
+        method: flow.method,
+        opaque_response,
+        email_hint,
+    }))
+}
+
+#[utoipa::path(post, path = "/api/v1/auth/reauth/finish", tag = "auth",
+    request_body = ReauthFinishRequest, responses((status = 200, body = AuthResponse)))]
+pub async fn reauth_finish(
+    State(state): State<AppState>,
+    auth: Auth,
+    client: Client,
+    Body(req): Body<ReauthFinishRequest>,
+) -> ApiResult<Json<AuthResponse>> {
+    ratelimit::check(
+        &state,
+        ratelimit::CODE_GUESS,
+        &format!("reauth:{}", hash_token(&req.reauth_id)),
+    )
+    .await?;
+    let flow: ReauthFlow = codes::get_flow(&state, P_REAUTH, &req.reauth_id).await?;
+    if flow.session_id != auth.session.session_id || flow.user_id != auth.user_id() {
+        return Err(Error::unauthorized());
+    }
+    let user = users::by_id(&state.db, auth.user_id()).await?;
+    let ok = match flow.method {
+        ReauthMethod::Password => {
+            // OPAQUE server state is single-use: a wrong password restarts.
+            codes::del_flow(&state, P_REAUTH, &req.reauth_id).await?;
+            let (Some(st), Some(fin)) = (&flow.server_state, &req.opaque_finalization) else {
+                return Err(Error::bad_request("opaque_finalization is required"));
+            };
+            opaque::Server::login_finish(&user.email, &unb64(st)?, fin).is_ok()
+        }
+        ReauthMethod::Email => {
+            let code = req
+                .code
+                .as_deref()
+                .ok_or_else(|| Error::bad_request("code is required"))?;
+            // A wrong code keeps the flow alive for another attempt (rate limited).
+            codes::verify::<Uuid>(&state, P_REAUTH_EMAIL, &req.reauth_id, code).await?;
+            codes::del_flow(&state, P_REAUTH, &req.reauth_id).await?;
+            true
+        }
+        ReauthMethod::None => {
+            codes::del_flow(&state, P_REAUTH, &req.reauth_id).await?;
+            true
+        }
+    };
+    if !ok {
+        users::security_event(
+            &state,
+            user.id,
+            "reauth_failed",
+            Some(auth.device_id()),
+            client.ip.as_deref(),
+            client.user_agent.as_deref(),
+            None,
+        )
+        .await?;
+        return Err(Error::invalid_credentials());
+    }
+    if users::mfa_enabled(&state, &user).await? {
+        let methods = available_mfa_methods(&state, &user).await?;
+        let mfa_token = codes::put_flow(
+            &state,
+            P_MFA,
+            &MfaFlow {
+                user_id: user.id,
+                device: None,
+                sso_verified: false,
+                reauth_session: Some(auth.session.session_id),
+            },
+            MFA_TTL,
+        )
+        .await?;
+        return Ok(Json(AuthResponse::MfaRequired { mfa_token, methods }));
+    }
+    let resp = complete_step_up(&state, &client, &user, auth.session.session_id).await?;
     Ok(Json(resp))
 }
 
@@ -859,7 +1037,10 @@ async fn resolve_password_subject(
             let flow: RecoveryFlow = codes::get_flow(state, P_RECOVERY, token).await?;
             users::by_id(&state.db, flow.user_id).await
         }
-        (Some(auth), None) => users::by_id(&state.db, auth.user_id()).await,
+        (Some(auth), None) => {
+            auth.require_step_up()?;
+            users::by_id(&state.db, auth.user_id()).await
+        }
         (None, None) => Err(Error::unauthorized()),
     }
 }
@@ -942,11 +1123,10 @@ pub async fn password_finish(
                 .0
         }
     };
-    if req.revoke_other_sessions || req.recovery_token.is_some() {
-        session::revoke_all(&state, user.id, None).await?;
-    } else if let Some(a) = &auth {
-        session::revoke_session(&state, a.session.session_id).await?;
-    }
+    // A new password always signs every other session out: the caller may be
+    // reclaiming a compromised account. `revoke_other_sessions` is kept in the
+    // protocol for compatibility; it cannot opt out.
+    session::revoke_all(&state, user.id, None).await?;
     let user = users::by_id(&state.db, user.id).await?;
     let sess = build_session(&state, &user, device_id).await?;
     users::security_event(
@@ -959,6 +1139,16 @@ pub async fn password_finish(
         None,
     )
     .await?;
+    let what = if req.recovery_token.is_some() {
+        "Your password was reset with the recovery phrase"
+    } else {
+        "Your password was changed"
+    };
+    let mut text = format!("{what}. Every other device and browser was signed out.");
+    if req.new_recovery.is_some() {
+        text.push_str(" A new recovery phrase was generated; the previous one no longer works.");
+    }
+    users::notify(&state, &user.email, "password changed", &text).await;
     crate::events::publish(
         &state,
         crate::events::Event::AccountUpdated { user_id: user.id },

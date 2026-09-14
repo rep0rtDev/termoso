@@ -11,6 +11,8 @@ export interface AuthState {
   session: Session | null;
   /** Account X25519 private key (base64), present only after an OPAQUE login in this tab. */
   privateKey: string | null;
+  /** End of the server-side step-up window opened by the last (re-)authentication in this tab. */
+  stepUpUntil: string | null;
 }
 
 type Listener = () => void;
@@ -32,9 +34,13 @@ function loadInitial(): AuthState {
   if (session && Date.parse(session.expires_at) < Date.now()) {
     localStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(PRIVATE_KEY_KEY);
-    return { session: null, privateKey: null };
+    return { session: null, privateKey: null, stepUpUntil: null };
   }
-  return { session, privateKey: session ? sessionStorage.getItem(PRIVATE_KEY_KEY) : null };
+  return {
+    session,
+    privateKey: session ? sessionStorage.getItem(PRIVATE_KEY_KEY) : null,
+    stepUpUntil: null,
+  };
 }
 
 let state: AuthState = loadInitial();
@@ -60,12 +66,16 @@ export const authStore = {
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     if (privateKey) sessionStorage.setItem(PRIVATE_KEY_KEY, privateKey);
     else sessionStorage.removeItem(PRIVATE_KEY_KEY);
-    set({ session, privateKey });
+    set({ session, privateKey, stepUpUntil: null });
   },
 
   unlock(privateKey: string) {
     sessionStorage.setItem(PRIVATE_KEY_KEY, privateKey);
     set({ ...state, privateKey });
+  },
+
+  stepUp(until: string) {
+    set({ ...state, stepUpUntil: until });
   },
 
   updateUser(user: UserProfile) {
@@ -85,7 +95,7 @@ export const authStore = {
   signOut() {
     localStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(PRIVATE_KEY_KEY);
-    set({ session: null, privateKey: null });
+    set({ session: null, privateKey: null, stepUpUntil: null });
   },
 };
 

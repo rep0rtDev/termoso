@@ -22,7 +22,7 @@ import { accountApi } from "@/api/endpoints";
 import { queryKeys, useAccount, useServerInfo } from "@/api/hooks";
 import { changePassword } from "@/auth/flows";
 import { authStore, useAuthState } from "@/auth/store";
-import { requireUnlocked, UnlockCancelled } from "@/auth/unlock";
+import { requireUnlocked, UnlockCancelled, withStepUp } from "@/auth/unlock";
 import { loadCrypto, rotateRecovery } from "@/crypto";
 import { Loading } from "@/components/Loading";
 import { PageHeader } from "@/components/PageHeader";
@@ -244,19 +244,19 @@ function ChangeEmailDialog({
     e.preventDefault();
     if (step === "email") {
       void run(async () => {
-        await accountApi.emailChange(newEmail.trim());
+        await withStepUp(() => accountApi.emailChange(newEmail.trim()));
         if (emailEnabled) setStep("code");
         else await afterChange();
       });
     } else if (step === "code") {
       void run(async () => {
-        await accountApi.emailChangeConfirm(code.trim());
+        await withStepUp(() => accountApi.emailChangeConfirm(code.trim()));
         await afterChange();
       });
     } else {
       void run(async () => {
         await requireUnlocked();
-        await changePassword(password, false);
+        await withStepUp(() => changePassword(password, false));
         snack.notify("Email changed");
         reset();
         onClose();
@@ -372,7 +372,7 @@ function PasswordSection() {
     setError(null);
     try {
       await requireUnlocked();
-      await changePassword(password, revoke);
+      await withStepUp(() => changePassword(password, revoke));
       snack.notify("Password changed");
       close();
     } catch (err) {
@@ -447,10 +447,12 @@ function RecoveryKeySection() {
       const privateKey = await requireUnlocked();
       await loadCrypto();
       const r = rotateRecovery(privateKey);
-      await accountApi.rotateRecovery({
-        recovery_wrapped_private_key: r.recoveryWrappedPrivateKey,
-        recovery_verifier: r.recoveryVerifier,
-      });
+      await withStepUp(() =>
+        accountApi.rotateRecovery({
+          recovery_wrapped_private_key: r.recoveryWrappedPrivateKey,
+          recovery_verifier: r.recoveryVerifier,
+        }),
+      );
       return r.recoveryPhrase;
     },
     onSuccess: (phrase) => {
@@ -471,7 +473,7 @@ function RecoveryKeySection() {
   return (
     <Section
       title="Recovery key"
-      description="A 24-word key that can reset your password if you forget it. Generating a new one invalidates the old."
+      description="A 24-word key that can reset your password if you forget it. It is shown only once and cannot be reset: replacing it requires your password. If both are lost, the encrypted data is gone — Termoso holds no copy of your keys."
       actions={
         <Button variant="outlined" onClick={() => setConfirmOpen(true)}>
           Generate new key
@@ -487,8 +489,8 @@ function RecoveryKeySection() {
         <DialogTitle>Generate a new recovery key?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            The current recovery key stops working immediately. You will see the new key once —
-            store it safely.
+            You will be asked for your password first. The current recovery key stops working
+            immediately; you will see the new key once — store it safely.
           </DialogContentText>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>

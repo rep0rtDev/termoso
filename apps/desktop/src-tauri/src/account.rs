@@ -9,7 +9,9 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
-use termoso_core::account::{self as core, LoginFlow, LoginStep, RegisterInput};
+use termoso_core::account::{
+    self as core, LoginFlow, LoginStep, ReauthFlow, ReauthStep, RegisterInput,
+};
 use termoso_core::api::ApiClient;
 use termoso_core::store::{LocalVault, StoredAccount};
 use termoso_core::sync::{SyncEngine, SyncEvent, SyncOptions, SyncReport};
@@ -63,6 +65,19 @@ pub enum LoginOutcome {
     Done { account: AccountCard },
     MfaRequired { methods: Vec<MfaMethod> },
     DeviceApprovalRequired { email_hint: String },
+}
+
+/// Where a step-up (re-authentication for sensitive account changes) stands.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(
+    tag = "step",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum ReauthOutcome {
+    Done { expires_at: DateTime<Utc> },
+    MfaRequired { methods: Vec<MfaMethod> },
+    EmailCodeRequired { email_hint: String },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -167,6 +182,7 @@ struct Inner {
     api: Option<Arc<ApiClient>>,
     flow: Option<LoginFlow>,
     pending: Option<LoginOutcome>,
+    reauth: Option<ReauthFlow>,
     engine: Option<Engine>,
 }
 
@@ -229,6 +245,20 @@ fn outcome(step: &LoginStep) -> LoginOutcome {
             methods: methods.clone(),
         },
         LoginStep::DeviceApprovalRequired { email_hint } => LoginOutcome::DeviceApprovalRequired {
+            email_hint: email_hint.clone(),
+        },
+    }
+}
+
+fn reauth_outcome(step: &ReauthStep) -> ReauthOutcome {
+    match step {
+        ReauthStep::Done { expires_at } => ReauthOutcome::Done {
+            expires_at: *expires_at,
+        },
+        ReauthStep::MfaRequired { methods } => ReauthOutcome::MfaRequired {
+            methods: methods.clone(),
+        },
+        ReauthStep::EmailCodeRequired { email_hint } => ReauthOutcome::EmailCodeRequired {
             email_hint: email_hint.clone(),
         },
     }
@@ -476,6 +506,7 @@ pub async fn sign_out<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
     stop_engine(&mut inner).await;
     inner.flow = None;
     inner.pending = None;
+    inner.reauth = None;
     let api = match inner.api.take() {
         Some(api) => api,
         None => match state.store.account()? {
@@ -679,6 +710,105 @@ pub(crate) async fn api<R: Runtime>(app: &AppHandle<R>) -> Result<Arc<ApiClient>
         .clone()
         .filter(|a| a.token().is_some())
         .ok_or_else(|| DesktopError::invalid("not signed in"))
+}
+
+// ───────────────────────────── step-up ─────────────────────────────
+
+/// Prove the password again so the session may perform sensitive changes
+/// (the server answers `reauth_required` otherwise).
+pub async fn reauth_start<R: Runtime>(
+    app: &AppHandle<R>,
+    password: Zeroizing<String>,
+) -> Result<ReauthOutcome> {
+    let state = app.state::<AppState>();
+    let account = state
+        .store
+        .account()?
+        .ok_or_else(|| DesktopError::invalid("not signed in"))?;
+    let api = api(app).await?;
+    let mut inner = state.account.inner.lock().await;
+    inner.reauth = None;
+    let (flow, step) = ReauthFlow::start(api, &account.email, &password).await?;
+    Ok(keep_reauth(&mut inner, flow, step))
+}
+
+fn keep_reauth(inner: &mut Inner, flow: ReauthFlow, step: ReauthStep) -> ReauthOutcome {
+    let out = reauth_outcome(&step);
+    inner.reauth = match step {
+        ReauthStep::Done { .. } => None,
+        _ => Some(flow),
+    };
+    out
+}
+
+enum ReauthAnswer {
+    Mfa(MfaCredential),
+    EmailCode(String),
+}
+
+async fn continue_reauth<R: Runtime>(
+    app: &AppHandle<R>,
+    answer: ReauthAnswer,
+) -> Result<ReauthOutcome> {
+    let state = app.state::<AppState>();
+    let mut inner = state.account.inner.lock().await;
+    let mut flow = inner
+        .reauth
+        .take()
+        .ok_or_else(|| DesktopError::invalid("no re-authentication in progress"))?;
+    let result = match answer {
+        ReauthAnswer::Mfa(credential) => flow.mfa(credential).await,
+        ReauthAnswer::EmailCode(code) => flow.email_code(&code).await,
+    };
+    match result {
+        Ok(step) => Ok(keep_reauth(&mut inner, flow, step)),
+        Err(e) => {
+            inner.reauth = Some(flow);
+            Err(e.into())
+        }
+    }
+}
+
+pub async fn reauth_mfa<R: Runtime>(
+    app: &AppHandle<R>,
+    credential: MfaCredential,
+) -> Result<ReauthOutcome> {
+    continue_reauth(app, ReauthAnswer::Mfa(credential)).await
+}
+
+pub async fn reauth_email_code<R: Runtime>(
+    app: &AppHandle<R>,
+    code: String,
+) -> Result<ReauthOutcome> {
+    continue_reauth(app, ReauthAnswer::EmailCode(code)).await
+}
+
+pub async fn reauth_mfa_email_send<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
+    let state = app.state::<AppState>();
+    let inner = state.account.inner.lock().await;
+    let flow = inner
+        .reauth
+        .as_ref()
+        .ok_or_else(|| DesktopError::invalid("no re-authentication in progress"))?;
+    Ok(flow.send_mfa_email().await?)
+}
+
+pub async fn reauth_webauthn_challenge<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<serde_json::Value> {
+    let state = app.state::<AppState>();
+    let inner = state.account.inner.lock().await;
+    let flow = inner
+        .reauth
+        .as_ref()
+        .ok_or_else(|| DesktopError::invalid("no re-authentication in progress"))?;
+    Ok(flow.webauthn_challenge().await?)
+}
+
+pub async fn reauth_cancel<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
+    let state = app.state::<AppState>();
+    state.account.inner.lock().await.reauth = None;
+    Ok(())
 }
 
 pub async fn devices<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<Device>> {

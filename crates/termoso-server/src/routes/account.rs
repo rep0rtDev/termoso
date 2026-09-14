@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::codes;
 use crate::error::{ApiResult, Error, NoContent};
 use crate::events::{self, Event};
-use crate::extract::{Auth, Json as Body};
+use crate::extract::{Auth, Json as Body, StepUp};
 use crate::ratelimit;
 use crate::routes::auth::{P_EMAIL_VERIFY, send_email_verification};
 use crate::session;
@@ -131,7 +131,7 @@ pub async fn email_verify_confirm(
     request_body = ChangeEmailRequest, responses((status = 204)))]
 pub async fn email_change(
     State(state): State<AppState>,
-    auth: Auth,
+    StepUp(auth): StepUp,
     Body(req): Body<ChangeEmailRequest>,
 ) -> ApiResult<NoContent> {
     let new_email =
@@ -175,7 +175,7 @@ pub async fn email_change(
     request_body = CodeRequest, responses((status = 204)))]
 pub async fn email_change_confirm(
     State(state): State<AppState>,
-    auth: Auth,
+    StepUp(auth): StepUp,
     Body(req): Body<CodeRequest>,
 ) -> ApiResult<NoContent> {
     let new_email: String = codes::verify(
@@ -217,21 +217,13 @@ async fn apply_email_change(state: &AppState, auth: &Auth, new_email: &str) -> A
         Some(serde_json::json!({ "from": old.email, "to": new_email })),
     )
     .await?;
-    if let Some(mailer) = &state.mailer {
-        let text = format!(
-            "The email address of your account was changed to {new_email}.\n\nIf this was not you, sign in and review your security events."
-        );
-        if let Err(e) = mailer
-            .send(
-                &old.email,
-                &format!("{}: email changed", state.cfg.server_name),
-                &text,
-            )
-            .await
-        {
-            tracing::warn!(error = %e, "could not notify old address");
-        }
-    }
+    users::notify(
+        state,
+        &old.email,
+        "email changed",
+        &format!("The email address of your account was changed to {new_email}."),
+    )
+    .await;
     events::publish(
         state,
         Event::AccountUpdated {
@@ -336,7 +328,7 @@ pub async fn devices(State(state): State<AppState>, auth: Auth) -> ApiResult<Jso
     params(("id" = Uuid, Path)), responses((status = 204)))]
 pub async fn revoke_device(
     State(state): State<AppState>,
-    auth: Auth,
+    StepUp(auth): StepUp,
     Path(id): Path<Uuid>,
 ) -> ApiResult<NoContent> {
     session::revoke_device(&state, auth.user_id(), id).await?;
@@ -398,30 +390,38 @@ pub async fn security_events(
     request_body = RecoveryRotate, responses((status = 204)))]
 pub async fn rotate_recovery(
     State(state): State<AppState>,
-    auth: Auth,
+    StepUp(auth): StepUp,
     Body(req): Body<RecoveryRotate>,
 ) -> ApiResult<NoContent> {
     unb64_array::<32>(&req.recovery_verifier)
         .map_err(|_| Error::bad_request("recovery_verifier must be 32 bytes"))?;
     unb64(&req.recovery_wrapped_private_key)
         .map_err(|_| Error::bad_request("recovery_wrapped_private_key is not valid base64"))?;
+    let u = users::by_id(&state.db, auth.user_id()).await?;
     sqlx::query("UPDATE users SET recovery_wrapped_private_key = $2, recovery_verifier_hash = $3, updated_at = now() WHERE id = $1")
-        .bind(auth.user_id())
+        .bind(u.id)
         .bind(&req.recovery_wrapped_private_key)
         .bind(hash_token(&req.recovery_verifier))
         .execute(&state.db)
         .await?;
     users::security_event(
         &state,
-        auth.user_id(),
+        u.id,
         "recovery_key_rotated",
         Some(auth.device_id()),
         auth.ip.as_deref(),
         auth.user_agent.as_deref(),
         None,
     )
-    .await
-    .map(NoContent::from)
+    .await?;
+    users::notify(
+        &state,
+        &u.email,
+        "recovery phrase replaced",
+        "A new recovery phrase was generated for your account. The previous phrase no longer works.",
+    )
+    .await;
+    Ok(NoContent)
 }
 
 // ───────────────────────────── deletion ─────────────────────────────
@@ -440,7 +440,7 @@ pub struct DeleteAccountRequest {
     responses((status = 202, description = "Confirmation code sent"), (status = 204, description = "Deleted")))]
 pub async fn delete_account(
     State(state): State<AppState>,
-    auth: Auth,
+    StepUp(auth): StepUp,
     body: Option<Body<DeleteAccountRequest>>,
 ) -> ApiResult<axum::http::StatusCode> {
     let u = users::by_id(&state.db, auth.user_id()).await?;

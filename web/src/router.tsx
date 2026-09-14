@@ -7,6 +7,8 @@ import { MfaPage } from "./pages/auth/MfaPage";
 import { DeviceApprovePage } from "./pages/auth/DeviceApprovePage";
 import { SignupPage } from "./pages/auth/SignupPage";
 import { RecoveryKeyPage } from "./pages/auth/RecoveryKeyPage";
+import { StartOverPage } from "./pages/auth/StartOverPage";
+import { StartOverCancelPage, StartOverFinishPage } from "./pages/auth/StartOverFinishPage";
 import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
 import { InvitePage } from "./pages/auth/InvitePage";
 import { SsoCallbackPage } from "./pages/auth/SsoCallbackPage";
@@ -38,8 +40,11 @@ export const router = createBrowserRouter([
           { path: "/login/approve", element: <DeviceApprovePage /> },
           { path: "/signup", element: <SignupPage /> },
           { path: "/forgot-password", element: <ForgotPasswordPage /> },
+          { path: "/start-over", element: <StartOverPage /> },
         ],
       },
+      { path: "/start-over/cancel/:token", element: <StartOverCancelPage /> },
+      { path: "/start-over/:token", element: <StartOverFinishPage /> },
       { path: "/signup/recovery-key", element: <RecoveryKeyPage /> },
       { path: "/invite/:token", element: <InvitePage /> },
       { path: "/sso/callback", element: <SsoCallbackPage /> },
