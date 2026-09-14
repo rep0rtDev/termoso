@@ -199,8 +199,12 @@ pub fn router(state: AppState) -> Router {
     }
 
     let cors = cors_layer(&state);
+    // Host-based rewrite for the dedicated SSH ID origin has to run before
+    // routing, so it wraps the finished router instead of being a route layer.
+    let sshid_host = axum::middleware::from_fn_with_state(state.clone(), sshid::host_layer);
 
-    app.layer(RequestBodyLimitLayer::new(BODY_LIMIT))
+    let app = app
+        .layer(RequestBodyLimitLayer::new(BODY_LIMIT))
         .layer(
             tower::ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())
@@ -219,7 +223,9 @@ pub fn router(state: AppState) -> Router {
                     Duration::from_secs(60),
                 )),
         )
-        .with_state(state)
+        .with_state(state);
+
+    Router::new().fallback_service(tower::Layer::layer(&sshid_host, app))
 }
 
 fn cors_layer(state: &AppState) -> CorsLayer {
