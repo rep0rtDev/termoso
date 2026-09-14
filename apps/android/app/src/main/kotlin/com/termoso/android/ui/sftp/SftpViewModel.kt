@@ -11,6 +11,7 @@ import com.termoso.core.MobileException
 import com.termoso.core.SessionState
 import com.termoso.core.SftpEntry
 import com.termoso.core.TransferCard
+import com.termoso.core.TransferDirection
 import com.termoso.core.TransferStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -374,7 +375,15 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
                         if (card.remotePath.substringBeforeLast('/', "/").ifBlank { "/" } == _state.value.path) refresh()
                     }
                 }
-                else -> if (scratch != null) withContext(Dispatchers.IO) { scratch.delete() }
+                else -> {
+                    if (scratch != null) withContext(Dispatchers.IO) { scratch.delete() }
+                    // Rust removed the remote partial of a cancelled upload.
+                    if (card.direction == TransferDirection.UPLOAD &&
+                        card.remotePath.substringBeforeLast('/', "/").ifBlank { "/" } == _state.value.path
+                    ) {
+                        refresh()
+                    }
+                }
             }
         }
     }
