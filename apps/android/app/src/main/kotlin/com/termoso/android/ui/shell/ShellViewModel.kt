@@ -3,6 +3,8 @@ package com.termoso.android.ui.shell
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.termoso.android.data.SessionManager
+import com.termoso.android.data.SftpConnection
+import com.termoso.android.data.SftpManager
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
@@ -14,7 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /** Cross-tab state: the vault currently shown in Vaults → Hosts, open terminals, one-shot notices. */
-class ShellViewModel(val repo: VaultRepository, val sessions: SessionManager) : ViewModel() {
+class ShellViewModel(val repo: VaultRepository, val sessions: SessionManager, val sftp: SftpManager) : ViewModel() {
     private val _vaults = MutableStateFlow<List<VaultInfo>>(emptyList())
     val vaults: StateFlow<List<VaultInfo>> = _vaults.asStateFlow()
 
@@ -58,6 +60,16 @@ class ShellViewModel(val repo: VaultRepository, val sessions: SessionManager) : 
 
     suspend fun connectQuick(target: QuickTarget): TerminalSession? =
         runCatching { sessions.connectQuick(target) }
+            .onFailure { notify(it.userMessage()) }
+            .getOrNull()
+
+    suspend fun openSftpHost(hostId: String): SftpConnection? =
+        runCatching { sftp.openHost(hostId) }
+            .onFailure { notify(it.userMessage()) }
+            .getOrNull()
+
+    suspend fun openSftpQuick(target: QuickTarget): SftpConnection? =
+        runCatching { sftp.openQuick(target) }
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
 

@@ -36,6 +36,8 @@ import androidx.navigation.navArgument
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.AppContainer
 import com.termoso.android.data.SessionManager
+import com.termoso.android.data.SftpConnection
+import com.termoso.android.data.SftpManager
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.account.AccountScreen
 import com.termoso.android.ui.account.AuthMode
@@ -49,11 +51,14 @@ import com.termoso.android.ui.keychain.ImportKeyScreen
 import com.termoso.android.ui.keychain.KeyDetailScreen
 import com.termoso.android.ui.keychain.KeychainScreen
 import com.termoso.android.ui.settings.SettingsScreen
+import com.termoso.android.ui.sftp.SftpPickScreen
+import com.termoso.android.ui.sftp.SftpScreen
 import com.termoso.android.ui.settings.TerminalAppearanceScreen
 import com.termoso.android.ui.terminal.TerminalScreen
 import com.termoso.android.ui.vault.HistoryScreen
 import com.termoso.android.ui.vault.KnownHostsScreen
 import com.termoso.android.ui.vault.VaultScreen
+import com.termoso.core.KeyMods
 import kotlinx.coroutines.launch
 
 object Routes {
@@ -75,6 +80,8 @@ object Routes {
     const val TERMINAL = "terminal"
     const val ACCOUNT = "account"
     const val SIGN_IN = "signIn/{mode}"
+    const val SFTP = "sftp/{id}"
+    const val SFTP_PICK = "sftpPick"
 
     fun hosts(group: String?) = if (group == null) "hosts" else "hosts?group=$group"
     fun hostNew(group: String?) = if (group == null) "hostNew" else "hostNew?group=$group"
@@ -82,6 +89,7 @@ object Routes {
     fun key(id: String) = "key/$id"
     fun identity(id: String) = "identity/$id"
     fun signIn(mode: AuthMode) = "signIn/${mode.name}"
+    fun sftp(id: String) = "sftp/$id"
 }
 
 private class Tab(val route: String, val label: String, val icon: ImageVector, val selectedIcon: ImageVector)
@@ -94,8 +102,15 @@ private val tabs = listOf(
 
 /** Bottom-navigation shell: Vaults · Connections · Settings, with nested host screens. */
 @Composable
-fun MainShell(container: AppContainer, repo: VaultRepository, sessions: SessionManager, account: AccountManager, onLock: () -> Unit) {
-    val shell: ShellViewModel = viewModel { ShellViewModel(repo, sessions) }
+fun MainShell(
+    container: AppContainer,
+    repo: VaultRepository,
+    sessions: SessionManager,
+    sftp: SftpManager,
+    account: AccountManager,
+    onLock: () -> Unit,
+) {
+    val shell: ShellViewModel = viewModel { ShellViewModel(repo, sessions, sftp) }
     val nav = rememberNavController()
     val scope = rememberCoroutineScope()
     val backStack by nav.currentBackStackEntryAsState()
@@ -119,6 +134,28 @@ fun MainShell(container: AppContainer, repo: VaultRepository, sessions: SessionM
 
     fun connectHost(hostId: String) {
         scope.launch { if (shell.connectHost(hostId) != null) openTerminal() }
+    }
+
+    fun openSftp(connectionId: String) {
+        nav.navigate(Routes.sftp(connectionId)) { launchSingleTop = true }
+    }
+
+    fun sftpHost(hostId: String) {
+        scope.launch { shell.openSftpHost(hostId)?.let { openSftp(it.id) } }
+    }
+
+    /** Termius-style "Edit": a terminal to the same host running an editor on the file, exiting with it. */
+    fun editInTerminal(conn: SftpConnection, path: String) {
+        scope.launch {
+            val session = when {
+                conn.hostId != null -> shell.connectHost(conn.hostId)
+                conn.quick != null -> shell.connectQuick(conn.quick)
+                else -> null
+            } ?: return@launch
+            val quoted = "'" + path.replace("'", "'\\''") + "'"
+            session.rust.sendText("\${EDITOR:-vi} $quoted; exit\n", KeyMods(ctrl = false, alt = false, shift = false))
+            openTerminal()
+        }
     }
 
     Scaffold(
@@ -167,6 +204,8 @@ fun MainShell(container: AppContainer, repo: VaultRepository, sessions: SessionM
                     onAddHost = { nav.navigate(Routes.hostNew(null)) },
                     onConnectHost = ::connectHost,
                     onOpenTerminal = ::openTerminal,
+                    onNewSftp = { nav.navigate(Routes.SFTP_PICK) },
+                    onOpenSftp = ::openSftp,
                 )
             }
             composable(Routes.SETTINGS) {
@@ -203,6 +242,7 @@ fun MainShell(container: AppContainer, repo: VaultRepository, sessions: SessionM
                     onNewHost = { nav.navigate(Routes.hostNew(group)) },
                     onEditHost = { nav.navigate(Routes.hostEdit(it)) },
                     onConnect = ::connectHost,
+                    onSftp = ::sftpHost,
                 )
             }
             composable(Routes.HOST_NEW, arguments = listOf(groupArg)) { entry ->
@@ -253,6 +293,21 @@ fun MainShell(container: AppContainer, repo: VaultRepository, sessions: SessionM
             composable(Routes.KNOWN_HOSTS) { KnownHostsScreen(shell = shell, onBack = { nav.popBackStack() }) }
             composable(Routes.HISTORY) {
                 HistoryScreen(shell = shell, onBack = { nav.popBackStack() }, onOpenHost = { nav.navigate(Routes.hostEdit(it)) })
+            }
+            composable(Routes.SFTP_PICK) {
+                SftpPickScreen(
+                    shell = shell,
+                    onBack = { nav.popBackStack() },
+                    onOpened = { id -> nav.navigate(Routes.sftp(id)) { popUpTo(Routes.SFTP_PICK) { inclusive = true } } },
+                )
+            }
+            composable(Routes.SFTP, arguments = listOf(idArg)) { entry ->
+                SftpScreen(
+                    shell = shell,
+                    connectionId = entry.arguments?.getString("id") ?: "",
+                    onBack = { nav.popBackStack() },
+                    onEdit = ::editInTerminal,
+                )
             }
             composable(Routes.TERMINAL) {
                 TerminalScreen(
