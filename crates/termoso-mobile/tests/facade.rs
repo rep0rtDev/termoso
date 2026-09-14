@@ -12,9 +12,9 @@ use russh::server::{Auth, ChannelOpenHandle, Msg, Server as _, Session};
 use russh::{Channel, ChannelId, MethodSet};
 use termoso_mobile::{
     HostKeyChoice, IdentityDraft, KeyAlgorithm, KeyGenerateDraft, KeyImportDraft, MobileError,
-    PromptAnswer, PromptRequest, QuickTarget, SessionListener, SessionState, SshSession,
-    TerminalOptions, TermosoApp, VaultKind, flag, generate_master_key, parse_target,
-    profile_exists,
+    PfKind, PfRuleDraft, PromptAnswer, PromptRequest, QuickTarget, SessionListener, SessionState,
+    SshSession, TerminalOptions, TermosoApp, TunnelListener, TunnelState, VaultKind, flag,
+    generate_master_key, parse_target, profile_exists,
 };
 use tokio::net::TcpListener;
 
@@ -686,4 +686,158 @@ async fn saved_host_keyboard_interactive_and_rejected_key() {
     };
     assert_eq!(kind, "cancelled");
     assert!(!s.answer(id, PromptAnswer::Cancel), "stale prompt id");
+}
+
+// ---- port forwarding ------------------------------------------------------
+
+#[derive(Default)]
+struct TunnelRecorder {
+    states: Mutex<Vec<TunnelState>>,
+}
+
+impl TunnelListener for TunnelRecorder {
+    fn on_state(&self, state: TunnelState) {
+        self.states.lock().unwrap().push(state);
+    }
+    fn on_prompt(&self, _prompt_id: u64, _request: PromptRequest) {}
+}
+
+impl TunnelRecorder {
+    fn wait_terminal(&self) -> TunnelState {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some(s) = self.states.lock().unwrap().iter().rev().find(|s| {
+                matches!(
+                    s,
+                    TunnelState::Failed { .. } | TunnelState::Stopped | TunnelState::Running { .. }
+                )
+            }) {
+                return s.clone();
+            }
+            assert!(Instant::now() < deadline, "tunnel never settled");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+#[test]
+fn pf_rules_crud_and_validation() {
+    let (app, _dir) = app();
+    let vault = app.local_vault().unwrap().id;
+    let mut d = app.new_host_draft(vault.clone(), None).unwrap();
+    d.label = "bastion".into();
+    d.address = "bastion.example.org".into();
+    let host = app.save_host(d).unwrap();
+
+    let draft = |kind: PfKind| PfRuleDraft {
+        id: None,
+        vault_id: vault.clone(),
+        label: String::new(),
+        host_id: host.id.clone(),
+        kind,
+        bound_address: String::new(),
+        local_port: 8080,
+        remote_host: "db".into(),
+        remote_port: 5432,
+        auto_start: true,
+    };
+
+    // Validation errors are `Invalid`.
+    let mut bad = draft(PfKind::Local);
+    bad.remote_host.clear();
+    assert!(matches!(
+        app.save_pf_rule(bad),
+        Err(MobileError::Invalid { .. })
+    ));
+    let mut bad = draft(PfKind::Local);
+    bad.host_id = uuid::Uuid::new_v4().to_string();
+    assert!(matches!(
+        app.save_pf_rule(bad),
+        Err(MobileError::NotFound { .. })
+    ));
+
+    let local = app.save_pf_rule(draft(PfKind::Local)).unwrap();
+    assert_eq!(local.route, "127.0.0.1:8080 → db:5432");
+    assert_eq!(local.host_label, "bastion");
+    assert!(local.auto_start);
+    let mut dynamic = draft(PfKind::Dynamic);
+    dynamic.label = "socks".into();
+    let dynamic = app.save_pf_rule(dynamic).unwrap();
+
+    // Labelled rules sort first.
+    let list = app.pf_rules(Some(vault.clone())).unwrap();
+    assert_eq!(
+        list.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+        vec![dynamic.id.as_str(), local.id.as_str()]
+    );
+
+    // Edit keeps the id; duplicate makes a copy.
+    let mut edit = draft(PfKind::Local);
+    edit.id = Some(local.id.clone());
+    edit.local_port = 9090;
+    let edited = app.save_pf_rule(edit).unwrap();
+    assert_eq!(edited.id, local.id);
+    assert_eq!(edited.local_port, 9090);
+    let copy = app.duplicate_pf_rule(dynamic.id.clone()).unwrap();
+    assert_eq!(copy.label, "socks copy");
+    assert_eq!(app.pf_rules(None).unwrap().len(), 3);
+
+    app.delete_pf_rule(copy.id.clone()).unwrap();
+    assert!(matches!(
+        app.pf_rule(copy.id),
+        Err(MobileError::NotFound { .. })
+    ));
+    assert_eq!(app.pf_rules(None).unwrap().len(), 2);
+
+    // Deleting the host leaves the rule pointing at a missing host.
+    app.delete_host(host.id.clone()).unwrap();
+    let orphan = app.pf_rule(local.id.clone()).unwrap();
+    assert!(orphan.host_missing);
+    assert!(matches!(
+        app.start_pf(local.id, Arc::new(TunnelRecorder::default())),
+        Err(MobileError::NotFound { .. })
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn pf_tunnel_fails_and_stops_cleanly() {
+    let (app, _dir) = app();
+    let vault = app.local_vault().unwrap().id;
+    // Nothing listens here: the connect fails fast.
+    let free = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = free.local_addr().unwrap().port();
+    drop(free);
+    let mut d = app.new_host_draft(vault.clone(), None).unwrap();
+    d.address = "127.0.0.1".into();
+    d.port = Some(port);
+    d.username = USER.into();
+    let host = app.save_host(d).unwrap();
+    let rule = app
+        .save_pf_rule(PfRuleDraft {
+            id: None,
+            vault_id: vault,
+            label: String::new(),
+            host_id: host.id,
+            kind: PfKind::Dynamic,
+            bound_address: String::new(),
+            local_port: 1080,
+            remote_host: String::new(),
+            remote_port: 0,
+            auto_start: false,
+        })
+        .unwrap();
+
+    let rec = Arc::new(TunnelRecorder::default());
+    let tunnel = app.start_pf(rule.id.clone(), rec.clone()).unwrap();
+    assert_eq!(tunnel.rule_id(), rule.id);
+    let state = tokio::task::spawn_blocking(move || rec.wait_terminal())
+        .await
+        .unwrap();
+    assert!(matches!(state, TunnelState::Failed { .. }), "{state:?}");
+    assert_eq!(tunnel.stats().connections, 0);
+    tunnel.stop();
+    assert!(matches!(
+        tunnel.state(),
+        TunnelState::Failed { .. } | TunnelState::Stopped
+    ));
 }
