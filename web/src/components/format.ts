@@ -21,13 +21,15 @@ export function formatRelative(iso: string | undefined | null): string {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return "—";
   const diff = Date.now() - t;
-  const min = Math.round(diff / 60_000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min} min ago`;
+  const future = diff < 0;
+  const min = Math.round(Math.abs(diff) / 60_000);
+  if (min < 1) return future ? "in a moment" : "just now";
+  const unit = (n: number, u: string) => (future ? `in ${n} ${u}` : `${n} ${u} ago`);
+  if (min < 60) return unit(min, "min");
   const h = Math.round(min / 60);
-  if (h < 24) return `${h} h ago`;
+  if (h < 24) return unit(h, "h");
   const d = Math.round(h / 24);
-  if (d < 30) return `${d} d ago`;
+  if (d < 30) return unit(d, "d");
   return dayFmt.format(new Date(t));
 }
 
