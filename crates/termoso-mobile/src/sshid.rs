@@ -13,6 +13,7 @@ use termoso_core::ssh::AuthMethod;
 use termoso_core::sshid as core;
 use termoso_core::store::Store;
 use termoso_proto::sshid::{SshIdKeyType, SshIdProfile, normalize_handle};
+use zeroize::Zeroizing;
 
 use crate::account::AccountRuntime;
 use crate::dto::{millis, parse_id};
@@ -326,23 +327,48 @@ impl AccountRuntime {
 }
 
 /// Authentication methods for an identity that logs in with SSH ID: this
-/// device's passkeys, preferred type first. FIDO2 keys attached to the SSH
-/// ID need a token and are not offered on the phone yet. Empty when the
-/// device holds no SSH ID keys.
+/// device's passkeys (preferred type first), then the FIDO2 keys attached
+/// to the SSH ID, signed by whichever token is attached to the phone.
+/// Empty when the device holds no SSH ID keys.
 pub(crate) fn auth_methods(
     store: &Store,
     preferred: Option<SshIdKeyType>,
+    pin: Option<Zeroizing<String>>,
 ) -> Result<Vec<AuthMethod>> {
+    let mut out = Vec::new();
     let device = core::ordered(core::device_keys(store)?, preferred);
-    Ok(device
+    let hardware: Vec<AuthMethod> = store
+        .list::<SshKey>(None)?
         .into_iter()
-        .filter(|k| keys::inspect(&k.private_key).is_ok())
-        .map(|k| AuthMethod::Key {
-            private_key: k.private_key,
+        .filter(|k| k.data.ssh_id && termoso_core::fido2::is_sk_type(&k.data.key_type))
+        .map(|k| AuthMethod::SecurityKey {
+            private_key: Zeroizing::new(k.data.private_key),
             passphrase: None,
+            pin: pin.clone(),
+            backend: Arc::new(crate::fido2::PhoneBackend::default()),
             certificate: None,
         })
-        .collect())
+        .collect();
+    let hardware_first = matches!(
+        preferred,
+        Some(SshIdKeyType::EcdsaSk | SshIdKeyType::Ed25519Sk)
+    );
+    let mut hardware = Some(hardware);
+    if hardware_first {
+        out.extend(hardware.take().into_iter().flatten());
+    }
+    out.extend(
+        device
+            .into_iter()
+            .filter(|k| keys::inspect(&k.private_key).is_ok())
+            .map(|k| AuthMethod::Key {
+                private_key: k.private_key,
+                passphrase: None,
+                certificate: None,
+            }),
+    );
+    out.extend(hardware.into_iter().flatten());
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -376,9 +402,9 @@ mod tests {
     #[test]
     fn auth_methods_follow_device_keys() {
         let s = Store::open_in_memory(SymmetricKey::generate()).unwrap();
-        assert!(auth_methods(&s, None).unwrap().is_empty());
+        assert!(auth_methods(&s, None, None).unwrap().is_empty());
         core::ensure_device_keys(&s, "alice").unwrap();
-        let m = auth_methods(&s, Some(SshIdKeyType::Rsa)).unwrap();
+        let m = auth_methods(&s, Some(SshIdKeyType::Rsa), None).unwrap();
         assert_eq!(m.len(), 3);
         match &m[0] {
             AuthMethod::Key { private_key, .. } => {

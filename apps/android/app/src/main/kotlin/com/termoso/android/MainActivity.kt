@@ -8,6 +8,7 @@ import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,6 +20,7 @@ import androidx.lifecycle.lifecycleScope
 import com.termoso.android.data.AppContainer
 import com.termoso.android.data.VaultState
 import com.termoso.android.ui.TermosoRoot
+import com.termoso.android.ui.keychain.LocalFido2
 import com.termoso.android.ui.theme.TermosoTheme
 import kotlinx.coroutines.launch
 
@@ -73,6 +75,8 @@ private fun App(container: AppContainer) {
         ?.repo?.settings?.collectAsStateWithLifecycle()?.value?.appTheme
     LaunchedEffect(openTheme) { if (openTheme != null) theme = openTheme }
     TermosoTheme(appTheme = theme) {
-        TermosoRoot(container = container, vault = vault)
+        CompositionLocalProvider(LocalFido2 provides container.fido2) {
+            TermosoRoot(container = container, vault = vault)
+        }
     }
 }

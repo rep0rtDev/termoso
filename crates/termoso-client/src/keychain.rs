@@ -8,8 +8,9 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use termoso_core::fido2;
 #[cfg(feature = "fido2")]
-use termoso_core::fido2::{self, Fido2Device, GenerateOptions, SecurityKeyInfo};
+use termoso_core::fido2::{Fido2Device, GenerateOptions, SecurityKeyInfo};
 use termoso_core::keys::{self, CertificateInfo, KeyAlgorithm, KeyInfo};
 use termoso_core::model::{Entity, Identity, SshCertificate, SshConfig, SshKey, TelnetConfig};
 use termoso_core::store::Store;
@@ -358,8 +359,7 @@ pub fn fido2_devices() -> Vec<Fido2Device> {
 /// encrypted with (if anything); it is remembered in the vault only when
 /// `remember` is set. The stored block is public key + credential handle —
 /// the token never releases the signing key.
-#[cfg(feature = "fido2")]
-fn store_sk(
+pub fn store_security_key(
     store: &Store,
     vault_id: Uuid,
     label: String,
@@ -394,7 +394,7 @@ pub fn fido2_generate(store: &Store, form: &Fido2GenerateForm) -> Result<KeyCard
     }
     let material = fido2::generate(&opts)?;
     let passphrase = opts.passphrase.as_deref().map(|p| p.as_str());
-    store_sk(
+    store_security_key(
         store,
         form.vault_id,
         label,
@@ -430,7 +430,7 @@ pub fn fido2_load_resident(store: &Store, form: &Fido2LoadForm) -> Result<Vec<Ke
         } else {
             material.info.comment.trim().to_string()
         };
-        out.push(store_sk(
+        out.push(store_security_key(
             store,
             form.vault_id,
             label,

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -94,7 +95,7 @@ fun KeyDetailScreen(shell: ShellViewModel, keyId: String, onBack: () -> Unit) {
                 ListRow(
                     title = key.label,
                     subtitle = keyTypeLabel(key.keyType, key.bits) + if (key.usedBy > 0u) " · used by ${key.usedBy} host${if (key.usedBy == 1u) "" else "s"}" else "",
-                    leading = { IconTile(Icons.Filled.Key, selected = true) },
+                    leading = { IconTile(if (s.securityKey != null) Icons.Filled.Security else Icons.Filled.Key, selected = true) },
                 )
                 if (key.fingerprint.isNotBlank()) {
                     RowDivider()
@@ -137,11 +138,48 @@ fun KeyDetailScreen(shell: ShellViewModel, keyId: String, onBack: () -> Unit) {
                 }
             }
 
+            s.securityKey?.let { sk ->
+                SectionLabel("Security key")
+                SectionCard {
+                    ListRow(
+                        title = "Private key lives on the security key",
+                        subtitle = "Only the public key and a handle are stored here; the token must be plugged in or held to the phone to connect.",
+                    )
+                    RowDivider()
+                    ListRow(title = "Application", subtitle = sk.application)
+                    RowDivider()
+                    ListRow(
+                        title = "On connect",
+                        subtitle = listOfNotNull(
+                            when (sk.userPresence) { true -> "touch required"; false -> "no touch"; null -> null },
+                            when (sk.userVerification) { true -> "PIN required"; false -> null; null -> null },
+                        ).joinToString(", ").ifBlank { "Unknown" },
+                    )
+                    RowDivider()
+                    ListRow(
+                        title = "Resident key",
+                        subtitle = when (sk.resident) {
+                            true -> "Stored on the token, can be loaded elsewhere with the PIN"
+                            false -> "Not stored on the token — only this handle unlocks it"
+                            null -> "Unknown"
+                        },
+                    )
+                    sk.credentialId?.let { cred ->
+                        RowDivider()
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Credential ID", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(cred, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+            }
+
             SectionLabel("Security")
             SectionCard {
                 ChevronRow(
                     title = if (key.encrypted) "Change passphrase" else "Set passphrase",
                     subtitle = when {
+                        !key.encrypted && s.securityKey != null -> "Key handle is stored without a passphrase"
                         !key.encrypted -> "Private key is stored without a passphrase"
                         key.hasPassphrase -> "Passphrase remembered in the vault"
                         else -> "Prompted on every connection"
@@ -156,8 +194,8 @@ fun KeyDetailScreen(shell: ShellViewModel, keyId: String, onBack: () -> Unit) {
                 )
                 RowDivider()
                 ChevronRow(
-                    title = "Export private key",
-                    subtitle = "Reveals the secret — confirmation required",
+                    title = if (s.securityKey != null) "Export key handle" else "Export private key",
+                    subtitle = if (s.securityKey != null) "Useless without the security key — confirmation required" else "Reveals the secret — confirmation required",
                     modifier = Modifier.clickable(enabled = !key.unreadable) { sheet = Sheet.EXPORT },
                 )
             }

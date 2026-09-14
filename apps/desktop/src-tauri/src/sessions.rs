@@ -1366,7 +1366,7 @@ async fn ssh_connect<R: Runtime>(
                     private_key: Zeroizing::new(key.data.private_key.clone()),
                     passphrase: passphrase.clone(),
                     pin: pin.clone(),
-                    device: None,
+                    backend: Arc::new(fido2::UsbBackend::default()),
                     certificate,
                 });
             } else {

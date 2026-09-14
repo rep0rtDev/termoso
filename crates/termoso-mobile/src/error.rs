@@ -4,6 +4,7 @@
 
 use termoso_client::ClientError;
 use termoso_core::error::CoreError;
+use termoso_core::fido2::Fido2Error;
 
 #[derive(Debug, Clone, thiserror::Error, uniffi::Error)]
 pub enum MobileError {
@@ -21,6 +22,14 @@ pub enum MobileError {
     HostKeyRejected { detail: String },
     #[error("{detail}")]
     Key { detail: String },
+    /// Security key trouble; `kind` is the stable `fido2_*` string and
+    /// `retries` the PIN attempts left when the token reports them.
+    #[error("{detail}")]
+    SecurityKey {
+        kind: String,
+        detail: String,
+        retries: Option<i32>,
+    },
     #[error("cancelled")]
     Cancelled,
     #[error("connection closed")]
@@ -52,6 +61,7 @@ impl MobileError {
             Self::AuthFailed { .. } => "auth_failed".into(),
             Self::HostKeyRejected { .. } => "host_key_rejected".into(),
             Self::Key { .. } => "key".into(),
+            Self::SecurityKey { kind, .. } => kind.clone(),
             Self::Cancelled => "cancelled".into(),
             Self::Closed => "closed".into(),
             Self::Other { kind, .. } => kind.clone(),
@@ -75,12 +85,27 @@ impl From<CoreError> for MobileError {
                 detail: e.to_string(),
             },
             CoreError::Key(m) => Self::Key { detail: m },
+            CoreError::Fido2(e) => Self::from(e),
             CoreError::Cancelled => Self::Cancelled,
             CoreError::Closed => Self::Closed,
             other => Self::Other {
                 kind: other.kind().to_string(),
                 detail: other.to_string(),
             },
+        }
+    }
+}
+
+impl From<Fido2Error> for MobileError {
+    fn from(e: Fido2Error) -> Self {
+        let retries = match &e {
+            Fido2Error::PinInvalid { retries } => *retries,
+            _ => None,
+        };
+        Self::SecurityKey {
+            kind: e.kind().to_string(),
+            detail: e.to_string(),
+            retries,
         }
     }
 }
@@ -92,6 +117,11 @@ impl From<ClientError> for MobileError {
             "not_found" => Self::NotFound { detail: e.message },
             "vault_locked" => Self::Locked,
             "key" => Self::Key { detail: e.message },
+            kind if kind.starts_with("fido2") => Self::SecurityKey {
+                kind: kind.to_string(),
+                detail: e.message,
+                retries: None,
+            },
             "cancelled" => Self::Cancelled,
             kind => Self::Other {
                 kind: kind.to_string(),
@@ -123,6 +153,17 @@ impl From<uuid::Error> for MobileError {
     fn from(e: uuid::Error) -> Self {
         Self::Invalid {
             detail: format!("bad id: {e}"),
+        }
+    }
+}
+
+/// A foreign (Kotlin) callback threw something other than `MobileException`;
+/// surfaces as a link error instead of unwinding through the FFI.
+impl From<uniffi::UnexpectedUniFFICallbackError> for MobileError {
+    fn from(e: uniffi::UnexpectedUniFFICallbackError) -> Self {
+        Self::Other {
+            kind: "callback".into(),
+            detail: e.reason,
         }
     }
 }

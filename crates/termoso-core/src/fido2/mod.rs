@@ -1,6 +1,5 @@
 //! FIDO2 security keys as SSH keys (`sk-ssh-ed25519@openssh.com`,
-//! `sk-ecdsa-sha2-nistp256@openssh.com`), talking CTAP2 to the authenticator
-//! over USB HID.
+//! `sk-ecdsa-sha2-nistp256@openssh.com`).
 //!
 //! The private scalar never leaves the token. What the vault stores is the
 //! same thing OpenSSH puts in `id_ed25519_sk`: the public key, the FIDO
@@ -9,18 +8,18 @@
 //! assertion over the SSH data; the token asks the user to touch it (and
 //! enter a PIN when the key was created with user verification).
 //!
-//! Wire formats follow OpenSSH `PROTOCOL.u2f`.
+//! Wire formats follow OpenSSH `PROTOCOL.u2f`. This module holds the parts
+//! that do not talk to hardware; the token itself is reached through one of:
+//!
+//! * [`usb`] (feature `fido2`) – desktop, USB HID through `hidapi`;
+//! * [`ctap`] (feature `fido2-ctap`) – our own CTAP2 client over any
+//!   [`ctap::CtapTransport`], with [`hid`] (CTAPHID framing) and [`nfc`]
+//!   (ISO 7816 APDUs) adapters. Android drives these with the USB-host and
+//!   NFC APIs from Kotlin, the packets themselves crossing the bridge as
+//!   opaque bytes.
 
 use std::sync::Arc;
 
-use ctap_hid_fido2::fidokey::get_assertion::get_assertion_params::Assertion;
-use ctap_hid_fido2::fidokey::make_credential::make_credential_params::{
-    Attestation, CredentialSupportedKeyType,
-};
-use ctap_hid_fido2::fidokey::{GetAssertionArgsBuilder, MakeCredentialArgsBuilder};
-use ctap_hid_fido2::public_key::PublicKeyType;
-use ctap_hid_fido2::public_key_credential_user_entity::PublicKeyCredentialUserEntity;
-use ctap_hid_fido2::{FidoKeyHid, FidoKeyHidFactory, HidInfo, HidParam, LibCfg};
 use russh::keys::HashAlg;
 use russh::keys::agent::AgentIdentity;
 use russh::keys::ssh_encoding::Encode;
@@ -34,6 +33,20 @@ use zeroize::Zeroizing;
 
 use crate::error::{CoreError, Result};
 use crate::keys::{KeyMaterial, material};
+
+#[cfg(feature = "fido2-ctap")]
+pub mod ctap;
+#[cfg(feature = "fido2-ctap")]
+pub mod hid;
+#[cfg(feature = "fido2-ctap")]
+pub mod nfc;
+#[cfg(feature = "fido2-soft")]
+pub mod soft;
+#[cfg(feature = "fido2")]
+pub mod usb;
+
+#[cfg(feature = "fido2")]
+pub use usb::{UsbBackend, generate, list_devices, load_resident, sign};
 
 /// `SSH_SK_USER_PRESENCE_REQD` – touch required at every signature.
 pub const FLAG_USER_PRESENCE: u8 = 0x01;
@@ -107,28 +120,23 @@ impl Fido2Error {
         }
     }
 
-    /// Map the CTAP status codes the library reports as text
-    /// (`response_status err = 0x36 CTAP2_ERR_PIN_REQUIRED …`).
-    fn from_ctap(e: &dyn std::fmt::Display) -> Self {
-        let text = e.to_string();
-        let code = text
-            .split("err = 0x")
-            .nth(1)
-            .and_then(|rest| rest.get(..2))
-            .and_then(|hex| u8::from_str_radix(hex, 16).ok());
+    /// Typed error for a CTAP2 status byte (`CTAP2_ERR_*`).
+    pub fn from_status(code: u8) -> Self {
         match code {
-            Some(0x22) | Some(0x2E) => Fido2Error::WrongDevice,
-            Some(0x26) | Some(0x2B) | Some(0x2C) => Fido2Error::Unsupported(text),
-            Some(0x27) | Some(0x2D) => Fido2Error::Denied,
-            Some(0x05) | Some(0x2F) | Some(0x3A) => Fido2Error::Timeout,
-            Some(0x31) | Some(0x33) => Fido2Error::PinInvalid { retries: None },
-            Some(0x32) | Some(0x34) => Fido2Error::PinBlocked,
-            Some(0x35) => Fido2Error::PinNotSet,
-            Some(0x36) | Some(0x3B) => Fido2Error::PinRequired,
-            _ if text.contains("not found") || text.contains("Failed to open device") => {
-                Fido2Error::NoDevice
-            }
-            _ => Fido2Error::Other(text),
+            0x22 | 0x2E => Fido2Error::WrongDevice,
+            0x26 => Fido2Error::Unsupported("algorithm".into()),
+            0x2B | 0x2C => Fido2Error::Unsupported("option".into()),
+            0x27 | 0x2D => Fido2Error::Denied,
+            0x05 | 0x2F | 0x3A => Fido2Error::Timeout,
+            0x31 | 0x33 | 0x3F => Fido2Error::PinInvalid { retries: None },
+            0x32 | 0x34 | 0x3C => Fido2Error::PinBlocked,
+            0x35 => Fido2Error::PinNotSet,
+            0x36 => Fido2Error::PinRequired,
+            0x06 => Fido2Error::Other("device busy".into()),
+            0x28 => Fido2Error::Other("key store full".into()),
+            0x3B => Fido2Error::Other("user presence required".into()),
+            0x40 => Fido2Error::Other("PIN token lacks permission".into()),
+            other => Fido2Error::Other(format!("CTAP error 0x{other:02x}")),
         }
     }
 }
@@ -145,10 +153,19 @@ pub enum SkAlgorithm {
 }
 
 impl SkAlgorithm {
-    fn cose(self) -> CredentialSupportedKeyType {
+    /// COSE algorithm identifier (`-8` EdDSA, `-7` ES256).
+    pub fn cose_alg(self) -> i64 {
         match self {
-            SkAlgorithm::Ed25519 => CredentialSupportedKeyType::Ed25519,
-            SkAlgorithm::EcdsaP256 => CredentialSupportedKeyType::Ecdsa256,
+            SkAlgorithm::Ed25519 => -8,
+            SkAlgorithm::EcdsaP256 => -7,
+        }
+    }
+
+    /// SSH algorithm of the resulting key.
+    pub fn ssh_algorithm(self) -> Algorithm {
+        match self {
+            SkAlgorithm::Ed25519 => Algorithm::SkEd25519,
+            SkAlgorithm::EcdsaP256 => Algorithm::SkEcdsaSha2NistP256,
         }
     }
 }
@@ -157,13 +174,13 @@ impl SkAlgorithm {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Fido2Device {
-    /// Opaque OS path used to pick this device again.
+    /// Opaque path used to pick this device again.
     pub path: String,
-    /// Product name as reported over USB.
+    /// Product name as reported over USB (or by the NFC reader).
     pub product: String,
-    /// USB vendor id.
+    /// USB vendor id (0 over NFC).
     pub vendor_id: u16,
-    /// USB product id.
+    /// USB product id (0 over NFC).
     pub product_id: u16,
     /// Authenticator AAGUID (hex), when readable.
     pub aaguid: Option<String>,
@@ -177,7 +194,7 @@ pub struct Fido2Device {
     pub versions: Vec<String>,
 }
 
-/// Parameters for [`generate`].
+/// Parameters for [`generate`] / [`ctap::generate_with`].
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerateOptions {
@@ -220,80 +237,111 @@ fn default_true() -> bool {
     true
 }
 
-fn lib_cfg() -> LibCfg {
-    let mut cfg = LibCfg::init();
-    cfg.enable_log = false;
-    cfg.enable_keep_alive_msg = false;
-    cfg
-}
-
-fn open(path: Option<&str>) -> std::result::Result<FidoKeyHid, Fido2Error> {
-    let devices = ctap_hid_fido2::get_fidokey_devices();
-    if devices.is_empty() {
-        return Err(Fido2Error::NoDevice);
+impl GenerateOptions {
+    /// Application (relying party id) after defaulting and validation:
+    /// OpenSSH insists on the `ssh:` prefix.
+    pub fn application(&self) -> Result<&str> {
+        let application = self
+            .application
+            .as_deref()
+            .map(str::trim)
+            .filter(|a| !a.is_empty())
+            .unwrap_or(DEFAULT_APPLICATION);
+        if !application.starts_with("ssh:") {
+            return Err(CoreError::Invalid(
+                "FIDO application must start with \"ssh:\"".into(),
+            ));
+        }
+        Ok(application)
     }
-    let param = match path {
-        Some(p) => devices
-            .iter()
-            .find(|d| device_path(d) == p)
-            .map(|d| d.param.clone())
-            .ok_or_else(|| Fido2Error::DeviceGone(p.to_string()))?,
-        None => devices
-            .into_iter()
-            .next()
-            .map(|d| d.param)
-            .ok_or(Fido2Error::NoDevice)?,
-    };
-    FidoKeyHidFactory::create_by_params(&[param], &lib_cfg()).map_err(|e| Fido2Error::from_ctap(&e))
-}
 
-fn device_path(d: &HidInfo) -> String {
-    match &d.param {
-        HidParam::Path(p) => p.clone(),
-        HidParam::VidPid { vid, pid } => format!("{vid:04x}:{pid:04x}"),
+    /// User name recorded with the credential (`termoso` when unset).
+    pub fn user_name(&self) -> &str {
+        self.user
+            .as_deref()
+            .map(str::trim)
+            .filter(|u| !u.is_empty())
+            .unwrap_or("termoso")
+    }
+
+    /// User id: OpenSSH uses an all-zero 32-byte id for non-resident keys
+    /// and the user name for resident ones.
+    pub fn user_id(&self) -> Vec<u8> {
+        if self.resident {
+            let mut id = self.user_name().as_bytes().to_vec();
+            id.resize(id.len().clamp(1, 64), 0);
+            id
+        } else {
+            vec![0u8; 32]
+        }
+    }
+
+    /// OpenSSH flags byte for the stored handle.
+    pub fn flags(&self) -> u8 {
+        let mut flags = 0u8;
+        if self.user_presence {
+            flags |= FLAG_USER_PRESENCE;
+        }
+        if self.user_verification {
+            flags |= FLAG_USER_VERIFICATION;
+        }
+        if self.resident {
+            flags |= FLAG_RESIDENT;
+        }
+        flags
+    }
+
+    /// PIN when one was given and it is not blank.
+    pub fn pin(&self) -> Option<&str> {
+        self.pin
+            .as_deref()
+            .map(|p| p.as_str())
+            .filter(|p| !p.is_empty())
     }
 }
 
-/// Every FIDO authenticator currently plugged in. Reads `getInfo` from each
-/// so the UI can offer only what the token supports. Blocking (USB I/O).
-pub fn list_devices() -> Vec<Fido2Device> {
-    ctap_hid_fido2::get_fidokey_devices()
-        .into_iter()
-        .map(|d| {
-            let path = device_path(&d);
-            let mut dev = Fido2Device {
-                path,
-                product: d.product_string.clone(),
-                vendor_id: d.vid,
-                product_id: d.pid,
-                aaguid: None,
-                pin_set: None,
-                resident_keys: false,
-                algorithms: vec![SkAlgorithm::EcdsaP256],
-                versions: Vec::new(),
-            };
-            if let Ok(key) =
-                FidoKeyHidFactory::create_by_params(std::slice::from_ref(&d.param), &lib_cfg())
-                && let Ok(info) = key.get_info()
-            {
-                dev.aaguid = Some(hex::encode(&info.aaguid));
-                dev.pin_set = info
-                    .options
-                    .iter()
-                    .find(|(k, _)| k == "clientPin")
-                    .map(|(_, v)| *v);
-                dev.resident_keys = info.options.iter().any(|(k, v)| k == "rk" && *v);
-                dev.versions = info.versions.clone();
-                let has = |alg: &str| info.algorithms.iter().any(|(_, a)| a == alg);
-                // Tokens that predate CTAP 2.1 do not advertise algorithms;
-                // ECDSA P-256 is mandatory, Ed25519 is opt-in.
-                if has("-8") || has("EdDSA") {
-                    dev.algorithms.push(SkAlgorithm::Ed25519);
-                }
-            }
-            dev
-        })
-        .collect()
+/// Public key as a token reports it (from the COSE key in the attested
+/// credential data).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CosePublicKey {
+    /// EdDSA over Ed25519, 32-byte point.
+    Ed25519([u8; 32]),
+    /// ES256 – P-256 point coordinates.
+    P256 {
+        /// Affine x.
+        x: [u8; 32],
+        /// Affine y.
+        y: [u8; 32],
+    },
+}
+
+impl CosePublicKey {
+    /// Algorithm this key belongs to.
+    pub fn algorithm(&self) -> SkAlgorithm {
+        match self {
+            CosePublicKey::Ed25519(_) => SkAlgorithm::Ed25519,
+            CosePublicKey::P256 { .. } => SkAlgorithm::EcdsaP256,
+        }
+    }
+}
+
+/// What the token hands back for a new (or enumerated) credential.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Credential {
+    /// Credential id – the OpenSSH *key handle*.
+    pub id: Vec<u8>,
+    /// Its public key.
+    pub public_key: CosePublicKey,
+}
+
+/// One assertion: authenticator data (`rpIdHash ‖ flags ‖ counter …`) and
+/// the raw signature (Ed25519: 64 bytes; ES256: DER).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AssertionData {
+    /// Authenticator data as signed.
+    pub auth_data: Vec<u8>,
+    /// Signature over `auth_data ‖ clientDataHash`.
+    pub signature: Vec<u8>,
 }
 
 /// Whether `key` is a security-key type.
@@ -309,109 +357,34 @@ pub fn is_sk_type(key_type: &str) -> bool {
     key_type.starts_with("sk-") || key_type.ends_with("-sk")
 }
 
-/// Create a new credential on the token and wrap it as an OpenSSH `sk-*`
-/// key. Blocking: waits for the user to touch the token.
-pub fn generate(opts: &GenerateOptions) -> Result<KeyMaterial> {
-    let application = opts
-        .application
-        .as_deref()
-        .map(str::trim)
-        .filter(|a| !a.is_empty())
-        .unwrap_or(DEFAULT_APPLICATION);
-    if !application.starts_with("ssh:") {
-        return Err(CoreError::Invalid(
-            "FIDO application must start with \"ssh:\"".into(),
-        ));
-    }
-    let device = open(opts.device.as_deref())?;
-    let challenge: [u8; 32] = rand::random();
-    let user_name = opts
-        .user
-        .as_deref()
-        .map(str::trim)
-        .filter(|u| !u.is_empty())
-        .unwrap_or("termoso");
-    // OpenSSH uses an all-zero 32-byte user id for non-resident keys and
-    // the user name for resident ones.
-    let user_id: Vec<u8> = if opts.resident {
-        let mut id = user_name.as_bytes().to_vec();
-        id.resize(id.len().clamp(1, 64), 0);
-        id
-    } else {
-        vec![0u8; 32]
-    };
-    let user_entity =
-        PublicKeyCredentialUserEntity::new(Some(&user_id), Some(user_name), Some(user_name));
-
-    let pin = opts.pin.as_deref().map(|p| p.as_str());
-    let mut builder = MakeCredentialArgsBuilder::new(application, &challenge)
-        .key_type(opts.algorithm.cose())
-        .user_entity(&user_entity);
-    if opts.resident {
-        builder = builder.resident_key();
-    }
-    builder = match pin {
-        Some(p) if !p.is_empty() => builder.pin(p),
-        _ => builder.without_pin_and_uv(),
-    };
-    let attestation = device
-        .make_credential_with_args(&builder.build())
-        .map_err(|e| Fido2Error::from_ctap(&e))?;
-
-    let mut flags = 0u8;
-    if opts.user_presence {
-        flags |= FLAG_USER_PRESENCE;
-    }
-    if opts.user_verification {
-        flags |= FLAG_USER_VERIFICATION;
-    }
-    if opts.resident {
-        flags |= FLAG_RESIDENT;
-    }
-    let key = sk_private_key(
-        opts.algorithm,
-        &attestation,
-        application,
-        flags,
-        &opts.comment,
-    )?;
-    material(&key, opts.passphrase.as_deref().map(|p| p.as_str()))
-}
-
-fn sk_private_key(
+/// Wrap a token credential as an OpenSSH `sk-*` private key (public key,
+/// flags and handle – no secret).
+pub fn sk_private_key(
     algorithm: SkAlgorithm,
-    att: &Attestation,
+    cred: &Credential,
     application: &str,
     flags: u8,
     comment: &str,
 ) -> Result<PrivateKey> {
-    let handle = att.credential_descriptor.id.clone();
+    let handle = cred.id.clone();
     if handle.is_empty() {
         return Err(Fido2Error::Other("token returned an empty credential id".into()).into());
     }
-    let der = &att.credential_publickey.der;
-    let data = match (algorithm, att.credential_publickey.key_type.clone()) {
-        (SkAlgorithm::Ed25519, PublicKeyType::Ed25519) => {
-            let raw = der
-                .len()
-                .checked_sub(32)
-                .and_then(|i| der.get(i..))
-                .ok_or_else(|| Fido2Error::Other("bad Ed25519 public key".into()))?;
-            let pk = Ed25519PublicKey::try_from(raw)?;
+    let data = match (algorithm, &cred.public_key) {
+        (SkAlgorithm::Ed25519, CosePublicKey::Ed25519(raw)) => {
+            let pk = Ed25519PublicKey::try_from(&raw[..])?;
             KeypairData::SkEd25519(SkEd25519::new(
                 public::SkEd25519::new(pk, application),
                 flags,
                 handle,
             )?)
         }
-        (SkAlgorithm::EcdsaP256, PublicKeyType::Ecdsa256) => {
-            let raw = der
-                .len()
-                .checked_sub(65)
-                .and_then(|i| der.get(i..))
-                .filter(|p| p.first() == Some(&0x04))
-                .ok_or_else(|| Fido2Error::Other("bad P-256 public key".into()))?;
-            let point = EncodedPoint::<U32>::from_bytes(raw)
+        (SkAlgorithm::EcdsaP256, CosePublicKey::P256 { x, y }) => {
+            let mut raw = Vec::with_capacity(65);
+            raw.push(0x04);
+            raw.extend_from_slice(x);
+            raw.extend_from_slice(y);
+            let point = EncodedPoint::<U32>::from_bytes(&raw)
                 .map_err(|_| Fido2Error::Other("bad P-256 point".into()))?;
             KeypairData::SkEcdsaSha2NistP256(SkEcdsaSha2NistP256::new(
                 public::SkEcdsaSha2NistP256::new(point, application),
@@ -421,7 +394,8 @@ fn sk_private_key(
         }
         (want, got) => {
             return Err(Fido2Error::Unsupported(format!(
-                "asked for {want:?}, token returned {got:?}"
+                "asked for {want:?}, token returned {:?}",
+                got.algorithm()
             ))
             .into());
         }
@@ -429,98 +403,66 @@ fn sk_private_key(
     Ok(PrivateKey::new(data, comment)?)
 }
 
-/// Resident credentials on the token for the `ssh:` application, wrapped as
-/// OpenSSH keys (`ssh-keygen -K`). Needs the PIN. Blocking.
-pub fn load_resident(
-    device: Option<&str>,
-    pin: &str,
+/// Wrap a credential and serialise it as vault material.
+pub fn sk_material(
+    algorithm: SkAlgorithm,
+    cred: &Credential,
+    application: &str,
+    flags: u8,
+    comment: &str,
     passphrase: Option<&str>,
-) -> Result<Vec<KeyMaterial>> {
-    let dev = open(device)?;
-    let rps = dev
-        .credential_management_enumerate_rps(Some(pin))
-        .map_err(|e| Fido2Error::from_ctap(&e))?;
-    let mut out = Vec::new();
-    for rp in rps {
-        let application = rp.public_key_credential_rp_entity.id.clone();
-        if !application.starts_with("ssh:") {
-            continue;
-        }
-        let creds = dev
-            .credential_management_enumerate_credentials(Some(pin), &rp.rpid_hash)
-            .map_err(|e| Fido2Error::from_ctap(&e))?;
-        for c in creds {
-            let (algorithm, key_type) = match c.public_key.key_type {
-                PublicKeyType::Ed25519 => (SkAlgorithm::Ed25519, PublicKeyType::Ed25519),
-                PublicKeyType::Ecdsa256 => (SkAlgorithm::EcdsaP256, PublicKeyType::Ecdsa256),
-                PublicKeyType::Unknown => continue,
-            };
-            let att = Attestation {
-                credential_descriptor: c.public_key_credential_descriptor.clone(),
-                credential_publickey: ctap_hid_fido2::public_key::PublicKey::with_der(
-                    &c.public_key.der,
-                    key_type,
-                ),
-                ..Default::default()
-            };
-            let user = c.public_key_credential_user_entity.name.clone();
-            let flags = FLAG_USER_PRESENCE | FLAG_RESIDENT;
-            let key = sk_private_key(algorithm, &att, &application, flags, &user)?;
-            out.push(material(&key, passphrase)?);
-        }
-    }
-    Ok(out)
+) -> Result<KeyMaterial> {
+    let key = sk_private_key(algorithm, cred, application, flags, comment)?;
+    material(&key, passphrase)
 }
 
-/// Sign `data` with the security key behind `key` (an `sk-*` OpenSSH key:
-/// public part, flags and handle). Returns the SSH signature blob
-/// (`string alg, string sig, byte flags, uint32 counter`). Blocking: waits
-/// for the touch.
-pub fn sign(
-    key: &PrivateKey,
-    data: &[u8],
-    pin: Option<&str>,
-    device: Option<&str>,
-) -> Result<Vec<u8>> {
-    let (application, handle, flags, alg) = match key.key_data() {
-        KeypairData::SkEd25519(sk) => (
-            sk.public().application().to_string(),
-            sk.key_handle().to_vec(),
-            sk.flags(),
-            Algorithm::SkEd25519,
-        ),
-        KeypairData::SkEcdsaSha2NistP256(sk) => (
-            sk.public().application().to_string(),
-            sk.key_handle().to_vec(),
-            sk.flags(),
-            Algorithm::SkEcdsaSha2NistP256,
-        ),
-        _ => return Err(CoreError::Key("not a security key".into())),
-    };
-    let dev = open(device)?;
-    // The library hashes the challenge (SHA-256) into clientDataHash, which
-    // is exactly what OpenSSH signs: `message = SHA256(data)`.
-    let mut builder = GetAssertionArgsBuilder::new(&application, data).credential_id(&handle);
-    let wants_uv = flags & FLAG_USER_VERIFICATION != 0;
-    builder = match pin {
-        Some(p) if !p.is_empty() => builder.pin(p),
-        _ if wants_uv => return Err(Fido2Error::PinRequired.into()),
-        _ => builder.without_pin_and_uv(),
-    };
-    if flags & FLAG_USER_PRESENCE == 0 {
-        builder = builder.without_up();
-    }
-    let assertions = dev
-        .get_assertion_with_args(&builder.build())
-        .map_err(|e| Fido2Error::from_ctap(&e))?;
-    let assertion = assertions
-        .into_iter()
-        .next()
-        .ok_or_else(|| Fido2Error::Other("token returned no assertion".into()))?;
-    signature_blob(alg, &assertion)
+/// What a stored `sk-*` key tells us about the credential it points at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkHandle {
+    /// FIDO application / relying party id.
+    pub application: String,
+    /// Credential id.
+    pub key_handle: Vec<u8>,
+    /// OpenSSH flags byte.
+    pub flags: u8,
+    /// SSH algorithm.
+    pub algorithm: Algorithm,
 }
 
-fn signature_blob(alg: Algorithm, a: &Assertion) -> Result<Vec<u8>> {
+impl SkHandle {
+    /// Read the handle out of a decrypted `sk-*` private key.
+    pub fn of(key: &PrivateKey) -> Result<Self> {
+        match key.key_data() {
+            KeypairData::SkEd25519(sk) => Ok(Self {
+                application: sk.public().application().to_string(),
+                key_handle: sk.key_handle().to_vec(),
+                flags: sk.flags(),
+                algorithm: Algorithm::SkEd25519,
+            }),
+            KeypairData::SkEcdsaSha2NistP256(sk) => Ok(Self {
+                application: sk.public().application().to_string(),
+                key_handle: sk.key_handle().to_vec(),
+                flags: sk.flags(),
+                algorithm: Algorithm::SkEcdsaSha2NistP256,
+            }),
+            _ => Err(CoreError::Key("not a security key".into())),
+        }
+    }
+
+    /// Touch required for every signature.
+    pub fn wants_up(&self) -> bool {
+        self.flags & FLAG_USER_PRESENCE != 0
+    }
+
+    /// PIN required for every signature.
+    pub fn wants_uv(&self) -> bool {
+        self.flags & FLAG_USER_VERIFICATION != 0
+    }
+}
+
+/// Build the SSH signature blob (`string alg, string sig, byte flags,
+/// uint32 counter`) from an assertion.
+pub fn signature_blob(alg: Algorithm, a: &AssertionData) -> Result<Vec<u8>> {
     // authData = rpIdHash(32) || flags(1) || signCount(4) [|| …]
     let auth_flags = *a
         .auth_data
@@ -590,7 +532,15 @@ fn der_ecdsa(sig: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
     Ok((r.to_vec(), s.to_vec()))
 }
 
-/// [`russh::auth::Signer`] that signs with the security key. Used by
+/// Something that can reach the token holding a stored `sk-*` key and make
+/// it sign. Desktop: USB HID via `hidapi`; Android: whatever device the app
+/// currently holds (USB host or NFC tag). Blocking – called off the runtime.
+pub trait SkBackend: Send + Sync {
+    /// SSH signature blob (`signature_blob`) over `data` for `key`.
+    fn sign(&self, key: &PrivateKey, data: &[u8], pin: Option<&str>) -> Result<Vec<u8>>;
+}
+
+/// [`russh::Signer`] that signs with the security key. Used by
 /// `authenticate_publickey_with` so `russh` never sees private material
 /// (there is none to see).
 pub struct SkSigner {
@@ -599,8 +549,8 @@ pub struct SkSigner {
     /// Client PIN when the key requires user verification (or the token
     /// insists).
     pub pin: Option<Zeroizing<String>>,
-    /// Restrict to one device; `None` = the only connected one.
-    pub device: Option<String>,
+    /// How to reach the token.
+    pub backend: Arc<dyn SkBackend>,
     /// Called right before each signature request ("touch your key").
     pub on_touch: Option<Box<dyn Fn() + Send + Sync>>,
 }
@@ -616,18 +566,13 @@ impl russh::Signer for SkSigner {
     ) -> impl std::future::Future<Output = Result<Vec<u8>>> + Send {
         let key = self.key.clone();
         let pin = self.pin.clone();
-        let device = self.device.clone();
+        let backend = self.backend.clone();
         if let Some(f) = &self.on_touch {
             f();
         }
         async move {
             let signed = tokio::task::spawn_blocking(move || {
-                let blob = sign(
-                    &key,
-                    &to_sign,
-                    pin.as_deref().map(|p| p.as_str()),
-                    device.as_deref(),
-                )?;
+                let blob = backend.sign(&key, &to_sign, pin.as_deref().map(|p| p.as_str()))?;
                 let mut out = to_sign;
                 blob.as_slice().encode(&mut out)?;
                 Ok::<_, CoreError>(out)
@@ -658,7 +603,8 @@ pub struct SkFlags {
 }
 
 impl SkFlags {
-    fn from_byte(flags: u8) -> Self {
+    /// Split OpenSSH's flags byte.
+    pub fn from_byte(flags: u8) -> Self {
         Self {
             resident: flags & FLAG_RESIDENT != 0,
             user_presence: flags & FLAG_USER_PRESENCE != 0,
@@ -731,31 +677,26 @@ mod tests {
     use super::*;
     use russh::keys::ssh_key::LineEnding;
 
-    fn fake_attestation(alg: SkAlgorithm) -> Attestation {
-        let mut att = Attestation::default();
-        att.credential_descriptor.id = vec![7u8; 40];
-        att.credential_publickey = match alg {
-            SkAlgorithm::Ed25519 => {
-                // SPKI header (12 bytes) + 32-byte key.
-                let mut der = vec![
-                    0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
-                ];
-                der.extend_from_slice(&[9u8; 32]);
-                ctap_hid_fido2::public_key::PublicKey::with_der(&der, PublicKeyType::Ed25519)
-            }
+    fn fake_credential(alg: SkAlgorithm) -> Credential {
+        let public_key = match alg {
+            SkAlgorithm::Ed25519 => CosePublicKey::Ed25519([9u8; 32]),
             SkAlgorithm::EcdsaP256 => {
                 // Generator point of P-256 so the SEC1 decode is happy.
                 let g = hex::decode(
-                    "046B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296\
+                    "6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296\
                      4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5",
                 )
                 .unwrap();
-                let mut der = vec![0u8; 26];
-                der.extend_from_slice(&g);
-                ctap_hid_fido2::public_key::PublicKey::with_der(&der, PublicKeyType::Ecdsa256)
+                CosePublicKey::P256 {
+                    x: g[..32].try_into().unwrap(),
+                    y: g[32..].try_into().unwrap(),
+                }
             }
         };
-        att
+        Credential {
+            id: vec![7u8; 40],
+            public_key,
+        }
     }
 
     #[test]
@@ -764,36 +705,30 @@ mod tests {
             (SkAlgorithm::Ed25519, "sk-ssh-ed25519@openssh.com"),
             (SkAlgorithm::EcdsaP256, "sk-ecdsa-sha2-nistp256@openssh.com"),
         ] {
-            let att = fake_attestation(alg);
-            let key =
-                sk_private_key(alg, &att, "ssh:", FLAG_USER_PRESENCE | FLAG_RESIDENT, "c").unwrap();
+            let cred = fake_credential(alg);
+            let key = sk_private_key(alg, &cred, "ssh:", FLAG_USER_PRESENCE | FLAG_RESIDENT, "c")
+                .unwrap();
             assert_eq!(key.algorithm().as_str(), name);
             let m = material(&key, Some("pw")).unwrap();
             assert!(m.info.encrypted);
             assert!(m.public_key.starts_with(name));
             let back = crate::ssh::load_private_key(&m.private_key, Some("pw")).unwrap();
             assert!(is_security_key(back.public_key()));
-            match back.key_data() {
-                KeypairData::SkEd25519(sk) => {
-                    assert_eq!(sk.key_handle(), &[7u8; 40]);
-                    assert_eq!(sk.flags(), FLAG_USER_PRESENCE | FLAG_RESIDENT);
-                }
-                KeypairData::SkEcdsaSha2NistP256(sk) => {
-                    assert_eq!(sk.key_handle(), &[7u8; 40]);
-                    assert_eq!(sk.public().application(), "ssh:");
-                }
-                _ => panic!("wrong key data"),
-            }
+            let handle = SkHandle::of(&back).unwrap();
+            assert_eq!(handle.key_handle, vec![7u8; 40]);
+            assert_eq!(handle.flags, FLAG_USER_PRESENCE | FLAG_RESIDENT);
+            assert_eq!(handle.application, "ssh:");
+            assert!(handle.wants_up() && !handle.wants_uv());
             let _ = key.to_openssh(LineEnding::LF).unwrap();
         }
     }
 
     #[test]
     fn describe_reads_flags_and_handle_only_when_decryptable() {
-        let att = fake_attestation(SkAlgorithm::Ed25519);
+        let cred = fake_credential(SkAlgorithm::Ed25519);
         let key = sk_private_key(
             SkAlgorithm::Ed25519,
-            &att,
+            &cred,
             "ssh:termoso",
             FLAG_USER_PRESENCE | FLAG_USER_VERIFICATION,
             "c",
@@ -832,26 +767,21 @@ mod tests {
     #[test]
     fn stored_sk_handle_has_no_private_scalar() {
         for alg in [SkAlgorithm::Ed25519, SkAlgorithm::EcdsaP256] {
-            let att = fake_attestation(alg);
-            let key = sk_private_key(alg, &att, "ssh:", FLAG_USER_PRESENCE, "c").unwrap();
+            let cred = fake_credential(alg);
+            let key = sk_private_key(alg, &cred, "ssh:", FLAG_USER_PRESENCE, "c").unwrap();
             // The private half is the public key data, one flags byte, the
             // handle and the empty reserved field — no scalar anywhere.
             let public_len = key.public_key().key_data().encoded_len().unwrap();
             let private_len = key.key_data().encoded_len().unwrap();
             assert_eq!(private_len, public_len + 1 + (4 + 40) + 4);
-            let handle = match key.key_data() {
-                KeypairData::SkEd25519(sk) => sk.key_handle(),
-                KeypairData::SkEcdsaSha2NistP256(sk) => sk.key_handle(),
-                other => panic!("not a security key: {other:?}"),
-            };
-            assert_eq!(handle, &[7u8; 40][..]);
+            assert_eq!(SkHandle::of(&key).unwrap().key_handle, vec![7u8; 40]);
         }
     }
 
     #[test]
     fn wrong_algorithm_from_token_is_rejected() {
-        let att = fake_attestation(SkAlgorithm::Ed25519);
-        let err = sk_private_key(SkAlgorithm::EcdsaP256, &att, "ssh:", 1, "").unwrap_err();
+        let cred = fake_credential(SkAlgorithm::Ed25519);
+        let err = sk_private_key(SkAlgorithm::EcdsaP256, &cred, "ssh:", 1, "").unwrap_err();
         assert!(matches!(err, CoreError::Fido2(Fido2Error::Unsupported(_))));
     }
 
@@ -870,10 +800,9 @@ mod tests {
         let mut auth_data = vec![0u8; 32];
         auth_data.push(0x01);
         auth_data.extend_from_slice(&42u32.to_be_bytes());
-        let a = Assertion {
+        let a = AssertionData {
             signature: vec![5u8; 64],
             auth_data,
-            ..Default::default()
         };
         let blob = signature_blob(Algorithm::SkEd25519, &a).unwrap();
         let name = b"sk-ssh-ed25519@openssh.com";
@@ -886,38 +815,39 @@ mod tests {
     }
 
     #[test]
-    fn ctap_status_mapping() {
-        let e = "response_status err = 0x36 CTAP2_ERR_PIN_REQUIRED  PIN is required";
-        assert_eq!(Fido2Error::from_ctap(&e), Fido2Error::PinRequired);
-        let e = "response_status err = 0x31 CTAP2_ERR_PIN_INVALID   PIN Invalid.";
+    fn status_mapping() {
+        assert_eq!(Fido2Error::from_status(0x36), Fido2Error::PinRequired);
         assert_eq!(
-            Fido2Error::from_ctap(&e),
+            Fido2Error::from_status(0x31),
             Fido2Error::PinInvalid { retries: None }
         );
-        let e = "FIDO device not found.";
-        assert_eq!(Fido2Error::from_ctap(&e), Fido2Error::NoDevice);
+        assert_eq!(Fido2Error::from_status(0x2E), Fido2Error::WrongDevice);
+        assert_eq!(Fido2Error::from_status(0x2F), Fido2Error::Timeout);
+        assert!(matches!(
+            Fido2Error::from_status(0x77),
+            Fido2Error::Other(ref m) if m.contains("0x77")
+        ));
     }
 
     #[test]
-    fn no_device_is_typed() {
-        // No token in CI: listing is empty and generate says so honestly.
-        let opts = GenerateOptions {
-            device: None,
-            algorithm: SkAlgorithm::EcdsaP256,
-            application: None,
-            resident: false,
-            user_presence: true,
-            user_verification: false,
-            pin: None,
-            user: None,
-            comment: String::new(),
-            passphrase: None,
-        };
-        if list_devices().is_empty() {
-            assert!(matches!(
-                generate(&opts),
-                Err(CoreError::Fido2(Fido2Error::NoDevice))
-            ));
-        }
+    fn generate_options_defaults() {
+        let opts: GenerateOptions = serde_json::from_str("{}").unwrap();
+        assert_eq!(opts.application().unwrap(), "ssh:");
+        assert_eq!(opts.user_name(), "termoso");
+        assert_eq!(opts.user_id(), vec![0u8; 32]);
+        assert_eq!(opts.flags(), FLAG_USER_PRESENCE);
+        assert!(opts.pin().is_none());
+
+        let opts: GenerateOptions = serde_json::from_str(
+            r#"{"application":"web:nope","resident":true,"user":"me","userVerification":true,"pin":""}"#,
+        )
+        .unwrap();
+        assert!(opts.application().is_err());
+        assert_eq!(opts.user_id(), b"me".to_vec());
+        assert_eq!(
+            opts.flags(),
+            FLAG_USER_PRESENCE | FLAG_USER_VERIFICATION | FLAG_RESIDENT
+        );
+        assert!(opts.pin().is_none());
     }
 }

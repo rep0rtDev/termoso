@@ -35,6 +35,7 @@ pub mod agent;
 pub mod api;
 pub mod cloud;
 pub mod error;
+pub mod fido2;
 pub mod forward;
 pub mod hostkey;
 pub mod keys;
@@ -50,8 +51,6 @@ pub mod sync;
 pub mod telnet;
 pub mod terminal;
 
-#[cfg(feature = "fido2")]
-pub mod fido2;
 #[cfg(feature = "local-pty")]
 pub mod pty;
 #[cfg(feature = "serial")]

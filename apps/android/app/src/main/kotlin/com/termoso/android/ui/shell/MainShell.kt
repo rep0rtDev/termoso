@@ -51,6 +51,8 @@ import com.termoso.android.ui.forwarding.ForwardingScreen
 import com.termoso.android.ui.forwarding.TunnelPromptHost
 import com.termoso.android.ui.hosts.HostEditorScreen
 import com.termoso.android.ui.hosts.HostsScreen
+import com.termoso.android.ui.keychain.Fido2GenerateScreen
+import com.termoso.android.ui.keychain.Fido2LoadScreen
 import com.termoso.android.ui.keychain.GenerateKeyScreen
 import com.termoso.android.ui.keychain.IdentityEditorScreen
 import com.termoso.android.ui.keychain.ImportKeyScreen
@@ -84,6 +86,8 @@ object Routes {
     const val KEYCHAIN = "keychain"
     const val KEY_GENERATE = "keyGenerate"
     const val KEY_IMPORT = "keyImport"
+    const val KEY_FIDO2 = "keyFido2"
+    const val KEY_FIDO2_LOAD = "keyFido2Load"
     const val KEY_DETAIL = "key/{id}"
     const val IDENTITY_NEW = "identityNew"
     const val IDENTITY_EDIT = "identity/{id}"
@@ -372,6 +376,8 @@ fun MainShell(
                     onBack = { nav.popBackStack() },
                     onGenerate = { nav.navigate(Routes.KEY_GENERATE) },
                     onImport = { nav.navigate(Routes.KEY_IMPORT) },
+                    onFido2 = { nav.navigate(Routes.KEY_FIDO2) },
+                    onFido2Load = { nav.navigate(Routes.KEY_FIDO2_LOAD) },
                     onOpenKey = { nav.navigate(Routes.key(it)) },
                     onNewIdentity = { nav.navigate(Routes.IDENTITY_NEW) },
                     onOpenIdentity = { nav.navigate(Routes.identity(it)) },
@@ -385,6 +391,16 @@ fun MainShell(
             composable(Routes.KEY_IMPORT) {
                 ImportKeyScreen(shell = shell, onClose = { nav.popBackStack() }, onSaved = { id ->
                     nav.navigate(Routes.key(id)) { popUpTo(Routes.KEYCHAIN) }
+                })
+            }
+            composable(Routes.KEY_FIDO2) {
+                Fido2GenerateScreen(shell = shell, onClose = { nav.popBackStack() }, onSaved = { id ->
+                    nav.navigate(Routes.key(id)) { popUpTo(Routes.KEYCHAIN) }
+                })
+            }
+            composable(Routes.KEY_FIDO2_LOAD) {
+                Fido2LoadScreen(shell = shell, onClose = { nav.popBackStack() }, onLoaded = { ids ->
+                    if (ids.size == 1) nav.navigate(Routes.key(ids.single())) { popUpTo(Routes.KEYCHAIN) } else nav.popBackStack()
                 })
             }
             composable(Routes.KEY_DETAIL, arguments = listOf(idArg)) { entry ->

@@ -36,6 +36,9 @@ class AppContainer(context: Context) {
     val profileDir: File = File(context.noBackupFilesDir, "profile")
     val masterKeys = MasterKeyStore(context)
 
+    /** FIDO2 tokens on USB/NFC; process-wide, started on first use by the UI. */
+    val fido2 = Fido2Manager(appContext)
+
     /** Whether opening the vault needs device authentication (auth-bound Keystore wrapper). */
     private val _appLock = MutableStateFlow(masterKeys.authRequired())
     val appLock: StateFlow<Boolean> = _appLock.asStateFlow()
@@ -155,6 +158,7 @@ class AppContainer(context: Context) {
         open.sftp.closeAll()
         open.forwards.closeAll()
         open.account.close()
+        fido2.close()
         withContext(Dispatchers.IO) { open.repo.app.close() }
     }
 }

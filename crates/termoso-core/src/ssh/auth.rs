@@ -13,6 +13,7 @@ use zeroize::Zeroizing;
 
 use super::{ClientHandler, ConnectOptions, ConnectPhase};
 use crate::error::{CoreError, Result};
+use crate::fido2::SkBackend;
 
 /// One way to prove who we are, tried in the order given.
 pub enum AuthMethod {
@@ -34,7 +35,6 @@ pub enum AuthMethod {
     /// FIDO2 security key (`sk-*` OpenSSH key: public part + handle). The
     /// token signs; the user touches it and, when the key demands user
     /// verification, enters the PIN.
-    #[cfg(feature = "fido2")]
     SecurityKey {
         /// `sk-*` key as stored (OpenSSH format, maybe passphrase-protected).
         private_key: Zeroizing<String>,
@@ -42,8 +42,9 @@ pub enum AuthMethod {
         passphrase: Option<Zeroizing<String>>,
         /// Client PIN (needed for verify-required keys and PIN-protected tokens).
         pin: Option<Zeroizing<String>>,
-        /// Restrict to one authenticator (path from `fido2::list_devices`).
-        device: Option<String>,
+        /// How to reach the token (USB HID on desktop, the device the app
+        /// holds on Android).
+        backend: Arc<dyn SkBackend>,
         /// Certificate text, when the sk key is certified.
         certificate: Option<String>,
     },
@@ -61,7 +62,6 @@ impl std::fmt::Debug for AuthMethod {
             AuthMethod::None => "none",
             AuthMethod::Password(_) => "password",
             AuthMethod::Key { .. } => "publickey",
-            #[cfg(feature = "fido2")]
             AuthMethod::SecurityKey { .. } => "publickey (security key)",
             AuthMethod::Agent => "agent",
             AuthMethod::KeyboardInteractive => "keyboard-interactive",
@@ -184,9 +184,9 @@ pub(super) async fn authenticate(
         let kind = match method {
             AuthMethod::None => continue,
             AuthMethod::Password(_) => MethodKind::Password,
-            AuthMethod::Key { .. } | AuthMethod::Agent => MethodKind::PublicKey,
-            #[cfg(feature = "fido2")]
-            AuthMethod::SecurityKey { .. } => MethodKind::PublicKey,
+            AuthMethod::Key { .. } | AuthMethod::Agent | AuthMethod::SecurityKey { .. } => {
+                MethodKind::PublicKey
+            }
             AuthMethod::KeyboardInteractive => MethodKind::KeyboardInteractive,
         };
         if let Some(a) = &allowed
@@ -215,10 +215,20 @@ pub(super) async fn authenticate(
                 certificate,
             } => {
                 let key = load_private_key(private_key, passphrase.as_deref().map(|p| p.as_str()))?;
-                #[cfg(feature = "fido2")]
                 if crate::fido2::is_security_key(key.public_key()) {
-                    let r = sk_auth(handle, opts, &user, key, None, None, certificate.as_deref())
-                        .await?;
+                    // An sk key that reached us as a plain `Key`: reach for
+                    // the plugged-in USB token where we have one.
+                    let backend = default_sk_backend()?;
+                    let r = sk_auth(
+                        handle,
+                        opts,
+                        &user,
+                        key,
+                        None,
+                        backend,
+                        certificate.as_deref(),
+                    )
+                    .await?;
                     match r {
                         AuthResult::Success => return Ok(()),
                         AuthResult::Failure {
@@ -259,12 +269,11 @@ pub(super) async fn authenticate(
                     }
                 }
             }
-            #[cfg(feature = "fido2")]
             AuthMethod::SecurityKey {
                 private_key,
                 passphrase,
                 pin,
-                device,
+                backend,
                 certificate,
             } => {
                 let key = load_private_key(private_key, passphrase.as_deref().map(|p| p.as_str()))?;
@@ -279,7 +288,7 @@ pub(super) async fn authenticate(
                     &user,
                     key,
                     pin.clone(),
-                    device.clone(),
+                    backend.clone(),
                     certificate.as_deref(),
                 )
                 .await?
@@ -373,17 +382,29 @@ async fn keyboard_interactive(
     ))
 }
 
+/// Backend for an `sk-*` key that arrived without one: the USB tokens on
+/// desktop; nothing on platforms where the app must hand us the device.
+fn default_sk_backend() -> Result<Arc<dyn SkBackend>> {
+    #[cfg(feature = "fido2")]
+    {
+        Ok(Arc::new(crate::fido2::UsbBackend::default()))
+    }
+    #[cfg(not(feature = "fido2"))]
+    {
+        Err(crate::fido2::Fido2Error::NoDevice.into())
+    }
+}
+
 /// Public-key auth where the token signs (`authenticate_publickey_with`).
 /// The UI gets [`ConnectPhase::SecurityKeyTouch`] right before each
 /// signature so it can say "touch your key".
-#[cfg(feature = "fido2")]
 async fn sk_auth(
     handle: &mut Handle<ClientHandler>,
     opts: &ConnectOptions,
     user: &str,
     key: PrivateKey,
     pin: Option<Zeroizing<String>>,
-    device: Option<String>,
+    backend: Arc<dyn SkBackend>,
     certificate: Option<&str>,
 ) -> Result<AuthResult> {
     let public = crate::fido2::public_key_of(&key);
@@ -392,7 +413,7 @@ async fn sk_auth(
     let mut signer = crate::fido2::SkSigner {
         key: Arc::new(key),
         pin,
-        device,
+        backend,
         on_touch: Some(Box::new(move || {
             if let Some(p) = &progress {
                 p.phase(ConnectPhase::SecurityKeyTouch { key: label.clone() });

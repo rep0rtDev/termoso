@@ -56,7 +56,7 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EditorScaffold(
+internal fun EditorScaffold(
     title: String,
     working: Boolean,
     canSave: Boolean,
@@ -94,7 +94,7 @@ private fun EditorScaffold(
 }
 
 @Composable
-private fun VaultPicker(vaults: List<VaultInfo>, selected: String?, onPick: (String) -> Unit) {
+internal fun VaultPicker(vaults: List<VaultInfo>, selected: String?, onPick: (String) -> Unit) {
     if (vaults.size < 2) return
     PickerRow(
         label = "Vault",
