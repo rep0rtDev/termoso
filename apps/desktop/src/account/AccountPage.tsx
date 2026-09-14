@@ -27,6 +27,7 @@ import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
 import { useAccount, useDevices } from "@/ipc/hooks";
 import { sizes } from "@/theme/theme";
+import { isReauthCancelled, withReauth } from "./reauth";
 import {
   errorMessage,
   type AccountStatus,
@@ -147,13 +148,15 @@ function SignedIn({
   const s = status.sync;
 
   const op = useMutation({
-    mutationFn: async (job: () => Promise<string | null>) => job(),
+    mutationFn: async (job: () => Promise<string | null>) => withReauth(job),
     onSuccess: (msg) => {
       invalidateAll(qc);
       setConfirm({ kind: "none" });
       if (msg) snackbar.notify(msg);
     },
-    onError: (e) => snackbar.error(errorMessage(e)),
+    onError: (e) => {
+      if (!isReauthCancelled(e)) snackbar.error(errorMessage(e));
+    },
   });
 
   return (

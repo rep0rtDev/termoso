@@ -20,7 +20,8 @@ use termoso_proto::account::{
 use termoso_proto::auth::{
     AuthResponse, Device, DeviceApproveRequest, DeviceApproveResendRequest, DeviceList,
     LoginFinishRequest, LoginStartRequest, LoginStartResponse, MfaCredential, MfaVerifyRequest,
-    RegisterFinishRequest, RegisterStartRequest, RegisterStartResponse, WebauthnChallengeRequest,
+    ReauthFinishRequest, ReauthStartRequest, ReauthStartResponse, RegisterFinishRequest,
+    RegisterStartRequest, RegisterStartResponse, WebauthnChallengeRequest,
 };
 use termoso_proto::error::ApiError;
 use termoso_proto::live::{CreateLiveSessionRequest, LiveSession, LiveSessionList};
@@ -283,6 +284,18 @@ impl ApiClient {
             },
         )
         .await
+    }
+
+    /// `POST /auth/reauth/start` — step-up for the current session; sensitive
+    /// account mutations answer `reauth_required` until this succeeds.
+    pub async fn reauth_start(&self, req: &ReauthStartRequest) -> Result<ReauthStartResponse> {
+        self.post("auth/reauth/start", req).await
+    }
+
+    /// `POST /auth/reauth/finish`. `MfaRequired` means the second factor is
+    /// still pending: verify it with the returned `mfa_token` as for login.
+    pub async fn reauth_finish(&self, req: &ReauthFinishRequest) -> Result<AuthResponse> {
+        self.post("auth/reauth/finish", req).await
     }
 
     /// `POST /auth/mfa/webauthn/challenge` — raw options for the platform

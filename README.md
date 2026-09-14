@@ -42,7 +42,16 @@ deploy/            Dockerfile, docker-compose for production and for local devel
 * Each account has an **X25519 key pair**. Vault keys are delivered to members as
   sealed boxes for their public key; the private key is wrapped by a KEK derived
   from the OPAQUE export key (Argon2id) and, separately, by a **24-word recovery
-  key** so a forgotten password does not mean lost data.
+  key** so a forgotten password does not mean lost data. There is no third
+  copy: if both are lost, the encrypted data is unrecoverable, and the only
+  way forward is **Start over** — an e-mail-confirmed reset with a 24-hour
+  delay (cancellable from the notification) that wipes the old vault and issues
+  fresh keys.
+* **Step-up re-authentication**: changing the password, recovery key, e-mail
+  or second factors, revoking devices, deleting the account or SSH ID keys
+  requires re-proving the password (and MFA) within the last 5 minutes
+  (`reauth_required`). A stolen bearer token alone cannot lock the owner out,
+  and the owner is notified by e-mail of every such change.
 * Server-side secrets (OPAQUE server setup, TOTP secrets) are encrypted at rest
   with `TERMOSO_MASTER_KEY`.
 * Sessions are opaque bearer tokens bound to a registered device; devices can be
@@ -200,7 +209,7 @@ All routes live under `/api/v1`. Authenticated routes take
 
 | Area | Routes |
 |---|---|
-| auth | OPAQUE `register/{start,finish}`, `login/{start,finish}`, `password/{start,finish}`, recovery-key login, MFA step, device approval, SSO (`sso/providers`, `sso/{provider}/start`, callback), `logout` |
+| auth | OPAQUE `register/{start,finish}`, `login/{start,finish}`, `password/{start,finish}`, recovery-key login, MFA step, device approval, step-up `reauth/{start,finish}`, `start-over/*`, SSO (`sso/providers`, `sso/{provider}/start`, callback), `logout` |
 | account | profile, e-mail change/verification, devices, key material, recovery-key rotation, security events, deletion |
 | account/mfa | TOTP, WebAuthn, backup codes |
 | teams | teams, members & roles, invites |
