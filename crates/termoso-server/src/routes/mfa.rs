@@ -14,7 +14,7 @@ use webauthn_rs::prelude::{
 use crate::codes;
 use crate::error::{ApiResult, Error, NoContent};
 use crate::events::{self, Event};
-use crate::extract::{Auth, Json as Body};
+use crate::extract::{Auth, Json as Body, StepUp};
 use crate::routes::auth::{check_totp, load_passkeys, totp_for};
 use crate::state::AppState;
 use crate::users;
@@ -61,7 +61,7 @@ pub async fn status(State(state): State<AppState>, auth: Auth) -> ApiResult<Json
 #[utoipa::path(post, path = "/api/v1/account/mfa/totp/setup", tag = "mfa", responses((status = 200, body = TotpSetupResponse)))]
 pub async fn totp_setup(
     State(state): State<AppState>,
-    auth: Auth,
+    StepUp(auth): StepUp,
 ) -> ApiResult<Json<TotpSetupResponse>> {
     let u = users::by_id(&state.db, auth.user_id()).await?;
     if u.totp_enabled {
@@ -135,7 +135,7 @@ pub async fn totp_confirm(
     request_body = TotpCodeRequest, responses((status = 204)))]
 pub async fn totp_disable(
     State(state): State<AppState>,
-    auth: Auth,
+    StepUp(auth): StepUp,
     Body(req): Body<TotpCodeRequest>,
 ) -> ApiResult<NoContent> {
     let u = users::by_id(&state.db, auth.user_id()).await?;
@@ -162,6 +162,13 @@ pub async fn totp_disable(
         None,
     )
     .await?;
+    users::notify(
+        &state,
+        &u.email,
+        "authenticator app removed",
+        "Two-factor authentication with an authenticator app was turned off for your account.",
+    )
+    .await;
     events::publish(&state, Event::AccountUpdated { user_id: u.id })
         .await
         .map(NoContent::from)
@@ -201,7 +208,7 @@ async fn cleanup_backup_codes_if_no_mfa(state: &AppState, user_id: Uuid) -> ApiR
 #[utoipa::path(post, path = "/api/v1/account/mfa/backup-codes", tag = "mfa", responses((status = 200, body = BackupCodes)))]
 pub async fn backup_codes(
     State(state): State<AppState>,
-    auth: Auth,
+    StepUp(auth): StepUp,
 ) -> ApiResult<Json<BackupCodes>> {
     let u = users::by_id(&state.db, auth.user_id()).await?;
     if !users::mfa_enabled(&state, &u).await? {
@@ -218,6 +225,13 @@ pub async fn backup_codes(
         None,
     )
     .await?;
+    users::notify(
+        &state,
+        &u.email,
+        "backup codes regenerated",
+        "New two-factor backup codes were generated for your account. The previous codes no longer work.",
+    )
+    .await;
     Ok(Json(BackupCodes { codes }))
 }
 
@@ -227,7 +241,7 @@ pub async fn backup_codes(
     responses((status = 200, body = serde_json::Value)))]
 pub async fn webauthn_register_start(
     State(state): State<AppState>,
-    auth: Auth,
+    StepUp(auth): StepUp,
 ) -> ApiResult<Json<CreationChallengeResponse>> {
     let webauthn = state
         .webauthn
@@ -314,17 +328,19 @@ pub async fn webauthn_register_finish(
     params(("id" = Uuid, Path)), responses((status = 204)))]
 pub async fn webauthn_delete(
     State(state): State<AppState>,
-    auth: Auth,
+    StepUp(auth): StepUp,
     Path(id): Path<Uuid>,
 ) -> ApiResult<NoContent> {
-    let res = sqlx::query("DELETE FROM webauthn_credentials WHERE id = $1 AND user_id = $2")
-        .bind(id)
-        .bind(auth.user_id())
-        .execute(&state.db)
-        .await?;
-    if res.rows_affected() == 0 {
+    let row: Option<(String,)> = sqlx::query_as(
+        "DELETE FROM webauthn_credentials WHERE id = $1 AND user_id = $2 RETURNING name",
+    )
+    .bind(id)
+    .bind(auth.user_id())
+    .fetch_optional(&state.db)
+    .await?;
+    let Some((name,)) = row else {
         return Err(Error::not_found("Credential"));
-    }
+    };
     cleanup_backup_codes_if_no_mfa(&state, auth.user_id()).await?;
     users::security_event(
         &state,
@@ -333,9 +349,17 @@ pub async fn webauthn_delete(
         Some(auth.device_id()),
         auth.ip.as_deref(),
         auth.user_agent.as_deref(),
-        None,
+        Some(serde_json::json!({ "name": name })),
     )
     .await?;
+    let u = users::by_id(&state.db, auth.user_id()).await?;
+    users::notify(
+        &state,
+        &u.email,
+        "security key removed",
+        &format!("The security key \"{name}\" was removed from your account."),
+    )
+    .await;
     events::publish(
         &state,
         Event::AccountUpdated {

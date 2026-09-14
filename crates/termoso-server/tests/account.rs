@@ -368,7 +368,8 @@ async fn authenticated_password_change_and_recovery_rotation() {
     )
     .await;
 
-    // Change password, keep the other device signed in.
+    // Change password. Asking to keep other devices signed in is ignored: a
+    // new password always signs everyone else out.
     let pw2 = "pw-change-second-1";
     let (upload, export) = opaque_new_password(s, &u.email, pw2, Some(u.token()), None).await;
     let fresh = session(
@@ -388,7 +389,6 @@ async fn authenticated_password_change_and_recovery_rotation() {
         .await,
     );
     assert_eq!(fresh.device_id, u.session.device_id);
-    // The token used for the change is rotated, the other device survives.
     s.expect_status(
         Method::GET,
         "/account",
@@ -397,14 +397,22 @@ async fn authenticated_password_change_and_recovery_rotation() {
         StatusCode::UNAUTHORIZED,
     )
     .await;
+    s.expect_status(
+        Method::GET,
+        "/account",
+        Some(&other.token),
+        NOBODY,
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
     let devices: DeviceList = s
-        .json(Method::GET, "/account/devices", Some(&other.token), NOBODY)
+        .json(Method::GET, "/account/devices", Some(&fresh.token), NOBODY)
         .await;
-    assert_eq!(devices.devices.len(), 2);
+    assert_eq!(devices.devices.len(), 1);
+    assert!(devices.devices[0].current);
     assert!(try_login(s, &u.email, &u.password).await.is_err());
     session(login(s, &u.email, pw2).await);
 
-    // Change again, this time signing everyone else out.
     let pw3 = "pw-change-third-12";
     let (upload, export) = opaque_new_password(s, &u.email, pw3, Some(&fresh.token), None).await;
     let fresh2 = session(
@@ -423,19 +431,7 @@ async fn authenticated_password_change_and_recovery_rotation() {
         )
         .await,
     );
-    s.expect_status(
-        Method::GET,
-        "/account",
-        Some(&other.token),
-        NOBODY,
-        StatusCode::UNAUTHORIZED,
-    )
-    .await;
-    let devices: DeviceList = s
-        .json(Method::GET, "/account/devices", Some(&fresh2.token), NOBODY)
-        .await;
-    assert_eq!(devices.devices.len(), 1);
-    assert!(devices.devices[0].current);
+    assert!(try_login(s, &u.email, pw2).await.is_err());
 
     // Rotate the recovery phrase on its own.
     s.expect_status(

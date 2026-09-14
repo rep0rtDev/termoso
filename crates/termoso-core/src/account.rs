@@ -20,7 +20,8 @@ use termoso_crypto::recovery::RecoveryKey;
 use termoso_crypto::sealed;
 use termoso_proto::auth::{
     AccountKeysUpload, AuthResponse, DeviceInfo, LoginFinishRequest, LoginStartRequest,
-    MfaCredential, MfaMethod, Platform, RegisterFinishRequest, RegisterStartRequest, Session,
+    MfaCredential, MfaMethod, Platform, ReauthFinishRequest, ReauthMethod, ReauthStartRequest,
+    RegisterFinishRequest, RegisterStartRequest, Session,
 };
 use termoso_proto::vault::Vault;
 use uuid::Uuid;
@@ -220,6 +221,156 @@ impl LoginFlow {
                 self.approval_token = Some(approval_token);
                 Ok(LoginStep::DeviceApprovalRequired { email_hint })
             }
+            AuthResponse::Reauthenticated { .. } => Err(CoreError::Invalid(
+                "unexpected step-up answer during sign-in".into(),
+            )),
+        }
+    }
+}
+
+/// What a step-up (re-authentication) step produced.
+#[derive(Debug)]
+pub enum ReauthStep {
+    /// The session may perform sensitive changes until `expires_at`.
+    Done {
+        /// When the step-up window closes.
+        expires_at: chrono::DateTime<Utc>,
+    },
+    /// The account has a second factor. Call [`ReauthFlow::mfa`].
+    MfaRequired {
+        /// Methods the account can answer with.
+        methods: Vec<MfaMethod>,
+    },
+    /// The account has no password; the server emailed a code. Call
+    /// [`ReauthFlow::email_code`].
+    EmailCodeRequired {
+        /// Masked recipient for the UI.
+        email_hint: String,
+    },
+}
+
+/// Step-up for the current session: sensitive account mutations (revoking
+/// devices, deleting security keys, dropping the SSH ID, ...) answer
+/// `reauth_required` until the owner proves the password (and second factor)
+/// again. The password feeds the OPAQUE client only, exactly as at sign-in.
+pub struct ReauthFlow {
+    api: Arc<ApiClient>,
+    reauth_id: String,
+    mfa_token: Option<String>,
+}
+
+impl std::fmt::Debug for ReauthFlow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReauthFlow")
+            .field("mfa_pending", &self.mfa_token.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+impl ReauthFlow {
+    /// Prove the password for the signed-in session. Accounts without a
+    /// password (SSO) get an emailed code instead; `password` is ignored then.
+    pub async fn start(
+        api: Arc<ApiClient>,
+        email: &str,
+        password: &str,
+    ) -> Result<(Self, ReauthStep)> {
+        let email = email.trim().to_lowercase();
+        let (request, state) = opaque::client_login_start(password.as_bytes())?;
+        let start = api
+            .reauth_start(&ReauthStartRequest {
+                opaque_request: Some(request),
+            })
+            .await?;
+        let mut flow = Self {
+            api,
+            reauth_id: start.reauth_id,
+            mfa_token: None,
+        };
+        match start.method {
+            ReauthMethod::Password => {
+                let response = start
+                    .opaque_response
+                    .as_deref()
+                    .ok_or_else(|| CoreError::Invalid("server sent no OPAQUE response".into()))?;
+                let out = finish_opaque(state, password, &email, response)?;
+                let step = flow.finish(Some(out.finalization_b64), None).await?;
+                Ok((flow, step))
+            }
+            ReauthMethod::Email => Ok((
+                flow,
+                ReauthStep::EmailCodeRequired {
+                    email_hint: start.email_hint.unwrap_or_default(),
+                },
+            )),
+            ReauthMethod::None => {
+                let step = flow.finish(None, None).await?;
+                Ok((flow, step))
+            }
+        }
+    }
+
+    /// Submit the emailed code (method `email`).
+    pub async fn email_code(&mut self, code: &str) -> Result<ReauthStep> {
+        self.finish(None, Some(code.trim().to_string())).await
+    }
+
+    /// Answer the second factor.
+    pub async fn mfa(&mut self, credential: MfaCredential) -> Result<ReauthStep> {
+        let token = self
+            .mfa_token
+            .clone()
+            .ok_or_else(|| CoreError::Invalid("no MFA challenge pending".into()))?;
+        let resp = self.api.mfa_verify(&token, credential).await?;
+        self.handle(resp)
+    }
+
+    /// Ask the server to email a one-time MFA code (method `email`).
+    pub async fn send_mfa_email(&self) -> Result<()> {
+        let token = self
+            .mfa_token
+            .as_deref()
+            .ok_or_else(|| CoreError::Invalid("no MFA challenge pending".into()))?;
+        self.api.mfa_email_send(token).await
+    }
+
+    /// WebAuthn request options for the platform authenticator.
+    pub async fn webauthn_challenge(&self) -> Result<serde_json::Value> {
+        let token = self
+            .mfa_token
+            .as_deref()
+            .ok_or_else(|| CoreError::Invalid("no MFA challenge pending".into()))?;
+        self.api.mfa_webauthn_challenge(token).await
+    }
+
+    async fn finish(
+        &mut self,
+        opaque_finalization: Option<String>,
+        code: Option<String>,
+    ) -> Result<ReauthStep> {
+        let resp = self
+            .api
+            .reauth_finish(&ReauthFinishRequest {
+                reauth_id: self.reauth_id.clone(),
+                opaque_finalization,
+                code,
+            })
+            .await?;
+        self.handle(resp)
+    }
+
+    fn handle(&mut self, resp: AuthResponse) -> Result<ReauthStep> {
+        match resp {
+            AuthResponse::Reauthenticated { reauth_expires_at } => Ok(ReauthStep::Done {
+                expires_at: reauth_expires_at,
+            }),
+            AuthResponse::MfaRequired { mfa_token, methods } => {
+                self.mfa_token = Some(mfa_token);
+                Ok(ReauthStep::MfaRequired { methods })
+            }
+            AuthResponse::Authenticated(_) | AuthResponse::DeviceApprovalRequired { .. } => Err(
+                CoreError::Invalid("unexpected sign-in answer during step-up".into()),
+            ),
         }
     }
 }
@@ -633,6 +784,7 @@ mod tests {
                 created_at: Utc::now(),
                 is_admin: false,
                 mfa_enabled: false,
+                reset_scheduled_for: None,
             },
             keys: termoso_proto::account::AccountKeys {
                 public_key: pair.public_b64(),
