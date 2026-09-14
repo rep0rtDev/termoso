@@ -151,6 +151,8 @@ pub struct HostDraft {
     /// `auto` | `4` | `6`.
     pub ip_version: String,
     pub agent_forwarding: bool,
+    /// Snippet typed into the shell right after connecting.
+    pub startup_snippet_id: Option<String>,
     pub env_variables: Vec<EnvVar>,
     pub keep_alive_interval: Option<u32>,
     pub timeout: Option<u32>,
@@ -178,6 +180,7 @@ impl HostDraft {
             icon: None,
             ip_version: "auto".into(),
             agent_forwarding: false,
+            startup_snippet_id: None,
             env_variables: Vec::new(),
             keep_alive_interval: None,
             timeout: None,
@@ -205,6 +208,7 @@ impl From<hosts::HostForm> for HostDraft {
             icon: f.icon,
             ip_version: f.ip_version,
             agent_forwarding: f.agent_forwarding,
+            startup_snippet_id: f.startup_snippet_id.map(|s| s.to_string()),
             env_variables: f
                 .env_variables
                 .into_iter()
@@ -238,6 +242,7 @@ impl HostDraft {
         base.icon = self.icon;
         base.ip_version = self.ip_version;
         base.agent_forwarding = self.agent_forwarding;
+        base.startup_snippet_id = parse_opt_id(&self.startup_snippet_id)?;
         base.env_variables = self
             .env_variables
             .into_iter()

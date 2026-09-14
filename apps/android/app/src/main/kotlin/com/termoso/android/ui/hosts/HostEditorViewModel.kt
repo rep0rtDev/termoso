@@ -10,6 +10,7 @@ import com.termoso.core.HostDraft
 import com.termoso.core.IdentityItem
 import com.termoso.core.InheritedInfo
 import com.termoso.core.KeyItem
+import com.termoso.core.SnippetItem
 import com.termoso.core.TagItem
 import com.termoso.core.VaultInfo
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +27,7 @@ data class HostEditorState(
     val tags: List<TagItem> = emptyList(),
     val keys: List<KeyItem> = emptyList(),
     val identities: List<IdentityItem> = emptyList(),
+    val snippets: List<SnippetItem> = emptyList(),
     val inherited: InheritedInfo? = null,
     val saving: Boolean = false,
     val saved: Boolean = false,
@@ -69,6 +71,7 @@ class HostEditorViewModel(
                     tags = tags(draft.vaultId),
                     keys = keys(draft.vaultId),
                     identities = identities(draft.vaultId),
+                    snippets = snippets(draft.vaultId),
                     inherited = inherited(draft.groupId),
                 )
             }
@@ -94,11 +97,13 @@ class HostEditorViewModel(
                             tagIds = emptyList(),
                             sshKeyId = null,
                             identityId = null,
+                            startupSnippetId = null,
                         ),
                         groups = groups(vaultId),
                         tags = tags(vaultId),
                         keys = keys(vaultId),
                         identities = identities(vaultId),
+                        snippets = snippets(vaultId),
                         inherited = inherited(null),
                     )
                 }
