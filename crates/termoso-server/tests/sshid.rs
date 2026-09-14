@@ -41,6 +41,20 @@ async fn public(s: &TestServer, path: &str) -> (StatusCode, String) {
     (status, resp.text().await.unwrap())
 }
 
+/// Same as [`public`] but addressed to the dedicated SSH ID host
+/// (`TERMOSO_SSHID_URL`), the way a reverse proxy would forward it.
+async fn dedicated(s: &TestServer, path: &str) -> (StatusCode, String) {
+    let resp = s
+        .http()
+        .get(format!("http://{}{path}", s.addr))
+        .header("Host", SSHID_HOST)
+        .send()
+        .await
+        .unwrap();
+    let status = resp.status();
+    (status, resp.text().await.unwrap())
+}
+
 #[tokio::test]
 async fn handle_lifecycle_and_public_listing() {
     let s = server!();
@@ -76,7 +90,7 @@ async fn handle_lifecycle_and_public_listing() {
         )
         .await;
     assert_eq!(p.handle, handle);
-    assert!(p.url.ends_with(&format!("/sshid/{handle}")));
+    assert_eq!(p.url, format!("{SSHID_URL}/{handle}"));
     assert!(p.keys.is_empty());
 
     // Taken by someone else.
@@ -195,6 +209,47 @@ async fn handle_lifecycle_and_public_listing() {
     assert_eq!(st, StatusCode::NOT_FOUND);
     let (st, _) = public(s, "/sshid/nobody-here-000").await;
     assert_eq!(st, StatusCode::NOT_FOUND);
+
+    // Dedicated host: the same lists at the root, nothing else.
+    let (st, body) = dedicated(s, &format!("/{handle}")).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body.trim(), format!("{ed_line} #SSH ID - @{handle}"));
+    let (st, body) = dedicated(s, &format!("/{}/ECDSA-SK", handle.to_uppercase())).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(body.starts_with(sk.rsplit_once(' ').unwrap().0));
+    let (st, body) = dedicated(s, &format!("/{handle}/all")).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body.lines().count(), 3);
+    let (st, body) = dedicated(s, &format!("/sshid/{handle}/all")).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body.lines().count(), 3);
+    let (st, body) = dedicated(s, &format!("/{handle}/all?x=1")).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body.lines().count(), 3);
+    let (st, body) = dedicated(s, "/").await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(body.contains(&format!("curl -fs {SSHID_URL}/<handle>")));
+    let (st, _) = dedicated(s, "/healthz").await;
+    assert_eq!(st, StatusCode::OK);
+    for closed in [
+        "/api/v1/server",
+        "/api/v1",
+        "/nobody-here-000",
+        &format!("/{handle}/dsa"),
+        &format!("/{handle}/all/extra"),
+        "/index.html",
+        "/a",
+    ] {
+        let (st, _) = dedicated(s, closed).await;
+        assert_eq!(st, StatusCode::NOT_FOUND, "{closed}");
+    }
+    // The cabinet origin is untouched: `/` is the SPA, root handles are not
+    // served there.
+    let (st, body) = public(s, "/").await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(!body.contains("Termoso SSH ID"));
+    let (_, body) = public(s, &format!("/{handle}")).await;
+    assert!(!body.contains(ed_line), "SPA fallback, not the key list");
 
     // Replacing the set drops types not listed.
     let p: SshIdProfile = s

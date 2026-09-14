@@ -139,6 +139,10 @@ schema! {
         pub max_entity_bytes: u32,
         /// Maximum session-log upload size in bytes.
         pub max_log_bytes: u64,
+        /// Base under which SSH ID handles are published: a profile lives at
+        /// `<sshid_url>/<handle>` (dedicated origin or `<server>/sshid`).
+        #[serde(default)]
+        pub sshid_url: String,
     }
 }
 

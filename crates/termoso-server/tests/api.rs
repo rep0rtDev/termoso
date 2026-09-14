@@ -60,6 +60,7 @@ async fn health_and_server_info() {
     let info: ServerInfo = s.json(Method::GET, "/server/info", None, NOBODY).await;
     assert!(info.registration_open);
     assert_eq!(info.version, termoso_server::VERSION);
+    assert_eq!(info.sshid_url, SSHID_URL);
 
     let r = s
         .http()

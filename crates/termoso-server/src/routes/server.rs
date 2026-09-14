@@ -27,6 +27,7 @@ pub async fn info(State(state): State<AppState>) -> ApiResult<Json<ServerInfo>> 
         },
         max_entity_bytes: settings.max_entity_bytes,
         max_log_bytes: settings.max_log_bytes,
+        sshid_url: super::sshid::base_url(&state.cfg),
     }))
 }
 
