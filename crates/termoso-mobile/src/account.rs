@@ -13,15 +13,18 @@ use std::time::Duration;
 
 use termoso_core::account::{self as core, LoginFlow, LoginStep, RegisterInput};
 use termoso_core::api::ApiClient;
+use termoso_core::fido2::webauthn;
 use termoso_core::store::{Store, StoredAccount};
 use termoso_core::sync::{SyncEngine, SyncEvent, SyncOptions, SyncReport};
 use termoso_proto::account::ServerInfo;
-use termoso_proto::auth::{Device, MfaCredential};
+use termoso_proto::auth::{Device, MfaCredential, MfaStatus, WebauthnCredentialInfo};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use zeroize::Zeroizing;
 
 use crate::dto::{VaultInfo, parse_id};
 use crate::error::{MobileError, Result};
+use crate::fido2::{self, Fido2Listener};
 
 /// Signed-in account as shown in the UI (no keys, no token).
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -180,6 +183,57 @@ impl From<Device> for DeviceCard {
             last_seen_at: d.last_seen_at.to_rfc3339(),
         }
     }
+}
+
+/// A security key registered as a second factor (`GET /account/mfa`).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SecurityKeyCredential {
+    pub id: String,
+    pub name: String,
+    /// RFC 3339.
+    pub created_at: String,
+    /// RFC 3339.
+    pub last_used_at: Option<String>,
+}
+
+impl From<WebauthnCredentialInfo> for SecurityKeyCredential {
+    fn from(c: WebauthnCredentialInfo) -> Self {
+        Self {
+            id: c.id.to_string(),
+            name: c.name,
+            created_at: c.created_at.to_rfc3339(),
+            last_used_at: c.last_used_at.map(|t| t.to_rfc3339()),
+        }
+    }
+}
+
+/// Second-factor setup of the signed-in account.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct MfaCard {
+    pub totp_enabled: bool,
+    pub security_keys: Vec<SecurityKeyCredential>,
+    pub backup_codes_remaining: u32,
+}
+
+impl From<MfaStatus> for MfaCard {
+    fn from(s: MfaStatus) -> Self {
+        Self {
+            totp_enabled: s.totp_enabled,
+            security_keys: s.webauthn_credentials.into_iter().map(Into::into).collect(),
+            backup_codes_remaining: s.backup_codes_remaining,
+        }
+    }
+}
+
+/// Which attached security key to use for a WebAuthn ceremony, and its
+/// PIN when the token has one set.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SecurityKeyRequest {
+    /// Token from [`crate::Fido2Devices::list`]; `None` = whichever
+    /// attached one recognises the credential (sign-in) or the only one
+    /// attached (registration).
+    pub device_id: Option<String>,
+    pub pin: Option<String>,
 }
 
 /// Local data changed because of a sync pull; list screens should reload.
@@ -439,7 +493,7 @@ impl AccountRuntime {
             MfaMethod::Email => MfaCredential::Email { code },
             MfaMethod::Webauthn => {
                 return Err(MobileError::invalid(
-                    "security keys are not supported on Android yet; use another method",
+                    "security keys sign a challenge instead of entering a code",
                 ));
             }
         };
@@ -455,6 +509,71 @@ impl AccountRuntime {
                 Err(e.into())
             }
         }
+    }
+
+    /// Second factor with an attached security key (USB or NFC, see
+    /// [`crate::Fido2Devices`]): fetches the WebAuthn challenge, has the
+    /// token sign it and submits the assertion. Blocks until the token is
+    /// touched; the sign-in stays pending when the ceremony fails, so the
+    /// user can retry or switch method. `listener.on_touch` fires just
+    /// before the token is asked.
+    pub async fn mfa_security_key(
+        self: &Arc<Self>,
+        req: SecurityKeyRequest,
+        listener: Option<Arc<dyn Fido2Listener>>,
+    ) -> Result<LoginOutcome> {
+        let (mut flow, api) = {
+            let mut inner = self.inner.lock().await;
+            let flow = inner
+                .flow
+                .take()
+                .ok_or_else(|| MobileError::invalid("no sign-in in progress"))?;
+            let api = inner
+                .api
+                .clone()
+                .ok_or_else(|| MobileError::invalid("no sign-in in progress"))?;
+            (flow, api)
+        };
+        // The token may take a while to be touched; other account calls
+        // keep working meanwhile and `cancel_login` can drop the step.
+        let result = self.security_key_step(&mut flow, &api, req, listener).await;
+        let mut inner = self.inner.lock().await;
+        if inner.pending.is_none() {
+            return Err(MobileError::invalid("sign-in was cancelled"));
+        }
+        match result {
+            Ok(step) => self.finish_step(&mut inner, flow, step),
+            Err(e) => {
+                inner.flow = Some(flow);
+                Err(e)
+            }
+        }
+    }
+
+    async fn security_key_step(
+        &self,
+        flow: &mut LoginFlow,
+        api: &ApiClient,
+        req: SecurityKeyRequest,
+        listener: Option<Arc<dyn Fido2Listener>>,
+    ) -> Result<LoginStep> {
+        let options = flow.webauthn_challenge().await?;
+        let origin = webauthn::origin_for(api.server_url());
+        let pin = req.pin.filter(|p| !p.is_empty()).map(Zeroizing::new);
+        if let Some(l) = &listener {
+            l.on_touch();
+        }
+        let credential = tokio::task::spawn_blocking(move || {
+            fido2::registry().webauthn_assert(
+                req.device_id.as_deref(),
+                &options,
+                &origin,
+                pin.as_deref().map(|p| p.as_str()),
+            )
+        })
+        .await
+        .map_err(|e| MobileError::invalid(e.to_string()))??;
+        Ok(flow.mfa(MfaCredential::Webauthn { credential }).await?)
     }
 
     pub async fn mfa_email_send(&self) -> Result<()> {
@@ -795,6 +914,52 @@ impl AccountRuntime {
             ));
         }
         Ok(self.api().await?.revoke_device(id).await?)
+    }
+
+    // ---- second factor ------------------------------------------------
+
+    pub async fn mfa_status(&self) -> Result<MfaCard> {
+        Ok(self.api().await?.mfa_status().await?.into())
+    }
+
+    /// Register an attached security key as a second factor under `name`.
+    /// Blocks until the token is touched. Registration needs user
+    /// verification when the token has a PIN, so pass it in `req`.
+    pub async fn register_security_key(
+        &self,
+        name: String,
+        req: SecurityKeyRequest,
+        listener: Option<Arc<dyn Fido2Listener>>,
+    ) -> Result<SecurityKeyCredential> {
+        let name = name.trim().to_string();
+        if name.is_empty() {
+            return Err(MobileError::invalid("name is required"));
+        }
+        let api = self.api().await?;
+        let options = api.webauthn_register_start().await?;
+        let origin = webauthn::origin_for(api.server_url());
+        let pin = req.pin.filter(|p| !p.is_empty()).map(Zeroizing::new);
+        if let Some(l) = &listener {
+            l.on_touch();
+        }
+        let credential = tokio::task::spawn_blocking(move || {
+            fido2::registry().webauthn_register(
+                req.device_id.as_deref(),
+                &options,
+                &origin,
+                pin.as_deref().map(|p| p.as_str()),
+            )
+        })
+        .await
+        .map_err(|e| MobileError::invalid(e.to_string()))??;
+        Ok(api
+            .webauthn_register_finish(&name, credential)
+            .await?
+            .into())
+    }
+
+    pub async fn remove_security_key(&self, id: String) -> Result<()> {
+        Ok(self.api().await?.webauthn_delete(parse_id(&id)?).await?)
     }
 
     /// Stop background work. Called when the vault is closed.

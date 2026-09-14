@@ -44,6 +44,8 @@ pub mod nfc;
 pub mod soft;
 #[cfg(feature = "fido2")]
 pub mod usb;
+#[cfg(feature = "fido2-ctap")]
+pub mod webauthn;
 
 #[cfg(feature = "fido2")]
 pub use usb::{UsbBackend, generate, list_devices, load_resident, sign};
@@ -124,6 +126,7 @@ impl Fido2Error {
     pub fn from_status(code: u8) -> Self {
         match code {
             0x22 | 0x2E => Fido2Error::WrongDevice,
+            0x19 => Fido2Error::Other("this device is already registered".into()),
             0x26 => Fido2Error::Unsupported("algorithm".into()),
             0x2B | 0x2C => Fido2Error::Unsupported("option".into()),
             0x27 | 0x2D => Fido2Error::Denied,

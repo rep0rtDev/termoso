@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material3.AlertDialog
@@ -82,6 +83,7 @@ fun AccountScreen(
     onSignedOut: () -> Unit,
     onTeams: () -> Unit,
     onSshId: () -> Unit,
+    onSecurityKeys: () -> Unit,
 ) {
     val status by account.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -201,13 +203,20 @@ fun AccountScreen(
                 )
             }
 
-            SectionLabel("SSH ID")
+            SectionLabel("Security")
             SectionCard {
                 ChevronRow(
                     title = "SSH ID",
                     subtitle = "Publish this phone's public keys under a handle; allow it on a server with one command",
                     leading = { IconTile(Icons.Filled.Fingerprint) },
                     modifier = Modifier.clickable(onClick = onSshId),
+                )
+                RowDivider()
+                ChevronRow(
+                    title = "Security keys",
+                    subtitle = "FIDO2 keys over USB or NFC as the second factor for signing in",
+                    leading = { IconTile(Icons.Filled.Security) },
+                    modifier = Modifier.clickable(onClick = onSecurityKeys),
                 )
             }
 

@@ -3,11 +3,15 @@ package com.termoso.android.data
 import android.os.Build
 import com.termoso.core.AccountStatus
 import com.termoso.core.DeviceCard
+import com.termoso.core.Fido2Listener
 import com.termoso.core.LoginForm
 import com.termoso.core.LoginOutcome
+import com.termoso.core.MfaCard
 import com.termoso.core.MfaMethod
 import com.termoso.core.RegisterForm
 import com.termoso.core.Registered
+import com.termoso.core.SecurityKeyCredential
+import com.termoso.core.SecurityKeyRequest
 import com.termoso.core.SyncChange
 import com.termoso.core.SyncListener
 import com.termoso.core.SyncState
@@ -92,7 +96,22 @@ class AccountManager(
     suspend fun mfa(method: MfaMethod, code: String): LoginOutcome =
         repo.read { accountMfa(method, code) }.also { done(it) }
 
+    /**
+     * Second factor with a FIDO2 security key over USB/NFC. Rust runs the
+     * whole WebAuthn ceremony against the token; blocks until it is touched.
+     * [deviceId] null = whichever attached key recognises the account.
+     */
+    suspend fun mfaSecurityKey(deviceId: String?, pin: String?, listener: Fido2Listener): LoginOutcome =
+        repo.read { accountMfaSecurityKey(SecurityKeyRequest(deviceId = deviceId, pin = pin), listener) }.also { done(it) }
+
     suspend fun sendMfaEmail() = repo.read { accountMfaEmailSend() }
+
+    suspend fun mfaStatus(): MfaCard = repo.read { accountMfaStatus() }
+
+    suspend fun registerSecurityKey(name: String, deviceId: String, pin: String?, listener: Fido2Listener): SecurityKeyCredential =
+        repo.read { accountRegisterSecurityKey(name, SecurityKeyRequest(deviceId = deviceId, pin = pin), listener) }
+
+    suspend fun removeSecurityKey(id: String) = repo.read { accountRemoveSecurityKey(id) }
 
     suspend fun approveDevice(code: String): LoginOutcome =
         repo.read { accountApproveDevice(code) }.also { done(it) }
