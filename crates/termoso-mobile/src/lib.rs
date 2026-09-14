@@ -17,6 +17,7 @@ mod app;
 mod connect;
 mod dto;
 mod error;
+mod forward;
 mod keys;
 mod session;
 mod settings;
@@ -29,6 +30,9 @@ pub use app::*;
 pub use connect::{HostKeyChoice, InteractiveQuestionInfo, PromptAnswer, PromptRequest};
 pub use dto::*;
 pub use error::{MobileError, Result};
+pub use forward::{
+    PfKind, PfRuleDraft, PfRuleItem, PfTunnel, TunnelListener, TunnelState, TunnelStats,
+};
 pub use keys::{KeyMods, SpecialKey, control_code, encode_key, encode_text};
 pub use session::*;
 pub use settings::MobileSettings;

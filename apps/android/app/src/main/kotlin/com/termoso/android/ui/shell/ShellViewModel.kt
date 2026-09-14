@@ -3,6 +3,7 @@ package com.termoso.android.ui.shell
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.termoso.android.data.SessionManager
+import com.termoso.android.data.ForwardManager
 import com.termoso.android.data.SftpConnection
 import com.termoso.android.data.SftpManager
 import com.termoso.android.data.TerminalSession
@@ -16,7 +17,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /** Cross-tab state: the vault currently shown in Vaults → Hosts, open terminals, one-shot notices. */
-class ShellViewModel(val repo: VaultRepository, val sessions: SessionManager, val sftp: SftpManager) : ViewModel() {
+class ShellViewModel(
+    val repo: VaultRepository,
+    val sessions: SessionManager,
+    val sftp: SftpManager,
+    val forwards: ForwardManager,
+) : ViewModel() {
     private val _vaults = MutableStateFlow<List<VaultInfo>>(emptyList())
     val vaults: StateFlow<List<VaultInfo>> = _vaults.asStateFlow()
 

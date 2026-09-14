@@ -121,8 +121,11 @@ fun SftpScreen(
     val connections by shell.sftp.connections.collectAsStateWithLifecycle()
     var currentId by remember { mutableStateOf(connectionId) }
     val conn = connections.firstOrNull { it.id == currentId }
+    // Leave the screen at most once: closing the connection also removes it from the list.
+    var left by remember { mutableStateOf(false) }
+    val leave: () -> Unit = { if (!left) { left = true; onBack() } }
     if (conn == null) {
-        LaunchedEffect(Unit) { onBack() }
+        LaunchedEffect(Unit) { leave() }
         return
     }
     val context = LocalContext.current
@@ -215,7 +218,7 @@ fun SftpScreen(
                         }
                     },
                     navigationIcon = {
-                        IconButton(onClick = { if (searching) { searching = false; vm.setQuery("") } else onBack() }) {
+                        IconButton(onClick = { if (searching) { searching = false; vm.setQuery("") } else leave() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                     },
@@ -237,7 +240,7 @@ fun SftpScreen(
                             onRefresh = vm::refresh,
                             onDownloadFolder = { pendingDownload = emptyList(); pickDownloadFolder.launch(null) },
                             onCopyPath = { copyPath(listOf(state.path)) },
-                            onDisconnect = { scope.launch { shell.sftp.close(conn.id); onBack() } },
+                            onDisconnect = { scope.launch { shell.sftp.close(conn.id); leave() } },
                         )
                     },
                 )
@@ -284,7 +287,7 @@ fun SftpScreen(
                 state = connState,
                 target = conn.target,
                 onRetry = { scope.launch { shell.sftp.reconnect(conn.id)?.let { currentId = it.id } } },
-                onClose = { scope.launch { shell.sftp.close(conn.id); onBack() } },
+                onClose = { scope.launch { shell.sftp.close(conn.id); leave() } },
             )
         }
     }
