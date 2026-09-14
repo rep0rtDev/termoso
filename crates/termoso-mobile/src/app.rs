@@ -27,6 +27,10 @@ use crate::session::{Launch, SessionListener, SshSession, TerminalOptions};
 use crate::settings::MobileSettings;
 use crate::sftp::{SftpLaunch, SftpListener, SftpSession};
 use crate::snippets::{self, SnippetDraft, SnippetItem, SnippetPackageItem, SnippetRun};
+use crate::team::{
+    AuditPage, InviteCard, InviteSent, PendingKeyCard, TeamCard, TeamMemberCard, TeamRole,
+    VaultAccessDraft, VaultMemberCard,
+};
 
 const DB_FILE: &str = "vault.db";
 
@@ -601,6 +605,131 @@ impl TermosoApp {
 
     pub fn account_revoke_device(&self, id: String) -> Result<()> {
         RUNTIME.block_on(self.account.revoke_device(id))
+    }
+
+    // ---- teams --------------------------------------------------------
+
+    pub fn teams(&self) -> Result<Vec<TeamCard>> {
+        RUNTIME.block_on(self.account.teams())
+    }
+
+    pub fn create_team(&self, name: String) -> Result<TeamCard> {
+        RUNTIME.block_on(self.account.create_team(name))
+    }
+
+    pub fn rename_team(&self, team_id: String, name: String) -> Result<TeamCard> {
+        RUNTIME.block_on(self.account.rename_team(team_id, name))
+    }
+
+    pub fn set_team_security(
+        &self,
+        team_id: String,
+        multiplayer_enabled: Option<bool>,
+        require_mfa: Option<bool>,
+    ) -> Result<TeamCard> {
+        RUNTIME.block_on(
+            self.account
+                .set_team_security(team_id, multiplayer_enabled, require_mfa),
+        )
+    }
+
+    pub fn delete_team(&self, team_id: String) -> Result<()> {
+        RUNTIME.block_on(self.account.delete_team(team_id))
+    }
+
+    pub fn leave_team(&self, team_id: String) -> Result<()> {
+        RUNTIME.block_on(self.account.leave_team(team_id))
+    }
+
+    /// Join a team from an invitation link or token.
+    pub fn accept_team_invite(&self, link: String) -> Result<TeamCard> {
+        RUNTIME.block_on(self.account.accept_invite(link))
+    }
+
+    pub fn team_members(&self, team_id: String) -> Result<Vec<TeamMemberCard>> {
+        RUNTIME.block_on(self.account.team_members(team_id))
+    }
+
+    pub fn set_team_member_role(
+        &self,
+        team_id: String,
+        user_id: String,
+        role: TeamRole,
+    ) -> Result<()> {
+        RUNTIME.block_on(self.account.set_team_member_role(team_id, user_id, role))
+    }
+
+    pub fn remove_team_member(&self, team_id: String, user_id: String) -> Result<()> {
+        RUNTIME.block_on(self.account.remove_team_member(team_id, user_id))
+    }
+
+    pub fn team_invites(&self, team_id: String) -> Result<Vec<InviteCard>> {
+        RUNTIME.block_on(self.account.team_invites(team_id))
+    }
+
+    pub fn team_invite(
+        &self,
+        team_id: String,
+        emails: Vec<String>,
+        role: TeamRole,
+        vault_ids: Vec<String>,
+    ) -> Result<Vec<InviteSent>> {
+        RUNTIME.block_on(self.account.invite(team_id, emails, role, vault_ids))
+    }
+
+    pub fn revoke_team_invite(&self, team_id: String, invite_id: String) -> Result<()> {
+        RUNTIME.block_on(self.account.revoke_invite(team_id, invite_id))
+    }
+
+    pub fn team_audit(
+        &self,
+        team_id: String,
+        before: Option<i64>,
+        limit: Option<u32>,
+    ) -> Result<AuditPage> {
+        RUNTIME.block_on(self.account.team_audit(team_id, before, limit))
+    }
+
+    pub fn team_pending_keys(&self, team_id: String) -> Result<Vec<PendingKeyCard>> {
+        RUNTIME.block_on(self.account.pending_keys(team_id))
+    }
+
+    pub fn create_team_vault(
+        &self,
+        team_id: String,
+        name: String,
+        access: Vec<VaultAccessDraft>,
+    ) -> Result<()> {
+        RUNTIME.block_on(self.account.create_team_vault(team_id, name, access))
+    }
+
+    pub fn rename_team_vault(&self, vault_id: String, name: String) -> Result<()> {
+        RUNTIME.block_on(self.account.rename_team_vault(vault_id, name))
+    }
+
+    pub fn delete_team_vault(&self, vault_id: String) -> Result<()> {
+        RUNTIME.block_on(self.account.delete_team_vault(vault_id))
+    }
+
+    pub fn team_vault_members(&self, vault_id: String) -> Result<Vec<VaultMemberCard>> {
+        RUNTIME.block_on(self.account.team_vault_members(vault_id))
+    }
+
+    pub fn set_team_vault_access(
+        &self,
+        vault_id: String,
+        user_id: String,
+        access: VaultAccess,
+    ) -> Result<()> {
+        RUNTIME.block_on(self.account.set_vault_access(vault_id, user_id, access))
+    }
+
+    pub fn remove_team_vault_access(&self, vault_id: String, user_id: String) -> Result<()> {
+        RUNTIME.block_on(self.account.remove_vault_access(vault_id, user_id))
+    }
+
+    pub fn rotate_team_vault_key(&self, vault_id: String) -> Result<()> {
+        RUNTIME.block_on(self.account.rotate_team_vault_key(vault_id))
     }
 
     // ---- sessions -----------------------------------------------------

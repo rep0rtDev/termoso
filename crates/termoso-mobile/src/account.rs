@@ -299,6 +299,27 @@ impl AccountRuntime {
             .clone()
     }
 
+    pub(crate) fn store(&self) -> &Store {
+        &self.store
+    }
+
+    pub(crate) fn notify_changed(&self, change: SyncChange) {
+        if let Some(l) = self.listener() {
+            l.on_changed(change);
+        }
+    }
+
+    /// Run one sync round on the runtime without waiting for it (after a
+    /// vault-list change that may have queued re-encrypted rows).
+    pub(crate) fn sync_in_background(self: &Arc<Self>) {
+        let rt = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = rt.sync_now().await {
+                tracing::debug!("sync after vault change: {e}");
+            }
+        });
+    }
+
     pub fn sync_status(&self) -> SyncStatus {
         self.status
             .lock()
@@ -735,7 +756,7 @@ impl AccountRuntime {
 
     // ---- devices ------------------------------------------------------
 
-    async fn api(&self) -> Result<Arc<ApiClient>> {
+    pub(crate) async fn api(&self) -> Result<Arc<ApiClient>> {
         let inner = self.inner.lock().await;
         inner
             .api

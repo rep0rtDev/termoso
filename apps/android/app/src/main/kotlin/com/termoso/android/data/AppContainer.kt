@@ -53,6 +53,21 @@ class AppContainer(context: Context) {
     val gated: StateFlow<Boolean> = _gated.asStateFlow()
     private var backgroundedAt = 0L
 
+    /**
+     * A team invitation link the app was opened with (`termoso://invite/<token>`),
+     * held until the vault is open and the shell can show the join dialog.
+     */
+    private val _pendingInvite = MutableStateFlow<String?>(null)
+    val pendingInvite: StateFlow<String?> = _pendingInvite.asStateFlow()
+
+    fun offerInvite(link: String) {
+        _pendingInvite.value = link
+    }
+
+    fun consumeInvite() {
+        _pendingInvite.value = null
+    }
+
     init {
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
