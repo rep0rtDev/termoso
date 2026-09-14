@@ -307,13 +307,13 @@ impl AccountRuntime {
             .await?
             .ok_or_else(|| MobileError::invalid("SSH ID is not set up"))?;
         let handle = profile.handle.clone();
-        let s = store.clone();
-        let keys = tokio::task::spawn_blocking(move || core::rotate_device_keys(&s, &handle))
+        let keys = tokio::task::spawn_blocking(move || core::new_device_keys(&handle))
             .await
             .map_err(|e| MobileError::invalid(e.to_string()))??;
         let profile = api
             .put_sshid_device_keys(&core::upload_request(&keys))
             .await?;
+        core::save_device_keys(&store, &keys)?;
         view_of(&store, Some(profile))
     }
 
