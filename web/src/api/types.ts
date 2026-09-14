@@ -40,6 +40,8 @@ export interface ServerInfo {
   features: ServerFeatures;
   max_entity_bytes: number;
   max_log_bytes: number;
+  /** Base under which SSH ID handles are published (`<sshid_url>/<handle>`). */
+  sshid_url: string;
 }
 
 // ── account ─────────────────────────────────────────────────────────────

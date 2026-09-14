@@ -35,6 +35,8 @@ pub struct Inner {
     pub opaque: opaque::Server,
     pub master_key: SymmetricKey,
     pub sso: SsoRegistry,
+    /// `host[:port]` of `TERMOSO_SSHID_URL`, matched against `Host`.
+    pub sshid_host: Option<String>,
     /// Local fan-out of bus events to WebSocket connections on this instance.
     pub events: broadcast::Sender<Event>,
     /// Local fan-out of multiplayer relay frames (see `live::bus`).
@@ -94,8 +96,10 @@ impl Inner {
 
         let opaque = load_opaque_server(&db, &master_key).await?;
         let sso = SsoRegistry::from_config(&cfg).await?;
+        let sshid_host = cfg.sshid_host();
 
         Ok(Arc::new(Inner {
+            sshid_host,
             cfg,
             db,
             cache,
