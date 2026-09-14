@@ -1,5 +1,7 @@
 package com.termoso.android
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -37,9 +39,24 @@ class MainActivity : FragmentActivity() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(!secure)
             }
         }
+        handleLink(intent, container)
         setContent { App(container) }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleLink(intent, (application as TermosoApplication).container)
+    }
+
+    private fun handleLink(intent: Intent?, container: AppContainer) {
+        val uri = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data ?: return
+        if (isInviteLink(uri)) container.offerInvite(uri.toString())
+    }
 }
+
+/** `termoso://invite/<token>`; cabinet `https://…/invite/<token>` links are pasted into the join dialog instead. */
+private fun isInviteLink(uri: Uri): Boolean =
+    uri.scheme == "termoso" && uri.host == "invite" && uri.pathSegments.size == 1
 
 @Composable
 private fun App(container: AppContainer) {
