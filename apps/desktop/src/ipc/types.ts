@@ -785,6 +785,8 @@ export interface SshIdView {
   profile: SshIdProfile | null;
   deviceKeys: DeviceKeyCard[];
   provisionCommand: string | null;
+  /** Handles are published at `<baseUrl>/<handle>`; known before one is claimed. */
+  baseUrl: string | null;
 }
 
 export interface SshIdFido2Form {
@@ -1247,6 +1249,7 @@ export interface ServerInfo {
   };
   max_entity_bytes: number;
   max_log_bytes: number;
+  sshid_url: string;
 }
 
 export interface ConnectionHistory {

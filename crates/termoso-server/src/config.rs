@@ -21,6 +21,11 @@ pub struct Config {
     pub public_url: String,
     /// Public URL of the web cabinet (links in emails). Defaults to `public_url`.
     pub web_url: Option<String>,
+    /// Dedicated origin for SSH ID handles (e.g. `https://sshid.example.com`).
+    /// Requests whose `Host` matches it are served the handle lists at the
+    /// root (`/<handle>`, `/<handle>/<type>`) and profiles advertise that URL.
+    /// `<public_url>/sshid/<handle>` keeps working either way.
+    pub sshid_url: Option<String>,
     /// Directory with the built web cabinet (`web/dist`). When set, the server
     /// serves it on `/` with an `index.html` fallback for client-side routes.
     pub web_dir: Option<String>,
@@ -171,6 +176,7 @@ impl Default for Config {
             bind: "0.0.0.0:8080".parse().expect("valid addr"),
             public_url: "http://localhost:8080".into(),
             web_url: None,
+            sshid_url: None,
             web_dir: None,
             server_name: "Termoso".into(),
             database_url: "postgres://termoso:termoso@localhost:5432/termoso".into(),
@@ -213,6 +219,13 @@ impl Config {
         );
         self.master_key()?;
         url::Url::parse(&self.public_url).context("TERMOSO_PUBLIC_URL must be a URL")?;
+        if let Some(u) = self.sshid_url() {
+            let parsed = url::Url::parse(u).context("TERMOSO_SSHID_URL must be a URL")?;
+            anyhow::ensure!(
+                parsed.host_str().is_some() && parsed.path().trim_end_matches('/').is_empty(),
+                "TERMOSO_SSHID_URL must be an origin without a path (e.g. https://sshid.example.com)"
+            );
+        }
         if let Some(dir) = self.web_dir() {
             crate::routes::web::validate_dir(&dir)?;
         }
@@ -233,6 +246,23 @@ impl Config {
 
     pub fn web_url(&self) -> &str {
         self.web_url.as_deref().unwrap_or(&self.public_url)
+    }
+
+    pub fn sshid_url(&self) -> Option<&str> {
+        self.sshid_url
+            .as_deref()
+            .map(|u| u.trim().trim_end_matches('/'))
+            .filter(|u| !u.is_empty())
+    }
+
+    /// `host[:port]` of `sshid_url`, as it appears in the `Host` header.
+    pub fn sshid_host(&self) -> Option<String> {
+        let u = url::Url::parse(self.sshid_url()?).ok()?;
+        let host = u.host_str()?.to_ascii_lowercase();
+        Some(match u.port() {
+            Some(p) => format!("{host}:{p}"),
+            None => host,
+        })
     }
 
     pub fn admin_emails(&self) -> Vec<String> {
@@ -259,4 +289,60 @@ pub fn split_csv(s: &str) -> Vec<String> {
         .filter(|s| !s.is_empty())
         .map(String::from)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base() -> Config {
+        Config {
+            master_key: SymmetricKey::generate().to_b64(),
+            ..Config::default()
+        }
+    }
+
+    #[test]
+    fn sshid_url_optional_and_normalized() {
+        let cfg = base();
+        cfg.validate().unwrap();
+        assert_eq!(cfg.sshid_url(), None);
+        assert_eq!(cfg.sshid_host(), None);
+
+        let cfg = Config {
+            sshid_url: Some(" https://SSHID.Example.com/ ".into()),
+            ..base()
+        };
+        cfg.validate().unwrap();
+        assert_eq!(cfg.sshid_url(), Some("https://SSHID.Example.com"));
+        assert_eq!(cfg.sshid_host().as_deref(), Some("sshid.example.com"));
+
+        let cfg = Config {
+            sshid_url: Some("http://localhost:8080".into()),
+            ..base()
+        };
+        assert_eq!(cfg.sshid_host().as_deref(), Some("localhost:8080"));
+
+        let cfg = Config {
+            sshid_url: Some("".into()),
+            ..base()
+        };
+        cfg.validate().unwrap();
+        assert_eq!(cfg.sshid_url(), None);
+    }
+
+    #[test]
+    fn sshid_url_rejects_paths_and_garbage() {
+        for bad in [
+            "sshid.example.com",
+            "https://sshid.example.com/sshid",
+            "not a url",
+        ] {
+            let cfg = Config {
+                sshid_url: Some(bad.into()),
+                ..base()
+            };
+            assert!(cfg.validate().is_err(), "{bad}");
+        }
+    }
 }

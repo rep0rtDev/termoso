@@ -7,7 +7,9 @@
 //!
 //! The public list is served as plain `authorized_keys` lines at
 //! `GET /sshid/{handle}` (default type, ED25519) and
-//! `GET /sshid/{handle}/{type}`; `all` lists every type.
+//! `GET /sshid/{handle}/{type}`; `all` lists every type. With
+//! `TERMOSO_SSHID_URL` set, requests for that host get the same lists at the
+//! root (`https://sshid.example.com/{handle}[/{type}]`) — see [`host_layer`].
 
 use std::time::Duration;
 
@@ -20,6 +22,7 @@ use termoso_crypto::encoding::unb64;
 use termoso_proto::sshid::*;
 use uuid::Uuid;
 
+use crate::config::Config;
 use crate::error::{ApiResult, Error, NoContent};
 use crate::extract::{Auth, Client, Json as Body};
 use crate::ratelimit;
@@ -56,11 +59,85 @@ fn key_type_of(s: &str) -> SshIdKeyType {
     SshIdKeyType::from_url_name(s).unwrap_or(SshIdKeyType::Ed25519)
 }
 
+/// Base the handles are published under (`TERMOSO_SSHID_URL` or
+/// `<public_url>/sshid`), advertised in `GET /server/info`.
+pub fn base_url(cfg: &Config) -> String {
+    match cfg.sshid_url() {
+        Some(base) => base.to_string(),
+        None => format!("{}/sshid", cfg.public_url.trim_end_matches('/')),
+    }
+}
+
 fn public_url(state: &AppState, handle: &str) -> String {
-    format!(
-        "{}/sshid/{handle}",
-        state.cfg.public_url.trim_end_matches('/')
+    format!("{}/{handle}", base_url(&state.cfg))
+}
+
+/// Rewrites requests addressed to the dedicated SSH ID host onto the
+/// `/sshid/…` routes: `/` → a short usage note, `/{handle}` and
+/// `/{handle}/{type}` → the lists, `/healthz` `/readyz` pass through and
+/// everything else is a 404 (the API and the cabinet are not exposed there).
+pub async fn host_layer(
+    State(state): State<AppState>,
+    mut req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let Some(want) = state.sshid_host.as_deref() else {
+        return next.run(req).await;
+    };
+    let host = req
+        .uri()
+        .authority()
+        .map(|a| a.as_str().to_string())
+        .or_else(|| {
+            req.headers()
+                .get(header::HOST)
+                .and_then(|h| h.to_str().ok())
+                .map(str::to_string)
+        })
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if host != want {
+        return next.run(req).await;
+    }
+    let path = req.uri().path().to_string();
+    let segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let rewritten = match segs.as_slice() {
+        [] => return usage(state.cfg.sshid_url().unwrap_or_default()),
+        ["healthz"] | ["readyz"] => return next.run(req).await,
+        [h] | ["sshid", h] if normalize_handle(h).is_some() => format!("/sshid/{h}"),
+        [h, t] | ["sshid", h, t] if normalize_handle(h).is_some() => format!("/sshid/{h}/{t}"),
+        _ => return Error::not_found("ssh id").into_response(),
+    };
+    let rewritten = match req.uri().query() {
+        Some(q) => format!("{rewritten}?{q}"),
+        None => rewritten,
+    };
+    let mut parts = req.uri().clone().into_parts();
+    parts.path_and_query = match rewritten.parse() {
+        Ok(p) => Some(p),
+        Err(_) => return Error::not_found("ssh id").into_response(),
+    };
+    match axum::http::Uri::from_parts(parts) {
+        Ok(uri) => *req.uri_mut() = uri,
+        Err(_) => return Error::not_found("ssh id").into_response(),
+    }
+    next.run(req).await
+}
+
+fn usage(base: &str) -> Response {
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "text/plain; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=300"),
+        ],
+        format!(
+            "Termoso SSH ID\n\n  curl -fs {base}/<handle> >> ~/.ssh/authorized_keys\n\n\
+             {base}/<handle>          ED25519 keys\n\
+             {base}/<handle>/<type>   ED25519, ECDSA, RSA, ECDSA-SK, ED25519-SK or all\n"
+        ),
     )
+        .into_response()
 }
 
 /// Accept `<algorithm> <base64>` whose algorithm matches `key_type` both in
@@ -449,6 +526,20 @@ pub async fn public_typed(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn base_url_prefers_dedicated_origin() {
+        let cfg = Config {
+            public_url: "https://termoso.example.com/".into(),
+            ..Config::default()
+        };
+        assert_eq!(base_url(&cfg), "https://termoso.example.com/sshid");
+        let cfg = Config {
+            sshid_url: Some("https://sshid.example.com/".into()),
+            ..cfg
+        };
+        assert_eq!(base_url(&cfg), "https://sshid.example.com");
+    }
 
     #[test]
     fn public_key_normalisation() {

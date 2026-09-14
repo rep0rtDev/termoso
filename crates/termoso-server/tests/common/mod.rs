@@ -55,6 +55,9 @@ pub const SSO_PROVIDER: &str = "mock";
 /// Same IdP, but only `@corp.test` addresses may sign in through it.
 pub const SSO_CORP_PROVIDER: &str = "mock-corp";
 pub const SSO_CORP_DOMAIN: &str = "corp.test";
+/// Dedicated SSH ID origin (`TERMOSO_SSHID_URL`) and its `Host` value.
+pub const SSHID_URL: &str = "http://sshid.test:8443";
+pub const SSHID_HOST: &str = "sshid.test:8443";
 
 pub struct TestServer {
     pub addr: SocketAddr,
@@ -251,6 +254,7 @@ async fn boot() -> Option<TestServer> {
     let cfg = Config {
         bind: addr,
         public_url: format!("http://{addr}"),
+        sshid_url: Some(format!("{SSHID_URL}/")),
         web_dir: Some(fake_web_dir(&db_name)),
         database_url: database_url.clone(),
         redis_url: redis_url(),
