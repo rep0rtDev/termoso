@@ -24,7 +24,12 @@ class VaultRepository(val app: TermosoApp) {
     suspend fun <T> read(block: TermosoApp.() -> T): T = withContext(Dispatchers.IO) { app.block() }
 
     suspend fun <T> write(block: TermosoApp.() -> T): T =
-        read(block).also { _revision.update { it + 1 } }
+        read(block).also { bump() }
+
+    /** Data changed outside [write] (sync pull, sign-in/out): make lists reload. */
+    fun bump() {
+        _revision.update { it + 1 }
+    }
 
     suspend fun updateSettings(transform: (MobileSettings) -> MobileSettings) {
         val next = transform(_settings.value)

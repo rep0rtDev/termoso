@@ -12,6 +12,7 @@
 
 uniffi::setup_scaffolding!("termoso");
 
+mod account;
 mod app;
 mod dto;
 mod error;
@@ -21,6 +22,7 @@ mod settings;
 mod terminal;
 mod themes;
 
+pub use account::*;
 pub use app::*;
 pub use dto::*;
 pub use error::{MobileError, Result};
