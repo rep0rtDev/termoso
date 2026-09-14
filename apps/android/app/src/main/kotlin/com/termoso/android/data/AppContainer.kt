@@ -68,6 +68,22 @@ class AppContainer(context: Context) {
         _pendingInvite.value = null
     }
 
+    /**
+     * A `termoso://join/…` multiplayer link the app was opened with. Held as one
+     * opaque string (its fragment is the session secret) until a signed-in
+     * shell can hand it to Rust; never logged.
+     */
+    private val _pendingJoin = MutableStateFlow<String?>(null)
+    val pendingJoin: StateFlow<String?> = _pendingJoin.asStateFlow()
+
+    fun offerJoin(link: String) {
+        _pendingJoin.value = link
+    }
+
+    fun consumeJoin() {
+        _pendingJoin.value = null
+    }
+
     init {
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
@@ -119,12 +135,13 @@ class AppContainer(context: Context) {
             VaultRepository(app)
         }.also {
             val keepAlive = KeepAlive(appContext)
+            val sessions = SessionManager(it, keepAlive)
             _vault.value = VaultState.Open(
                 repo = it,
-                sessions = SessionManager(it, keepAlive),
+                sessions = sessions,
                 sftp = SftpManager(appContext, it, keepAlive),
                 forwards = ForwardManager(it, keepAlive),
-                account = AccountManager(it),
+                account = AccountManager(it, onSignOut = sessions::endLive),
             )
         }
     }

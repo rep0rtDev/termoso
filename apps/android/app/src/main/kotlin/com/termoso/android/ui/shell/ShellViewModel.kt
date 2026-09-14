@@ -79,6 +79,12 @@ class ShellViewModel(
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
 
+    /** Join a `termoso://join/…` share as a viewer; the link is validated in Rust. */
+    suspend fun joinLive(link: String): TerminalSession? =
+        runCatching { sessions.joinLive(link.trim()) }
+            .onFailure { notify(it.userMessage()) }
+            .getOrNull()
+
     suspend fun openSftpHost(hostId: String): SftpConnection? =
         runCatching { sftp.openHost(hostId) }
             .onFailure { notify(it.userMessage()) }

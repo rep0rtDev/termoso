@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,10 +51,12 @@ import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.shell.ShellViewModel
+import com.termoso.android.ui.terminal.JoinLiveDialog
 import com.termoso.core.HistoryItem
 import com.termoso.core.MobileException
 import com.termoso.core.SessionState
 import com.termoso.core.TransferStatus
+import com.termoso.core.isLiveLink
 import com.termoso.core.parseTarget
 import kotlinx.coroutines.launch
 import java.text.DateFormat
@@ -80,7 +83,23 @@ fun ConnectionsScreen(
         recent = runCatching { shell.repo.read { history(10u) } }.getOrDefault(emptyList())
     }
 
+    var joinDialog by remember { mutableStateOf(false) }
+
+    fun join(link: String) {
+        scope.launch {
+            if (shell.joinLive(link) != null) {
+                target = ""
+                joinDialog = false
+                onOpenTerminal()
+            }
+        }
+    }
+
     fun connect() {
+        if (isLiveLink(target.trim())) {
+            join(target)
+            return
+        }
         val parsed = try {
             parseTarget(target)
         } catch (e: MobileException) {
@@ -106,7 +125,7 @@ fun ConnectionsScreen(
             OutlinedTextField(
                 value = target,
                 onValueChange = { target = it },
-                placeholder = { Text("user@host:port") },
+                placeholder = { Text("user@host:port or termoso://join/…") },
                 label = { Text("Quick connect") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -157,6 +176,13 @@ fun ConnectionsScreen(
                     modifier = Modifier.clickable(onClick = onNewSftp),
                 )
                 RowDivider()
+                ChevronRow(
+                    title = "Join shared terminal",
+                    subtitle = "Open a termoso://join link somebody sent you",
+                    leading = { IconTile(Icons.Filled.Groups) },
+                    modifier = Modifier.clickable { joinDialog = true },
+                )
+                RowDivider()
                 ListRow(
                     title = "Quick connect",
                     subtitle = "Type user@host above and press Go",
@@ -183,6 +209,10 @@ fun ConnectionsScreen(
             Spacer(Modifier.height(24.dp))
         }
     }
+
+    if (joinDialog) {
+        JoinLiveDialog(onDismiss = { joinDialog = false }, onJoin = ::join)
+    }
 }
 
 @Composable
@@ -199,7 +229,9 @@ private fun ActiveSessionRow(session: TerminalSession, onOpen: () -> Unit, onClo
     ListRow(
         title = session.label,
         subtitle = subtitle,
-        leading = { HostAvatar(detected ?: session.savedOsName) },
+        leading = {
+            if (session.isView) IconTile(Icons.Filled.Groups) else HostAvatar(detected ?: session.savedOsName)
+        },
         trailing = {
             IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close session") }
         },

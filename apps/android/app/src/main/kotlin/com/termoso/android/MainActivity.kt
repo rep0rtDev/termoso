@@ -50,13 +50,20 @@ class MainActivity : FragmentActivity() {
 
     private fun handleLink(intent: Intent?, container: AppContainer) {
         val uri = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data ?: return
-        if (isInviteLink(uri)) container.offerInvite(uri.toString())
+        when {
+            isInviteLink(uri) -> container.offerInvite(uri.toString())
+            isJoinLink(uri) -> container.offerJoin(uri.toString())
+        }
     }
 }
 
 /** `termoso://invite/<token>`; cabinet `https://…/invite/<token>` links are pasted into the join dialog instead. */
 private fun isInviteLink(uri: Uri): Boolean =
     uri.scheme == "termoso" && uri.host == "invite" && uri.pathSegments.size == 1
+
+/** `termoso://join/<session>?s=<server>#<secret>`; parsed and validated in Rust. */
+private fun isJoinLink(uri: Uri): Boolean =
+    uri.scheme == "termoso" && uri.host == "join" && uri.pathSegments.size == 1
 
 @Composable
 private fun App(container: AppContainer) {

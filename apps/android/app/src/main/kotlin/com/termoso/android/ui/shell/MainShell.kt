@@ -179,6 +179,22 @@ fun MainShell(
         nav.navigate(Routes.TERMINAL) { launchSingleTop = true }
     }
 
+    // A termoso://join link: needs an account, then becomes a viewer terminal.
+    val pendingJoin by container.pendingJoin.collectAsStateWithLifecycle()
+    val restoring by account.restoring.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingJoin, accountStatus.account?.userId, restoring) {
+        val link = pendingJoin ?: return@LaunchedEffect
+        if (restoring) return@LaunchedEffect
+        if (accountStatus.account == null) {
+            shell.notify("Sign in to join the shared terminal")
+            nav.navigate(Routes.signIn(AuthMode.SignIn)) { launchSingleTop = true }
+            return@LaunchedEffect
+        }
+        // Consuming re-keys this effect, so the join itself runs on the shell scope.
+        container.consumeJoin()
+        scope.launch { if (shell.joinLive(link) != null) openTerminal() }
+    }
+
     fun connectHost(hostId: String) {
         scope.launch { if (shell.connectHost(hostId) != null) openTerminal() }
     }

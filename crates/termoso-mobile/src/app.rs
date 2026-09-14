@@ -23,7 +23,8 @@ use crate::account::{
 use crate::dto::*;
 use crate::error::{MobileError, Result};
 use crate::forward::{self, PfRuleDraft, PfRuleItem, PfTunnel, TunnelLaunch, TunnelListener};
-use crate::session::{Launch, SessionListener, SshSession, TerminalOptions};
+use crate::live::{LiveListener, LiveShare};
+use crate::session::{Launch, SessionListener, SshSession, TerminalOptions, ViewerLaunch};
 use crate::settings::MobileSettings;
 use crate::sftp::{SftpLaunch, SftpListener, SftpSession};
 use crate::snippets::{self, SnippetDraft, SnippetItem, SnippetPackageItem, SnippetRun};
@@ -773,6 +774,56 @@ impl TermosoApp {
                 settings: MobileSettings::load(&self.store)?,
                 options,
                 listener,
+            },
+        ))
+    }
+
+    // ---- multiplayer --------------------------------------------------
+
+    /// Share an open terminal with teammates. Needs a signed-in account;
+    /// the link the returned handle exposes is what other people join with.
+    /// `label` names the share until the remote sets a title.
+    pub fn share_session(
+        &self,
+        session: Arc<SshSession>,
+        label: String,
+        listener: Arc<dyn LiveListener>,
+    ) -> Result<Arc<LiveShare>> {
+        RUNTIME.block_on(async {
+            let api = self.account.api().await?;
+            session.share(api, listener, label).await
+        })
+    }
+
+    /// Join somebody's share from a `termoso://join/…` link. Returns a
+    /// terminal that mirrors theirs; `live_listener` gets participants,
+    /// control grants and the end of the share.
+    pub fn join_live(
+        &self,
+        link: String,
+        options: TerminalOptions,
+        listener: Arc<dyn SessionListener>,
+        live_listener: Arc<dyn LiveListener>,
+    ) -> Result<Arc<SshSession>> {
+        let parsed = termoso_core::live::LiveLink::parse(&link)?;
+        let settings = MobileSettings::load(&self.store)?;
+        let (tx, rx) = tokio::sync::mpsc::channel(64);
+        let joined = RUNTIME.block_on(async {
+            let api = self.account.api().await?;
+            termoso_core::live::join(api, &parsed, tx)
+                .await
+                .map_err(MobileError::from)
+        })?;
+        Ok(SshSession::launch_viewer(
+            RUNTIME.handle().clone(),
+            ViewerLaunch {
+                store: self.store.clone(),
+                settings,
+                options,
+                listener,
+                joined,
+                live_events: rx,
+                live_listener,
             },
         ))
     }
