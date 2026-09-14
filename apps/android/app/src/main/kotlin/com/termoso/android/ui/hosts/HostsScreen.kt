@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SortByAlpha
@@ -84,6 +85,7 @@ fun HostsScreen(
     onNewHost: () -> Unit,
     onEditHost: (String) -> Unit,
     onConnect: (String) -> Unit,
+    onSftp: (String) -> Unit,
 ) {
     val vm: HostsViewModel = viewModel(key = "hosts/${groupId ?: "root"}") {
         HostsViewModel(shell.repo, shell.selectedVaultId, groupId)
@@ -111,6 +113,11 @@ fun HostsScreen(
                     onClose = vm::clearSelection,
                     onSelectAll = vm::selectAll,
                     onEdit = { onEditHost(state.selected.first()) },
+                    onSftp = {
+                        val id = state.selected.first()
+                        vm.clearSelection()
+                        onSftp(id)
+                    },
                     onDuplicate = vm::duplicateSelected,
                     onMove = { dialog = HostsDialog.Move },
                     onCopy = { dialog = HostsDialog.Copy },
@@ -323,6 +330,7 @@ private fun SelectionBar(
     onClose: () -> Unit,
     onSelectAll: () -> Unit,
     onEdit: () -> Unit,
+    onSftp: () -> Unit,
     onDuplicate: () -> Unit,
     onMove: () -> Unit,
     onCopy: () -> Unit,
@@ -337,6 +345,9 @@ private fun SelectionBar(
         actions = {
             if (state.selected.size == 1) {
                 IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, contentDescription = "Edit") }
+                if (state.visibleHosts.firstOrNull { it.id in state.selected }?.protocol.equals("ssh", ignoreCase = true)) {
+                    IconButton(onClick = onSftp) { Icon(Icons.Filled.FolderOpen, contentDescription = "SFTP") }
+                }
             }
             IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, contentDescription = "Remove") }
             Box {

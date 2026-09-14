@@ -1,7 +1,5 @@
 package com.termoso.android.data
 
-import android.content.Context
-import com.termoso.android.service.SessionService
 import com.termoso.core.HostItem
 import com.termoso.core.PromptAnswer
 import com.termoso.core.PromptRequest
@@ -85,8 +83,9 @@ class SessionBridge : SessionListener {
         _osName.value = osName
     }
 
-    fun promptAnswered() {
-        _prompt.value = null
+    /** Drop [id] from the UI; a newer prompt Rust already raised stays untouched. */
+    fun promptAnswered(id: ULong) {
+        _prompt.update { if (it?.id == id) null else it }
     }
 }
 
@@ -110,8 +109,10 @@ class TerminalSession(
     val events: SharedFlow<SessionEvent> get() = bridge.events
     val detectedOs: StateFlow<String?> get() = bridge.osName
 
-    suspend fun answer(prompt: PendingPrompt, answer: PromptAnswer): Boolean =
-        withContext(Dispatchers.IO) { rust.answer(prompt.id, answer) }.also { bridge.promptAnswered() }
+    suspend fun answer(prompt: PendingPrompt, answer: PromptAnswer): Boolean {
+        bridge.promptAnswered(prompt.id)
+        return withContext(Dispatchers.IO) { rust.answer(prompt.id, answer) }
+    }
 }
 
 /**
@@ -120,7 +121,7 @@ class TerminalSession(
  * The foreground service mirrors the session count so Android keeps the process
  * (and the sockets) alive while the user is in another app.
  */
-class SessionManager(private val context: Context, private val repo: VaultRepository) {
+class SessionManager(private val repo: VaultRepository, private val keepAlive: KeepAlive) {
     private val _sessions = MutableStateFlow<List<TerminalSession>>(emptyList())
     val sessions: StateFlow<List<TerminalSession>> = _sessions.asStateFlow()
 
@@ -172,7 +173,7 @@ class SessionManager(private val context: Context, private val repo: VaultReposi
         }
         _sessions.update { list -> list.filterNot { it.id == fresh.id }.map { if (it.id == id) fresh else it } }
         withContext(Dispatchers.IO) { runCatching { old.rust.disconnect() } }
-        SessionService.sync(context, _sessions.value.size)
+        keepAlive.terminals(_sessions.value.size)
         return fresh
     }
 
@@ -191,7 +192,7 @@ class SessionManager(private val context: Context, private val repo: VaultReposi
     private fun register(session: TerminalSession): TerminalSession {
         _sessions.update { it + session }
         _activeId.value = session.id
-        SessionService.sync(context, _sessions.value.size)
+        keepAlive.terminals(_sessions.value.size)
         return session
     }
 
@@ -201,7 +202,7 @@ class SessionManager(private val context: Context, private val repo: VaultReposi
         _sessions.update { list -> list.filterNot { it.id == id } }
         if (_activeId.value == id) _activeId.value = _sessions.value.lastOrNull()?.id
         withContext(Dispatchers.IO) { runCatching { session.rust.disconnect() } }
-        SessionService.sync(context, _sessions.value.size)
+        keepAlive.terminals(_sessions.value.size)
     }
 
     suspend fun closeAll() {
@@ -209,6 +210,6 @@ class SessionManager(private val context: Context, private val repo: VaultReposi
         _sessions.value = emptyList()
         _activeId.value = null
         withContext(Dispatchers.IO) { list.forEach { runCatching { it.rust.disconnect() } } }
-        SessionService.sync(context, 0)
+        keepAlive.terminals(0)
     }
 }

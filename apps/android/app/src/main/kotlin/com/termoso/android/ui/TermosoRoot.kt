@@ -138,6 +138,7 @@ fun TermosoRoot(container: AppContainer, vault: VaultState) {
                             container = container,
                             repo = vault.repo,
                             sessions = vault.sessions,
+                            sftp = vault.sftp,
                             account = vault.account,
                             onLock = {
                                 manualLock = true

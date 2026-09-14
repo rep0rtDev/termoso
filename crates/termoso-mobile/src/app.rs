@@ -9,6 +9,7 @@ use std::sync::{Arc, LazyLock};
 use termoso_client::hosts::{self, CopyCredentials};
 use termoso_client::keychain;
 use termoso_core::hostkey::KnownHosts;
+use termoso_core::model::ResolvedHost;
 use termoso_core::ssh::SshTarget;
 use termoso_core::store::Store;
 use termoso_crypto::keys::SymmetricKey;
@@ -22,6 +23,7 @@ use crate::dto::*;
 use crate::error::{MobileError, Result};
 use crate::session::{Launch, SessionListener, SshSession, TerminalOptions};
 use crate::settings::MobileSettings;
+use crate::sftp::{SftpLaunch, SftpListener, SftpSession};
 
 const DB_FILE: &str = "vault.db";
 
@@ -608,18 +610,7 @@ impl TermosoApp {
         options: TerminalOptions,
         listener: Arc<dyn SessionListener>,
     ) -> Result<Arc<SshSession>> {
-        let resolved = self.store.resolve_host(parse_id(&host_id)?)?;
-        if resolved.protocol() != "ssh" {
-            return Err(MobileError::invalid(format!(
-                "{} hosts are not supported on mobile yet",
-                resolved.protocol()
-            )));
-        }
-        let target = SshTarget {
-            host: resolved.host.data.address.clone(),
-            port: resolved.port(),
-            username: resolved.username(),
-        };
+        let (resolved, target) = self.ssh_host(&host_id)?;
         Ok(SshSession::launch(
             RUNTIME.handle().clone(),
             Launch {
@@ -641,22 +632,11 @@ impl TermosoApp {
         options: TerminalOptions,
         listener: Arc<dyn SessionListener>,
     ) -> Result<Arc<SshSession>> {
-        if target.host.trim().is_empty() {
-            return Err(MobileError::invalid("host is empty"));
-        }
         Ok(SshSession::launch(
             RUNTIME.handle().clone(),
             Launch {
                 store: self.store.clone(),
-                target: SshTarget {
-                    host: target.host.trim().to_string(),
-                    port: target.port,
-                    username: if target.username.trim().is_empty() {
-                        "root".into()
-                    } else {
-                        target.username.trim().to_string()
-                    },
-                },
+                target: quick_target(&target)?,
                 resolved: None,
                 settings: MobileSettings::load(&self.store)?,
                 options,
@@ -664,4 +644,75 @@ impl TermosoApp {
             },
         ))
     }
+
+    /// Open SFTP to a saved host. Returns at once; state, prompts and
+    /// transfers arrive on `listener`.
+    pub fn sftp_host(
+        &self,
+        host_id: String,
+        listener: Arc<dyn SftpListener>,
+    ) -> Result<Arc<SftpSession>> {
+        let (resolved, target) = self.ssh_host(&host_id)?;
+        Ok(SftpSession::launch(
+            RUNTIME.handle().clone(),
+            SftpLaunch {
+                store: self.store.clone(),
+                target,
+                resolved: Some(resolved),
+                settings: MobileSettings::load(&self.store)?,
+                listener,
+            },
+        ))
+    }
+
+    /// Open SFTP to an ad-hoc target.
+    pub fn sftp_quick(
+        &self,
+        target: QuickTarget,
+        listener: Arc<dyn SftpListener>,
+    ) -> Result<Arc<SftpSession>> {
+        Ok(SftpSession::launch(
+            RUNTIME.handle().clone(),
+            SftpLaunch {
+                store: self.store.clone(),
+                target: quick_target(&target)?,
+                resolved: None,
+                settings: MobileSettings::load(&self.store)?,
+                listener,
+            },
+        ))
+    }
+}
+
+impl TermosoApp {
+    fn ssh_host(&self, host_id: &str) -> Result<(ResolvedHost, SshTarget)> {
+        let resolved = self.store.resolve_host(parse_id(host_id)?)?;
+        if resolved.protocol() != "ssh" {
+            return Err(MobileError::invalid(format!(
+                "{} hosts are not supported on mobile yet",
+                resolved.protocol()
+            )));
+        }
+        let target = SshTarget {
+            host: resolved.host.data.address.clone(),
+            port: resolved.port(),
+            username: resolved.username(),
+        };
+        Ok((resolved, target))
+    }
+}
+
+fn quick_target(target: &QuickTarget) -> Result<SshTarget> {
+    if target.host.trim().is_empty() {
+        return Err(MobileError::invalid("host is empty"));
+    }
+    Ok(SshTarget {
+        host: target.host.trim().to_string(),
+        port: target.port,
+        username: if target.username.trim().is_empty() {
+            "root".into()
+        } else {
+            target.username.trim().to_string()
+        },
+    })
 }
