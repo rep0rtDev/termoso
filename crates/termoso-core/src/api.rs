@@ -19,9 +19,10 @@ use termoso_proto::account::{
 };
 use termoso_proto::auth::{
     AuthResponse, Device, DeviceApproveRequest, DeviceApproveResendRequest, DeviceList,
-    LoginFinishRequest, LoginStartRequest, LoginStartResponse, MfaCredential, MfaVerifyRequest,
-    ReauthFinishRequest, ReauthStartRequest, ReauthStartResponse, RegisterFinishRequest,
-    RegisterStartRequest, RegisterStartResponse, WebauthnChallengeRequest,
+    LoginFinishRequest, LoginStartRequest, LoginStartResponse, MfaCredential, MfaStatus,
+    MfaVerifyRequest, ReauthFinishRequest, ReauthStartRequest, ReauthStartResponse,
+    RegisterFinishRequest, RegisterStartRequest, RegisterStartResponse, WebauthnChallengeRequest,
+    WebauthnCredentialInfo, WebauthnRegisterFinishRequest,
 };
 use termoso_proto::error::ApiError;
 use termoso_proto::live::{CreateLiveSessionRequest, LiveSession, LiveSessionList};
@@ -38,8 +39,7 @@ use termoso_proto::sync::{
 };
 use termoso_proto::team::{
     AuditEventList, CreateInviteRequest, CreateTeamRequest, CreatedInvite, InviteList,
-    PendingVaultKeys, Team, TeamList, TeamMember, TeamMemberList, UpdateTeamMemberRequest,
-    UpdateTeamRequest,
+    PendingVaultKeys, Team, TeamList, TeamMemberList, UpdateTeamMemberRequest, UpdateTeamRequest,
 };
 use termoso_proto::vault::{
     CreateVaultRequest, RotateVaultKeyRequest, RotateVaultKeyResponse, UpdateVaultRequest, Vault,
@@ -230,6 +230,10 @@ impl ApiClient {
         Self::send(self.request(Method::PATCH, path).json(body)).await
     }
 
+    async fn patch_empty<B: Serialize + ?Sized>(&self, path: &str, body: &B) -> Result<()> {
+        Self::send_empty(self.request(Method::PATCH, path).json(body)).await
+    }
+
     async fn put_empty<B: Serialize + ?Sized>(&self, path: &str, body: &B) -> Result<()> {
         Self::send_empty(self.request(Method::PUT, path).json(body)).await
     }
@@ -378,6 +382,45 @@ impl ApiClient {
         self.delete(&format!("account/devices/{id}")).await
     }
 
+    // ─────────────────────────────── MFA ──────────────────────────────
+
+    /// `GET /account/mfa`.
+    pub async fn mfa_status(&self) -> Result<MfaStatus> {
+        self.get("account/mfa").await
+    }
+
+    /// `POST /account/mfa/webauthn/register/start` — WebAuthn
+    /// `PublicKeyCredentialCreationOptions` (`{"publicKey": …}`).
+    pub async fn webauthn_register_start(&self) -> Result<serde_json::Value> {
+        self.post(
+            "account/mfa/webauthn/register/start",
+            &serde_json::json!({}),
+        )
+        .await
+    }
+
+    /// `POST /account/mfa/webauthn/register/finish` with the
+    /// `RegisterPublicKeyCredential` the authenticator produced.
+    pub async fn webauthn_register_finish(
+        &self,
+        name: &str,
+        credential: serde_json::Value,
+    ) -> Result<WebauthnCredentialInfo> {
+        self.post(
+            "account/mfa/webauthn/register/finish",
+            &WebauthnRegisterFinishRequest {
+                name: name.into(),
+                credential,
+            },
+        )
+        .await
+    }
+
+    /// `DELETE /account/mfa/webauthn/{id}`.
+    pub async fn webauthn_delete(&self, id: Uuid) -> Result<()> {
+        self.delete(&format!("account/mfa/webauthn/{id}")).await
+    }
+
     // ───────────────────────────── SSH ID ─────────────────────────────
 
     /// `GET /account/sshid` — the account's SSH ID, `None` until claimed.
@@ -509,8 +552,8 @@ impl ApiClient {
         id: Uuid,
         user_id: Uuid,
         req: &UpdateTeamMemberRequest,
-    ) -> Result<TeamMember> {
-        self.patch(&format!("teams/{id}/members/{user_id}"), req)
+    ) -> Result<()> {
+        self.patch_empty(&format!("teams/{id}/members/{user_id}"), req)
             .await
     }
 

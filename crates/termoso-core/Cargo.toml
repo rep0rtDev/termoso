@@ -27,8 +27,21 @@ portable-pty = { version = "0.9", optional = true }
 serialport = { version = "4.9", default-features = false, optional = true }
 encoding_rs = { version = "0.8", optional = true }
 rand = "0.10"
-# FIDO2 security keys (CTAP2 over USB HID).
+# FIDO2 security keys: desktop USB HID backend…
 ctap-hid-fido2 = { version = "3.5", optional = true }
+# …and our own CTAP2 client (CBOR, PIN protocols 1/2) for transports the
+# platform hands us (Android USB host / NFC).
+ciborium = { version = "0.2", optional = true }
+p256 = { version = "0.13", optional = true, features = ["ecdh"] }
+aes = { version = "0.8" }
+cbc = { version = "0.1", optional = true }
+# Mosh: AES-128-OCB3 datagrams + zlib-compressed instructions.
+ocb3 = { version = "0.1", default-features = false }
+flate2 = "1"
+hkdf = { workspace = true, optional = true }
+rand_core = { workspace = true, optional = true }
+# Software authenticator for tests (feature `fido2-soft`).
+ed25519-dalek = { version = "2", optional = true }
 
 # server api
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
@@ -51,7 +64,7 @@ quick-xml = "0.41"
 dirs = "6"
 
 [features]
-default = ["keychain", "local-pty", "serial", "fido2"]
+default = ["keychain", "local-pty", "serial", "fido2", "fido2-ctap"]
 # Store the local master key in the OS keychain (Secret Service / Credential Manager / Keychain).
 keychain = ["dep:keyring"]
 # Local terminal (spawns the user's shell in a PTY).
@@ -60,8 +73,13 @@ local-pty = ["dep:portable-pty"]
 serial = ["dep:serialport", "dep:encoding_rs"]
 # FIDO2 security keys (`sk-ssh-ed25519@openssh.com`, `sk-ecdsa-sha2-nistp256@openssh.com`).
 fido2 = ["dep:ctap-hid-fido2"]
+# Transport-agnostic CTAP2 client (`fido2::ctap`, `fido2::hid`, `fido2::nfc`).
+fido2-ctap = ["dep:ciborium", "dep:p256", "dep:cbc", "dep:hkdf", "dep:rand_core"]
+# In-memory CTAP2 authenticator (`fido2::soft`) – test double, not for production.
+fido2-soft = ["fido2-ctap", "dep:ed25519-dalek"]
 
 [dev-dependencies]
+termoso-core = { path = ".", features = ["fido2-soft"] }
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
 termoso-server = { path = "../termoso-server" }

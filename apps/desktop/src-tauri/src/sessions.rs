@@ -981,15 +981,16 @@ async fn open_mosh<R: Runtime>(
         let _ = jump.disconnect().await;
     }
     let boot = boot?;
-    let ip = match &boot.ip {
-        Some(ip) => ip.clone(),
-        None => {
-            crate::mosh::resolve_ip(
-                &resolved.host.data.address,
-                IpVersion::parse(&resolved.host.data.ip_version),
-            )
-            .await?
-        }
+    // Prefer the address we resolve ourselves — the one SSH just reached; the
+    // server's own `MOSH IP` is wrong behind NAT or a port forward.
+    let ip = match crate::mosh::resolve_ip(
+        &resolved.host.data.address,
+        IpVersion::parse(&resolved.host.data.ip_version),
+    )
+    .await
+    {
+        Ok(ip) => ip,
+        Err(e) => boot.ip.clone().ok_or(e)?,
     };
     let (term, events) =
         crate::mosh::spawn_client(client_bin, &ip, &boot, settings.term_type.as_str(), size)?;
@@ -1366,7 +1367,7 @@ async fn ssh_connect<R: Runtime>(
                     private_key: Zeroizing::new(key.data.private_key.clone()),
                     passphrase: passphrase.clone(),
                     pin: pin.clone(),
-                    device: None,
+                    backend: Arc::new(fido2::UsbBackend::default()),
                     certificate,
                 });
             } else {

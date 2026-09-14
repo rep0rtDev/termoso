@@ -236,13 +236,13 @@ pub async fn rotate<R: Runtime>(app: &AppHandle<R>) -> Result<SshIdView> {
         .await?
         .ok_or_else(|| DesktopError::invalid("SSH ID is not set up"))?;
     let handle = profile.handle.clone();
-    let s = state.store.clone();
-    let keys = tokio::task::spawn_blocking(move || core::rotate_device_keys(&s, &handle))
+    let keys = tokio::task::spawn_blocking(move || core::new_device_keys(&handle))
         .await
         .map_err(|e| DesktopError::invalid(e.to_string()))??;
     let profile = api
         .put_sshid_device_keys(&core::upload_request(&keys))
         .await?;
+    core::save_device_keys(&state.store, &keys)?;
     view_of(&state.store, Some(profile))
 }
 
@@ -358,7 +358,7 @@ pub fn auth_methods(
             private_key: Zeroizing::new(k.data.private_key),
             passphrase: None,
             pin: pin.clone(),
-            device: None,
+            backend: Arc::new(fido2::UsbBackend::default()),
             certificate: None,
         })
         .collect();

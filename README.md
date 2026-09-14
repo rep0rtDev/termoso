@@ -108,6 +108,7 @@ annotated list; the source of truth is `crates/termoso-server/src/config.rs`.
 | `TERMOSO_S3__*` | S3-compatible storage for session logs (optional) |
 | `TERMOSO_SMTP__*` | outgoing e-mail (optional; without it e-mail features are off) |
 | `TERMOSO_WEBAUTHN__*` | passkeys (optional) |
+| `TERMOSO_ANDROID_APP_LINKS` | `<package>=<SHA-256 cert fingerprint>` pairs published at `/.well-known/assetlinks.json` so the Android app opens this server's `/invite/…` and `/join/…` links directly (optional) |
 | `TERMOSO_SSO__<slug>__*` | OIDC providers; `google`, `github`, `microsoft` presets |
 | `TERMOSO_METRICS__ENABLED` | opt-in Prometheus metrics on a private listener |
 | `TERMOSO_REDIS_PREFIX` | key prefix when several deployments share one Redis |

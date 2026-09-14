@@ -102,13 +102,15 @@ export function protocolLink(h: HostCard, protocol: HostProtocol = h.protocol): 
 export type LinkTarget =
   | { kind: "host"; hostId: Uuid }
   | { kind: "quick"; target: QuickTarget }
-  /** Multiplayer invitation (`termoso://join/<session>…#<secret>`). */
+  /** Multiplayer invitation (`https://<server>/join/<session>#<secret>` or `termoso://join/…`). */
   | { kind: "live"; link: string }
   | { kind: "unsupported"; url: string };
 
 /** Is this a multiplayer invitation link? */
 export const isLiveLink = (s: string) =>
-  /^termoso:\/\/join\/[0-9a-f-]{36}(?:[/?].*)?#[A-Za-z0-9_-]{40,}$/i.test(s.trim());
+  /^(?:termoso:\/\/join\/|https?:\/\/[^\s?#]+\/join\/)[0-9a-f-]{36}(?:[/?][^#]*)?#[A-Za-z0-9_-]{40,}$/i.test(
+    s.trim(),
+  );
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

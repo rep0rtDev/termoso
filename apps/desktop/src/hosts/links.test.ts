@@ -209,5 +209,16 @@ describe("links", () => {
     expect(parseLink(`termoso://join/${ID}`)).toMatchObject({ kind: "unsupported" });
     expect(parseLink(`termoso://join/${ID}#short`)).toMatchObject({ kind: "unsupported" });
     expect(parseLink(`termoso://join/nope#${secret}`)).toMatchObject({ kind: "unsupported" });
+    const web = `https://cloud.example.com/join/${ID}#${secret}`;
+    expect(parseLink(web)).toEqual({ kind: "live", link: web });
+    expect(parseLink(`https://x.test:8443/termoso/join/${ID}/?s=x#${secret}`)).toMatchObject({
+      kind: "live",
+    });
+    expect(parseLink(`https://cloud.example.com/join/${ID}`)).toMatchObject({
+      kind: "unsupported",
+    });
+    expect(parseLink(`https://cloud.example.com/invite/${ID}#${secret}`)).toMatchObject({
+      kind: "unsupported",
+    });
   });
 });

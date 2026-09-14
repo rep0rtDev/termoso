@@ -1,0 +1,43 @@
+[package]
+name = "termoso-mobile"
+description = "Termoso mobile façade: UniFFI bindings over termoso-core for the Android client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+name = "termoso_mobile"
+
+[dependencies]
+termoso-core = { workspace = true, features = ["local-pty", "fido2-ctap"] }
+termoso-client = { workspace = true }
+termoso-proto = { workspace = true }
+termoso-crypto = { workspace = true }
+
+uniffi = { workspace = true }
+alacritty_terminal = { workspace = true }
+russh = { version = "0.63", features = ["rsa"] }
+
+tokio = { workspace = true }
+tokio-util = { version = "0.7" }
+bytes = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+zeroize = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+tracing-android = "0.2"
+
+[dev-dependencies]
+termoso-core = { workspace = true, features = ["fido2-soft"] }
+tempfile = "3"
+rand = "0.10"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
