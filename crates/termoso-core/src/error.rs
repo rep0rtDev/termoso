@@ -81,6 +81,9 @@ pub enum CoreError {
     /// FIDO2 security key (no device, PIN, touch…).
     #[error("security key: {0}")]
     Fido2(#[from] crate::fido2::Fido2Error),
+    /// Mosh bootstrap or UDP session failure.
+    #[error("{0}")]
+    Mosh(#[from] crate::mosh::MoshError),
     /// Operation was cancelled.
     #[error("cancelled")]
     Cancelled,
@@ -152,6 +155,7 @@ impl CoreError {
             CoreError::Terminal(_) => "terminal",
             CoreError::Key(_) => "key",
             CoreError::Fido2(e) => e.kind(),
+            CoreError::Mosh(_) => "mosh",
             CoreError::Cancelled => "cancelled",
             CoreError::Closed => "closed",
         }

@@ -75,6 +75,12 @@ pub fn core_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+/// The `mosh-server` command line used when a host sets none.
+#[uniffi::export]
+pub fn mosh_default_server_command() -> String {
+    termoso_core::mosh::DEFAULT_SERVER_COMMAND.to_string()
+}
+
 /// A fresh 32-byte master key for a new profile. The caller wraps it with
 /// the Android Keystore and hands it back to [`TermosoApp::open`] on every
 /// launch; Rust never persists it.

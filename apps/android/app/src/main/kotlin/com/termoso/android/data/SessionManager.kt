@@ -13,6 +13,7 @@ import com.termoso.core.SessionState
 import com.termoso.core.SshSession
 import com.termoso.core.TerminalOptions
 import com.termoso.core.TerminalPalette
+import com.termoso.core.Transport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -159,6 +160,8 @@ class TerminalSession(
     val hostId: String?,
     /** Set for quick-connect sessions (no saved host). */
     val quick: QuickTarget?,
+    /** How the shell was opened; a reconnect keeps it. */
+    val transport: Transport,
     /** OS saved on the host; [detectedOs] supersedes it once the shell opens. */
     val savedOsName: String?,
     val rust: SshSession,
@@ -212,12 +215,13 @@ class SessionManager(private val repo: VaultRepository, private val keepAlive: K
         if (_sessions.value.any { it.id == id }) _activeId.value = id
     }
 
-    suspend fun connectHost(hostId: String): TerminalSession {
+    suspend fun connectHost(hostId: String, transport: Transport = Transport.AUTO): TerminalSession {
         val host: HostItem = repo.read { host(hostId) }
         val bridge = SessionBridge()
-        val rust = repo.read { connectHost(hostId, options(), bridge) }
+        val rust = repo.read { connectHost(hostId, options(transport), bridge) }
         val user = host.username.takeIf { it.isNotBlank() }?.let { "$it@" } ?: ""
-        val target = "$user${host.address}:${host.port}"
+        val mosh = transport == Transport.MOSH || (transport == Transport.AUTO && host.useMosh)
+        val target = "$user${host.address}:${host.port}" + if (mosh) " · Mosh" else ""
         return register(
             TerminalSession(
                 rust.id(),
@@ -225,6 +229,7 @@ class SessionManager(private val repo: VaultRepository, private val keepAlive: K
                 target,
                 hostId,
                 null,
+                transport,
                 host.osName,
                 rust,
                 bridge,
@@ -234,9 +239,9 @@ class SessionManager(private val repo: VaultRepository, private val keepAlive: K
 
     suspend fun connectQuick(target: QuickTarget): TerminalSession {
         val bridge = SessionBridge()
-        val rust = repo.read { connectQuick(target, options(), bridge) }
+        val rust = repo.read { connectQuick(target, options(Transport.SSH), bridge) }
         val text = "${target.username}@${target.host}:${target.port}"
-        return register(TerminalSession(rust.id(), target.host, text, null, target, null, rust, bridge))
+        return register(TerminalSession(rust.id(), target.host, text, null, target, Transport.SSH, null, rust, bridge))
     }
 
     /**
@@ -246,7 +251,7 @@ class SessionManager(private val repo: VaultRepository, private val keepAlive: K
     suspend fun joinLive(link: String): TerminalSession {
         val bridge = SessionBridge()
         val live = LiveBridge(viewer = true)
-        val rust = repo.read { joinLive(link, options(), bridge, live) }
+        val rust = repo.read { joinLive(link, options(Transport.SSH), bridge, live) }
         return register(
             TerminalSession(
                 id = rust.id(),
@@ -254,6 +259,7 @@ class SessionManager(private val repo: VaultRepository, private val keepAlive: K
                 target = "Multiplayer",
                 hostId = null,
                 quick = null,
+                transport = Transport.SSH,
                 savedOsName = null,
                 rust = rust,
                 bridge = bridge,
@@ -294,7 +300,7 @@ class SessionManager(private val repo: VaultRepository, private val keepAlive: K
     suspend fun reconnect(id: String): TerminalSession? {
         val old = find(id) ?: return null
         val fresh = when {
-            old.hostId != null -> connectHost(old.hostId)
+            old.hostId != null -> connectHost(old.hostId, old.transport)
             old.quick != null -> connectQuick(old.quick)
             else -> return null
         }
@@ -309,11 +315,12 @@ class SessionManager(private val repo: VaultRepository, private val keepAlive: K
         _sessions.value.forEach { runCatching { it.rust.setPalette(palette) } }
     }
 
-    private fun options() = TerminalOptions(
+    private fun options(transport: Transport) = TerminalOptions(
         cols = 80u,
         rows = 24u,
         termType = "",
         palette = null,
+        transport = transport,
     )
 
     private fun register(session: TerminalSession): TerminalSession {
