@@ -41,6 +41,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.Fido2Manager
+import com.termoso.android.data.ReauthCancelled
 import com.termoso.android.data.userMessage
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.IconTile
@@ -138,7 +139,13 @@ class SecurityKeysViewModel(private val account: AccountManager, private val fid
                 }
                 .onFailure { e ->
                     _state.update {
-                        it.copy(working = false, ceremony = false, touch = false, pin = keepPin(e, it.pin), error = e.userMessage())
+                        it.copy(
+                            working = false,
+                            ceremony = false,
+                            touch = false,
+                            pin = keepPin(e, it.pin),
+                            error = e.takeUnless { it is ReauthCancelled }?.userMessage(),
+                        )
                     }
                 }
         }
@@ -153,7 +160,7 @@ class SecurityKeysViewModel(private val account: AccountManager, private val fid
                 }
                 reload()
             }
-            .onFailure { e -> _state.update { it.copy(working = false, error = e.userMessage()) } }
+            .onFailure { e -> _state.update { it.copy(working = false, error = e.takeUnless { it is ReauthCancelled }?.userMessage()) } }
             .isSuccess
     }
 }
@@ -167,6 +174,7 @@ fun SecurityKeysScreen(shell: ShellViewModel, account: AccountManager, onBack: (
     val pending by fido2.usbPending.collectAsStateWithLifecycle()
     val device = s.device(devices)
     val scope = rememberCoroutineScope()
+    val reauth by account.reauthRequest.collectAsStateWithLifecycle()
     var removing by remember { mutableStateOf<SecurityKeyCredential?>(null) }
 
     SecurityKeyListening(fido2)
@@ -287,7 +295,7 @@ fun SecurityKeysScreen(shell: ShellViewModel, account: AccountManager, onBack: (
         }
     }
 
-    if (s.ceremony) TouchDialog(touch = s.touch, transportNfc = device?.transport == Fido2Transport.NFC)
+    if (s.ceremony && reauth == null) TouchDialog(touch = s.touch, transportNfc = device?.transport == Fido2Transport.NFC)
 
     removing?.let { k ->
         val last = s.card?.let { it.securityKeys.size == 1 && !it.totpEnabled } == true

@@ -13,6 +13,7 @@ fun Throwable.userMessage(): String = when (this) {
     is MobileException.Key -> detail
     is MobileException.Cancelled -> "Cancelled."
     is MobileException.Closed -> "Connection closed."
+    is MobileException.ReauthRequired -> "Confirm your password to make this change."
     is MobileException.SecurityKey -> securityKeyMessage(kind, detail, retries)
     is MobileException.Other -> when (kind) {
         "api" -> apiMessage(detail)

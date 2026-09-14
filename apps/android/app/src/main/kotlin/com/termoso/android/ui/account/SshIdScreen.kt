@@ -51,6 +51,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.data.AccountManager
+import com.termoso.android.data.ReauthCancelled
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
 import com.termoso.android.ui.components.EmptyState
@@ -92,13 +94,17 @@ data class SshIdUiState(
  * passkeys are generated and kept in the encrypted store, the server and this
  * screen only ever see public keys and fingerprints.
  */
-class SshIdViewModel(private val repo: VaultRepository) : ViewModel() {
+class SshIdViewModel(private val repo: VaultRepository, private val account: AccountManager) : ViewModel() {
     private val _state = MutableStateFlow(SshIdUiState())
     val state: StateFlow<SshIdUiState> = _state.asStateFlow()
 
+    /** Read-only refresh: never prompts, so stale device keys show as "Not published". */
     fun reload() {
-        viewModelScope.launch { call { sshid() } }
+        viewModelScope.launch { call(guarded = false) { sshid() } }
     }
+
+    /** Push this device's keys; the server may ask to confirm the password first. */
+    suspend fun publish(): Boolean = call { sshidPublish() }
 
     suspend fun create(handle: String): Boolean = call { sshidCreate(handle) }
 
@@ -108,18 +114,20 @@ class SshIdViewModel(private val repo: VaultRepository) : ViewModel() {
 
     suspend fun delete(): Boolean = call { sshidDelete() }
 
-    private suspend fun call(block: TermosoApp.() -> SshIdView): Boolean {
+    private suspend fun call(guarded: Boolean = true, block: TermosoApp.() -> SshIdView): Boolean {
         _state.update { it.copy(working = true, error = null) }
-        return runCatching { repo.read(block) }
+        return runCatching { if (guarded) account.withReauth { repo.read(block) } else repo.read(block) }
             .onSuccess { v -> _state.update { it.copy(loading = false, working = false, view = v) } }
-            .onFailure { e -> _state.update { it.copy(loading = false, working = false, error = e.userMessage()) } }
+            .onFailure { e ->
+                _state.update { it.copy(loading = false, working = false, error = e.takeUnless { it is ReauthCancelled }?.userMessage()) }
+            }
             .isSuccess
     }
 }
 
 @Composable
-fun SshIdScreen(shell: ShellViewModel, onBack: () -> Unit) {
-    val vm: SshIdViewModel = viewModel { SshIdViewModel(shell.repo) }
+fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Unit) {
+    val vm: SshIdViewModel = viewModel { SshIdViewModel(shell.repo, account) }
     val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -139,7 +147,10 @@ fun SshIdScreen(shell: ShellViewModel, onBack: () -> Unit) {
         onBack = onBack,
         actions = {
             if (handle != null) {
-                IconButton(onClick = { vm.reload() }, enabled = !state.working) {
+                IconButton(
+                    onClick = { scope.launch { if (vm.publish()) shell.notify("Keys are up to date") } },
+                    enabled = !state.working,
+                ) {
                     Icon(Icons.Filled.Refresh, contentDescription = "Refresh and re-publish")
                 }
                 Box {
@@ -190,6 +201,7 @@ fun SshIdScreen(shell: ShellViewModel, onBack: () -> Unit) {
                     working = state.working,
                     onCopy = { label, text -> copyText(context, label, text); shell.notify("$label copied") },
                     onRemoveKey = { removeKey = it },
+                    onPublish = { scope.launch { if (vm.publish()) shell.notify("Keys published") } },
                 )
             }
             Spacer(Modifier.height(24.dp))
@@ -303,6 +315,7 @@ private fun HandleSections(
     working: Boolean,
     onCopy: (String, String) -> Unit,
     onRemoveKey: (SshIdKeyCard) -> Unit,
+    onPublish: () -> Unit,
 ) {
     val handle = view.handle ?: return
     val url = view.url ?: return
@@ -355,6 +368,18 @@ private fun HandleSections(
         view.deviceKeys.forEachIndexed { i, k ->
             if (i > 0) RowDivider()
             DeviceKeyRow(k, onCopy = { onCopy("${k.keyType.label()} public key", k.publicKey) })
+        }
+        if (view.deviceKeys.isEmpty() || view.deviceKeys.any { !it.published }) {
+            RowDivider()
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(
+                    "Publishing keys is a security-sensitive change: the server asks you to confirm your password first.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = onPublish, enabled = !working) { Text("Publish keys") }
+            }
         }
     }
 
