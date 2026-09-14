@@ -473,7 +473,8 @@ impl Sftp {
             .open_with_flags(remote, flags)
             .await
             .map_err(sftp_err)?;
-        if offset > 0 && !flags.contains(OpenFlags::APPEND) {
+        // O_APPEND servers ignore the offset; the rest need it.
+        if offset > 0 {
             dst.seek(std::io::SeekFrom::Start(offset)).await?;
         }
         opts.report(offset, total);

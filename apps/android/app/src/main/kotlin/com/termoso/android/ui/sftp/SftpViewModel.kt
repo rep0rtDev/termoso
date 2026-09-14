@@ -92,6 +92,8 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
 
     private val sinks = HashMap<ULong, Sink>()
     private val scratchOf = HashMap<ULong, File>()
+    /** Failures already announced, so re-emitted cards don't repeat the notice. */
+    private val failed = HashSet<ULong>()
     private var scratchSeq = 0
     private var started = false
 
@@ -304,30 +306,61 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
 
     // ───────────────────────────── transfers ─────────────────────────────
 
+    fun pauseTransfer(id: ULong) {
+        viewModelScope.launch { runCatching { conn.io { pauseTransfer(id) } } }
+    }
+
+    /** Paused or failed: continue from the bytes already on the destination. */
+    fun resumeTransfer(id: ULong) {
+        viewModelScope.launch { runCatching { conn.io { resumeTransfer(id) } } }
+    }
+
     fun cancelTransfer(id: ULong) {
         viewModelScope.launch { runCatching { conn.io { cancelTransfer(id) } } }
     }
 
     fun dismissTransfer(id: ULong) {
-        viewModelScope.launch { runCatching { conn.dismissTransfer(id) } }
+        viewModelScope.launch { dismiss(id) }
     }
 
     fun clearFinishedTransfers() {
-        val finished = conn.transfers.value.filter { it.status !is TransferStatus.Queued && it.status !is TransferStatus.Running }
-        viewModelScope.launch { finished.forEach { runCatching { conn.dismissTransfer(it.id) } } }
+        val finished = conn.transfers.value.filter { it.status.isFinished }
+        viewModelScope.launch { finished.forEach { dismiss(it.id) } }
     }
 
-    /** Runs once per finished card: move the scratch file where it was meant to go, then forget it. */
+    private suspend fun dismiss(id: ULong) {
+        if (runCatching { conn.dismissTransfer(id) }.getOrDefault(false).not()) return
+        // A failed card keeps its partial file for Retry until it is dismissed.
+        val scratch = synchronized(sinks) {
+            failed.remove(id)
+            sinks.remove(id)
+            scratchOf.remove(id)
+        }
+        if (scratch != null) withContext(Dispatchers.IO) { scratch.delete() }
+    }
+
+    /** Runs once per settled card: move the scratch file where it was meant to go, then forget it. */
     private fun settle(card: TransferCard) {
-        if (card.status is TransferStatus.Queued || card.status is TransferStatus.Running) return
+        when (val st = card.status) {
+            is TransferStatus.Failed -> {
+                if (synchronized(sinks) { failed.add(card.id) }) notice("${card.name}: ${st.message}")
+                return
+            }
+            is TransferStatus.Done, is TransferStatus.Cancelled -> Unit
+            else -> {
+                synchronized(sinks) { failed.remove(card.id) }
+                return
+            }
+        }
         val (sink, scratch) = synchronized(sinks) {
+            failed.remove(card.id)
             val s = sinks.remove(card.id)
             val f = scratchOf.remove(card.id)
             if (s == null && f == null) return
             s to f
         }
         viewModelScope.launch {
-            when (val st = card.status) {
+            when (card.status) {
                 is TransferStatus.Done -> when (sink) {
                     is Sink.SaveToTree -> if (scratch != null) {
                         runCatching { withContext(Dispatchers.IO) { LocalFiles.saveToTree(appContext, sink.tree, scratch) } }
@@ -341,12 +374,7 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
                         if (card.remotePath.substringBeforeLast('/', "/").ifBlank { "/" } == _state.value.path) refresh()
                     }
                 }
-                is TransferStatus.Failed -> {
-                    notice("${card.name}: ${st.message}")
-                    if (scratch != null) withContext(Dispatchers.IO) { scratch.delete() }
-                }
-                is TransferStatus.Cancelled -> if (scratch != null) withContext(Dispatchers.IO) { scratch.delete() }
-                else -> Unit
+                else -> if (scratch != null) withContext(Dispatchers.IO) { scratch.delete() }
             }
         }
     }

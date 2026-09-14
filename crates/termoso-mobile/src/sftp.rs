@@ -8,7 +8,6 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -26,6 +25,8 @@ use crate::settings::MobileSettings;
 
 /// Progress callbacks are coalesced to this rate; the final one always goes out.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(120);
+/// Transfers moving bytes at once; the rest wait as `Queued`.
+const MAX_PARALLEL: usize = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum EntryKind {
@@ -73,16 +74,32 @@ pub enum TransferDirection {
     Download,
 }
 
+/// `Queued` → `Running` once a slot is free. `Paused` and `Failed` keep the
+/// partial file and go back to `Queued` on resume, continuing from where
+/// they stopped; `Cancelled` and `Done` are final.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum TransferStatus {
     Queued,
     Running,
+    Paused,
     Done,
     Failed { message: String },
     Cancelled,
 }
 
-/// A queued, running or finished transfer.
+impl TransferStatus {
+    /// Still owned by the queue: `dismiss` leaves it alone.
+    pub fn is_active(&self) -> bool {
+        matches!(self, Self::Queued | Self::Running | Self::Paused)
+    }
+
+    /// Can go back to `Queued`.
+    pub fn is_resumable(&self) -> bool {
+        matches!(self, Self::Paused | Self::Failed { .. })
+    }
+}
+
+/// A queued, running, paused or finished transfer.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct TransferCard {
     pub id: u64,
@@ -133,11 +150,255 @@ struct Live {
 
 struct Transfer {
     card: TransferCard,
+    /// Replaced for every run; cancelled to pause as well as to discard.
     cancel: CancellationToken,
+    /// The pending cancellation means pause, not discard.
+    pausing: bool,
+    /// The next run continues an existing partial file instead of
+    /// replacing it.
+    resume: bool,
     started: Instant,
-    /// `done` when the transfer began (resumed prefix), for the rate.
+    /// `done` when the current run began (resumed prefix), for the rate.
     base: u64,
+    /// The first progress report of the run sets `base`.
+    fresh: bool,
     last_report: Instant,
+}
+
+/// One run of a transfer, handed to the worker.
+struct Launch {
+    id: u64,
+    direction: TransferDirection,
+    remote: String,
+    local: String,
+    resume: bool,
+    cancel: CancellationToken,
+}
+
+/// Transfer bookkeeping: what to start, what changed. Every method that
+/// changes a card's status returns it so the caller can notify.
+struct TransferQueue {
+    transfers: BTreeMap<u64, Transfer>,
+    next_id: u64,
+    /// Parent of every transfer's token; fired by `disconnect`.
+    closed: CancellationToken,
+}
+
+impl TransferQueue {
+    fn new(closed: CancellationToken) -> Self {
+        Self {
+            transfers: BTreeMap::new(),
+            next_id: 1,
+            closed,
+        }
+    }
+
+    fn enqueue(
+        &mut self,
+        direction: TransferDirection,
+        remote: String,
+        local: String,
+    ) -> TransferCard {
+        let id = self.next_id;
+        self.next_id += 1;
+        let name = remote.rsplit('/').next().unwrap_or(&remote).to_string();
+        let card = TransferCard {
+            id,
+            direction,
+            name,
+            remote_path: remote,
+            local_path: local,
+            done: 0,
+            total: None,
+            bytes_per_sec: 0,
+            status: TransferStatus::Queued,
+        };
+        let now = Instant::now();
+        self.transfers.insert(
+            id,
+            Transfer {
+                card: card.clone(),
+                cancel: self.closed.child_token(),
+                pausing: false,
+                resume: false,
+                started: now,
+                base: 0,
+                fresh: true,
+                last_report: now,
+            },
+        );
+        card
+    }
+
+    fn cards(&self) -> Vec<TransferCard> {
+        self.transfers.values().map(|t| t.card.clone()).collect()
+    }
+
+    fn running(&self) -> usize {
+        self.transfers
+            .values()
+            .filter(|t| t.card.status == TransferStatus::Running)
+            .count()
+    }
+
+    /// Move queued transfers into free slots, oldest first.
+    fn take_ready(&mut self) -> Vec<(Launch, TransferCard)> {
+        let mut free = MAX_PARALLEL.saturating_sub(self.running());
+        let mut out = Vec::new();
+        for (&id, t) in self.transfers.iter_mut() {
+            if free == 0 {
+                break;
+            }
+            if t.card.status != TransferStatus::Queued {
+                continue;
+            }
+            free -= 1;
+            let now = Instant::now();
+            t.card.status = TransferStatus::Running;
+            t.card.bytes_per_sec = 0;
+            t.cancel = self.closed.child_token();
+            t.pausing = false;
+            t.started = now;
+            t.last_report = now;
+            t.fresh = true;
+            out.push((
+                Launch {
+                    id,
+                    direction: t.card.direction,
+                    remote: t.card.remote_path.clone(),
+                    local: t.card.local_path.clone(),
+                    resume: t.resume,
+                    cancel: t.cancel.clone(),
+                },
+                t.card.clone(),
+            ));
+        }
+        out
+    }
+
+    /// Keep the transfer for `resume`. Returns the card when it changed on
+    /// the spot (queued → paused); a running one changes when its worker
+    /// stops.
+    fn pause(&mut self, id: u64) -> Option<TransferCard> {
+        let t = self.transfers.get_mut(&id)?;
+        match t.card.status {
+            TransferStatus::Queued => {
+                t.card.status = TransferStatus::Paused;
+                Some(t.card.clone())
+            }
+            TransferStatus::Running => {
+                t.pausing = true;
+                t.cancel.cancel();
+                None
+            }
+            _ => None,
+        }
+    }
+
+    /// Put a paused or failed transfer back in line; it continues from the
+    /// partial file both sides already have.
+    fn resume(&mut self, id: u64) -> Option<TransferCard> {
+        let t = self.transfers.get_mut(&id)?;
+        if !t.card.status.is_resumable() {
+            return None;
+        }
+        t.card.status = TransferStatus::Queued;
+        t.card.bytes_per_sec = 0;
+        t.pausing = false;
+        t.resume = true;
+        Some(t.card.clone())
+    }
+
+    /// Discard the transfer. Returns the card when it changed on the spot;
+    /// a running one changes when its worker stops.
+    fn cancel(&mut self, id: u64) -> Option<TransferCard> {
+        let t = self.transfers.get_mut(&id)?;
+        match t.card.status {
+            TransferStatus::Queued | TransferStatus::Paused | TransferStatus::Failed { .. } => {
+                t.card.status = TransferStatus::Cancelled;
+                t.card.bytes_per_sec = 0;
+                Some(t.card.clone())
+            }
+            TransferStatus::Running => {
+                t.pausing = false;
+                t.cancel.cancel();
+                None
+            }
+            TransferStatus::Done | TransferStatus::Cancelled => None,
+        }
+    }
+
+    /// Forget a finished transfer; active ones are left alone.
+    fn dismiss(&mut self, id: u64) -> bool {
+        if self
+            .transfers
+            .get(&id)
+            .is_some_and(|t| !t.card.status.is_active())
+        {
+            self.transfers.remove(&id);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Returns the card when the UI should see it (rate-limited).
+    fn progress(&mut self, id: u64, p: Progress) -> Option<TransferCard> {
+        let t = self.transfers.get_mut(&id)?;
+        if t.card.status != TransferStatus::Running {
+            return None;
+        }
+        if t.fresh {
+            t.fresh = false;
+            t.base = p.done;
+        }
+        t.card.done = p.done;
+        t.card.total = p.total;
+        let elapsed = t.started.elapsed().as_secs_f64();
+        if elapsed > 0.2 {
+            t.card.bytes_per_sec = ((p.done.saturating_sub(t.base)) as f64 / elapsed) as u64;
+        }
+        let now = Instant::now();
+        let finished = p.total.is_some_and(|total| p.done >= total);
+        if !finished && now.duration_since(t.last_report) < PROGRESS_INTERVAL {
+            return None;
+        }
+        t.last_report = now;
+        Some(t.card.clone())
+    }
+
+    /// The worker stopped: settle the status. A cancelled run becomes
+    /// `Paused` when that was the intent, `Cancelled` otherwise; anything
+    /// short of `Done` keeps its partial file for a later resume.
+    fn finish(&mut self, id: u64, result: Result<()>) -> Option<TransferCard> {
+        let t = self.transfers.get_mut(&id)?;
+        if t.card.status != TransferStatus::Running {
+            return None;
+        }
+        let interrupted = t.cancel.is_cancelled();
+        t.card.status = match result {
+            Ok(()) => {
+                if let Some(total) = t.card.total {
+                    t.card.done = total;
+                }
+                TransferStatus::Done
+            }
+            Err(e) if interrupted || matches!(e, MobileError::Cancelled) => {
+                if t.pausing {
+                    TransferStatus::Paused
+                } else {
+                    TransferStatus::Cancelled
+                }
+            }
+            Err(e) => TransferStatus::Failed {
+                message: e.to_string(),
+            },
+        };
+        t.card.bytes_per_sec = 0;
+        t.pausing = false;
+        t.resume = true;
+        Some(t.card.clone())
+    }
 }
 
 struct Inner {
@@ -146,8 +407,8 @@ struct Inner {
     listener: Arc<dyn SftpListener>,
     state: Arc<Mutex<SessionState>>,
     live: Mutex<Option<Arc<Live>>>,
-    transfers: Mutex<BTreeMap<u64, Transfer>>,
-    next_transfer: AtomicU64,
+    queue: Mutex<TransferQueue>,
+    runtime: tokio::runtime::Handle,
     /// Fired by `disconnect`: aborts the connect and every transfer.
     closed: CancellationToken,
 }
@@ -188,15 +449,16 @@ impl SftpSession {
                 state: state.clone(),
             }),
         ));
+        let closed = CancellationToken::new();
         let inner = Arc::new(Inner {
             store,
             conn,
             listener,
             state,
             live: Mutex::new(None),
-            transfers: Mutex::new(BTreeMap::new()),
-            next_transfer: AtomicU64::new(1),
-            closed: CancellationToken::new(),
+            queue: Mutex::new(TransferQueue::new(closed.clone())),
+            runtime: runtime.clone(),
+            closed,
         });
         let session = Arc::new(Self {
             id: Uuid::new_v4(),
@@ -218,70 +480,15 @@ impl SftpSession {
     }
 
     fn queue(&self, direction: TransferDirection, remote: String, local: String) -> u64 {
-        let id = self.inner.next_transfer.fetch_add(1, Ordering::Relaxed);
-        let name = remote.rsplit('/').next().unwrap_or(&remote).to_string();
-        let card = TransferCard {
-            id,
-            direction,
-            name,
-            remote_path: remote,
-            local_path: local,
-            done: 0,
-            total: None,
-            bytes_per_sec: 0,
-            status: TransferStatus::Queued,
-        };
-        let cancel = self.inner.closed.child_token();
-        let now = Instant::now();
-        self.inner
-            .transfers
+        let card = self
+            .inner
+            .queue
             .lock()
-            .expect("transfers poisoned")
-            .insert(
-                id,
-                Transfer {
-                    card: card.clone(),
-                    cancel: cancel.clone(),
-                    started: now,
-                    base: 0,
-                    last_report: now,
-                },
-            );
+            .expect("queue poisoned")
+            .enqueue(direction, remote, local);
+        let id = card.id;
         self.inner.listener.on_transfer(card);
-        let inner = self.inner.clone();
-        self.runtime.spawn(async move {
-            let live = match inner.live.lock().expect("live poisoned").clone() {
-                Some(l) => l,
-                None => {
-                    inner.finish(id, Err(MobileError::Closed));
-                    return;
-                }
-            };
-            let (remote, local) = {
-                let mut map = inner.transfers.lock().expect("transfers poisoned");
-                let Some(t) = map.get_mut(&id) else { return };
-                t.card.status = TransferStatus::Running;
-                t.started = Instant::now();
-                (t.card.remote_path.clone(), t.card.local_path.clone())
-            };
-            let reporter = inner.clone();
-            let progress: ProgressFn = Arc::new(move |p: Progress| reporter.progress(id, p));
-            let opts = TransferOptions {
-                resume: false,
-                preserve_mtime: true,
-                cancel,
-                progress: Some(progress),
-            };
-            let result = match direction {
-                TransferDirection::Download => {
-                    live.sftp.download(&remote, Path::new(&local), &opts).await
-                }
-                TransferDirection::Upload => {
-                    live.sftp.upload(Path::new(&local), &remote, &opts).await
-                }
-            };
-            inner.finish(id, result.map(|_| ()).map_err(MobileError::from));
-        });
+        self.inner.pump();
         id
     }
 }
@@ -416,38 +623,43 @@ impl SftpSession {
     }
 
     pub fn transfers(&self) -> Vec<TransferCard> {
-        self.inner
-            .transfers
-            .lock()
-            .expect("transfers poisoned")
-            .values()
-            .map(|t| t.card.clone())
-            .collect()
+        self.inner.queue.lock().expect("queue poisoned").cards()
     }
 
+    /// Stop a queued or running transfer, keeping its partial file so
+    /// `resume_transfer` can continue it.
+    pub fn pause_transfer(&self, id: u64) {
+        let card = self.inner.queue.lock().expect("queue poisoned").pause(id);
+        if let Some(card) = card {
+            self.inner.listener.on_transfer(card);
+        }
+        self.inner.pump();
+    }
+
+    /// Put a paused or failed transfer back in the queue; it continues from
+    /// the bytes already on the destination rather than starting over.
+    pub fn resume_transfer(&self, id: u64) {
+        let card = self.inner.queue.lock().expect("queue poisoned").resume(id);
+        if let Some(card) = card {
+            self.inner.listener.on_transfer(card);
+            self.inner.pump();
+        }
+    }
+
+    /// Discard a transfer in any non-final state. The partial file is left
+    /// for the caller to clean up.
     pub fn cancel_transfer(&self, id: u64) {
-        if let Some(t) = self
-            .inner
-            .transfers
-            .lock()
-            .expect("transfers poisoned")
-            .get(&id)
-        {
-            t.cancel.cancel();
+        let card = self.inner.queue.lock().expect("queue poisoned").cancel(id);
+        if let Some(card) = card {
+            self.inner.listener.on_transfer(card);
         }
+        self.inner.pump();
     }
 
-    /// Forget a finished transfer; running ones are left alone.
-    pub fn dismiss_transfer(&self, id: u64) {
-        let mut map = self.inner.transfers.lock().expect("transfers poisoned");
-        if map.get(&id).is_some_and(|t| {
-            !matches!(
-                t.card.status,
-                TransferStatus::Queued | TransferStatus::Running
-            )
-        }) {
-            map.remove(&id);
-        }
+    /// Forget a finished transfer; queued, running and paused ones are left
+    /// alone and `false` comes back.
+    pub fn dismiss_transfer(&self, id: u64) -> bool {
+        self.inner.queue.lock().expect("queue poisoned").dismiss(id)
     }
 
     /// Tear the connection down; the object stays usable for `state()`.
@@ -476,50 +688,67 @@ impl Inner {
         self.listener.on_state(state);
     }
 
-    fn progress(&self, id: u64, p: Progress) {
-        let card = {
-            let mut map = self.transfers.lock().expect("transfers poisoned");
-            let Some(t) = map.get_mut(&id) else { return };
-            if t.card.total.is_none() && p.total.is_some() && t.card.done == 0 {
-                t.base = p.done;
-            }
-            t.card.done = p.done;
-            t.card.total = p.total;
-            let elapsed = t.started.elapsed().as_secs_f64();
-            if elapsed > 0.2 {
-                t.card.bytes_per_sec = ((p.done.saturating_sub(t.base)) as f64 / elapsed) as u64;
-            }
-            let now = Instant::now();
-            let finished = p.total.is_some_and(|total| p.done >= total);
-            if !finished && now.duration_since(t.last_report) < PROGRESS_INTERVAL {
-                return;
-            }
-            t.last_report = now;
-            t.card.clone()
-        };
-        self.listener.on_transfer(card);
+    /// Start queued transfers while slots are free.
+    fn pump(self: &Arc<Self>) {
+        let ready = self.queue.lock().expect("queue poisoned").take_ready();
+        for (launch, card) in ready {
+            self.listener.on_transfer(card);
+            let inner = self.clone();
+            self.runtime.spawn(async move {
+                let result = inner.run_transfer(&launch).await;
+                inner.finish(launch.id, result);
+            });
+        }
     }
 
-    fn finish(&self, id: u64, result: Result<()>) {
-        let card = {
-            let mut map = self.transfers.lock().expect("transfers poisoned");
-            let Some(t) = map.get_mut(&id) else { return };
-            t.card.status = match result {
-                Ok(()) => {
-                    if let Some(total) = t.card.total {
-                        t.card.done = total;
-                    }
-                    TransferStatus::Done
-                }
-                Err(MobileError::Cancelled) => TransferStatus::Cancelled,
-                Err(_) if t.cancel.is_cancelled() => TransferStatus::Cancelled,
-                Err(e) => TransferStatus::Failed {
-                    message: e.to_string(),
-                },
-            };
-            t.card.clone()
+    async fn run_transfer(self: &Arc<Self>, launch: &Launch) -> Result<()> {
+        let live = self
+            .live
+            .lock()
+            .expect("live poisoned")
+            .clone()
+            .ok_or(MobileError::Closed)?;
+        let id = launch.id;
+        let reporter = self.clone();
+        let progress: ProgressFn = Arc::new(move |p: Progress| reporter.progress(id, p));
+        let opts = TransferOptions {
+            resume: launch.resume,
+            preserve_mtime: true,
+            cancel: launch.cancel.clone(),
+            progress: Some(progress),
         };
-        self.listener.on_transfer(card);
+        match launch.direction {
+            TransferDirection::Download => {
+                live.sftp
+                    .download(&launch.remote, Path::new(&launch.local), &opts)
+                    .await?;
+            }
+            TransferDirection::Upload => {
+                live.sftp
+                    .upload(Path::new(&launch.local), &launch.remote, &opts)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    fn progress(&self, id: u64, p: Progress) {
+        let card = self.queue.lock().expect("queue poisoned").progress(id, p);
+        if let Some(card) = card {
+            self.listener.on_transfer(card);
+        }
+    }
+
+    fn finish(self: &Arc<Self>, id: u64, result: Result<()>) {
+        let card = self
+            .queue
+            .lock()
+            .expect("queue poisoned")
+            .finish(id, result);
+        if let Some(card) = card {
+            self.listener.on_transfer(card);
+        }
+        self.pump();
     }
 }
 
@@ -701,5 +930,171 @@ mod tests {
         assert_eq!(e.permissions, "lrwxrwxrwx");
         assert_eq!(e.owner.as_deref(), Some("u:1000"));
         assert_eq!(e.modified_ms, Some(1_700_000_000_000));
+    }
+
+    fn queue_with(n: usize) -> (TransferQueue, Vec<u64>) {
+        let mut q = TransferQueue::new(CancellationToken::new());
+        let ids = (0..n)
+            .map(|i| {
+                q.enqueue(
+                    TransferDirection::Download,
+                    format!("/srv/f{i}"),
+                    format!("/tmp/f{i}"),
+                )
+                .id
+            })
+            .collect();
+        (q, ids)
+    }
+
+    fn status(q: &TransferQueue, id: u64) -> TransferStatus {
+        q.transfers[&id].card.status.clone()
+    }
+
+    #[test]
+    fn slots_are_limited_and_refilled_in_order() {
+        let (mut q, ids) = queue_with(5);
+        let ready = q.take_ready();
+        assert_eq!(
+            ready.iter().map(|(l, _)| l.id).collect::<Vec<_>>(),
+            ids[..3]
+        );
+        assert!(
+            ready
+                .iter()
+                .all(|(l, c)| !l.resume && c.status == TransferStatus::Running)
+        );
+        assert_eq!(status(&q, ids[3]), TransferStatus::Queued);
+        assert!(q.take_ready().is_empty());
+
+        let done = q.finish(ids[0], Ok(())).unwrap();
+        assert_eq!(done.status, TransferStatus::Done);
+        let next = q.take_ready();
+        assert_eq!(next.len(), 1);
+        assert_eq!(next[0].0.id, ids[3]);
+    }
+
+    #[test]
+    fn pause_queued_then_resume_continues_partial() {
+        let (mut q, ids) = queue_with(4);
+        q.take_ready();
+        let paused = q.pause(ids[3]).unwrap();
+        assert_eq!(paused.status, TransferStatus::Paused);
+        q.finish(ids[0], Ok(()));
+        assert!(
+            q.take_ready().is_empty(),
+            "paused must not take the free slot"
+        );
+
+        let queued = q.resume(ids[3]).unwrap();
+        assert_eq!(queued.status, TransferStatus::Queued);
+        let next = q.take_ready();
+        assert_eq!(next[0].0.id, ids[3]);
+        assert!(next[0].0.resume);
+    }
+
+    #[test]
+    fn pausing_a_running_transfer_keeps_it_for_resume() {
+        let (mut q, ids) = queue_with(1);
+        let (launch, _) = q.take_ready().remove(0);
+        assert!(q.pause(ids[0]).is_none(), "worker reports the change");
+        assert!(launch.cancel.is_cancelled());
+        q.progress(
+            ids[0],
+            Progress {
+                done: 500,
+                total: Some(1000),
+            },
+        );
+        // Whatever error the interrupted worker surfaces, the intent wins.
+        let card = q
+            .finish(
+                ids[0],
+                Err(MobileError::Ssh {
+                    detail: "eof".into(),
+                }),
+            )
+            .unwrap();
+        assert_eq!(card.status, TransferStatus::Paused);
+        assert_eq!(card.done, 500);
+        assert!(!q.dismiss(ids[0]), "paused transfers stay in the list");
+
+        q.resume(ids[0]).unwrap();
+        let (launch, card) = q.take_ready().remove(0);
+        assert!(launch.resume);
+        assert!(!launch.cancel.is_cancelled(), "fresh token per run");
+        assert_eq!(card.done, 500, "progress so far stays on the card");
+        // A resumed run reports from its offset; the rate must not count it.
+        q.progress(
+            ids[0],
+            Progress {
+                done: 500,
+                total: Some(1000),
+            },
+        );
+        assert_eq!(q.transfers[&ids[0]].base, 500);
+        assert_eq!(q.transfers[&ids[0]].card.bytes_per_sec, 0);
+        let done = q.finish(ids[0], Ok(())).unwrap();
+        assert_eq!(done.status, TransferStatus::Done);
+        assert_eq!(done.done, 1000);
+    }
+
+    #[test]
+    fn cancel_discards_from_any_non_final_state() {
+        let (mut q, ids) = queue_with(4);
+        let launches = q.take_ready();
+        assert!(q.cancel(ids[0]).is_none());
+        assert!(launches[0].0.cancel.is_cancelled());
+        assert_eq!(
+            q.finish(ids[0], Err(MobileError::Cancelled))
+                .unwrap()
+                .status,
+            TransferStatus::Cancelled
+        );
+        assert_eq!(q.cancel(ids[3]).unwrap().status, TransferStatus::Cancelled);
+
+        q.pause(ids[1]);
+        q.finish(ids[1], Err(MobileError::Cancelled));
+        assert_eq!(status(&q, ids[1]), TransferStatus::Paused);
+        assert_eq!(q.cancel(ids[1]).unwrap().status, TransferStatus::Cancelled);
+        assert!(q.resume(ids[1]).is_none(), "cancelled is final");
+
+        let failed = q
+            .finish(
+                ids[2],
+                Err(MobileError::Ssh {
+                    detail: "boom".into(),
+                }),
+            )
+            .unwrap();
+        assert!(matches!(failed.status, TransferStatus::Failed { .. }));
+        assert!(
+            q.resume(ids[2]).is_some(),
+            "failed retries from the partial file"
+        );
+        assert!(q.take_ready()[0].0.resume);
+        assert!(q.cancel(ids[3]).is_none(), "already cancelled");
+        assert!(q.dismiss(ids[3]));
+        assert!(!q.dismiss(ids[2]), "running again");
+    }
+
+    #[test]
+    fn stray_reports_after_settling_are_ignored() {
+        let (mut q, ids) = queue_with(1);
+        q.take_ready();
+        q.cancel(ids[0]);
+        q.finish(ids[0], Err(MobileError::Cancelled));
+        assert!(
+            q.progress(
+                ids[0],
+                Progress {
+                    done: 1,
+                    total: None
+                }
+            )
+            .is_none()
+        );
+        assert!(q.finish(ids[0], Ok(())).is_none());
+        assert_eq!(status(&q, ids[0]), TransferStatus::Cancelled);
     }
 }

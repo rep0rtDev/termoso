@@ -15,6 +15,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -100,11 +103,13 @@ fun PermissionsDialog(entry: SftpEntry, onConfirm: (UInt) -> Unit, onDismiss: ()
     )
 }
 
-/** Bottom sheet with every transfer of the connection: progress, speed, cancel/dismiss. */
+/** Bottom sheet with every transfer of the connection: progress, speed, pause/resume/retry, cancel/dismiss. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransfersSheet(
     transfers: List<TransferCard>,
+    onPause: (ULong) -> Unit,
+    onResume: (ULong) -> Unit,
     onCancel: (ULong) -> Unit,
     onDismissCard: (ULong) -> Unit,
     onClearFinished: () -> Unit,
@@ -116,7 +121,7 @@ fun TransfersSheet(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("Transfers", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            if (transfers.any { it.status !is TransferStatus.Running && it.status !is TransferStatus.Queued }) {
+            if (transfers.any { it.status.isFinished }) {
                 TextButton(onClick = onClearFinished) { Text("Clear finished") }
             }
         }
@@ -125,28 +130,24 @@ fun TransfersSheet(
             Spacer(Modifier.height(24.dp))
         } else {
             LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 32.dp)) {
-                items(transfers.asReversed(), key = { it.id.toLong() }) { t -> TransferRow(t, onCancel, onDismissCard) }
+                items(transfers.asReversed(), key = { it.id.toLong() }) { t ->
+                    TransferRow(t, onPause = onPause, onResume = onResume, onCancel = onCancel, onDismiss = onDismissCard)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun TransferRow(t: TransferCard, onCancel: (ULong) -> Unit, onDismiss: (ULong) -> Unit) {
-    val running = t.status is TransferStatus.Running || t.status is TransferStatus.Queued
+private fun TransferRow(
+    t: TransferCard,
+    onPause: (ULong) -> Unit,
+    onResume: (ULong) -> Unit,
+    onCancel: (ULong) -> Unit,
+    onDismiss: (ULong) -> Unit,
+) {
     val total = t.total
     val fraction = if (total != null && total > 0uL) (t.done.toDouble() / total.toDouble()).toFloat().coerceIn(0f, 1f) else null
-    val status = when (val s = t.status) {
-        is TransferStatus.Queued -> "Queued"
-        is TransferStatus.Running -> buildString {
-            append(formatSize(t.done))
-            if (total != null) append(" / ").append(formatSize(total))
-            if (t.bytesPerSec > 0uL) append(" · ").append(formatSize(t.bytesPerSec)).append("/s")
-        }
-        is TransferStatus.Done -> "Done · ${formatSize(t.done)}"
-        is TransferStatus.Failed -> s.message
-        is TransferStatus.Cancelled -> "Cancelled"
-    }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -161,25 +162,29 @@ private fun TransferRow(t: TransferCard, onCancel: (ULong) -> Unit, onDismiss: (
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
             )
-            if (running) {
+            if (t.status.showsProgress) {
                 if (fraction != null) {
                     LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
-                } else {
+                } else if (t.status is TransferStatus.Running) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
             }
             Text(
-                status,
+                t.statusLabel(),
                 style = MaterialTheme.typography.labelMedium,
                 color = if (t.status is TransferStatus.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
             )
         }
         Spacer(Modifier.width(8.dp))
-        if (running) {
-            IconButton(onClick = { onCancel(t.id) }) { Icon(Icons.Filled.Cancel, contentDescription = "Cancel") }
-        } else {
-            IconButton(onClick = { onDismiss(t.id) }) { Icon(Icons.Filled.Close, contentDescription = "Dismiss") }
+        t.status.actions.forEach { action ->
+            when (action) {
+                TransferAction.Pause -> IconButton(onClick = { onPause(t.id) }) { Icon(Icons.Filled.Pause, contentDescription = "Pause") }
+                TransferAction.Resume -> IconButton(onClick = { onResume(t.id) }) { Icon(Icons.Filled.PlayArrow, contentDescription = "Resume") }
+                TransferAction.Retry -> IconButton(onClick = { onResume(t.id) }) { Icon(Icons.Filled.Refresh, contentDescription = "Retry") }
+                TransferAction.Cancel -> IconButton(onClick = { onCancel(t.id) }) { Icon(Icons.Filled.Cancel, contentDescription = "Cancel") }
+                TransferAction.Dismiss -> IconButton(onClick = { onDismiss(t.id) }) { Icon(Icons.Filled.Close, contentDescription = "Dismiss") }
+            }
         }
     }
 }

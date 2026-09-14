@@ -297,6 +297,8 @@ fun SftpScreen(
     if (showTransfers) {
         TransfersSheet(
             transfers = transfers,
+            onPause = vm::pauseTransfer,
+            onResume = vm::resumeTransfer,
             onCancel = vm::cancelTransfer,
             onDismissCard = vm::dismissTransfer,
             onClearFinished = vm::clearFinishedTransfers,
