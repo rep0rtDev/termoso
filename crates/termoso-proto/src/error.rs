@@ -51,4 +51,7 @@ pub mod codes {
     pub const MFA_REQUIRED: &str = "mfa_required";
     /// A team of the user switched multiplayer off.
     pub const MULTIPLAYER_DISABLED: &str = "multiplayer_disabled";
+    /// The operation needs a fresh step-up (`POST /auth/reauth/start`) of the
+    /// current session.
+    pub const REAUTH_REQUIRED: &str = "reauth_required";
 }

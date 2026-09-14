@@ -29,6 +29,14 @@ impl Auth {
     pub fn device_id(&self) -> Uuid {
         self.session.device_id
     }
+    /// Fails unless this session completed a step-up recently.
+    pub fn require_step_up(&self) -> Result<(), Error> {
+        if self.session.step_up_fresh() {
+            Ok(())
+        } else {
+            Err(Error::reauth_required())
+        }
+    }
 }
 
 pub fn bearer(headers: &HeaderMap) -> Option<&str> {
@@ -118,6 +126,30 @@ impl OptionalFromRequestParts<AppState> for Auth {
         <Auth as FromRequestParts<AppState>>::from_request_parts(parts, state)
             .await
             .map(Some)
+    }
+}
+
+/// Authenticated request whose session completed a step-up
+/// (`POST /auth/reauth/*`) within the last few minutes. Sensitive account
+/// mutations take this instead of `Auth` so a leaked bearer token alone cannot
+/// lock the owner out.
+#[derive(Debug, Clone)]
+pub struct StepUp(pub Auth);
+
+impl std::ops::Deref for StepUp {
+    type Target = Auth;
+    fn deref(&self) -> &Auth {
+        &self.0
+    }
+}
+
+impl FromRequestParts<AppState> for StepUp {
+    type Rejection = Error;
+
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Error> {
+        let auth = <Auth as FromRequestParts<AppState>>::from_request_parts(parts, state).await?;
+        auth.require_step_up()?;
+        Ok(StepUp(auth))
     }
 }
 

@@ -467,6 +467,43 @@ impl TestServer {
         panic!("no `{purpose}` email for {to} arrived");
     }
 
+    /// Newest email to `to` whose subject contains `subject`; returns the
+    /// plain-text body. Waits a little for delivery.
+    pub async fn emailed_body(&self, to: &str, subject: &str) -> String {
+        let api = self.mailpit.as_ref().expect("mailpit configured");
+        let client = self.http();
+        for _ in 0..50 {
+            let v: serde_json::Value = client
+                .get(format!("{api}/api/v1/search"))
+                .query(&[("query", format!("to:{to}")), ("limit", "50".into())])
+                .send()
+                .await
+                .expect("mailpit search")
+                .json()
+                .await
+                .expect("mailpit json");
+            let id = v["messages"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|m| m["Subject"].as_str().is_some_and(|s| s.contains(subject)))
+                .and_then(|m| m["ID"].as_str().map(str::to_string));
+            if let Some(id) = id {
+                let m: serde_json::Value = client
+                    .get(format!("{api}/api/v1/message/{id}"))
+                    .send()
+                    .await
+                    .expect("mailpit message")
+                    .json()
+                    .await
+                    .expect("mailpit json");
+                return m["Text"].as_str().unwrap_or_default().to_string();
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        panic!("no `{subject}` email for {to} arrived");
+    }
+
     /// Number of messages Mailpit holds for `to`.
     pub async fn email_count(&self, to: &str) -> u64 {
         let api = self.mailpit.as_ref().expect("mailpit configured");
@@ -506,6 +543,62 @@ impl User {
     /// Encrypt an entity payload the way a real client would.
     pub fn encrypt_entity(&self, key: &SymmetricKey, kind: &str, id: Uuid, json: &str) -> String {
         aead::encrypt_str(key, &Aad::entity(kind, &id.to_string()), json).expect("encrypt")
+    }
+}
+
+impl TestServer {
+    /// Run one statement against the test database (time travel for tests
+    /// that would otherwise wait minutes or hours).
+    pub async fn sql(&self, statement: &str, bind: &str) {
+        let mut conn = PgConnection::connect(&self.database_url)
+            .await
+            .expect("connect test db");
+        sqlx::query(sqlx::AssertSqlSafe(statement.to_string()))
+            .bind(bind)
+            .execute(&mut conn)
+            .await
+            .expect("test sql");
+    }
+
+    /// Pretend `token`'s last step-up happened long ago: rewinds `reauth_at`
+    /// and evicts the cached session so the next request sees it.
+    pub async fn age_step_up(&self, token: &str) {
+        let hash = termoso_server::util::hash_token(token);
+        self.sql(
+            "UPDATE sessions SET reauth_at = now() - interval '1 hour' WHERE token_hash = $1",
+            &hash,
+        )
+        .await;
+        self.forget(&format!("sess:{hash}")).await;
+    }
+
+    /// Lift the per-address email rate limit so a long scenario can keep
+    /// receiving mail.
+    pub async fn reset_email_limit(&self, email: &str) {
+        self.forget(&format!("rl:email:{}", email.to_lowercase()))
+            .await;
+    }
+
+    async fn forget(&self, key: &str) {
+        let client = redis::Client::open(redis_url()).expect("redis");
+        let mut conn = client
+            .get_multiplexed_async_connection()
+            .await
+            .expect("redis connection");
+        let _: () = redis::cmd("DEL")
+            .arg(format!("{}:{key}", self.db_name))
+            .query_async(&mut conn)
+            .await
+            .expect("forget cache key");
+    }
+
+    /// Move a pending "start over" reset into the past so it can be finished.
+    pub async fn age_start_over(&self, email: &str) {
+        self.sql(
+            "UPDATE users SET reset_scheduled_for = now() - interval '1 minute' WHERE email = $1",
+            &email.to_lowercase(),
+        )
+        .await;
     }
 }
 
@@ -595,27 +688,13 @@ pub async fn register_raw(
     )
     .expect("finish");
 
-    let kek = derive_key(&out.export_key, Label::AccountKek).expect("kek");
-    let keypair = KeyPair::generate();
-    let recovery = RecoveryKey::generate();
-    let recovery_kek = recovery.kek().expect("recovery kek");
-    let personal_vault_key = SymmetricKey::generate();
-    let secret = SymmetricKey::from_bytes(keypair.secret_bytes());
-
-    let keys = AccountKeysUpload {
-        public_key: keypair.public_b64(),
-        wrapped_private_key: aead::wrap_key(&kek, &Aad::account_private_key(), &secret)
-            .expect("wrap"),
-        recovery_wrapped_private_key: aead::wrap_key(
-            &recovery_kek,
-            &Aad::recovery_private_key(),
-            &secret,
-        )
-        .expect("wrap"),
-        recovery_verifier: recovery.verifier_b64().expect("verifier"),
-        personal_vault_sealed_key: sealed::seal_vault_key(keypair.public(), &personal_vault_key)
-            .expect("seal"),
-    };
+    let fresh = FreshKeys::generate();
+    let keys = fresh.upload_for(&out.export_key);
+    let FreshKeys {
+        keypair,
+        recovery,
+        personal_vault_key,
+    } = fresh;
 
     let resp: AuthResponse = server
         .json(
@@ -643,6 +722,48 @@ pub async fn register_raw(
         keypair,
         personal_vault_key,
         recovery,
+    }
+}
+
+/// A brand-new client-side key hierarchy, as generated at registration or
+/// when starting an account over.
+pub struct FreshKeys {
+    pub keypair: KeyPair,
+    pub recovery: RecoveryKey,
+    pub personal_vault_key: SymmetricKey,
+}
+
+impl FreshKeys {
+    pub fn generate() -> Self {
+        Self {
+            keypair: KeyPair::generate(),
+            recovery: RecoveryKey::generate(),
+            personal_vault_key: SymmetricKey::generate(),
+        }
+    }
+
+    /// Wrap everything for the server, deriving the account KEK from the
+    /// OPAQUE export key of the password being registered.
+    pub fn upload_for(&self, export_key: &[u8]) -> AccountKeysUpload {
+        let kek = derive_key(export_key, Label::AccountKek).expect("kek");
+        let secret = SymmetricKey::from_bytes(self.keypair.secret_bytes());
+        AccountKeysUpload {
+            public_key: self.keypair.public_b64(),
+            wrapped_private_key: aead::wrap_key(&kek, &Aad::account_private_key(), &secret)
+                .expect("wrap"),
+            recovery_wrapped_private_key: aead::wrap_key(
+                &self.recovery.kek().expect("recovery kek"),
+                &Aad::recovery_private_key(),
+                &secret,
+            )
+            .expect("wrap"),
+            recovery_verifier: self.recovery.verifier_b64().expect("verifier"),
+            personal_vault_sealed_key: sealed::seal_vault_key(
+                self.keypair.public(),
+                &self.personal_vault_key,
+            )
+            .expect("seal"),
+        }
     }
 }
 

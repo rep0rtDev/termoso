@@ -54,6 +54,8 @@ export interface UserProfile {
   created_at: string;
   is_admin: boolean;
   mfa_enabled: boolean;
+  /** A destructive "start over" reset is scheduled for this moment (cancellable until then). */
+  reset_scheduled_for?: string | null;
 }
 
 export interface AccountKeys {
@@ -131,7 +133,43 @@ export interface Session {
 export type AuthResponse =
   | ({ status: "authenticated" } & Session)
   | { status: "mfa_required"; mfa_token: string; methods: MfaMethod[] }
-  | { status: "device_approval_required"; approval_token: string; email_hint: string };
+  | { status: "device_approval_required"; approval_token: string; email_hint: string }
+  | { status: "reauthenticated"; reauth_expires_at: string };
+
+export const REAUTH_REQUIRED = "reauth_required";
+
+export type ReauthMethod = "password" | "email" | "none";
+
+export interface ReauthStartResponse {
+  reauth_id: string;
+  method: ReauthMethod;
+  opaque_response?: string | null;
+  email_hint?: string | null;
+}
+
+export interface StartOverRequestResponse {
+  request_token: string;
+  email_hint: string;
+}
+
+export interface StartOverScheduled {
+  scheduled_for: string;
+  email_hint: string;
+}
+
+export interface StartOverStatus {
+  email_hint: string;
+  email: string;
+  scheduled_for: string;
+  ready: boolean;
+}
+
+export interface StartOverFinishRequest {
+  token: string;
+  opaque_upload: string;
+  keys: AccountKeysUpload;
+  device: DeviceInfo;
+}
 
 export interface RecoveryRotate {
   recovery_wrapped_private_key: string;

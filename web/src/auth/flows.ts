@@ -1,5 +1,7 @@
 import { authApi } from "@/api/endpoints";
 import type { AuthResponse, MfaCredential, MfaMethod, Session } from "@/api/types";
+import { ApiError } from "@/api/client";
+import { REAUTH_REQUIRED } from "@/api/types";
 import {
   beginLogin,
   beginRegistration,
@@ -54,7 +56,103 @@ function finishAuth(resp: AuthResponse): LoginOutcome {
       authStore.signIn(session, privateKey);
       return { kind: "done", session };
     }
+    case "reauthenticated":
+      pending = null;
+      throw new Error("Unexpected server response: not a sign-in");
   }
+}
+
+// ── step-up (re-authentication inside the current session) ──────────────
+
+export type ReauthOutcome =
+  | { kind: "done"; expiresAt: string }
+  | { kind: "mfa"; mfaToken: string; methods: MfaMethod[] }
+  | { kind: "email"; emailHint: string };
+
+export function isReauthRequired(e: unknown): boolean {
+  return e instanceof ApiError && e.code === REAUTH_REQUIRED;
+}
+
+interface PendingReauth {
+  reauthId: string;
+  /** OPAQUE export key: also unlocks the private key for this tab when it is missing. */
+  exportKey: string | null;
+}
+
+let pendingReauth: PendingReauth | null = null;
+
+function finishReauth(resp: AuthResponse): ReauthOutcome {
+  switch (resp.status) {
+    case "mfa_required":
+      return { kind: "mfa", mfaToken: resp.mfa_token, methods: resp.methods };
+    case "reauthenticated": {
+      const { session, privateKey } = authStore.get();
+      const exportKey = pendingReauth?.exportKey ?? null;
+      pendingReauth = null;
+      if (session && !privateKey && exportKey) {
+        authStore.unlock(
+          unlockAccount(exportKey, session.keys.wrapped_private_key, session.keys.public_key),
+        );
+      }
+      authStore.stepUp(resp.reauth_expires_at);
+      return { kind: "done", expiresAt: resp.reauth_expires_at };
+    }
+    case "authenticated":
+    case "device_approval_required":
+      pendingReauth = null;
+      throw new Error("Unexpected server response during re-authentication");
+  }
+}
+
+/**
+ * Confirms the current session with the password (OPAQUE) — or, for accounts
+ * without one, with a code mailed to the verified address. The password never
+ * leaves the browser; on success the tab also holds the account private key.
+ */
+export async function reauthenticate(password: string): Promise<ReauthOutcome> {
+  const { session } = authStore.get();
+  if (!session) throw new Error("Not signed in");
+  await loadCrypto();
+  const step = password.length > 0 ? beginLogin(password, session.user.email) : null;
+  const start = await authApi.reauthStart(step?.request);
+  switch (start.method) {
+    case "password": {
+      if (!step || !start.opaque_response) throw new Error("Enter your password");
+      const out = step.finish(start.opaque_response);
+      pendingReauth = { reauthId: start.reauth_id, exportKey: out.exportKey };
+      try {
+        return finishReauth(
+          await authApi.reauthFinish(start.reauth_id, { opaque_finalization: out.finalization }),
+        );
+      } catch (e) {
+        pendingReauth = null;
+        throw e;
+      }
+    }
+    case "email":
+      pendingReauth = { reauthId: start.reauth_id, exportKey: null };
+      return { kind: "email", emailHint: start.email_hint ?? "" };
+    case "none":
+      pendingReauth = { reauthId: start.reauth_id, exportKey: null };
+      return finishReauth(await authApi.reauthFinish(start.reauth_id, {}));
+  }
+}
+
+export async function reauthenticateWithEmailCode(code: string): Promise<ReauthOutcome> {
+  const p = pendingReauth;
+  if (!p) throw new Error("No re-authentication in progress");
+  return finishReauth(await authApi.reauthFinish(p.reauthId, { code }));
+}
+
+export async function reauthenticateMfa(
+  mfaToken: string,
+  credential: MfaCredential,
+): Promise<ReauthOutcome> {
+  return finishReauth(await authApi.mfaVerify(mfaToken, credential));
+}
+
+export function clearPendingReauth() {
+  pendingReauth = null;
 }
 
 export async function login(
@@ -124,6 +222,40 @@ export async function register(input: RegisterInput): Promise<RegisterOutput> {
   });
   if (resp.status !== "authenticated") {
     throw new Error("Unexpected server response during registration");
+  }
+  const { status: _status, ...session } = resp;
+  authStore.signIn(session, keys.privateKey);
+  return { session, recoveryPhrase: keys.recoveryPhrase };
+}
+
+/**
+ * Completes a scheduled "start over": registers a new password and a brand-new
+ * key set for `email`. Everything encrypted with the old keys is gone for good.
+ */
+export async function startOverFinish(
+  token: string,
+  email: string,
+  password: string,
+): Promise<RegisterOutput> {
+  await loadCrypto();
+  const step = beginRegistration(password, email);
+  const start = await authApi.startOverPasswordStart(token, step.request);
+  const reg = step.finish(start.opaque_response);
+  const keys = createAccountKeys(reg.exportKey);
+  const resp = await authApi.startOverFinish({
+    token,
+    opaque_upload: reg.upload,
+    device: deviceInfo(),
+    keys: {
+      public_key: keys.publicKey,
+      wrapped_private_key: keys.wrappedPrivateKey,
+      recovery_wrapped_private_key: keys.recoveryWrappedPrivateKey,
+      recovery_verifier: keys.recoveryVerifier,
+      personal_vault_sealed_key: keys.personalVaultSealedKey,
+    },
+  });
+  if (resp.status !== "authenticated") {
+    throw new Error("Unexpected server response while starting over");
   }
   const { status: _status, ...session } = resp;
   authStore.signIn(session, keys.privateKey);

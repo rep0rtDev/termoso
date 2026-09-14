@@ -43,6 +43,7 @@ import { IconTile, Loading, Mono, SectionCard } from "@/components/ui";
 import { relativeTime } from "@/hosts/HostList";
 import * as ipc from "@/ipc/commands";
 import { keys } from "@/ipc/hooks";
+import { isReauthCancelled, withReauth } from "@/account/reauth";
 import {
   SSH_ID_DEFAULT_TYPE,
   SSH_ID_KEY_TYPES,
@@ -100,14 +101,16 @@ function useSshIdMutation<A>(fn: (arg: A) => Promise<SshIdView>) {
   const qc = useQueryClient();
   const snackbar = useSnackbar();
   return useMutation({
-    mutationFn: fn,
+    mutationFn: (arg: A) => withReauth(() => fn(arg)),
     onSuccess: (data) => {
       qc.setQueryData(keys.sshid, data);
       void qc.invalidateQueries({ queryKey: ["sshKeys"] });
       void qc.invalidateQueries({ queryKey: ["identities"] });
       void qc.invalidateQueries({ queryKey: keys.devices });
     },
-    onError: (e) => snackbar.error(errorMessage(e)),
+    onError: (e) => {
+      if (!isReauthCancelled(e)) snackbar.error(errorMessage(e));
+    },
   });
 }
 
@@ -219,6 +222,7 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
   const [fido2Open, setFido2Open] = useState(false);
   const [removeKey, setRemoveKey] = useState<SshIdKey | null>(null);
 
+  const publish = useSshIdMutation(ipc.sshidPublish);
   const del = useSshIdMutation(ipc.sshidDelete);
   const rotate = useSshIdMutation(ipc.sshidRotate);
   const remove = useSshIdMutation(ipc.sshidRemoveKey);
@@ -413,7 +417,18 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
           {unpublished.length === 1
             ? `This device's ${sshIdTypeLabel(unpublished[0]?.keyType ?? SSH_ID_DEFAULT_TYPE)} key is not published yet`
             : `${unpublished.length} of this device's keys are not published yet`}{" "}
-          — they will be uploaded on the next sync.
+          — publishing needs a confirmation of your account.
+          <Box sx={{ mt: 1 }}>
+            <Button
+              size="small"
+              variant="outlined"
+              color="inherit"
+              disabled={publish.isPending}
+              onClick={() => publish.mutate(undefined)}
+            >
+              Publish now
+            </Button>
+          </Box>
         </Alert>
       )}
       {deviceCount < 2 && (
