@@ -36,12 +36,9 @@ import androidx.compose.ui.unit.dp
 import com.termoso.android.ui.theme.DarkLayers
 import com.termoso.android.ui.theme.Emerald
 
-/**
- * First-launch screen. Cloud sign-in / sign-up land with the account phase;
- * until then both lead to [onCloud] so the caller can explain.
- */
+/** First-launch screen: create an account, sign in (Cloud or self-hosted), or stay offline. */
 @Composable
-fun WelcomeScreen(onCloud: () -> Unit, onContinueOffline: () -> Unit) {
+fun WelcomeScreen(onCreateAccount: () -> Unit, onSignIn: () -> Unit, onContinueOffline: () -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
@@ -80,19 +77,20 @@ fun WelcomeScreen(onCloud: () -> Unit, onContinueOffline: () -> Unit) {
             )
             Spacer(Modifier.height(32.dp))
             Button(
-                onClick = onCloud,
+                onClick = onCreateAccount,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(12.dp),
             ) { Text("Create a free account") }
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
-                onClick = onCloud,
+                onClick = onSignIn,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(12.dp),
             ) { Text("Sign in", color = DarkLayers.text) }
             Spacer(Modifier.height(12.dp))
             Text(
-                "Termoso Cloud is completely free for everyone — no limits, no plans, no strings attached.",
+                "Termoso Cloud is completely free for everyone — no limits, no plans, no strings attached. " +
+                    "Or sign in to your own self-hosted server.",
                 style = MaterialTheme.typography.bodySmall,
                 color = DarkLayers.secondary,
                 textAlign = TextAlign.Center,

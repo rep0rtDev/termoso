@@ -18,7 +18,7 @@ import kotlinx.coroutines.withContext
 /** Vault lifecycle: locked until the master key is unwrapped and the store opened. */
 sealed interface VaultState {
     data object Locked : VaultState
-    data class Open(val repo: VaultRepository, val sessions: SessionManager) : VaultState
+    data class Open(val repo: VaultRepository, val sessions: SessionManager, val account: AccountManager) : VaultState
 }
 
 /**
@@ -96,7 +96,7 @@ class AppContainer(context: Context) {
                 key.fill(0)
             }
             VaultRepository(app)
-        }.also { _vault.value = VaultState.Open(it, SessionManager(appContext, it)) }
+        }.also { _vault.value = VaultState.Open(it, SessionManager(appContext, it), AccountManager(it)) }
     }
 
     /** Disconnect every terminal, close the store and drop the handle. */
@@ -105,6 +105,7 @@ class AppContainer(context: Context) {
         _vault.value = VaultState.Locked
         _gated.value = false
         open.sessions.closeAll()
+        open.account.close()
         withContext(Dispatchers.IO) { open.repo.app.close() }
     }
 }

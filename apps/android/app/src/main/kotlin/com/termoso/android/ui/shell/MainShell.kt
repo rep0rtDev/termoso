@@ -33,9 +33,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.termoso.android.data.AccountManager
 import com.termoso.android.data.AppContainer
 import com.termoso.android.data.SessionManager
 import com.termoso.android.data.VaultRepository
+import com.termoso.android.ui.account.AccountScreen
+import com.termoso.android.ui.account.AuthMode
+import com.termoso.android.ui.account.SignInScreen
 import com.termoso.android.ui.connections.ConnectionsScreen
 import com.termoso.android.ui.hosts.HostEditorScreen
 import com.termoso.android.ui.hosts.HostsScreen
@@ -69,12 +73,15 @@ object Routes {
     const val KNOWN_HOSTS = "knownHosts"
     const val HISTORY = "history"
     const val TERMINAL = "terminal"
+    const val ACCOUNT = "account"
+    const val SIGN_IN = "signIn/{mode}"
 
     fun hosts(group: String?) = if (group == null) "hosts" else "hosts?group=$group"
     fun hostNew(group: String?) = if (group == null) "hostNew" else "hostNew?group=$group"
     fun hostEdit(id: String) = "hostEdit/$id"
     fun key(id: String) = "key/$id"
     fun identity(id: String) = "identity/$id"
+    fun signIn(mode: AuthMode) = "signIn/${mode.name}"
 }
 
 private class Tab(val route: String, val label: String, val icon: ImageVector, val selectedIcon: ImageVector)
@@ -87,7 +94,7 @@ private val tabs = listOf(
 
 /** Bottom-navigation shell: Vaults · Connections · Settings, with nested host screens. */
 @Composable
-fun MainShell(container: AppContainer, repo: VaultRepository, sessions: SessionManager, onCloud: () -> Unit, onLock: () -> Unit) {
+fun MainShell(container: AppContainer, repo: VaultRepository, sessions: SessionManager, account: AccountManager, onLock: () -> Unit) {
     val shell: ShellViewModel = viewModel { ShellViewModel(repo, sessions) }
     val nav = rememberNavController()
     val scope = rememberCoroutineScope()
@@ -101,6 +108,9 @@ fun MainShell(container: AppContainer, repo: VaultRepository, sessions: SessionM
         val text = notice ?: return@LaunchedEffect
         snackbar.showSnackbar(text)
         shell.noticeShown()
+    }
+    LaunchedEffect(account) {
+        account.notices.collect { snackbar.showSnackbar(it) }
     }
 
     fun openTerminal() {
@@ -163,12 +173,26 @@ fun MainShell(container: AppContainer, repo: VaultRepository, sessions: SessionM
                 SettingsScreen(
                     shell = shell,
                     container = container,
-                    onCloud = onCloud,
+                    account = account,
+                    onAccount = { nav.navigate(Routes.ACCOUNT) },
+                    onSignIn = { nav.navigate(Routes.signIn(AuthMode.SignIn)) },
                     onLock = onLock,
                     onTerminalAppearance = { nav.navigate(Routes.TERMINAL_APPEARANCE) },
                 )
             }
             composable(Routes.TERMINAL_APPEARANCE) { TerminalAppearanceScreen(shell = shell, onBack = { nav.popBackStack() }) }
+            composable(Routes.ACCOUNT) {
+                AccountScreen(shell = shell, account = account, onBack = { nav.popBackStack() }, onSignedOut = { nav.popBackStack() })
+            }
+            composable(Routes.SIGN_IN, arguments = listOf(navArgument("mode") { type = NavType.StringType })) { entry ->
+                val mode = entry.arguments?.getString("mode")?.let { m -> AuthMode.entries.firstOrNull { it.name == m } } ?: AuthMode.SignIn
+                SignInScreen(
+                    account = account,
+                    mode = mode,
+                    onBack = { nav.popBackStack() },
+                    onDone = { nav.navigate(Routes.ACCOUNT) { popUpTo(Routes.SETTINGS) } },
+                )
+            }
             composable(Routes.HOSTS, arguments = listOf(groupArg)) { entry ->
                 val group = entry.arguments?.getString("group")
                 HostsScreen(

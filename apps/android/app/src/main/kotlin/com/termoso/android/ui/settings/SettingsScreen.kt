@@ -13,12 +13,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termoso.android.BuildConfig
+import com.termoso.android.data.AccountManager
 import com.termoso.android.data.AppContainer
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.IconTile
@@ -53,7 +56,9 @@ import com.termoso.android.ui.security.authenticateDevice
 import com.termoso.android.ui.security.deviceAuthProblem
 import com.termoso.android.ui.security.findFragmentActivity
 import com.termoso.android.ui.shell.ShellViewModel
+import com.termoso.android.ui.theme.Emerald
 import com.termoso.core.MobileSettings
+import com.termoso.core.SyncState
 import com.termoso.core.coreVersion
 import com.termoso.core.terminalTheme
 import kotlinx.coroutines.Dispatchers
@@ -73,17 +78,20 @@ private val lockDelays = listOf(
 
 private const val SOURCE_URL = "https://github.com/rep0rtDev/termoso"
 
-/** Settings tab: cloud (later), appearance, terminal, security (app lock), about. */
+/** Settings tab: account/sync, appearance, terminal, security (app lock), about. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     shell: ShellViewModel,
     container: AppContainer,
-    onCloud: () -> Unit,
+    account: AccountManager,
+    onAccount: () -> Unit,
+    onSignIn: () -> Unit,
     onLock: () -> Unit,
     onTerminalAppearance: () -> Unit,
 ) {
     val settings by shell.repo.settings.collectAsStateWithLifecycle()
+    val accountStatus by account.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     fun set(transform: (MobileSettings) -> MobileSettings) {
@@ -135,12 +143,41 @@ fun SettingsScreen(
         ) {
             Spacer(Modifier.height(8.dp))
             SectionCard {
-                ChevronRow(
-                    title = "Termoso Cloud",
-                    subtitle = "Free forever · E2E-encrypted sync · sign-in coming to Android",
-                    leading = { IconTile(Icons.Filled.Cloud) },
-                    modifier = Modifier.clickable(onClick = onCloud),
-                )
+                val card = accountStatus.account
+                if (card == null) {
+                    ChevronRow(
+                        title = "Termoso Cloud",
+                        subtitle = "Free forever · E2E-encrypted sync · or your own server",
+                        leading = { IconTile(Icons.Filled.Cloud) },
+                        modifier = Modifier.clickable(onClick = onSignIn),
+                    )
+                } else {
+                    val sync = accountStatus.sync
+                    ChevronRow(
+                        title = card.displayName ?: card.email,
+                        subtitle = card.serverUrl.removePrefix("https://").removePrefix("http://") + " · " +
+                            when (sync.state) {
+                                SyncState.IDLE -> if (sync.realtime) "synced · live" else "synced"
+                                SyncState.SYNCING -> "syncing…"
+                                SyncState.OFFLINE -> "offline"
+                                SyncState.ERROR -> "sync failed"
+                            },
+                        leading = {
+                            IconTile(
+                                when (sync.state) {
+                                    SyncState.OFFLINE -> Icons.Filled.CloudOff
+                                    SyncState.ERROR -> Icons.Filled.SyncProblem
+                                    else -> Icons.Filled.Cloud
+                                },
+                                tint = when (sync.state) {
+                                    SyncState.ERROR -> MaterialTheme.colorScheme.error
+                                    else -> Emerald
+                                },
+                            )
+                        },
+                        modifier = Modifier.clickable(onClick = onAccount),
+                    )
+                }
             }
 
             SectionLabel("Appearance")
