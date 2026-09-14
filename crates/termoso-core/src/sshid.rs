@@ -107,17 +107,23 @@ pub fn ensure_device_keys(store: &Store, handle: &str) -> Result<Vec<DeviceKey>>
     Ok(keys)
 }
 
-/// Replace every device key with a fresh one. The old public keys stop
-/// working as soon as the new set is published.
-pub fn rotate_device_keys(store: &Store, handle: &str) -> Result<Vec<DeviceKey>> {
+/// A fresh key of every device type, not yet stored: publish them first and
+/// keep them with [`save_device_keys`] only once the server accepted the
+/// set, so a refused or abandoned rotation leaves the working keys in place.
+/// CPU-bound (RSA); call off the async runtime.
+pub fn new_device_keys(handle: &str) -> Result<Vec<DeviceKey>> {
     let mut keys = Vec::new();
     for t in DEVICE_KEY_TYPES {
         if let Some(k) = generate(t, handle)? {
             keys.push(k);
         }
     }
-    save(store, &keys)?;
     Ok(keys)
+}
+
+/// Replace the stored device keys with `keys`.
+pub fn save_device_keys(store: &Store, keys: &[DeviceKey]) -> Result<()> {
+    save(store, keys)
 }
 
 /// Wipe the device keys and the cached handle (sign-out, SSH ID deleted).
@@ -196,13 +202,31 @@ mod tests {
             again.iter().map(|k| &k.public_key).collect::<Vec<_>>(),
             first.iter().map(|k| &k.public_key).collect::<Vec<_>>()
         );
-        let rotated = rotate_device_keys(&s, "alice").unwrap();
+        let rotated = new_device_keys("alice").unwrap();
         assert_eq!(rotated.len(), 3);
         assert!(
             rotated
                 .iter()
                 .zip(&first)
                 .all(|(a, b)| a.public_key != b.public_key)
+        );
+        assert_eq!(
+            device_keys(&s)
+                .unwrap()
+                .iter()
+                .map(|k| &k.public_key)
+                .collect::<Vec<_>>(),
+            first.iter().map(|k| &k.public_key).collect::<Vec<_>>(),
+            "unsaved rotation must not touch the stored keys"
+        );
+        save_device_keys(&s, &rotated).unwrap();
+        assert_eq!(
+            device_keys(&s)
+                .unwrap()
+                .iter()
+                .map(|k| &k.public_key)
+                .collect::<Vec<_>>(),
+            rotated.iter().map(|k| &k.public_key).collect::<Vec<_>>()
         );
         let req = upload_request(&rotated);
         assert_eq!(req.keys.len(), 3);
