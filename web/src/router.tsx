@@ -9,6 +9,7 @@ import { SignupPage } from "./pages/auth/SignupPage";
 import { RecoveryKeyPage } from "./pages/auth/RecoveryKeyPage";
 import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
 import { InvitePage } from "./pages/auth/InvitePage";
+import { JoinPage } from "./pages/auth/JoinPage";
 import { SsoCallbackPage } from "./pages/auth/SsoCallbackPage";
 import { AccountPage } from "./pages/account/AccountPage";
 import { SecurityPage } from "./pages/account/SecurityPage";
@@ -42,6 +43,7 @@ export const router = createBrowserRouter([
       },
       { path: "/signup/recovery-key", element: <RecoveryKeyPage /> },
       { path: "/invite/:token", element: <InvitePage /> },
+      { path: "/join/:session", element: <JoinPage /> },
       { path: "/sso/callback", element: <SsoCallbackPage /> },
     ],
   },

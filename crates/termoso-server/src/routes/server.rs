@@ -3,9 +3,11 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use serde::Serialize;
 use termoso_proto::account::{ServerFeatures, ServerInfo};
 
-use crate::error::ApiResult;
+use crate::error::{ApiResult, Error};
 use crate::state::{AppState, VERSION};
 
 #[utoipa::path(get, path = "/api/v1/server/info", tag = "server",
@@ -30,6 +32,44 @@ pub async fn info(State(state): State<AppState>) -> ApiResult<Json<ServerInfo>> 
 
 pub async fn healthz() -> &'static str {
     "ok"
+}
+
+#[derive(Serialize)]
+struct AssetLink {
+    relation: [&'static str; 1],
+    target: AssetLinkTarget,
+}
+
+#[derive(Serialize)]
+struct AssetLinkTarget {
+    namespace: &'static str,
+    package_name: String,
+    sha256_cert_fingerprints: [String; 1],
+}
+
+/// Digital Asset Links statement letting the configured Android builds claim
+/// this server's https links (`TERMOSO_ANDROID_APP_LINKS`). 404 when unset.
+pub async fn assetlinks(State(state): State<AppState>) -> Response {
+    let apps = match state.cfg.android_app_links() {
+        Ok(apps) if !apps.is_empty() => apps,
+        _ => return Error::not_found("assetlinks").into_response(),
+    };
+    let statements: Vec<AssetLink> = apps
+        .into_iter()
+        .map(|app| AssetLink {
+            relation: ["delegate_permission/common.handle_all_urls"],
+            target: AssetLinkTarget {
+                namespace: "android_app",
+                package_name: app.package,
+                sha256_cert_fingerprints: [app.sha256_fingerprint],
+            },
+        })
+        .collect();
+    (
+        [(axum::http::header::CACHE_CONTROL, "public, max-age=3600")],
+        Json(statements),
+    )
+        .into_response()
 }
 
 /// Readiness: database + Redis reachable.

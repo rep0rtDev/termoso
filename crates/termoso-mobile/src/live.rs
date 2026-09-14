@@ -80,7 +80,7 @@ fn end_reason(reason: &str) -> LiveEndReason {
     }
 }
 
-/// Is `s` a `termoso://join/…` link?
+/// Is `s` a multiplayer join link (`https://<server>/join/…#…` or `termoso://join/…`)?
 #[uniffi::export]
 pub fn is_live_link(s: String) -> bool {
     LiveLink::looks_like(&s)
@@ -190,7 +190,7 @@ impl LiveShare {
         self.live_id.to_string()
     }
 
-    /// The `termoso://join/…` link to hand out. Contains the secret: show it
+    /// The `https://<server>/join/…#<secret>` link to hand out. Contains the secret: show it
     /// and copy it, never log it.
     pub fn link(&self) -> String {
         self.link.clone()

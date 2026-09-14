@@ -125,7 +125,7 @@ fun ConnectionsScreen(
             OutlinedTextField(
                 value = target,
                 onValueChange = { target = it },
-                placeholder = { Text("user@host:port or termoso://join/…") },
+                placeholder = { Text("user@host:port or join link") },
                 label = { Text("Quick connect") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -178,7 +178,7 @@ fun ConnectionsScreen(
                 RowDivider()
                 ChevronRow(
                     title = "Join shared terminal",
-                    subtitle = "Open a termoso://join link somebody sent you",
+                    subtitle = "Open a join link somebody sent you",
                     leading = { IconTile(Icons.Filled.Groups) },
                     modifier = Modifier.clickable { joinDialog = true },
                 )

@@ -269,7 +269,7 @@ class SessionManager(private val repo: VaultRepository, private val keepAlive: K
         )
     }
 
-    /** Start sharing [id]; returns the opaque `termoso://join/…` link. */
+    /** Start sharing [id]; returns the opaque join link. */
     suspend fun share(id: String): String {
         val session = find(id) ?: throw IllegalStateException("no such session")
         val share = repo.read { shareSession(session.rust, session.label, session.liveListener) }

@@ -187,6 +187,7 @@ pub fn router(state: AppState) -> Router {
     let mut app = Router::new()
         .route("/healthz", get(server::healthz))
         .route("/readyz", get(server::readyz))
+        .route("/.well-known/assetlinks.json", get(server::assetlinks))
         .route("/sshid/{handle}", get(sshid::public_default))
         .route("/sshid/{handle}/{type}", get(sshid::public_typed))
         .nest("/api/v1", api);

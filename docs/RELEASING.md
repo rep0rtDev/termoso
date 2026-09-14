@@ -87,6 +87,26 @@ previous one. Locally, `TERMOSO_ANDROID_KEYSTORE=/path/to.jks
 TERMOSO_ANDROID_KEYSTORE_PASSWORD=… ./gradlew :app:assembleRelease` signs the
 same way; without those variables the release APK is left unsigned.
 
+The signing certificate also powers Android App Links: the app declares
+`https://app.termoso.com/{invite,join}/…` and Android only lets it claim those
+URLs after fetching `https://app.termoso.com/.well-known/assetlinks.json` and
+finding the certificate there. Print the fingerprint and put it in the
+server's `TERMOSO_ANDROID_APP_LINKS` (self-hosted servers do the same for
+their own builds):
+
+```bash
+keytool -list -v -keystore termoso-release.jks -alias termoso | grep SHA256
+# or, for a built APK:
+apksigner verify --print-certs termoso-x.y.z-arm64-v8a.apk | grep SHA-256
+
+TERMOSO_ANDROID_APP_LINKS="com.termoso.android=AA:BB:…"
+```
+
+Self-hosted servers are still reachable from the app through the same links:
+the web landing pages (`/invite/<token>`, `/join/<id>#<secret>`) offer *Open in
+Termoso*, which hands the link to the installed app over the `termoso://`
+scheme, so App Links are an optimisation, not a requirement.
+
 ## How the updater behaves
 
 * **Off by default.** The app never contacts any server unless the user
