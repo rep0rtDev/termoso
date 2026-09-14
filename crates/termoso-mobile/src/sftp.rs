@@ -328,6 +328,16 @@ impl TransferQueue {
         }
     }
 
+    /// Remote path of the partial file a cancelled upload left behind, if
+    /// it ever ran.
+    fn remote_leftover(&self, id: u64) -> Option<String> {
+        let t = self.transfers.get(&id)?;
+        (t.card.status == TransferStatus::Cancelled
+            && t.card.direction == TransferDirection::Upload
+            && t.resume)
+            .then(|| t.card.remote_path.clone())
+    }
+
     /// Forget a finished transfer; active ones are left alone.
     fn dismiss(&mut self, id: u64) -> bool {
         if self
@@ -646,12 +656,12 @@ impl SftpSession {
         }
     }
 
-    /// Discard a transfer in any non-final state. The partial file is left
-    /// for the caller to clean up.
+    /// Discard a transfer in any non-final state. A cancelled upload's
+    /// remote partial is removed; the local file is the caller's to clean up.
     pub fn cancel_transfer(&self, id: u64) {
         let card = self.inner.queue.lock().expect("queue poisoned").cancel(id);
         if let Some(card) = card {
-            self.inner.listener.on_transfer(card);
+            self.inner.settled(card);
         }
         self.inner.pump();
     }
@@ -746,9 +756,30 @@ impl Inner {
             .expect("queue poisoned")
             .finish(id, result);
         if let Some(card) = card {
-            self.listener.on_transfer(card);
+            self.settled(card);
         }
         self.pump();
+    }
+
+    /// Announce a final card; a cancelled upload first loses its remote
+    /// partial so the listing the UI refreshes to is already clean.
+    fn settled(self: &Arc<Self>, card: TransferCard) {
+        let leftover = self
+            .queue
+            .lock()
+            .expect("queue poisoned")
+            .remote_leftover(card.id);
+        let live = self.live.lock().expect("live poisoned").clone();
+        match (leftover, live) {
+            (Some(remote), Some(live)) => {
+                let inner = self.clone();
+                self.runtime.spawn(async move {
+                    let _ = live.sftp.remove_file(&remote).await;
+                    inner.listener.on_transfer(card);
+                });
+            }
+            _ => self.listener.on_transfer(card),
+        }
     }
 }
 
@@ -1076,6 +1107,61 @@ mod tests {
         assert!(q.cancel(ids[3]).is_none(), "already cancelled");
         assert!(q.dismiss(ids[3]));
         assert!(!q.dismiss(ids[2]), "running again");
+    }
+
+    #[test]
+    fn cancelled_upload_that_ran_leaves_a_remote_partial_to_remove() {
+        let mut q = TransferQueue::new(CancellationToken::new());
+        let ids: Vec<u64> = (0..3)
+            .map(|i| {
+                q.enqueue(
+                    TransferDirection::Upload,
+                    format!("/srv/up{i}"),
+                    format!("/tmp/up{i}"),
+                )
+                .id
+            })
+            .collect();
+        let dl = q
+            .enqueue(
+                TransferDirection::Download,
+                "/srv/dl".into(),
+                "/tmp/dl".into(),
+            )
+            .id;
+        assert_eq!(q.take_ready().len(), 3, "the three uploads run, dl waits");
+
+        // Running upload cancelled outright.
+        q.cancel(ids[0]);
+        q.finish(ids[0], Err(MobileError::Cancelled));
+        assert_eq!(q.remote_leftover(ids[0]).as_deref(), Some("/srv/up0"));
+
+        // Paused after a partial run, then cancelled.
+        q.pause(ids[1]);
+        q.finish(ids[1], Err(MobileError::Cancelled));
+        assert!(q.remote_leftover(ids[1]).is_none(), "paused keeps it");
+        q.cancel(ids[1]);
+        assert_eq!(q.remote_leftover(ids[1]).as_deref(), Some("/srv/up1"));
+
+        // Finished uploads and downloads have nothing to remove remotely.
+        q.finish(ids[2], Ok(()));
+        assert!(q.remote_leftover(ids[2]).is_none());
+        q.take_ready();
+        q.cancel(dl);
+        q.finish(dl, Err(MobileError::Cancelled));
+        assert_eq!(status(&q, dl), TransferStatus::Cancelled);
+        assert!(q.remote_leftover(dl).is_none());
+
+        // A queued upload that never ran.
+        let fresh = q
+            .enqueue(
+                TransferDirection::Upload,
+                "/srv/up9".into(),
+                "/tmp/up9".into(),
+            )
+            .id;
+        q.cancel(fresh);
+        assert!(q.remote_leftover(fresh).is_none());
     }
 
     #[test]
