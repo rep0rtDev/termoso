@@ -179,7 +179,9 @@ fun MainShell(
         if (accountStatus.account == null) {
             shell.notify("Sign in to accept the team invitation")
             nav.navigate(Routes.signIn(AuthMode.SignIn)) { launchSingleTop = true }
-        } else {
+        } else if (nav.currentDestination?.route != Routes.TEAMS) {
+            // Re-navigating onto the visible Teams screen would recreate it and
+            // drop the dialog its previous instance just opened for this link.
             nav.navigate(Routes.TEAMS) { launchSingleTop = true }
         }
     }
