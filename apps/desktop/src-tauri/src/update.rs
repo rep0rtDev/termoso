@@ -47,10 +47,8 @@ pub enum UpdateEvent {
     Failed { message: String },
 }
 
-impl From<tauri_plugin_updater::Error> for DesktopError {
-    fn from(e: tauri_plugin_updater::Error) -> Self {
-        DesktopError::new("update", e.to_string())
-    }
+fn updater_err(e: tauri_plugin_updater::Error) -> DesktopError {
+    DesktopError::new("update", e.to_string())
 }
 
 fn info(u: &Update) -> UpdateInfo {
@@ -89,10 +87,12 @@ pub async fn check<R: Runtime>(app: &AppHandle<R>) -> Result<Option<UpdateInfo>>
     let url = feed_url(&settings.update_url)?;
     let updater = app
         .updater_builder()
-        .endpoints(vec![url])?
+        .endpoints(vec![url])
+        .map_err(updater_err)?
         .timeout(std::time::Duration::from_secs(30))
-        .build()?;
-    let found = updater.check().await?;
+        .build()
+        .map_err(updater_err)?;
+    let found = updater.check().await.map_err(updater_err)?;
     let hub = app.state::<UpdateHub>();
     let mut pending = hub.pending.lock().map_err(|_| poisoned())?;
     let out = found.as_ref().map(info);
@@ -155,7 +155,7 @@ pub async fn install<R: Runtime>(app: &AppHandle<R>) -> Result<UpdateInfo> {
                     message: e.to_string(),
                 },
             );
-            Err(e.into())
+            Err(updater_err(e))
         }
     }
 }

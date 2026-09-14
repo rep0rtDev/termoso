@@ -8,7 +8,9 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use termoso_core::fido2::{self, Fido2Device, GenerateOptions, SecurityKeyInfo};
+use termoso_core::fido2;
+#[cfg(feature = "fido2")]
+use termoso_core::fido2::{Fido2Device, GenerateOptions, SecurityKeyInfo};
 use termoso_core::keys::{self, CertificateInfo, KeyAlgorithm, KeyInfo};
 use termoso_core::model::{Entity, Identity, SshCertificate, SshConfig, SshKey, TelnetConfig};
 use termoso_core::store::Store;
@@ -16,7 +18,7 @@ use termoso_proto::sshid::SshIdKeyType;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-use crate::error::{DesktopError, Result};
+use crate::error::{ClientError, Result};
 
 /// Public metadata of an OpenSSH certificate (`*-cert.pub`).
 #[derive(Debug, Clone, Serialize)]
@@ -89,11 +91,13 @@ pub struct KeyCard {
     pub certificate_unreadable: bool,
     /// FIDO2 security key: the token signs, the vault holds only the
     /// public half and the credential handle.
+    #[cfg(feature = "fido2")]
     pub security_key: Option<SecurityKeyInfo>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
     pub dirty: bool,
 }
 
+#[cfg(feature = "fido2")]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Fido2GenerateForm {
@@ -106,6 +110,7 @@ pub struct Fido2GenerateForm {
     pub remember_passphrase: bool,
 }
 
+#[cfg(feature = "fido2")]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Fido2LoadForm {
@@ -199,10 +204,10 @@ pub struct IdentityForm {
 fn label_of(s: &str, what: &str) -> Result<String> {
     let label = s.trim();
     if label.is_empty() {
-        return Err(DesktopError::invalid(format!("{what} label is required")));
+        return Err(ClientError::invalid(format!("{what} label is required")));
     }
     if label.chars().count() > 200 {
-        return Err(DesktopError::invalid(format!("{what} label is too long")));
+        return Err(ClientError::invalid(format!("{what} label is too long")));
     }
     Ok(label.to_string())
 }
@@ -301,6 +306,7 @@ fn card(
         used_by,
         certificate: cert_info.and_then(|c| c.ok()),
         certificate_unreadable,
+        #[cfg(feature = "fido2")]
         security_key: fido2::describe(&k.private_key, k.passphrase.as_deref()),
         updated_at: entity.updated_at,
         dirty: entity.dirty,
@@ -344,6 +350,7 @@ fn short_type(info: &KeyInfo) -> String {
 
 /// Connected FIDO2 authenticators. Blocking USB I/O; callers run it off
 /// the async runtime.
+#[cfg(feature = "fido2")]
 pub fn fido2_devices() -> Vec<Fido2Device> {
     fido2::list_devices()
 }
@@ -352,7 +359,7 @@ pub fn fido2_devices() -> Vec<Fido2Device> {
 /// encrypted with (if anything); it is remembered in the vault only when
 /// `remember` is set. The stored block is public key + credential handle —
 /// the token never releases the signing key.
-fn store_sk(
+pub fn store_security_key(
     store: &Store,
     vault_id: Uuid,
     label: String,
@@ -377,6 +384,7 @@ fn store_sk(
 
 /// Create a credential on the token (waits for the touch) and store the
 /// resulting `sk-*` key. The token keeps the private key.
+#[cfg(feature = "fido2")]
 pub fn fido2_generate(store: &Store, form: &Fido2GenerateForm) -> Result<KeyCard> {
     let label = label_of(&form.label, "key")?;
     let mut opts = form.options.clone();
@@ -386,7 +394,7 @@ pub fn fido2_generate(store: &Store, form: &Fido2GenerateForm) -> Result<KeyCard
     }
     let material = fido2::generate(&opts)?;
     let passphrase = opts.passphrase.as_deref().map(|p| p.as_str());
-    store_sk(
+    store_security_key(
         store,
         form.vault_id,
         label,
@@ -398,6 +406,7 @@ pub fn fido2_generate(store: &Store, form: &Fido2GenerateForm) -> Result<KeyCard
 
 /// Load the resident SSH credentials from a token (`ssh-keygen -K`) into
 /// the vault. Credentials already present (same public key) are skipped.
+#[cfg(feature = "fido2")]
 pub fn fido2_load_resident(store: &Store, form: &Fido2LoadForm) -> Result<Vec<KeyCard>> {
     let passphrase = form
         .passphrase
@@ -421,7 +430,7 @@ pub fn fido2_load_resident(store: &Store, form: &Fido2LoadForm) -> Result<Vec<Ke
         } else {
             material.info.comment.trim().to_string()
         };
-        out.push(store_sk(
+        out.push(store_security_key(
             store,
             form.vault_id,
             label,
@@ -496,11 +505,11 @@ pub fn import(store: &Store, form: &ImportForm) -> Result<KeyCard> {
     key_card(store, id)
 }
 
-fn certificate_mismatch(cert: &str) -> DesktopError {
+fn certificate_mismatch(cert: &str) -> ClientError {
     let fp = keys::inspect_certificate(cert)
         .map(|i| i.fingerprint)
         .unwrap_or_default();
-    DesktopError::invalid(format!("certificate was issued for a different key ({fp})"))
+    ClientError::invalid(format!("certificate was issued for a different key ({fp})"))
 }
 
 /// Public half of private key text the user pasted or picked, for the
@@ -522,7 +531,7 @@ pub struct KeyPreview {
 pub fn inspect_private(text: &str) -> Result<KeyPreview> {
     let text = Zeroizing::new(text.trim().to_string());
     if text.is_empty() {
-        return Err(DesktopError::invalid("empty private key"));
+        return Err(ClientError::invalid("empty private key"));
     }
     let info = keys::inspect(&text)?;
     Ok(KeyPreview {
@@ -613,7 +622,7 @@ fn delete_certificate(store: &Store, cert: &Entity<SshCertificate>) -> Result<()
 pub fn copy_to_vault(store: &Store, id: Uuid, vault_id: Uuid, mv: bool) -> Result<KeyCard> {
     let e = store.require::<SshKey>(id)?;
     if e.vault_id == vault_id {
-        return Err(DesktopError::invalid("key is already in this vault"));
+        return Err(ClientError::invalid("key is already in this vault"));
     }
     // The very same key already there (e.g. brought along by a shared host):
     // point at it instead of storing a second copy.
@@ -698,7 +707,7 @@ pub fn public_key(store: &Store, id: Uuid) -> Result<String> {
     e.data
         .public_key
         .clone()
-        .ok_or_else(|| DesktopError::invalid("key has no public half"))
+        .ok_or_else(|| ClientError::invalid("key has no public half"))
 }
 
 /// Private key in OpenSSH format. The only path that hands private material
@@ -761,16 +770,16 @@ pub fn export_outcome(
     match (exit_code, out.trim()) {
         (Some(0), "ADDED") => Ok(ExportOutcome::Added),
         (Some(0), "EXISTS") => Ok(ExportOutcome::AlreadyPresent),
-        (Some(2), _) => Err(DesktopError::invalid(
+        (Some(2), _) => Err(ClientError::invalid(
             "could not create ~/.ssh/authorized_keys on the host (permissions?)",
         )),
-        (Some(3), _) => Err(DesktopError::invalid(
+        (Some(3), _) => Err(ClientError::invalid(
             "the host did not receive the key (stdin was empty)",
         )),
         (code, _) => {
             let err = String::from_utf8_lossy(stderr);
             let detail = err.trim();
-            Err(DesktopError::invalid(match (code, detail.is_empty()) {
+            Err(ClientError::invalid(match (code, detail.is_empty()) {
                 (Some(c), false) => format!("remote command failed (exit {c}): {detail}"),
                 (Some(c), true) => format!("remote command failed (exit {c})"),
                 (None, false) => format!("remote command failed: {detail}"),
@@ -834,7 +843,7 @@ pub fn save_identity(store: &Store, form: &IdentityForm) -> Result<IdentityCard>
     let label = label_of(&form.label, "identity")?;
     let username = form.username.trim().to_string();
     if username.is_empty() && !form.ssh_id {
-        return Err(DesktopError::invalid("username is required"));
+        return Err(ClientError::invalid("username is required"));
     }
     // A certificate is only usable together with the key it certifies, so
     // picking one without a key selects that key implicitly.
@@ -842,13 +851,11 @@ pub fn save_identity(store: &Store, form: &IdentityForm) -> Result<IdentityCard>
     if let Some(c) = form.ssh_certificate_id {
         let cert = store.require::<SshCertificate>(c)?;
         if cert.vault_id != form.vault_id {
-            return Err(DesktopError::invalid(
-                "certificate belongs to another vault",
-            ));
+            return Err(ClientError::invalid("certificate belongs to another vault"));
         }
         match (cert.data.ssh_key_id, ssh_key_id) {
             (Some(ck), Some(k)) if ck != k => {
-                return Err(DesktopError::invalid(
+                return Err(ClientError::invalid(
                     "certificate was issued for a different key",
                 ));
             }
@@ -859,7 +866,7 @@ pub fn save_identity(store: &Store, form: &IdentityForm) -> Result<IdentityCard>
     if let Some(k) = ssh_key_id {
         let key = store.require::<SshKey>(k)?;
         if key.vault_id != form.vault_id {
-            return Err(DesktopError::invalid("key belongs to another vault"));
+            return Err(ClientError::invalid("key belongs to another vault"));
         }
     }
     let existing = match form.id {
@@ -891,7 +898,7 @@ pub fn save_identity(store: &Store, form: &IdentityForm) -> Result<IdentityCard>
     identities(store, Some(form.vault_id))?
         .into_iter()
         .find(|c| c.id == id)
-        .ok_or_else(|| DesktopError::not_found(format!("identity {id}")))
+        .ok_or_else(|| ClientError::not_found(format!("identity {id}")))
 }
 
 /// Copy (or move) a visible identity into `vault_id`. The key it points at is
@@ -907,12 +914,12 @@ pub fn copy_identity_to_vault(
 ) -> Result<IdentityCard> {
     let e = store.require::<Identity>(id)?;
     if !e.data.is_visible {
-        return Err(DesktopError::invalid(
+        return Err(ClientError::invalid(
             "inline identities are managed by their host",
         ));
     }
     if e.vault_id == vault_id {
-        return Err(DesktopError::invalid("identity is already in this vault"));
+        return Err(ClientError::invalid("identity is already in this vault"));
     }
     let src_key = match e.data.ssh_key_id {
         Some(k) => Some(store.require::<SshKey>(k)?),
@@ -960,7 +967,7 @@ pub fn copy_identity_to_vault(
     identities(store, Some(vault_id))?
         .into_iter()
         .find(|c| c.id == new_id)
-        .ok_or_else(|| DesktopError::not_found(format!("identity {new_id}")))
+        .ok_or_else(|| ClientError::not_found(format!("identity {new_id}")))
 }
 
 /// Turn every reference to `ident` from SSH / Telnet configs in its vault into
@@ -996,7 +1003,7 @@ fn key_referenced(store: &Store, key: &Entity<SshKey>) -> Result<bool> {
 pub fn delete_identity(store: &Store, id: Uuid) -> Result<()> {
     let e = store.require::<Identity>(id)?;
     if !e.data.is_visible {
-        return Err(DesktopError::invalid(
+        return Err(ClientError::invalid(
             "inline identities are managed by their host",
         ));
     }
@@ -1215,14 +1222,10 @@ mod tests {
         );
     }
 
-    const PPK_ENC: &str =
-        include_str!("../../../../crates/termoso-core/testdata/keys/ed25519_v3_encrypted.ppk");
-    const OPENSSH_KEY: &str =
-        include_str!("../../../../crates/termoso-core/testdata/keys/ed25519_openssh");
-    const CERT: &str =
-        include_str!("../../../../crates/termoso-core/testdata/keys/ed25519-cert.pub");
-    const RSA_CERT: &str =
-        include_str!("../../../../crates/termoso-core/testdata/keys/rsa-cert.pub");
+    const PPK_ENC: &str = include_str!("../../termoso-core/testdata/keys/ed25519_v3_encrypted.ppk");
+    const OPENSSH_KEY: &str = include_str!("../../termoso-core/testdata/keys/ed25519_openssh");
+    const CERT: &str = include_str!("../../termoso-core/testdata/keys/ed25519-cert.pub");
+    const RSA_CERT: &str = include_str!("../../termoso-core/testdata/keys/rsa-cert.pub");
 
     fn import_form(vault: Uuid, private_key: &str, certificate: Option<&str>) -> ImportForm {
         ImportForm {
