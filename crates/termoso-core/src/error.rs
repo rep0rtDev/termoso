@@ -79,9 +79,11 @@ pub enum CoreError {
     #[error("ssh key: {0}")]
     Key(String),
     /// FIDO2 security key (no device, PIN, touch…).
-    #[cfg(feature = "fido2")]
     #[error("security key: {0}")]
     Fido2(#[from] crate::fido2::Fido2Error),
+    /// Mosh bootstrap or UDP session failure.
+    #[error("{0}")]
+    Mosh(#[from] crate::mosh::MoshError),
     /// Operation was cancelled.
     #[error("cancelled")]
     Cancelled,
@@ -152,8 +154,8 @@ impl CoreError {
             CoreError::Sftp(_) => "sftp",
             CoreError::Terminal(_) => "terminal",
             CoreError::Key(_) => "key",
-            #[cfg(feature = "fido2")]
             CoreError::Fido2(e) => e.kind(),
+            CoreError::Mosh(_) => "mosh",
             CoreError::Cancelled => "cancelled",
             CoreError::Closed => "closed",
         }

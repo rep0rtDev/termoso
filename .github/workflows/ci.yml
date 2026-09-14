@@ -61,13 +61,14 @@ jobs:
       TERMOSO_TEST_SMTP_ADDR: 127.0.0.1:1025
       TERMOSO_TEST_MAILPIT_URL: http://127.0.0.1:8025
       TERMOSO_TEST_REQUIRE_SERVICES: "1"
+      TERMOSO_TEST_REQUIRE_MOSH: "1"
     steps:
       - uses: actions/checkout@v5
-      - name: Tauri system libraries
+      - name: Tauri system libraries + mosh-server (Mosh interop tests)
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev \
-            libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libudev-dev
+            libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libudev-dev mosh
       # `services:` cannot pass a command, and the MinIO image needs one.
       - name: Start MinIO
         run: |
@@ -135,6 +136,41 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  android:
+    name: android (cargo-ndk + gradle assembleDebug + lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: android
+      - uses: taiki-e/cache-cargo-install-action@v2
+        with:
+          tool: cargo-ndk@4.1.2
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.2.12479018
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      # Rust for one ABI is enough to compile, lint and generate the bindings.
+      - run: ./gradlew --no-daemon -Ptermoso.abis=arm64-v8a :app:assembleDebug :app:lint
+        working-directory: apps/android
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
+      - uses: actions/upload-artifact@v6
+        with:
+          name: termoso-android-debug
+          path: apps/android/app/build/outputs/apk/debug/*.apk
+          retention-days: 7
 
   docker:
     name: docker image

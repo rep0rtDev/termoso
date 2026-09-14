@@ -11,6 +11,7 @@ import { StartOverPage } from "./pages/auth/StartOverPage";
 import { StartOverCancelPage, StartOverFinishPage } from "./pages/auth/StartOverFinishPage";
 import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
 import { InvitePage } from "./pages/auth/InvitePage";
+import { JoinPage } from "./pages/auth/JoinPage";
 import { SsoCallbackPage } from "./pages/auth/SsoCallbackPage";
 import { AccountPage } from "./pages/account/AccountPage";
 import { SecurityPage } from "./pages/account/SecurityPage";
@@ -47,6 +48,7 @@ export const router = createBrowserRouter([
       { path: "/start-over/:token", element: <StartOverFinishPage /> },
       { path: "/signup/recovery-key", element: <RecoveryKeyPage /> },
       { path: "/invite/:token", element: <InvitePage /> },
+      { path: "/join/:session", element: <JoinPage /> },
       { path: "/sso/callback", element: <SsoCallbackPage /> },
     ],
   },

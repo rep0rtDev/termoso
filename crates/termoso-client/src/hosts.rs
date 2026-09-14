@@ -14,7 +14,7 @@ use termoso_core::store::Store;
 use termoso_proto::sshid::SshIdKeyType;
 use uuid::Uuid;
 
-use crate::error::{DesktopError, Result};
+use crate::error::{ClientError, Result};
 use crate::keychain;
 
 /// What a host card / list row shows. Effective values already account for
@@ -165,14 +165,13 @@ pub struct SerialLine {
 
 impl Default for SerialLine {
     fn default() -> Self {
-        let d = termoso_core::serial::default_config();
         Self {
-            baud_rate: d.baud_rate,
-            data_bits: d.data_bits,
-            stop_bits: d.stop_bits,
-            parity: d.parity,
-            flow_control: d.flow_control,
-            charset: d.charset,
+            baud_rate: 115_200,
+            data_bits: 8,
+            stop_bits: 1,
+            parity: "none".into(),
+            flow_control: "none".into(),
+            charset: String::new(),
         }
     }
 }
@@ -478,7 +477,7 @@ fn normalize_tag_color(color: Option<String>) -> Result<Option<String>> {
     }
     let hex = c.strip_prefix('#').unwrap_or(&c);
     if !matches!(hex.len(), 3 | 6) || !hex.chars().all(|ch| ch.is_ascii_hexdigit()) {
-        return Err(DesktopError::invalid("tag colour must be a hex value"));
+        return Err(ClientError::invalid("tag colour must be a hex value"));
     }
     Ok(Some(format!("#{hex}")))
 }
@@ -494,7 +493,7 @@ pub fn tag_update(
     let mut tag = store.require::<Tag>(id)?;
     let label = label.trim().to_string();
     if label.is_empty() {
-        return Err(DesktopError::invalid("tag label is empty"));
+        return Err(ClientError::invalid("tag label is empty"));
     }
     let color = normalize_tag_color(color)?;
     let siblings: Vec<Entity<Tag>> = store.list(Some(tag.vault_id))?;
@@ -524,7 +523,7 @@ fn tag_info(store: &Store, id: Uuid) -> Result<TagInfo> {
     tags(store, Some(tag.vault_id))?
         .into_iter()
         .find(|t| t.id == id)
-        .ok_or_else(|| DesktopError::not_found("tag"))
+        .ok_or_else(|| ClientError::not_found("tag"))
 }
 
 /// Remove a tag and unlink it from every host.
@@ -548,7 +547,7 @@ pub fn tags_merge(store: &Store, sources: &[Uuid], target: Uuid) -> Result<TagIn
     for s in &sources {
         let src = store.require::<Tag>(*s)?;
         if src.vault_id != target_tag.vault_id {
-            return Err(DesktopError::invalid("tags belong to different vaults"));
+            return Err(ClientError::invalid("tags belong to different vaults"));
         }
     }
     let hosts: Vec<Entity<Host>> = store.list(Some(target_tag.vault_id))?;
@@ -657,17 +656,17 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
     let label = f.label.trim();
     let address = f.address.trim();
     if address.is_empty() {
-        return Err(DesktopError::invalid("address is required"));
+        return Err(ClientError::invalid("address is required"));
     }
     if !f.ssh && f.telnet.is_none() {
-        return Err(DesktopError::invalid(
+        return Err(ClientError::invalid(
             "a host needs an SSH or a Telnet section",
         ));
     }
     if let Some(gid) = f.group_id {
         let g = store.require::<Group>(gid)?;
         if g.vault_id != f.vault_id {
-            return Err(DesktopError::invalid("group belongs to another vault"));
+            return Err(ClientError::invalid("group belongs to another vault"));
         }
     }
     let identity_label = if label.is_empty() { address } else { label };
@@ -831,7 +830,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
     cards(store, Some(f.vault_id))?
         .into_iter()
         .find(|c| c.id == host_id)
-        .ok_or_else(|| DesktopError::not_found(format!("host {host_id}")))
+        .ok_or_else(|| ClientError::not_found(format!("host {host_id}")))
 }
 
 /// Delete a host together with its inline ssh_config and hidden identity.
@@ -896,10 +895,10 @@ fn upsert_identity(
     if let Some(vis) = c.identity_id {
         let i = store.require::<Identity>(vis)?;
         if !i.data.is_visible {
-            return Err(DesktopError::invalid("identity is not selectable"));
+            return Err(ClientError::invalid("identity is not selectable"));
         }
         if i.vault_id != vault_id {
-            return Err(DesktopError::invalid("identity belongs to another vault"));
+            return Err(ClientError::invalid("identity belongs to another vault"));
         }
         if let Some(old) = existing_inline {
             store.delete(old.id)?;
@@ -911,13 +910,11 @@ fn upsert_identity(
     if let Some(cid) = c.ssh_certificate_id {
         let cert = store.require::<SshCertificate>(cid)?;
         if cert.vault_id != vault_id {
-            return Err(DesktopError::invalid(
-                "certificate belongs to another vault",
-            ));
+            return Err(ClientError::invalid("certificate belongs to another vault"));
         }
         match (cert.data.ssh_key_id, ssh_key_id) {
             (Some(ck), Some(k)) if ck != k => {
-                return Err(DesktopError::invalid(
+                return Err(ClientError::invalid(
                     "certificate was issued for a different key",
                 ));
             }
@@ -928,7 +925,7 @@ fn upsert_identity(
     if let Some(k) = ssh_key_id {
         let key = store.require::<SshKey>(k)?;
         if key.vault_id != vault_id {
-            return Err(DesktopError::invalid("SSH key belongs to another vault"));
+            return Err(ClientError::invalid("SSH key belongs to another vault"));
         }
     }
     let username = c.username.trim().to_string();
@@ -979,7 +976,7 @@ fn require_same_vault<T: termoso_core::model::Payload>(
     if let Some(id) = id {
         let e = store.require::<T>(id)?;
         if e.vault_id != vault_id {
-            return Err(DesktopError::invalid(format!(
+            return Err(ClientError::invalid(format!(
                 "{what} belongs to another vault"
             )));
         }
@@ -1017,18 +1014,18 @@ fn check_parent(
         return Ok(());
     };
     if Some(pid) == id {
-        return Err(DesktopError::invalid("a group cannot be its own parent"));
+        return Err(ClientError::invalid("a group cannot be its own parent"));
     }
     let parent = store.require::<Group>(pid)?;
     if parent.vault_id != vault_id {
-        return Err(DesktopError::invalid(
+        return Err(ClientError::invalid(
             "parent group belongs to another vault",
         ));
     }
     if let Some(id) = id {
         let all: Vec<Entity<Group>> = store.list(Some(vault_id))?;
         if ancestors(&all, pid).contains(&id) {
-            return Err(DesktopError::invalid(
+            return Err(ClientError::invalid(
                 "cannot move a group inside its own sub-group",
             ));
         }
@@ -1040,7 +1037,7 @@ fn group_node(store: &Store, vault_id: Uuid, gid: Uuid) -> Result<GroupNode> {
     groups(store, Some(vault_id))?
         .into_iter()
         .find(|g| g.id == gid)
-        .ok_or_else(|| DesktopError::not_found(format!("group {gid}")))
+        .ok_or_else(|| ClientError::not_found(format!("group {gid}")))
 }
 
 /// Rename / re-parent a group, keeping its SSH defaults.
@@ -1053,7 +1050,7 @@ pub fn save_group(
 ) -> Result<GroupNode> {
     let label = label.trim();
     if label.is_empty() {
-        return Err(DesktopError::invalid("group name is required"));
+        return Err(ClientError::invalid("group name is required"));
     }
     check_parent(store, vault_id, id, parent_id)?;
     let mut data = match id {
@@ -1120,7 +1117,7 @@ pub fn group_form(store: &Store, id: Uuid) -> Result<GroupForm> {
 pub fn save_group_form(store: &Store, f: &GroupForm) -> Result<GroupNode> {
     let label = f.label.trim();
     if label.is_empty() {
-        return Err(DesktopError::invalid("group name is required"));
+        return Err(ClientError::invalid("group name is required"));
     }
     check_parent(store, f.vault_id, f.id, f.parent_id)?;
     require_same_vault::<HostChain>(store, f.host_chain_id, f.vault_id, "host chain")?;
@@ -1500,7 +1497,7 @@ pub fn duplicate(store: &Store, id: Uuid) -> Result<HostCard> {
     cards(store, Some(src.vault_id))?
         .into_iter()
         .find(|c| c.id == new_id)
-        .ok_or_else(|| DesktopError::not_found(format!("host {new_id}")))
+        .ok_or_else(|| ClientError::not_found(format!("host {new_id}")))
 }
 
 /// Move hosts into a group (or to the top level) of the same vault.
@@ -1514,7 +1511,7 @@ pub fn move_hosts(store: &Store, ids: &[Uuid], group_id: Option<Uuid>) -> Result
         if let Some(g) = &group
             && g.vault_id != h.vault_id
         {
-            return Err(DesktopError::invalid("group belongs to another vault"));
+            return Err(ClientError::invalid("group belongs to another vault"));
         }
         if h.data.group_id != group_id {
             h.data.group_id = group_id;
@@ -1533,10 +1530,10 @@ pub fn copy_to_vault(
 ) -> Result<Vec<Uuid>> {
     let vault = store.vault(vault_id)?;
     if !vault.unlocked {
-        return Err(DesktopError::invalid("target vault is locked"));
+        return Err(ClientError::invalid("target vault is locked"));
     }
     if !vault.role.can_write() {
-        return Err(DesktopError::invalid("you can only view this vault"));
+        return Err(ClientError::invalid("you can only view this vault"));
     }
     let mut copied_keys = HashMap::new();
     ids.iter()

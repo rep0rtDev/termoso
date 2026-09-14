@@ -119,6 +119,32 @@ async fn web_cabinet_is_served_with_spa_fallback() {
     let r = get("/robots.txt").await.unwrap();
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
 
+    // Android App Links statement comes from config, not from the web dir.
+    let r = get("/.well-known/assetlinks.json").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert!(
+        r.headers()["content-type"]
+            .to_str()
+            .unwrap()
+            .starts_with("application/json")
+    );
+    let statements: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(
+        statements,
+        serde_json::json!([{
+            "relation": ["delegate_permission/common.handle_all_urls"],
+            "target": {
+                "namespace": "android_app",
+                "package_name": "com.termoso.android.debug",
+                "sha256_cert_fingerprints": [
+                    "01:02:03:04:05:06:07:08:09:0A:0B:0C:0D:0E:0F:10:11:12:13:14:15:16:17:18:19:1A:1B:1C:1D:1E:1F:20"
+                ]
+            }
+        }])
+    );
+    let r = get("/.well-known/other.json").await.unwrap();
+    assert_eq!(r.status(), StatusCode::NOT_FOUND);
+
     // The API keeps JSON 404s and is never shadowed by the SPA.
     let r = get("/api/v1/no-such-route").await.unwrap();
     assert_eq!(r.status(), StatusCode::NOT_FOUND);

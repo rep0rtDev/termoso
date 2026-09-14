@@ -14,6 +14,7 @@ use russh_sftp::protocol::{
     Attrs, Data, File, FileAttributes, Handle, Name, OpenFlags, Status, StatusCode, Version,
 };
 use termoso_core::error::CoreError;
+use termoso_core::fido2::{GenerateOptions, SkAlgorithm, soft};
 use termoso_core::forward::{Forward, ForwardSpec};
 use termoso_core::hostkey::{
     self, FixedPrompt, HostKeyDecision, HostKeyPrompt, HostKeyVerdict, KnownHosts, StrictPrompt,
@@ -44,7 +45,7 @@ struct Observed {
 
 #[derive(Clone)]
 struct TestServer {
-    authorized: Arc<PublicKey>,
+    authorized: Arc<std::sync::Mutex<Vec<PublicKey>>>,
     observed: Arc<Observed>,
     files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     tcp_echo: Option<u16>,
@@ -54,6 +55,16 @@ struct TestHandler {
     srv: TestServer,
     channels: HashMap<ChannelId, Channel<Msg>>,
     shell_echo: HashMap<ChannelId, ()>,
+}
+
+impl TestServer {
+    fn is_authorized(&self, key: &PublicKey) -> bool {
+        self.authorized
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|k| k.key_data() == key.key_data())
+    }
 }
 
 impl russh::server::Server for TestServer {
@@ -96,7 +107,7 @@ impl russh::server::Handler for TestHandler {
         _user: &str,
         key: &PublicKey,
     ) -> Result<Auth, Self::Error> {
-        Ok(if key.key_data() == self.srv.authorized.key_data() {
+        Ok(if self.srv.is_authorized(key) {
             Auth::Accept
         } else {
             Auth::reject()
@@ -104,13 +115,11 @@ impl russh::server::Handler for TestHandler {
     }
 
     async fn auth_publickey(&mut self, user: &str, key: &PublicKey) -> Result<Auth, Self::Error> {
-        Ok(
-            if user == USER && key.key_data() == self.srv.authorized.key_data() {
-                Auth::Accept
-            } else {
-                Auth::reject()
-            },
-        )
+        Ok(if user == USER && self.srv.is_authorized(key) {
+            Auth::Accept
+        } else {
+            Auth::reject()
+        })
     }
 
     async fn auth_keyboard_interactive<'a>(
@@ -723,6 +732,7 @@ struct Harness {
     port: u16,
     host_key: PublicKey,
     client_key: PrivateKey,
+    authorized: Arc<std::sync::Mutex<Vec<PublicKey>>>,
     observed: Arc<Observed>,
     files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     store: Arc<Store>,
@@ -750,8 +760,9 @@ async fn start() -> Harness {
     let (echo_port, echo) = echo_server().await;
     let observed = Arc::new(Observed::default());
     let files = Arc::new(Mutex::new(HashMap::new()));
+    let authorized = Arc::new(std::sync::Mutex::new(vec![client_key.public_key().clone()]));
     let mut server = TestServer {
-        authorized: Arc::new(client_key.public_key().clone()),
+        authorized: authorized.clone(),
         observed: observed.clone(),
         files: files.clone(),
         tcp_echo: Some(echo_port),
@@ -775,6 +786,7 @@ async fn start() -> Harness {
         port,
         host_key: host_key.public_key().clone(),
         client_key,
+        authorized,
         observed,
         files,
         store,
@@ -803,6 +815,12 @@ impl Harness {
             .trust("127.0.0.1", self.port, &self.host_key)
             .unwrap();
         self.opts(Arc::new(StrictPrompt))
+    }
+
+    /// Add an `authorized_keys` line the server accepts.
+    fn authorize(&self, public_key: &str) {
+        let key = PublicKey::from_openssh(public_key).unwrap();
+        self.authorized.lock().unwrap().push(key);
     }
 
     async fn connect_password(&self) -> SshClient {
@@ -1045,6 +1063,173 @@ async fn encrypted_key_needs_passphrase() {
     SshClient::connect(o).await.unwrap();
 }
 
+/// Records the phases the connector reports.
+#[derive(Default)]
+struct Phases(std::sync::Mutex<Vec<termoso_core::ssh::ConnectPhase>>);
+
+impl termoso_core::ssh::ConnectProgress for Phases {
+    fn phase(&self, phase: termoso_core::ssh::ConnectPhase) {
+        self.0.lock().unwrap().push(phase);
+    }
+}
+
+/// Security-key auth end to end: the `sk-*` key is minted on the software
+/// authenticator, the server gets its `authorized_keys` line, and the
+/// signature travels through CTAPHID / NFC framing on the way.
+async fn sk_login(wire: soft::Wire, alg: SkAlgorithm, user_verification: bool) {
+    let h = start().await;
+    let token = soft::SoftToken::default();
+    let backend = Arc::new(soft::SoftBackend::new(token.clone(), wire));
+    let material = backend
+        .with(|a| {
+            a.generate(&GenerateOptions {
+                device: None,
+                algorithm: alg,
+                application: None,
+                resident: false,
+                user_presence: true,
+                user_verification,
+                pin: Some(Zeroizing::new("123456".into())),
+                user: None,
+                comment: "phone".into(),
+                passphrase: Some(Zeroizing::new("pp".into())),
+            })
+        })
+        .unwrap();
+    h.authorize(&material.public_key);
+    let touches_before = token.touches();
+
+    let phases = Arc::new(Phases::default());
+    let mut o = h.trusted();
+    o.progress = Some(phases.clone());
+    o.auth.push(AuthMethod::SecurityKey {
+        private_key: material.private_key.clone(),
+        passphrase: Some(Zeroizing::new("pp".into())),
+        pin: user_verification.then(|| Zeroizing::new("123456".into())),
+        backend: backend.clone(),
+        certificate: None,
+    });
+    let client = SshClient::connect(o).await.unwrap();
+    assert_eq!(
+        token.touches(),
+        touches_before + 1,
+        "one touch per signature"
+    );
+    assert!(
+        phases
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|p| matches!(p, termoso_core::ssh::ConnectPhase::SecurityKeyTouch { .. })),
+        "UI must be told to touch the key"
+    );
+    client.disconnect().await.unwrap();
+
+    // Same handle on a token that never saw the credential → typed error.
+    let stranger = Arc::new(soft::SoftBackend::new(soft::SoftToken::default(), wire));
+    let mut o = h.trusted();
+    o.auth.push(AuthMethod::SecurityKey {
+        private_key: material.private_key.clone(),
+        passphrase: Some(Zeroizing::new("pp".into())),
+        pin: Some(Zeroizing::new("123456".into())),
+        backend: stranger,
+        certificate: None,
+    });
+    assert!(matches!(
+        SshClient::connect(o).await,
+        Err(CoreError::Fido2(
+            termoso_core::fido2::Fido2Error::WrongDevice
+        ))
+    ));
+
+    if user_verification {
+        // verify-required key without a PIN → the token asks for one.
+        let mut o = h.trusted();
+        o.auth.push(AuthMethod::SecurityKey {
+            private_key: material.private_key.clone(),
+            passphrase: Some(Zeroizing::new("pp".into())),
+            pin: None,
+            backend: backend.clone(),
+            certificate: None,
+        });
+        assert!(matches!(
+            SshClient::connect(o).await,
+            Err(CoreError::Fido2(
+                termoso_core::fido2::Fido2Error::PinRequired
+            ))
+        ));
+    }
+
+    // User walks away → timeout surfaces as such, not as a generic auth failure.
+    token.configure(|c| c.touch = soft::Touch::Timeout);
+    let mut o = h.trusted();
+    o.auth.push(AuthMethod::SecurityKey {
+        private_key: material.private_key,
+        passphrase: Some(Zeroizing::new("pp".into())),
+        pin: Some(Zeroizing::new("123456".into())),
+        backend,
+        certificate: None,
+    });
+    assert!(matches!(
+        SshClient::connect(o).await,
+        Err(CoreError::Fido2(termoso_core::fido2::Fido2Error::Timeout))
+    ));
+}
+
+#[tokio::test]
+async fn security_key_ed25519_over_hid() {
+    sk_login(soft::Wire::Hid, SkAlgorithm::Ed25519, false).await;
+}
+
+#[tokio::test]
+async fn security_key_p256_over_nfc() {
+    sk_login(soft::Wire::Nfc, SkAlgorithm::EcdsaP256, false).await;
+}
+
+#[tokio::test]
+async fn security_key_verify_required() {
+    sk_login(soft::Wire::Direct, SkAlgorithm::Ed25519, true).await;
+}
+
+#[tokio::test]
+async fn security_key_resident_key_loaded_from_token_logs_in() {
+    let h = start().await;
+    let token = soft::SoftToken::default();
+    let minter = soft::SoftBackend::new(token.clone(), soft::Wire::Direct);
+    let original = minter
+        .with(|a| {
+            a.generate(&GenerateOptions {
+                device: None,
+                algorithm: SkAlgorithm::EcdsaP256,
+                application: None,
+                resident: true,
+                user_presence: true,
+                user_verification: false,
+                pin: Some(Zeroizing::new("123456".into())),
+                user: Some(USER.into()),
+                comment: String::new(),
+                passphrase: None,
+            })
+        })
+        .unwrap();
+    h.authorize(&original.public_key);
+
+    // "Another phone": nothing stored locally, key handle comes from the token.
+    let backend = Arc::new(soft::SoftBackend::new(token, soft::Wire::Hid));
+    let loaded = backend.with(|a| a.load_resident("123456", None)).unwrap();
+    assert_eq!(loaded.len(), 1);
+    let mut o = h.trusted();
+    o.auth.push(AuthMethod::SecurityKey {
+        private_key: loaded[0].private_key.clone(),
+        passphrase: None,
+        pin: None,
+        backend,
+        certificate: None,
+    });
+    SshClient::connect(o).await.unwrap();
+}
+
 #[tokio::test]
 async fn keyboard_interactive_uses_prompt_responder() {
     let h = start().await;
@@ -1242,6 +1427,110 @@ async fn sftp_end_to_end() {
     let n = sftp.download("a/big.bin", &out, &opts).await.unwrap();
     assert_eq!(n, (payload.len() - 300_000) as u64);
     assert_eq!(std::fs::read(&out).unwrap(), payload);
+
+    // Partial remote copy → resume uploads only the tail.
+    h.files.lock().await.insert(
+        "/home/tester/a/part.bin".into(),
+        payload[..200_000].to_vec(),
+    );
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let s2 = seen.clone();
+    let opts = TransferOptions {
+        resume: true,
+        progress: Some(Arc::new(move |p| s2.lock().unwrap().push(p))),
+        ..TransferOptions::default()
+    };
+    let n = sftp.upload(&local, "a/part.bin", &opts).await.unwrap();
+    assert_eq!(n, (payload.len() - 200_000) as u64);
+    assert_eq!(seen.lock().unwrap()[0].done, 200_000);
+    assert_eq!(
+        h.files.lock().await.get("/home/tester/a/part.bin").unwrap(),
+        &payload
+    );
+
+    // Remote longer than local → start over instead of appending garbage.
+    let mut longer = payload.clone();
+    longer.extend_from_slice(b"stale tail");
+    h.files
+        .lock()
+        .await
+        .insert("/home/tester/a/long.bin".into(), longer);
+    let opts = TransferOptions {
+        resume: true,
+        ..TransferOptions::default()
+    };
+    let n = sftp.upload(&local, "a/long.bin", &opts).await.unwrap();
+    assert_eq!(n, payload.len() as u64);
+    assert_eq!(
+        h.files.lock().await.get("/home/tester/a/long.bin").unwrap(),
+        &payload
+    );
+
+    // Cancel mid-download: the partial file stays and a resume finishes it.
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let c2 = cancel.clone();
+    let part = dir.path().join("part.bin");
+    let opts = TransferOptions {
+        cancel,
+        progress: Some(Arc::new(move |p| {
+            if p.done > 0 {
+                c2.cancel();
+            }
+        })),
+        ..TransferOptions::default()
+    };
+    assert!(matches!(
+        sftp.download("a/big.bin", &part, &opts).await,
+        Err(CoreError::Cancelled)
+    ));
+    let have = std::fs::metadata(&part).unwrap().len();
+    assert!(have > 0 && have < payload.len() as u64, "{have}");
+    assert_eq!(
+        &std::fs::read(&part).unwrap()[..],
+        &payload[..have as usize]
+    );
+    let opts = TransferOptions {
+        resume: true,
+        ..TransferOptions::default()
+    };
+    let n = sftp.download("a/big.bin", &part, &opts).await.unwrap();
+    assert_eq!(n, payload.len() as u64 - have);
+    assert_eq!(std::fs::read(&part).unwrap(), payload);
+
+    // Cancel mid-upload likewise keeps the remote prefix intact.
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let c2 = cancel.clone();
+    let opts = TransferOptions {
+        cancel,
+        progress: Some(Arc::new(move |p| {
+            if p.done > 0 {
+                c2.cancel();
+            }
+        })),
+        ..TransferOptions::default()
+    };
+    assert!(matches!(
+        sftp.upload(&local, "a/cut.bin", &opts).await,
+        Err(CoreError::Cancelled)
+    ));
+    let have = h
+        .files
+        .lock()
+        .await
+        .get("/home/tester/a/cut.bin")
+        .unwrap()
+        .len();
+    assert!(have > 0 && have < payload.len(), "{have}");
+    let opts = TransferOptions {
+        resume: true,
+        ..TransferOptions::default()
+    };
+    let n = sftp.upload(&local, "a/cut.bin", &opts).await.unwrap();
+    assert_eq!(n, (payload.len() - have) as u64);
+    assert_eq!(
+        h.files.lock().await.get("/home/tester/a/cut.bin").unwrap(),
+        &payload
+    );
 
     // Cancel before start.
     let cancel = tokio_util::sync::CancellationToken::new();
