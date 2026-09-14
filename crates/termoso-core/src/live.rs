@@ -41,10 +41,13 @@ const REPLAY_BYTES: usize = 128 * 1024;
 /// Outbound queue between the terminal pump and the relay task.
 const QUEUE: usize = 1024;
 
+/// `https://<server>/join/<session>#<secret>`, or the app-scheme form
 /// `termoso://join/<session>?s=<server>#<secret>`.
 ///
 /// The secret travels in the fragment so it is never part of anything a
 /// server sees; the server URL is only a hint for a clear mismatch error.
+/// The https form is what hosts hand out: it opens the web landing page (or
+/// the app directly through App Links) and can be pasted into any client.
 #[derive(Clone)]
 pub struct LiveLink {
     /// Relay session id.
@@ -68,19 +71,39 @@ impl LiveLink {
     /// Is `s` a multiplayer link?
     pub fn looks_like(s: &str) -> bool {
         let s = s.trim();
-        s.starts_with(&format!("{SCHEME}://join/")) || s.starts_with(&format!("{SCHEME}:join/"))
+        if s.starts_with(&format!("{SCHEME}://join/")) || s.starts_with(&format!("{SCHEME}:join/"))
+        {
+            return true;
+        }
+        (s.starts_with("https://") || s.starts_with("http://"))
+            && s.split(['?', '#'])
+                .next()
+                .is_some_and(|p| p.contains("/join/"))
+            && s.contains('#')
     }
 
     /// Parse a link; the secret is validated (length) but nothing is contacted.
     pub fn parse(s: &str) -> Result<Self> {
         let u = Url::parse(s.trim()).map_err(|_| CoreError::Invalid("not a link".into()))?;
-        if u.scheme() != SCHEME || u.host_str() != Some("join") {
+        let (id, origin) = if u.scheme() == SCHEME && u.host_str() == Some("join") {
+            let id = u
+                .path_segments()
+                .and_then(|mut p| p.next().map(str::to_owned));
+            (id, None)
+        } else if u.scheme() == "https" || u.scheme() == "http" {
+            let path = u.path().trim_end_matches('/');
+            let Some((base, id)) = path.rsplit_once("/join/") else {
+                return Err(CoreError::Invalid("not a multiplayer link".into()));
+            };
+            let mut origin = u.clone();
+            origin.set_query(None);
+            origin.set_fragment(None);
+            origin.set_path(&format!("{base}/"));
+            (Some(id.to_owned()), Some(origin))
+        } else {
             return Err(CoreError::Invalid("not a multiplayer link".into()));
-        }
-        let id = u
-            .path_segments()
-            .and_then(|mut p| p.next().map(str::to_owned))
-            .ok_or_else(|| CoreError::Invalid("link has no session id".into()))?;
+        };
+        let id = id.ok_or_else(|| CoreError::Invalid("link has no session id".into()))?;
         let session_id =
             Uuid::parse_str(&id).map_err(|_| CoreError::Invalid("bad session id".into()))?;
         let secret = u
@@ -92,7 +115,8 @@ impl LiveLink {
         let server = u
             .query_pairs()
             .find(|(k, _)| k == "s")
-            .and_then(|(_, v)| Url::parse(&v).ok());
+            .and_then(|(_, v)| Url::parse(&v).ok())
+            .or(origin);
         Ok(Self {
             session_id,
             server,
@@ -100,8 +124,24 @@ impl LiveLink {
         })
     }
 
-    /// Render the link.
+    /// Render the link: https on the server when one is known, otherwise the
+    /// app-scheme form.
     pub fn to_url(&self) -> String {
+        match &self.server {
+            Some(server) => {
+                let mut s = server.as_str().trim_end_matches('/').to_owned();
+                s.push_str("/join/");
+                s.push_str(&self.session_id.to_string());
+                s.push('#');
+                s.push_str(&self.secret.to_b64());
+                s
+            }
+            None => self.to_app_url(),
+        }
+    }
+
+    /// The `termoso://join/…` form, for OS deep links into an installed client.
+    pub fn to_app_url(&self) -> String {
         let mut s = format!("{SCHEME}://join/{}", self.session_id);
         if let Some(server) = &self.server {
             let q: String = url::form_urlencoded::Serializer::new(String::new())
@@ -820,6 +860,14 @@ mod tests {
             !before.contains(frag),
             "secret must only be in the fragment"
         );
+        assert_eq!(
+            s,
+            format!(
+                "https://cloud.example.org/join/{}#{}",
+                link.session_id,
+                link.secret.to_b64()
+            )
+        );
         let parsed = LiveLink::parse(&s).unwrap();
         assert_eq!(parsed.session_id, link.session_id);
         assert_eq!(parsed.secret.to_b64(), link.secret.to_b64());
@@ -827,14 +875,63 @@ mod tests {
             parsed.server.as_ref().map(Url::as_str),
             Some("https://cloud.example.org/")
         );
+
+        let app = link.to_app_url();
+        assert!(app.starts_with("termoso://join/"));
+        assert!(LiveLink::looks_like(&app));
+        let parsed = LiveLink::parse(&app).unwrap();
+        assert_eq!(parsed.session_id, link.session_id);
+        assert_eq!(
+            parsed.server.as_ref().map(Url::as_str),
+            Some("https://cloud.example.org/")
+        );
+    }
+
+    #[test]
+    fn https_link_keeps_server_path_prefix_and_explicit_server() {
+        let id = Uuid::new_v4();
+        let secret = LiveSecret::generate().to_b64();
+        let parsed =
+            LiveLink::parse(&format!("https://x.test:8443/termoso/join/{id}/#{secret}")).unwrap();
+        assert_eq!(parsed.session_id, id);
+        assert_eq!(
+            parsed.server.as_ref().map(Url::as_str),
+            Some("https://x.test:8443/termoso/")
+        );
+        let parsed = LiveLink::parse(&format!(
+            "https://web.test/join/{id}?s=https%3A%2F%2Fapi.test%2F#{secret}"
+        ))
+        .unwrap();
+        assert_eq!(
+            parsed.server.as_ref().map(Url::as_str),
+            Some("https://api.test/")
+        );
+        let no_server = LiveLink {
+            session_id: id,
+            server: None,
+            secret: LiveSecret::generate(),
+        };
+        assert!(no_server.to_url().starts_with("termoso://join/"));
     }
 
     #[test]
     fn link_rejects_garbage() {
+        let secret = LiveSecret::generate().to_b64();
         assert!(LiveLink::parse("termoso://host/abc").is_err());
         assert!(LiveLink::parse(&format!("termoso://join/{}", Uuid::new_v4())).is_err());
         assert!(LiveLink::parse(&format!("termoso://join/{}#short", Uuid::new_v4())).is_err());
+        assert!(
+            LiveLink::parse(&format!(
+                "https://x.test/invite/{}#{secret}",
+                Uuid::new_v4()
+            ))
+            .is_err()
+        );
+        assert!(LiveLink::parse(&format!("https://x.test/join/{}", Uuid::new_v4())).is_err());
+        assert!(LiveLink::parse(&format!("https://x.test/join/nope#{secret}")).is_err());
         assert!(!LiveLink::looks_like("ssh://root@example"));
+        assert!(!LiveLink::looks_like("https://x.test/join/abc"));
+        assert!(!LiveLink::looks_like("https://x.test/invite/abc#x"));
     }
 
     #[test]

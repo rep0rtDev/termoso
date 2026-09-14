@@ -57,6 +57,17 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="termoso" android:host="join" />
             </intent-filter>
+            <!-- Android App Links: https invitation / live-sharing links of the cloud server open
+                 straight in the app once the OS verifies /.well-known/assetlinks.json there.
+                 The host is the Gradle property termoso.appLinkHost (self-hosted builds set their own). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="${appLinkHost}" />
+                <data android:pathPrefix="/invite/" />
+                <data android:pathPrefix="/join/" />
+            </intent-filter>
         </activity>
 
         <service

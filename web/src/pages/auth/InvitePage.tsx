@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Alert, Button, Chip, Stack, Typography } from "@mui/material";
+import { Alert, Button, Chip, Divider, Stack, Typography } from "@mui/material";
+import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate, useParams } from "react-router";
 import { errorMessage } from "@/api/client";
@@ -8,6 +9,7 @@ import { queryKeys } from "@/api/hooks";
 import { useAuthState } from "@/auth/store";
 import { Loading } from "@/components/Loading";
 import { AuthTitle } from "./common";
+import { appInviteLink } from "./appLinks";
 
 export function InvitePage() {
   const { token = "" } = useParams();
@@ -117,6 +119,15 @@ export function InvitePage() {
             </Button>
           </>
         )}
+        <Divider>or</Divider>
+        <Button
+          color="inherit"
+          href={appInviteLink(token)}
+          endIcon={<OpenInNewRoundedIcon />}
+          data-testid="open-in-app"
+        >
+          Open in the Termoso app
+        </Button>
       </Stack>
     </>
   );

@@ -29,6 +29,10 @@ val releaseKeystore: File? = System.getenv("TERMOSO_ANDROID_KEYSTORE")?.let(::Fi
 // `-Ptermoso.splits=true` produces one APK per ABI plus a universal one (release workflow).
 val abiSplits: Boolean = (findProperty("termoso.splits") as String?)?.toBoolean() ?: false
 
+// Host whose https://<host>/invite/… and /join/… links open in the app (Android App Links).
+// Must match the server publishing this build's signing certificate in /.well-known/assetlinks.json.
+val appLinkHost: String = findProperty("termoso.appLinkHost") as String
+
 android {
     namespace = "com.termoso.android"
     compileSdk = 36
@@ -43,6 +47,7 @@ android {
         vectorDrawables.useSupportLibrary = true
         // Only ship the ABIs we build Rust for (JNA's AAR carries mips/armeabi too).
         ndk.abiFilters += rustAbis
+        manifestPlaceholders["appLinkHost"] = appLinkHost
     }
 
     signingConfigs {
