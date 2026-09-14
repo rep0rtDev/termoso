@@ -61,6 +61,7 @@ import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.SwitchRow
+import com.termoso.android.ui.keychain.SshIdRows
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.vault.vaultLabel
 import com.termoso.core.HostDraft
@@ -181,13 +182,24 @@ private fun HostForm(state: HostEditorState, draft: HostDraft, vm: HostEditorVie
                         draft.username,
                         { v -> vm.update { it.copy(username = v) } },
                         "Username",
-                        placeholder = inherited?.username ?: "root",
+                        placeholder = inherited?.username ?: if (draft.sshId || inherited?.sshId == true) "SSH ID handle" else "root",
                     )
                     PasswordField(draft, inherited, onChange = { v -> vm.update { it.copy(password = v) } })
                     KeyRow(state, draft, onPick = { id -> vm.update { it.copy(sshKeyId = id) } })
+                    SshIdRows(
+                        sshId = draft.sshId,
+                        keyType = draft.sshIdKeyType,
+                        onSshId = { v -> vm.update { it.copy(sshId = v) } },
+                        onKeyType = { v -> vm.update { it.copy(sshIdKeyType = v) } },
+                        usernameHint = draft.username.isBlank() && inherited?.username.isNullOrBlank(),
+                    )
                 } else {
                     Text(
-                        "Username, password and key come from the identity “${identity.label}”.",
+                        if (identity.sshId) {
+                            "Username, password, key and SSH ID come from the identity “${identity.label}”."
+                        } else {
+                            "Username, password and key come from the identity “${identity.label}”."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

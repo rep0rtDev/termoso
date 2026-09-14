@@ -50,6 +50,7 @@ import com.termoso.android.ui.vault.vaultLabel
 import com.termoso.core.IdentityDraft
 import com.termoso.core.IdentityItem
 import com.termoso.core.KeyItem
+import com.termoso.core.SshIdKeyKind
 import com.termoso.core.VaultInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -68,11 +69,13 @@ data class IdentityEditorState(
     /** null = keep the stored password; "" = clear it. */
     val password: String? = null,
     val sshKeyId: String? = null,
+    val sshId: Boolean = false,
+    val sshIdKeyType: SshIdKeyKind? = null,
     val working: Boolean = false,
     val done: Boolean = false,
     val error: String? = null,
 ) {
-    val canSave get() = !working && vaultId != null && (label.isNotBlank() || username.isNotBlank())
+    val canSave get() = !working && vaultId != null && (label.isNotBlank() || username.isNotBlank() || sshId)
 }
 
 class IdentityEditorViewModel(
@@ -102,6 +105,8 @@ class IdentityEditorViewModel(
                     label = existing?.label ?: "",
                     username = existing?.username ?: "",
                     sshKeyId = existing?.sshKeyId,
+                    sshId = existing?.sshId ?: false,
+                    sshIdKeyType = existing?.sshIdKeyType,
                 )
             }
         }.onSuccess { _state.value = it }
@@ -131,10 +136,12 @@ class IdentityEditorViewModel(
                         IdentityDraft(
                             id = s.existing?.id,
                             vaultId = vault,
-                            label = s.label.trim().ifBlank { s.username.trim() },
+                            label = s.label.trim().ifBlank { s.username.trim() }.ifBlank { "SSH ID" },
                             username = s.username.trim(),
                             password = s.password,
                             sshKeyId = s.sshKeyId,
+                            sshId = s.sshId,
+                            sshIdKeyType = s.sshIdKeyType.takeIf { s.sshId },
                         ),
                     )
                 }
@@ -154,7 +161,7 @@ class IdentityEditorViewModel(
     }
 }
 
-/** New / edit identity: label, username, password, SSH key. Certificate and SSH ID fields are preserved by Rust. */
+/** New / edit identity: label, username, password, SSH key, SSH ID. The certificate is preserved by Rust. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IdentityEditorScreen(shell: ShellViewModel, identityId: String?, onClose: () -> Unit) {
@@ -213,6 +220,13 @@ fun IdentityEditorScreen(shell: ShellViewModel, identityId: String?, onClose: ()
             SectionLabel("Credentials")
             SectionCard {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SshIdRows(
+                        sshId = s.sshId,
+                        keyType = s.sshIdKeyType,
+                        onSshId = { v -> vm.update { it.copy(sshId = v) } },
+                        onKeyType = { v -> vm.update { it.copy(sshIdKeyType = v) } },
+                        usernameHint = s.username.isBlank(),
+                    )
                     val keepStored = s.password == null && s.existing?.hasPassword == true
                     SecretField(
                         value = s.password ?: "",

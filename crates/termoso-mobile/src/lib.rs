@@ -24,6 +24,7 @@ mod session;
 mod settings;
 mod sftp;
 mod snippets;
+mod sshid;
 mod team;
 mod terminal;
 mod themes;
@@ -42,6 +43,10 @@ pub use session::*;
 pub use settings::MobileSettings;
 pub use sftp::*;
 pub use snippets::{SnippetDraft, SnippetItem, SnippetPackageItem, SnippetRun};
+pub use sshid::{
+    DeviceKeyCard, SshIdKeyCard, SshIdKeyKind, SshIdView, sshid_handle_valid,
+    sshid_provision_command, sshid_type_is_hardware, sshid_type_label,
+};
 pub use team::*;
 pub use terminal::{CELL_BYTES, CursorStyle, GridFrame, GridSnapshot, TerminalPalette, flag};
 pub use themes::{TERMOSO_DARK, TERMOSO_LIGHT, TerminalTheme, terminal_theme, terminal_themes};
