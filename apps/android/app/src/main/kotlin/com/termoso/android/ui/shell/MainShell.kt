@@ -35,6 +35,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.AppContainer
+import com.termoso.android.data.ForwardManager
 import com.termoso.android.data.SessionManager
 import com.termoso.android.data.SftpConnection
 import com.termoso.android.data.SftpManager
@@ -43,6 +44,10 @@ import com.termoso.android.ui.account.AccountScreen
 import com.termoso.android.ui.account.AuthMode
 import com.termoso.android.ui.account.SignInScreen
 import com.termoso.android.ui.connections.ConnectionsScreen
+import com.termoso.android.ui.forwarding.ForwardEditorScreen
+import com.termoso.android.ui.forwarding.ForwardWizardScreen
+import com.termoso.android.ui.forwarding.ForwardingScreen
+import com.termoso.android.ui.forwarding.TunnelPromptHost
 import com.termoso.android.ui.hosts.HostEditorScreen
 import com.termoso.android.ui.hosts.HostsScreen
 import com.termoso.android.ui.keychain.GenerateKeyScreen
@@ -59,6 +64,7 @@ import com.termoso.android.ui.vault.HistoryScreen
 import com.termoso.android.ui.vault.KnownHostsScreen
 import com.termoso.android.ui.vault.VaultScreen
 import com.termoso.core.KeyMods
+import com.termoso.core.PfKind
 import kotlinx.coroutines.launch
 
 object Routes {
@@ -82,6 +88,10 @@ object Routes {
     const val SIGN_IN = "signIn/{mode}"
     const val SFTP = "sftp/{id}"
     const val SFTP_PICK = "sftpPick"
+    const val FORWARDING = "forwarding"
+    const val PF_WIZARD = "pfWizard"
+    const val PF_NEW = "pfNew?kind={kind}&vault={vault}&host={host}"
+    const val PF_EDIT = "pfEdit/{id}"
 
     fun hosts(group: String?) = if (group == null) "hosts" else "hosts?group=$group"
     fun hostNew(group: String?) = if (group == null) "hostNew" else "hostNew?group=$group"
@@ -90,6 +100,9 @@ object Routes {
     fun identity(id: String) = "identity/$id"
     fun signIn(mode: AuthMode) = "signIn/${mode.name}"
     fun sftp(id: String) = "sftp/$id"
+    fun pfNew(kind: PfKind, vault: String?, host: String?) =
+        "pfNew?kind=${kind.name}" + (vault?.let { "&vault=$it" } ?: "") + (host?.let { "&host=$it" } ?: "")
+    fun pfEdit(id: String) = "pfEdit/$id"
 }
 
 private class Tab(val route: String, val label: String, val icon: ImageVector, val selectedIcon: ImageVector)
@@ -107,10 +120,11 @@ fun MainShell(
     repo: VaultRepository,
     sessions: SessionManager,
     sftp: SftpManager,
+    forwards: ForwardManager,
     account: AccountManager,
     onLock: () -> Unit,
 ) {
-    val shell: ShellViewModel = viewModel { ShellViewModel(repo, sessions, sftp) }
+    val shell: ShellViewModel = viewModel { ShellViewModel(repo, sessions, sftp, forwards) }
     val nav = rememberNavController()
     val scope = rememberCoroutineScope()
     val backStack by nav.currentBackStackEntryAsState()
@@ -127,6 +141,8 @@ fun MainShell(
     LaunchedEffect(account) {
         account.notices.collect { snackbar.showSnackbar(it) }
     }
+    LaunchedEffect(forwards) { forwards.autoStartOnce() }
+    TunnelPromptHost(forwards)
 
     fun openTerminal() {
         nav.navigate(Routes.TERMINAL) { launchSingleTop = true }
@@ -194,6 +210,7 @@ fun MainShell(
                     shell = shell,
                     onOpenHosts = { nav.navigate(Routes.hosts(null)) },
                     onOpenKeychain = { nav.navigate(Routes.KEYCHAIN) },
+                    onOpenForwarding = { nav.navigate(Routes.FORWARDING) },
                     onOpenKnownHosts = { nav.navigate(Routes.KNOWN_HOSTS) },
                     onOpenHistory = { nav.navigate(Routes.HISTORY) },
                 )
@@ -243,6 +260,7 @@ fun MainShell(
                     onEditHost = { nav.navigate(Routes.hostEdit(it)) },
                     onConnect = ::connectHost,
                     onSftp = ::sftpHost,
+                    onForward = { nav.navigate(Routes.pfNew(PfKind.LOCAL, null, it)) },
                 )
             }
             composable(Routes.HOST_NEW, arguments = listOf(groupArg)) { entry ->
@@ -293,6 +311,45 @@ fun MainShell(
             composable(Routes.KNOWN_HOSTS) { KnownHostsScreen(shell = shell, onBack = { nav.popBackStack() }) }
             composable(Routes.HISTORY) {
                 HistoryScreen(shell = shell, onBack = { nav.popBackStack() }, onOpenHost = { nav.navigate(Routes.hostEdit(it)) })
+            }
+            composable(Routes.FORWARDING) {
+                ForwardingScreen(
+                    shell = shell,
+                    onBack = { nav.popBackStack() },
+                    onNewRule = { nav.navigate(Routes.PF_WIZARD) },
+                    onEditRule = { nav.navigate(Routes.pfEdit(it)) },
+                )
+            }
+            composable(Routes.PF_WIZARD) {
+                ForwardWizardScreen(
+                    shell = shell,
+                    onBack = { nav.popBackStack() },
+                    onContinue = { kind, vault ->
+                        nav.navigate(Routes.pfNew(kind, vault, null)) { popUpTo(Routes.PF_WIZARD) { inclusive = true } }
+                    },
+                )
+            }
+            val optArg = { name: String -> navArgument(name) { type = NavType.StringType; nullable = true; defaultValue = null } }
+            composable(Routes.PF_NEW, arguments = listOf(optArg("kind"), optArg("vault"), optArg("host"))) { entry ->
+                val kind = entry.arguments?.getString("kind")?.let { k -> PfKind.entries.firstOrNull { it.name == k } } ?: PfKind.LOCAL
+                ForwardEditorScreen(
+                    shell = shell,
+                    ruleId = null,
+                    kind = kind,
+                    vaultId = entry.arguments?.getString("vault"),
+                    hostId = entry.arguments?.getString("host"),
+                    onClose = { nav.popBackStack() },
+                )
+            }
+            composable(Routes.PF_EDIT, arguments = listOf(idArg)) { entry ->
+                ForwardEditorScreen(
+                    shell = shell,
+                    ruleId = entry.arguments?.getString("id") ?: "",
+                    kind = PfKind.LOCAL,
+                    vaultId = null,
+                    hostId = null,
+                    onClose = { nav.popBackStack() },
+                )
             }
             composable(Routes.SFTP_PICK) {
                 SftpPickScreen(

@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,7 +44,14 @@ import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.core.VaultInfo
 import com.termoso.core.VaultKind
 
-private data class VaultCounts(val hosts: Int = 0, val keys: Int = 0, val identities: Int = 0, val known: Int = 0, val history: Int = 0)
+private data class VaultCounts(
+    val hosts: Int = 0,
+    val keys: Int = 0,
+    val identities: Int = 0,
+    val forwards: Int = 0,
+    val known: Int = 0,
+    val history: Int = 0,
+)
 
 /** Vaults tab: vault picker + sections (Hosts, Keychain, Known hosts, History). */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,6 +60,7 @@ fun VaultScreen(
     shell: ShellViewModel,
     onOpenHosts: () -> Unit,
     onOpenKeychain: () -> Unit,
+    onOpenForwarding: () -> Unit,
     onOpenKnownHosts: () -> Unit,
     onOpenHistory: () -> Unit,
 ) {
@@ -69,6 +78,7 @@ fun VaultScreen(
                     hosts = hosts(id).size,
                     keys = keys(id).size,
                     identities = identities(id).size,
+                    forwards = pfRules(id).size,
                     known = knownHosts().size,
                     history = history(200u).size,
                 )
@@ -101,6 +111,13 @@ fun VaultScreen(
                     subtitle = keychainSubtitle(counts.keys, counts.identities),
                     leading = { IconTile(Icons.Filled.Key) },
                     modifier = Modifier.clickable(onClick = onOpenKeychain),
+                )
+                RowDivider()
+                ChevronRow(
+                    title = "Port forwarding",
+                    badge = counts.forwards.toString(),
+                    leading = { IconTile(Icons.Filled.SwapHoriz) },
+                    modifier = Modifier.clickable(onClick = onOpenForwarding),
                 )
                 RowDivider()
                 ChevronRow(

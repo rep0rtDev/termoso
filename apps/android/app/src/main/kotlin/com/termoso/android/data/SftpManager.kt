@@ -19,24 +19,31 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Mirrors the number of live connections (terminals + SFTP) into the
+ * Mirrors the number of live connections (terminals + SFTP + tunnels) into the
  * foreground service so the process survives in the background while
  * anything is connected.
  */
 class KeepAlive(private val context: Context) {
     private var terminals = 0
     private var sftp = 0
+    private var forwards = 0
 
     @Synchronized
     fun terminals(count: Int) {
         terminals = count
-        SessionService.sync(context, terminals + sftp)
+        SessionService.sync(context, terminals + sftp + forwards)
     }
 
     @Synchronized
     fun sftp(count: Int) {
         sftp = count
-        SessionService.sync(context, terminals + sftp)
+        SessionService.sync(context, terminals + sftp + forwards)
+    }
+
+    @Synchronized
+    fun forwards(count: Int) {
+        forwards = count
+        SessionService.sync(context, terminals + sftp + forwards)
     }
 }
 

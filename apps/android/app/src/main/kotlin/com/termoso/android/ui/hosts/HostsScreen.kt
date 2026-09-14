@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material3.AlertDialog
@@ -86,6 +87,7 @@ fun HostsScreen(
     onEditHost: (String) -> Unit,
     onConnect: (String) -> Unit,
     onSftp: (String) -> Unit,
+    onForward: (String) -> Unit,
 ) {
     val vm: HostsViewModel = viewModel(key = "hosts/${groupId ?: "root"}") {
         HostsViewModel(shell.repo, shell.selectedVaultId, groupId)
@@ -117,6 +119,11 @@ fun HostsScreen(
                         val id = state.selected.first()
                         vm.clearSelection()
                         onSftp(id)
+                    },
+                    onForward = {
+                        val id = state.selected.first()
+                        vm.clearSelection()
+                        onForward(id)
                     },
                     onDuplicate = vm::duplicateSelected,
                     onMove = { dialog = HostsDialog.Move },
@@ -331,12 +338,15 @@ private fun SelectionBar(
     onSelectAll: () -> Unit,
     onEdit: () -> Unit,
     onSftp: () -> Unit,
+    onForward: () -> Unit,
     onDuplicate: () -> Unit,
     onMove: () -> Unit,
     onCopy: () -> Unit,
     onDelete: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
+    val singleSsh = state.selected.size == 1 &&
+        state.visibleHosts.firstOrNull { it.id in state.selected }?.protocol.equals("ssh", ignoreCase = true)
     TopAppBar(
         title = { Text("${state.selected.size} selected") },
         navigationIcon = {
@@ -345,7 +355,7 @@ private fun SelectionBar(
         actions = {
             if (state.selected.size == 1) {
                 IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, contentDescription = "Edit") }
-                if (state.visibleHosts.firstOrNull { it.id in state.selected }?.protocol.equals("ssh", ignoreCase = true)) {
+                if (singleSsh) {
                     IconButton(onClick = onSftp) { Icon(Icons.Filled.FolderOpen, contentDescription = "SFTP") }
                 }
             }
@@ -363,6 +373,13 @@ private fun SelectionBar(
                         leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
                         onClick = { menu = false; onDuplicate() },
                     )
+                    if (singleSsh) {
+                        DropdownMenuItem(
+                            text = { Text("Port forwarding…") },
+                            leadingIcon = { Icon(Icons.Filled.SwapHoriz, null) },
+                            onClick = { menu = false; onForward() },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Move to group…") },
                         leadingIcon = { Icon(Icons.AutoMirrored.Filled.DriveFileMove, null) },

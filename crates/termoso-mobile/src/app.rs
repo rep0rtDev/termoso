@@ -21,6 +21,7 @@ use crate::account::{
 };
 use crate::dto::*;
 use crate::error::{MobileError, Result};
+use crate::forward::{self, PfRuleDraft, PfRuleItem, PfTunnel, TunnelLaunch, TunnelListener};
 use crate::session::{Launch, SessionListener, SshSession, TerminalOptions};
 use crate::settings::MobileSettings;
 use crate::sftp::{SftpLaunch, SftpListener, SftpSession};
@@ -677,6 +678,50 @@ impl TermosoApp {
                 store: self.store.clone(),
                 target: quick_target(&target)?,
                 resolved: None,
+                settings: MobileSettings::load(&self.store)?,
+                listener,
+            },
+        ))
+    }
+
+    // ── port forwarding ──
+
+    /// Stored forwarding rules of one vault (all when `None`), labelled first.
+    pub fn pf_rules(&self, vault_id: Option<String>) -> Result<Vec<PfRuleItem>> {
+        forward::rules(&self.store, &vault_id)
+    }
+
+    pub fn pf_rule(&self, id: String) -> Result<PfRuleItem> {
+        forward::rule(&self.store, parse_id(&id)?)
+    }
+
+    /// Create (`draft.id == None`) or update a rule after validating it.
+    pub fn save_pf_rule(&self, draft: PfRuleDraft) -> Result<PfRuleItem> {
+        forward::save(&self.store, &draft)
+    }
+
+    pub fn duplicate_pf_rule(&self, id: String) -> Result<PfRuleItem> {
+        forward::duplicate(&self.store, parse_id(&id)?)
+    }
+
+    /// Remove a rule; the caller stops its tunnel first.
+    pub fn delete_pf_rule(&self, id: String) -> Result<()> {
+        forward::delete(&self.store, parse_id(&id)?)
+    }
+
+    /// Start a rule's tunnel. Returns at once; state and prompts arrive on
+    /// `listener`. Fails synchronously only when the rule or its host is gone.
+    pub fn start_pf(
+        &self,
+        rule_id: String,
+        listener: Arc<dyn TunnelListener>,
+    ) -> Result<Arc<PfTunnel>> {
+        let rule = forward::resolve_for_tunnel(&self.store, parse_id(&rule_id)?)?;
+        Ok(PfTunnel::launch(
+            RUNTIME.handle().clone(),
+            TunnelLaunch {
+                store: self.store.clone(),
+                rule,
                 settings: MobileSettings::load(&self.store)?,
                 listener,
             },
