@@ -38,7 +38,11 @@ enum class ServerChoice { Cloud, SelfHosted }
  * notifications to [VaultRepository.revision] so lists reload, and restores
  * the persisted session on creation. Lives exactly as long as the open vault.
  */
-class AccountManager(private val repo: VaultRepository) : SyncListener {
+class AccountManager(
+    private val repo: VaultRepository,
+    /** Runs before the Rust sign-out so account-bound sessions (shares, views) end first. */
+    private val onSignOut: suspend () -> Unit = {},
+) : SyncListener {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _status = MutableStateFlow(
@@ -101,6 +105,7 @@ class AccountManager(private val repo: VaultRepository) : SyncListener {
     }
 
     suspend fun signOut() {
+        onSignOut()
         repo.read { accountSignOut() }
         refresh()
         repo.bump()

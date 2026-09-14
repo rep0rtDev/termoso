@@ -1,6 +1,10 @@
 package com.termoso.android.data
 
 import com.termoso.core.HostItem
+import com.termoso.core.LiveEndReason
+import com.termoso.core.LiveListener
+import com.termoso.core.LiveParticipantCard
+import com.termoso.core.LiveShare
 import com.termoso.core.PromptAnswer
 import com.termoso.core.PromptRequest
 import com.termoso.core.QuickTarget
@@ -89,6 +93,64 @@ class SessionBridge : SessionListener {
     }
 }
 
+/** One-shot multiplayer signals (host and viewer side). */
+sealed interface LiveEvent {
+    /** Viewer: the host granted ([canWrite]) or took back control. */
+    data class Control(val canWrite: Boolean) : LiveEvent
+
+    /** The share is over; the viewer's terminal closes right after. */
+    data class Ended(val reason: LiveEndReason, val message: String) : LiveEvent
+}
+
+/**
+ * Multiplayer state of one terminal: who is connected, whether we may type
+ * (always true for the host) and the host's share handle while sharing. Rust
+ * calls in from tokio threads; the UI collects the flows.
+ */
+class LiveBridge(viewer: Boolean = false) : LiveListener {
+    private val _participants = MutableStateFlow<List<LiveParticipantCard>>(emptyList())
+    val participants: StateFlow<List<LiveParticipantCard>> = _participants.asStateFlow()
+
+    private val _canWrite = MutableStateFlow(!viewer)
+    val canWrite: StateFlow<Boolean> = _canWrite.asStateFlow()
+
+    private val _share = MutableStateFlow<LiveShare?>(null)
+    val share: StateFlow<LiveShare?> = _share.asStateFlow()
+
+    private val _ended = MutableStateFlow<LiveEvent.Ended?>(null)
+    val ended: StateFlow<LiveEvent.Ended?> = _ended.asStateFlow()
+
+    private val _events = MutableSharedFlow<LiveEvent>(extraBufferCapacity = 16)
+    val events: SharedFlow<LiveEvent> = _events.asSharedFlow()
+
+    override fun onParticipants(participants: List<LiveParticipantCard>) {
+        _participants.value = participants
+    }
+
+    override fun onControl(canWrite: Boolean) {
+        _canWrite.value = canWrite
+        _events.tryEmit(LiveEvent.Control(canWrite))
+    }
+
+    override fun onEnded(reason: LiveEndReason, message: String) {
+        val ev = LiveEvent.Ended(reason, message)
+        _ended.value = ev
+        _share.value = null
+        _participants.value = emptyList()
+        _events.tryEmit(ev)
+    }
+
+    internal fun started(share: LiveShare) {
+        _share.value = share
+        _participants.value = share.participants()
+    }
+
+    internal fun stopped() {
+        _share.value = null
+        _participants.value = emptyList()
+    }
+}
+
 /** A live terminal: the Rust session plus everything the UI needs to show it. */
 class TerminalSession(
     val id: String,
@@ -101,6 +163,9 @@ class TerminalSession(
     val savedOsName: String?,
     val rust: SshSession,
     private val bridge: SessionBridge,
+    /** True for a terminal joined from somebody's share: read-only until granted. */
+    val isView: Boolean = false,
+    private val live: LiveBridge = LiveBridge(),
 ) {
     val state: StateFlow<SessionState> get() = bridge.state
     val frameTick: StateFlow<Long> get() = bridge.frameTick
@@ -108,6 +173,17 @@ class TerminalSession(
     val prompt: StateFlow<PendingPrompt?> get() = bridge.prompt
     val events: SharedFlow<SessionEvent> get() = bridge.events
     val detectedOs: StateFlow<String?> get() = bridge.osName
+
+    val participants: StateFlow<List<LiveParticipantCard>> get() = live.participants
+    val canWrite: StateFlow<Boolean> get() = live.canWrite
+    val share: StateFlow<LiveShare?> get() = live.share
+    val liveEnded: StateFlow<LiveEvent.Ended?> get() = live.ended
+    val liveEvents: SharedFlow<LiveEvent> get() = live.events
+
+    /** Can be reconnected by us (not a view, has a target). */
+    val reconnectable: Boolean get() = !isView && (hostId != null || quick != null)
+
+    internal val liveListener: LiveBridge get() = live
 
     suspend fun answer(prompt: PendingPrompt, answer: PromptAnswer): Boolean {
         bridge.promptAnswered(prompt.id)
@@ -161,6 +237,57 @@ class SessionManager(private val repo: VaultRepository, private val keepAlive: K
         val rust = repo.read { connectQuick(target, options(), bridge) }
         val text = "${target.username}@${target.host}:${target.port}"
         return register(TerminalSession(rust.id(), target.host, text, null, target, null, rust, bridge))
+    }
+
+    /**
+     * Join a `termoso://join/…` link as a viewer. The link is parsed in Rust;
+     * Kotlin never sees the secret in its fragment separately.
+     */
+    suspend fun joinLive(link: String): TerminalSession {
+        val bridge = SessionBridge()
+        val live = LiveBridge(viewer = true)
+        val rust = repo.read { joinLive(link, options(), bridge, live) }
+        return register(
+            TerminalSession(
+                id = rust.id(),
+                label = "Shared terminal",
+                target = "Multiplayer",
+                hostId = null,
+                quick = null,
+                savedOsName = null,
+                rust = rust,
+                bridge = bridge,
+                isView = true,
+                live = live,
+            ),
+        )
+    }
+
+    /** Start sharing [id]; returns the opaque `termoso://join/…` link. */
+    suspend fun share(id: String): String {
+        val session = find(id) ?: throw IllegalStateException("no such session")
+        val share = repo.read { shareSession(session.rust, session.label, session.liveListener) }
+        session.liveListener.started(share)
+        return share.link()
+    }
+
+    suspend fun stopShare(id: String) {
+        val session = find(id) ?: return
+        val share = session.share.value ?: return
+        session.liveListener.stopped()
+        withContext(Dispatchers.IO) { runCatching { share.stop() } }
+    }
+
+    suspend fun setControl(id: String, userId: String, enabled: Boolean) {
+        val share = find(id)?.share?.value ?: return
+        withContext(Dispatchers.IO) { share.setControl(userId, enabled) }
+    }
+
+    /** Account went away: stop every share we host and leave every view. */
+    suspend fun endLive() {
+        val list = _sessions.value
+        list.filter { it.share.value != null }.forEach { stopShare(it.id) }
+        list.filter { it.isView }.forEach { close(it.id) }
     }
 
     /** Replace a closed/failed session with a fresh connection to the same target. */

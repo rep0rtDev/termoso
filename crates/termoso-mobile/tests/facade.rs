@@ -11,10 +11,11 @@ use russh::keys::ssh_key::{Algorithm, PrivateKey};
 use russh::server::{Auth, ChannelOpenHandle, Msg, Server as _, Session};
 use russh::{Channel, ChannelId, MethodSet};
 use termoso_mobile::{
-    HostKeyChoice, IdentityDraft, KeyAlgorithm, KeyGenerateDraft, KeyImportDraft, MobileError,
-    PfKind, PfRuleDraft, PromptAnswer, PromptRequest, QuickTarget, SessionListener, SessionState,
-    SshSession, TerminalOptions, TermosoApp, TunnelListener, TunnelState, VaultKind, flag,
-    generate_master_key, parse_target, profile_exists,
+    HostKeyChoice, IdentityDraft, KeyAlgorithm, KeyGenerateDraft, KeyImportDraft, LiveEndReason,
+    LiveListener, LiveParticipantCard, MobileError, PfKind, PfRuleDraft, PromptAnswer,
+    PromptRequest, QuickTarget, SessionListener, SessionState, SshSession, TerminalOptions,
+    TermosoApp, TunnelListener, TunnelState, VaultKind, flag, generate_master_key, is_live_link,
+    parse_target, profile_exists,
 };
 use tokio::net::TcpListener;
 
@@ -487,6 +488,61 @@ fn settings_persist_with_defaults() {
     assert_eq!(s.app_theme, "dark");
 }
 
+struct NoLive;
+
+impl LiveListener for NoLive {
+    fn on_participants(&self, _: Vec<LiveParticipantCard>) {}
+    fn on_control(&self, _: bool) {}
+    fn on_ended(&self, _: LiveEndReason, _: String) {}
+}
+
+#[test]
+fn live_links_are_recognised_and_need_an_account() {
+    let (app, _dir) = app();
+    assert!(is_live_link(
+        "termoso://join/6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d?s=https://x.test#secret".into()
+    ));
+    assert!(!is_live_link("termoso://invite/abc".into()));
+    assert!(!is_live_link("ssh://root@box".into()));
+    let rec = Arc::new(Recorder::default());
+    let err = app
+        .join_live("not a link".into(), opts(), rec.clone(), Arc::new(NoLive))
+        .err()
+        .expect("garbage is not a link");
+    assert!(matches!(err, MobileError::Invalid { .. }), "{err}");
+    // A well-formed link still needs a signed-in account before any network.
+    let err = app
+        .join_live(
+            "termoso://join/6f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d?s=https://x.test#AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into(),
+            opts(),
+            rec,
+            Arc::new(NoLive),
+        )
+        .err()
+        .expect("joining while signed out must fail");
+    assert!(err.to_string().contains("not signed in"), "{err}");
+    // Same for hosting: a terminal that is still connecting cannot be shared
+    // without an account either, and stays unshared.
+    let session = app
+        .connect_quick(
+            QuickTarget {
+                host: "127.0.0.1".into(),
+                port: 1,
+                username: USER.into(),
+            },
+            opts(),
+            Arc::new(Recorder::default()),
+        )
+        .unwrap();
+    let err = app
+        .share_session(session.clone(), "box".into(), Arc::new(NoLive))
+        .err()
+        .expect("sharing while signed out must fail");
+    assert!(err.to_string().contains("not signed in"), "{err}");
+    assert!(!session.is_shared());
+    session.disconnect();
+}
+
 #[test]
 fn parse_targets() {
     let t = parse_target("ssh://deploy@example.org:2200".into()).unwrap();
@@ -570,6 +626,12 @@ async fn quick_connect_password_flow() {
             .unwrap()
             .contains(&Some("tester@box".into()))
     );
+
+    // A plain terminal is neither a view nor shared.
+    assert!(!session.is_view());
+    assert!(session.can_write());
+    assert!(!session.is_shared());
+    assert!(session.live_participants().is_empty());
 
     // 3. typing echoes, resize is forwarded, OS detected
     session.write(b"echo hi".to_vec());

@@ -7,19 +7,24 @@
 //! listener and is answered through [`SshSession::answer`]; the Rust side
 //! blocks its own connection task, never a UI thread.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use bytes::Bytes;
+use termoso_core::api::ApiClient;
+use termoso_core::live::{HostShare, LiveEvent, ViewerJoin};
 use termoso_core::model::ResolvedHost;
-use termoso_core::ssh::{SshTarget, SshTerminal};
+use termoso_core::ssh::SshTarget;
 use termoso_core::store::{ConnectionHistory, Store};
-use termoso_core::terminal::{TermEvent, TermEvents, TermSize, TerminalSession};
+use termoso_core::terminal::{SharedTerminal, TermEvent, TermEvents, TermSize, TerminalSession};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::connect::{ConnectUi, Connector, PromptAnswer, PromptRequest, connect_resolved};
-use crate::error::MobileError;
+use crate::error::{MobileError, Result};
 use crate::keys::{KeyMods, SpecialKey, encode_key, encode_text};
+use crate::live::{LiveListener, LiveParticipantCard, LiveShare, ShareState, ViewState};
 use crate::settings::MobileSettings;
 use crate::terminal::{Emulator, GridFrame, GridSnapshot, TermSignal, TerminalPalette};
 
@@ -95,13 +100,54 @@ struct Inner {
     listener: Arc<dyn SessionListener>,
     conn: Arc<Connector>,
     emulator: Mutex<Emulator>,
-    terminal: Mutex<Option<Arc<SshTerminal>>>,
+    terminal: Mutex<Option<SharedTerminal>>,
     /// Latest view size; the PTY is opened with whatever is current then.
     size: Mutex<TermSize>,
-    /// Bytes typed before the shell is up are queued.
-    pending_input: Mutex<Vec<u8>>,
+    /// Typed bytes go through one ordered queue drained by a single writer
+    /// task once the terminal is up, so keystrokes never overtake each other
+    /// (and anything typed before the shell opens is delivered then).
+    input: mpsc::UnboundedSender<Vec<u8>>,
+    input_rx: Mutex<Option<mpsc::UnboundedReceiver<Vec<u8>>>>,
     state: Arc<Mutex<SessionState>>,
     closed: tokio::sync::Notify,
+    /// Last title the remote set (what a share announces).
+    title: Mutex<Option<String>>,
+    /// Set while this terminal is being shared: output is mirrored into it.
+    share: Mutex<Option<Arc<ShareState>>>,
+    /// Set when this terminal *is* a view of somebody else's share.
+    view: Option<Arc<ViewState>>,
+}
+
+impl Inner {
+    /// Drain the input queue into `terminal` in order; ends when the queue
+    /// closes, the terminal is gone, or a write fails.
+    fn start_writer(self: &Arc<Self>, runtime: &tokio::runtime::Handle, terminal: SharedTerminal) {
+        let Some(mut rx) = self.input_rx.lock().expect("input poisoned").take() else {
+            return;
+        };
+        let weak = Arc::downgrade(self);
+        runtime.spawn(async move {
+            while let Some(data) = rx.recv().await {
+                let open = weak.upgrade().is_some_and(|inner| {
+                    inner.terminal.lock().expect("terminal poisoned").is_some()
+                });
+                if !open || terminal.write(&data).await.is_err() {
+                    break;
+                }
+            }
+        });
+    }
+
+    fn share(&self) -> Option<Arc<ShareState>> {
+        self.share.lock().expect("share poisoned").clone()
+    }
+
+    /// The terminal is going away: end its share, if any.
+    fn end_share(&self, runtime: &tokio::runtime::Handle) {
+        if let Some(share) = self.share.lock().expect("share poisoned").take() {
+            share.shutdown(runtime);
+        }
+    }
 }
 
 /// A live terminal. Drop-safe: dropping the last reference closes the
@@ -120,6 +166,16 @@ pub(crate) struct Launch {
     pub settings: MobileSettings,
     pub options: TerminalOptions,
     pub listener: Arc<dyn SessionListener>,
+}
+
+pub(crate) struct ViewerLaunch {
+    pub store: Arc<Store>,
+    pub settings: MobileSettings,
+    pub options: TerminalOptions,
+    pub listener: Arc<dyn SessionListener>,
+    pub joined: ViewerJoin,
+    pub live_events: mpsc::Receiver<LiveEvent>,
+    pub live_listener: Arc<dyn LiveListener>,
 }
 
 impl SshSession {
@@ -152,6 +208,7 @@ impl SshSession {
                 state: state.clone(),
             }),
         ));
+        let (input, input_rx) = mpsc::unbounded_channel();
         let inner = Arc::new(Inner {
             store,
             listener,
@@ -162,9 +219,13 @@ impl SshSession {
                 cols: options.cols.max(2),
                 rows: options.rows.max(1),
             }),
-            pending_input: Mutex::new(Vec::new()),
+            input,
+            input_rx: Mutex::new(Some(input_rx)),
             state,
             closed: tokio::sync::Notify::new(),
+            title: Mutex::new(None),
+            share: Mutex::new(None),
+            view: None,
         });
         let session = Arc::new(Self {
             id: Uuid::new_v4(),
@@ -178,6 +239,152 @@ impl SshSession {
         };
         runtime.spawn(run(inner, target, resolved, settings, term_type, signals));
         session
+    }
+
+    /// A terminal that mirrors a share somebody else is hosting. The grid
+    /// follows the host's geometry; input is silently dropped until the host
+    /// grants control (see [`LiveListener::on_control`]).
+    pub(crate) fn launch_viewer(
+        runtime: tokio::runtime::Handle,
+        launch: ViewerLaunch,
+    ) -> Arc<Self> {
+        let ViewerLaunch {
+            store,
+            settings,
+            options,
+            listener,
+            joined,
+            live_events,
+            live_listener,
+        } = launch;
+        let ViewerJoin {
+            term,
+            events,
+            user_id,
+            participants,
+        } = joined;
+        let palette = options
+            .palette
+            .clone()
+            .unwrap_or_else(|| crate::themes::palette_for(&settings.terminal_theme));
+        let (emulator, signals) = Emulator::new(
+            options.cols,
+            options.rows,
+            settings.scrollback_lines,
+            palette,
+        );
+        let state = Arc::new(Mutex::new(SessionState::Connected));
+        let conn = Arc::new(Connector::new(
+            store.clone(),
+            Arc::new(TerminalUi {
+                listener: listener.clone(),
+                state: state.clone(),
+            }),
+        ));
+        let view = Arc::new(ViewState {
+            me: user_id,
+            participants: Mutex::new(participants),
+            can_write: AtomicBool::new(false),
+        });
+        let (input, input_rx) = mpsc::unbounded_channel();
+        let inner = Arc::new(Inner {
+            store,
+            listener: listener.clone(),
+            conn,
+            emulator: Mutex::new(emulator),
+            terminal: Mutex::new(Some(term.clone())),
+            size: Mutex::new(TermSize {
+                cols: options.cols.max(2),
+                rows: options.rows.max(1),
+            }),
+            input,
+            input_rx: Mutex::new(Some(input_rx)),
+            state,
+            closed: tokio::sync::Notify::new(),
+            title: Mutex::new(None),
+            share: Mutex::new(None),
+            view: Some(view.clone()),
+        });
+        let session = Arc::new(Self {
+            id: Uuid::new_v4(),
+            inner: inner.clone(),
+            runtime: runtime.clone(),
+        });
+        inner.start_writer(&runtime, term.clone());
+        set_state(&inner, SessionState::Connected);
+        live_listener.on_participants(view.cards());
+        {
+            let resize_inner = inner.clone();
+            let resize: Box<dyn Fn(u16, u16) + Send + Sync> = Box::new(move |cols, rows| {
+                let cols = cols.max(2);
+                let rows = rows.max(1);
+                *resize_inner.size.lock().expect("size poisoned") = TermSize { cols, rows };
+                resize_inner
+                    .emulator
+                    .lock()
+                    .expect("emulator poisoned")
+                    .resize(cols, rows);
+                resize_inner.listener.on_render();
+            });
+            let title_inner = inner.clone();
+            let title: Box<dyn Fn(String) + Send + Sync> = Box::new(move |t| {
+                let t = (!t.trim().is_empty()).then_some(t);
+                *title_inner.title.lock().expect("title poisoned") = t.clone();
+                title_inner.listener.on_title(t);
+            });
+            runtime.spawn(crate::live::forward_viewer(
+                live_events,
+                view,
+                live_listener,
+                resize,
+                title,
+            ));
+        }
+        runtime.spawn(run_viewer(inner, term, events, signals));
+        session
+    }
+
+    /// Start sharing this terminal. Fails unless the shell is open.
+    pub(crate) async fn share(
+        self: &Arc<Self>,
+        api: Arc<ApiClient>,
+        listener: Arc<dyn LiveListener>,
+        label: String,
+    ) -> Result<Arc<LiveShare>> {
+        if self.inner.view.is_some() {
+            return Err(MobileError::invalid(
+                "this terminal is already a shared view",
+            ));
+        }
+        if self.inner.share().is_some() {
+            return Err(MobileError::invalid("this terminal is already shared"));
+        }
+        let term = self
+            .inner
+            .terminal
+            .lock()
+            .expect("terminal poisoned")
+            .clone()
+            .ok_or_else(|| MobileError::invalid("connect before sharing"))?;
+        let size = *self.inner.size.lock().expect("size poisoned");
+        let title = self
+            .inner
+            .title
+            .lock()
+            .expect("title poisoned")
+            .clone()
+            .unwrap_or(label);
+        let (tx, rx) = mpsc::channel(64);
+        let share = HostShare::start(api, term, size, title, tx).await?;
+        let weak = Arc::downgrade(&self.inner);
+        let detach: Box<dyn Fn() + Send + Sync> = Box::new(move || {
+            if let Some(inner) = weak.upgrade() {
+                *inner.share.lock().expect("share poisoned") = None;
+            }
+        });
+        let (live, state) = LiveShare::attach(self.runtime.clone(), share, rx, listener, detach);
+        *self.inner.share.lock().expect("share poisoned") = Some(state);
+        Ok(live)
     }
 }
 
@@ -234,25 +441,7 @@ impl SshSession {
 
     /// Send raw bytes to the remote (key presses already encoded).
     pub fn write(&self, data: Vec<u8>) {
-        let term = self
-            .inner
-            .terminal
-            .lock()
-            .expect("terminal poisoned")
-            .clone();
-        match term {
-            Some(t) => {
-                self.runtime.spawn(async move {
-                    let _ = t.write(&data).await;
-                });
-            }
-            None => self
-                .inner
-                .pending_input
-                .lock()
-                .expect("input poisoned")
-                .extend_from_slice(&data),
-        }
+        let _ = self.inner.input.send(data);
     }
 
     /// Send text as typed; wraps it in bracketed-paste markers when the
@@ -276,10 +465,45 @@ impl SshSession {
         self.write(data);
     }
 
+    /// `true` for a terminal that mirrors somebody else's share.
+    pub fn is_view(&self) -> bool {
+        self.inner.view.is_some()
+    }
+
+    /// Viewer only: whether the host has granted control right now.
+    pub fn can_write(&self) -> bool {
+        self.inner
+            .view
+            .as_ref()
+            .is_none_or(|v| v.can_write.load(Ordering::Relaxed))
+    }
+
+    /// Everyone connected to the share this terminal belongs to (viewer side;
+    /// hosts ask their [`LiveShare`]).
+    pub fn live_participants(&self) -> Vec<LiveParticipantCard> {
+        self.inner
+            .view
+            .as_ref()
+            .map(|v| v.cards())
+            .unwrap_or_default()
+    }
+
+    /// `true` while this terminal is being shared.
+    pub fn is_shared(&self) -> bool {
+        self.inner.share().is_some()
+    }
+
     pub fn resize(&self, cols: u16, rows: u16) {
+        if self.inner.view.is_some() {
+            // The grid follows the host; the view scales to fit.
+            return;
+        }
         let cols = cols.max(2);
         let rows = rows.max(1);
         *self.inner.size.lock().expect("size poisoned") = TermSize { cols, rows };
+        if let Some(share) = self.inner.share() {
+            share.resized(TermSize { cols, rows });
+        }
         self.inner
             .emulator
             .lock()
@@ -337,6 +561,7 @@ impl SshSession {
         self.inner.conn.cancel_prompts();
         self.inner.closed.notify_waiters();
         self.inner.closed.notify_one();
+        self.inner.end_share(&self.runtime);
         let term = self
             .inner
             .terminal
@@ -445,10 +670,7 @@ async fn run(
         }
     };
     *inner.terminal.lock().expect("terminal poisoned") = Some(terminal.clone());
-    let queued = std::mem::take(&mut *inner.pending_input.lock().expect("input poisoned"));
-    if !queued.is_empty() {
-        let _ = terminal.write(&queued).await;
-    }
+    inner.start_writer(&tokio::runtime::Handle::current(), terminal.clone());
     set_state(&inner, SessionState::Connected);
     if let Some(script) = crate::snippets::startup_script(
         &inner.store,
@@ -492,10 +714,26 @@ async fn run(
         });
     }
 
+    let terminal: SharedTerminal = terminal;
     let reason = pump(&inner, &terminal, events, signals).await;
     finish(reason.clone());
     *inner.terminal.lock().expect("terminal poisoned") = None;
+    inner.end_share(&tokio::runtime::Handle::current());
     let _ = client.disconnect().await;
+    set_state(&inner, SessionState::Closed { reason });
+}
+
+/// Viewer counterpart of [`run`]: the relay stream is already open, so just
+/// pump it until the host stops or the tab closes.
+async fn run_viewer(
+    inner: Arc<Inner>,
+    terminal: SharedTerminal,
+    events: TermEvents,
+    signals: mpsc::UnboundedReceiver<TermSignal>,
+) {
+    let reason = pump(&inner, &terminal, events, signals).await;
+    *inner.terminal.lock().expect("terminal poisoned") = None;
+    let _ = terminal.close().await;
     set_state(&inner, SessionState::Closed { reason });
 }
 
@@ -503,7 +741,7 @@ async fn run(
 /// Returns the close reason (`None` = clean exit).
 async fn pump(
     inner: &Arc<Inner>,
-    terminal: &Arc<SshTerminal>,
+    terminal: &SharedTerminal,
     mut events: TermEvents,
     mut signals: mpsc::UnboundedReceiver<TermSignal>,
 ) -> Option<String> {
@@ -519,9 +757,13 @@ async fn pump(
                     }
                 }
                 let mut dirty = false;
+                let share = inner.share();
                 for ev in batch {
                     match ev {
                         TermEvent::Output(bytes) => {
+                            if let Some(share) = &share {
+                                share.publisher.publish(Bytes::copy_from_slice(&bytes));
+                            }
                             inner.emulator.lock().expect("emulator poisoned").feed(&bytes);
                             dirty = true;
                         }
@@ -563,7 +805,13 @@ async fn pump(
                     Some(TermSignal::PtyWrite(bytes)) => {
                         let _ = terminal.write(&bytes).await;
                     }
-                    Some(TermSignal::Title(t)) => inner.listener.on_title(t),
+                    Some(TermSignal::Title(t)) => {
+                        *inner.title.lock().expect("title poisoned") = t.clone();
+                        if let (Some(share), Some(t)) = (inner.share(), &t) {
+                            share.retitled(t.clone());
+                        }
+                        inner.listener.on_title(t);
+                    }
                     Some(TermSignal::Bell) => inner.listener.on_bell(),
                     Some(TermSignal::Clipboard(text)) => inner.listener.on_clipboard(text),
                     None => {}
