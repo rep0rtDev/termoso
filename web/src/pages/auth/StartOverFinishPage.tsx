@@ -16,6 +16,7 @@ import { startOverFinish } from "@/auth/flows";
 import { Loading } from "@/components/Loading";
 import { formatDateTime, formatRelative } from "@/components/format";
 import { AuthTitle, PasswordField, passwordProblem } from "./common";
+import { IrreversibleWarning } from "./StartOverPage";
 
 /** Opened from the "finish" link in the start-over email. */
 export function StartOverFinishPage() {
@@ -60,6 +61,7 @@ export function StartOverFinishPage() {
           title="Not yet"
           subtitle={`The reset for ${st.email_hint} can be completed ${formatRelative(st.scheduled_for)} (${formatDateTime(st.scheduled_for)}).`}
         />
+        <IrreversibleWarning />
         <Alert severity="info">
           Come back to this link after that time. If you did not ask for this reset, use the cancel
           link from the same email — or sign in on a device that is still signed in and cancel it

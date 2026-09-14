@@ -6,6 +6,20 @@ import { authApi } from "@/api/endpoints";
 import { formatDateTime, formatRelative } from "@/components/format";
 import { AuthTitle } from "./common";
 
+/** The one thing every Start-over screen must say, in red. */
+export function IrreversibleWarning() {
+  return (
+    <Alert severity="error" variant="outlined">
+      <AlertTitle>This permanently destroys your encrypted data</AlertTitle>
+      Your hosts, passwords, keys, snippets, settings and other vault contents are encrypted with
+      keys only you hold. Without the password or the recovery key nobody — including Termoso — can
+      decrypt them: the server never has a decryption key. Starting over keeps your email address
+      and team memberships but gives you a <strong>new, empty vault</strong>. The old data is
+      deleted and cannot be brought back.
+    </Alert>
+  );
+}
+
 type Stage =
   | { kind: "email" }
   | { kind: "code"; requestToken: string; emailHint: string; needMfa: boolean }
@@ -67,6 +81,7 @@ export function StartOverPage() {
           title="Reset scheduled"
           subtitle={`The reset for ${stage.emailHint} can be completed ${formatRelative(stage.scheduledFor)} (${formatDateTime(stage.scheduledFor)}).`}
         />
+        <IrreversibleWarning />
         <Alert severity="info">
           We emailed you two links: one to <strong>finish</strong> the reset once the waiting period
           is over, and one to <strong>cancel</strong> it. Every signed-in device of the account was
@@ -91,14 +106,7 @@ export function StartOverPage() {
         subtitle="For when both your password and your 24-word recovery key are gone."
       />
       <Stack spacing={2}>
-        <Alert severity="error" variant="outlined">
-          <AlertTitle>This permanently destroys your encrypted data</AlertTitle>
-          Your hosts, passwords, keys, snippets, settings and other vault contents are encrypted
-          with keys only you hold. Without the password or the recovery key nobody — including
-          Termoso — can decrypt them: the server never has a decryption key. Starting over keeps
-          your email address and team memberships but gives you a <strong>new, empty vault</strong>.
-          The old data is deleted and cannot be brought back.
-        </Alert>
+        <IrreversibleWarning />
         {error && <Alert severity="error">{error}</Alert>}
         {stage.kind === "email" && (
           <>
