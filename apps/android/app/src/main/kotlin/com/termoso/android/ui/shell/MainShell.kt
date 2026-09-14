@@ -42,6 +42,7 @@ import com.termoso.android.data.SftpManager
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.account.AccountScreen
 import com.termoso.android.ui.account.AuthMode
+import com.termoso.android.ui.account.ReauthHost
 import com.termoso.android.ui.account.SecurityKeysScreen
 import com.termoso.android.ui.account.SignInScreen
 import com.termoso.android.ui.account.SshIdScreen
@@ -171,6 +172,7 @@ fun MainShell(
     }
     LaunchedEffect(forwards) { forwards.autoStartOnce() }
     TunnelPromptHost(forwards)
+    ReauthHost(account)
 
     val pendingInvite by container.pendingInvite.collectAsStateWithLifecycle()
     val accountStatus by account.status.collectAsStateWithLifecycle()
@@ -312,7 +314,7 @@ fun MainShell(
                     onSecurityKeys = { nav.navigate(Routes.SECURITY_KEYS) },
                 )
             }
-            composable(Routes.SSH_ID) { SshIdScreen(shell = shell, onBack = { nav.popBackStack() }) }
+            composable(Routes.SSH_ID) { SshIdScreen(shell = shell, account = account, onBack = { nav.popBackStack() }) }
             composable(Routes.SECURITY_KEYS) {
                 SecurityKeysScreen(shell = shell, account = account, onBack = { nav.popBackStack() })
             }

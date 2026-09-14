@@ -215,9 +215,17 @@ async fn publish(
         .await?)
 }
 
+/// Fetch the profile and bring the device keys up to date. Publishing is a
+/// sensitive change; when the session lacks a fresh step-up the profile is
+/// returned as the server has it (device keys show as not published) and
+/// the caller decides whether to ask the user — see `sshid_publish`.
 async fn load(api: &Arc<ApiClient>, store: &Arc<Store>) -> Result<Option<SshIdProfile>> {
     let profile = match api.sshid().await? {
-        Some(p) => Some(publish(api, store, p).await?),
+        Some(p) => Some(match publish(api, store, p.clone()).await {
+            Ok(p) => p,
+            Err(MobileError::ReauthRequired) => p,
+            Err(e) => return Err(e),
+        }),
         None => None,
     };
     core::set_handle(store, profile.as_ref().map(|p| p.handle.as_str()))?;
@@ -246,6 +254,18 @@ impl AccountRuntime {
         let api = self.api().await?;
         load(&api, &self.store_arc()).await?;
         Ok(())
+    }
+
+    /// (Re)publish this device's keys on request; propagates `ReauthRequired`.
+    pub async fn sshid_publish(&self) -> Result<SshIdView> {
+        let api = self.api().await?;
+        let store = self.store_arc();
+        let profile = match api.sshid().await? {
+            Some(p) => Some(publish(&api, &store, p).await?),
+            None => None,
+        };
+        core::set_handle(&store, profile.as_ref().map(|p| p.handle.as_str()))?;
+        view_of(&store, profile)
     }
 
     /// Claim a handle and publish this device's keys under it.
