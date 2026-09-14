@@ -66,3 +66,5 @@ http-body-util = "0.1"
 tokio-tungstenite = "0.29"
 # Mock OIDC provider in the integration tests signs RS256 ID tokens.
 rsa = { version = "0.9", features = ["sha2"] }
+# Software CTAP2 authenticator drives the WebAuthn ceremonies end to end.
+termoso-core = { workspace = true, features = ["fido2-soft"] }

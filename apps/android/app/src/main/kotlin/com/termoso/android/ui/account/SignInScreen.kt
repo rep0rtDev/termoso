@@ -52,8 +52,14 @@ import com.termoso.android.data.ServerChoice
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.SecretField
 import com.termoso.android.ui.components.SubScreen
+import com.termoso.android.ui.keychain.LocalFido2
+import com.termoso.android.ui.keychain.SecurityKeyListening
+import com.termoso.android.ui.keychain.SecurityKeyPicker
+import com.termoso.android.ui.keychain.TouchDialog
 import com.termoso.android.ui.keychain.copyText
+import com.termoso.android.ui.keychain.waitingHint
 import com.termoso.android.ui.theme.Emerald
+import com.termoso.core.Fido2Transport
 import com.termoso.core.MfaMethod
 
 /**
@@ -241,16 +247,13 @@ private fun MfaForm(vm: SignInViewModel, step: AuthStep.Mfa, onDone: () -> Unit)
                 selected = vm.mfaMethod == m,
                 onClick = { vm.pickMethod(m) },
                 label = { Text(m.label()) },
-                enabled = !vm.busy && m != MfaMethod.WEBAUTHN,
+                enabled = !vm.busy,
             )
         }
     }
     when (vm.mfaMethod) {
-        MfaMethod.WEBAUTHN, null -> Text(
-            "Security keys are not supported on Android yet — use another method.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        null -> {}
+        MfaMethod.WEBAUTHN -> SecurityKeyMfa(vm, onDone)
         MfaMethod.EMAIL -> {
             if (!vm.emailCodeSent) {
                 OutlinedButton(onClick = vm::sendEmailCode, enabled = !vm.busy) { Text("Send code by email") }
@@ -269,6 +272,47 @@ private fun MfaForm(vm: SignInViewModel, step: AuthStep.Mfa, onDone: () -> Unit)
         BusyButton(text = "Verify", busy = vm.busy, onClick = { vm.submitMfa(onDone) })
     }
     TextButton(onClick = vm::cancelPending, enabled = !vm.busy) { Text("Cancel") }
+}
+
+/**
+ * Second factor with a FIDO2 key over USB or NFC. Nothing to type: the
+ * attached token signs the server's challenge inside Rust; the only input is
+ * the key's PIN when the server asks for user verification.
+ */
+@Composable
+private fun SecurityKeyMfa(vm: SignInViewModel, onDone: () -> Unit) {
+    val fido2 = LocalFido2.current
+    val devices by fido2.devices.collectAsStateWithLifecycle()
+    val pending by fido2.usbPending.collectAsStateWithLifecycle()
+    val device = devices.firstOrNull { it.id == vm.skDeviceId } ?: devices.singleOrNull()
+
+    SecurityKeyListening(fido2)
+    SecurityKeyPicker(
+        devices = devices,
+        selected = vm.skDeviceId,
+        pending = pending,
+        hint = fido2.waitingHint(),
+        onSelect = { vm.skDeviceId = it },
+        onRefresh = fido2::refreshUsb,
+    )
+    SecretField(
+        vm.skPin,
+        { vm.skPin = it },
+        if (device?.pinSet == false) "Security key PIN (none set)" else "Security key PIN",
+        enabled = !vm.busy,
+    )
+    Text(
+        "The key signs a one-time challenge from the server; the PIN is only ever sent to the key itself.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    BusyButton(
+        text = "Use security key",
+        busy = vm.busy,
+        enabled = devices.isNotEmpty(),
+        onClick = { vm.submitSecurityKey(onDone) },
+    )
+    if (vm.busy) TouchDialog(touch = vm.skTouch, transportNfc = device?.transport == Fido2Transport.NFC)
 }
 
 @Composable
@@ -339,10 +383,10 @@ private fun CodeField(vm: SignInViewModel, label: String, keyboard: KeyboardType
 }
 
 @Composable
-private fun BusyButton(text: String, busy: Boolean, onClick: () -> Unit) {
+private fun BusyButton(text: String, busy: Boolean, onClick: () -> Unit, enabled: Boolean = true) {
     Button(
         onClick = onClick,
-        enabled = !busy,
+        enabled = !busy && enabled,
         modifier = Modifier.fillMaxWidth().height(48.dp),
         shape = RoundedCornerShape(12.dp),
     ) {

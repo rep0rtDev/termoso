@@ -156,6 +156,85 @@ pub struct ResidentCredential {
     pub user_name: String,
 }
 
+/// `authenticatorMakeCredential` parameters as a relying party states them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MakeCredentialRequest<'a> {
+    /// Relying party id.
+    pub rp_id: &'a str,
+    /// Relying party display name.
+    pub rp_name: Option<&'a str>,
+    /// User handle.
+    pub user_id: &'a [u8],
+    /// User account name.
+    pub user_name: &'a str,
+    /// User display name.
+    pub user_display_name: &'a str,
+    /// Acceptable COSE algorithms, most preferred first.
+    pub algorithms: &'a [i64],
+    /// Credential ids the token must not have already.
+    pub exclude: &'a [Vec<u8>],
+    /// Ask for a discoverable (resident) credential.
+    pub resident: bool,
+    /// The relying party requires user verification.
+    pub user_verification: bool,
+    /// SHA-256 of the serialized client data.
+    pub client_data_hash: [u8; 32],
+}
+
+/// `authenticatorGetAssertion` parameters as a relying party states them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GetAssertionRequest<'a> {
+    /// Relying party id.
+    pub rp_id: &'a str,
+    /// SHA-256 of the serialized client data.
+    pub client_data_hash: [u8; 32],
+    /// Credential ids the relying party accepts; empty asks for a
+    /// discoverable credential.
+    pub allow: &'a [&'a [u8]],
+    /// Require a touch.
+    pub user_presence: bool,
+    /// The relying party requires user verification.
+    pub user_verification: bool,
+}
+
+/// `authenticatorMakeCredential` output, kept as the token produced it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attestation {
+    /// Attestation statement format (`packed`, `none`, …).
+    pub fmt: String,
+    /// Authenticator data with the attested credential.
+    pub auth_data: Vec<u8>,
+    /// Attestation statement, opaque here.
+    pub att_stmt: Value,
+}
+
+impl Attestation {
+    /// The credential minted (id and public key).
+    pub fn credential(&self) -> std::result::Result<Credential, Fido2Error> {
+        attested_credential(&self.auth_data)
+    }
+
+    /// WebAuthn `attestationObject`: CBOR `{fmt, attStmt, authData}`.
+    pub fn attestation_object(&self) -> Vec<u8> {
+        encode(&map(vec![
+            (text("fmt"), text(&self.fmt)),
+            (text("attStmt"), self.att_stmt.clone()),
+            (text("authData"), bytes(&self.auth_data)),
+        ]))
+    }
+}
+
+/// `authenticatorGetAssertion` output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Assertion {
+    /// Which credential signed.
+    pub credential_id: Vec<u8>,
+    /// User handle, when the token returns the user entity.
+    pub user_id: Option<Vec<u8>>,
+    /// Authenticator data and signature.
+    pub data: AssertionData,
+}
+
 // ---------------------------------------------------------------------------
 // CBOR helpers
 
@@ -628,7 +707,7 @@ impl<T: CtapTransport> Authenticator<T> {
         Ok(PinToken { protocol, token })
     }
 
-    /// Create a credential. `pin` is exchanged for an auth token when
+    /// Create an SSH credential. `pin` is exchanged for an auth token when
     /// given; tokens with a PIN set demand one for makeCredential.
     pub fn make_credential(
         &mut self,
@@ -650,41 +729,129 @@ impl<T: CtapTransport> Authenticator<T> {
             rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut h);
             h
         };
+        let att = self.make_credential_raw(
+            &MakeCredentialRequest {
+                rp_id,
+                rp_name: None,
+                user_id,
+                user_name,
+                user_display_name: user_name,
+                algorithms: &[algorithm.cose_alg()],
+                exclude: &[],
+                resident,
+                user_verification: false,
+                client_data_hash,
+            },
+            pin,
+        )?;
+        attested_credential(&att.auth_data)
+    }
+
+    /// `authenticatorMakeCredential` as the relying party phrased it,
+    /// returning the attestation untouched (for WebAuthn's
+    /// `attestationObject`). `pin` is exchanged for an auth token; without
+    /// one, `user_verification` asks the token to verify the user on its
+    /// own (fingerprint), which only tokens advertising `uv` can do.
+    pub fn make_credential_raw(
+        &mut self,
+        req: &MakeCredentialRequest<'_>,
+        pin: Option<&str>,
+    ) -> std::result::Result<Attestation, Fido2Error> {
+        if req.algorithms.is_empty() {
+            return Err(Fido2Error::Unsupported("no credential algorithms".into()));
+        }
+        if !self.info.algorithms.is_empty()
+            && !req
+                .algorithms
+                .iter()
+                .any(|a| self.info.algorithms.contains(a))
+        {
+            return Err(Fido2Error::Unsupported("algorithm".into()));
+        }
         let token = match pin {
-            Some(p) => Some(self.pin_token(p, PERM_MAKE_CREDENTIAL, Some(rp_id))?),
+            Some(p) => Some(self.pin_token(p, PERM_MAKE_CREDENTIAL, Some(req.rp_id))?),
             None => None,
         };
+        let builtin_uv = token.is_none() && req.user_verification;
+        if builtin_uv && !self.info.has("uv") {
+            return Err(if self.info.pin_set() == Some(false) {
+                Fido2Error::PinNotSet
+            } else {
+                Fido2Error::PinRequired
+            });
+        }
+        let mut rp = vec![(text("id"), text(req.rp_id))];
+        if let Some(name) = req.rp_name {
+            rp.push((text("name"), text(name)));
+        }
         let mut params = vec![
-            (int(1), bytes(&client_data_hash)),
-            (int(2), map(vec![(text("id"), text(rp_id))])),
+            (int(1), bytes(&req.client_data_hash)),
+            (int(2), map(rp)),
             (
                 int(3),
                 map(vec![
-                    (text("id"), bytes(user_id)),
-                    (text("name"), text(user_name)),
-                    (text("displayName"), text(user_name)),
+                    (text("id"), bytes(req.user_id)),
+                    (text("name"), text(req.user_name)),
+                    (text("displayName"), text(req.user_display_name)),
                 ]),
             ),
             (
                 int(4),
-                Value::Array(vec![map(vec![
-                    (text("alg"), int(algorithm.cose_alg())),
-                    (text("type"), text("public-key")),
-                ])]),
+                Value::Array(
+                    req.algorithms
+                        .iter()
+                        .map(|alg| {
+                            map(vec![
+                                (text("alg"), int(*alg)),
+                                (text("type"), text("public-key")),
+                            ])
+                        })
+                        .collect(),
+                ),
             ),
         ];
-        if resident {
-            params.push((int(7), map(vec![(text("rk"), Value::Bool(true))])));
+        if !req.exclude.is_empty() {
+            params.push((
+                int(5),
+                Value::Array(
+                    req.exclude
+                        .iter()
+                        .map(|id| {
+                            map(vec![
+                                (text("id"), bytes(id)),
+                                (text("type"), text("public-key")),
+                            ])
+                        })
+                        .collect(),
+                ),
+            ));
+        }
+        let mut options = Vec::new();
+        if req.resident {
+            options.push((text("rk"), Value::Bool(true)));
+        }
+        if builtin_uv {
+            options.push((text("uv"), Value::Bool(true)));
+        }
+        if !options.is_empty() {
+            params.push((int(7), map(options)));
         }
         if let Some(t) = &token {
-            params.push((int(8), bytes(&t.authenticate(&client_data_hash))));
+            params.push((int(8), bytes(&t.authenticate(&req.client_data_hash))));
             params.push((int(9), int(t.protocol() as i64)));
         }
         let v = self
             .call(CMD_MAKE_CREDENTIAL, Some(map(params)))?
             .ok_or_else(|| Fido2Error::Other("empty makeCredential response".into()))?;
-        let auth_data = as_bytes(v.field(2), "authData")?;
-        attested_credential(&auth_data)
+        Ok(Attestation {
+            fmt: v
+                .field(1)
+                .and_then(Value::as_text)
+                .ok_or_else(|| Fido2Error::Other("makeCredential response lacks fmt".into()))?
+                .to_string(),
+            auth_data: as_bytes(v.field(2), "authData")?,
+            att_stmt: v.field(3).cloned().unwrap_or_else(|| map(Vec::new())),
+        })
     }
 
     /// Ask for an assertion over `client_data_hash` with the credential
@@ -697,40 +864,105 @@ impl<T: CtapTransport> Authenticator<T> {
         user_presence: bool,
         pin: Option<&str>,
     ) -> std::result::Result<AssertionData, Fido2Error> {
+        self.get_assertion_raw(
+            &GetAssertionRequest {
+                rp_id,
+                client_data_hash: *client_data_hash,
+                allow: std::slice::from_ref(&credential_id),
+                user_presence,
+                user_verification: false,
+            },
+            pin,
+        )
+        .map(|a| a.data)
+    }
+
+    /// `authenticatorGetAssertion` with the relying party's allow list;
+    /// also tells which credential answered and, when the token says, the
+    /// user it belongs to. `user_verification` without a `pin` asks the
+    /// token for built-in verification.
+    pub fn get_assertion_raw(
+        &mut self,
+        req: &GetAssertionRequest<'_>,
+        pin: Option<&str>,
+    ) -> std::result::Result<Assertion, Fido2Error> {
         let token = match pin {
-            Some(p) => Some(self.pin_token(p, PERM_GET_ASSERTION, Some(rp_id))?),
+            Some(p) => Some(self.pin_token(p, PERM_GET_ASSERTION, Some(req.rp_id))?),
             None => None,
         };
+        let builtin_uv = token.is_none() && req.user_verification;
+        if builtin_uv && !self.info.has("uv") {
+            return Err(if self.info.pin_set() == Some(false) {
+                Fido2Error::PinNotSet
+            } else {
+                Fido2Error::PinRequired
+            });
+        }
         let mut params = vec![
-            (int(1), text(rp_id)),
-            (int(2), bytes(client_data_hash)),
-            (
-                int(3),
-                Value::Array(vec![map(vec![
-                    (text("id"), bytes(credential_id)),
-                    (text("type"), text("public-key")),
-                ])]),
-            ),
+            (int(1), text(req.rp_id)),
+            (int(2), bytes(&req.client_data_hash)),
         ];
-        if !user_presence {
-            params.push((int(5), map(vec![(text("up"), Value::Bool(false))])));
+        if !req.allow.is_empty() {
+            params.push((
+                int(3),
+                Value::Array(
+                    req.allow
+                        .iter()
+                        .map(|id| {
+                            map(vec![
+                                (text("id"), bytes(id)),
+                                (text("type"), text("public-key")),
+                            ])
+                        })
+                        .collect(),
+                ),
+            ));
+        }
+        let mut options = Vec::new();
+        if !req.user_presence {
+            options.push((text("up"), Value::Bool(false)));
+        }
+        if builtin_uv {
+            options.push((text("uv"), Value::Bool(true)));
+        }
+        if !options.is_empty() {
+            params.push((int(5), map(options)));
         }
         if let Some(t) = &token {
-            params.push((int(6), bytes(&t.authenticate(client_data_hash))));
+            params.push((int(6), bytes(&t.authenticate(&req.client_data_hash))));
             params.push((int(7), int(t.protocol() as i64)));
         }
         let v = match self.call(CMD_GET_ASSERTION, Some(map(params.clone()))) {
             // CTAP 2.0 tokens may refuse `up: false`; ask again the normal way.
-            Err(Fido2Error::Unsupported(_)) if !user_presence => {
+            Err(Fido2Error::Unsupported(_)) if !req.user_presence && !builtin_uv => {
                 params.retain(|(k, _)| k != &int(5));
                 self.call(CMD_GET_ASSERTION, Some(map(params)))?
             }
             r => r?,
         }
         .ok_or_else(|| Fido2Error::Other("empty getAssertion response".into()))?;
-        Ok(AssertionData {
-            auth_data: as_bytes(v.field(2), "authData")?,
-            signature: as_bytes(v.field(3), "signature")?,
+        let credential_id = match v.field(1).and_then(|c| c.field_text("id")) {
+            Some(id) => as_bytes(Some(id), "credential.id")?,
+            None => match req.allow {
+                [only] => only.to_vec(),
+                _ => {
+                    return Err(Fido2Error::Other(
+                        "token did not say which credential signed".into(),
+                    ));
+                }
+            },
+        };
+        Ok(Assertion {
+            credential_id,
+            user_id: v
+                .field(4)
+                .and_then(|u| u.field_text("id"))
+                .and_then(Value::as_bytes)
+                .cloned(),
+            data: AssertionData {
+                auth_data: as_bytes(v.field(2), "authData")?,
+                signature: as_bytes(v.field(3), "signature")?,
+            },
         })
     }
 

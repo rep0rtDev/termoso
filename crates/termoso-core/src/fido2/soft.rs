@@ -24,6 +24,7 @@ use super::nfc::{Apdu, FIDO_AID};
 const STATUS_OK: u8 = 0x00;
 const STATUS_INVALID_CBOR: u8 = 0x12;
 const STATUS_MISSING_PARAMETER: u8 = 0x14;
+const STATUS_CREDENTIAL_EXCLUDED: u8 = 0x19;
 const STATUS_UNSUPPORTED_ALGORITHM: u8 = 0x26;
 const STATUS_OPERATION_DENIED: u8 = 0x27;
 const STATUS_NO_CREDENTIALS: u8 = 0x2E;
@@ -486,6 +487,11 @@ impl State {
             .iter()
             .filter_map(|e| e.field_text("alg").and_then(as_i64))
             .collect();
+        let excluded = p.field(5).and_then(Value::as_array).is_some_and(|a| {
+            a.iter()
+                .filter_map(|e| e.field_text("id").and_then(Value::as_bytes))
+                .any(|id| self.creds.get(id).is_some_and(|c| c.rp_id == rp_id))
+        });
         let resident = p
             .field(7)
             .and_then(|o| o.field_text("rk"))
@@ -500,6 +506,12 @@ impl State {
         )?;
         if self.config.pin.is_some() && !verified {
             return Err(STATUS_PIN_REQUIRED);
+        }
+        if excluded {
+            // Real tokens ask for a touch first so the relying party cannot
+            // probe silently; the test double reports it straight away.
+            self.touch()?;
+            return Err(STATUS_CREDENTIAL_EXCLUDED);
         }
         // Tokens pick the first algorithm they support from the list.
         let key = algs

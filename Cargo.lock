@@ -9029,6 +9029,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "subtle",
+ "termoso-core",
  "termoso-crypto",
  "termoso-proto",
  "thiserror 2.0.20",
