@@ -14,20 +14,24 @@ uniffi::setup_scaffolding!("termoso");
 
 mod account;
 mod app;
+mod connect;
 mod dto;
 mod error;
 mod keys;
 mod session;
 mod settings;
+mod sftp;
 mod terminal;
 mod themes;
 
 pub use account::*;
 pub use app::*;
+pub use connect::{HostKeyChoice, InteractiveQuestionInfo, PromptAnswer, PromptRequest};
 pub use dto::*;
 pub use error::{MobileError, Result};
 pub use keys::{KeyMods, SpecialKey, control_code, encode_key, encode_text};
 pub use session::*;
 pub use settings::MobileSettings;
+pub use sftp::*;
 pub use terminal::{CELL_BYTES, CursorStyle, GridFrame, GridSnapshot, TerminalPalette, flag};
 pub use themes::{TERMOSO_DARK, TERMOSO_LIGHT, TerminalTheme, terminal_theme, terminal_themes};

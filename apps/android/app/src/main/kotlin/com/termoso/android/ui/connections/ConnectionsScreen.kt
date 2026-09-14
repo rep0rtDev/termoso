@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.data.SftpConnection
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.userMessage
 import com.termoso.android.ui.components.ChevronRow
@@ -51,6 +53,7 @@ import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.core.HistoryItem
 import com.termoso.core.MobileException
 import com.termoso.core.SessionState
+import com.termoso.core.TransferStatus
 import com.termoso.core.parseTarget
 import kotlinx.coroutines.launch
 import java.text.DateFormat
@@ -64,9 +67,12 @@ fun ConnectionsScreen(
     onAddHost: () -> Unit,
     onConnectHost: (String) -> Unit,
     onOpenTerminal: () -> Unit,
+    onNewSftp: () -> Unit,
+    onOpenSftp: (String) -> Unit,
 ) {
     val revision by shell.repo.revision.collectAsStateWithLifecycle()
     val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
+    val sftp by shell.sftp.connections.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var target by remember { mutableStateOf("") }
     var recent by remember { mutableStateOf<List<HistoryItem>>(emptyList()) }
@@ -113,7 +119,7 @@ fun ConnectionsScreen(
                 },
             )
 
-            if (sessions.isNotEmpty()) {
+            if (sessions.isNotEmpty() || sftp.isNotEmpty()) {
                 SectionLabel("Active sessions")
                 SectionCard {
                     sessions.forEachIndexed { i, s ->
@@ -122,6 +128,14 @@ fun ConnectionsScreen(
                             session = s,
                             onOpen = { shell.sessions.setActive(s.id); onOpenTerminal() },
                             onClose = { scope.launch { shell.sessions.close(s.id) } },
+                        )
+                    }
+                    sftp.forEachIndexed { i, c ->
+                        if (i > 0 || sessions.isNotEmpty()) RowDivider()
+                        SftpRow(
+                            conn = c,
+                            onOpen = { onOpenSftp(c.id) },
+                            onClose = { scope.launch { shell.sftp.close(c.id) } },
                         )
                     }
                 }
@@ -134,6 +148,13 @@ fun ConnectionsScreen(
                     subtitle = "Save a server with its credentials",
                     leading = { IconTile(Icons.Filled.Add) },
                     modifier = Modifier.clickable(onClick = onAddHost),
+                )
+                RowDivider()
+                ChevronRow(
+                    title = "SFTP",
+                    subtitle = "Browse and transfer files on a host",
+                    leading = { IconTile(Icons.Filled.FolderOpen) },
+                    modifier = Modifier.clickable(onClick = onNewSftp),
                 )
                 RowDivider()
                 ListRow(
@@ -181,6 +202,29 @@ private fun ActiveSessionRow(session: TerminalSession, onOpen: () -> Unit, onClo
         leading = { HostAvatar(detected ?: session.savedOsName) },
         trailing = {
             IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close session") }
+        },
+        modifier = Modifier.clickable(onClick = onOpen),
+        titleColor = if (state is SessionState.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+    )
+}
+
+@Composable
+private fun SftpRow(conn: SftpConnection, onOpen: () -> Unit, onClose: () -> Unit) {
+    val state by conn.state.collectAsStateWithLifecycle()
+    val transfers by conn.transfers.collectAsStateWithLifecycle()
+    val active = transfers.count { it.status is TransferStatus.Running || it.status is TransferStatus.Queued }
+    val subtitle = when (val s = state) {
+        is SessionState.Connecting -> s.detail
+        is SessionState.Connected -> "SFTP · ${conn.target}" + if (active > 0) " · $active transferring" else ""
+        is SessionState.Closed -> "Closed" + (s.reason?.let { " · $it" } ?: "")
+        is SessionState.Failed -> s.message
+    }
+    ListRow(
+        title = conn.label,
+        subtitle = subtitle,
+        leading = { IconTile(Icons.Filled.FolderOpen) },
+        trailing = {
+            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close connection") }
         },
         modifier = Modifier.clickable(onClick = onOpen),
         titleColor = if (state is SessionState.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
