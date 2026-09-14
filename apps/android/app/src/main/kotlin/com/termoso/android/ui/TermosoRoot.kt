@@ -9,13 +9,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -38,6 +36,8 @@ import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import com.termoso.android.data.AppContainer
 import com.termoso.android.data.VaultState
 import com.termoso.android.data.userMessage
+import com.termoso.android.ui.account.AuthMode
+import com.termoso.android.ui.account.SignInScreen
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.security.AuthResult
 import com.termoso.android.ui.security.authenticateDevice
@@ -61,7 +61,7 @@ fun TermosoRoot(container: AppContainer, vault: VaultState) {
     var attempt by remember { mutableIntStateOf(0) }
     var manualLock by remember { mutableStateOf(false) }
     var needAuth by remember { mutableStateOf(false) }
-    var cloudNotice by remember { mutableStateOf(false) }
+    var welcomeAuth by remember { mutableStateOf<AuthMode?>(null) }
     val gated by container.gated.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
@@ -109,33 +109,45 @@ fun TermosoRoot(container: AppContainer, vault: VaultState) {
                     error = null
                     scope.launch { if (prompt()) container.ungate() }
                 })
-            } else if (!settings.welcomeSeen) {
-                WelcomeScreen(
-                    onCloud = { cloudNotice = true },
-                    onContinueOffline = {
-                        scope.launch { vault.repo.updateSettings { it.copy(welcomeSeen = true) } }
-                    },
-                )
             } else {
                 val session = remember(vault.repo) { SessionStoreOwner() }
                 DisposableEffect(session) { onDispose { session.viewModelStore.clear() } }
+                val restoring by vault.account.restoring.collectAsStateWithLifecycle()
+                val accountStatus by vault.account.status.collectAsStateWithLifecycle()
+                fun finishWelcome() {
+                    welcomeAuth = null
+                    scope.launch { vault.repo.updateSettings { it.copy(welcomeSeen = true) } }
+                }
                 CompositionLocalProvider(LocalViewModelStoreOwner provides session) {
-                    MainShell(
-                        container = container,
-                        repo = vault.repo,
-                        sessions = vault.sessions,
-                        onCloud = { cloudNotice = true },
-                        onLock = {
-                            manualLock = true
-                            scope.launch { container.lockVault() }
-                        },
-                    )
+                    when {
+                        // A returning user who is still signed in never sees the welcome again.
+                        !settings.welcomeSeen && restoring -> LockedScreen(error = null, manual = false, authRequired = false, onRetry = {})
+                        !settings.welcomeSeen && accountStatus.account != null -> LaunchedEffect(Unit) { finishWelcome() }
+                        !settings.welcomeSeen && welcomeAuth != null -> SignInScreen(
+                            account = vault.account,
+                            mode = welcomeAuth ?: AuthMode.SignIn,
+                            onBack = { welcomeAuth = null },
+                            onDone = ::finishWelcome,
+                        )
+                        !settings.welcomeSeen -> WelcomeScreen(
+                            onCreateAccount = { welcomeAuth = AuthMode.Register },
+                            onSignIn = { welcomeAuth = AuthMode.SignIn },
+                            onContinueOffline = ::finishWelcome,
+                        )
+                        else -> MainShell(
+                            container = container,
+                            repo = vault.repo,
+                            sessions = vault.sessions,
+                            account = vault.account,
+                            onLock = {
+                                manualLock = true
+                                scope.launch { container.lockVault() }
+                            },
+                        )
+                    }
                 }
             }
         }
-    }
-    if (cloudNotice) {
-        CloudNoticeDialog(onDismiss = { cloudNotice = false })
     }
 }
 
@@ -182,18 +194,3 @@ private fun LockedScreen(error: String?, manual: Boolean, authRequired: Boolean,
     }
 }
 
-@Composable
-private fun CloudNoticeDialog(onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Termoso Cloud on Android") },
-        text = {
-            Text(
-                "Account sign-in and encrypted sync arrive in the next Android update. " +
-                    "Termoso Cloud stays completely free — no limits, no plans, no strings attached. " +
-                    "Everything you create now stays in the encrypted vault on this device and will sync once you sign in.",
-            )
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
-    )
-}

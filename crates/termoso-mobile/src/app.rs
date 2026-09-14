@@ -14,6 +14,10 @@ use termoso_core::store::Store;
 use termoso_crypto::keys::SymmetricKey;
 use zeroize::Zeroizing;
 
+use crate::account::{
+    AccountCard, AccountRuntime, AccountStatus, DeviceCard, LoginForm, LoginOutcome, MfaMethod,
+    RegisterForm, Registered, ServerCard, SyncListener, SyncStatus,
+};
 use crate::dto::*;
 use crate::error::{MobileError, Result};
 use crate::session::{Launch, SessionListener, SshSession, TerminalOptions};
@@ -112,11 +116,25 @@ pub struct QuickTarget {
     pub username: String,
 }
 
+/// Probe a server before sign-in. Nothing is contacted until the user
+/// picked it.
+#[uniffi::export]
+pub fn server_info(url: String) -> Result<ServerCard> {
+    RUNTIME.block_on(AccountRuntime::server_info(&url))
+}
+
 /// An open profile.
 #[derive(uniffi::Object)]
 pub struct TermosoApp {
     store: Arc<Store>,
     profile_dir: PathBuf,
+    account: Arc<AccountRuntime>,
+}
+
+impl Drop for TermosoApp {
+    fn drop(&mut self) {
+        self.account.shutdown(RUNTIME.handle());
+    }
 }
 
 #[uniffi::export]
@@ -132,9 +150,10 @@ impl TermosoApp {
         let master = SymmetricKey::from_bytes(key);
         let dir = PathBuf::from(profile_dir);
         std::fs::create_dir_all(&dir)?;
-        let store = Store::open(&dir.join(DB_FILE), master)?;
+        let store = Arc::new(Store::open(&dir.join(DB_FILE), master)?);
         Ok(Arc::new(Self {
-            store: Arc::new(store),
+            account: AccountRuntime::new(store.clone()),
+            store,
             profile_dir: dir,
         }))
     }
@@ -502,6 +521,81 @@ impl TermosoApp {
 
     pub fn save_settings(&self, settings: MobileSettings) -> Result<()> {
         settings.save(&self.store)
+    }
+
+    // ---- account & sync -----------------------------------------------
+
+    /// Receive sync status / change notifications. Replace with `None` to
+    /// stop.
+    pub fn set_sync_listener(&self, listener: Option<Arc<dyn SyncListener>>) {
+        self.account.set_listener(listener);
+    }
+
+    /// Name this installation registers under (shown in the devices list).
+    pub fn set_device_name(&self, name: String) {
+        self.account.set_device_name(name);
+    }
+
+    pub fn account_status(&self) -> Result<AccountStatus> {
+        RUNTIME.block_on(self.account.status())
+    }
+
+    /// Restore a persisted session and start syncing. Returns the account
+    /// even when the server is unreachable (the engine reconnects).
+    pub fn account_resume(&self) -> Result<Option<AccountCard>> {
+        RUNTIME.block_on(self.account.resume())
+    }
+
+    pub fn account_login(&self, form: LoginForm) -> Result<LoginOutcome> {
+        RUNTIME.block_on(self.account.login(form))
+    }
+
+    pub fn account_register(&self, form: RegisterForm) -> Result<Registered> {
+        RUNTIME.block_on(self.account.register(form))
+    }
+
+    /// Second factor for a pending sign-in.
+    pub fn account_mfa(&self, method: MfaMethod, code: String) -> Result<LoginOutcome> {
+        RUNTIME.block_on(self.account.mfa(method, code))
+    }
+
+    pub fn account_mfa_email_send(&self) -> Result<()> {
+        RUNTIME.block_on(self.account.mfa_email_send())
+    }
+
+    /// Code from the device-approval email for a pending sign-in.
+    pub fn account_approve_device(&self, code: String) -> Result<LoginOutcome> {
+        RUNTIME.block_on(self.account.approve_device(code))
+    }
+
+    pub fn account_resend_device_code(&self) -> Result<()> {
+        RUNTIME.block_on(self.account.resend_device_code())
+    }
+
+    pub fn account_cancel_login(&self) -> Result<()> {
+        RUNTIME.block_on(self.account.cancel_login())
+    }
+
+    /// Revoke this device on the server and forget the account, synced
+    /// vaults and keys locally. The local vault stays.
+    pub fn account_sign_out(&self) -> Result<()> {
+        RUNTIME.block_on(self.account.sign_out())
+    }
+
+    pub fn sync_now(&self) -> Result<SyncStatus> {
+        RUNTIME.block_on(self.account.sync_now())
+    }
+
+    pub fn sync_status(&self) -> SyncStatus {
+        self.account.sync_status()
+    }
+
+    pub fn account_devices(&self) -> Result<Vec<DeviceCard>> {
+        RUNTIME.block_on(self.account.devices())
+    }
+
+    pub fn account_revoke_device(&self, id: String) -> Result<()> {
+        RUNTIME.block_on(self.account.revoke_device(id))
     }
 
     // ---- sessions -----------------------------------------------------
