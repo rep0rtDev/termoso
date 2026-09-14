@@ -211,7 +211,7 @@ private fun shareLink(context: Context, link: String) {
     context.startActivity(Intent.createChooser(send, "Share link"))
 }
 
-/** Paste or type a `termoso://join/…` link; Rust validates it on Join. */
+/** Paste or type a join link (`https://…/join/…` or `termoso://join/…`); Rust validates it on Join. */
 @Composable
 fun JoinLiveDialog(onDismiss: () -> Unit, onJoin: (String) -> Unit) {
     val context = LocalContext.current
@@ -227,7 +227,7 @@ fun JoinLiveDialog(onDismiss: () -> Unit, onJoin: (String) -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Paste the termoso://join link the host sent you. You will watch their terminal; typing needs their permission.",
+                    "Paste the join link the host sent you. You will watch their terminal; typing needs their permission.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 OutlinedTextField(

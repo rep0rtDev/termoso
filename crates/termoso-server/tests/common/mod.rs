@@ -49,6 +49,9 @@ const DEFAULT_S3: &str = "http://127.0.0.1:9000";
 const DEFAULT_MAILPIT_SMTP: &str = "127.0.0.1:1025";
 const DEFAULT_MAILPIT_API: &str = "http://127.0.0.1:8025";
 
+/// Lower-case, colon-less on purpose: the server normalises it.
+pub const ANDROID_DEBUG_FINGERPRINT: &str =
+    "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
 pub const WEBAUTHN_RP_ID: &str = "localhost";
 pub const WEBAUTHN_ORIGIN: &str = "http://localhost";
 pub const SSO_PROVIDER: &str = "mock";
@@ -258,6 +261,7 @@ async fn boot() -> Option<TestServer> {
         trust_proxy: true,
         master_key: master_key.clone(),
         admin_emails: "admin@test.local".into(),
+        android_app_links: format!("com.termoso.android.debug={}", ANDROID_DEBUG_FINGERPRINT),
         swagger_ui: true,
         s3,
         smtp: smtp.map(|(cfg, _)| cfg),

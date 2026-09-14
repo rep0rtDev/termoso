@@ -26,6 +26,11 @@ pub struct Config {
     pub web_dir: Option<String>,
     /// Human name shown in emails / server info.
     pub server_name: String,
+    /// Android apps allowed to open this server's `https://…/invite/…` and
+    /// `/join/…` links directly (Android App Links). Comma-separated
+    /// `<package>=<SHA-256 signing-certificate fingerprint>` pairs, e.g.
+    /// `com.termoso.android=AB:CD:…`; published as `/.well-known/assetlinks.json`.
+    pub android_app_links: String,
     pub database_url: String,
     pub database_max_connections: u32,
     pub redis_url: String,
@@ -173,6 +178,7 @@ impl Default for Config {
             web_url: None,
             web_dir: None,
             server_name: "Termoso".into(),
+            android_app_links: String::new(),
             database_url: "postgres://termoso:termoso@localhost:5432/termoso".into(),
             database_max_connections: 20,
             redis_url: "redis://127.0.0.1:6379".into(),
@@ -216,7 +222,16 @@ impl Config {
         if let Some(dir) = self.web_dir() {
             crate::routes::web::validate_dir(&dir)?;
         }
+        self.android_app_links()?;
         Ok(())
+    }
+
+    /// Parsed `android_app_links`: `(package, fingerprint)` pairs.
+    pub fn android_app_links(&self) -> Result<Vec<AndroidAppLink>> {
+        split_csv(&self.android_app_links)
+            .into_iter()
+            .map(|entry| AndroidAppLink::parse(&entry))
+            .collect()
     }
 
     pub fn web_dir(&self) -> Option<std::path::PathBuf> {
@@ -253,10 +268,100 @@ impl Config {
     }
 }
 
+/// One Android app trusted to handle this server's https links.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AndroidAppLink {
+    pub package: String,
+    /// Upper-case colon-separated SHA-256 of the signing certificate, as
+    /// printed by `keytool -printcert` / `apksigner verify --print-certs`.
+    pub sha256_fingerprint: String,
+}
+
+impl AndroidAppLink {
+    fn parse(entry: &str) -> Result<Self> {
+        let (package, fp) = entry.split_once('=').with_context(|| {
+            format!("TERMOSO_ANDROID_APP_LINKS entry `{entry}` must be <package>=<sha256>")
+        })?;
+        let package = package.trim();
+        anyhow::ensure!(
+            !package.is_empty()
+                && package
+                    .split('.')
+                    .all(|p| !p.is_empty()
+                        && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')),
+            "TERMOSO_ANDROID_APP_LINKS: `{package}` is not an Android package name"
+        );
+        let digest: String = fp
+            .chars()
+            .filter(|c| *c != ':')
+            .map(|c| c.to_ascii_uppercase())
+            .collect();
+        anyhow::ensure!(
+            digest.len() == 64 && digest.chars().all(|c| c.is_ascii_hexdigit()),
+            "TERMOSO_ANDROID_APP_LINKS: fingerprint for `{package}` must be a SHA-256 (64 hex digits)"
+        );
+        let sha256_fingerprint = digest
+            .as_bytes()
+            .chunks(2)
+            .map(|pair| std::str::from_utf8(pair).expect("ascii hex"))
+            .collect::<Vec<_>>()
+            .join(":");
+        Ok(Self {
+            package: package.to_owned(),
+            sha256_fingerprint,
+        })
+    }
+}
+
 pub fn split_csv(s: &str) -> Vec<String> {
     s.split(',')
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(String::from)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn android_app_links_parse_and_normalise() {
+        let cfg = Config {
+            android_app_links: format!(
+                " com.termoso.android={} , com.termoso.android.debug={}",
+                "ab:cd:".repeat(16).trim_end_matches(':'),
+                "0123456789abcdef".repeat(4)
+            ),
+            ..Config::default()
+        };
+        let apps = cfg.android_app_links().unwrap();
+        assert_eq!(apps.len(), 2);
+        assert_eq!(apps[0].package, "com.termoso.android");
+        assert_eq!(
+            apps[0].sha256_fingerprint,
+            "AB:CD:".repeat(16).trim_end_matches(':')
+        );
+        assert_eq!(apps[1].package, "com.termoso.android.debug");
+        assert!(
+            apps[1]
+                .sha256_fingerprint
+                .starts_with("01:23:45:67:89:AB:CD:EF:")
+        );
+        assert_eq!(apps[1].sha256_fingerprint.len(), 32 * 3 - 1);
+        assert!(Config::default().android_app_links().unwrap().is_empty());
+
+        for bad in [
+            "com.termoso.android",
+            "com.termoso.android=abcd",
+            "com termoso=",
+            &format!("com.termoso.android={}", "zz".repeat(32)),
+        ] {
+            let cfg = Config {
+                android_app_links: bad.to_owned(),
+                ..Config::default()
+            };
+            assert!(cfg.android_app_links().is_err(), "{bad}");
+        }
+    }
 }
