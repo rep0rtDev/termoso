@@ -20,6 +20,7 @@ import PhoneIphoneRoundedIcon from "@mui/icons-material/PhoneIphoneRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@/api/client";
+import { UnlockCancelled, withStepUp } from "@/auth/unlock";
 import { accountApi } from "@/api/endpoints";
 import { queryKeys } from "@/api/hooks";
 import type { Device, Platform } from "@/api/types";
@@ -64,14 +65,17 @@ export function DevicesPage() {
   const [revokeOthers, setRevokeOthers] = useState(false);
 
   const revoke = useMutation({
-    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => accountApi.revokeDevice(id))),
+    mutationFn: (ids: string[]) =>
+      withStepUp(() => Promise.all(ids.map((id) => accountApi.revokeDevice(id)))),
     onSuccess: async (_r, ids) => {
       setTarget(null);
       setRevokeOthers(false);
       await qc.invalidateQueries({ queryKey: queryKeys.devices });
       snack.notify(ids.length === 1 ? "Device signed out" : `${ids.length} devices signed out`);
     },
-    onError: (e) => snack.error(errorMessage(e)),
+    onError: (e) => {
+      if (!(e instanceof UnlockCancelled)) snack.error(errorMessage(e));
+    },
   });
 
   if (devices.isPending) return <Loading />;

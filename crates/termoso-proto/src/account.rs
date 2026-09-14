@@ -23,6 +23,10 @@ schema! {
         pub is_admin: bool,
         /// Any MFA method enabled.
         pub mfa_enabled: bool,
+        /// A "start over" reset is scheduled for this moment (cancel it from any
+        /// signed-in device or via the emailed link if it was not you).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub reset_scheduled_for: Option<DateTime<Utc>>,
     }
 }
 

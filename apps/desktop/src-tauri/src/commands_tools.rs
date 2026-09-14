@@ -12,10 +12,11 @@ use termoso_proto::auth::{Device, MfaCredential};
 use termoso_proto::team::{Invite, Team, TeamRole};
 use termoso_proto::vault::{VaultMember, VaultRole};
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 use crate::account::{
-    self, AccountStatus, LoginForm, LoginOutcome, RegisterForm, Registered, SYNC_EVENT, SyncNotice,
-    SyncStatus,
+    self, AccountStatus, LoginForm, LoginOutcome, ReauthOutcome, RegisterForm, Registered,
+    SYNC_EVENT, SyncNotice, SyncStatus,
 };
 use crate::backup::{self, BackupSummary};
 use crate::cloud::{self, CloudImportReport, CloudPreview, CloudSelection};
@@ -841,6 +842,47 @@ pub async fn account_device_revoke<R: Runtime>(app: AppHandle<R>, id: Uuid) -> R
 }
 
 #[tauri::command]
+pub async fn account_reauth_start<R: Runtime>(
+    app: AppHandle<R>,
+    password: Zeroizing<String>,
+) -> Result<ReauthOutcome> {
+    account::reauth_start(&app, password).await
+}
+
+#[tauri::command]
+pub async fn account_reauth_mfa<R: Runtime>(
+    app: AppHandle<R>,
+    credential: MfaCredential,
+) -> Result<ReauthOutcome> {
+    account::reauth_mfa(&app, credential).await
+}
+
+#[tauri::command]
+pub async fn account_reauth_email_code<R: Runtime>(
+    app: AppHandle<R>,
+    code: String,
+) -> Result<ReauthOutcome> {
+    account::reauth_email_code(&app, code).await
+}
+
+#[tauri::command]
+pub async fn account_reauth_mfa_email_send<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    account::reauth_mfa_email_send(&app).await
+}
+
+#[tauri::command]
+pub async fn account_reauth_webauthn_challenge<R: Runtime>(
+    app: AppHandle<R>,
+) -> Result<serde_json::Value> {
+    account::reauth_webauthn_challenge(&app).await
+}
+
+#[tauri::command]
+pub async fn account_reauth_cancel<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    account::reauth_cancel(&app).await
+}
+
+#[tauri::command]
 pub async fn account_vault_members<R: Runtime>(
     app: AppHandle<R>,
     vault_id: Uuid,
@@ -863,6 +905,11 @@ pub async fn sshid_create<R: Runtime>(app: AppHandle<R>, handle: String) -> Resu
 #[tauri::command]
 pub async fn sshid_delete<R: Runtime>(app: AppHandle<R>) -> Result<SshIdView> {
     sshid::delete(&app).await
+}
+
+#[tauri::command]
+pub async fn sshid_publish<R: Runtime>(app: AppHandle<R>) -> Result<SshIdView> {
+    sshid::publish_now(&app).await
 }
 
 #[tauri::command]
