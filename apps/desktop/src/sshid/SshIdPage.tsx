@@ -59,7 +59,7 @@ import {
 import { copyToClipboard } from "@/lib/clipboard";
 
 /** Settings → SSH ID: the account's device-bound passkeys, published under
- *  `<server>/sshid/<handle>` so `curl … >> authorized_keys` provisions a box.
+ *  `<sshid base>/<handle>` so `curl … >> authorized_keys` provisions a box.
  *  Private halves never show up here — the page only lists public keys. */
 export function SshIdPage() {
   const view = useQuery({ queryKey: keys.sshid, queryFn: ipc.sshidView, staleTime: 5_000 });
@@ -155,7 +155,7 @@ function Setup({ view }: { view: SshIdView }) {
         <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 460 }}>
           Pick a handle — your public keys will be served at{" "}
           <Mono>
-            {base}/sshid/{normalized || "<handle>"}
+            {base}/{normalized || "<handle>"}
           </Mono>
           . Handles are 3–32 characters: letters, digits, <Mono>-</Mono> and <Mono>_</Mono>.
         </Typography>
@@ -198,12 +198,15 @@ function Setup({ view }: { view: SshIdView }) {
 }
 
 function baseUrl(view: SshIdView): string {
-  const url = view.profile?.url;
-  if (url) {
-    const i = url.indexOf("/sshid/");
-    if (i > 0) return url.slice(0, i);
+  return view.baseUrl ?? "";
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
   }
-  return "";
 }
 
 function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) {
@@ -439,8 +442,8 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
       >
         <Typography variant="body2">
           <Mono>@{profile.handle}</Mono> and every published key are removed from{" "}
-          {base || "the server"}. Hosts already provisioned keep the old public keys until you edit
-          their <Mono>authorized_keys</Mono>. This device's private keys are deleted.
+          {hostOf(base) || "the server"}. Hosts already provisioned keep the old public keys until
+          you edit their <Mono>authorized_keys</Mono>. This device's private keys are deleted.
         </Typography>
       </ConfirmDialog>
 

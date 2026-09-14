@@ -44,6 +44,9 @@ pub struct SshIdView {
     pub device_keys: Vec<DeviceKeyCard>,
     /// `curl -fs <url> >> ~/.ssh/authorized_keys`
     pub provision_command: Option<String>,
+    /// Where a handle would be published (`<base>/<handle>`), known before
+    /// the account has one.
+    pub base_url: Option<String>,
 }
 
 /// Form for attaching a FIDO2 key to the SSH ID: a fresh credential is
@@ -78,6 +81,10 @@ fn view_of(store: &Store, profile: Option<SshIdProfile>) -> Result<SshIdView> {
     Ok(SshIdView {
         signed_in: true,
         provision_command: profile.as_ref().map(provision_command),
+        base_url: profile
+            .as_ref()
+            .and_then(|p| p.url.rsplit_once('/'))
+            .map(|(base, _)| base.to_string()),
         profile,
         device_keys,
     })
@@ -145,7 +152,16 @@ pub async fn view<R: Runtime>(app: &AppHandle<R>) -> Result<SshIdView> {
         Err(_) => return signed_out(&state.store),
     };
     let profile = load(&api, &state.store).await?;
-    view_of(&state.store, profile)
+    let mut v = view_of(&state.store, profile)?;
+    if v.profile.is_none() {
+        v.base_url = api
+            .server_info()
+            .await
+            .ok()
+            .map(|i| i.sshid_url)
+            .filter(|u| !u.is_empty());
+    }
+    Ok(v)
 }
 
 /// Re-publish this device's keys in the background (after sign-in).
