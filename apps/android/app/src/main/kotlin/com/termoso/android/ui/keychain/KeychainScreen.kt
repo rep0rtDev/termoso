@@ -11,6 +11,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -39,13 +41,15 @@ import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.core.IdentityItem
 import com.termoso.core.KeyItem
 
-/** Keys and identities of the selected vault; `+` offers Generate / Paste key / New identity. */
+/** Keys and identities of the selected vault; `+` offers Generate / Paste key / FIDO2 / New identity. */
 @Composable
 fun KeychainScreen(
     shell: ShellViewModel,
     onBack: () -> Unit,
     onGenerate: () -> Unit,
     onImport: () -> Unit,
+    onFido2: () -> Unit,
+    onFido2Load: () -> Unit,
     onOpenKey: (String) -> Unit,
     onNewIdentity: () -> Unit,
     onOpenIdentity: (String) -> Unit,
@@ -77,6 +81,16 @@ fun KeychainScreen(
                         text = { Text("Paste or import key") },
                         leadingIcon = { Icon(Icons.Filled.ContentPaste, contentDescription = null) },
                         onClick = { menu = false; onImport() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("New FIDO2 key") },
+                        leadingIcon = { Icon(Icons.Filled.Security, contentDescription = null) },
+                        onClick = { menu = false; onFido2() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Load from security key") },
+                        leadingIcon = { Icon(Icons.Filled.Usb, contentDescription = null) },
+                        onClick = { menu = false; onFido2Load() },
                     )
                     DropdownMenuItem(
                         text = { Text("New identity") },
@@ -157,7 +171,7 @@ fun identitySubtitle(id: IdentityItem): String = listOfNotNull(
 
 fun keyTypeLabel(keyType: String, bits: UInt): String {
     val t = keyType.lowercase()
-    return when {
+    val base = when {
         t.contains("ed25519") -> "Ed25519"
         t.contains("rsa") -> "RSA $bits"
         t.contains("ecdsa") || t.contains("nistp") -> "ECDSA $bits"
@@ -165,4 +179,5 @@ fun keyTypeLabel(keyType: String, bits: UInt): String {
         t.isBlank() -> "Unknown"
         else -> "${keyType.uppercase()} $bits".trim()
     }
+    return if (t.startsWith("sk-")) "FIDO2 $base" else base
 }

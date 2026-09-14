@@ -315,7 +315,7 @@ pub fn auth_methods(
             private_key: Zeroizing::new(k.data.private_key),
             passphrase: None,
             pin: pin.clone(),
-            device: None,
+            backend: Arc::new(fido2::UsbBackend::default()),
             certificate: None,
         })
         .collect();
