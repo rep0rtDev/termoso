@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.userMessage
+import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
@@ -73,7 +74,13 @@ import kotlinx.coroutines.launch
 
 /** Settings → Account: identity, sync status + Sync now, vaults on this device, devices, sign out. */
 @Composable
-fun AccountScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Unit, onSignedOut: () -> Unit) {
+fun AccountScreen(
+    shell: ShellViewModel,
+    account: AccountManager,
+    onBack: () -> Unit,
+    onSignedOut: () -> Unit,
+    onTeams: () -> Unit,
+) {
     val status by account.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var devices by remember { mutableStateOf<List<DeviceCard>?>(null) }
@@ -174,6 +181,21 @@ fun AccountScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> 
                     title = "End-to-end encrypted",
                     subtitle = "The server stores only ciphertext; keys stay on your devices",
                     leading = { IconTile(Icons.Filled.Lock) },
+                )
+            }
+
+            SectionLabel("Teams")
+            SectionCard {
+                val teamVaults = status.vaults.count { it.kind == VaultKind.TEAM }
+                ChevronRow(
+                    title = "Teams",
+                    subtitle = when (teamVaults) {
+                        0 -> "Share vaults with colleagues — create a team or join by invitation"
+                        1 -> "1 team vault on this device"
+                        else -> "$teamVaults team vaults on this device"
+                    },
+                    leading = { IconTile(Icons.Filled.Group) },
+                    modifier = Modifier.clickable(onClick = onTeams),
                 )
             }
 

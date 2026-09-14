@@ -61,6 +61,10 @@ import com.termoso.android.ui.sftp.SftpScreen
 import com.termoso.android.ui.snippets.SnippetEditorScreen
 import com.termoso.android.ui.snippets.SnippetsScreen
 import com.termoso.android.ui.settings.TerminalAppearanceScreen
+import com.termoso.android.ui.team.TeamActivityScreen
+import com.termoso.android.ui.team.TeamScreen
+import com.termoso.android.ui.team.TeamVaultScreen
+import com.termoso.android.ui.team.TeamsScreen
 import com.termoso.android.ui.terminal.TerminalScreen
 import com.termoso.android.ui.vault.HistoryScreen
 import com.termoso.android.ui.vault.KnownHostsScreen
@@ -87,6 +91,10 @@ object Routes {
     const val HISTORY = "history"
     const val TERMINAL = "terminal"
     const val ACCOUNT = "account"
+    const val TEAMS = "teams"
+    const val TEAM = "team/{id}"
+    const val TEAM_ACTIVITY = "team/{id}/activity"
+    const val TEAM_VAULT = "teamVault/{id}"
     const val SIGN_IN = "signIn/{mode}"
     const val SFTP = "sftp/{id}"
     const val SFTP_PICK = "sftpPick"
@@ -104,6 +112,9 @@ object Routes {
     fun key(id: String) = "key/$id"
     fun identity(id: String) = "identity/$id"
     fun signIn(mode: AuthMode) = "signIn/${mode.name}"
+    fun team(id: String) = "team/$id"
+    fun teamActivity(id: String) = "team/$id/activity"
+    fun teamVault(id: String) = "teamVault/$id"
     fun sftp(id: String) = "sftp/$id"
     fun pfNew(kind: PfKind, vault: String?, host: String?) =
         "pfNew?kind=${kind.name}" + (vault?.let { "&vault=$it" } ?: "") + (host?.let { "&host=$it" } ?: "")
@@ -151,6 +162,18 @@ fun MainShell(
     }
     LaunchedEffect(forwards) { forwards.autoStartOnce() }
     TunnelPromptHost(forwards)
+
+    val pendingInvite by container.pendingInvite.collectAsStateWithLifecycle()
+    val accountStatus by account.status.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingInvite, accountStatus.account?.userId) {
+        if (pendingInvite == null) return@LaunchedEffect
+        if (accountStatus.account == null) {
+            shell.notify("Sign in to accept the team invitation")
+            nav.navigate(Routes.signIn(AuthMode.SignIn)) { launchSingleTop = true }
+        } else {
+            nav.navigate(Routes.TEAMS) { launchSingleTop = true }
+        }
+    }
 
     fun openTerminal() {
         nav.navigate(Routes.TERMINAL) { launchSingleTop = true }
@@ -208,6 +231,7 @@ fun MainShell(
         },
     ) { padding ->
         val groupArg = navArgument("group") { type = NavType.StringType; nullable = true; defaultValue = null }
+        val idArg = navArgument("id") { type = NavType.StringType }
         NavHost(
             navController = nav,
             startDestination = Routes.VAULT,
@@ -247,7 +271,41 @@ fun MainShell(
             }
             composable(Routes.TERMINAL_APPEARANCE) { TerminalAppearanceScreen(shell = shell, onBack = { nav.popBackStack() }) }
             composable(Routes.ACCOUNT) {
-                AccountScreen(shell = shell, account = account, onBack = { nav.popBackStack() }, onSignedOut = { nav.popBackStack() })
+                AccountScreen(
+                    shell = shell,
+                    account = account,
+                    onBack = { nav.popBackStack() },
+                    onSignedOut = { nav.popBackStack() },
+                    onTeams = { nav.navigate(Routes.TEAMS) },
+                )
+            }
+            composable(Routes.TEAMS) {
+                TeamsScreen(
+                    shell = shell,
+                    onBack = { nav.popBackStack() },
+                    onOpenTeam = { nav.navigate(Routes.team(it)) },
+                    joinLink = pendingInvite,
+                    onJoinLinkShown = container::consumeInvite,
+                )
+            }
+            composable(Routes.TEAM, arguments = listOf(idArg)) { entry ->
+                val id = entry.arguments?.getString("id") ?: return@composable
+                TeamScreen(
+                    shell = shell,
+                    account = account,
+                    teamId = id,
+                    onBack = { nav.popBackStack() },
+                    onOpenVault = { nav.navigate(Routes.teamVault(it)) },
+                    onActivity = { nav.navigate(Routes.teamActivity(id)) },
+                )
+            }
+            composable(Routes.TEAM_ACTIVITY, arguments = listOf(idArg)) { entry ->
+                val id = entry.arguments?.getString("id") ?: return@composable
+                TeamActivityScreen(shell = shell, teamId = id, onBack = { nav.popBackStack() })
+            }
+            composable(Routes.TEAM_VAULT, arguments = listOf(idArg)) { entry ->
+                val id = entry.arguments?.getString("id") ?: return@composable
+                TeamVaultScreen(shell = shell, account = account, vaultId = id, onBack = { nav.popBackStack() })
             }
             composable(Routes.SIGN_IN, arguments = listOf(navArgument("mode") { type = NavType.StringType })) { entry ->
                 val mode = entry.arguments?.getString("mode")?.let { m -> AuthMode.entries.firstOrNull { it.name == m } } ?: AuthMode.SignIn
@@ -299,7 +357,6 @@ fun MainShell(
                     onOpenIdentity = { nav.navigate(Routes.identity(it)) },
                 )
             }
-            val idArg = navArgument("id") { type = NavType.StringType }
             composable(Routes.KEY_GENERATE) {
                 GenerateKeyScreen(shell = shell, onClose = { nav.popBackStack() }, onSaved = { id ->
                     nav.navigate(Routes.key(id)) { popUpTo(Routes.KEYCHAIN) }

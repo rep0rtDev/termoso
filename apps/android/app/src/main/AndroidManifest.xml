@@ -41,6 +41,12 @@
                 <data android:scheme="ssh" />
                 <data android:scheme="telnet" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="termoso" android:host="invite" />
+            </intent-filter>
         </activity>
 
         <service

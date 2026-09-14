@@ -37,8 +37,7 @@ use termoso_proto::sync::{
 };
 use termoso_proto::team::{
     AuditEventList, CreateInviteRequest, CreateTeamRequest, CreatedInvite, InviteList,
-    PendingVaultKeys, Team, TeamList, TeamMember, TeamMemberList, UpdateTeamMemberRequest,
-    UpdateTeamRequest,
+    PendingVaultKeys, Team, TeamList, TeamMemberList, UpdateTeamMemberRequest, UpdateTeamRequest,
 };
 use termoso_proto::vault::{
     CreateVaultRequest, RotateVaultKeyRequest, RotateVaultKeyResponse, UpdateVaultRequest, Vault,
@@ -227,6 +226,10 @@ impl ApiClient {
         body: &B,
     ) -> Result<T> {
         Self::send(self.request(Method::PATCH, path).json(body)).await
+    }
+
+    async fn patch_empty<B: Serialize + ?Sized>(&self, path: &str, body: &B) -> Result<()> {
+        Self::send_empty(self.request(Method::PATCH, path).json(body)).await
     }
 
     async fn put_empty<B: Serialize + ?Sized>(&self, path: &str, body: &B) -> Result<()> {
@@ -496,8 +499,8 @@ impl ApiClient {
         id: Uuid,
         user_id: Uuid,
         req: &UpdateTeamMemberRequest,
-    ) -> Result<TeamMember> {
-        self.patch(&format!("teams/{id}/members/{user_id}"), req)
+    ) -> Result<()> {
+        self.patch_empty(&format!("teams/{id}/members/{user_id}"), req)
             .await
     }
 
