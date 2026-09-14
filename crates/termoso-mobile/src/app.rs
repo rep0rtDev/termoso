@@ -28,6 +28,7 @@ use crate::session::{Launch, SessionListener, SshSession, TerminalOptions, Viewe
 use crate::settings::MobileSettings;
 use crate::sftp::{SftpLaunch, SftpListener, SftpSession};
 use crate::snippets::{self, SnippetDraft, SnippetItem, SnippetPackageItem, SnippetRun};
+use crate::sshid::SshIdView;
 use crate::team::{
     AuditPage, InviteCard, InviteSent, PendingKeyCard, TeamCard, TeamMemberCard, TeamRole,
     VaultAccessDraft, VaultMemberCard,
@@ -465,8 +466,6 @@ impl TermosoApp {
                 .find(|i| i.id == id)
             {
                 form.ssh_certificate_id = existing.ssh_certificate_id;
-                form.ssh_id = existing.ssh_id;
-                form.ssh_id_key_type = existing.ssh_id_key_type;
             }
         }
         Ok(keychain::save_identity(&self.store, &form)?.into())
@@ -606,6 +605,36 @@ impl TermosoApp {
 
     pub fn account_revoke_device(&self, id: String) -> Result<()> {
         RUNTIME.block_on(self.account.revoke_device(id))
+    }
+
+    // ---- SSH ID -------------------------------------------------------
+
+    /// Handle, published keys and this device's passkeys. Signed in, it
+    /// also (re)publishes the device keys when the server is behind.
+    pub fn sshid(&self) -> Result<SshIdView> {
+        RUNTIME.block_on(self.account.sshid_view())
+    }
+
+    /// Claim `handle` (`@` and case are tolerated) and publish this device's
+    /// passkeys under it.
+    pub fn sshid_create(&self, handle: String) -> Result<SshIdView> {
+        RUNTIME.block_on(self.account.sshid_create(handle))
+    }
+
+    /// Replace this device's passkeys with fresh ones.
+    pub fn sshid_rotate(&self) -> Result<SshIdView> {
+        RUNTIME.block_on(self.account.sshid_rotate())
+    }
+
+    /// Remove one published key (another device's, or a FIDO2 key).
+    pub fn sshid_remove_key(&self, id: String) -> Result<SshIdView> {
+        RUNTIME.block_on(self.account.sshid_remove_key(id))
+    }
+
+    /// Delete the SSH ID and every key published under it; identities that
+    /// used it fall back to their other credentials.
+    pub fn sshid_delete(&self) -> Result<SshIdView> {
+        RUNTIME.block_on(self.account.sshid_delete())
     }
 
     // ---- teams --------------------------------------------------------

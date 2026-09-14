@@ -43,6 +43,7 @@ import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.account.AccountScreen
 import com.termoso.android.ui.account.AuthMode
 import com.termoso.android.ui.account.SignInScreen
+import com.termoso.android.ui.account.SshIdScreen
 import com.termoso.android.ui.connections.ConnectionsScreen
 import com.termoso.android.ui.forwarding.ForwardEditorScreen
 import com.termoso.android.ui.forwarding.ForwardWizardScreen
@@ -92,6 +93,7 @@ object Routes {
     const val TERMINAL = "terminal"
     const val ACCOUNT = "account"
     const val TEAMS = "teams"
+    const val SSH_ID = "sshId"
     const val TEAM = "team/{id}"
     const val TEAM_ACTIVITY = "team/{id}/activity"
     const val TEAM_VAULT = "teamVault/{id}"
@@ -293,8 +295,10 @@ fun MainShell(
                     onBack = { nav.popBackStack() },
                     onSignedOut = { nav.popBackStack() },
                     onTeams = { nav.navigate(Routes.TEAMS) },
+                    onSshId = { nav.navigate(Routes.SSH_ID) },
                 )
             }
+            composable(Routes.SSH_ID) { SshIdScreen(shell = shell, onBack = { nav.popBackStack() }) }
             composable(Routes.TEAMS) {
                 TeamsScreen(
                     shell = shell,
