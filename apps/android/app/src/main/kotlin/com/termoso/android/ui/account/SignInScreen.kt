@@ -3,6 +3,7 @@ package com.termoso.android.ui.account
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -241,7 +242,7 @@ private fun MfaForm(vm: SignInViewModel, step: AuthStep.Mfa, onDone: () -> Unit)
         "Your account has two-factor authentication turned on. Choose how to confirm it's you.",
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         step.methods.forEach { m ->
             FilterChip(
                 selected = vm.mfaMethod == m,
