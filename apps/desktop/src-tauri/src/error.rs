@@ -43,6 +43,8 @@ impl From<CoreError> for DesktopError {
             CoreError::Api { code, message, .. } => {
                 let kind = if code == codes::MFA_REQUIRED {
                     "mfa_required"
+                } else if code == codes::REAUTH_REQUIRED {
+                    "reauth_required"
                 } else if code == codes::FORBIDDEN {
                     "forbidden"
                 } else if code == codes::NOT_FOUND {

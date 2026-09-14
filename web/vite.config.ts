@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -5,6 +6,7 @@ import react from "@vitejs/plugin-react";
 // server runs on :8080 and Vite proxies /api and /healthz to it.
 export default defineConfig({
   plugins: [react()],
+  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   build: {
     target: "es2022",
     sourcemap: false,
