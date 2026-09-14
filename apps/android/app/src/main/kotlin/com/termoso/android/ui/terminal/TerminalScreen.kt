@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -33,7 +34,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -76,12 +79,14 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.data.LiveEvent
 import com.termoso.android.data.SessionEvent
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.HostAvatar
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.snippets.SnippetPickerSheet
+import com.termoso.core.LiveEndReason
 import com.termoso.core.SessionState
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -129,18 +134,23 @@ fun TerminalScreen(
         if (sessions.isEmpty()) onBack()
     }
 
+    var liveSheet by remember { mutableStateOf(false) }
+    // The sheet is per session: switching chips or losing the session closes it.
+    LaunchedEffect(active?.id) { liveSheet = false }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0),
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { SnackbarHost(snackbar, Modifier.navigationBarsPadding().imePadding()) },
         containerColor = MaterialTheme.colorScheme.surface,
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).statusBarsPadding().imePadding()) {
             SessionChips(
                 sessions = sessions,
-                activeId = active?.id,
+                active = active,
                 onBack = onBack,
                 onSelect = { shell.sessions.setActive(it) },
                 onClose = { id -> scope.launch { shell.sessions.close(id) } },
+                onLive = { liveSheet = true },
                 onNew = onNewSession,
             )
             if (active == null) {
@@ -162,17 +172,22 @@ fun TerminalScreen(
             }
         }
     }
+    if (liveSheet && active != null) {
+        LiveSheet(session = active, shell = shell, onClose = { liveSheet = false })
+    }
 }
 
 @Composable
 private fun SessionChips(
     sessions: List<TerminalSession>,
-    activeId: String?,
+    active: TerminalSession?,
     onBack: () -> Unit,
     onSelect: (String) -> Unit,
     onClose: (String) -> Unit,
+    onLive: () -> Unit,
     onNew: () -> Unit,
 ) {
+    val activeId = active?.id
     Row(
         Modifier.fillMaxWidth().height(52.dp).background(MaterialTheme.colorScheme.surfaceContainer),
         verticalAlignment = Alignment.CenterVertically,
@@ -199,8 +214,17 @@ private fun SessionChips(
         ) {
             items(sessions, key = { it.id }) { s -> SessionChip(s, s.id == activeId) { onSelect(s.id) } }
         }
-        if (activeId != null) {
-            IconButton(onClick = { onClose(activeId) }) { Icon(Icons.Filled.Close, contentDescription = "Close session") }
+        if (active != null) {
+            val shared by active.share.collectAsStateWithLifecycle()
+            val live = active.isView || shared != null
+            IconButton(onClick = onLive) {
+                Icon(
+                    Icons.Filled.Groups,
+                    contentDescription = if (active.isView) "Shared terminal" else "Terminal sharing",
+                    tint = if (live) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            IconButton(onClick = { onClose(active.id) }) { Icon(Icons.Filled.Close, contentDescription = "Close session") }
         }
         IconButton(onClick = onNew) { Icon(Icons.Filled.Add, contentDescription = "New session") }
     }
@@ -224,7 +248,11 @@ private fun SessionChip(session: TerminalSession, active: Boolean, onClick: () -
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        HostAvatar(detected ?: session.savedOsName, size = 26)
+        if (session.isView) {
+            Icon(Icons.Filled.Groups, contentDescription = null, modifier = Modifier.size(26.dp))
+        } else {
+            HostAvatar(detected ?: session.savedOsName, size = 26)
+        }
         Column {
             Text(
                 session.label,
@@ -276,6 +304,7 @@ private fun ActiveSession(
     val controller = remember(session) { TerminalController(session) }
     val state by session.state.collectAsStateWithLifecycle()
     val prompt by session.prompt.collectAsStateWithLifecycle()
+    val canWrite by session.canWrite.collectAsStateWithLifecycle()
 
     var panelExpanded by rememberSaveable { mutableStateOf(false) }
     var imeShown by remember { mutableStateOf(false) }
@@ -302,6 +331,21 @@ private fun ActiveSession(
             }
         }
     }
+    LaunchedEffect(session) {
+        session.liveEvents.collect { ev ->
+            val text = when (ev) {
+                is LiveEvent.Control ->
+                    if (ev.canWrite) "The host let you type" else "The host took back control; view only"
+                is LiveEvent.Ended -> when {
+                    session.isView && ev.reason == LiveEndReason.STOPPED -> "The host stopped sharing"
+                    session.isView -> "Shared terminal ended: ${ev.message}"
+                    ev.reason == LiveEndReason.STOPPED -> null
+                    else -> "Sharing ended: ${ev.message}"
+                }
+            } ?: return@collect
+            snackbar.showSnackbar(text)
+        }
+    }
 
     fun tap() {
         if (haptics) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -319,6 +363,7 @@ private fun ActiveSession(
 
     Box(modifier) {
         Column(Modifier.fillMaxSize()) {
+            if (session.isView) ViewBanner(canWrite)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 TerminalView(
                     session = session,
@@ -369,7 +414,11 @@ private fun ActiveSession(
                 StateOverlay(
                     state = state,
                     target = session.target,
-                    onRetry = { scope.launch { shell.sessions.reconnect(session.id) } },
+                    onRetry = if (session.reconnectable) {
+                        { scope.launch { shell.sessions.reconnect(session.id) } }
+                    } else {
+                        null
+                    },
                     onClose = { scope.launch { shell.sessions.close(session.id) } },
                 )
             }
@@ -420,8 +469,27 @@ private fun ActiveSession(
     }
 }
 
+/** Viewer strip: read-only until the host grants control; Rust drops input either way. */
 @Composable
-private fun StateOverlay(state: SessionState, target: String, onRetry: () -> Unit, onClose: () -> Unit) {
+private fun ViewBanner(canWrite: Boolean) {
+    val bg = if (canWrite) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh
+    val fg = if (canWrite) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        Modifier.fillMaxWidth().background(bg).padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(Icons.Filled.Visibility, contentDescription = null, tint = fg, modifier = Modifier.size(16.dp))
+        Text(
+            if (canWrite) "Shared terminal · you can type" else "Shared terminal · view only",
+            style = MaterialTheme.typography.labelMedium,
+            color = fg,
+        )
+    }
+}
+
+@Composable
+private fun StateOverlay(state: SessionState, target: String, onRetry: (() -> Unit)?, onClose: () -> Unit) {
     when (val s = state) {
         is SessionState.Connected -> Unit
         is SessionState.Connecting -> OverlayCard {
@@ -439,7 +507,7 @@ private fun StateOverlay(state: SessionState, target: String, onRetry: () -> Uni
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onClose) { Text("Close") }
-                Button(onClick = onRetry) { Text("Reconnect") }
+                if (onRetry != null) Button(onClick = onRetry) { Text("Reconnect") }
             }
         }
         is SessionState.Failed -> OverlayCard {
@@ -450,7 +518,7 @@ private fun StateOverlay(state: SessionState, target: String, onRetry: () -> Uni
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onClose) { Text("Close") }
-                Button(onClick = onRetry) { Text("Retry") }
+                if (onRetry != null) Button(onClick = onRetry) { Text("Retry") }
             }
         }
     }

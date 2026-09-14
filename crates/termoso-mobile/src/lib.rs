@@ -19,6 +19,7 @@ mod dto;
 mod error;
 mod forward;
 mod keys;
+mod live;
 mod session;
 mod settings;
 mod sftp;
@@ -36,6 +37,7 @@ pub use forward::{
     PfKind, PfRuleDraft, PfRuleItem, PfTunnel, TunnelListener, TunnelState, TunnelStats,
 };
 pub use keys::{KeyMods, SpecialKey, control_code, encode_key, encode_text};
+pub use live::{LiveEndReason, LiveListener, LiveParticipantCard, LiveShare, is_live_link};
 pub use session::*;
 pub use settings::MobileSettings;
 pub use sftp::*;
