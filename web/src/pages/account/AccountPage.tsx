@@ -227,7 +227,7 @@ function ChangeEmailDialog({
     try {
       await fn();
     } catch (e) {
-      setError(errorMessage(e));
+      if (!(e instanceof UnlockCancelled)) setError(errorMessage(e));
     } finally {
       setBusy(false);
     }
