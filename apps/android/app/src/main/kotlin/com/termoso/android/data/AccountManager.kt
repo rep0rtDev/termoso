@@ -8,6 +8,8 @@ import com.termoso.core.LoginForm
 import com.termoso.core.LoginOutcome
 import com.termoso.core.MfaCard
 import com.termoso.core.MfaMethod
+import com.termoso.core.MobileException
+import com.termoso.core.ReauthOutcome
 import com.termoso.core.RegisterForm
 import com.termoso.core.Registered
 import com.termoso.core.SecurityKeyCredential
@@ -16,6 +18,7 @@ import com.termoso.core.SyncChange
 import com.termoso.core.SyncListener
 import com.termoso.core.SyncState
 import com.termoso.core.SyncStatus
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,6 +38,19 @@ const val CLOUD_URL = "https://app.termoso.com"
 
 /** Which server a sign-in targets. */
 enum class ServerChoice { Cloud, SelfHosted }
+
+/** The user dismissed the re-authentication prompt; the guarded action did not run. */
+class ReauthCancelled : Exception("Cancelled.")
+
+/**
+ * A sensitive action is waiting for the user to prove the password again.
+ * [ReauthHost] shows the prompt and calls [finish] with the result.
+ */
+class ReauthRequest internal constructor(private val result: CompletableDeferred<Boolean>) {
+    fun finish(confirmed: Boolean) {
+        result.complete(confirmed)
+    }
+}
 
 /**
  * Account and sync state of one opened vault. Rust owns the session, keys and
@@ -62,6 +78,11 @@ class AccountManager(
 
     /** One-shot messages worth a snackbar (e.g. signed out by the server). */
     val notices: SharedFlow<String> = _notices.asSharedFlow()
+
+    private val _reauthRequest = MutableStateFlow<ReauthRequest?>(null)
+
+    /** Non-null while a guarded action waits for the step-up prompt. */
+    val reauthRequest: StateFlow<ReauthRequest?> = _reauthRequest.asStateFlow()
 
     init {
         repo.app.setDeviceName(deviceName())
@@ -109,9 +130,49 @@ class AccountManager(
     suspend fun mfaStatus(): MfaCard = repo.read { accountMfaStatus() }
 
     suspend fun registerSecurityKey(name: String, deviceId: String, pin: String?, listener: Fido2Listener): SecurityKeyCredential =
-        repo.read { accountRegisterSecurityKey(name, SecurityKeyRequest(deviceId = deviceId, pin = pin), listener) }
+        withReauth { repo.read { accountRegisterSecurityKey(name, SecurityKeyRequest(deviceId = deviceId, pin = pin), listener) } }
 
-    suspend fun removeSecurityKey(id: String) = repo.read { accountRemoveSecurityKey(id) }
+    suspend fun removeSecurityKey(id: String) = withReauth { repo.read { accountRemoveSecurityKey(id) } }
+
+    // ---- step-up ----
+
+    /**
+     * Run a sensitive account change. When the server answers
+     * `ReauthRequired`, the step-up prompt is raised through [reauthRequest];
+     * once the user confirms, the action runs once more. Dismissing the
+     * prompt throws [ReauthCancelled].
+     */
+    suspend fun <T> withReauth(action: suspend () -> T): T =
+        try {
+            action()
+        } catch (e: MobileException.ReauthRequired) {
+            if (!requestReauth()) throw ReauthCancelled()
+            action()
+        }
+
+    private suspend fun requestReauth(): Boolean {
+        val result = CompletableDeferred<Boolean>()
+        val request = ReauthRequest(result)
+        _reauthRequest.value = request
+        try {
+            return result.await()
+        } finally {
+            _reauthRequest.compareAndSet(request, null)
+        }
+    }
+
+    suspend fun reauthStart(password: String): ReauthOutcome = repo.read { reauthStart(password) }
+
+    suspend fun reauthMfa(method: MfaMethod, code: String): ReauthOutcome = repo.read { reauthMfa(method, code) }
+
+    suspend fun reauthSecurityKey(deviceId: String?, pin: String?, listener: Fido2Listener): ReauthOutcome =
+        repo.read { reauthSecurityKey(SecurityKeyRequest(deviceId = deviceId, pin = pin), listener) }
+
+    suspend fun reauthEmailCode(code: String): ReauthOutcome = repo.read { reauthEmailCode(code) }
+
+    suspend fun reauthSendMfaEmail() = repo.read { reauthMfaEmailSend() }
+
+    suspend fun reauthCancel() = repo.read { reauthCancel() }
 
     suspend fun approveDevice(code: String): LoginOutcome =
         repo.read { accountApproveDevice(code) }.also { done(it) }
@@ -134,7 +195,7 @@ class AccountManager(
 
     suspend fun devices(): List<DeviceCard> = repo.read { accountDevices() }
 
-    suspend fun revokeDevice(id: String) = repo.read { accountRevokeDevice(id) }
+    suspend fun revokeDevice(id: String) = withReauth { repo.read { accountRevokeDevice(id) } }
 
     private suspend fun done(outcome: LoginOutcome) {
         if (outcome is LoginOutcome.Done) afterSignIn() else refresh()

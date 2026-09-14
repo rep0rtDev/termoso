@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termoso.android.data.AccountManager
+import com.termoso.android.data.ReauthCancelled
 import com.termoso.android.data.userMessage
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.IconTile
@@ -330,7 +331,7 @@ fun AccountScreen(
                     scope.launch {
                         runCatching { account.revokeDevice(d.id) }
                             .onSuccess { shell.notify("${d.name} signed out"); loadDevices() }
-                            .onFailure { shell.notify(it.userMessage()) }
+                            .onFailure { if (it !is ReauthCancelled) shell.notify(it.userMessage()) }
                     }
                 }) { Text("Sign out", color = Danger) }
             },

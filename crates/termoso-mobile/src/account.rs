@@ -11,7 +11,9 @@
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
-use termoso_core::account::{self as core, LoginFlow, LoginStep, RegisterInput};
+use termoso_core::account::{
+    self as core, LoginFlow, LoginStep, ReauthFlow, ReauthStep, RegisterInput,
+};
 use termoso_core::api::ApiClient;
 use termoso_core::fido2::webauthn;
 use termoso_core::store::{Store, StoredAccount};
@@ -114,6 +116,41 @@ impl From<&LoginStep> for LoginOutcome {
                 methods: methods.iter().copied().map(Into::into).collect(),
             },
             LoginStep::DeviceApprovalRequired { email_hint } => Self::DeviceApprovalRequired {
+                email_hint: email_hint.clone(),
+            },
+        }
+    }
+}
+
+/// Where a step-up (re-authentication) stands. Sensitive account changes —
+/// revoking devices, removing security keys, SSH ID changes — answer
+/// [`MobileError::ReauthRequired`] until the signed-in session proves the
+/// password (and second factor) again through `reauth_*`.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum ReauthOutcome {
+    /// Sensitive changes are allowed until `expires_at` (Unix millis).
+    Done {
+        expires_at: i64,
+    },
+    MfaRequired {
+        methods: Vec<MfaMethod>,
+    },
+    /// The account has no password; a code went to the masked address.
+    EmailCodeRequired {
+        email_hint: String,
+    },
+}
+
+impl From<&ReauthStep> for ReauthOutcome {
+    fn from(step: &ReauthStep) -> Self {
+        match step {
+            ReauthStep::Done { expires_at } => Self::Done {
+                expires_at: expires_at.timestamp_millis(),
+            },
+            ReauthStep::MfaRequired { methods } => Self::MfaRequired {
+                methods: methods.iter().copied().map(Into::into).collect(),
+            },
+            ReauthStep::EmailCodeRequired { email_hint } => Self::EmailCodeRequired {
                 email_hint: email_hint.clone(),
             },
         }
@@ -311,6 +348,7 @@ struct Inner {
     api: Option<Arc<ApiClient>>,
     flow: Option<LoginFlow>,
     pending: Option<LoginOutcome>,
+    reauth: Option<ReauthFlow>,
     engine: Option<Engine>,
 }
 
@@ -558,12 +596,23 @@ impl AccountRuntime {
         listener: Option<Arc<dyn Fido2Listener>>,
     ) -> Result<LoginStep> {
         let options = flow.webauthn_challenge().await?;
+        let credential = Self::assert_security_key(api, options, req, listener).await?;
+        Ok(flow.mfa(MfaCredential::Webauthn { credential }).await?)
+    }
+
+    /// Have the attached token sign the server's WebAuthn `options`.
+    async fn assert_security_key(
+        api: &ApiClient,
+        options: serde_json::Value,
+        req: SecurityKeyRequest,
+        listener: Option<Arc<dyn Fido2Listener>>,
+    ) -> Result<serde_json::Value> {
         let origin = webauthn::origin_for(api.server_url());
         let pin = req.pin.filter(|p| !p.is_empty()).map(Zeroizing::new);
         if let Some(l) = &listener {
             l.on_touch();
         }
-        let credential = tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             fido2::registry().webauthn_assert(
                 req.device_id.as_deref(),
                 &options,
@@ -572,8 +621,8 @@ impl AccountRuntime {
             )
         })
         .await
-        .map_err(|e| MobileError::invalid(e.to_string()))??;
-        Ok(flow.mfa(MfaCredential::Webauthn { credential }).await?)
+        .map_err(|e| MobileError::invalid(e.to_string()))?
+        .map_err(Into::into)
     }
 
     pub async fn mfa_email_send(&self) -> Result<()> {
@@ -620,6 +669,130 @@ impl AccountRuntime {
         if self.store.account()?.is_none() {
             inner.api = None;
         }
+        Ok(())
+    }
+
+    // ---- step-up ------------------------------------------------------
+
+    /// Prove the password again so the session may perform sensitive
+    /// changes. The password only feeds the OPAQUE client, as at sign-in.
+    pub async fn reauth_start(&self, password: String) -> Result<ReauthOutcome> {
+        let password = Zeroizing::new(password);
+        let account = self
+            .store
+            .account()?
+            .ok_or_else(|| MobileError::invalid("not signed in"))?;
+        let api = self.api().await?;
+        let mut inner = self.inner.lock().await;
+        inner.reauth = None;
+        let (flow, step) = ReauthFlow::start(api, &account.email, &password).await?;
+        Ok(Self::keep_reauth(&mut inner, flow, step))
+    }
+
+    fn keep_reauth(inner: &mut Inner, flow: ReauthFlow, step: ReauthStep) -> ReauthOutcome {
+        let out = ReauthOutcome::from(&step);
+        inner.reauth = match step {
+            ReauthStep::Done { .. } => None,
+            _ => Some(flow),
+        };
+        out
+    }
+
+    fn take_reauth(inner: &mut Inner) -> Result<ReauthFlow> {
+        inner
+            .reauth
+            .take()
+            .ok_or_else(|| MobileError::invalid("no re-authentication in progress"))
+    }
+
+    /// Answer the second factor of a step-up with a typed code.
+    pub async fn reauth_mfa(&self, method: MfaMethod, code: String) -> Result<ReauthOutcome> {
+        let code = code.trim().to_string();
+        if code.is_empty() {
+            return Err(MobileError::invalid("code is required"));
+        }
+        let credential = match method {
+            MfaMethod::Totp => MfaCredential::Totp { code },
+            MfaMethod::BackupCode => MfaCredential::BackupCode { code },
+            MfaMethod::Email => MfaCredential::Email { code },
+            MfaMethod::Webauthn => {
+                return Err(MobileError::invalid(
+                    "security keys sign a challenge instead of entering a code",
+                ));
+            }
+        };
+        let mut inner = self.inner.lock().await;
+        let mut flow = Self::take_reauth(&mut inner)?;
+        match flow.mfa(credential).await {
+            Ok(step) => Ok(Self::keep_reauth(&mut inner, flow, step)),
+            Err(e) => {
+                inner.reauth = Some(flow);
+                Err(e.into())
+            }
+        }
+    }
+
+    /// Second factor of a step-up with an attached security key; see
+    /// [`Self::mfa_security_key`] for the ceremony.
+    pub async fn reauth_security_key(
+        &self,
+        req: SecurityKeyRequest,
+        listener: Option<Arc<dyn Fido2Listener>>,
+    ) -> Result<ReauthOutcome> {
+        let (mut flow, api) = {
+            let mut inner = self.inner.lock().await;
+            let flow = Self::take_reauth(&mut inner)?;
+            let api = inner
+                .api
+                .clone()
+                .ok_or_else(|| MobileError::invalid("not signed in"))?;
+            (flow, api)
+        };
+        let result = async {
+            let options = flow.webauthn_challenge().await?;
+            let credential = Self::assert_security_key(&api, options, req, listener).await?;
+            Ok::<_, MobileError>(flow.mfa(MfaCredential::Webauthn { credential }).await?)
+        }
+        .await;
+        let mut inner = self.inner.lock().await;
+        match result {
+            Ok(step) => Ok(Self::keep_reauth(&mut inner, flow, step)),
+            Err(e) => {
+                inner.reauth = Some(flow);
+                Err(e)
+            }
+        }
+    }
+
+    /// Submit the emailed code of a password-less step-up.
+    pub async fn reauth_email_code(&self, code: String) -> Result<ReauthOutcome> {
+        let code = code.trim().to_string();
+        if code.is_empty() {
+            return Err(MobileError::invalid("code is required"));
+        }
+        let mut inner = self.inner.lock().await;
+        let mut flow = Self::take_reauth(&mut inner)?;
+        match flow.email_code(&code).await {
+            Ok(step) => Ok(Self::keep_reauth(&mut inner, flow, step)),
+            Err(e) => {
+                inner.reauth = Some(flow);
+                Err(e.into())
+            }
+        }
+    }
+
+    /// Ask for a one-time MFA code by email during a step-up.
+    pub async fn reauth_mfa_email_send(&self) -> Result<()> {
+        let inner = self.inner.lock().await;
+        let flow = inner
+            .reauth
+            .as_ref()
+            .ok_or_else(|| MobileError::invalid("no re-authentication in progress"))?;
+        Ok(flow.send_mfa_email().await?)
+    }
+
+    pub async fn reauth_cancel(&self) -> Result<()> {
+        self.inner.lock().await.reauth = None;
         Ok(())
     }
 

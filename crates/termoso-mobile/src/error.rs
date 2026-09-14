@@ -5,6 +5,7 @@
 use termoso_client::ClientError;
 use termoso_core::error::CoreError;
 use termoso_core::fido2::Fido2Error;
+use termoso_proto::error::codes;
 
 #[derive(Debug, Clone, thiserror::Error, uniffi::Error)]
 pub enum MobileError {
@@ -34,6 +35,10 @@ pub enum MobileError {
     Cancelled,
     #[error("connection closed")]
     Closed,
+    /// The server wants the password (and second factor) proved again
+    /// before this account change; see `TermosoApp::reauth_start`.
+    #[error("re-authentication required")]
+    ReauthRequired,
     #[error("{kind}: {detail}")]
     Other { kind: String, detail: String },
 }
@@ -64,6 +69,7 @@ impl MobileError {
             Self::SecurityKey { kind, .. } => kind.clone(),
             Self::Cancelled => "cancelled".into(),
             Self::Closed => "closed".into(),
+            Self::ReauthRequired => "reauth_required".into(),
             Self::Other { kind, .. } => kind.clone(),
         }
     }
@@ -88,6 +94,9 @@ impl From<CoreError> for MobileError {
             CoreError::Fido2(e) => Self::from(e),
             CoreError::Cancelled => Self::Cancelled,
             CoreError::Closed => Self::Closed,
+            CoreError::Api { ref code, .. } if code == codes::REAUTH_REQUIRED => {
+                Self::ReauthRequired
+            }
             other => Self::Other {
                 kind: other.kind().to_string(),
                 detail: other.to_string(),
@@ -123,6 +132,7 @@ impl From<ClientError> for MobileError {
                 retries: None,
             },
             "cancelled" => Self::Cancelled,
+            "reauth_required" => Self::ReauthRequired,
             kind => Self::Other {
                 kind: kind.to_string(),
                 detail: e.message,

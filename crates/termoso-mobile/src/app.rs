@@ -18,8 +18,8 @@ use zeroize::Zeroizing;
 
 use crate::account::{
     AccountCard, AccountRuntime, AccountStatus, DeviceCard, LoginForm, LoginOutcome, MfaCard,
-    MfaMethod, RegisterForm, Registered, SecurityKeyCredential, SecurityKeyRequest, ServerCard,
-    SyncListener, SyncStatus,
+    MfaMethod, ReauthOutcome, RegisterForm, Registered, SecurityKeyCredential, SecurityKeyRequest,
+    ServerCard, SyncListener, SyncStatus,
 };
 use crate::dto::*;
 use crate::error::{MobileError, Result};
@@ -631,6 +631,37 @@ impl TermosoApp {
         RUNTIME.block_on(self.account.cancel_login())
     }
 
+    /// Step-up for sensitive account changes: prove the password again
+    /// (the server answered `ReauthRequired`). Continues with
+    /// `reauth_mfa` / `reauth_security_key` / `reauth_email_code`.
+    pub fn reauth_start(&self, password: String) -> Result<ReauthOutcome> {
+        RUNTIME.block_on(self.account.reauth_start(password))
+    }
+
+    pub fn reauth_mfa(&self, method: MfaMethod, code: String) -> Result<ReauthOutcome> {
+        RUNTIME.block_on(self.account.reauth_mfa(method, code))
+    }
+
+    pub fn reauth_security_key(
+        &self,
+        req: SecurityKeyRequest,
+        listener: Option<Arc<dyn Fido2Listener>>,
+    ) -> Result<ReauthOutcome> {
+        RUNTIME.block_on(self.account.reauth_security_key(req, listener))
+    }
+
+    pub fn reauth_email_code(&self, code: String) -> Result<ReauthOutcome> {
+        RUNTIME.block_on(self.account.reauth_email_code(code))
+    }
+
+    pub fn reauth_mfa_email_send(&self) -> Result<()> {
+        RUNTIME.block_on(self.account.reauth_mfa_email_send())
+    }
+
+    pub fn reauth_cancel(&self) -> Result<()> {
+        RUNTIME.block_on(self.account.reauth_cancel())
+    }
+
     /// Revoke this device on the server and forget the account, synced
     /// vaults and keys locally. The local vault stays.
     pub fn account_sign_out(&self) -> Result<()> {
@@ -677,9 +708,16 @@ impl TermosoApp {
     // ---- SSH ID -------------------------------------------------------
 
     /// Handle, published keys and this device's passkeys. Signed in, it
-    /// also (re)publishes the device keys when the server is behind.
+    /// also (re)publishes the device keys when the server is behind and
+    /// the session is allowed to; otherwise they show as not published.
     pub fn sshid(&self) -> Result<SshIdView> {
         RUNTIME.block_on(self.account.sshid_view())
+    }
+
+    /// (Re)publish this device's passkeys under the handle. Unlike
+    /// [`Self::sshid`], a `ReauthRequired` answer is surfaced.
+    pub fn sshid_publish(&self) -> Result<SshIdView> {
+        RUNTIME.block_on(self.account.sshid_publish())
     }
 
     /// Claim `handle` (`@` and case are tolerated) and publish this device's
