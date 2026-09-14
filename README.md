@@ -91,6 +91,7 @@ annotated list; the source of truth is `crates/termoso-server/src/config.rs`.
 | `TERMOSO_DATABASE_URL`, `TERMOSO_REDIS_URL` | backing services |
 | `TERMOSO_PUBLIC_URL` | URL of the server (API + cabinet), used in e-mails and OAuth redirects |
 | `TERMOSO_WEB_URL` | only when the cabinet is hosted on another origin (defaults to `TERMOSO_PUBLIC_URL`) |
+| `TERMOSO_SSHID_URL` | optional dedicated origin for SSH ID (e.g. `https://sshid.termoso.example.com`): route it to the same server and handles are served at `/<handle>[/<type>]` there, nothing else; unset = `<TERMOSO_PUBLIC_URL>/sshid/<handle>` |
 | `TERMOSO_WEB_DIR` | directory with the built cabinet to serve on `/` (the Docker image sets `/app/web`; unset = API only) |
 | `TERMOSO_ADMIN_EMAILS` | comma-separated e-mails that get the admin role |
 | `TERMOSO_CORS_ORIGINS` | extra browser origins allowed to call the API (not needed when the cabinet is served by the server) |
