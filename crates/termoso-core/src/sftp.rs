@@ -19,6 +19,11 @@ const CHUNK: usize = 256 * 1024;
 /// Requests kept in flight per open file; with 256 KiB packets this allows
 /// 8 MiB outstanding, enough to fill a 100+ ms RTT link.
 const IN_FLIGHT: usize = 32;
+/// Per-request response deadline. The last of the in-flight requests waits
+/// behind everything queued before it (8 MiB per file, several files at
+/// once), which on a slow mobile link takes minutes; a dead connection is
+/// caught by SSH keepalives, so this only has to be a safety net.
+const REQUEST_TIMEOUT_SECS: u64 = 600;
 
 /// Directory entry kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -180,7 +185,7 @@ impl Sftp {
             max_write_packet_len: CHUNK as u32,
             max_concurrent_reads: IN_FLIGHT,
             max_concurrent_writes: IN_FLIGHT,
-            ..SftpConfig::default()
+            request_timeout_secs: REQUEST_TIMEOUT_SECS,
         };
         let session = SftpSession::new_with_config(channel.into_stream(), cfg)
             .await
