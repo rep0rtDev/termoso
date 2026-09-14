@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
@@ -23,6 +24,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,8 +41,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termoso.android.data.PendingPrompt
+import com.termoso.android.ui.keychain.LocalFido2
+import com.termoso.android.ui.keychain.SecurityKeyListening
+import com.termoso.android.ui.keychain.SecurityKeyPicker
+import com.termoso.android.ui.keychain.waitingHint
 import com.termoso.core.HostKeyChoice
 import com.termoso.core.PromptAnswer
 import com.termoso.core.PromptRequest
@@ -80,6 +86,8 @@ fun PromptDialog(pending: PendingPrompt, onAnswer: (PromptAnswer) -> Unit) {
             onAnswer = onAnswer,
         )
         is PromptRequest.KeyboardInteractive -> InteractiveDialog(req, onAnswer)
+        is PromptRequest.SecurityKeyPin -> SecurityKeyPinDialog(req, onAnswer)
+        is PromptRequest.SecurityKeyInsert -> SecurityKeyInsertDialog(req, onAnswer)
     }
 }
 
@@ -177,6 +185,115 @@ private fun SecretDialog(title: String, subtitle: String, retry: Boolean, onAnsw
             }
         },
         confirmButton = { Button(onClick = submit) { Text("Continue") } },
+        dismissButton = { TextButton(onClick = { onAnswer(PromptAnswer.Cancel) }) { Text("Cancel") } },
+    )
+}
+
+/** PIN for a FIDO2 key; never offered to be saved — the token asks every time by design. */
+@Composable
+private fun SecurityKeyPinDialog(req: PromptRequest.SecurityKeyPin, onAnswer: (PromptAnswer) -> Unit) {
+    var value by remember { mutableStateOf("") }
+    var shown by remember { mutableStateOf(false) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    val submit = { if (value.isNotEmpty()) onAnswer(PromptAnswer.Secret(value = value, remember = false)) }
+
+    AlertDialog(
+        onDismissRequest = { onAnswer(PromptAnswer.Cancel) },
+        title = { Text("Security key PIN") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "${req.keyLabel} needs the PIN of the security key to sign in.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (req.retry) {
+                    val left = req.retries
+                    Text(
+                        when {
+                            left == null -> "Wrong PIN — try again."
+                            left <= 1 -> "Wrong PIN — last attempt before the key locks."
+                            else -> "Wrong PIN — $left attempts left."
+                        },
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it },
+                    singleLine = true,
+                    label = { Text("PIN") },
+                    modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                    visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        imeAction = ImeAction.Done,
+                        autoCorrectEnabled = false,
+                        capitalization = KeyboardCapitalization.None,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { submit() }),
+                    trailingIcon = {
+                        IconButton(onClick = { shown = !shown }) {
+                            Icon(
+                                if (shown) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = if (shown) "Hide" else "Show",
+                            )
+                        }
+                    },
+                )
+                Text(
+                    "After the PIN, touch the key when it blinks.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = { Button(onClick = submit, enabled = value.isNotEmpty()) { Text("Continue") } },
+        dismissButton = { TextButton(onClick = { onAnswer(PromptAnswer.Cancel) }) { Text("Cancel") } },
+    )
+}
+
+/**
+ * No token (or the wrong one) is attached. Keeps USB/NFC listening on while it
+ * is shown and enables Retry as soon as a key shows up in the Rust registry.
+ */
+@Composable
+private fun SecurityKeyInsertDialog(req: PromptRequest.SecurityKeyInsert, onAnswer: (PromptAnswer) -> Unit) {
+    val fido2 = LocalFido2.current
+    val devices by fido2.devices.collectAsStateWithLifecycle()
+    val pending by fido2.usbPending.collectAsStateWithLifecycle()
+    SecurityKeyListening(fido2)
+
+    AlertDialog(
+        onDismissRequest = { onAnswer(PromptAnswer.Cancel) },
+        icon = { Icon(Icons.Filled.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+        title = { Text(if (req.wrongDevice) "Wrong security key" else "Insert your security key") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    if (req.wrongDevice) {
+                        "The attached security key does not hold the credential for ${req.keyLabel}. Attach the key it was created on."
+                    } else {
+                        "${req.keyLabel} lives on a FIDO2 security key. ${fido2.waitingHint()}"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                SecurityKeyPicker(
+                    devices = devices,
+                    selected = null,
+                    pending = pending,
+                    hint = fido2.waitingHint(),
+                    onSelect = {},
+                    onRefresh = fido2::refreshUsb,
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onAnswer(PromptAnswer.Retry) }, enabled = devices.isNotEmpty()) { Text("Retry") }
+        },
         dismissButton = { TextButton(onClick = { onAnswer(PromptAnswer.Cancel) }) { Text("Cancel") } },
     )
 }

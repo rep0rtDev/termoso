@@ -396,6 +396,8 @@ pub struct KeyItem {
     /// Identities using this key.
     pub used_by: u32,
     pub has_certificate: bool,
+    /// FIDO2 security key: the stored handle needs the token to sign.
+    pub security_key: bool,
     pub updated_at: i64,
 }
 
@@ -405,6 +407,7 @@ impl From<keychain::KeyCard> for KeyItem {
             id: k.id.to_string(),
             vault_id: k.vault_id.to_string(),
             label: k.label,
+            security_key: termoso_core::fido2::is_sk_type(&k.key_type),
             key_type: k.key_type,
             bits: k.bits as u32,
             fingerprint: k.fingerprint,

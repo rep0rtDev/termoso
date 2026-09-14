@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use termoso_core::error::CoreError;
+use termoso_core::fido2::{self, Fido2Error};
 use termoso_core::hostkey::{
     HostKeyDecision, HostKeyInfo, HostKeyPrompt, HostKeyVerdict, KnownHosts,
 };
@@ -53,6 +54,20 @@ pub enum PromptRequest {
         key_label: String,
         retry: bool,
     },
+    /// The security key wants its PIN before it signs. `retries` is what
+    /// the token reports after a wrong PIN, when it does.
+    SecurityKeyPin {
+        key_label: String,
+        retry: bool,
+        retries: Option<i32>,
+    },
+    /// No security key is attached (or the attached one does not hold this
+    /// credential when `wrong_device`). The UI waits for a USB plug / NFC
+    /// tap, registers it, and answers [`PromptAnswer::Retry`].
+    SecurityKeyInsert {
+        key_label: String,
+        wrong_device: bool,
+    },
     /// Server-driven keyboard-interactive dialog.
     KeyboardInteractive {
         name: String,
@@ -84,6 +99,8 @@ pub enum PromptAnswer {
     Answers {
         values: Vec<String>,
     },
+    /// Try again (a security key is now attached).
+    Retry,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -450,9 +467,16 @@ async fn ssh_connect(
     let key_label = resolved
         .and_then(|r| r.key.as_ref())
         .map(|k| k.data.label.clone())
+        .or_else(|| {
+            resolved
+                .and_then(|r| r.ssh_id_handle.as_deref())
+                .map(|h| format!("SSH ID @{h}"))
+        })
         .unwrap_or_default();
+    let mut pin: Option<Zeroizing<String>> = None;
 
     let mut attempts = 0;
+    let mut inserts = 0;
     let mut asked_password = false;
     let mut asked_passphrase = false;
     loop {
@@ -461,14 +485,28 @@ async fn ssh_connect(
             let certificate = resolved
                 .and_then(|r| r.certificate.as_ref())
                 .map(|c| c.data.certificate.clone());
-            auth.push(AuthMethod::Key {
-                private_key: Zeroizing::new(key.data.private_key.clone()),
-                passphrase: passphrase.clone(),
-                certificate,
-            });
+            if fido2::is_sk_type(&key.data.key_type) {
+                auth.push(AuthMethod::SecurityKey {
+                    private_key: Zeroizing::new(key.data.private_key.clone()),
+                    passphrase: passphrase.clone(),
+                    pin: pin.clone(),
+                    backend: Arc::new(crate::fido2::PhoneBackend::default()),
+                    certificate,
+                });
+            } else {
+                auth.push(AuthMethod::Key {
+                    private_key: Zeroizing::new(key.data.private_key.clone()),
+                    passphrase: passphrase.clone(),
+                    certificate,
+                });
+            }
         }
         if let Some(i) = identity.as_ref().filter(|i| i.data.ssh_id) {
-            auth.extend(crate::sshid::auth_methods(store, i.data.ssh_id_key_type)?);
+            auth.extend(crate::sshid::auth_methods(
+                store,
+                i.data.ssh_id_key_type,
+                pin.clone(),
+            )?);
         }
         if let Some(pw) = &password {
             auth.push(AuthMethod::Password(pw.clone()));
@@ -557,6 +595,40 @@ async fn ssh_connect(
                         passphrase = Some(value);
                     }
                     _ => return Err(MobileError::Cancelled),
+                }
+            }
+            Err(CoreError::Fido2(
+                e @ (Fido2Error::PinRequired | Fido2Error::PinInvalid { .. }),
+            )) if attempts < MAX_PASSWORD_ATTEMPTS && !conn.cancelled() => {
+                attempts += 1;
+                let retries = match e {
+                    Fido2Error::PinInvalid { retries } => retries,
+                    _ => None,
+                };
+                let answer = conn
+                    .ask(PromptRequest::SecurityKeyPin {
+                        key_label: key_label.clone(),
+                        retry: pin.is_some(),
+                        retries,
+                    })
+                    .await;
+                match answer {
+                    Some(PromptAnswer::Secret { value, .. }) => pin = Some(Zeroizing::new(value)),
+                    _ => return Err(MobileError::Cancelled),
+                }
+            }
+            Err(CoreError::Fido2(e @ (Fido2Error::NoDevice | Fido2Error::WrongDevice)))
+                if inserts < MAX_PASSWORD_ATTEMPTS && !conn.cancelled() =>
+            {
+                inserts += 1;
+                let answer = conn
+                    .ask(PromptRequest::SecurityKeyInsert {
+                        key_label: key_label.clone(),
+                        wrong_device: matches!(e, Fido2Error::WrongDevice),
+                    })
+                    .await;
+                if !matches!(answer, Some(PromptAnswer::Retry)) {
+                    return Err(MobileError::Cancelled);
                 }
             }
             Err(e) => return Err(e.into()),

@@ -12,13 +12,14 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 name = "termoso_mobile"
 
 [dependencies]
-termoso-core = { workspace = true, features = ["local-pty"] }
+termoso-core = { workspace = true, features = ["local-pty", "fido2-ctap"] }
 termoso-client = { workspace = true }
 termoso-proto = { workspace = true }
 termoso-crypto = { workspace = true }
 
 uniffi = { workspace = true }
 alacritty_terminal = { workspace = true }
+russh = { version = "0.63", features = ["rsa"] }
 
 tokio = { workspace = true }
 tokio-util = { version = "0.7" }
@@ -36,7 +37,7 @@ thiserror = { workspace = true }
 tracing-android = "0.2"
 
 [dev-dependencies]
+termoso-core = { workspace = true, features = ["fido2-soft"] }
 tempfile = "3"
-russh = { version = "0.63", features = ["rsa"] }
 rand = "0.10"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -22,6 +22,7 @@ use crate::account::{
 };
 use crate::dto::*;
 use crate::error::{MobileError, Result};
+use crate::fido2::{self, Fido2GenerateDraft, Fido2Listener, Fido2LoadDraft, SecurityKeyCard};
 use crate::forward::{self, PfRuleDraft, PfRuleItem, PfTunnel, TunnelLaunch, TunnelListener};
 use crate::live::{LiveListener, LiveShare};
 use crate::session::{Launch, SessionListener, SshSession, TerminalOptions, ViewerLaunch};
@@ -447,6 +448,34 @@ impl TermosoApp {
 
     pub fn delete_key(&self, id: String) -> Result<()> {
         Ok(keychain::delete(&self.store, parse_id(&id)?)?)
+    }
+
+    // ---- FIDO2 security keys ------------------------------------------
+
+    /// Create a credential on an attached security key (see
+    /// [`crate::Fido2Devices`]) and store the `sk-*` handle. Blocks until
+    /// the token is touched: call off the main thread.
+    pub fn fido2_generate(
+        &self,
+        draft: Fido2GenerateDraft,
+        listener: Option<Arc<dyn Fido2Listener>>,
+    ) -> Result<KeyItem> {
+        fido2::generate(&fido2::registry(), &self.store, draft, listener)
+    }
+
+    /// Import the resident SSH credentials of an attached token
+    /// (`ssh-keygen -K`). Blocking; needs the token PIN.
+    pub fn fido2_load_resident(
+        &self,
+        draft: Fido2LoadDraft,
+        listener: Option<Arc<dyn Fido2Listener>>,
+    ) -> Result<Vec<KeyItem>> {
+        fido2::load_resident(&fido2::registry(), &self.store, draft, listener)
+    }
+
+    /// Security-key facts about a stored key; `None` for ordinary keys.
+    pub fn security_key_info(&self, id: String) -> Result<Option<SecurityKeyCard>> {
+        fido2::describe(&self.store, parse_id(&id)?)
     }
 
     pub fn identities(&self, vault_id: Option<String>) -> Result<Vec<IdentityItem>> {

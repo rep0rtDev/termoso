@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
 import com.termoso.core.KeyItem
+import com.termoso.core.SecurityKeyCard
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,6 +16,7 @@ data class KeyDetailState(
     val loading: Boolean = true,
     val key: KeyItem? = null,
     val publicKey: String = "",
+    val securityKey: SecurityKeyCard? = null,
     val working: Boolean = false,
     val deleted: Boolean = false,
     val notice: String? = null,
@@ -35,9 +37,13 @@ class KeyDetailViewModel(private val repo: VaultRepository, private val id: Stri
         runCatching {
             repo.read {
                 val key = keys(null).firstOrNull { it.id == id } ?: error("Key not found")
-                key to runCatching { publicKey(id) }.getOrDefault(key.publicKey)
+                Triple(
+                    key,
+                    runCatching { publicKey(id) }.getOrDefault(key.publicKey),
+                    if (key.keyType.startsWith("sk-")) runCatching { securityKeyInfo(id) }.getOrNull() else null,
+                )
             }
-        }.onSuccess { (k, pub) -> _state.update { it.copy(loading = false, key = k, publicKey = pub) } }
+        }.onSuccess { (k, pub, sk) -> _state.update { it.copy(loading = false, key = k, publicKey = pub, securityKey = sk) } }
             .onFailure { e -> _state.update { it.copy(loading = false, notice = e.userMessage()) } }
     }
 

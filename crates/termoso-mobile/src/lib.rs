@@ -17,6 +17,7 @@ mod app;
 mod connect;
 mod dto;
 mod error;
+mod fido2;
 mod forward;
 mod keys;
 mod live;
@@ -34,6 +35,10 @@ pub use app::*;
 pub use connect::{HostKeyChoice, InteractiveQuestionInfo, PromptAnswer, PromptRequest};
 pub use dto::*;
 pub use error::{MobileError, Result};
+pub use fido2::{
+    Fido2DeviceCard, Fido2Devices, Fido2GenerateDraft, Fido2Listener, Fido2LoadDraft, Fido2NfcLink,
+    Fido2Transport, Fido2UsbLink, SecurityKeyCard, SkKeyAlgorithm,
+};
 pub use forward::{
     PfKind, PfRuleDraft, PfRuleItem, PfTunnel, TunnelListener, TunnelState, TunnelStats,
 };
