@@ -26,12 +26,13 @@ pub struct UserRow {
     pub is_admin: bool,
     pub disabled: bool,
     pub created_at: DateTime<Utc>,
+    pub reset_scheduled_for: Option<DateTime<Utc>>,
 }
 
 const COLUMNS: &str =
     "id, email, email_verified, display_name, opaque_record, public_key, wrapped_private_key,
     recovery_wrapped_private_key, recovery_verifier_hash, key_version, totp_secret, totp_enabled,
-    is_admin, disabled, created_at";
+    is_admin, disabled, created_at, reset_scheduled_for";
 
 pub async fn by_id<'e, E>(db: E, id: Uuid) -> ApiResult<UserRow>
 where
@@ -91,6 +92,26 @@ pub fn profile(u: &UserRow, mfa_enabled: bool) -> UserProfile {
         created_at: u.created_at,
         is_admin: u.is_admin,
         mfa_enabled,
+        reset_scheduled_for: u.reset_scheduled_for,
+    }
+}
+
+/// Best-effort security notification to the account owner. Plain text, no
+/// links to click, nothing to track; failures are logged, never surfaced.
+pub async fn notify(state: &AppState, email: &str, subject: &str, text: &str) {
+    let Some(mailer) = &state.mailer else {
+        return;
+    };
+    let text = format!("{text}\n\nIf this was not you, sign in and review your security events.");
+    if let Err(e) = mailer
+        .send(
+            email,
+            &format!("{}: {subject}", state.cfg.server_name),
+            &text,
+        )
+        .await
+    {
+        tracing::warn!(error = %e, "could not send security notification");
     }
 }
 

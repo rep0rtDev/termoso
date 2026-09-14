@@ -15,6 +15,9 @@ use crate::util::{hash_token, random_token};
 
 const CACHE_TTL: Duration = Duration::from_secs(60);
 
+/// How long a step-up (`reauth_at`) authorizes sensitive operations.
+pub const STEP_UP_TTL: chrono::Duration = chrono::Duration::minutes(5);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionInfo {
     pub session_id: Uuid,
@@ -25,6 +28,14 @@ pub struct SessionInfo {
     pub disabled: bool,
     pub email_verified: bool,
     pub last_used_at: DateTime<Utc>,
+    #[serde(default)]
+    pub reauth_at: Option<DateTime<Utc>>,
+}
+
+impl SessionInfo {
+    pub fn step_up_fresh(&self) -> bool {
+        self.reauth_at.is_some_and(|t| Utc::now() - t < STEP_UP_TTL)
+    }
 }
 
 fn cache_key(token_hash: &str) -> String {
@@ -103,6 +114,8 @@ pub async fn upsert_device(
 }
 
 /// Create a session for an (already approved) device. Returns the bearer token.
+/// Every session is issued right after a full proof (password + MFA, recovery
+/// phrase, or a confirmed reset), so it starts inside the step-up window.
 pub async fn issue(
     state: &AppState,
     user_id: Uuid,
@@ -112,7 +125,8 @@ pub async fn issue(
     let token = random_token();
     let expires_at = Utc::now() + chrono::Duration::days(settings.session_ttl_days.max(1) as i64);
     sqlx::query(
-        "INSERT INTO sessions (id, user_id, device_id, token_hash, expires_at) VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO sessions (id, user_id, device_id, token_hash, expires_at, reauth_at)
+         VALUES ($1, $2, $3, $4, $5, now())",
     )
     .bind(Uuid::new_v4())
     .bind(user_id)
@@ -136,8 +150,20 @@ pub async fn validate(state: &AppState, token: &str) -> ApiResult<SessionInfo> {
     {
         return Ok(info);
     }
-    let row: Option<(Uuid, Uuid, Uuid, DateTime<Utc>, bool, bool, bool, DateTime<Utc>)> = sqlx::query_as(
-        "SELECT s.id, s.user_id, s.device_id, s.expires_at, u.is_admin, u.disabled, u.email_verified, s.last_used_at
+    type Row = (
+        Uuid,
+        Uuid,
+        Uuid,
+        DateTime<Utc>,
+        bool,
+        bool,
+        bool,
+        DateTime<Utc>,
+        Option<DateTime<Utc>>,
+    );
+    let row: Option<Row> = sqlx::query_as(
+        "SELECT s.id, s.user_id, s.device_id, s.expires_at, u.is_admin, u.disabled, u.email_verified,
+                s.last_used_at, s.reauth_at
          FROM sessions s JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()",
     )
@@ -153,6 +179,7 @@ pub async fn validate(state: &AppState, token: &str) -> ApiResult<SessionInfo> {
         disabled,
         email_verified,
         last_used_at,
+        reauth_at,
     )) = row
     else {
         return Err(Error::unauthorized());
@@ -166,6 +193,7 @@ pub async fn validate(state: &AppState, token: &str) -> ApiResult<SessionInfo> {
         disabled,
         email_verified,
         last_used_at,
+        reauth_at,
     };
     state.cache.set_json(&key, &info, CACHE_TTL).await?;
     Ok(info)
@@ -195,6 +223,22 @@ pub async fn touch(state: &AppState, info: &SessionInfo, ip: Option<&str>) -> Ap
         .execute(&state.db)
         .await?;
     Ok(())
+}
+
+/// Record a completed step-up on the session; returns when it expires.
+pub async fn mark_step_up(state: &AppState, session_id: Uuid) -> ApiResult<DateTime<Utc>> {
+    let row: Option<(String, DateTime<Utc>)> = sqlx::query_as(
+        "UPDATE sessions SET reauth_at = now() WHERE id = $1 AND revoked_at IS NULL AND expires_at > now()
+         RETURNING token_hash, reauth_at",
+    )
+    .bind(session_id)
+    .fetch_optional(&state.db)
+    .await?;
+    let Some((h, at)) = row else {
+        return Err(Error::unauthorized());
+    };
+    state.cache.del(&cache_key(&h)).await?;
+    Ok(at + STEP_UP_TTL)
 }
 
 pub async fn revoke_session(state: &AppState, session_id: Uuid) -> ApiResult<()> {

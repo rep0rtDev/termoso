@@ -103,6 +103,13 @@ export function ForgotPasswordPage() {
             Back to sign in
           </Link>
         </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
+          Lost the recovery key too?{" "}
+          <Link component={RouterLink} to="/start-over">
+            Start over with an empty vault
+          </Link>{" "}
+          — the old encrypted data cannot be recovered.
+        </Typography>
       </Stack>
     </form>
   );

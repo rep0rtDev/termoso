@@ -59,6 +59,10 @@ pub struct Config {
     pub sso: BTreeMap<String, SsoProviderConfig>,
     /// Serve the Swagger UI at `/api/docs`.
     pub swagger_ui: bool,
+    /// Seconds between confirming a "start over" account reset and being
+    /// allowed to complete it. The waiting period is what lets the real owner
+    /// cancel a reset they did not ask for. Default: 24 hours.
+    pub start_over_delay_secs: u64,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -201,6 +205,7 @@ impl Default for Config {
             metrics: MetricsConfig::default(),
             sso: BTreeMap::new(),
             swagger_ui: true,
+            start_over_delay_secs: 24 * 3600,
         }
     }
 }

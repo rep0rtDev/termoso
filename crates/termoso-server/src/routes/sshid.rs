@@ -24,7 +24,7 @@ use uuid::Uuid;
 
 use crate::config::Config;
 use crate::error::{ApiResult, Error, NoContent};
-use crate::extract::{Auth, Client, Json as Body};
+use crate::extract::{Auth, Client, Json as Body, StepUp};
 use crate::ratelimit;
 use crate::state::AppState;
 use crate::users;
@@ -231,7 +231,7 @@ pub async fn get(
     request_body = CreateSshIdRequest, responses((status = 200, body = SshIdProfile)))]
 pub async fn create(
     State(state): State<AppState>,
-    auth: Auth,
+    StepUp(auth): StepUp,
     Body(req): Body<CreateSshIdRequest>,
 ) -> ApiResult<Json<SshIdProfile>> {
     let handle = normalize_handle(&req.handle).ok_or_else(|| {
@@ -272,7 +272,7 @@ pub async fn create(
 }
 
 #[utoipa::path(delete, path = "/api/v1/account/sshid", tag = "sshid", responses((status = 204)))]
-pub async fn delete(State(state): State<AppState>, auth: Auth) -> ApiResult<NoContent> {
+pub async fn delete(State(state): State<AppState>, StepUp(auth): StepUp) -> ApiResult<NoContent> {
     let row: Option<(String,)> =
         sqlx::query_as("DELETE FROM ssh_ids WHERE user_id = $1 RETURNING handle")
             .bind(auth.user_id())
@@ -298,7 +298,7 @@ pub async fn delete(State(state): State<AppState>, auth: Auth) -> ApiResult<NoCo
     request_body = PutDeviceKeysRequest, responses((status = 200, body = SshIdProfile)))]
 pub async fn put_device_keys(
     State(state): State<AppState>,
-    auth: Auth,
+    StepUp(auth): StepUp,
     Body(req): Body<PutDeviceKeysRequest>,
 ) -> ApiResult<Json<SshIdProfile>> {
     if handle_of(&state, auth.user_id()).await?.is_none() {
@@ -366,7 +366,7 @@ pub async fn put_device_keys(
     request_body = AddFido2KeyRequest, responses((status = 200, body = SshIdKey)))]
 pub async fn add_fido2_key(
     State(state): State<AppState>,
-    auth: Auth,
+    StepUp(auth): StepUp,
     Body(req): Body<AddFido2KeyRequest>,
 ) -> ApiResult<Json<SshIdKey>> {
     if handle_of(&state, auth.user_id()).await?.is_none() {
@@ -425,7 +425,7 @@ pub async fn add_fido2_key(
     params(("id" = Uuid, Path)), responses((status = 204)))]
 pub async fn remove_key(
     State(state): State<AppState>,
-    auth: Auth,
+    StepUp(auth): StepUp,
     Path(id): Path<Uuid>,
 ) -> ApiResult<NoContent> {
     let res = sqlx::query("DELETE FROM ssh_id_keys WHERE id = $1 AND user_id = $2")

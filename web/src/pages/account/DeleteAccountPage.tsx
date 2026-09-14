@@ -6,6 +6,7 @@ import { errorMessage } from "@/api/client";
 import { accountApi, teamsApi } from "@/api/endpoints";
 import { queryKeys, useServerInfo } from "@/api/hooks";
 import { authStore, useAuthState } from "@/auth/store";
+import { UnlockCancelled, withStepUp } from "@/auth/unlock";
 import { PageHeader } from "@/components/PageHeader";
 import { Section } from "@/components/Section";
 
@@ -32,7 +33,7 @@ export function DeleteAccountPage() {
     setBusy(true);
     setError(null);
     try {
-      const result = await accountApi.delete(codeSent ? code.trim() : undefined);
+      const result = await withStepUp(() => accountApi.delete(codeSent ? code.trim() : undefined));
       if (result === "code_sent") {
         setCodeSent(true);
         return;
@@ -40,7 +41,7 @@ export function DeleteAccountPage() {
       authStore.signOut();
       void navigate("/login", { replace: true });
     } catch (err) {
-      setError(errorMessage(err));
+      if (!(err instanceof UnlockCancelled)) setError(errorMessage(err));
     } finally {
       setBusy(false);
     }
