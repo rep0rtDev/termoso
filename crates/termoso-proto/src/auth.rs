@@ -254,6 +254,173 @@ schema! {
             /// Masked email the code was sent to (e.g. `i***@example.com`).
             email_hint: String,
         },
+        /// Step-up succeeded: the current session may perform sensitive
+        /// operations until `reauth_expires_at`.
+        Reauthenticated {
+            /// When the step-up window closes.
+            reauth_expires_at: DateTime<Utc>,
+        },
+    }
+}
+
+// ───────────────────────────── step-up (re-authentication) ─────────────────────────────
+
+schema! {
+    /// How the current session proves it is still the account owner.
+    #[derive(Copy, PartialEq, Eq)]
+    #[serde(rename_all = "snake_case")]
+    pub enum ReauthMethod {
+        /// OPAQUE login with the account password.
+        Password,
+        /// One-time code sent to the account email (accounts without a password).
+        Email,
+        /// Nothing to prove before the second factor (no password and no email
+        /// on this server, but two-factor authentication is on): call `finish`
+        /// right away and complete the MFA challenge it returns.
+        None,
+    }
+}
+
+schema! {
+    /// `POST /auth/reauth/start` – begin a step-up for the current session.
+    ///
+    /// Sensitive account mutations (password / recovery / email / MFA / device /
+    /// account deletion / SSH ID) require a fresh step-up: a bearer token alone
+    /// is not enough. Recovery with the recovery phrase is a separate proof and
+    /// does not use this flow.
+    pub struct ReauthStartRequest {
+        /// OPAQUE `CredentialRequest` for the account password. Required when the
+        /// account has a password; ignored otherwise.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub opaque_request: Option<String>,
+    }
+}
+
+schema! {
+    /// Response to `ReauthStartRequest`.
+    pub struct ReauthStartResponse {
+        /// Handle for `ReauthFinishRequest`.
+        pub reauth_id: String,
+        /// Which proof the server expects in `finish`.
+        pub method: ReauthMethod,
+        /// OPAQUE `CredentialResponse` (`method == password`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub opaque_response: Option<String>,
+        /// Masked email the code was sent to (`method == email`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub email_hint: Option<String>,
+    }
+}
+
+schema! {
+    /// `POST /auth/reauth/finish`
+    pub struct ReauthFinishRequest {
+        /// From `ReauthStartResponse`.
+        pub reauth_id: String,
+        /// OPAQUE `CredentialFinalization` (`method == password`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub opaque_finalization: Option<String>,
+        /// Code from the email (`method == email`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub code: Option<String>,
+    }
+}
+
+// ───────────────────────────── start over ─────────────────────────────
+
+schema! {
+    /// `POST /auth/start-over/request` – for users who lost both the password
+    /// and the recovery phrase. Proves email ownership, then schedules an
+    /// irreversible reset: all encrypted data of the account is destroyed and a
+    /// fresh key set is created. The server cannot decrypt the old data and
+    /// therefore cannot restore it.
+    pub struct StartOverRequest {
+        /// Account email.
+        pub email: String,
+    }
+}
+
+schema! {
+    /// Response to `StartOverRequest`. Returned whether or not the account
+    /// exists so the endpoint does not reveal registered emails.
+    pub struct StartOverRequestResponse {
+        /// Handle for `StartOverConfirmRequest`.
+        pub request_token: String,
+        /// Masked email the code was sent to.
+        pub email_hint: String,
+    }
+}
+
+schema! {
+    /// `POST /auth/start-over/confirm`
+    pub struct StartOverConfirmRequest {
+        /// From `StartOverRequestResponse`.
+        pub request_token: String,
+        /// Code from the email.
+        pub code: String,
+        /// Authenticator or backup code; required while two-factor
+        /// authentication is enabled on the account (a reset never bypasses it).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub mfa_code: Option<String>,
+    }
+}
+
+schema! {
+    /// Response to `StartOverConfirmRequest`: the reset is scheduled; the email
+    /// received a cancel link and a link to finish once the delay has passed.
+    pub struct StartOverScheduled {
+        /// Earliest moment the reset can be completed.
+        pub scheduled_for: DateTime<Utc>,
+        /// Masked email that received the cancel / finish links.
+        pub email_hint: String,
+    }
+}
+
+schema! {
+    /// `GET /auth/start-over/{token}` – state of a scheduled reset.
+    pub struct StartOverStatus {
+        /// Masked account email.
+        pub email_hint: String,
+        /// Account email; the client binds the new OPAQUE registration to it. Only
+        /// the holder of the emailed finish token gets here.
+        pub email: String,
+        /// Earliest moment the reset can be completed.
+        pub scheduled_for: DateTime<Utc>,
+        /// Whether the delay has passed and `finish` will be accepted.
+        pub ready: bool,
+    }
+}
+
+schema! {
+    /// `POST /auth/start-over/cancel`
+    pub struct StartOverCancelRequest {
+        /// Cancel token from the email.
+        pub cancel_token: String,
+    }
+}
+
+schema! {
+    /// `POST /auth/start-over/password/start`
+    pub struct StartOverPasswordStartRequest {
+        /// Finish token from the email.
+        pub token: String,
+        /// OPAQUE `RegistrationRequest` for the new password.
+        pub opaque_request: String,
+    }
+}
+
+schema! {
+    /// `POST /auth/start-over/finish` – destroys the old encrypted data and
+    /// installs a brand-new key set. Irreversible.
+    pub struct StartOverFinishRequest {
+        /// Finish token from the email.
+        pub token: String,
+        /// OPAQUE `RegistrationUpload` for the new password.
+        pub opaque_upload: String,
+        /// Freshly generated keys (same shape as at registration).
+        pub keys: AccountKeysUpload,
+        /// Device performing the reset.
+        pub device: DeviceInfo,
     }
 }
 
@@ -291,7 +458,8 @@ schema! {
         /// Optionally rotate the recovery key at the same time.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub new_recovery: Option<RecoveryRotate>,
-        /// Whether to sign out every other device (default true).
+        /// Deprecated: a new password always signs every other device out.
+        /// Kept so older clients keep parsing; the value is ignored.
         #[serde(default = "default_true")]
         pub revoke_other_sessions: bool,
         /// Device performing the recovery (ignored for authenticated change).

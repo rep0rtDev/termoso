@@ -16,6 +16,7 @@ import type {
   Page,
   PasswordSetupFinishRequest,
   PendingVaultKey,
+  ReauthStartResponse,
   RecoveryRotate,
   RecoveryStartResponse,
   RegisterFinishRequest,
@@ -26,6 +27,10 @@ import type {
   SsoProvider,
   SsoResult,
   SsoStartResponse,
+  StartOverFinishRequest,
+  StartOverRequestResponse,
+  StartOverScheduled,
+  StartOverStatus,
   Team,
   TeamMember,
   TeamRole,
@@ -85,6 +90,32 @@ export const authApi = {
 
   logout: () => http.post<undefined>("/auth/logout"),
 
+  reauthStart: (opaque_request?: string) =>
+    http.post<ReauthStartResponse>("/auth/reauth/start", { opaque_request }),
+  reauthFinish: (reauth_id: string, proof: { opaque_finalization?: string; code?: string }) =>
+    http.post<AuthResponse>("/auth/reauth/finish", { reauth_id, ...proof }),
+
+  startOverRequest: (email: string) =>
+    http.post<StartOverRequestResponse>("/auth/start-over/request", { email }, anon),
+  startOverConfirm: (request_token: string, code: string, mfa_code?: string) =>
+    http.post<StartOverScheduled>(
+      "/auth/start-over/confirm",
+      { request_token, code, mfa_code },
+      anon,
+    ),
+  startOverStatus: (token: string) =>
+    http.get<StartOverStatus>(`/auth/start-over/${encodeURIComponent(token)}`, anon),
+  startOverCancel: (cancel_token: string) =>
+    http.post<undefined>("/auth/start-over/cancel", { cancel_token }, anon),
+  startOverPasswordStart: (token: string, opaque_request: string) =>
+    http.post<{ opaque_response: string }>(
+      "/auth/start-over/password/start",
+      { token, opaque_request },
+      anon,
+    ),
+  startOverFinish: (req: StartOverFinishRequest) =>
+    http.post<AuthResponse>("/auth/start-over/finish", req, anon),
+
   ssoProviders: () => http.get<SsoProvider[]>("/auth/sso/providers", anon),
   ssoStart: (provider: string, redirect: string) =>
     http.get<SsoStartResponse>(`/auth/sso/${encodeURIComponent(provider)}/start`, {
@@ -112,6 +143,7 @@ export const accountApi = {
   revokeDevice: (id: string) => http.delete<undefined>(`/account/devices/${id}`),
   securityEvents: () => http.get<{ events: SecurityEvent[] }>("/account/security-events"),
   rotateRecovery: (req: RecoveryRotate) => http.post<undefined>("/account/recovery/rotate", req),
+  cancelStartOver: () => http.post<undefined>("/account/start-over/cancel"),
   /** Resolves to `"code_sent"` (202: a confirmation code was mailed) or `"deleted"` (204). */
   delete: async (code?: string): Promise<"code_sent" | "deleted"> => {
     const r = await requestWithStatus<undefined>(

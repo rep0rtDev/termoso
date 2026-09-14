@@ -17,6 +17,11 @@ export function isDesktopError(e: unknown): e is DesktopError {
   );
 }
 
+/** The server wants a fresh re-authentication before this sensitive change. */
+export function isReauthRequired(e: unknown): boolean {
+  return isDesktopError(e) && e.kind === "reauth_required";
+}
+
 export function errorMessage(e: unknown): string {
   if (isDesktopError(e)) return e.message;
   if (e instanceof Error) return e.message;
@@ -1168,6 +1173,12 @@ export type LoginOutcome =
   | { step: "done"; account: AccountCard }
   | { step: "mfaRequired"; methods: MfaMethod[] }
   | { step: "deviceApprovalRequired"; emailHint: string };
+
+/** Step-up (`account_reauth_*`): the session is confirmed until `expiresAt`. */
+export type ReauthOutcome =
+  | { step: "done"; expiresAt: string }
+  | { step: "mfaRequired"; methods: MfaMethod[] }
+  | { step: "emailCodeRequired"; emailHint: string };
 
 export interface Registered {
   account: AccountCard;

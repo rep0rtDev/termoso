@@ -43,6 +43,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Section } from "@/components/Section";
 import { useSnackbar } from "@/components/Snackbar";
 import { formatDateTime, formatRelative, titleCase } from "@/components/format";
+import { UnlockCancelled, withStepUp } from "@/auth/unlock";
 import { monoFontFamily } from "@/theme/theme";
 
 export function SecurityPage() {
@@ -133,7 +134,7 @@ function TotpSection({ enabled }: { enabled: boolean }) {
     onError: (e) => setError(errorMessage(e)),
   });
   const disable = useMutation({
-    mutationFn: () => accountApi.totpDisable(code.trim()),
+    mutationFn: () => withStepUp(() => accountApi.totpDisable(code.trim())),
     onSuccess: async () => {
       setDisableOpen(false);
       setCode("");
@@ -141,7 +142,9 @@ function TotpSection({ enabled }: { enabled: boolean }) {
       await qc.invalidateQueries({ queryKey: queryKeys.account });
       snack.notify("Authenticator app disabled");
     },
-    onError: (e) => setError(errorMessage(e)),
+    onError: (e) => {
+      if (!(e instanceof UnlockCancelled)) setError(errorMessage(e));
+    },
   });
 
   const openSetup = () => {
@@ -307,13 +310,15 @@ function BackupCodesSection({ remaining }: { remaining: number }) {
   const [codes, setCodes] = useState<string[] | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const regen = useMutation({
-    mutationFn: accountApi.backupCodes,
+    mutationFn: () => withStepUp(accountApi.backupCodes),
     onSuccess: async (r) => {
       setConfirmOpen(false);
       setCodes(r.codes);
       await qc.invalidateQueries({ queryKey: queryKeys.mfa });
     },
-    onError: (e) => snack.error(errorMessage(e)),
+    onError: (e) => {
+      if (!(e instanceof UnlockCancelled)) snack.error(errorMessage(e));
+    },
   });
   return (
     <Section
@@ -374,14 +379,16 @@ function WebauthnSection({ credentials }: { credentials: WebauthnCredentialInfo[
     onError: (e) => setError(errorMessage(e)),
   });
   const remove = useMutation({
-    mutationFn: (id: string) => accountApi.webauthnDelete(id),
+    mutationFn: (id: string) => withStepUp(() => accountApi.webauthnDelete(id)),
     onSuccess: async () => {
       setRemoving(null);
       await qc.invalidateQueries({ queryKey: queryKeys.mfa });
       await qc.invalidateQueries({ queryKey: queryKeys.account });
       snack.notify("Security key removed");
     },
-    onError: (e) => snack.error(errorMessage(e)),
+    onError: (e) => {
+      if (!(e instanceof UnlockCancelled)) snack.error(errorMessage(e));
+    },
   });
 
   return (

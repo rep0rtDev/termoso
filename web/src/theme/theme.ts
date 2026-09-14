@@ -586,6 +586,11 @@ export const theme = createTheme({
           color: t.vars.palette.text.primary,
           borderColor: t.vars.palette.border.basic,
           "& .MuiAlert-icon": { color: t.vars.palette.text.secondary },
+          "&.MuiAlert-colorError": {
+            borderColor: t.vars.palette.error.main,
+            backgroundColor: alpha("#F25E61", 0.08),
+            "& .MuiAlert-icon, & .MuiAlertTitle-root": { color: t.vars.palette.error.main },
+          },
         }),
       },
     },

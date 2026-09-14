@@ -139,6 +139,13 @@ impl Error {
             "This team requires two-factor authentication",
         )
     }
+    pub fn reauth_required() -> Self {
+        Self::new(
+            StatusCode::FORBIDDEN,
+            codes::REAUTH_REQUIRED,
+            "Confirm your password to continue",
+        )
+    }
     pub fn quota_exceeded(msg: impl Into<String>) -> Self {
         Self::new(StatusCode::INSUFFICIENT_STORAGE, "quota_exceeded", msg)
     }

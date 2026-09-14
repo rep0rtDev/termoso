@@ -35,6 +35,7 @@ import { useAuthState } from "@/auth/store";
 import { logout } from "@/auth/flows";
 import { useServerInfo } from "@/api/hooks";
 import { UnlockDialog } from "@/auth/UnlockDialog";
+import { ResetScheduledBanner } from "./ResetScheduledBanner";
 import { sizes } from "@/theme/theme";
 
 interface NavItem {
@@ -320,6 +321,7 @@ export function AppShell() {
             </MenuItem>
           </Menu>
         </Box>
+        <ResetScheduledBanner />
         <Box
           sx={{
             px: { xs: 2, sm: 3, md: 4 },
