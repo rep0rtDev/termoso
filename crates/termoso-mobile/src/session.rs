@@ -8,7 +8,7 @@
 //! blocks its own connection task, never a UI thread.
 
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use termoso_core::model::ResolvedHost;
 use termoso_core::ssh::{SshTarget, SshTerminal};
@@ -22,6 +22,9 @@ use crate::error::MobileError;
 use crate::keys::{KeyMods, SpecialKey, encode_key, encode_text};
 use crate::settings::MobileSettings;
 use crate::terminal::{Emulator, GridFrame, GridSnapshot, TermSignal, TerminalPalette};
+
+/// Give the shell time to print its prompt before the startup snippet lands.
+const STARTUP_SNIPPET_DELAY: Duration = Duration::from_millis(400);
 
 /// Where the session is.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -447,6 +450,18 @@ async fn run(
         let _ = terminal.write(&queued).await;
     }
     set_state(&inner, SessionState::Connected);
+    if let Some(script) = crate::snippets::startup_script(
+        &inner.store,
+        resolved
+            .as_ref()
+            .and_then(|r| r.host.data.startup_snippet_id),
+    ) {
+        let terminal = terminal.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(STARTUP_SNIPPET_DELAY).await;
+            let _ = terminal.write(script.as_bytes()).await;
+        });
+    }
 
     if settings.detect_os
         && resolved

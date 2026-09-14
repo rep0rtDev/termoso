@@ -199,6 +199,12 @@ private fun HostForm(state: HostEditorState, draft: HostDraft, vm: HostEditorVie
                 checked = draft.agentForwarding,
                 onCheckedChange = { v -> vm.update { it.copy(agentForwarding = v) } },
             )
+            if (state.snippets.isNotEmpty() || draft.startupSnippetId != null) {
+                RowDivider()
+                Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    StartupSnippetRow(state, draft, onPick = { id -> vm.update { it.copy(startupSnippetId = id) } })
+                }
+            }
         }
 
         Row(
@@ -297,6 +303,19 @@ private fun HostForm(state: HostEditorState, draft: HostDraft, vm: HostEditorVie
             onDismiss = { tagPicker = false },
         )
     }
+}
+
+@Composable
+private fun StartupSnippetRow(state: HostEditorState, draft: HostDraft, onPick: (String?) -> Unit) {
+    val snippet = state.snippets.firstOrNull { it.id == draft.startupSnippetId }
+    PickerRow(
+        label = "Startup snippet",
+        value = snippet?.label ?: if (draft.startupSnippetId != null) "Unknown snippet" else "None",
+        options = listOf<Pair<String?, String>>(null to "None") + state.snippets.map { it.id to it.label },
+        selected = draft.startupSnippetId,
+        onPick = onPick,
+        empty = null,
+    )
 }
 
 private fun hasAdvanced(d: HostDraft) =

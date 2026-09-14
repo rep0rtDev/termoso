@@ -22,6 +22,7 @@ mod keys;
 mod session;
 mod settings;
 mod sftp;
+mod snippets;
 mod terminal;
 mod themes;
 
@@ -37,5 +38,6 @@ pub use keys::{KeyMods, SpecialKey, control_code, encode_key, encode_text};
 pub use session::*;
 pub use settings::MobileSettings;
 pub use sftp::*;
+pub use snippets::{SnippetDraft, SnippetItem, SnippetPackageItem, SnippetRun};
 pub use terminal::{CELL_BYTES, CursorStyle, GridFrame, GridSnapshot, TerminalPalette, flag};
 pub use themes::{TERMOSO_DARK, TERMOSO_LIGHT, TerminalTheme, terminal_theme, terminal_themes};

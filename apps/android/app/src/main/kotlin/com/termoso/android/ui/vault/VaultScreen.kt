@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.History
@@ -49,6 +50,7 @@ private data class VaultCounts(
     val keys: Int = 0,
     val identities: Int = 0,
     val forwards: Int = 0,
+    val snippets: Int = 0,
     val known: Int = 0,
     val history: Int = 0,
 )
@@ -61,6 +63,7 @@ fun VaultScreen(
     onOpenHosts: () -> Unit,
     onOpenKeychain: () -> Unit,
     onOpenForwarding: () -> Unit,
+    onOpenSnippets: () -> Unit,
     onOpenKnownHosts: () -> Unit,
     onOpenHistory: () -> Unit,
 ) {
@@ -79,6 +82,7 @@ fun VaultScreen(
                     keys = keys(id).size,
                     identities = identities(id).size,
                     forwards = pfRules(id).size,
+                    snippets = snippets(id).size,
                     known = knownHosts().size,
                     history = history(200u).size,
                 )
@@ -118,6 +122,13 @@ fun VaultScreen(
                     badge = counts.forwards.toString(),
                     leading = { IconTile(Icons.Filled.SwapHoriz) },
                     modifier = Modifier.clickable(onClick = onOpenForwarding),
+                )
+                RowDivider()
+                ChevronRow(
+                    title = "Snippets",
+                    badge = counts.snippets.toString(),
+                    leading = { IconTile(Icons.Filled.Code) },
+                    modifier = Modifier.clickable(onClick = onOpenSnippets),
                 )
                 RowDivider()
                 ChevronRow(
