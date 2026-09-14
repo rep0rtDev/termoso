@@ -106,7 +106,10 @@ fn same_key(a: &str, b: &str) -> bool {
 }
 
 /// Generate any missing device key and publish the set when the server
-/// does not list exactly what this device holds.
+/// does not list exactly what this device holds. Publishing is a sensitive
+/// change: outside the step-up window after sign-in the server asks for a
+/// re-authentication, and the keys stay unpublished until the user confirms
+/// (see [`publish_now`]).
 async fn publish(
     api: &Arc<ApiClient>,
     store: &Arc<Store>,
@@ -130,9 +133,33 @@ async fn publish(
     if in_sync {
         return Ok(profile);
     }
-    Ok(api
+    match api
         .put_sshid_device_keys(&core::upload_request(&keys))
-        .await?)
+        .await
+    {
+        Ok(p) => Ok(p),
+        Err(e) if e.is_api_code(termoso_proto::error::codes::REAUTH_REQUIRED) => Ok(profile),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Publish this device's keys explicitly (the UI runs this after a step-up).
+pub async fn publish_now<R: Runtime>(app: &AppHandle<R>) -> Result<SshIdView> {
+    let state = app.state::<AppState>();
+    let api = api(app).await?;
+    let profile = api
+        .sshid()
+        .await?
+        .ok_or_else(|| DesktopError::invalid("SSH ID is not set up"))?;
+    let handle = profile.handle.clone();
+    let s = state.store.clone();
+    let keys = tokio::task::spawn_blocking(move || core::ensure_device_keys(&s, &handle))
+        .await
+        .map_err(|e| DesktopError::invalid(e.to_string()))??;
+    let profile = api
+        .put_sshid_device_keys(&core::upload_request(&keys))
+        .await?;
+    view_of(&state.store, Some(profile))
 }
 
 async fn load(api: &Arc<ApiClient>, store: &Arc<Store>) -> Result<Option<SshIdProfile>> {

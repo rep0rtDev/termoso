@@ -66,6 +66,7 @@ import type {
   PromptAnswer,
   PromptClosedEvent,
   PromptEvent,
+  ReauthOutcome,
   RegisterForm,
   Registered,
   RunResult,
@@ -496,6 +497,16 @@ export const accountSignOut = () => invoke<null>("account_sign_out");
 export const accountSyncNow = () => invoke<SyncStatus>("account_sync_now");
 export const accountDevices = () => invoke<Device[]>("account_devices");
 export const accountDeviceRevoke = (id: Uuid) => invoke<null>("account_device_revoke", { id });
+export const accountReauthStart = (password: string) =>
+  invoke<ReauthOutcome>("account_reauth_start", { password });
+export const accountReauthMfa = (credential: MfaCredential) =>
+  invoke<ReauthOutcome>("account_reauth_mfa", { credential });
+export const accountReauthEmailCode = (code: string) =>
+  invoke<ReauthOutcome>("account_reauth_email_code", { code });
+export const accountReauthMfaEmailSend = () => invoke<null>("account_reauth_mfa_email_send");
+export const accountReauthWebauthnChallenge = () =>
+  invoke<unknown>("account_reauth_webauthn_challenge");
+export const accountReauthCancel = () => invoke<null>("account_reauth_cancel");
 export const accountVaultMembers = (vaultId: Uuid) =>
   invoke<VaultMember[]>("account_vault_members", { vaultId });
 export const onSyncNotice = (cb: (e: SyncNotice) => void): Promise<UnlistenFn> =>
@@ -506,6 +517,7 @@ export const onSyncNotice = (cb: (e: SyncNotice) => void): Promise<UnlistenFn> =
 export const sshidView = () => invoke<SshIdView>("sshid_view");
 export const sshidCreate = (handle: string) => invoke<SshIdView>("sshid_create", { handle });
 export const sshidDelete = () => invoke<SshIdView>("sshid_delete");
+export const sshidPublish = () => invoke<SshIdView>("sshid_publish");
 export const sshidRotate = () => invoke<SshIdView>("sshid_rotate");
 export const sshidAddFido2 = (form: SshIdFido2Form) =>
   invoke<SshIdView>("sshid_add_fido2", { form });

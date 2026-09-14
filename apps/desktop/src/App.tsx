@@ -6,6 +6,7 @@ import { SnackbarProvider } from "./components/Snackbar";
 import { AppShell } from "./app/AppShell";
 import { ThemeModeSync } from "./app/ThemeModeSync";
 import { WindowFrame } from "./app/WindowFrame";
+import { ReauthDialog } from "./account/ReauthDialog";
 
 /** The webview's native context menu (Back/Forward/Reload…) never makes sense in the app. */
 function useSuppressNativeContextMenu() {
@@ -42,6 +43,7 @@ export function App() {
           <WindowFrame>
             <AppShell />
           </WindowFrame>
+          <ReauthDialog />
         </SnackbarProvider>
       </QueryClientProvider>
     </ThemeProvider>
