@@ -15,9 +15,10 @@ use bytes::Bytes;
 use termoso_core::api::ApiClient;
 use termoso_core::live::{HostShare, LiveEvent, ViewerJoin};
 use termoso_core::model::ResolvedHost;
-use termoso_core::ssh::SshTarget;
+use termoso_core::mosh::{self, MoshError};
+use termoso_core::ssh::{IpVersion, SshClient, SshTarget};
 use termoso_core::store::{ConnectionHistory, Store};
-use termoso_core::terminal::{SharedTerminal, TermEvent, TermEvents, TermSize, TerminalSession};
+use termoso_core::terminal::{SharedTerminal, TermEvent, TermEvents, TermSize};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -66,6 +67,17 @@ pub trait SessionListener: Send + Sync {
     fn on_os_detected(&self, os_name: String);
 }
 
+/// Which transport carries the shell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum Transport {
+    /// Whatever the host is configured for (Mosh when its SSH section says
+    /// so, plain SSH otherwise).
+    Auto,
+    Ssh,
+    /// Bootstrap `mosh-server` over SSH, then talk Mosh over UDP.
+    Mosh,
+}
+
 /// How to open the terminal.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct TerminalOptions {
@@ -75,6 +87,7 @@ pub struct TerminalOptions {
     pub term_type: String,
     /// `None` → the scheme chosen in settings.
     pub palette: Option<TerminalPalette>,
+    pub transport: Transport,
 }
 
 /// Connect-stage callbacks routed onto the terminal listener.
@@ -237,7 +250,14 @@ impl SshSession {
         } else {
             options.term_type.clone()
         };
-        runtime.spawn(run(inner, target, resolved, settings, term_type, signals));
+        let mosh = match options.transport {
+            Transport::Mosh => true,
+            Transport::Ssh => false,
+            Transport::Auto => resolved.as_ref().is_some_and(|r| r.ssh.use_mosh),
+        };
+        runtime.spawn(run(
+            inner, target, resolved, settings, term_type, mosh, signals,
+        ));
         session
     }
 
@@ -593,9 +613,11 @@ async fn run(
     resolved: Option<ResolvedHost>,
     settings: MobileSettings,
     term_type: String,
+    mosh: bool,
     signals: mpsc::UnboundedReceiver<TermSignal>,
 ) {
     let started = Instant::now();
+    let protocol = if mosh { "mosh" } else { "ssh" };
     let history_id = inner
         .store
         .record_connection(&ConnectionHistory {
@@ -605,7 +627,7 @@ async fn run(
                 .map(|r| r.host.data.label.clone())
                 .unwrap_or_else(|| target.host.clone()),
             target: target.display(),
-            protocol: "ssh".into(),
+            protocol: protocol.into(),
             duration_secs: None,
             error: None,
         })
@@ -621,16 +643,46 @@ async fn run(
                         .map(|r| r.host.data.label.clone())
                         .unwrap_or_else(|| target.host.clone()),
                     target: target.display(),
-                    protocol: "ssh".into(),
+                    protocol: protocol.into(),
                     duration_secs: Some(started.elapsed().as_secs()),
                     error,
                 },
             );
         }
     };
+    let fail = |inner: &Inner, e: MobileError| {
+        finish(Some(e.to_string()));
+        set_state(
+            inner,
+            SessionState::Failed {
+                kind: e.kind(),
+                message: e.to_string(),
+            },
+        );
+    };
+
+    // Jump hosts and proxies carry TCP only; the UDP leg needs a direct route.
+    if mosh && let Some(r) = resolved.as_ref() {
+        let blocker = if !r.chain.is_empty() {
+            Some("jump hosts")
+        } else if r.proxy.is_some() {
+            Some("proxy")
+        } else {
+            None
+        };
+        if let Some(what) = blocker {
+            fail(
+                &inner,
+                MobileError::from(termoso_core::error::CoreError::from(
+                    MoshError::NoDirectPath(what),
+                )),
+            );
+            return;
+        }
+    }
 
     let connect = connect_resolved(&inner.conn, &settings, target.clone(), resolved.as_ref());
-    let (client, _jumps) = tokio::select! {
+    let (client, jumps) = tokio::select! {
         r = connect => match r {
             Ok(c) => c,
             Err(e) => {
@@ -647,26 +699,56 @@ async fn run(
         }
     };
 
-    set_state(
-        &inner,
-        SessionState::Connecting {
-            detail: "Opening shell…".into(),
-        },
-    );
-    let size = *inner.size.lock().expect("size poisoned");
-    let (terminal, events) = match client.shell(&term_type, size).await {
-        Ok(v) => v,
-        Err(e) => {
-            let e = MobileError::from(e);
-            finish(Some(e.to_string()));
-            set_state(
-                &inner,
-                SessionState::Failed {
-                    kind: e.kind(),
-                    message: e.to_string(),
-                },
-            );
-            return;
+    let detect_os = settings.detect_os
+        && resolved
+            .as_ref()
+            .is_none_or(|r| r.host.data.os_name.is_none());
+    let host_id = resolved.as_ref().map(|r| r.host.id);
+
+    let (terminal, events, ssh) = if mosh {
+        // The SSH leg is closed once mosh-server is up, so probe the OS while
+        // it is still there.
+        let opened = tokio::select! {
+            r = async {
+                let open = open_mosh(&inner, &client, &target, resolved.as_ref());
+                if detect_os {
+                    tokio::join!(open, detect_os_and_save(&inner, &client, host_id)).0
+                } else {
+                    open.await
+                }
+            } => r,
+            _ = inner.closed.notified() => Err(MobileError::Cancelled),
+        };
+        let _ = client.disconnect().await;
+        for jump in jumps.into_iter().rev() {
+            let _ = jump.disconnect().await;
+        }
+        match opened {
+            Ok((t, e)) => (t, e, None),
+            Err(MobileError::Cancelled) => {
+                finish(Some("cancelled".into()));
+                set_state(&inner, SessionState::Closed { reason: None });
+                return;
+            }
+            Err(e) => {
+                fail(&inner, e);
+                return;
+            }
+        }
+    } else {
+        set_state(
+            &inner,
+            SessionState::Connecting {
+                detail: "Opening shell…".into(),
+            },
+        );
+        let size = *inner.size.lock().expect("size poisoned");
+        match client.shell(&term_type, size).await {
+            Ok((t, e)) => (t as SharedTerminal, e, Some(client)),
+            Err(e) => {
+                fail(&inner, MobileError::from(e));
+                return;
+            }
         }
     };
     *inner.terminal.lock().expect("terminal poisoned") = Some(terminal.clone());
@@ -685,42 +767,71 @@ async fn run(
         });
     }
 
-    if settings.detect_os
-        && resolved
-            .as_ref()
-            .is_none_or(|r| r.host.data.os_name.is_none())
-    {
-        let inner = inner.clone();
-        let client = client.clone();
-        let host_id = resolved.as_ref().map(|r| r.host.id);
-        tokio::spawn(async move {
-            let Some(os) = termoso_core::osdetect::detect(&client).await else {
-                return;
-            };
-            let saved = (|| -> termoso_core::error::Result<()> {
-                let Some(host_id) = host_id else {
-                    return Ok(());
-                };
-                let mut host = inner.store.require::<termoso_core::model::Host>(host_id)?;
-                if host.data.os_name.is_some() {
-                    return Ok(());
-                }
-                host.data.os_name = Some(os.to_string());
-                inner.store.update(host.id, &host.data)
-            })();
-            if saved.is_ok() {
-                inner.listener.on_os_detected(os.to_string());
-            }
-        });
+    if detect_os && let Some(client) = &ssh {
+        let (inner, client) = (inner.clone(), client.clone());
+        tokio::spawn(async move { detect_os_and_save(&inner, &client, host_id).await });
     }
 
-    let terminal: SharedTerminal = terminal;
     let reason = pump(&inner, &terminal, events, signals).await;
     finish(reason.clone());
     *inner.terminal.lock().expect("terminal poisoned") = None;
     inner.end_share(&tokio::runtime::Handle::current());
-    let _ = client.disconnect().await;
+    if let Some(client) = ssh {
+        let _ = client.disconnect().await;
+    }
     set_state(&inner, SessionState::Closed { reason });
+}
+
+/// Start `mosh-server` over the authenticated `client` and open the UDP
+/// session to it. The caller closes the SSH leg either way.
+async fn open_mosh(
+    inner: &Arc<Inner>,
+    client: &Arc<SshClient>,
+    target: &SshTarget,
+    resolved: Option<&ResolvedHost>,
+) -> Result<(SharedTerminal, TermEvents)> {
+    set_state(
+        inner,
+        SessionState::Connecting {
+            detail: "Starting mosh-server…".into(),
+        },
+    );
+    let command = resolved.and_then(|r| r.ssh.mosh_server_command.as_deref());
+    let boot = mosh::start_server(client, command).await?;
+    let ip_version = resolved
+        .map(|r| IpVersion::parse(&r.host.data.ip_version))
+        .unwrap_or_default();
+    let ip = mosh::udp_target(&target.host, ip_version, &boot).await?;
+    set_state(
+        inner,
+        SessionState::Connecting {
+            detail: format!("Mosh: waiting for udp/{}…", boot.port),
+        },
+    );
+    let size = *inner.size.lock().expect("size poisoned");
+    let (term, events) = mosh::connect(&ip, &boot, size).await?;
+    Ok((term as SharedTerminal, events))
+}
+
+/// Detect the remote OS on a side channel and remember it on the host.
+async fn detect_os_and_save(inner: &Inner, client: &SshClient, host_id: Option<Uuid>) {
+    let Some(os) = termoso_core::osdetect::detect(client).await else {
+        return;
+    };
+    let saved = (|| -> termoso_core::error::Result<()> {
+        let Some(host_id) = host_id else {
+            return Ok(());
+        };
+        let mut host = inner.store.require::<termoso_core::model::Host>(host_id)?;
+        if host.data.os_name.is_some() {
+            return Ok(());
+        }
+        host.data.os_name = Some(os.to_string());
+        inner.store.update(host.id, &host.data)
+    })();
+    if saved.is_ok() {
+        inner.listener.on_os_detected(os.to_string());
+    }
 }
 
 /// Viewer counterpart of [`run`]: the relay stream is already open, so just

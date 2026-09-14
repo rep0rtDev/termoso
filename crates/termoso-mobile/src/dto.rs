@@ -88,6 +88,8 @@ pub struct HostItem {
     pub group_path: Vec<String>,
     /// `ssh` | `telnet`.
     pub protocol: String,
+    /// The SSH section opens over Mosh by default.
+    pub use_mosh: bool,
     pub username: String,
     pub port: u16,
     pub tags: Vec<String>,
@@ -109,6 +111,7 @@ impl From<hosts::HostCard> for HostItem {
             group_id: c.group_id.map(|g| g.to_string()),
             group_path: c.group_path,
             protocol: c.protocol,
+            use_mosh: c.use_mosh,
             username: c.username,
             port: c.port,
             tags: c.tags,
@@ -130,7 +133,7 @@ pub struct EnvVar {
 
 /// What the host editor edits. `None` for optional fields means "inherit /
 /// unset". Fields the mobile editor does not expose (proxy, jump chain,
-/// Telnet section, Mosh, colour scheme…) are preserved on save.
+/// Telnet section, colour scheme…) are preserved on save.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct HostDraft {
     pub id: Option<String>,
@@ -149,6 +152,10 @@ pub struct HostDraft {
     pub ssh_id: bool,
     /// Passkey type to try first when `ssh_id` is set.
     pub ssh_id_key_type: Option<SshIdKeyKind>,
+    /// Open terminals over Mosh (UDP) by default; SSH bootstraps the server.
+    pub use_mosh: bool,
+    /// Custom `mosh-server` command line; `None` = the built-in default.
+    pub mosh_server_command: Option<String>,
     pub tag_ids: Vec<String>,
     pub notes: String,
     pub os_name: Option<String>,
@@ -181,6 +188,8 @@ impl HostDraft {
             identity_id: None,
             ssh_id: false,
             ssh_id_key_type: None,
+            use_mosh: false,
+            mosh_server_command: None,
             tag_ids: Vec::new(),
             notes: String::new(),
             os_name: None,
@@ -211,6 +220,8 @@ impl From<hosts::HostForm> for HostDraft {
             identity_id: f.identity_id.map(|i| i.to_string()),
             ssh_id: f.ssh_id,
             ssh_id_key_type: f.ssh_id_key_type.map(Into::into),
+            use_mosh: f.use_mosh,
+            mosh_server_command: f.mosh_server_command,
             tag_ids: f.tag_ids.iter().map(ToString::to_string).collect(),
             notes: f.notes,
             os_name: f.os_name,
@@ -247,6 +258,11 @@ impl HostDraft {
         base.identity_id = parse_opt_id(&self.identity_id)?;
         base.ssh_id = self.ssh_id;
         base.ssh_id_key_type = self.ssh_id_key_type.map(Into::into);
+        base.use_mosh = self.use_mosh;
+        base.mosh_server_command = self
+            .mosh_server_command
+            .map(|c| c.trim().to_string())
+            .filter(|c| !c.is_empty());
         base.tag_ids = parse_ids(&self.tag_ids)?;
         base.notes = self.notes;
         base.os_name = self.os_name;

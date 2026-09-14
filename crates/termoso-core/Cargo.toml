@@ -33,8 +33,11 @@ ctap-hid-fido2 = { version = "3.5", optional = true }
 # platform hands us (Android USB host / NFC).
 ciborium = { version = "0.2", optional = true }
 p256 = { version = "0.13", optional = true, features = ["ecdh"] }
-aes = { version = "0.8", optional = true }
+aes = { version = "0.8" }
 cbc = { version = "0.1", optional = true }
+# Mosh: AES-128-OCB3 datagrams + zlib-compressed instructions.
+ocb3 = { version = "0.1", default-features = false }
+flate2 = "1"
 hkdf = { workspace = true, optional = true }
 rand_core = { workspace = true, optional = true }
 # Software authenticator for tests (feature `fido2-soft`).
@@ -71,7 +74,7 @@ serial = ["dep:serialport", "dep:encoding_rs"]
 # FIDO2 security keys (`sk-ssh-ed25519@openssh.com`, `sk-ecdsa-sha2-nistp256@openssh.com`).
 fido2 = ["dep:ctap-hid-fido2"]
 # Transport-agnostic CTAP2 client (`fido2::ctap`, `fido2::hid`, `fido2::nfc`).
-fido2-ctap = ["dep:ciborium", "dep:p256", "dep:aes", "dep:cbc", "dep:hkdf", "dep:rand_core"]
+fido2-ctap = ["dep:ciborium", "dep:p256", "dep:cbc", "dep:hkdf", "dep:rand_core"]
 # In-memory CTAP2 authenticator (`fido2::soft`) – test double, not for production.
 fido2-soft = ["fido2-ctap", "dep:ed25519-dalek"]
 

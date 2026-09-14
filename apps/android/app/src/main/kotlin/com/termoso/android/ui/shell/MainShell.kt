@@ -74,6 +74,7 @@ import com.termoso.android.ui.vault.KnownHostsScreen
 import com.termoso.android.ui.vault.VaultScreen
 import com.termoso.core.KeyMods
 import com.termoso.core.PfKind
+import com.termoso.core.Transport
 import kotlinx.coroutines.launch
 
 object Routes {
@@ -203,6 +204,10 @@ fun MainShell(
 
     fun connectHost(hostId: String) {
         scope.launch { if (shell.connectHost(hostId) != null) openTerminal() }
+    }
+
+    fun connectHostMosh(hostId: String) {
+        scope.launch { if (shell.connectHost(hostId, Transport.MOSH) != null) openTerminal() }
     }
 
     fun openSftp(connectionId: String) {
@@ -350,6 +355,7 @@ fun MainShell(
                     onNewHost = { nav.navigate(Routes.hostNew(group)) },
                     onEditHost = { nav.navigate(Routes.hostEdit(it)) },
                     onConnect = ::connectHost,
+                    onConnectMosh = ::connectHostMosh,
                     onSftp = ::sftpHost,
                     onForward = { nav.navigate(Routes.pfNew(PfKind.LOCAL, null, it)) },
                 )
