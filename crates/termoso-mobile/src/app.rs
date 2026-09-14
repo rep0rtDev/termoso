@@ -3,6 +3,7 @@
 //! caller runs off the main thread (generation) or which run on the Rust
 //! runtime and report back through the listener (sessions).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 
@@ -25,6 +26,7 @@ use crate::forward::{self, PfRuleDraft, PfRuleItem, PfTunnel, TunnelLaunch, Tunn
 use crate::session::{Launch, SessionListener, SshSession, TerminalOptions};
 use crate::settings::MobileSettings;
 use crate::sftp::{SftpLaunch, SftpListener, SftpSession};
+use crate::snippets::{self, SnippetDraft, SnippetItem, SnippetPackageItem, SnippetRun};
 
 const DB_FILE: &str = "vault.db";
 
@@ -726,6 +728,108 @@ impl TermosoApp {
                 listener,
             },
         ))
+    }
+
+    // ── snippets ──
+
+    /// Snippets of one vault (all when `None`), in display order.
+    pub fn snippets(&self, vault_id: Option<String>) -> Result<Vec<SnippetItem>> {
+        snippets::list(&self.store, &vault_id)
+    }
+
+    pub fn snippet(&self, id: String) -> Result<SnippetItem> {
+        snippets::get(&self.store, parse_id(&id)?)
+    }
+
+    /// Create (`draft.id == None`) or update a snippet and its target hosts.
+    pub fn save_snippet(&self, draft: SnippetDraft) -> Result<SnippetItem> {
+        snippets::save(&self.store, &draft)
+    }
+
+    pub fn duplicate_snippet(&self, id: String) -> Result<SnippetItem> {
+        snippets::duplicate(&self.store, parse_id(&id)?)
+    }
+
+    /// Remove a snippet, its host targets and startup references.
+    pub fn delete_snippet(&self, id: String) -> Result<()> {
+        snippets::delete(&self.store, parse_id(&id)?)
+    }
+
+    /// Copy (or move) a snippet to another vault, at the top level.
+    pub fn copy_snippet_to_vault(
+        &self,
+        id: String,
+        vault_id: String,
+        move_snippet: bool,
+    ) -> Result<SnippetItem> {
+        snippets::copy_to_vault(
+            &self.store,
+            parse_id(&id)?,
+            parse_id(&vault_id)?,
+            move_snippet,
+        )
+    }
+
+    /// Packages of one vault (all when `None`), sorted by label.
+    pub fn snippet_packages(&self, vault_id: Option<String>) -> Result<Vec<SnippetPackageItem>> {
+        snippets::packages(&self.store, &vault_id)
+    }
+
+    pub fn save_snippet_package(
+        &self,
+        vault_id: String,
+        id: Option<String>,
+        label: String,
+        parent_id: Option<String>,
+    ) -> Result<SnippetPackageItem> {
+        snippets::save_package(&self.store, &vault_id, &id, &label, &parent_id)
+    }
+
+    /// Remove a package; its snippets and sub-packages move to the parent.
+    pub fn delete_snippet_package(&self, id: String) -> Result<()> {
+        snippets::delete_package(&self.store, parse_id(&id)?)
+    }
+
+    /// Copy (or move) a package with its subtree to another vault.
+    pub fn copy_snippet_package_to_vault(
+        &self,
+        id: String,
+        vault_id: String,
+        move_package: bool,
+    ) -> Result<SnippetPackageItem> {
+        snippets::copy_package_to_vault(
+            &self.store,
+            parse_id(&id)?,
+            parse_id(&vault_id)?,
+            move_package,
+        )
+    }
+
+    /// `{{name}}` placeholders of a script being edited, in order.
+    pub fn snippet_variables(&self, script: String) -> Vec<String> {
+        termoso_client::snippets::variables(&script)
+    }
+
+    /// The text a run would type: variables expanded, line endings
+    /// normalised, trailing newline present unless `paste`.
+    pub fn preview_snippet(
+        &self,
+        id: String,
+        vars: HashMap<String, String>,
+        paste: bool,
+    ) -> Result<String> {
+        snippets::prepare(&self.store, parse_id(&id)?, &vars, paste).map(|(text, _)| text)
+    }
+
+    /// Type a snippet into the given live sessions.
+    pub fn run_snippet(
+        &self,
+        id: String,
+        sessions: Vec<Arc<SshSession>>,
+        vars: HashMap<String, String>,
+        paste: bool,
+    ) -> Result<SnippetRun> {
+        snippets::run(&self.store, parse_id(&id)?, &sessions, &vars, paste)
     }
 }
 

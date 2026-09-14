@@ -81,6 +81,7 @@ import com.termoso.android.data.TerminalSession
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.HostAvatar
 import com.termoso.android.ui.shell.ShellViewModel
+import com.termoso.android.ui.snippets.SnippetPickerSheet
 import com.termoso.core.SessionState
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -92,7 +93,12 @@ import kotlinx.coroutines.launch
  * navigates away; this screen only shows them.
  */
 @Composable
-fun TerminalScreen(shell: ShellViewModel, onBack: () -> Unit, onNewSession: () -> Unit) {
+fun TerminalScreen(
+    shell: ShellViewModel,
+    onBack: () -> Unit,
+    onNewSession: () -> Unit,
+    onOpenSnippets: () -> Unit,
+) {
     val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
     val activeId by shell.sessions.activeId.collectAsStateWithLifecycle()
     val settings by shell.repo.settings.collectAsStateWithLifecycle()
@@ -150,6 +156,7 @@ fun TerminalScreen(shell: ShellViewModel, onBack: () -> Unit, onNewSession: () -
                     cursorStyle = settings.cursorStyle,
                     haptics = settings.hapticFeedback,
                     bell = settings.terminalBell,
+                    onOpenSnippets = onOpenSnippets,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
@@ -259,6 +266,7 @@ private fun ActiveSession(
     cursorStyle: String,
     haptics: Boolean,
     bell: Boolean,
+    onOpenSnippets: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -272,6 +280,7 @@ private fun ActiveSession(
     var panelExpanded by rememberSaveable { mutableStateOf(false) }
     var imeShown by remember { mutableStateOf(false) }
     var hiddenInput by remember { mutableStateOf(false) }
+    var snippetPicker by remember { mutableStateOf(false) }
     var menuAt by remember { mutableStateOf<Pair<CellPoint, Offset>?>(null) }
     var zoomDelta by rememberSaveable { mutableStateOf(0) }
     var scrolled by remember { mutableStateOf(false) }
@@ -382,6 +391,7 @@ private fun ActiveSession(
                     }
                 },
                 onHiddenInput = { hiddenInput = true },
+                onSnippets = { snippetPicker = true },
                 onPaste = ::paste,
                 onKeyPressed = ::tap,
             )
@@ -390,6 +400,14 @@ private fun ActiveSession(
 
     prompt?.let { pending ->
         PromptDialog(pending) { answer -> scope.launch { session.answer(pending, answer) } }
+    }
+    if (snippetPicker) {
+        SnippetPickerSheet(
+            shell = shell,
+            sessionId = session.id,
+            onOpenSnippets = onOpenSnippets,
+            onClose = { snippetPicker = false },
+        )
     }
     if (hiddenInput) {
         HiddenInputDialog(

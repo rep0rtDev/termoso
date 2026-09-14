@@ -11,5 +11,6 @@
 pub mod error;
 pub mod hosts;
 pub mod keychain;
+pub mod snippets;
 
 pub use error::{ClientError, Result};

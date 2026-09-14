@@ -58,6 +58,8 @@ import com.termoso.android.ui.keychain.KeychainScreen
 import com.termoso.android.ui.settings.SettingsScreen
 import com.termoso.android.ui.sftp.SftpPickScreen
 import com.termoso.android.ui.sftp.SftpScreen
+import com.termoso.android.ui.snippets.SnippetEditorScreen
+import com.termoso.android.ui.snippets.SnippetsScreen
 import com.termoso.android.ui.settings.TerminalAppearanceScreen
 import com.termoso.android.ui.terminal.TerminalScreen
 import com.termoso.android.ui.vault.HistoryScreen
@@ -92,6 +94,9 @@ object Routes {
     const val PF_WIZARD = "pfWizard"
     const val PF_NEW = "pfNew?kind={kind}&vault={vault}&host={host}"
     const val PF_EDIT = "pfEdit/{id}"
+    const val SNIPPETS = "snippets?pkg={pkg}"
+    const val SNIPPET_NEW = "snippetNew?vault={vault}&pkg={pkg}"
+    const val SNIPPET_EDIT = "snippetEdit/{id}"
 
     fun hosts(group: String?) = if (group == null) "hosts" else "hosts?group=$group"
     fun hostNew(group: String?) = if (group == null) "hostNew" else "hostNew?group=$group"
@@ -103,6 +108,9 @@ object Routes {
     fun pfNew(kind: PfKind, vault: String?, host: String?) =
         "pfNew?kind=${kind.name}" + (vault?.let { "&vault=$it" } ?: "") + (host?.let { "&host=$it" } ?: "")
     fun pfEdit(id: String) = "pfEdit/$id"
+    fun snippets(pkg: String?) = if (pkg == null) "snippets" else "snippets?pkg=$pkg"
+    fun snippetNew(vault: String, pkg: String?) = "snippetNew?vault=$vault" + (pkg?.let { "&pkg=$it" } ?: "")
+    fun snippetEdit(id: String) = "snippetEdit/$id"
 }
 
 private class Tab(val route: String, val label: String, val icon: ImageVector, val selectedIcon: ImageVector)
@@ -211,6 +219,7 @@ fun MainShell(
                     onOpenHosts = { nav.navigate(Routes.hosts(null)) },
                     onOpenKeychain = { nav.navigate(Routes.KEYCHAIN) },
                     onOpenForwarding = { nav.navigate(Routes.FORWARDING) },
+                    onOpenSnippets = { nav.navigate(Routes.snippets(null)) },
                     onOpenKnownHosts = { nav.navigate(Routes.KNOWN_HOSTS) },
                     onOpenHistory = { nav.navigate(Routes.HISTORY) },
                 )
@@ -351,6 +360,35 @@ fun MainShell(
                     onClose = { nav.popBackStack() },
                 )
             }
+            composable(Routes.SNIPPETS, arguments = listOf(optArg("pkg"))) { entry ->
+                SnippetsScreen(
+                    shell = shell,
+                    packageId = entry.arguments?.getString("pkg"),
+                    onBack = { nav.popBackStack() },
+                    onOpenPackage = { nav.navigate(Routes.snippets(it)) },
+                    onNewSnippet = { vault, pkg -> nav.navigate(Routes.snippetNew(vault, pkg)) },
+                    onEditSnippet = { nav.navigate(Routes.snippetEdit(it)) },
+                    onOpenTerminal = ::openTerminal,
+                )
+            }
+            composable(Routes.SNIPPET_NEW, arguments = listOf(optArg("vault"), optArg("pkg"))) { entry ->
+                SnippetEditorScreen(
+                    shell = shell,
+                    snippetId = null,
+                    vaultId = entry.arguments?.getString("vault"),
+                    packageId = entry.arguments?.getString("pkg"),
+                    onClose = { nav.popBackStack() },
+                )
+            }
+            composable(Routes.SNIPPET_EDIT, arguments = listOf(idArg)) { entry ->
+                SnippetEditorScreen(
+                    shell = shell,
+                    snippetId = entry.arguments?.getString("id") ?: "",
+                    vaultId = null,
+                    packageId = null,
+                    onClose = { nav.popBackStack() },
+                )
+            }
             composable(Routes.SFTP_PICK) {
                 SftpPickScreen(
                     shell = shell,
@@ -370,6 +408,7 @@ fun MainShell(
                 TerminalScreen(
                     shell = shell,
                     onBack = { nav.popBackStack() },
+                    onOpenSnippets = { nav.navigate(Routes.snippets(null)) },
                     onNewSession = {
                         // Leave the terminal first so it is not part of the
                         // saved tab state that restoreState would bring back.
