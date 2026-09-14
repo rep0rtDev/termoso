@@ -10,6 +10,7 @@ use termoso_proto::vault::VaultRole;
 use uuid::Uuid;
 
 use crate::error::{MobileError, Result};
+use crate::sshid::SshIdKeyKind;
 
 pub(crate) fn parse_id(s: &str) -> Result<Uuid> {
     Uuid::parse_str(s.trim()).map_err(MobileError::from)
@@ -129,7 +130,7 @@ pub struct EnvVar {
 
 /// What the host editor edits. `None` for optional fields means "inherit /
 /// unset". Fields the mobile editor does not expose (proxy, jump chain,
-/// Telnet section, Mosh, SSH ID, colour scheme…) are preserved on save.
+/// Telnet section, Mosh, colour scheme…) are preserved on save.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct HostDraft {
     pub id: Option<String>,
@@ -144,6 +145,10 @@ pub struct HostDraft {
     pub ssh_key_id: Option<String>,
     /// Use an existing identity instead of the inline username/password/key.
     pub identity_id: Option<String>,
+    /// Inline credentials log in with the account's SSH ID passkeys.
+    pub ssh_id: bool,
+    /// Passkey type to try first when `ssh_id` is set.
+    pub ssh_id_key_type: Option<SshIdKeyKind>,
     pub tag_ids: Vec<String>,
     pub notes: String,
     pub os_name: Option<String>,
@@ -174,6 +179,8 @@ impl HostDraft {
             password: None,
             ssh_key_id: None,
             identity_id: None,
+            ssh_id: false,
+            ssh_id_key_type: None,
             tag_ids: Vec::new(),
             notes: String::new(),
             os_name: None,
@@ -202,6 +209,8 @@ impl From<hosts::HostForm> for HostDraft {
             password: None,
             ssh_key_id: f.ssh_key_id.map(|k| k.to_string()),
             identity_id: f.identity_id.map(|i| i.to_string()),
+            ssh_id: f.ssh_id,
+            ssh_id_key_type: f.ssh_id_key_type.map(Into::into),
             tag_ids: f.tag_ids.iter().map(ToString::to_string).collect(),
             notes: f.notes,
             os_name: f.os_name,
@@ -236,6 +245,8 @@ impl HostDraft {
         base.password = self.password;
         base.ssh_key_id = parse_opt_id(&self.ssh_key_id)?;
         base.identity_id = parse_opt_id(&self.identity_id)?;
+        base.ssh_id = self.ssh_id;
+        base.ssh_id_key_type = self.ssh_id_key_type.map(Into::into);
         base.tag_ids = parse_ids(&self.tag_ids)?;
         base.notes = self.notes;
         base.os_name = self.os_name;
@@ -327,6 +338,8 @@ pub struct InheritedInfo {
     pub ssh_key_label: Option<String>,
     pub identity_id: Option<String>,
     pub identity_label: Option<String>,
+    /// The inherited credentials log in with SSH ID.
+    pub ssh_id: bool,
 }
 
 impl From<hosts::Inherited> for InheritedInfo {
@@ -340,6 +353,7 @@ impl From<hosts::Inherited> for InheritedInfo {
             ssh_key_label: i.ssh_key_label,
             identity_id: i.identity_id.map(|k| k.to_string()),
             identity_label: i.identity_label,
+            ssh_id: i.ssh_id,
         }
     }
 }
@@ -484,6 +498,9 @@ pub struct IdentityItem {
     pub ssh_key_id: Option<String>,
     pub ssh_key_label: Option<String>,
     pub has_certificate: bool,
+    /// Logs in with the account's SSH ID passkeys.
+    pub ssh_id: bool,
+    pub ssh_id_key_type: Option<SshIdKeyKind>,
     pub updated_at: i64,
 }
 
@@ -498,6 +515,8 @@ impl From<keychain::IdentityCard> for IdentityItem {
             ssh_key_id: i.ssh_key_id.map(|k| k.to_string()),
             ssh_key_label: i.ssh_key_label,
             has_certificate: i.has_certificate,
+            ssh_id: i.ssh_id,
+            ssh_id_key_type: i.ssh_id_key_type.map(Into::into),
             updated_at: millis(i.updated_at),
         }
     }
@@ -512,6 +531,8 @@ pub struct IdentityDraft {
     /// `None` keeps the stored password, `Some("")` clears it.
     pub password: Option<String>,
     pub ssh_key_id: Option<String>,
+    pub ssh_id: bool,
+    pub ssh_id_key_type: Option<SshIdKeyKind>,
 }
 
 impl IdentityDraft {
@@ -524,8 +545,8 @@ impl IdentityDraft {
             password: self.password,
             ssh_key_id: parse_opt_id(&self.ssh_key_id)?,
             ssh_certificate_id: None,
-            ssh_id: false,
-            ssh_id_key_type: None,
+            ssh_id: self.ssh_id,
+            ssh_id_key_type: self.ssh_id_key_type.map(Into::into),
         })
     }
 }

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
@@ -80,6 +81,7 @@ fun AccountScreen(
     onBack: () -> Unit,
     onSignedOut: () -> Unit,
     onTeams: () -> Unit,
+    onSshId: () -> Unit,
 ) {
     val status by account.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -196,6 +198,16 @@ fun AccountScreen(
                     },
                     leading = { IconTile(Icons.Filled.Group) },
                     modifier = Modifier.clickable(onClick = onTeams),
+                )
+            }
+
+            SectionLabel("SSH ID")
+            SectionCard {
+                ChevronRow(
+                    title = "SSH ID",
+                    subtitle = "Publish this phone's public keys under a handle; allow it on a server with one command",
+                    leading = { IconTile(Icons.Filled.Fingerprint) },
+                    modifier = Modifier.clickable(onClick = onSshId),
                 )
             }
 

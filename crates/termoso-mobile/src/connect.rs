@@ -467,6 +467,9 @@ async fn ssh_connect(
                 certificate,
             });
         }
+        if let Some(i) = identity.as_ref().filter(|i| i.data.ssh_id) {
+            auth.extend(crate::sshid::auth_methods(store, i.data.ssh_id_key_type)?);
+        }
         if let Some(pw) = &password {
             auth.push(AuthMethod::Password(pw.clone()));
         }

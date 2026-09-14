@@ -303,6 +303,10 @@ impl AccountRuntime {
         &self.store
     }
 
+    pub(crate) fn store_arc(&self) -> Arc<Store> {
+        self.store.clone()
+    }
+
     pub(crate) fn notify_changed(&self, change: SyncChange) {
         if let Some(l) = self.listener() {
             l.on_changed(change);
@@ -649,6 +653,13 @@ impl AccountRuntime {
             }
         });
         let runner = tokio::spawn(engine.clone().run(cancel.clone()));
+        let sshid: Weak<Self> = Arc::downgrade(self);
+        tokio::spawn(async move {
+            let Some(rt) = sshid.upgrade() else { return };
+            if let Err(e) = rt.sshid_refresh().await {
+                tracing::debug!("sshid refresh skipped: {e}");
+            }
+        });
         inner.engine = Some(Engine {
             engine,
             cancel,

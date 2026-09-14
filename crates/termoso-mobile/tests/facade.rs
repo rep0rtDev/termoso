@@ -13,9 +13,9 @@ use russh::{Channel, ChannelId, MethodSet};
 use termoso_mobile::{
     HostKeyChoice, IdentityDraft, KeyAlgorithm, KeyGenerateDraft, KeyImportDraft, LiveEndReason,
     LiveListener, LiveParticipantCard, MobileError, PfKind, PfRuleDraft, PromptAnswer,
-    PromptRequest, QuickTarget, SessionListener, SessionState, SshSession, TerminalOptions,
-    TermosoApp, TunnelListener, TunnelState, VaultKind, flag, generate_master_key, is_live_link,
-    parse_target, profile_exists,
+    PromptRequest, QuickTarget, SessionListener, SessionState, SshIdKeyKind, SshSession,
+    TerminalOptions, TermosoApp, TunnelListener, TunnelState, VaultKind, flag, generate_master_key,
+    is_live_link, parse_target, profile_exists, sshid_handle_valid,
 };
 use tokio::net::TcpListener;
 
@@ -455,9 +455,12 @@ fn keychain_and_identities() {
             username: "deploy".into(),
             password: Some("pw".into()),
             ssh_key_id: Some(key.id.clone()),
+            ssh_id: false,
+            ssh_id_key_type: None,
         })
         .unwrap();
     assert!(ident.has_password);
+    assert!(!ident.ssh_id);
     assert_eq!(ident.ssh_key_label.as_deref(), Some("phone"));
     assert_eq!(app.keys(None).unwrap().len(), 2);
     assert_eq!(
@@ -470,6 +473,55 @@ fn keychain_and_identities() {
     app.delete_key(imported.id).unwrap();
     assert!(app.keys(None).unwrap().is_empty());
     assert!(app.identities(None).unwrap().is_empty());
+}
+
+#[test]
+fn sshid_identity_and_signed_out_view() {
+    let (app, _dir) = app();
+    let vault = app.vaults().unwrap()[0].id.clone();
+    // Signed out: no handle, no keys, nothing to publish; no network.
+    let view = app.sshid().unwrap();
+    assert!(!view.signed_in);
+    assert!(view.handle.is_none() && view.keys.is_empty() && view.device_keys.is_empty());
+    assert!(matches!(
+        app.sshid_create("alice".into()),
+        Err(MobileError::Invalid { .. })
+    ));
+    assert!(sshid_handle_valid("@Alice".into()) && !sshid_handle_valid("a".into()));
+
+    // An identity may log in with SSH ID alone (no username / password / key).
+    let ident = app
+        .save_identity(IdentityDraft {
+            id: None,
+            vault_id: vault.clone(),
+            label: "me".into(),
+            username: String::new(),
+            password: None,
+            ssh_key_id: None,
+            ssh_id: true,
+            ssh_id_key_type: Some(SshIdKeyKind::Ecdsa),
+        })
+        .unwrap();
+    assert!(ident.ssh_id && !ident.has_password && ident.ssh_key_id.is_none());
+    assert_eq!(ident.ssh_id_key_type, Some(SshIdKeyKind::Ecdsa));
+    let again = app.identities(None).unwrap();
+    assert!(again[0].ssh_id && again[0].ssh_id_key_type == Some(SshIdKeyKind::Ecdsa));
+
+    // Same on a host's inline credentials; the draft round-trips.
+    let mut draft = app.new_host_draft(vault.clone(), None).unwrap();
+    draft.label = "box".into();
+    draft.address = "box.local".into();
+    draft.ssh_id = true;
+    draft.ssh_id_key_type = Some(SshIdKeyKind::Rsa);
+    let saved = app.save_host(draft).unwrap();
+    let back = app.host_draft(saved.id.clone()).unwrap();
+    assert!(back.ssh_id && back.username.is_empty());
+    assert_eq!(back.ssh_id_key_type, Some(SshIdKeyKind::Rsa));
+    // Turning SSH ID off drops the preferred type too.
+    let mut off = back;
+    off.ssh_id = false;
+    let off = app.host_draft(app.save_host(off).unwrap().id).unwrap();
+    assert!(!off.ssh_id && off.ssh_id_key_type.is_none());
 }
 
 #[test]
