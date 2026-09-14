@@ -19,8 +19,9 @@ use termoso_proto::account::{
 };
 use termoso_proto::auth::{
     AuthResponse, Device, DeviceApproveRequest, DeviceApproveResendRequest, DeviceList,
-    LoginFinishRequest, LoginStartRequest, LoginStartResponse, MfaCredential, MfaVerifyRequest,
-    RegisterFinishRequest, RegisterStartRequest, RegisterStartResponse, WebauthnChallengeRequest,
+    LoginFinishRequest, LoginStartRequest, LoginStartResponse, MfaCredential, MfaStatus,
+    MfaVerifyRequest, RegisterFinishRequest, RegisterStartRequest, RegisterStartResponse,
+    WebauthnChallengeRequest, WebauthnCredentialInfo, WebauthnRegisterFinishRequest,
 };
 use termoso_proto::error::ApiError;
 use termoso_proto::live::{CreateLiveSessionRequest, LiveSession, LiveSessionList};
@@ -366,6 +367,45 @@ impl ApiClient {
     /// `DELETE /account/devices/{id}`.
     pub async fn revoke_device(&self, id: Uuid) -> Result<()> {
         self.delete(&format!("account/devices/{id}")).await
+    }
+
+    // ─────────────────────────────── MFA ──────────────────────────────
+
+    /// `GET /account/mfa`.
+    pub async fn mfa_status(&self) -> Result<MfaStatus> {
+        self.get("account/mfa").await
+    }
+
+    /// `POST /account/mfa/webauthn/register/start` — WebAuthn
+    /// `PublicKeyCredentialCreationOptions` (`{"publicKey": …}`).
+    pub async fn webauthn_register_start(&self) -> Result<serde_json::Value> {
+        self.post(
+            "account/mfa/webauthn/register/start",
+            &serde_json::json!({}),
+        )
+        .await
+    }
+
+    /// `POST /account/mfa/webauthn/register/finish` with the
+    /// `RegisterPublicKeyCredential` the authenticator produced.
+    pub async fn webauthn_register_finish(
+        &self,
+        name: &str,
+        credential: serde_json::Value,
+    ) -> Result<WebauthnCredentialInfo> {
+        self.post(
+            "account/mfa/webauthn/register/finish",
+            &WebauthnRegisterFinishRequest {
+                name: name.into(),
+                credential,
+            },
+        )
+        .await
+    }
+
+    /// `DELETE /account/mfa/webauthn/{id}`.
+    pub async fn webauthn_delete(&self, id: Uuid) -> Result<()> {
+        self.delete(&format!("account/mfa/webauthn/{id}")).await
     }
 
     // ───────────────────────────── SSH ID ─────────────────────────────

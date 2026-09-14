@@ -6,6 +6,11 @@ mod common;
 
 use common::*;
 use reqwest::{Method, StatusCode};
+use termoso_core::fido2::Fido2Error;
+use termoso_core::fido2::ctap::Authenticator;
+use termoso_core::fido2::soft::{Config, SoftToken};
+use termoso_core::fido2::webauthn::{self, CreationOptions, RequestOptions};
+use termoso_proto::auth::WebauthnCredentialInfo;
 use termoso_proto::auth::{
     AuthResponse, BackupCodes, MfaCredential, MfaMethod, MfaStatus, MfaVerifyRequest,
     TotpCodeRequest, TotpSetupResponse, WebauthnChallengeRequest, WebauthnRegisterFinishRequest,
@@ -629,4 +634,219 @@ async fn webauthn_boundaries_without_an_authenticator() {
     .await
     .unwrap_err();
     assert_eq!(st, StatusCode::UNAUTHORIZED);
+}
+
+const SOFT_PIN: &str = "123456";
+
+fn soft_token() -> (SoftToken, Authenticator<termoso_core::fido2::soft::Direct>) {
+    let token = SoftToken::new(Config {
+        pin: Some(SOFT_PIN.into()),
+        ..Config::default()
+    });
+    let auth = Authenticator::open(token.direct()).expect("soft token opens");
+    (token, auth)
+}
+
+async fn registration_options(s: &TestServer, token: &str) -> CreationOptions {
+    let ccr: serde_json::Value = s
+        .json(
+            Method::POST,
+            "/account/mfa/webauthn/register/start",
+            Some(token),
+            NOBODY,
+        )
+        .await;
+    CreationOptions::parse(&ccr).expect("creation options parse")
+}
+
+async fn assertion_options(s: &TestServer, mfa_token: &str) -> RequestOptions {
+    let rcr: serde_json::Value = s
+        .json(
+            Method::POST,
+            "/auth/mfa/webauthn/challenge",
+            None,
+            Some(&WebauthnChallengeRequest {
+                mfa_token: mfa_token.into(),
+            }),
+        )
+        .await;
+    RequestOptions::parse(&rcr).expect("request options parse")
+}
+
+/// The whole security-key life cycle the way the mobile client drives it:
+/// a CTAP2 authenticator answers the server's WebAuthn challenges through
+/// `termoso_core::fido2::webauthn`, never through a browser.
+#[tokio::test]
+async fn webauthn_security_key_register_login_and_delete() {
+    let Some(s) = server().await else { return };
+    let u = register(s, &unique_email("skey"), "pw-skey-123456789").await;
+    let (token, mut auth) = soft_token();
+
+    // Registration minted for a foreign origin signs the wrong client data
+    // and is refused; nothing is stored.
+    let options = registration_options(s, u.token()).await;
+    assert_eq!(options.rp_id("http://ignored").unwrap(), WEBAUTHN_RP_ID);
+    assert!(options.requires_user_verification());
+    let foreign = webauthn::register(
+        &mut auth,
+        &options,
+        "https://evil.example",
+        "usb",
+        Some(SOFT_PIN),
+    )
+    .expect("token signs whatever client data it is given");
+    s.expect_status(
+        Method::POST,
+        "/account/mfa/webauthn/register/finish",
+        Some(u.token()),
+        Some(&WebauthnRegisterFinishRequest {
+            name: "Evil".into(),
+            credential: foreign,
+        }),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+    assert!(
+        mfa_status(s, u.token())
+            .await
+            .webauthn_credentials
+            .is_empty()
+    );
+
+    // The relying party demands user verification, so a token with a PIN
+    // refuses to mint without it (typed, before any I/O to the server).
+    let options = registration_options(s, u.token()).await;
+    assert!(matches!(
+        webauthn::register(&mut auth, &options, WEBAUTHN_ORIGIN, "usb", None),
+        Err(Fido2Error::PinRequired)
+    ));
+
+    // Proper ceremony: registration adds the first second factor, which
+    // also mints backup codes.
+    let credential =
+        webauthn::register(&mut auth, &options, WEBAUTHN_ORIGIN, "usb", Some(SOFT_PIN))
+            .expect("register");
+    assert_eq!(credential["type"], "public-key");
+    assert_eq!(credential["id"], credential["rawId"]);
+    assert_eq!(
+        credential["response"]["transports"],
+        serde_json::json!(["usb"])
+    );
+    let info: WebauthnCredentialInfo = s
+        .json(
+            Method::POST,
+            "/account/mfa/webauthn/register/finish",
+            Some(u.token()),
+            Some(&WebauthnRegisterFinishRequest {
+                name: "  Soft key  ".into(),
+                credential,
+            }),
+        )
+        .await;
+    assert_eq!(info.name, "Soft key");
+    assert!(info.last_used_at.is_none());
+    assert_eq!(token.credential_count(), 2, "one foreign, one real");
+    let st = mfa_status(s, u.token()).await;
+    assert_eq!(st.webauthn_credentials.len(), 1);
+    assert_eq!(st.webauthn_credentials[0].id, info.id);
+    assert!(st.backup_codes_remaining > 0);
+    assert!(!st.totp_enabled);
+
+    // A second registration must exclude the existing credential so the
+    // same token cannot be enrolled twice.
+    let again = registration_options(s, u.token()).await;
+    let err = webauthn::register(&mut auth, &again, WEBAUTHN_ORIGIN, "usb", Some(SOFT_PIN))
+        .expect_err("excluded credential");
+    assert_eq!(
+        err,
+        Fido2Error::Other("this device is already registered".into())
+    );
+
+    // Login now stops at MFA and offers the key.
+    let (mfa_token, methods) = login_to_mfa(s, &u).await;
+    assert!(methods.contains(&MfaMethod::Webauthn));
+    let request = assertion_options(s, &mfa_token).await;
+    assert_eq!(request.rp_id(), WEBAUTHN_RP_ID);
+    assert_eq!(request.allowed_credentials().len(), 1);
+    assert!(request.requires_user_verification());
+
+    // No PIN → no user verification → the token refuses before signing.
+    assert!(matches!(
+        webauthn::assert(&mut auth, &request, WEBAUTHN_ORIGIN, None),
+        Err(Fido2Error::PinRequired)
+    ));
+
+    // Wrong origin: valid signature over the wrong client data → 401.
+    let wrong = webauthn::assert(&mut auth, &request, "https://evil.example", Some(SOFT_PIN))
+        .expect("token signs");
+    let (st, _) = verify(
+        s,
+        &u,
+        &mfa_token,
+        MfaCredential::Webauthn { credential: wrong },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+
+    // A different token knows nothing about this relying party.
+    let (_, mut stranger) = soft_token();
+    assert!(matches!(
+        webauthn::assert(&mut stranger, &request, WEBAUTHN_ORIGIN, Some(SOFT_PIN)),
+        Err(Fido2Error::WrongDevice)
+    ));
+
+    // The failed attempt consumed the challenge; ask for a fresh one and
+    // answer it properly.
+    let request = assertion_options(s, &mfa_token).await;
+    let good =
+        webauthn::assert(&mut auth, &request, WEBAUTHN_ORIGIN, Some(SOFT_PIN)).expect("assert");
+    assert_eq!(good["type"], "public-key");
+    assert!(good["response"]["userHandle"].is_null() || good["response"]["userHandle"].is_string());
+    let session = session_token(
+        verify(
+            s,
+            &u,
+            &mfa_token,
+            MfaCredential::Webauthn {
+                credential: good.clone(),
+            },
+        )
+        .await
+        .expect("security key signs in"),
+    );
+    let st = mfa_status(s, &session).await;
+    assert!(st.webauthn_credentials[0].last_used_at.is_some());
+
+    // Replaying the assertion against a new challenge fails: the signed
+    // client data carries the old challenge.
+    let (mfa_token, _) = login_to_mfa(s, &u).await;
+    let _fresh = assertion_options(s, &mfa_token).await;
+    let (st, _) = verify(
+        s,
+        &u,
+        &mfa_token,
+        MfaCredential::Webauthn { credential: good },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(st, StatusCode::UNAUTHORIZED);
+
+    // Removing the only second factor drops the backup codes with it and
+    // makes the next login single-step again.
+    s.expect_status(
+        Method::DELETE,
+        &format!("/account/mfa/webauthn/{}", info.id),
+        Some(&session),
+        NOBODY,
+        StatusCode::NO_CONTENT,
+    )
+    .await;
+    let st = mfa_status(s, &session).await;
+    assert!(st.webauthn_credentials.is_empty());
+    assert_eq!(st.backup_codes_remaining, 0);
+    assert!(matches!(
+        login(s, &u.email, &u.password).await,
+        AuthResponse::Authenticated(_)
+    ));
 }

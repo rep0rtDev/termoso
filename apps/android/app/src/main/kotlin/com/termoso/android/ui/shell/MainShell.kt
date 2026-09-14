@@ -42,6 +42,7 @@ import com.termoso.android.data.SftpManager
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.account.AccountScreen
 import com.termoso.android.ui.account.AuthMode
+import com.termoso.android.ui.account.SecurityKeysScreen
 import com.termoso.android.ui.account.SignInScreen
 import com.termoso.android.ui.account.SshIdScreen
 import com.termoso.android.ui.connections.ConnectionsScreen
@@ -99,6 +100,7 @@ object Routes {
     const val ACCOUNT = "account"
     const val TEAMS = "teams"
     const val SSH_ID = "sshId"
+    const val SECURITY_KEYS = "securityKeys"
     const val TEAM = "team/{id}"
     const val TEAM_ACTIVITY = "team/{id}/activity"
     const val TEAM_VAULT = "teamVault/{id}"
@@ -305,9 +307,13 @@ fun MainShell(
                     onSignedOut = { nav.popBackStack() },
                     onTeams = { nav.navigate(Routes.TEAMS) },
                     onSshId = { nav.navigate(Routes.SSH_ID) },
+                    onSecurityKeys = { nav.navigate(Routes.SECURITY_KEYS) },
                 )
             }
             composable(Routes.SSH_ID) { SshIdScreen(shell = shell, onBack = { nav.popBackStack() }) }
+            composable(Routes.SECURITY_KEYS) {
+                SecurityKeysScreen(shell = shell, account = account, onBack = { nav.popBackStack() })
+            }
             composable(Routes.TEAMS) {
                 TeamsScreen(
                     shell = shell,

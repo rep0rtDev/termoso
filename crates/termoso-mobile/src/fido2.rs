@@ -19,6 +19,7 @@ use termoso_core::error::CoreError;
 use termoso_core::fido2::ctap::{self, Authenticator};
 use termoso_core::fido2::hid::{HidPackets, HidTransport};
 use termoso_core::fido2::nfc::{Apdu, NfcTransport};
+use termoso_core::fido2::webauthn;
 use termoso_core::fido2::{
     Fido2Device, Fido2Error, GenerateOptions, SecurityKeyInfo, SkAlgorithm, SkBackend,
 };
@@ -159,6 +160,30 @@ impl Auth {
             Auth::Usb(a) => a.pin_retries(),
             Auth::Nfc(a) => a.pin_retries(),
         }
+    }
+
+    fn webauthn_assert(
+        &mut self,
+        options: &webauthn::RequestOptions,
+        origin: &str,
+        pin: Option<&str>,
+    ) -> termoso_core::error::Result<serde_json::Value> {
+        Ok(match self {
+            Auth::Usb(a) => webauthn::assert(a, options, origin, pin)?,
+            Auth::Nfc(a) => webauthn::assert(a, options, origin, pin)?,
+        })
+    }
+
+    fn webauthn_register(
+        &mut self,
+        options: &webauthn::CreationOptions,
+        origin: &str,
+        pin: Option<&str>,
+    ) -> termoso_core::error::Result<serde_json::Value> {
+        Ok(match self {
+            Auth::Usb(a) => webauthn::register(a, options, origin, "usb", pin)?,
+            Auth::Nfc(a) => webauthn::register(a, options, origin, "nfc", pin)?,
+        })
     }
 }
 
@@ -409,9 +434,39 @@ impl Fido2Devices {
         if candidates.is_empty() {
             return Err(Fido2Error::NoDevice.into());
         }
+        self.first_recognising(&candidates, |auth| auth.sign(key, data, pin))
+    }
+
+    /// The named token, or every attached one.
+    fn candidates(
+        &self,
+        device_id: Option<&str>,
+    ) -> termoso_core::error::Result<Vec<Arc<Attached>>> {
+        let candidates: Vec<Arc<Attached>> = match device_id {
+            Some(id) => vec![
+                self.attached()
+                    .get(id)
+                    .cloned()
+                    .ok_or_else(|| Fido2Error::DeviceGone(id.to_string()))?,
+            ],
+            None => self.attached().values().cloned().collect(),
+        };
+        if candidates.is_empty() {
+            return Err(Fido2Error::NoDevice.into());
+        }
+        Ok(candidates)
+    }
+
+    /// Run `f` on each candidate until one does not answer "not my
+    /// credential" (what OpenSSH does with several tokens).
+    fn first_recognising<R>(
+        &self,
+        candidates: &[Arc<Attached>],
+        mut f: impl FnMut(&mut Auth) -> termoso_core::error::Result<R>,
+    ) -> termoso_core::error::Result<R> {
         let mut last = None;
-        for device in &candidates {
-            match self.with_device(device, |auth| auth.sign(key, data, pin)) {
+        for device in candidates {
+            match self.with_device(device, &mut f) {
                 Err(CoreError::Fido2(Fido2Error::WrongDevice)) if candidates.len() > 1 => {
                     last = Some(CoreError::Fido2(Fido2Error::WrongDevice));
                 }
@@ -419,6 +474,39 @@ impl Fido2Devices {
             }
         }
         Err(last.unwrap_or_else(|| Fido2Error::NoDevice.into()))
+    }
+
+    /// WebAuthn assertion for `options` (the relying party's request
+    /// options JSON) as seen from `origin`: the named token, or whichever
+    /// attached one holds one of the allowed credentials. Blocking.
+    pub(crate) fn webauthn_assert(
+        &self,
+        device_id: Option<&str>,
+        options: &serde_json::Value,
+        origin: &str,
+        pin: Option<&str>,
+    ) -> termoso_core::error::Result<serde_json::Value> {
+        let options = webauthn::RequestOptions::parse(options)?;
+        let candidates = self.candidates(device_id)?;
+        self.first_recognising(&candidates, |auth| {
+            auth.webauthn_assert(&options, origin, pin)
+        })
+    }
+
+    /// WebAuthn registration for `options` (the relying party's creation
+    /// options JSON) as seen from `origin`. Blocking.
+    pub(crate) fn webauthn_register(
+        &self,
+        device_id: Option<&str>,
+        options: &serde_json::Value,
+        origin: &str,
+        pin: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let options = webauthn::CreationOptions::parse(options).map_err(CoreError::from)?;
+        let device = self.pick(device_id)?;
+        Ok(self.with_device(&device, |auth| {
+            auth.webauthn_register(&options, origin, pin)
+        })?)
     }
 }
 

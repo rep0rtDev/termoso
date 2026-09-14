@@ -9,8 +9,10 @@ import com.termoso.android.data.AccountManager
 import com.termoso.android.data.CLOUD_URL
 import com.termoso.android.data.ServerChoice
 import com.termoso.android.data.userMessage
+import com.termoso.core.Fido2Listener
 import com.termoso.core.LoginOutcome
 import com.termoso.core.MfaMethod
+import com.termoso.core.MobileException
 import com.termoso.core.ServerCard
 import com.termoso.core.serverInfo
 import kotlinx.coroutines.CancellationException
@@ -60,6 +62,11 @@ class SignInViewModel(private val account: AccountManager, initialMode: AuthMode
     var code by mutableStateOf("")
     var emailCodeSent by mutableStateOf(false)
     var recoverySaved by mutableStateOf(false)
+
+    /** Security-key MFA: chosen token (null = any attached), its PIN, and the "touch now" moment. */
+    var skDeviceId by mutableStateOf<String?>(null)
+    var skPin by mutableStateOf("")
+    var skTouch by mutableStateOf(false)
 
     private var probeJob: Job? = null
 
@@ -154,6 +161,33 @@ class SignInViewModel(private val account: AccountManager, initialMode: AuthMode
         run { handle(account.mfa(method, value), onDone) }
     }
 
+    /**
+     * Second factor with the attached security key. No code to type: Rust
+     * fetches the WebAuthn challenge, has the token sign it and finishes the
+     * login. The PIN goes straight to Rust and is cleared afterwards.
+     */
+    fun submitSecurityKey(onDone: () -> Unit) {
+        val pin = skPin.takeIf { it.isNotEmpty() }
+        skTouch = false
+        val listener = object : Fido2Listener {
+            override fun onTouch() {
+                skTouch = true
+            }
+        }
+        run {
+            try {
+                val outcome = account.mfaSecurityKey(skDeviceId, pin, listener)
+                skPin = ""
+                handle(outcome, onDone)
+            } catch (e: MobileException.SecurityKey) {
+                if (e.kind.startsWith("fido2_pin")) skPin = ""
+                throw e
+            } finally {
+                skTouch = false
+            }
+        }
+    }
+
     fun sendEmailCode() {
         run {
             account.sendMfaEmail()
@@ -177,6 +211,7 @@ class SignInViewModel(private val account: AccountManager, initialMode: AuthMode
     fun pickMethod(method: MfaMethod) {
         mfaMethod = method
         code = ""
+        skPin = ""
         error = null
     }
 
@@ -186,6 +221,7 @@ class SignInViewModel(private val account: AccountManager, initialMode: AuthMode
             runCatching { account.cancelLogin() }
             step = AuthStep.Form
             code = ""
+            skPin = ""
             password = ""
             error = null
         }

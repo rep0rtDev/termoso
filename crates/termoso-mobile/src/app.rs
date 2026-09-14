@@ -17,8 +17,9 @@ use termoso_crypto::keys::SymmetricKey;
 use zeroize::Zeroizing;
 
 use crate::account::{
-    AccountCard, AccountRuntime, AccountStatus, DeviceCard, LoginForm, LoginOutcome, MfaMethod,
-    RegisterForm, Registered, ServerCard, SyncListener, SyncStatus,
+    AccountCard, AccountRuntime, AccountStatus, DeviceCard, LoginForm, LoginOutcome, MfaCard,
+    MfaMethod, RegisterForm, Registered, SecurityKeyCredential, SecurityKeyRequest, ServerCard,
+    SyncListener, SyncStatus,
 };
 use crate::dto::*;
 use crate::error::{MobileError, Result};
@@ -603,6 +604,16 @@ impl TermosoApp {
         RUNTIME.block_on(self.account.mfa(method, code))
     }
 
+    /// Second factor with an attached security key (no code). Blocks until
+    /// the token is touched: call off the main thread.
+    pub fn account_mfa_security_key(
+        &self,
+        req: SecurityKeyRequest,
+        listener: Option<Arc<dyn Fido2Listener>>,
+    ) -> Result<LoginOutcome> {
+        RUNTIME.block_on(self.account.mfa_security_key(req, listener))
+    }
+
     pub fn account_mfa_email_send(&self) -> Result<()> {
         RUNTIME.block_on(self.account.mfa_email_send())
     }
@@ -640,6 +651,27 @@ impl TermosoApp {
 
     pub fn account_revoke_device(&self, id: String) -> Result<()> {
         RUNTIME.block_on(self.account.revoke_device(id))
+    }
+
+    /// Second-factor setup of the signed-in account (security keys, TOTP,
+    /// backup codes left).
+    pub fn account_mfa_status(&self) -> Result<MfaCard> {
+        RUNTIME.block_on(self.account.mfa_status())
+    }
+
+    /// Register an attached security key as a second factor. Blocks until
+    /// the token is touched: call off the main thread.
+    pub fn account_register_security_key(
+        &self,
+        name: String,
+        req: SecurityKeyRequest,
+        listener: Option<Arc<dyn Fido2Listener>>,
+    ) -> Result<SecurityKeyCredential> {
+        RUNTIME.block_on(self.account.register_security_key(name, req, listener))
+    }
+
+    pub fn account_remove_security_key(&self, id: String) -> Result<()> {
+        RUNTIME.block_on(self.account.remove_security_key(id))
     }
 
     // ---- SSH ID -------------------------------------------------------
