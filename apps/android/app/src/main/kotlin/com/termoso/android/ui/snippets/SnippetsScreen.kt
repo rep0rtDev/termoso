@@ -5,8 +5,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,8 +19,10 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.LibraryAdd
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -29,6 +33,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -53,8 +58,10 @@ import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.SubScreen
 import com.termoso.android.ui.hosts.ConfirmDialog
 import com.termoso.android.ui.shell.ShellViewModel
+import com.termoso.android.ui.vault.vaultLabel
 import com.termoso.core.SnippetItem
 import com.termoso.core.SnippetPackageItem
+import com.termoso.core.VaultInfo
 
 /**
  * Snippets of the selected vault, one package level at a time (Termius: packages
@@ -73,19 +80,23 @@ fun SnippetsScreen(
 ) {
     val vm: SnippetsViewModel = viewModel { SnippetsViewModel(shell.repo, shell.selectedVaultId) }
     val state by vm.state.collectAsStateWithLifecycle()
+    val vaults by shell.vaults.collectAsStateWithLifecycle()
     var fabMenu by remember { mutableStateOf(false) }
     var packageDialog by remember { mutableStateOf<SnippetPackageItem?>(null) }
     var newPackage by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf<SnippetItem?>(null) }
     var confirmDeletePackage by remember { mutableStateOf<SnippetPackageItem?>(null) }
     var run by remember { mutableStateOf<SnippetItem?>(null) }
+    var transfer by remember { mutableStateOf<VaultTransfer?>(null) }
 
     LaunchedEffect(state.error) { state.error?.let { shell.notify(it); vm.errorShown() } }
+    LaunchedEffect(state.notice) { state.notice?.let { shell.notify(it); vm.noticeShown() } }
 
     val here = state.packages.firstOrNull { it.id == packageId }
     val packages = state.packages.filter { it.parentId == packageId }
     val snippets = state.snippets.filter { it.packageId == packageId }
     val vaultId = state.vaultId
+    val destinations = vaultId?.let { vaultDestinations(vaults, it) } ?: emptyList()
 
     SubScreen(
         title = here?.label ?: "Snippets",
@@ -141,6 +152,7 @@ fun SnippetsScreen(
                                     pkg = p,
                                     onOpen = { onOpenPackage(p.id) },
                                     onRename = { packageDialog = p },
+                                    onTransfer = if (destinations.isEmpty()) null else { move -> transfer = VaultTransfer.Package(p, move) },
                                     onDelete = { confirmDeletePackage = p },
                                 )
                             }
@@ -159,6 +171,7 @@ fun SnippetsScreen(
                                     onEdit = { onEditSnippet(s.id) },
                                     onRun = { run = s },
                                     onDuplicate = { vm.duplicate(s.id) },
+                                    onTransfer = if (destinations.isEmpty()) null else { move -> transfer = VaultTransfer.Snippet(s, move) },
                                     onDelete = { confirmDelete = s },
                                 )
                             }
@@ -202,6 +215,20 @@ fun SnippetsScreen(
             onDismiss = { confirmDeletePackage = null },
         )
     }
+    transfer?.let { t ->
+        VaultTransferDialog(
+            transfer = t,
+            vaults = destinations,
+            onConfirm = { dest ->
+                when (t) {
+                    is VaultTransfer.Snippet -> vm.copyToVault(t.snippet, dest, t.move)
+                    is VaultTransfer.Package -> vm.copyPackageToVault(t.pkg, dest, t.move)
+                }
+                transfer = null
+            },
+            onDismiss = { transfer = null },
+        )
+    }
     run?.let { s ->
         RunSnippetDialog(
             shell = shell,
@@ -232,8 +259,38 @@ private fun NewMenu(expanded: Boolean, onDismiss: () -> Unit, onSnippet: () -> U
     }
 }
 
+/** A pending copy/move; `move` removes the source once the copy exists. */
+private sealed interface VaultTransfer {
+    val move: Boolean
+
+    data class Snippet(val snippet: SnippetItem, override val move: Boolean) : VaultTransfer
+
+    data class Package(val pkg: SnippetPackageItem, override val move: Boolean) : VaultTransfer
+}
+
 @Composable
-private fun PackageRow(pkg: SnippetPackageItem, onOpen: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
+private fun TransferMenuItems(onTransfer: ((move: Boolean) -> Unit)?, onPicked: () -> Unit) {
+    if (onTransfer == null) return
+    DropdownMenuItem(
+        text = { Text("Copy to vault…") },
+        leadingIcon = { Icon(Icons.Filled.LibraryAdd, null) },
+        onClick = { onPicked(); onTransfer(false) },
+    )
+    DropdownMenuItem(
+        text = { Text("Move to vault…") },
+        leadingIcon = { Icon(Icons.Filled.DriveFileMove, null) },
+        onClick = { onPicked(); onTransfer(true) },
+    )
+}
+
+@Composable
+private fun PackageRow(
+    pkg: SnippetPackageItem,
+    onOpen: () -> Unit,
+    onRename: () -> Unit,
+    onTransfer: ((move: Boolean) -> Unit)?,
+    onDelete: () -> Unit,
+) {
     var menu by remember { mutableStateOf(false) }
     Box {
         ChevronRow(
@@ -244,6 +301,7 @@ private fun PackageRow(pkg: SnippetPackageItem, onOpen: () -> Unit, onRename: ()
         )
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onRename() })
+            TransferMenuItems(onTransfer) { menu = false }
             DropdownMenuItem(
                 text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
                 leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
@@ -259,6 +317,7 @@ private fun SnippetRow(
     onEdit: () -> Unit,
     onRun: () -> Unit,
     onDuplicate: () -> Unit,
+    onTransfer: ((move: Boolean) -> Unit)?,
     onDelete: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
@@ -279,6 +338,7 @@ private fun SnippetRow(
                 leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
                 onClick = { menu = false; onDuplicate() },
             )
+            TransferMenuItems(onTransfer) { menu = false }
             DropdownMenuItem(
                 text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
                 leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
@@ -297,6 +357,53 @@ fun snippetSubtitle(snippet: SnippetItem): String {
         if (snippet.closeAfterRun) add("closes session")
     }
     return if (extras.isEmpty()) first else "$first · ${extras.joinToString(" · ")}"
+}
+
+@Composable
+private fun VaultTransferDialog(
+    transfer: VaultTransfer,
+    vaults: List<VaultInfo>,
+    onConfirm: (VaultInfo) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var target by remember { mutableStateOf(vaults.firstOrNull()?.id) }
+    val (subject, label) = when (transfer) {
+        is VaultTransfer.Snippet -> TransferSubject.Snippet to transfer.snippet.label
+        is VaultTransfer.Package -> TransferSubject.Package to transfer.pkg.label
+    }
+    val verb = if (transfer.move) "Move" else "Copy"
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("$verb to vault") },
+        text = {
+            Column {
+                vaults.forEach { v ->
+                    Row(
+                        Modifier.fillMaxWidth().combinedClickable(onClick = { target = v.id }).padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = target == v.id, onClick = { target = v.id })
+                        Text(vaultLabel(v))
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    transferExplanation(subject, label, transfer.move),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { vaults.firstOrNull { it.id == target }?.let(onConfirm) },
+                enabled = target != null,
+            ) {
+                Text(verb, color = if (transfer.move) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
