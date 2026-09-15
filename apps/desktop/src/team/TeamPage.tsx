@@ -806,8 +806,8 @@ function CompactRow({
   );
 }
 
-/** `Label ……… Enabled ▾` line of the Security card; the dropdown is read-only for non-admins. */
-function SecurityRow({
+/** `Label ……… Enabled ▾` line of a policy card; the dropdown is read-only for those who cannot change it. */
+export function SecurityRow({
   label,
   hint,
   enabled,

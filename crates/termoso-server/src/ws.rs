@@ -195,6 +195,9 @@ async fn pump(
                     Event::PresenceChanged { team_id } if teams.contains(&team_id) => Some(ServerMessage::PresenceChanged { team_id }),
                     Event::HistoryChanged { user_id: u, seq } if u == user_id => Some(ServerMessage::HistoryChanged { seq }),
                     Event::LogsChanged { user_id: u, seq } if u == user_id => Some(ServerMessage::LogsChanged { seq }),
+                    Event::VaultLogsChanged { vault_id, seq } if vaults.contains(&vault_id) => {
+                        Some(ServerMessage::VaultLogsChanged { vault_id, seq })
+                    }
                     Event::AccountUpdated { user_id: u } if u == user_id => Some(ServerMessage::AccountUpdated),
                     Event::SessionRevoked { user_id: u, session_id: s } if u == user_id && (s == session_id || s.is_nil()) => {
                         send(socket, &ServerMessage::SessionRevoked).await?;
