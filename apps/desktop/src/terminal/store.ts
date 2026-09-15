@@ -66,6 +66,7 @@ import {
 } from "./layout";
 import { resolveTerminalTheme, toXtermTheme, type TerminalTheme } from "./themes";
 import { KeywordHighlighter } from "./highlight";
+import { leafState, type LeafState, restoreKeystrokes, withLeafState } from "./restore";
 import {
   RECONNECT_ATTEMPTS,
   dequeueReconnect as dequeueReconnectQueue,
@@ -102,6 +103,8 @@ export interface Pane {
   integration: boolean;
   /** Working directory reported by the shell (OSC 7). */
   cwd: string | null;
+  /** Command running right now (between the OSC 133 `C` and `D` marks). */
+  command: string | null;
   lastExit: number | null;
   /** Per-session suggestions switch (the global one lives in settings). */
   autocomplete: boolean;
@@ -272,6 +275,10 @@ interface Runtime {
   lastOutputAt: number;
   /** Command text captured at the `C` mark, recorded once `D` reports completion. */
   pendingCommand: string | null;
+  /** The next finished command is ours (a restored `cd`), not the user's: keep it out of history. */
+  skipRecord: boolean;
+  /** Shell state saved with the workspace, applied once the shell shows its first prompt. */
+  restore: LeafState | null;
   suggestTimer: ReturnType<typeof setTimeout> | null;
   /** Line the user dismissed suggestions for; they come back once it changes. */
   mutedLine: string | null;
@@ -678,6 +685,8 @@ function createRuntime(paneId: Uuid): Runtime {
     injectTimer: null,
     lastOutputAt: 0,
     pendingCommand: null,
+    skipRecord: false,
+    restore: null,
     suggestTimer: null,
     mutedLine: null,
     pathSeq: 0,
@@ -883,6 +892,7 @@ function handleMark(paneId: Uuid, data: string, family: 133 | 633): boolean {
       if (rt.shell.active && !terminalStore.get().panes[paneId]?.integration) {
         patchPane(paneId, { integration: true });
       }
+      if (rt.shell.active) applyRestore(paneId);
       break;
     case "input":
       rt.mutedLine = null;
@@ -896,14 +906,16 @@ function handleMark(paneId: Uuid, data: string, family: 133 | 633): boolean {
           : null);
       const text = typed?.trim() ?? "";
       rt.pendingCommand = text.length > 0 ? text : null;
+      patchPane(paneId, { command: rt.skipRecord ? null : rt.pendingCommand });
       hideSuggest(paneId);
       for (const l of commandListeners) l(paneId, { kind: "started" });
       break;
     }
     case "finished":
-      if (rt.pendingCommand) recordCommand(paneId, rt.pendingCommand);
+      if (rt.pendingCommand && !rt.skipRecord) recordCommand(paneId, rt.pendingCommand);
+      rt.skipRecord = false;
       rt.pendingCommand = null;
-      patchPane(paneId, { lastExit: ev.exit });
+      patchPane(paneId, { lastExit: ev.exit, command: null });
       for (const l of commandListeners) l(paneId, { kind: "finished", exit: ev.exit });
       break;
     case "cwd":
@@ -940,9 +952,58 @@ function onOutput(paneId: Uuid) {
 }
 
 /**
+ * Put the pane back where its workspace left it: `cd` to the saved directory
+ * (kept out of history) and, per the setting, type or run the command that
+ * was going at the time. One shot, the first time the shell is ready.
+ */
+function applyRestore(paneId: Uuid) {
+  const rt = runtimes.get(paneId);
+  if (!rt?.restore) return;
+  const state = rt.restore;
+  rt.restore = null;
+  rt.skipRecord = state.cwd !== null;
+  const text = restoreKeystrokes(state, currentSettings?.restoreCommands ?? "type");
+  if (text) ipc.terminalWrite(paneId, text).catch(() => undefined);
+}
+
+/**
+ * Run `ready` once the shell's first prompt has settled (or the wait runs
+ * out): output has been idle for a moment and the cursor sits after a
+ * prompt-looking line. Gives up when the pane stops being connected.
+ */
+function whenPromptReady(paneId: Uuid, ready: (rt: Runtime) => void) {
+  const startedAt = Date.now();
+  const tick = () => {
+    const r = runtimes.get(paneId);
+    if (!r) return;
+    r.injectTimer = null;
+    const pane = terminalStore.get().panes[paneId];
+    if (pane?.status !== "connected") {
+      if (pane?.status === "connecting") r.injectTimer = setTimeout(tick, INJECT_IDLE_MS);
+      return;
+    }
+    const idle = Date.now() - r.lastOutputAt;
+    const waited = Date.now() - startedAt;
+    const settled = r.lastOutputAt > 0 && idle >= INJECT_IDLE_MS && atPromptLine(r.term);
+    if (!settled && waited < INJECT_MAX_WAIT_MS) {
+      r.injectTimer = setTimeout(tick, INJECT_IDLE_MS - Math.min(idle, INJECT_IDLE_MS) + 10);
+      return;
+    }
+    ready(r);
+  };
+  const r = runtimes.get(paneId);
+  if (r) r.injectTimer = setTimeout(tick, INJECT_IDLE_MS);
+}
+
+// After the hooks are typed in, the shell answers with its first marks within
+// a round trip; a shell that stays silent this long did not take them.
+const MARKS_WAIT_MS = 3000;
+
+/**
  * Type the OSC 133 hooks into the shell once its first prompt has settled.
  * Only for shells we have a script for, only when the setting allows it,
- * and only into this pane (never broadcast).
+ * and only into this pane (never broadcast). Shells that get no hooks (or
+ * ignore them) still receive the workspace's saved directory / command.
  */
 function scheduleIntegration(paneId: Uuid, shell: string) {
   const rt = runtimes.get(paneId);
@@ -950,34 +1011,24 @@ function scheduleIntegration(paneId: Uuid, shell: string) {
   const kind = integratedShell(shell);
   if (!kind || currentSettings?.shellIntegration === false) {
     rt.integration = "none";
+    if (rt.restore) whenPromptReady(paneId, () => applyRestore(paneId));
     return;
   }
-  const startedAt = Date.now();
-  const tick = () => {
-    const r = runtimes.get(paneId);
-    if (r?.integration !== "pending") return;
-    r.injectTimer = null;
-    const pane = terminalStore.get().panes[paneId];
-    if (pane?.status !== "connected") {
-      if (pane?.status === "connecting") r.injectTimer = setTimeout(tick, INJECT_IDLE_MS);
-      return;
-    }
-    if (r.shell.active) {
-      r.integration = "sent";
-      return;
-    }
-    const idle = Date.now() - r.lastOutputAt;
-    const waited = Date.now() - startedAt;
-    const ready = r.lastOutputAt > 0 && idle >= INJECT_IDLE_MS && atPromptLine(r.term);
-    if (!ready && waited < INJECT_MAX_WAIT_MS) {
-      r.injectTimer = setTimeout(tick, INJECT_IDLE_MS - Math.min(idle, INJECT_IDLE_MS) + 10);
-      return;
-    }
+  whenPromptReady(paneId, (r) => {
+    if (r.integration !== "pending") return;
     r.integration = "sent";
+    if (r.shell.active) return;
     const script = integrationCommand(kind, r.term.buffer.active.cursorX, r.term.cols);
     ipc.terminalWrite(paneId, script).catch(() => undefined);
-  };
-  rt.injectTimer = setTimeout(tick, INJECT_IDLE_MS);
+    if (r.restore) {
+      setTimeout(() => {
+        const cur = runtimes.get(paneId);
+        if (cur?.restore && !cur.shell.active) {
+          whenPromptReady(paneId, () => applyRestore(paneId));
+        }
+      }, MARKS_WAIT_MS);
+    }
+  });
 }
 
 // ───────────────────────────── command history ─────────────────────────────
@@ -1410,6 +1461,7 @@ function newPane(paneId: Uuid, target: OpenTarget): Pane {
     shell: null,
     integration: false,
     cwd: null,
+    command: null,
     lastExit: null,
     autocomplete: true,
     reconnecting: false,
@@ -1471,12 +1523,12 @@ export interface OpenLayoutOptions {
  * from the right. Returns the new tab id.
  */
 export function openLayout(template: LayoutTemplate, opts: OpenLayoutOptions = {}): string {
-  const opened: { paneId: Uuid; target: OpenTarget }[] = [];
+  const opened: { paneId: Uuid; target: OpenTarget; restore: Runtime["restore"] }[] = [];
   const build = (node: LayoutTemplate): SplitNode | null => {
     if (node.kind === "leaf") {
       if (opened.length >= MAX_PANES) return null;
       const paneId = uuid();
-      opened.push({ paneId, target: node.target });
+      opened.push({ paneId, target: node.target, restore: leafState(node) });
       return leaf(paneId);
     }
     const first = build(node.first);
@@ -1495,13 +1547,15 @@ export function openLayout(template: LayoutTemplate, opts: OpenLayoutOptions = {
   let layout = build(template);
   if (!layout) {
     const paneId = uuid();
-    opened.push({ paneId, target: { kind: "local" } });
+    opened.push({ paneId, target: { kind: "local" }, restore: null });
     layout = leaf(paneId);
   }
   const panes: Record<Uuid, Pane> = {};
-  for (const { paneId, target } of opened) {
+  for (const { paneId, target, restore } of opened) {
     panes[paneId] = newPane(paneId, target);
-    runtimes.set(paneId, createRuntime(paneId));
+    const rt = createRuntime(paneId);
+    rt.restore = restore;
+    runtimes.set(paneId, rt);
   }
   const tab = newTab(layout, {
     name: opts.name ?? null,
@@ -1521,7 +1575,10 @@ export function openLayout(template: LayoutTemplate, opts: OpenLayoutOptions = {
   return tab.id;
 }
 
-/** Serialisable copy of a tab's split tree: targets and ratios, no session state. */
+/**
+ * Serialisable copy of a tab's split tree: targets, ratios and what the shell
+ * last reported (working directory, running command) — never screen contents.
+ */
 export function tabLayoutTemplate(
   tab: TerminalTab,
   s: TerminalState = terminalStore.get(),
@@ -1529,7 +1586,8 @@ export function tabLayoutTemplate(
   const walk = (node: SplitNode): LayoutTemplate | null => {
     if (node.kind === "leaf") {
       const pane = s.panes[node.paneId];
-      return pane ? { kind: "leaf", target: pane.target } : null;
+      if (!pane) return null;
+      return withLeafState({ kind: "leaf", target: pane.target }, pane);
     }
     const first = walk(node.first);
     const second = walk(node.second);
@@ -1753,6 +1811,7 @@ export async function reconnectPane(paneId: Uuid) {
     startedAt: null,
     integration: false,
     cwd: null,
+    command: null,
     lastExit: null,
     shell: null,
     reconnecting: pane.startedAt !== null || pane.reconnecting,

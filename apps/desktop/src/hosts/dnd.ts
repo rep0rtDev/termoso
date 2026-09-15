@@ -3,7 +3,7 @@ import type { DragHandlers } from "@/components/ui";
 import type { GroupNode, HostCard, Uuid } from "@/ipc/types";
 
 /** Private MIME type so foreign drags (files, text) never look like hosts. */
-const MIME = "application/x-termoso-hosts";
+export const MIME = "application/x-termoso-hosts";
 
 export const isHostDrag = (e: DragEvent<HTMLElement>) =>
   Array.from(e.dataTransfer.types).includes(MIME);
@@ -35,6 +35,12 @@ export function parseDragData(raw: string): HostDragData | null {
     ids: ids.filter((_, i) => keep[i]),
     fromGroups: fromGroups.filter((_, i) => keep[i]),
   };
+}
+
+/** Ids carried by a host drop (any drop target: groups, breadcrumbs, terminal tabs). */
+export function droppedHostIds(e: DragEvent<HTMLElement>): Uuid[] {
+  if (!isHostDrag(e)) return [];
+  return parseDragData(e.dataTransfer.getData(MIME))?.ids ?? [];
 }
 
 /** Which of the dragged hosts actually change group when dropped on `target`. */
