@@ -16,8 +16,10 @@ use termoso_core::api::ApiClient;
 use termoso_core::live::{HostShare, LiveEvent, ViewerJoin};
 use termoso_core::model::ResolvedHost;
 use termoso_core::mosh::{self, MoshError};
+use termoso_core::pty::{LocalShellOptions, LocalTerminal};
 use termoso_core::ssh::{IpVersion, SshClient, SshTarget};
 use termoso_core::store::{ConnectionHistory, Store};
+use termoso_core::telnet::{TelnetOptions, TelnetTerminal};
 use termoso_core::terminal::{SharedTerminal, TermEvent, TermEvents, TermSize};
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -31,6 +33,9 @@ use crate::terminal::{Emulator, GridFrame, GridSnapshot, TermSignal, TerminalPal
 
 /// Give the shell time to print its prompt before the startup snippet lands.
 const STARTUP_SNIPPET_DELAY: Duration = Duration::from_millis(400);
+
+/// Telnet TCP connect timeout.
+const TELNET_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Where the session is.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -76,6 +81,8 @@ pub enum Transport {
     Ssh,
     /// Bootstrap `mosh-server` over SSH, then talk Mosh over UDP.
     Mosh,
+    /// The host's Telnet section (errors when it has none).
+    Telnet,
 }
 
 /// How to open the terminal.
@@ -172,13 +179,70 @@ pub struct SshSession {
     runtime: tokio::runtime::Handle,
 }
 
+/// What a [`Launch`] opens.
+pub(crate) enum LaunchTarget {
+    /// SSH (or Mosh bootstrapped over it) to a saved or ad-hoc host.
+    Ssh {
+        target: SshTarget,
+        resolved: Option<Box<ResolvedHost>>,
+    },
+    /// Plain telnet; `host_id`/`label` are set for a saved host.
+    Telnet {
+        host: String,
+        port: u16,
+        ip_version: IpVersion,
+        host_id: Option<Uuid>,
+        label: String,
+    },
+    /// A shell on this device.
+    Local {
+        argv: Vec<String>,
+        cwd: Option<std::path::PathBuf>,
+        env: Vec<(String, String)>,
+    },
+}
+
 pub(crate) struct Launch {
     pub store: Arc<Store>,
-    pub target: SshTarget,
-    pub resolved: Option<ResolvedHost>,
+    pub target: LaunchTarget,
     pub settings: MobileSettings,
     pub options: TerminalOptions,
     pub listener: Arc<dyn SessionListener>,
+}
+
+/// The `history` row of one connection: opened when the attempt starts,
+/// completed with the duration and outcome when it ends.
+struct HistoryEntry {
+    store: Arc<Store>,
+    id: Option<Uuid>,
+    row: ConnectionHistory,
+    started: Instant,
+}
+
+impl HistoryEntry {
+    fn start(store: Arc<Store>, row: ConnectionHistory) -> Self {
+        let id = store.record_connection(&row).ok();
+        Self {
+            store,
+            id,
+            row,
+            started: Instant::now(),
+        }
+    }
+
+    fn finish(&self, error: Option<String>) {
+        let Some(id) = self.id else {
+            return;
+        };
+        let _ = self.store.update_connection(
+            id,
+            &ConnectionHistory {
+                duration_secs: Some(self.started.elapsed().as_secs()),
+                error,
+                ..self.row.clone()
+            },
+        );
+    }
 }
 
 pub(crate) struct ViewerLaunch {
@@ -196,7 +260,6 @@ impl SshSession {
         let Launch {
             store,
             target,
-            resolved,
             settings,
             options,
             listener,
@@ -250,14 +313,38 @@ impl SshSession {
         } else {
             options.term_type.clone()
         };
-        let mosh = match options.transport {
-            Transport::Mosh => true,
-            Transport::Ssh => false,
-            Transport::Auto => resolved.as_ref().is_some_and(|r| r.ssh.use_mosh),
-        };
-        runtime.spawn(run(
-            inner, target, resolved, settings, term_type, mosh, signals,
-        ));
+        match target {
+            LaunchTarget::Ssh { target, resolved } => {
+                let mosh = match options.transport {
+                    Transport::Mosh => true,
+                    Transport::Ssh | Transport::Telnet => false,
+                    Transport::Auto => resolved.as_ref().is_some_and(|r| r.ssh.use_mosh),
+                };
+                runtime.spawn(run(
+                    inner,
+                    target,
+                    resolved.map(|r| *r),
+                    settings,
+                    term_type,
+                    mosh,
+                    signals,
+                ));
+            }
+            LaunchTarget::Telnet {
+                host,
+                port,
+                ip_version,
+                host_id,
+                label,
+            } => {
+                runtime.spawn(run_telnet(
+                    inner, host, port, ip_version, host_id, label, term_type, signals,
+                ));
+            }
+            LaunchTarget::Local { argv, cwd, env } => {
+                runtime.spawn(run_local(inner, argv, cwd, env, term_type, signals));
+            }
+        }
         session
     }
 
@@ -616,11 +703,10 @@ async fn run(
     mosh: bool,
     signals: mpsc::UnboundedReceiver<TermSignal>,
 ) {
-    let started = Instant::now();
     let protocol = if mosh { "mosh" } else { "ssh" };
-    let history_id = inner
-        .store
-        .record_connection(&ConnectionHistory {
+    let history = HistoryEntry::start(
+        inner.store.clone(),
+        ConnectionHistory {
             host_id: resolved.as_ref().map(|r| r.host.id),
             label: resolved
                 .as_ref()
@@ -630,26 +716,9 @@ async fn run(
             protocol: protocol.into(),
             duration_secs: None,
             error: None,
-        })
-        .ok();
-    let finish = |error: Option<String>| {
-        if let Some(id) = history_id {
-            let _ = inner.store.update_connection(
-                id,
-                &ConnectionHistory {
-                    host_id: resolved.as_ref().map(|r| r.host.id),
-                    label: resolved
-                        .as_ref()
-                        .map(|r| r.host.data.label.clone())
-                        .unwrap_or_else(|| target.host.clone()),
-                    target: target.display(),
-                    protocol: protocol.into(),
-                    duration_secs: Some(started.elapsed().as_secs()),
-                    error,
-                },
-            );
-        }
-    };
+        },
+    );
+    let finish = |error: Option<String>| history.finish(error);
     let fail = |inner: &Inner, e: MobileError| {
         finish(Some(e.to_string()));
         set_state(
@@ -780,6 +849,144 @@ async fn run(
         let _ = client.disconnect().await;
     }
     set_state(&inner, SessionState::Closed { reason });
+}
+
+/// Open a terminal that needs no SSH leg (telnet, local shell): record it,
+/// open it, pump it. `open` runs against the current view size.
+async fn run_direct<F, Fut>(
+    inner: Arc<Inner>,
+    row: ConnectionHistory,
+    detail: &str,
+    open: F,
+    signals: mpsc::UnboundedReceiver<TermSignal>,
+) where
+    F: FnOnce(TermSize) -> Fut,
+    Fut: std::future::Future<Output = Result<(SharedTerminal, TermEvents)>>,
+{
+    let history = HistoryEntry::start(inner.store.clone(), row);
+    set_state(
+        &inner,
+        SessionState::Connecting {
+            detail: detail.into(),
+        },
+    );
+    let size = *inner.size.lock().expect("size poisoned");
+    let opened = tokio::select! {
+        r = open(size) => r,
+        _ = inner.closed.notified() => Err(MobileError::Cancelled),
+    };
+    let (terminal, events) = match opened {
+        Ok(t) => t,
+        Err(MobileError::Cancelled) => {
+            history.finish(Some("cancelled".into()));
+            set_state(&inner, SessionState::Closed { reason: None });
+            return;
+        }
+        Err(e) => {
+            history.finish(Some(e.to_string()));
+            set_state(
+                &inner,
+                SessionState::Failed {
+                    kind: e.kind(),
+                    message: e.to_string(),
+                },
+            );
+            return;
+        }
+    };
+    *inner.terminal.lock().expect("terminal poisoned") = Some(terminal.clone());
+    inner.start_writer(&tokio::runtime::Handle::current(), terminal.clone());
+    set_state(&inner, SessionState::Connected);
+
+    let reason = pump(&inner, &terminal, events, signals).await;
+    history.finish(reason.clone());
+    *inner.terminal.lock().expect("terminal poisoned") = None;
+    inner.end_share(&tokio::runtime::Handle::current());
+    let _ = terminal.close().await;
+    set_state(&inner, SessionState::Closed { reason });
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_telnet(
+    inner: Arc<Inner>,
+    host: String,
+    port: u16,
+    ip_version: IpVersion,
+    host_id: Option<Uuid>,
+    label: String,
+    term_type: String,
+    signals: mpsc::UnboundedReceiver<TermSignal>,
+) {
+    let row = ConnectionHistory {
+        host_id,
+        label: if label.trim().is_empty() {
+            host.clone()
+        } else {
+            label
+        },
+        target: format!("{host}:{port}"),
+        protocol: "telnet".into(),
+        duration_secs: None,
+        error: None,
+    };
+    let detail = format!("Connecting to {host}:{port}…");
+    run_direct(
+        inner,
+        row,
+        &detail,
+        |size| async move {
+            let (term, events) = TelnetTerminal::connect(TelnetOptions {
+                host,
+                port,
+                term: term_type,
+                size,
+                timeout: TELNET_TIMEOUT,
+                ip_version,
+            })
+            .await?;
+            Ok((term as SharedTerminal, events))
+        },
+        signals,
+    )
+    .await;
+}
+
+async fn run_local(
+    inner: Arc<Inner>,
+    argv: Vec<String>,
+    cwd: Option<std::path::PathBuf>,
+    mut env: Vec<(String, String)>,
+    term_type: String,
+    signals: mpsc::UnboundedReceiver<TermSignal>,
+) {
+    let row = ConnectionHistory {
+        host_id: None,
+        label: "Local".into(),
+        target: argv
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "local shell".into()),
+        protocol: "local".into(),
+        duration_secs: None,
+        error: None,
+    };
+    env.push(("TERM".into(), term_type));
+    run_direct(
+        inner,
+        row,
+        "Starting shell…",
+        |size| async move {
+            let (term, events) = LocalTerminal::spawn(LocalShellOptions {
+                argv,
+                cwd,
+                env,
+                size,
+            })?;
+            Ok((term as SharedTerminal, events))
+        },
+        signals,
+    )
+    .await;
 }
 
 /// Start `mosh-server` over the authenticated `client` and open the UDP

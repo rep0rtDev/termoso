@@ -34,9 +34,10 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SortByAlpha
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -82,6 +83,7 @@ import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.vault.vaultLabel
 import com.termoso.core.GroupItem
 import com.termoso.core.HostItem
+import com.termoso.core.Transport
 import com.termoso.core.VaultInfo
 
 /** Host list for a vault root or a group: search, sort, long-press multi-select, FAB. */
@@ -95,7 +97,8 @@ fun HostsScreen(
     onNewHost: () -> Unit,
     onEditHost: (String) -> Unit,
     onConnect: (String) -> Unit,
-    onConnectMosh: (String) -> Unit,
+    /** Connect over an explicit transport (Mosh, the Telnet section). */
+    onConnectWith: (String, Transport) -> Unit,
     onSftp: (String) -> Unit,
     onForward: (String) -> Unit,
 ) {
@@ -132,10 +135,10 @@ fun HostsScreen(
                         vm.clearSelection()
                         onSftp(id)
                     },
-                    onMosh = {
+                    onConnectWith = { transport ->
                         val id = state.selected.first()
                         vm.clearSelection()
-                        onConnectMosh(id)
+                        onConnectWith(id, transport)
                     },
                     onForward = {
                         val id = state.selected.first()
@@ -379,7 +382,9 @@ private fun hostSubtitle(h: HostItem): String {
     val target = if (h.username.isNotBlank()) "${h.username}@${h.address}" else h.address
     val ssh = h.protocol.equals("ssh", true)
     val base = if (ssh && h.port == 22.toUShort()) target else "$target · ${h.protocol.uppercase()} ${h.port}"
-    return if (ssh && h.useMosh) "$base · Mosh" else base
+    val mosh = if (ssh && h.useMosh) " · Mosh" else ""
+    val telnet = if (ssh && h.telnetPort != null) " · Telnet" else ""
+    return base + mosh + telnet
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -391,7 +396,7 @@ private fun SelectionBar(
     onSelectAll: () -> Unit,
     onEdit: () -> Unit,
     onSftp: () -> Unit,
-    onMosh: () -> Unit,
+    onConnectWith: (Transport) -> Unit,
     onForward: () -> Unit,
     onDuplicate: () -> Unit,
     onMove: () -> Unit,
@@ -399,8 +404,9 @@ private fun SelectionBar(
     onDelete: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    val singleSsh = state.selected.size == 1 &&
-        state.visibleHosts.firstOrNull { it.id in state.selected }?.protocol.equals("ssh", ignoreCase = true)
+    val single = state.visibleHosts.firstOrNull { it.id in state.selected }.takeIf { state.selected.size == 1 }
+    val singleSsh = single?.protocol.equals("ssh", ignoreCase = true)
+    val singleTelnet = singleSsh && single?.telnetPort != null
     TopAppBar(
         title = { Text("${state.selected.size} selected") },
         navigationIcon = {
@@ -431,8 +437,15 @@ private fun SelectionBar(
                         DropdownMenuItem(
                             text = { Text("Connect with Mosh") },
                             leadingIcon = { Icon(Icons.Filled.Bolt, null) },
-                            onClick = { menu = false; onMosh() },
+                            onClick = { menu = false; onConnectWith(Transport.MOSH) },
                         )
+                        if (singleTelnet) {
+                            DropdownMenuItem(
+                                text = { Text("Connect with Telnet") },
+                                leadingIcon = { Icon(Icons.Filled.Terminal, null) },
+                                onClick = { menu = false; onConnectWith(Transport.TELNET) },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("Port forwarding…") },
                             leadingIcon = { Icon(Icons.Filled.SwapHoriz, null) },

@@ -11,7 +11,7 @@ use termoso_client::hosts::{self, CopyCredentials};
 use termoso_client::keychain;
 use termoso_core::hostkey::KnownHosts;
 use termoso_core::model::ResolvedHost;
-use termoso_core::ssh::SshTarget;
+use termoso_core::ssh::{IpVersion, SshTarget};
 use termoso_core::store::Store;
 use termoso_crypto::keys::SymmetricKey;
 use zeroize::Zeroizing;
@@ -26,7 +26,9 @@ use crate::error::{MobileError, Result};
 use crate::fido2::{self, Fido2GenerateDraft, Fido2Listener, Fido2LoadDraft, SecurityKeyCard};
 use crate::forward::{self, PfRuleDraft, PfRuleItem, PfTunnel, TunnelLaunch, TunnelListener};
 use crate::live::{LiveListener, LiveShare};
-use crate::session::{Launch, SessionListener, SshSession, TerminalOptions, ViewerLaunch};
+use crate::session::{
+    Launch, LaunchTarget, SessionListener, SshSession, TerminalOptions, Transport, ViewerLaunch,
+};
 use crate::settings::MobileSettings;
 use crate::sftp::{SftpLaunch, SftpListener, SftpSession};
 use crate::snippets::{self, SnippetDraft, SnippetItem, SnippetPackageItem, SnippetRun};
@@ -96,11 +98,17 @@ pub fn profile_exists(profile_dir: String) -> bool {
     Path::new(&profile_dir).join(DB_FILE).is_file()
 }
 
-/// Parse `user@host:port`, `ssh://user@host:port` or plain `host` into a
-/// target (defaults: `root`, 22). Errors on an empty host.
+/// Parse `user@host:port`, `ssh://user@host:port`, `telnet://host:port` or
+/// plain `host` into a target (defaults: `root`, 22; telnet 23). Errors on
+/// an empty host.
 #[uniffi::export]
 pub fn parse_target(input: String) -> Result<QuickTarget> {
-    let s = input.trim().trim_start_matches("ssh://");
+    let s = input.trim();
+    let (protocol, s) = if let Some(rest) = s.strip_prefix("telnet://") {
+        ("telnet", rest)
+    } else {
+        ("ssh", s.trim_start_matches("ssh://"))
+    };
     let s = s.trim_end_matches('/');
     let (user, rest) = match s.rsplit_once('@') {
         Some((u, r)) if !u.is_empty() => (Some(u.to_string()), r),
@@ -123,8 +131,9 @@ pub fn parse_target(input: String) -> Result<QuickTarget> {
     }
     Ok(QuickTarget {
         host,
-        port: port.unwrap_or(22),
+        port: port.unwrap_or(if protocol == "telnet" { 23 } else { 22 }),
         username: user.unwrap_or_else(|| "root".into()),
+        protocol: protocol.into(),
     })
 }
 
@@ -133,6 +142,20 @@ pub struct QuickTarget {
     pub host: String,
     pub port: u16,
     pub username: String,
+    /// `ssh` | `telnet`.
+    pub protocol: String,
+}
+
+/// What [`App::connect_local`] starts. Everything empty → the platform's
+/// shell (`/system/bin/sh` on Android, `$SHELL` elsewhere) in `home`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
+pub struct LocalShell {
+    /// Program and arguments.
+    pub argv: Vec<String>,
+    /// Working directory and `HOME`.
+    pub home: String,
+    /// Extra environment (`NAME=value`).
+    pub env: Vec<String>,
 }
 
 /// Probe a server before sign-in. Nothing is contacted until the user
@@ -877,13 +900,76 @@ impl TermosoApp {
         options: TerminalOptions,
         listener: Arc<dyn SessionListener>,
     ) -> Result<Arc<SshSession>> {
-        let (resolved, target) = self.ssh_host(&host_id)?;
+        let resolved = self.store.resolve_host(parse_id(&host_id)?)?;
+        let protocol = match (options.transport, resolved.telnet.is_some()) {
+            (Transport::Telnet, true) => "telnet",
+            (Transport::Telnet, false) => {
+                return Err(MobileError::invalid("this host has no Telnet section"));
+            }
+            _ => resolved.protocol(),
+        };
+        let target = match protocol {
+            "telnet" => LaunchTarget::Telnet {
+                host: resolved.host.data.address.clone(),
+                port: resolved.telnet.as_ref().and_then(|t| t.port).unwrap_or(23),
+                ip_version: IpVersion::parse(&resolved.host.data.ip_version),
+                host_id: Some(resolved.host.id),
+                label: resolved.host.data.label.clone(),
+            },
+            "ssh" => LaunchTarget::Ssh {
+                target: ssh_target(&resolved),
+                resolved: Some(Box::new(resolved)),
+            },
+            other => {
+                return Err(MobileError::invalid(format!(
+                    "{other} hosts are not supported on mobile yet"
+                )));
+            }
+        };
         Ok(SshSession::launch(
             RUNTIME.handle().clone(),
             Launch {
                 store: self.store.clone(),
                 target,
-                resolved: Some(resolved),
+                settings: MobileSettings::load(&self.store)?,
+                options,
+                listener,
+            },
+        ))
+    }
+
+    /// Open a shell on this device. Nothing is saved except the connection
+    /// history.
+    pub fn connect_local(
+        &self,
+        shell: LocalShell,
+        options: TerminalOptions,
+        listener: Arc<dyn SessionListener>,
+    ) -> Result<Arc<SshSession>> {
+        let argv = if shell.argv.is_empty() {
+            vec![default_local_shell()]
+        } else {
+            shell.argv
+        };
+        let home = shell.home.trim();
+        let mut env: Vec<(String, String)> = shell
+            .env
+            .iter()
+            .filter_map(|kv| kv.split_once('='))
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        if !home.is_empty() {
+            env.push(("HOME".into(), home.to_string()));
+        }
+        Ok(SshSession::launch(
+            RUNTIME.handle().clone(),
+            Launch {
+                store: self.store.clone(),
+                target: LaunchTarget::Local {
+                    argv,
+                    cwd: (!home.is_empty()).then(|| home.into()),
+                    env,
+                },
                 settings: MobileSettings::load(&self.store)?,
                 options,
                 listener,
@@ -899,12 +985,30 @@ impl TermosoApp {
         options: TerminalOptions,
         listener: Arc<dyn SessionListener>,
     ) -> Result<Arc<SshSession>> {
+        let launch = match target.protocol.as_str() {
+            "telnet" => {
+                let host = target.host.trim();
+                if host.is_empty() {
+                    return Err(MobileError::invalid("host is empty"));
+                }
+                LaunchTarget::Telnet {
+                    host: host.to_string(),
+                    port: target.port,
+                    ip_version: IpVersion::Auto,
+                    host_id: None,
+                    label: host.to_string(),
+                }
+            }
+            _ => LaunchTarget::Ssh {
+                target: quick_target(&target)?,
+                resolved: None,
+            },
+        };
         Ok(SshSession::launch(
             RUNTIME.handle().clone(),
             Launch {
                 store: self.store.clone(),
-                target: quick_target(&target)?,
-                resolved: None,
+                target: launch,
                 settings: MobileSettings::load(&self.store)?,
                 options,
                 listener,
@@ -1152,22 +1256,43 @@ impl TermosoApp {
         let resolved = self.store.resolve_host(parse_id(host_id)?)?;
         if resolved.protocol() != "ssh" {
             return Err(MobileError::invalid(format!(
-                "{} hosts are not supported on mobile yet",
+                "{} hosts are not supported here",
                 resolved.protocol()
             )));
         }
-        let target = SshTarget {
-            host: resolved.host.data.address.clone(),
-            port: resolved.port(),
-            username: resolved.username(),
-        };
+        let target = ssh_target(&resolved);
         Ok((resolved, target))
     }
+}
+
+fn ssh_target(resolved: &ResolvedHost) -> SshTarget {
+    SshTarget {
+        host: resolved.host.data.address.clone(),
+        port: resolved.port(),
+        username: resolved.username(),
+    }
+}
+
+/// The shell [`App::connect_local`] starts when none is given.
+fn default_local_shell() -> String {
+    if cfg!(target_os = "android") {
+        return "/system/bin/sh".into();
+    }
+    std::env::var("SHELL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "/bin/sh".into())
 }
 
 fn quick_target(target: &QuickTarget) -> Result<SshTarget> {
     if target.host.trim().is_empty() {
         return Err(MobileError::invalid("host is empty"));
+    }
+    if target.protocol != "ssh" {
+        return Err(MobileError::invalid(format!(
+            "{} targets need a saved host",
+            target.protocol
+        )));
     }
     Ok(SshTarget {
         host: target.host.trim().to_string(),

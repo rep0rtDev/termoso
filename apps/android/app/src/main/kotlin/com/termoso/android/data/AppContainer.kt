@@ -138,7 +138,7 @@ class AppContainer(context: Context) {
             VaultRepository(app)
         }.also {
             val keepAlive = KeepAlive(appContext)
-            val sessions = SessionManager(it, keepAlive)
+            val sessions = SessionManager(it, keepAlive, File(appContext.filesDir, "home"))
             _vault.value = VaultState.Open(
                 repo = it,
                 sessions = sessions,

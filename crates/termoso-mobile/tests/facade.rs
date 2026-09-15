@@ -12,11 +12,12 @@ use russh::server::{Auth, ChannelOpenHandle, Msg, Server as _, Session};
 use russh::{Channel, ChannelId, MethodSet};
 use termoso_mobile::{
     HostKeyChoice, IdentityDraft, KeyAlgorithm, KeyGenerateDraft, KeyImportDraft, LiveEndReason,
-    LiveListener, LiveParticipantCard, MobileError, PfKind, PfRuleDraft, PromptAnswer,
+    LiveListener, LiveParticipantCard, LocalShell, MobileError, PfKind, PfRuleDraft, PromptAnswer,
     PromptRequest, QuickTarget, SessionListener, SessionState, SshIdKeyKind, SshSession,
-    TerminalOptions, TermosoApp, Transport, TunnelListener, TunnelState, VaultKind, flag,
-    generate_master_key, is_live_link, parse_target, profile_exists, sshid_handle_valid,
+    TelnetDraft, TerminalOptions, TermosoApp, Transport, TunnelListener, TunnelState, VaultKind,
+    flag, generate_master_key, is_live_link, parse_target, profile_exists, sshid_handle_valid,
 };
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 const USER: &str = "tester";
@@ -640,6 +641,7 @@ fn live_links_are_recognised_and_need_an_account() {
                 host: "127.0.0.1".into(),
                 port: 1,
                 username: USER.into(),
+                protocol: "ssh".into(),
             },
             opts(),
             Arc::new(Recorder::default()),
@@ -665,7 +667,186 @@ fn parse_targets() {
     assert_eq!((t.username.as_str(), t.port), ("root", 22));
     let t = parse_target("me@[::1]:23".into()).unwrap();
     assert_eq!((t.host.as_str(), t.port), ("::1", 23));
+    assert_eq!(t.protocol, "ssh");
+    let t = parse_target("telnet://router.lan".into()).unwrap();
+    assert_eq!(
+        (t.host.as_str(), t.port, t.protocol.as_str()),
+        ("router.lan", 23, "telnet")
+    );
+    let t = parse_target("telnet://10.0.0.1:2323/".into()).unwrap();
+    assert_eq!((t.host.as_str(), t.port), ("10.0.0.1", 2323));
     assert!(parse_target("  ".into()).is_err());
+    assert!(parse_target("telnet://".into()).is_err());
+}
+
+/// A telnet server that negotiates NAWS, prints a banner and echoes lines
+/// back until it reads `bye`.
+async fn start_telnet() -> u16 {
+    const IAC: u8 = 255;
+    const DO: u8 = 253;
+    const NAWS: u8 = 31;
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut sock, _)) = listener.accept().await else {
+                return;
+            };
+            tokio::spawn(async move {
+                sock.write_all(&[IAC, DO, NAWS]).await.ok();
+                sock.write_all(b"telnet banner\r\nlogin: ").await.ok();
+                let mut buf = [0u8; 256];
+                let mut line = Vec::new();
+                loop {
+                    let n = match sock.read(&mut buf).await {
+                        Ok(0) | Err(_) => return,
+                        Ok(n) => n,
+                    };
+                    // Skip negotiation replies the client sends; keep printable bytes.
+                    let mut i = 0;
+                    while i < n {
+                        if buf[i] == IAC {
+                            i += if i + 1 < n && buf[i + 1] == 250 {
+                                buf[i..n]
+                                    .iter()
+                                    .position(|&b| b == 240)
+                                    .map_or(n, |p| p + 1)
+                            } else {
+                                3
+                            };
+                            continue;
+                        }
+                        line.push(buf[i]);
+                        i += 1;
+                    }
+                    if let Some(p) = line.iter().position(|&b| b == b'\r' || b == b'\n') {
+                        let cmd = String::from_utf8_lossy(&line[..p]).trim().to_string();
+                        line.clear();
+                        if cmd == "bye" {
+                            sock.write_all(b"\r\nGoodbye\r\n").await.ok();
+                            return;
+                        }
+                        sock.write_all(format!("\r\nyou said {cmd}\r\nlogin: ").as_bytes())
+                            .await
+                            .ok();
+                    }
+                }
+            });
+        }
+    });
+    port
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn telnet_quick_and_saved_host() {
+    let port = start_telnet().await;
+    let (app, _dir) = app();
+
+    // Ad-hoc telnet: no host key, no credentials, straight to the banner.
+    let rec = Arc::new(Recorder::default());
+    let session = app
+        .connect_quick(
+            parse_target(format!("telnet://127.0.0.1:{port}")).unwrap(),
+            opts(),
+            rec.clone(),
+        )
+        .unwrap();
+    rec.wait_state(|s| matches!(s, SessionState::Connected));
+    wait_text(&session, "telnet banner");
+    session.write(b"hello\r".to_vec());
+    wait_text(&session, "you said hello");
+    session.write(b"bye\r".to_vec());
+    rec.wait_state(|s| matches!(s, SessionState::Closed { .. }));
+    assert!(rec.prompts.lock().unwrap().is_empty());
+
+    // A Telnet-only saved host is listed as such and connects the same way.
+    let vault = app.local_vault().unwrap().id;
+    let mut d = app.new_host_draft(vault, None).unwrap();
+    d.label = "router".into();
+    d.address = "127.0.0.1".into();
+    d.ssh = false;
+    d.telnet = Some(TelnetDraft {
+        port: Some(port),
+        username: "admin".into(),
+        ..TelnetDraft::default()
+    });
+    let host = app.save_host(d).unwrap();
+    assert_eq!((host.protocol.as_str(), host.port), ("telnet", port));
+    let back = app.host_draft(host.id.clone()).unwrap();
+    assert!(!back.ssh);
+    assert_eq!(
+        back.telnet.as_ref().map(|t| t.username.as_str()),
+        Some("admin")
+    );
+
+    let rec = Arc::new(Recorder::default());
+    let session = app
+        .connect_host(host.id.clone(), opts(), rec.clone())
+        .unwrap();
+    rec.wait_state(|s| matches!(s, SessionState::Connected));
+    wait_text(&session, "login:");
+    session.disconnect();
+    rec.wait_state(|s| matches!(s, SessionState::Closed { .. }));
+
+    // An SSH-only host has no Telnet section to pick.
+    let mut d = app
+        .new_host_draft(app.local_vault().unwrap().id, None)
+        .unwrap();
+    d.label = "ssh-only".into();
+    d.address = "127.0.0.1".into();
+    let ssh_only = app.save_host(d).unwrap();
+    let err = app
+        .connect_host(
+            ssh_only.id,
+            TerminalOptions {
+                transport: Transport::Telnet,
+                ..opts()
+            },
+            Arc::new(Recorder::default()),
+        )
+        .err()
+        .expect("no telnet section");
+    assert!(err.to_string().contains("Telnet"), "{err}");
+
+    let hist = app.history(10).unwrap();
+    assert_eq!(hist.len(), 2);
+    assert!(hist.iter().all(|h| h.protocol == "telnet"));
+    assert!(
+        hist.iter()
+            .any(|h| h.host_id.is_some() && h.label == "router")
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn local_shell_session() {
+    let (app, dir) = app();
+    let rec = Arc::new(Recorder::default());
+    let session = app
+        .connect_local(
+            LocalShell {
+                argv: vec!["/bin/sh".into()],
+                home: dir.path().to_string_lossy().into_owned(),
+                env: vec!["PS1=local$ ".into(), "TERMOSO_TEST=1".into()],
+            },
+            opts(),
+            rec.clone(),
+        )
+        .unwrap();
+    rec.wait_state(|s| matches!(s, SessionState::Connected));
+    session.write(b"echo $TERMOSO_TEST-$TERM\r".to_vec());
+    wait_text(&session, "1-xterm-256color");
+    session.write(b"pwd\r".to_vec());
+    wait_text(&session, &dir.path().to_string_lossy());
+    session.write(b"exit\r".to_vec());
+    rec.wait_state(|s| matches!(s, SessionState::Closed { .. }));
+    let hist = app.history(10).unwrap();
+    assert_eq!(hist.len(), 1);
+    assert_eq!(
+        (hist[0].protocol.as_str(), hist[0].label.as_str()),
+        ("local", "Local")
+    );
+    assert!(hist[0].error.is_none());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -679,6 +860,7 @@ async fn quick_connect_password_flow() {
                 host: "127.0.0.1".into(),
                 port,
                 username: USER.into(),
+                protocol: "ssh".into(),
             },
             opts(),
             rec.clone(),
