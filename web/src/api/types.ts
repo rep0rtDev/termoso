@@ -293,6 +293,52 @@ export interface Vault {
   my_role: VaultRole;
   sealed_key?: string;
   key_version: number;
+  /** Team vault: a manager turned on recording of every member's sessions. */
+  session_logging: boolean;
+}
+
+/** Who recorded a session log, as the server shows it to vault members. */
+export interface LogAuthor {
+  user_id: string;
+  email: string;
+  display_name?: string;
+  avatar_tag?: string;
+}
+
+/** A session recording as listed by the server; `meta` and the body are vault-key ciphertext. */
+export interface SessionLog {
+  id: string;
+  vault_id: string;
+  user_id: string;
+  author?: LogAuthor;
+  meta: string;
+  key_version: number;
+  size_bytes: number;
+  completed: boolean;
+  created_at: string;
+  seq: number;
+  deleted: boolean;
+  pinned: boolean;
+  note: string;
+  note_by?: string;
+}
+
+export interface LogListResponse {
+  logs: SessionLog[];
+  since: number;
+  has_more: boolean;
+}
+
+/** Plaintext of `SessionLog.meta` once decrypted with the vault key. */
+export interface LogMeta {
+  host_id?: string;
+  label: string;
+  target: string;
+  protocol: string;
+  started_at: string;
+  ended_at?: string;
+  cols: number;
+  rows: number;
 }
 
 export interface VaultMember {

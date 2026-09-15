@@ -562,6 +562,7 @@ fn apply_vault_list(store: &Store, private_key: &KeyPair, remote: &[Vault]) -> R
             key.as_ref(),
             v.key_version,
         )?;
+        store.set_vault_session_logging(v.id, v.session_logging)?;
         if let Some(old) = rotated_from {
             store.reencrypt_vault(v.id, &old)?;
         }
@@ -681,6 +682,7 @@ mod tests {
             my_role: VaultRole::Editor,
             sealed_key: sealed,
             key_version: kv,
+            session_logging: false,
         }
     }
 
