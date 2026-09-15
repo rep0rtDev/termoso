@@ -1122,6 +1122,76 @@ export interface CloudImportReport {
   warnings: string[];
 }
 
+// ───────────────────────────── cloud sync groups ─────────────────────────────
+
+/**
+ * What a group remembers about its cloud account. No secrets: those are
+ * encrypted into local metadata by `cloud_sync_save` and never come back.
+ */
+export interface CloudSyncConfig {
+  provider: CloudProvider;
+  region?: string;
+  service?: AwsService;
+  addressType?: CloudAddressType;
+  /** AWS key id — not secret, shown so the user knows which key is in use. */
+  accessKeyId?: string;
+  tenantId?: string;
+  clientId?: string;
+  username: string;
+  port: number | null;
+  tagIds: Uuid[];
+  removeMissing: boolean;
+  /** Background refresh period in minutes; `0` = only on “Sync now”. */
+  intervalMinutes: number;
+  enabled: boolean;
+}
+
+/** Provider secret for `cloud_sync_save`; `null` keeps the stored one. */
+export interface CloudSyncSecret {
+  secretAccessKey?: string;
+  token?: string;
+  clientSecret?: string;
+}
+
+export interface CloudSyncStatus {
+  lastRun?: string;
+  lastSuccess?: string;
+  errorKind?: string;
+  error?: string;
+  report?: CloudImportReport;
+  instances: number;
+}
+
+export interface CloudSyncGroup {
+  groupId: Uuid;
+  vaultId: Uuid;
+  label: string;
+  config: CloudSyncConfig;
+  status: CloudSyncStatus;
+  /** A secret is stored on this device; synced groups elsewhere show as plain groups. */
+  hasSecret: boolean;
+  running: boolean;
+  nextRun?: string;
+}
+
+export const CLOUD_SYNC_MIN_INTERVAL = 5;
+export const CLOUD_SYNC_MAX_INTERVAL = 7 * 24 * 60;
+
+// ───────────────────────────── local discovery (mDNS) ─────────────────────────────
+
+export type LocalService = "ssh" | "sftp";
+
+/** An SSH server advertised on the LAN. A candidate only — nothing is stored. */
+export interface LocalDevice {
+  name: string;
+  hostname: string;
+  /** IPv4 first, link-local last. */
+  addresses: string[];
+  port: number;
+  services: LocalService[];
+  txt?: Record<string, string>;
+}
+
 // ───────────────────────────── export / backup ─────────────────────────────
 
 export interface CsvExportReport {

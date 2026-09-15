@@ -44,6 +44,7 @@ import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import UsbRoundedIcon from "@mui/icons-material/UsbRounded";
 import CloudOutlinedIcon from "@mui/icons-material/CloudOutlined";
+import LanOutlinedIcon from "@mui/icons-material/LanOutlined";
 import { EmptyState } from "@/components/EmptyState";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
@@ -57,6 +58,7 @@ import {
 } from "@/components/ui";
 import {
   useDeleteHosts,
+  useCloudSyncGroups,
   useDuplicateGroup,
   useDuplicateHost,
   useGroups,
@@ -90,6 +92,7 @@ import { DeleteGroupDialog, GroupPanel } from "./GroupPanel";
 import { MoveCopyDialog, type MoveCopyRequest } from "./MoveCopyDialog";
 import { ImportDialog } from "./ImportDialog";
 import { CLOUD_PROVIDERS, CloudImportDialog } from "./CloudImportDialog";
+import { LanDiscoveryDialog } from "./LanDiscoveryDialog";
 import { ExportCsvDialog } from "./ExportCsvDialog";
 import { TagManagerDialog } from "./TagManagerDialog";
 import { TagsPopover } from "./TagsPopover";
@@ -162,6 +165,11 @@ export function HostsPage() {
   const groups = useGroups(vaultId);
   const tags = useTags(vaultId);
   const presence = useVaultPresence(vaultId);
+  const cloudSyncGroups = useCloudSyncGroups(vaultId);
+  const cloudSynced = useMemo(
+    () => new Set((cloudSyncGroups.data ?? []).map((g) => g.groupId)),
+    [cloudSyncGroups.data],
+  );
   const settings = useSettings();
   const saveSettings = useSaveSettings();
   const deleteHosts = useDeleteHosts();
@@ -187,6 +195,7 @@ export function HostsPage() {
   const [moveCopy, setMoveCopy] = useState<MoveCopyRequest | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [cloudProvider, setCloudProvider] = useState<CloudProvider | null>(null);
+  const [lanOpen, setLanOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<HostCard[] | null>(null);
   const [confirmGroup, setConfirmGroup] = useState<GroupNode | null>(null);
@@ -712,6 +721,7 @@ export function HostsPage() {
     dnd,
     tagColors,
     presence,
+    cloudSynced,
   };
 
   const crumbSx = (active: boolean) => ({
@@ -832,6 +842,13 @@ export function HostsPage() {
                 label: "Export CSV…",
                 icon: <FileUploadOutlinedIcon fontSize="small" />,
                 onClick: () => setExportOpen(true),
+              },
+              {
+                label: "Discover on local network…",
+                icon: <LanOutlinedIcon fontSize="small" />,
+                disabled: readOnly,
+                divider: true,
+                onClick: () => setLanOpen(true),
               },
               ...CLOUD_PROVIDERS.map((p, i) => ({
                 label: `${p.short} Integration`,
@@ -1143,6 +1160,15 @@ export function HostsPage() {
           open={importOpen}
           vaultId={vaultId}
           onClose={() => setImportOpen(false)}
+          onImported={clearSelection}
+        />
+      )}
+
+      {vaultId && (
+        <LanDiscoveryDialog
+          open={lanOpen}
+          vaultId={vaultId}
+          onClose={() => setLanOpen(false)}
           onImported={clearSelection}
         />
       )}

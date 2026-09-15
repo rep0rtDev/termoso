@@ -70,7 +70,7 @@ export function HostList(p: HostCollectionProps) {
             {...p.dnd?.dropGroup(g)}
           >
             <TableCell>
-              <GroupTile g={g} size={sizes.tileSmall} />
+              <GroupTile g={g} size={sizes.tileSmall} cloud={p.cloudSynced?.has(g.id)} />
             </TableCell>
             <TableCell>
               <Typography variant="body1" sx={{ fontWeight: 500 }}>
