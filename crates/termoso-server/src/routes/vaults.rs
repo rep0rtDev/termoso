@@ -378,8 +378,19 @@ pub async fn members(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<VaultMemberList>> {
     access(&state.db, id, auth.user_id()).await?;
-    let rows: Vec<(Uuid, String, Option<String>, String, i32, bool, String, DateTime<Utc>)> = sqlx::query_as(
-        "SELECT u.id, u.email, u.display_name, vm.role, vm.key_version, vm.sealed_key IS NULL, u.public_key, vm.added_at
+    type Row = (
+        Uuid,
+        String,
+        Option<String>,
+        Option<String>,
+        String,
+        i32,
+        bool,
+        String,
+        DateTime<Utc>,
+    );
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT u.id, u.email, u.display_name, u.avatar_tag, vm.role, vm.key_version, vm.sealed_key IS NULL, u.public_key, vm.added_at
          FROM vault_members vm JOIN users u ON u.id = vm.user_id WHERE vm.vault_id = $1 ORDER BY vm.added_at",
     )
     .bind(id)
@@ -393,6 +404,7 @@ pub async fn members(
                     user_id,
                     email,
                     display_name,
+                    avatar,
                     role,
                     key_version,
                     pending,
@@ -402,6 +414,7 @@ pub async fn members(
                     user_id,
                     email,
                     display_name,
+                    avatar,
                     role: parse_vault_role(&role),
                     key_version,
                     pending,

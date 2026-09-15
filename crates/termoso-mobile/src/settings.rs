@@ -80,6 +80,9 @@ pub struct MobileSettings {
     pub lock_after_seconds: u32,
     /// Onboarding shown.
     pub welcome_seen: bool,
+    /// Vault shown in the Vaults tab when the app was last used.
+    #[serde(default)]
+    pub selected_vault_id: Option<String>,
 }
 
 impl Default for MobileSettings {
@@ -103,6 +106,7 @@ impl Default for MobileSettings {
             lock_on_background: false,
             lock_after_seconds: 0,
             welcome_seen: false,
+            selected_vault_id: None,
         }
     }
 }

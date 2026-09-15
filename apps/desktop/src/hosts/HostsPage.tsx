@@ -84,6 +84,7 @@ import {
 } from "@/app/navigation";
 import { HostGrid, hostTarget } from "./HostGrid";
 import { HostList } from "./HostList";
+import { useVaultPresence } from "./PresenceViews";
 import { HostEditPanel } from "./HostEditPanel";
 import { DeleteGroupDialog, GroupPanel } from "./GroupPanel";
 import { MoveCopyDialog, type MoveCopyRequest } from "./MoveCopyDialog";
@@ -160,6 +161,7 @@ export function HostsPage() {
   const hosts = useHosts(vaultId);
   const groups = useGroups(vaultId);
   const tags = useTags(vaultId);
+  const presence = useVaultPresence(vaultId);
   const settings = useSettings();
   const saveSettings = useSaveSettings();
   const deleteHosts = useDeleteHosts();
@@ -709,6 +711,7 @@ export function HostsPage() {
     onHostContext,
     dnd,
     tagColors,
+    presence,
   };
 
   const crumbSx = (active: boolean) => ({

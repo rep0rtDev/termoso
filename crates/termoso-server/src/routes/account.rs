@@ -4,7 +4,10 @@
 use std::time::Duration;
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::body::Bytes;
+use axum::extract::{Path, Query, State};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use termoso_crypto::encoding::{unb64, unb64_array};
@@ -12,10 +15,12 @@ use termoso_proto::account::*;
 use termoso_proto::auth::{Device, DeviceList, RecoveryRotate};
 use uuid::Uuid;
 
+use crate::avatar;
 use crate::codes;
 use crate::error::{ApiResult, Error, NoContent};
 use crate::events::{self, Event};
 use crate::extract::{Auth, Json as Body, StepUp};
+use crate::presence;
 use crate::ratelimit;
 use crate::routes::auth::{P_EMAIL_VERIFY, send_email_verification};
 use crate::session;
@@ -66,6 +71,113 @@ pub async fn update_profile(
     let mfa = users::mfa_enabled(&state, &u).await?;
     events::publish(&state, Event::AccountUpdated { user_id: u.id }).await?;
     Ok(Json(users::profile(&u, mfa)))
+}
+
+#[utoipa::path(put, path = "/api/v1/account/presence", tag = "account",
+    request_body = PresenceVisibilityRequest, responses((status = 200, body = UserProfile)))]
+pub async fn put_presence(
+    State(state): State<AppState>,
+    auth: Auth,
+    Body(req): Body<PresenceVisibilityRequest>,
+) -> ApiResult<Json<UserProfile>> {
+    sqlx::query("UPDATE users SET presence_hidden = $2, updated_at = now() WHERE id = $1")
+        .bind(auth.user_id())
+        .bind(req.hidden)
+        .execute(&state.db)
+        .await?;
+    if req.hidden {
+        presence::clear_user(&state, auth.user_id()).await?;
+    }
+    let u = users::by_id(&state.db, auth.user_id()).await?;
+    let mfa = users::mfa_enabled(&state, &u).await?;
+    events::publish(&state, Event::AccountUpdated { user_id: u.id }).await?;
+    Ok(Json(users::profile(&u, mfa)))
+}
+
+// ───────────────────────────── avatar ─────────────────────────────
+
+#[utoipa::path(put, path = "/api/v1/account/avatar", tag = "account",
+    request_body(content_type = "image/*"), responses((status = 200, body = UserProfile)))]
+pub async fn put_avatar(
+    State(state): State<AppState>,
+    auth: Auth,
+    body: Bytes,
+) -> ApiResult<Json<UserProfile>> {
+    if body.len() > avatar::MAX_UPLOAD {
+        return Err(Error::too_large("Image is too large (4 MiB max)"));
+    }
+    let webp = tokio::task::spawn_blocking(move || avatar::normalize(&body))
+        .await
+        .map_err(|e| Error::Internal(e.into()))??;
+    avatar::store(&state.db, auth.user_id(), &webp).await?;
+    let u = users::by_id(&state.db, auth.user_id()).await?;
+    let mfa = users::mfa_enabled(&state, &u).await?;
+    events::publish(&state, Event::AccountUpdated { user_id: u.id }).await?;
+    Ok(Json(users::profile(&u, mfa)))
+}
+
+#[utoipa::path(delete, path = "/api/v1/account/avatar", tag = "account", responses((status = 200, body = UserProfile)))]
+pub async fn delete_avatar(
+    State(state): State<AppState>,
+    auth: Auth,
+) -> ApiResult<Json<UserProfile>> {
+    avatar::clear(&state.db, auth.user_id()).await?;
+    let u = users::by_id(&state.db, auth.user_id()).await?;
+    let mfa = users::mfa_enabled(&state, &u).await?;
+    events::publish(&state, Event::AccountUpdated { user_id: u.id }).await?;
+    Ok(Json(users::profile(&u, mfa)))
+}
+
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct AvatarQuery {
+    /// Content tag the client expects (`UserProfile.avatar`). When it matches
+    /// the stored picture the response is cacheable forever, because the URL
+    /// then changes together with the picture.
+    pub v: Option<String>,
+}
+
+/// Anyone signed in may see anyone's picture: it is the same information a
+/// teammate sees next to your name. Responses carry the tag as `ETag`;
+/// requests pinned to the current tag via `?v=` are marked immutable, others
+/// must revalidate so a replaced picture never sticks in an HTTP cache.
+#[utoipa::path(get, path = "/api/v1/users/{id}/avatar", tag = "account", params(AvatarQuery),
+    responses((status = 200, content_type = "image/webp"), (status = 304), (status = 404)))]
+pub async fn user_avatar(
+    State(state): State<AppState>,
+    _auth: Auth,
+    Path(id): Path<Uuid>,
+    Query(q): Query<AvatarQuery>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
+    let (bytes, tag) = avatar::load(&state.db, id)
+        .await?
+        .ok_or_else(|| Error::not_found("Avatar"))?;
+    let etag = format!("\"{tag}\"");
+    let cache = if q.v.as_deref() == Some(tag.as_str()) {
+        "private, max-age=31536000, immutable"
+    } else {
+        "private, no-cache"
+    };
+    let common = [
+        (
+            header::ETAG,
+            HeaderValue::from_str(&etag).map_err(|e| Error::Internal(e.into()))?,
+        ),
+        (header::CACHE_CONTROL, HeaderValue::from_static(cache)),
+    ];
+    let unchanged = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.split(',').any(|t| t.trim() == etag));
+    if unchanged {
+        return Ok((StatusCode::NOT_MODIFIED, common).into_response());
+    }
+    Ok((
+        common,
+        [(header::CONTENT_TYPE, HeaderValue::from_static("image/webp"))],
+        bytes,
+    )
+        .into_response())
 }
 
 // ───────────────────────────── email ─────────────────────────────

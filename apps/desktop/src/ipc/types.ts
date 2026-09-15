@@ -142,6 +142,7 @@ export interface VaultMember {
   user_id: Uuid;
   email: string;
   display_name?: string | null;
+  avatar?: string | null;
   role: VaultRole;
   key_version: number;
   pending: boolean;
@@ -157,12 +158,57 @@ export interface Team {
   member_count: number;
   multiplayer_enabled: boolean;
   require_mfa: boolean;
+  /** Members can see who is connected to which team-vault host right now. */
+  presence_enabled: boolean;
+}
+
+/** One open connection of a device to a team-vault host (routing metadata only). */
+export interface PresenceSession {
+  vault_id: Uuid;
+  host_id: Uuid;
+  /** `ssh`, `mosh`, `telnet`, `sftp` or `forward`. */
+  protocol: string;
+  since: string;
+}
+
+/** One device of one teammate and what it is connected to. */
+export interface PresenceEntry {
+  user_id: Uuid;
+  email: string;
+  display_name?: string | null;
+  avatar?: string | null;
+  device_id: Uuid;
+  device_name: string;
+  platform: string;
+  sessions: PresenceSession[];
+  seen_at: string;
+}
+
+export interface TeamPresence {
+  enabled: boolean;
+  entries: PresenceEntry[];
+}
+
+/** Server-side account profile (`GET /account`). */
+export interface UserProfile {
+  id: Uuid;
+  email: string;
+  email_verified: boolean;
+  display_name?: string | null;
+  created_at: string;
+  is_admin: boolean;
+  mfa_enabled: boolean;
+  reset_scheduled_for?: string | null;
+  /** Teammates never see which hosts this user is connected to. */
+  presence_hidden: boolean;
+  avatar?: string | null;
 }
 
 export interface TeamMember {
   user_id: Uuid;
   email: string;
   display_name: string | null;
+  avatar?: string | null;
   role: TeamRole;
   joined_at: string;
 }
@@ -202,6 +248,7 @@ export interface AuditEvent {
   actor_id?: Uuid;
   actor_email?: string;
   actor_name?: string;
+  actor_avatar?: string;
   device_id?: Uuid;
   action: string;
   vault_id?: Uuid;
@@ -1156,6 +1203,8 @@ export interface AccountCard {
   userId: Uuid;
   email: string;
   displayName: string | null;
+  /** Content tag of the profile picture; `null` when none. */
+  avatar: string | null;
   isAdmin: boolean;
   deviceId: Uuid;
   signedInAt: string;
@@ -1212,6 +1261,7 @@ export type SyncNotice =
   | { kind: "historyChanged" }
   | { kind: "logsChanged" }
   | { kind: "accountChanged" }
+  | { kind: "presenceChanged"; teamId: Uuid }
   | { kind: "signedOut" };
 
 export interface LoginForm {
@@ -1368,6 +1418,7 @@ export interface LiveParticipant {
   userId: Uuid;
   email: string;
   displayName: string | null;
+  avatar: string | null;
   isHost: boolean;
   /** Keystrokes of this person reach the shared terminal. */
   canWrite: boolean;

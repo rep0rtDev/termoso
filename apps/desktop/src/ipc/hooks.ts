@@ -35,6 +35,8 @@ export const keys = {
   teamMembers: (id: Uuid) => ["account", "teams", id, "members"] as const,
   teamInvites: (id: Uuid) => ["account", "teams", id, "invites"] as const,
   teamPendingKeys: (id: Uuid) => ["account", "teams", id, "pending-keys"] as const,
+  presence: (teamId: Uuid) => ["presence", teamId] as const,
+  profile: ["account", "profile"] as const,
   serialPorts: ["serialPorts"] as const,
 };
 
@@ -250,6 +252,20 @@ export const useTeamInvites = (teamId: Uuid | null, enabled = true) =>
     enabled: teamId !== null && enabled,
     staleTime: 30_000,
   });
+/**
+ * Who is connected to the team's hosts right now. Realtime notices invalidate
+ * it; the slow poll only covers a dropped WebSocket.
+ */
+export const useTeamPresence = (teamId: Uuid | null) =>
+  useQuery({
+    queryKey: keys.presence(teamId ?? ""),
+    queryFn: () => ipc.teamPresence(teamId ?? ""),
+    enabled: teamId !== null,
+    staleTime: 15_000,
+    refetchInterval: 60_000,
+  });
+export const useProfile = (enabled: boolean) =>
+  useQuery({ queryKey: keys.profile, queryFn: ipc.accountProfile, enabled, staleTime: 60_000 });
 export const useTeamPendingKeys = (teamId: Uuid | null, enabled = true) =>
   useQuery({
     queryKey: keys.teamPendingKeys(teamId ?? ""),
@@ -305,10 +321,15 @@ export function useSyncNotices() {
         case "logsChanged":
           void qc.invalidateQueries({ queryKey: keys.logs });
           break;
+        case "presenceChanged":
+          void qc.invalidateQueries({ queryKey: keys.presence(n.teamId) });
+          break;
         case "signedOut":
         case "accountChanged":
           void qc.invalidateQueries({ queryKey: keys.app });
           void qc.invalidateQueries({ queryKey: keys.vaults });
+          void qc.invalidateQueries({ queryKey: keys.account });
+          void qc.invalidateQueries({ queryKey: ["presence"] });
           break;
         case "status":
           break;

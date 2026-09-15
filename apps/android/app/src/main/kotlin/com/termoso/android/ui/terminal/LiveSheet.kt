@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -25,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -43,12 +43,12 @@ import androidx.core.content.getSystemService
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.userMessage
-import com.termoso.android.ui.components.IconTile
+import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
-import com.termoso.android.ui.components.SwitchRow
+import com.termoso.android.ui.components.UserAvatar
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.core.LiveParticipantCard
 import com.termoso.core.isLiveLink
@@ -102,7 +102,7 @@ fun LiveSheet(session: TerminalSession, shell: ShellViewModel, onClose: () -> Un
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Participants(participants, null)
+                    Participants(shell.repo, participants, null)
                     Spacer(Modifier.height(12.dp))
                     OutlinedButton(
                         onClick = { scope.launch { shell.sessions.close(session.id) }; onClose() },
@@ -149,7 +149,7 @@ fun LiveSheet(session: TerminalSession, shell: ShellViewModel, onClose: () -> Un
                             Text("Share")
                         }
                     }
-                    Participants(participants) { p, enabled ->
+                    Participants(shell.repo, participants) { p, enabled ->
                         scope.launch {
                             runCatching { shell.sessions.setControl(session.id, p.userId, enabled) }
                                 .onFailure { shell.notify(it.userMessage()) }
@@ -167,6 +167,7 @@ fun LiveSheet(session: TerminalSession, shell: ShellViewModel, onClose: () -> Un
 
 @Composable
 private fun Participants(
+    repo: VaultRepository,
     participants: List<LiveParticipantCard>,
     onControl: ((LiveParticipantCard, Boolean) -> Unit)?,
 ) {
@@ -188,15 +189,15 @@ private fun Participants(
                 if (p.me) add("you")
                 if (!p.isHost) add(if (p.canWrite) "can type" else "view only")
             }.joinToString(" · ")
+            val avatar: @Composable () -> Unit = {
+                UserAvatar(repo, userId = p.userId, tag = p.avatar, name = name)
+            }
             if (onControl != null && !p.isHost) {
-                SwitchRow(
-                    title = name,
-                    subtitle = role,
-                    checked = p.canWrite,
-                    onCheckedChange = { onControl(p, it) },
-                )
+                ListRow(title = name, subtitle = role, leading = avatar) {
+                    Switch(checked = p.canWrite, onCheckedChange = { onControl(p, it) })
+                }
             } else {
-                ListRow(title = name, subtitle = role, leading = { IconTile(Icons.Filled.Person) })
+                ListRow(title = name, subtitle = role, leading = avatar)
             }
         }
     }

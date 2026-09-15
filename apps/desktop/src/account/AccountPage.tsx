@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Alert, Box, Button, Chip, Stack, Tooltip, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, Stack, Switch, Tooltip, Typography } from "@mui/material";
 import SyncRoundedIcon from "@mui/icons-material/SyncRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
@@ -25,7 +25,7 @@ import {
 } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
-import { useAccount, useDevices } from "@/ipc/hooks";
+import { keys, useAccount, useDevices, useProfile } from "@/ipc/hooks";
 import { sizes } from "@/theme/theme";
 import { isReauthCancelled, withReauth } from "./reauth";
 import {
@@ -139,6 +139,7 @@ function SignedIn({
   const snackbar = useSnackbar();
   const qc = useQueryClient();
   const devices = useDevices(true);
+  const profile = useProfile(true);
   const [confirm, setConfirm] = useState<
     { kind: "none" } | { kind: "signOut" } | { kind: "revoke"; device: Device }
   >({
@@ -220,6 +221,36 @@ function SignedIn({
         <SettingRow label="Pushed" control={<Value>{String(s.pushed)}</Value>} />
         <SettingRow label="Pulled" control={<Value>{String(s.pulled)}</Value>} />
         <SettingRow label="Conflicts" last control={<Value>{String(s.conflicts)}</Value>} />
+      </SectionCard>
+
+      <SectionCard
+        title="Privacy"
+        description="Teammates in team vaults can see which hosts you are connected to when their team enables it. Nothing about the session itself is shared."
+      >
+        <SettingRow
+          label="Show me as connected"
+          hint={
+            profile.data?.presence_hidden
+              ? "You are hidden: nobody sees your connections."
+              : "Visible to teammates on the hosts you are connected to."
+          }
+          last
+          control={
+            <Switch
+              checked={profile.data ? !profile.data.presence_hidden : false}
+              disabled={!profile.data || op.isPending}
+              onChange={(e) =>
+                op.mutate(async () => {
+                  const p = await ipc.accountSetPresenceHidden(!e.target.checked);
+                  qc.setQueryData(keys.profile, p);
+                  return p.presence_hidden
+                    ? "You are now hidden from teammates"
+                    : "Teammates can see your connections again";
+                })
+              }
+            />
+          }
+        />
       </SectionCard>
 
       <SectionCard title="Vaults on this device">

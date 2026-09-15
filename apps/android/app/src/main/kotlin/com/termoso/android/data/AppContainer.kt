@@ -24,6 +24,7 @@ sealed interface VaultState {
         val sftp: SftpManager,
         val forwards: ForwardManager,
         val account: AccountManager,
+        val presence: PresenceManager,
     ) : VaultState
 }
 
@@ -139,12 +140,14 @@ class AppContainer(context: Context) {
         }.also {
             val keepAlive = KeepAlive(appContext)
             val sessions = SessionManager(it, keepAlive, File(appContext.filesDir, "home"))
+            val account = AccountManager(it, onSignOut = sessions::endLive)
             _vault.value = VaultState.Open(
                 repo = it,
                 sessions = sessions,
                 sftp = SftpManager(appContext, it, keepAlive),
                 forwards = ForwardManager(it, keepAlive),
-                account = AccountManager(it, onSignOut = sessions::endLive),
+                account = account,
+                presence = PresenceManager(it, account),
             )
         }
     }
@@ -157,6 +160,7 @@ class AppContainer(context: Context) {
         open.sessions.closeAll()
         open.sftp.closeAll()
         open.forwards.closeAll()
+        open.presence.close()
         open.account.close()
         fido2.close()
         withContext(Dispatchers.IO) { open.repo.app.close() }

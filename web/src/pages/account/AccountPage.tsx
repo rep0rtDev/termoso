@@ -1,4 +1,4 @@
-import { useState, type SubmitEvent } from "react";
+import { useRef, useState, type SubmitEvent } from "react";
 import {
   Alert,
   Box,
@@ -19,6 +19,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import { errorMessage } from "@/api/client";
 import { accountApi } from "@/api/endpoints";
+import type { UserProfile } from "@/api/types";
 import { queryKeys, useAccount, useServerInfo } from "@/api/hooks";
 import { changePassword } from "@/auth/flows";
 import { authStore, useAuthState } from "@/auth/store";
@@ -28,7 +29,9 @@ import { Loading } from "@/components/Loading";
 import { PageHeader } from "@/components/PageHeader";
 import { Section } from "@/components/Section";
 import { useSnackbar } from "@/components/Snackbar";
+import { UserAvatar } from "@/components/UserAvatar";
 import { formatDate } from "@/components/format";
+import { shrinkImage } from "@/pages/account/shrinkImage";
 import { PasswordField, passwordProblem } from "@/pages/auth/common";
 
 export function AccountPage() {
@@ -42,6 +45,7 @@ export function AccountPage() {
         displayName={account.data.user.display_name ?? ""}
         createdAt={account.data.user.created_at}
       />
+      <PictureSection user={account.data.user} />
       <EmailSection email={account.data.user.email} verified={account.data.user.email_verified} />
       <PasswordSection />
       <RecoveryKeySection />
@@ -89,6 +93,63 @@ function ProfileSection({ displayName, createdAt }: { displayName: string; creat
           Save
         </Button>
       </Box>
+    </Section>
+  );
+}
+
+function PictureSection({ user }: { user: UserProfile }) {
+  const qc = useQueryClient();
+  const snack = useSnackbar();
+  const input = useRef<HTMLInputElement>(null);
+  const apply = async (updated: UserProfile, message: string) => {
+    authStore.updateUser(updated);
+    await qc.invalidateQueries({ queryKey: queryKeys.account });
+    snack.notify(message);
+  };
+  const put = useMutation({
+    mutationFn: async (file: File) => accountApi.putAvatar(await shrinkImage(file)),
+    onSuccess: (u) => apply(u, "Picture updated"),
+    onError: (e) => snack.error(errorMessage(e)),
+  });
+  const remove = useMutation({
+    mutationFn: () => accountApi.deleteAvatar(),
+    onSuccess: (u) => apply(u, "Picture removed"),
+    onError: (e) => snack.error(errorMessage(e)),
+  });
+  const busy = put.isPending || remove.isPending;
+  return (
+    <Section
+      title="Picture"
+      description="Shown next to your name to teammates. Resized in your browser and stored as a small 192×192 image."
+    >
+      <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: "center", flexWrap: "wrap" }}>
+        <UserAvatar
+          userId={user.id}
+          tag={user.avatar}
+          email={user.email}
+          displayName={user.display_name}
+          size={96}
+        />
+        <input
+          ref={input}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) put.mutate(file);
+          }}
+        />
+        <Button variant="contained" disabled={busy} onClick={() => input.current?.click()}>
+          {user.avatar ? "Change" : "Upload"}
+        </Button>
+        {user.avatar && (
+          <Button variant="text" color="inherit" disabled={busy} onClick={() => remove.mutate()}>
+            Remove
+          </Button>
+        )}
+      </Stack>
     </Section>
   );
 }

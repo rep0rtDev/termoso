@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.termoso.android.data.AccountManager
+import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.IconTile
@@ -52,6 +53,7 @@ import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.SubScreen
 import com.termoso.android.ui.components.SwitchRow
+import com.termoso.android.ui.components.UserAvatar
 import com.termoso.android.ui.hosts.ConfirmDialog
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.core.InviteCard
@@ -177,6 +179,7 @@ fun TeamScreen(
                 state.members.forEachIndexed { i, m ->
                     if (i > 0) RowDivider()
                     MemberRow(
+                        shell.repo,
                         m,
                         canManage = state.isAdmin && !m.me && (m.role != TeamRole.OWNER),
                         onMenu = { memberMenu = m },
@@ -249,6 +252,13 @@ fun TeamScreen(
                         subtitle = "Members without 2FA cannot open team vaults",
                         checked = team.requireMfa,
                         onCheckedChange = { vm.setRequireMfa(it) },
+                    )
+                    RowDivider()
+                    SwitchRow(
+                        title = "Show who is connected",
+                        subtitle = "Members see who is on which team-vault host right now (only the host and protocol; each member can hide themselves)",
+                        checked = team.presenceEnabled,
+                        onCheckedChange = { vm.setPresence(it) },
                     )
                     RowDivider()
                     ChevronRow(
@@ -365,11 +375,11 @@ fun TeamScreen(
 }
 
 @Composable
-private fun MemberRow(m: TeamMemberCard, canManage: Boolean, onMenu: () -> Unit) {
+private fun MemberRow(repo: VaultRepository, m: TeamMemberCard, canManage: Boolean, onMenu: () -> Unit) {
     ListRow(
         title = (m.displayName ?: m.email) + if (m.me) " (you)" else "",
         subtitle = if (m.displayName != null) "${m.email} · ${m.role.label()}" else m.role.label(),
-        leading = { IconTile(Icons.Filled.Person) },
+        leading = { UserAvatar(repo, m.userId, m.avatar, m.displayName ?: m.email) },
         trailing = if (canManage) {
             { IconButton(onClick = onMenu) { Icon(Icons.Filled.MoreVert, contentDescription = "Manage") } }
         } else {
