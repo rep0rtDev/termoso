@@ -112,6 +112,9 @@ pub struct TeamMemberCard {
     pub joined_at: String,
     /// This is the signed-in user.
     pub me: bool,
+    /// Second factor enrolled (TOTP or security key). Only team admins and
+    /// the member themself get to know; `None` otherwise.
+    pub mfa_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -446,6 +449,7 @@ impl AccountRuntime {
                 avatar: m.avatar,
                 role: m.role.into(),
                 joined_at: m.joined_at.to_rfc3339(),
+                mfa_enabled: m.mfa_enabled,
             })
             .collect())
     }

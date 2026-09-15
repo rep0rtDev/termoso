@@ -13,10 +13,11 @@ use termoso_core::account::{
     self as core, LoginFlow, LoginStep, ReauthFlow, ReauthStep, RegisterInput,
 };
 use termoso_core::api::ApiClient;
-use termoso_core::store::{LocalVault, StoredAccount};
+use termoso_core::store::{EntityFilter, LocalVault, StoredAccount};
 use termoso_core::sync::{SyncEngine, SyncEvent, SyncOptions, SyncReport};
 use termoso_proto::account::ServerInfo;
 use termoso_proto::auth::{Device, MfaCredential, MfaMethod};
+use termoso_proto::entities::is_credential_kind;
 use termoso_proto::vault::VaultMember;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -120,6 +121,9 @@ pub struct AccountStatus {
     pub pending: Option<LoginOutcome>,
     pub sync: SyncStatus,
     pub vaults: Vec<LocalVault>,
+    /// Identities, keys and certificates of the Personal vault that exist
+    /// only on this device because credential sync is off (0 when it is on).
+    pub local_credentials: usize,
 }
 
 /// Emitted on `SYNC_EVENT`.
@@ -237,9 +241,28 @@ fn sync_options(state: &AppState) -> Result<SyncOptions> {
         conflict: settings.conflict_policy()?,
         log_dir: Some(state.logs_dir()),
         upload_logs: settings.upload_logs,
+        sync_credentials: settings.sync_credentials,
         interval,
         ..SyncOptions::default()
     })
+}
+
+fn local_credentials(state: &AppState) -> Result<usize> {
+    if state.settings()?.sync_credentials {
+        return Ok(0);
+    }
+    let Some(vault) = state.store.personal_vault()? else {
+        return Ok(0);
+    };
+    Ok(state
+        .store
+        .rows(&EntityFilter {
+            vault_id: Some(vault.id),
+            ..EntityFilter::default()
+        })?
+        .iter()
+        .filter(|r| is_credential_kind(&r.kind))
+        .count())
 }
 
 fn outcome(step: &LoginStep) -> LoginOutcome {
@@ -289,6 +312,7 @@ pub fn status(state: &AppState, pending: Option<LoginOutcome>) -> Result<Account
         pending,
         sync: state.account.sync_status(),
         vaults: state.store.vaults()?,
+        local_credentials: local_credentials(state)?,
     })
 }
 
@@ -713,6 +737,48 @@ pub async fn reconfigure<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
     }
     stop_engine(&mut inner).await;
     start_engine(app, &state, &mut inner)
+}
+
+/// Switch credential sync for the Personal vault. Turning it off takes the
+/// identities, keys and certificates off the server (they stay here);
+/// turning it on pushes the local ones and pulls what other devices have.
+/// Works offline too: the setting is saved and the engine picks it up.
+pub async fn set_credential_sync<R: Runtime>(
+    app: &AppHandle<R>,
+    on: bool,
+) -> Result<AccountStatus> {
+    let state = app.state::<AppState>();
+    let mut settings = state.settings()?;
+    if settings.sync_credentials != on {
+        settings.sync_credentials = on;
+        state.save_settings(&settings)?;
+    }
+    reconfigure(app).await?;
+    if let Some(engine) = engine(app).await {
+        state
+            .account
+            .update_status(|s| s.state = SyncState::Syncing);
+        let result = if on {
+            engine.resync_credentials().await.map(Some)
+        } else {
+            engine.purge_credentials().await.map(|_| None)
+        };
+        let status = match &result {
+            Ok(Some(report)) => state.account.update_status(|s| apply_report(s, report)),
+            Ok(None) => state.account.update_status(|s| {
+                s.state = SyncState::Idle;
+                s.last_sync_at = Some(Utc::now());
+            }),
+            Err(e) => state.account.update_status(|s| {
+                s.state = SyncState::Error;
+                s.last_error = Some(e.to_string());
+            }),
+        };
+        let _ = app.emit(SYNC_EVENT, SyncNotice::Status { status });
+        let _ = app.emit(SYNC_EVENT, SyncNotice::VaultsChanged);
+        result?;
+    }
+    current(app).await
 }
 
 // ───────────────────────────── devices ─────────────────────────────

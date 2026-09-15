@@ -109,6 +109,11 @@ schema! {
         pub public_key: String,
         /// Joined.
         pub joined_at: DateTime<Utc>,
+        /// Whether the member has a second factor (TOTP or a security key).
+        /// Present for team admins and for the caller's own row; other
+        /// members get `None`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub mfa_enabled: Option<bool>,
     }
 }
 

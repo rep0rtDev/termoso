@@ -16,10 +16,11 @@ use termoso_core::account::{
 };
 use termoso_core::api::ApiClient;
 use termoso_core::fido2::webauthn;
-use termoso_core::store::{Store, StoredAccount};
+use termoso_core::store::{EntityFilter, Store, StoredAccount};
 use termoso_core::sync::{SyncEngine, SyncEvent, SyncOptions, SyncReport};
 use termoso_proto::account::ServerInfo;
 use termoso_proto::auth::{Device, MfaCredential, MfaStatus, WebauthnCredentialInfo};
+use termoso_proto::entities::is_credential_kind;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
@@ -27,6 +28,7 @@ use zeroize::Zeroizing;
 use crate::dto::{VaultInfo, parse_id};
 use crate::error::{MobileError, Result};
 use crate::fido2::{self, Fido2Listener};
+use crate::settings::MobileSettings;
 
 /// Signed-in account as shown in the UI (no keys, no token).
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -196,6 +198,9 @@ pub struct AccountStatus {
     pub pending: Option<LoginOutcome>,
     pub sync: SyncStatus,
     pub vaults: Vec<VaultInfo>,
+    /// Identities, keys and certificates of the Personal vault that exist
+    /// only on this device because credential sync is off (0 when it is on).
+    pub local_credentials: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -473,7 +478,28 @@ impl AccountRuntime {
                 .into_iter()
                 .map(VaultInfo::from)
                 .collect(),
+            local_credentials: self.local_credentials()?,
         })
+    }
+
+    /// Personal-vault credentials that only this device has (credential
+    /// sync off); 0 while the sync is on.
+    fn local_credentials(&self) -> Result<u32> {
+        if MobileSettings::load(&self.store)?.sync_credentials {
+            return Ok(0);
+        }
+        let Some(vault) = self.store.personal_vault()? else {
+            return Ok(0);
+        };
+        Ok(self
+            .store
+            .rows(&EntityFilter {
+                vault_id: Some(vault.id),
+                ..EntityFilter::default()
+            })?
+            .iter()
+            .filter(|r| is_credential_kind(&r.kind))
+            .count() as u32)
     }
 
     pub async fn server_info(url: &str) -> Result<ServerCard> {
@@ -934,6 +960,7 @@ impl AccountRuntime {
         let opts = SyncOptions {
             log_dir: None,
             upload_logs: false,
+            sync_credentials: MobileSettings::load(&self.store)?.sync_credentials,
             interval: Duration::from_secs(15 * 60),
             ..SyncOptions::default()
         };
@@ -1070,6 +1097,51 @@ impl AccountRuntime {
         }
         result?;
         Ok(status)
+    }
+
+    /// Switch credential sync for the Personal vault. Off takes identities,
+    /// keys and certificates off the server (they stay on this device); on
+    /// pushes the local ones and pulls what other devices have. Works
+    /// offline too: the setting is saved and the engine picks it up.
+    pub async fn set_credential_sync(self: &Arc<Self>, on: bool) -> Result<AccountStatus> {
+        let mut settings = MobileSettings::load(&self.store)?;
+        if settings.sync_credentials != on {
+            settings.sync_credentials = on;
+            settings.save(&self.store)?;
+        }
+        let engine = {
+            let mut inner = self.inner.lock().await;
+            if let Some(e) = inner.engine.take() {
+                e.stop();
+                self.start_engine(&mut inner)?;
+            }
+            inner.engine.as_ref().map(|e| e.engine.clone())
+        };
+        if let Some(engine) = engine {
+            self.publish_status(|s| s.state = SyncState::Syncing);
+            let result = if on {
+                engine.resync_credentials().await.map(Some)
+            } else {
+                engine.purge_credentials().await.map(|_| None)
+            };
+            let status = match &result {
+                Ok(Some(report)) => self.update_status(|s| apply_report(s, report)),
+                Ok(None) => self.update_status(|s| {
+                    s.state = SyncState::Idle;
+                    s.last_sync_at = Some(chrono::Utc::now().to_rfc3339());
+                }),
+                Err(e) => self.update_status(|s| {
+                    s.state = SyncState::Error;
+                    s.last_error = Some(e.to_string());
+                }),
+            };
+            if let Some(l) = self.listener() {
+                l.on_status(status);
+                l.on_changed(SyncChange::Vaults);
+            }
+            result?;
+        }
+        self.status().await
     }
 
     // ---- devices ------------------------------------------------------

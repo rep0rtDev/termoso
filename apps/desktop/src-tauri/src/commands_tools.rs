@@ -918,6 +918,14 @@ pub async fn account_sync_now<R: Runtime>(app: AppHandle<R>) -> Result<SyncStatu
 }
 
 #[tauri::command]
+pub async fn account_set_credential_sync<R: Runtime>(
+    app: AppHandle<R>,
+    on: bool,
+) -> Result<AccountStatus> {
+    account::set_credential_sync(&app, on).await
+}
+
+#[tauri::command]
 pub async fn account_devices<R: Runtime>(app: AppHandle<R>) -> Result<Vec<Device>> {
     account::devices(&app).await
 }

@@ -31,6 +31,11 @@ class VaultRepository(val app: TermosoApp) {
         _revision.update { it + 1 }
     }
 
+    /** Settings changed on the Rust side (e.g. by the account runtime): re-read them. */
+    suspend fun reloadSettings() {
+        _settings.value = read { settings() }
+    }
+
     suspend fun updateSettings(transform: (MobileSettings) -> MobileSettings) {
         val next = transform(_settings.value)
         read { saveSettings(next) }

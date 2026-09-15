@@ -78,6 +78,11 @@ pub struct MobileSettings {
     pub lock_on_background: bool,
     /// Seconds in background before the lock kicks in.
     pub lock_after_seconds: u32,
+    /// Sync identities, keys and certificates of the Personal vault. Off
+    /// keeps them on this phone (hosts etc. still sync); they are removed
+    /// together with the account on sign-out.
+    #[serde(default = "default_true")]
+    pub sync_credentials: bool,
     /// Onboarding shown.
     pub welcome_seen: bool,
     /// Vault shown in the Vaults tab when the app was last used.
@@ -105,6 +110,7 @@ impl Default for MobileSettings {
             detect_os: true,
             lock_on_background: false,
             lock_after_seconds: 0,
+            sync_credentials: true,
             welcome_seen: false,
             selected_vault_id: None,
         }

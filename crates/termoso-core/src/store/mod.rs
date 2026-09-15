@@ -836,10 +836,25 @@ mod tests {
         assert_eq!(s.private_key.public_b64(), kp.public_b64());
         assert_eq!(store.vault_key(vid).unwrap().as_bytes(), vk.as_bytes());
         assert_eq!(store.vaults().unwrap().len(), 2);
+        // A credential that never reached the server (credential sync off)
+        // lives and dies with the account like every other synced row.
+        let local_only = store
+            .insert(
+                vid,
+                &crate::model::Identity {
+                    label: "local".into(),
+                    username: "root".into(),
+                    password: Some("secret".into()),
+                    ..crate::model::Identity::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(store.row(local_only).unwrap().unwrap().version, 0);
 
         store.clear_account().unwrap();
         assert!(store.account().unwrap().is_none());
         assert_eq!(store.vaults().unwrap().len(), 1);
+        assert!(store.row(local_only).unwrap().is_none());
         assert!(matches!(
             store.vault_key(vid),
             Err(CoreError::VaultLocked(_))

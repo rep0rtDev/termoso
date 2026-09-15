@@ -43,6 +43,17 @@ pub fn is_known_kind(kind: &str) -> bool {
     KINDS.contains(&kind)
 }
 
+/// Kinds that carry secrets a user may want to keep off the server entirely
+/// (usernames, passwords, private keys, certificates). Clients can be told
+/// to keep these device-local for the Personal vault; see
+/// `SyncOptions::sync_credentials` in `termoso-core`.
+pub const CREDENTIAL_KINDS: &[&str] = &["identity", "ssh_key", "ssh_certificate"];
+
+/// Whether `kind` is one of [`CREDENTIAL_KINDS`].
+pub fn is_credential_kind(kind: &str) -> bool {
+    CREDENTIAL_KINDS.contains(&kind)
+}
+
 schema! {
     /// Entity as stored and returned by the server.
     pub struct SyncEntity {

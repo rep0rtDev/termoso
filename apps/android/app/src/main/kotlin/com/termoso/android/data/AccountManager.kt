@@ -66,7 +66,7 @@ class AccountManager(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _status = MutableStateFlow(
-        AccountStatus(account = null, pending = null, sync = idleSync(), vaults = emptyList()),
+        AccountStatus(account = null, pending = null, sync = idleSync(), vaults = emptyList(), localCredentials = 0u),
     )
     val status: StateFlow<AccountStatus> = _status.asStateFlow()
 
@@ -197,6 +197,18 @@ class AccountManager(
     }
 
     suspend fun syncNow(): SyncStatus = repo.read { syncNow() }.also { s -> _status.update { it.copy(sync = s) } }
+
+    /**
+     * Turn Personal-vault credential sync on (push + re-pull) or off (server tombstones, rows on
+     * this phone kept). The setting is persisted by Rust; reload it so the settings flow agrees.
+     */
+    suspend fun setCredentialSync(on: Boolean): AccountStatus =
+        try {
+            repo.read { setCredentialSync(on) }.also { _status.value = it }
+        } finally {
+            repo.reloadSettings()
+            repo.bump()
+        }
 
     suspend fun devices(): List<DeviceCard> = repo.read { accountDevices() }
 
