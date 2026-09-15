@@ -176,25 +176,25 @@ export function TopBar() {
             label="Serial"
           />
         )}
-        <Tooltip title="New tab">
-          <IconButton
-            onClick={goToNewTab}
-            {...newWorkspaceDrop.handlers}
-            sx={{
-              alignSelf: "center",
-              mx: 0.5,
-              width: 28,
-              height: 28,
-              boxShadow: newWorkspaceDrop.over
-                ? "inset 0 0 0 1.5px var(--mui-palette-primary-main)"
-                : "none",
-              bgcolor: newWorkspaceDrop.over ? "action.selected" : undefined,
-            }}
-            aria-label="New tab"
-          >
-            <AddRoundedIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        {/* Drop target is a div: WebKitGTK delivers no drag events to <button>. */}
+        <Box
+          {...newWorkspaceDrop.handlers}
+          sx={{
+            alignSelf: "center",
+            mx: 0.5,
+            borderRadius: "50%",
+            boxShadow: newWorkspaceDrop.over
+              ? "inset 0 0 0 1.5px var(--mui-palette-primary-main)"
+              : "none",
+            bgcolor: newWorkspaceDrop.over ? "action.selected" : undefined,
+          }}
+        >
+          <Tooltip title="New tab">
+            <IconButton onClick={goToNewTab} sx={{ width: 28, height: 28 }} aria-label="New tab">
+              <AddRoundedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
       {active && <PaneTools tab={active} />}
       <Box sx={{ display: "flex", alignItems: "center", pl: 0.5, pr: 1 }}>
