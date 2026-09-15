@@ -75,7 +75,9 @@ pub async fn settings_set<R: Runtime>(
 ) -> Result<Settings> {
     let before = state.settings()?;
     state.save_settings(&settings)?;
-    if before.sync_conflict != settings.sync_conflict
+    if before.sync_credentials != settings.sync_credentials {
+        account::set_credential_sync(&app, settings.sync_credentials).await?;
+    } else if before.sync_conflict != settings.sync_conflict
         || before.sync_interval_seconds != settings.sync_interval_seconds
         || before.upload_logs != settings.upload_logs
     {

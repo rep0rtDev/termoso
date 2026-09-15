@@ -31,6 +31,7 @@ import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
+import { MfaBadge } from "./MfaBadge";
 import { useMutation } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
@@ -285,6 +286,7 @@ function TeamView({
   ];
 
   const memberList = members.data ?? [];
+  const withoutMfa = memberList.filter((m) => m.mfa_enabled === false).length;
   const inviteList = invites.data ?? [];
   const pendingList = pending.data ?? [];
 
@@ -404,6 +406,7 @@ function TeamView({
                     primary={m.display_name ?? m.email}
                     owner={m.role === "owner"}
                     me={m.user_id === myId}
+                    badge={<MfaBadge m={m} required={team.require_mfa} />}
                     status={
                       <Typography variant="body2" color="text.secondary">
                         Active
@@ -482,7 +485,11 @@ function TeamView({
           />
           <SecurityRow
             label="Require 2FA for all team members"
-            hint="Members without two-factor authentication cannot open team vaults."
+            hint={
+              withoutMfa > 0
+                ? `Members without two-factor authentication cannot open team vaults. ${withoutMfa} member${withoutMfa === 1 ? " has" : "s have"} no 2FA yet.`
+                : "Members without two-factor authentication cannot open team vaults."
+            }
             enabled={team.require_mfa}
             canChange={admin}
             onChange={(on) =>
@@ -760,6 +767,7 @@ function CompactRow({
   me,
   muted,
   status,
+  badge,
 }: {
   avatar: ReactNode;
   primary: string;
@@ -767,6 +775,7 @@ function CompactRow({
   me?: boolean;
   muted?: boolean;
   status: ReactNode;
+  badge?: ReactNode;
 }) {
   return (
     <Box
@@ -800,6 +809,7 @@ function CompactRow({
             sx={{ height: 16, fontSize: 9, fontWeight: 700, "& .MuiChip-label": { px: 0.75 } }}
           />
         )}
+        {badge}
       </Box>
       <Box sx={{ minWidth: 0 }}>{status}</Box>
     </Box>
@@ -902,6 +912,7 @@ function MemberRow({
               {name}
             </Typography>
             {me && <Chip size="small" label="you" />}
+            <MfaBadge m={m} required={team.require_mfa} />
           </Box>
           {m.display_name && (
             <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>

@@ -1,5 +1,6 @@
 import { useMemo, useState, type MouseEvent, type ReactElement } from "react";
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -55,6 +56,7 @@ import {
   useSshKeys,
   useVaults,
 } from "@/ipc/hooks";
+import { goToSettings } from "@/app/navigation";
 import { openCollaboration, useActiveVault, ViewOnlyChip } from "@/app/vault";
 import {
   errorMessage,
@@ -131,6 +133,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
 
+  const localOnly = vault.data?.kind === "personal" && settings.data?.syncCredentials === false;
   const view: HostsView = settings.data?.keychainView ?? "grid";
   const setView = (v: HostsView | null) => {
     if (!v || !settings.data) return;
@@ -535,6 +538,21 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
         </Toolbar>
 
         <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", px: 3, py: 2 }}>
+          {localOnly && (
+            <Alert
+              severity="info"
+              icon={<LockOutlinedIcon fontSize="inherit" />}
+              sx={{ mb: 2 }}
+              action={
+                <Button size="small" color="inherit" onClick={() => goToSettings("account")}>
+                  Change
+                </Button>
+              }
+            >
+              Keys and identities in this vault stay on this device: sync of keys and identities is
+              off, so they are not uploaded and are deleted when you sign out.
+            </Alert>
+          )}
           {loading ? (
             <Loading />
           ) : loadError ? (

@@ -13,7 +13,7 @@ use chrono::Utc;
 use common::{Device, login, register, unique_email};
 use serde_json::json;
 use termoso_core::account::{self, LoginFlow, LoginStep};
-use termoso_core::model::Host;
+use termoso_core::model::{Host, Identity};
 use termoso_core::store::{CommandHistory, EntityFilter, LogMeta};
 use termoso_core::sync::{ConflictPolicy, SyncEngine, SyncEvent, SyncOptions};
 use termoso_crypto::keys::{SymmetricKey, public_key_from_b64};
@@ -366,6 +366,134 @@ async fn entities_round_trip_with_tombstones_and_cursors() {
             .iter()
             .all(|e| !e.data.contains("example.net"))
     );
+}
+
+fn identity(label: &str) -> Identity {
+    Identity {
+        label: label.into(),
+        username: format!("{label}-user"),
+        password: Some(format!("{label}-secret")),
+        is_visible: true,
+        ..Identity::default()
+    }
+}
+
+fn identity_labels(d: &Device) -> Vec<String> {
+    let mut v: Vec<String> = d
+        .store
+        .list::<Identity>(Some(d.personal_vault()))
+        .expect("list identities")
+        .into_iter()
+        .map(|e| e.data.label)
+        .collect();
+    v.sort();
+    v
+}
+
+async fn server_kinds(d: &Device) -> Vec<(String, bool)> {
+    let mut v: Vec<(String, bool)> = d
+        .api
+        .sync_pull(&termoso_proto::sync::PullRequest {
+            cursors: [(d.personal_vault(), 0)].into_iter().collect(),
+            limit: None,
+        })
+        .await
+        .unwrap()
+        .entities
+        .into_iter()
+        .map(|e| (e.kind, e.deleted))
+        .collect();
+    v.sort();
+    v
+}
+
+#[tokio::test]
+async fn local_only_credentials_stay_off_the_server() {
+    let s = server_or_skip!();
+    let email = unique_email("cred");
+    let (a, _) = register(s, &email, PASSWORD).await;
+    let b = login(s, &email, PASSWORD).await;
+    let vault = a.personal_vault();
+    let local = SyncOptions {
+        sync_credentials: false,
+        ..SyncOptions::default()
+    };
+
+    // A keeps credentials on the device: hosts go up, the identity does not.
+    let ea = engine(&a, local.clone());
+    a.store.insert(vault, &host("web")).unwrap();
+    let kept = a.store.insert(vault, &identity("kept")).unwrap();
+    let r = ea.sync_once().await.unwrap();
+    assert_eq!(r.pushed, 1);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert_eq!(server_kinds(&a).await, [("host".to_string(), false)]);
+    assert!(a.store.get::<Identity>(kept).unwrap().unwrap().dirty);
+
+    // B (syncing) uploads one; A does not pull it, B does not see A's.
+    let eb = engine(&b, SyncOptions::default());
+    let shared = b.store.insert(vault, &identity("shared")).unwrap();
+    eb.sync_once().await.unwrap();
+    eb.sync_once().await.unwrap();
+    assert_eq!(identity_labels(&b), ["shared"]);
+    let r = ea.sync_once().await.unwrap();
+    assert_eq!(r.pulled, 0);
+    assert_eq!(identity_labels(&a), ["kept"]);
+    // Cursor still advances past the skipped row.
+    assert!(a.store.vault(vault).unwrap().cursor >= b.store.vault(vault).unwrap().cursor);
+
+    // Deleting a local-only credential is a no-op for the server.
+    let gone = a.store.insert(vault, &identity("gone")).unwrap();
+    a.store.delete(gone).unwrap();
+    assert_eq!(ea.sync_once().await.unwrap().pushed, 0);
+    assert_eq!(a.store.pending_changes().unwrap(), 1);
+
+    // Switching credential sync on: the kept identity goes up, the shared
+    // one comes down, both devices converge.
+    let ea_on = engine(&a, SyncOptions::default());
+    let r = ea_on.resync_credentials().await.unwrap();
+    assert_eq!(r.pushed, 1);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    assert_eq!(identity_labels(&a), ["kept", "shared"]);
+    eb.sync_once().await.unwrap();
+    assert_eq!(identity_labels(&b), ["kept", "shared"]);
+    assert_eq!(
+        server_kinds(&a).await,
+        [
+            ("host".to_string(), false),
+            ("identity".to_string(), false),
+            ("identity".to_string(), false),
+        ]
+    );
+
+    // Switching it off again purges the server copies but keeps A's rows,
+    // and B (still syncing) loses them through the tombstones.
+    let ea_off = engine(&a, local);
+    assert_eq!(ea_off.purge_credentials().await.unwrap(), 2);
+    assert_eq!(identity_labels(&a), ["kept", "shared"]);
+    assert_eq!(
+        server_kinds(&a).await,
+        [
+            ("host".to_string(), false),
+            ("identity".to_string(), true),
+            ("identity".to_string(), true),
+        ]
+    );
+    assert!(a.store.get::<Identity>(shared).unwrap().unwrap().dirty);
+    eb.sync_once().await.unwrap();
+    assert!(identity_labels(&b).is_empty());
+    // The purge is idempotent and later passes leave everything as is.
+    assert_eq!(ea_off.purge_credentials().await.unwrap(), 2);
+    assert_eq!(ea_off.sync_once().await.unwrap().pushed, 0);
+    assert_eq!(identity_labels(&a), ["kept", "shared"]);
+
+    // Turning sync back on resurrects both from A.
+    let ea_on = engine(&a, SyncOptions::default());
+    let r = ea_on.resync_credentials().await.unwrap();
+    assert_eq!(r.pushed, 2);
+    assert!(r.errors.is_empty(), "{:?}", r.errors);
+    eb.sync_once().await.unwrap();
+    assert_eq!(identity_labels(&b), ["kept", "shared"]);
+    assert_eq!(a.store.pending_changes().unwrap(), 0);
 }
 
 async fn conflicting_edit(policy: ConflictPolicy) -> (Device, Device, Uuid) {

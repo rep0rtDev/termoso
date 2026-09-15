@@ -502,6 +502,9 @@ export const accountRegister = (form: RegisterForm) =>
   invoke<Registered>("account_register", { form });
 export const accountSignOut = () => invoke<null>("account_sign_out");
 export const accountSyncNow = () => invoke<SyncStatus>("account_sync_now");
+/** Turn Personal-vault credential sync on (push + re-pull) or off (server tombstones, local rows kept). */
+export const accountSetCredentialSync = (on: boolean) =>
+  invoke<AccountStatus>("account_set_credential_sync", { on });
 export const accountDevices = () => invoke<Device[]>("account_devices");
 export const accountDeviceRevoke = (id: Uuid) => invoke<null>("account_device_revoke", { id });
 export const accountReauthStart = (password: string) =>
