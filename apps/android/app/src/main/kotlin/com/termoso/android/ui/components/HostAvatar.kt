@@ -33,7 +33,7 @@ fun distroVector(icon: DistroIcon): ImageVector = vectorCache.getOrPut(icon.id) 
         defaultHeight = 24.dp,
         viewportWidth = 24f,
         viewportHeight = 24f,
-    ).addPath(pathData = addPathNodes(icon.path), fill = SolidColor(Color.White)).build()
+    ).addPath(pathData = addPathNodes(SvgPath.normalize(icon.path)), fill = SolidColor(Color.White)).build()
 }
 
 /**

@@ -179,6 +179,7 @@ pub struct PresenceEntryCard {
     pub user_id: String,
     pub email: String,
     pub display_name: Option<String>,
+    pub avatar: Option<String>,
     pub device_id: String,
     pub device_name: String,
     /// `android`, `linux`, `windows`, `macos`, …
@@ -211,6 +212,7 @@ fn entry_card(e: PresenceEntry, me: Option<Uuid>) -> PresenceEntryCard {
         user_id: e.user_id.to_string(),
         email: e.email,
         display_name: e.display_name,
+        avatar: e.avatar,
         device_id: e.device_id.to_string(),
         device_name: e.device_name,
         platform: e.platform,

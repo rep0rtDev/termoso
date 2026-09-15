@@ -73,6 +73,8 @@ export function PresenceStack({ viewers, size = 20 }: { viewers: HostViewer[]; s
               label={initialsOf(v.displayName, v.email)}
               seed={v.email}
               kind="account"
+              userId={v.userId}
+              avatar={v.avatar}
             />
           </Box>
         ))}
@@ -118,6 +120,8 @@ export function ConnectedNowCard({ viewers }: { viewers: HostViewer[] }) {
             label={initialsOf(v.displayName, v.email)}
             seed={v.email}
             kind="account"
+            userId={v.userId}
+            avatar={v.avatar}
           />
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>

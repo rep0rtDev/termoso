@@ -890,6 +890,7 @@ impl SyncEngine {
             self.store.update_account_profile(
                 &me.user.email,
                 me.user.display_name.as_deref(),
+                me.user.avatar.as_deref(),
                 me.user.is_admin,
             )?;
             self.emit(SyncEvent::AccountChanged);

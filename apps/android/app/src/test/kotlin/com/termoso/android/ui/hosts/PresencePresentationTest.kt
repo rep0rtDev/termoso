@@ -29,6 +29,7 @@ class PresencePresentationTest {
         sessions = sessions,
         seenAt = "2026-01-01T10:00:00Z",
         me = me,
+        avatar = null,
     )
 
     @Test

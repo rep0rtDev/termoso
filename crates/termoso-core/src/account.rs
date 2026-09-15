@@ -79,7 +79,7 @@ pub struct SignedIn {
 #[derive(Debug)]
 pub enum LoginStep {
     /// Done — the store holds the session and keys.
-    Done(SignedIn),
+    Done(Box<SignedIn>),
     /// The account has a second factor. Call [`LoginFlow::mfa`].
     MfaRequired {
         /// Methods the account can answer with.
@@ -208,7 +208,7 @@ impl LoginFlow {
                 let private_key = unlock_private_key(&self.export_key, &session)?;
                 let signed =
                     install_session(&self.api, &self.store, &session, &private_key).await?;
-                Ok(LoginStep::Done(signed))
+                Ok(LoginStep::Done(Box::new(signed)))
             }
             AuthResponse::MfaRequired { mfa_token, methods } => {
                 self.mfa_token = Some(mfa_token);
@@ -488,6 +488,7 @@ pub async fn resume(api: &ApiClient, store: &Store) -> Result<Option<SignedIn>> 
     store.update_account_profile(
         &me.user.email,
         me.user.display_name.as_deref(),
+        me.user.avatar.as_deref(),
         me.user.is_admin,
     )?;
     let vaults = refresh_vaults(api, store).await?;
@@ -633,6 +634,7 @@ async fn install_session(
         user_id: session.user.id,
         email: session.user.email.clone(),
         display_name: session.user.display_name.clone(),
+        avatar: session.user.avatar.clone(),
         is_admin: session.user.is_admin,
         device_id: session.device_id,
         public_key: session.keys.public_key.clone(),
@@ -786,6 +788,7 @@ mod tests {
                 mfa_enabled: false,
                 reset_scheduled_for: None,
                 presence_hidden: false,
+                avatar: None,
             },
             keys: termoso_proto::account::AccountKeys {
                 public_key: pair.public_b64(),

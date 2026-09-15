@@ -6,6 +6,7 @@
 #![allow(clippy::type_complexity)]
 
 pub mod audit;
+pub mod avatar;
 pub mod cache;
 pub mod codes;
 pub mod config;

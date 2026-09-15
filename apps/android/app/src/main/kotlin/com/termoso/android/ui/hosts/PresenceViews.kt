@@ -28,16 +28,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
+import com.termoso.android.ui.components.UserAvatar
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.theme.Emerald
 import com.termoso.core.TeamPresenceCard
@@ -76,7 +76,7 @@ fun rememberMinuteNow(): Instant {
 
 /** Overlapping initials of the people on a host, `+N` when there are more than [max]. */
 @Composable
-fun PresenceStack(viewers: List<HostViewer>, modifier: Modifier = Modifier, max: Int = 3) {
+fun PresenceStack(repo: VaultRepository, viewers: List<HostViewer>, modifier: Modifier = Modifier, max: Int = 3) {
     val people = distinctPeople(viewers)
     if (people.isEmpty()) return
     val shown = people.take(max)
@@ -88,7 +88,7 @@ fun PresenceStack(viewers: List<HostViewer>, modifier: Modifier = Modifier, max:
         verticalAlignment = Alignment.CenterVertically,
     ) {
         shown.forEachIndexed { i, v ->
-            PresenceAvatar(v, size = 22, modifier = Modifier.offset(x = (-6 * i).dp))
+            PresenceAvatar(repo, v, size = 22, modifier = Modifier.offset(x = (-6 * i).dp))
         }
         if (rest > 0) {
             Text(
@@ -102,22 +102,23 @@ fun PresenceStack(viewers: List<HostViewer>, modifier: Modifier = Modifier, max:
 }
 
 @Composable
-private fun PresenceAvatar(v: HostViewer, size: Int, modifier: Modifier = Modifier) {
+private fun PresenceAvatar(repo: VaultRepository, v: HostViewer, size: Int, modifier: Modifier = Modifier) {
     Box(
         modifier
             .size(size.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surface)
-            .padding(1.5.dp)
-            .clip(CircleShape)
-            .background(if (v.me) Emerald else MaterialTheme.colorScheme.tertiary),
-        contentAlignment = Alignment.Center,
+            .padding(1.5.dp),
     ) {
-        Text(
-            initial(v.name),
-            color = Color.White,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
+        UserAvatar(
+            repo = repo,
+            userId = v.userId,
+            tag = v.avatar,
+            name = v.name,
+            size = size - 3,
+            shape = CircleShape,
+            container = if (v.me) Emerald else MaterialTheme.colorScheme.tertiary,
+            textStyle = MaterialTheme.typography.labelSmall,
         )
     }
 }
@@ -127,7 +128,7 @@ private fun PresenceAvatar(v: HostViewer, size: Int, modifier: Modifier = Modifi
  * device, with the protocols it has open and for how long.
  */
 @Composable
-fun ConnectedNowSection(viewers: List<HostViewer>) {
+fun ConnectedNowSection(repo: VaultRepository, viewers: List<HostViewer>) {
     if (viewers.isEmpty()) return
     val now = rememberMinuteNow()
     SectionLabel("Connected now")
@@ -140,7 +141,7 @@ fun ConnectedNowSection(viewers: List<HostViewer>) {
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                PresenceAvatar(v, size = 36)
+                PresenceAvatar(repo, v, size = 36)
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(

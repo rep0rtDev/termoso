@@ -46,6 +46,7 @@ import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.SubScreen
+import com.termoso.android.ui.components.UserAvatar
 import com.termoso.android.ui.hosts.ConfirmDialog
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.core.TeamMemberCard
@@ -148,7 +149,7 @@ fun TeamVaultScreen(
                         ListRow(
                             title = (m.displayName ?: m.email) + if (m.me) " (you)" else "",
                             subtitle = m.access.label() + if (m.pending) " · waiting for key" else "",
-                            leading = { IconTile(Icons.Filled.Person) },
+                            leading = { UserAvatar(shell.repo, m.userId, m.avatar, m.displayName ?: m.email) },
                             trailing = when {
                                 m.pending && canManage -> {
                                     {

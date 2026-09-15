@@ -106,6 +106,7 @@ pub struct TeamMemberCard {
     pub user_id: String,
     pub email: String,
     pub display_name: Option<String>,
+    pub avatar: Option<String>,
     pub role: TeamRole,
     /// RFC 3339.
     pub joined_at: String,
@@ -151,6 +152,7 @@ pub struct VaultMemberCard {
     pub user_id: String,
     pub email: String,
     pub display_name: Option<String>,
+    pub avatar: Option<String>,
     pub access: VaultAccess,
     pub pending: bool,
     pub me: bool,
@@ -391,6 +393,11 @@ impl AccountRuntime {
         Ok(presence::card(presence, me))
     }
 
+    /// Normalized WebP of a user's profile picture, `None` when they have none.
+    pub async fn user_avatar(self: &Arc<Self>, user_id: String) -> Result<Option<Vec<u8>>> {
+        Ok(self.api().await?.user_avatar(parse_id(&user_id)?).await?)
+    }
+
     /// Whether this account hides itself from teammates' presence views.
     pub async fn presence_hidden(self: &Arc<Self>) -> Result<bool> {
         Ok(self.api().await?.account().await?.user.presence_hidden)
@@ -436,6 +443,7 @@ impl AccountRuntime {
                 user_id: m.user_id.to_string(),
                 email: m.email,
                 display_name: m.display_name,
+                avatar: m.avatar,
                 role: m.role.into(),
                 joined_at: m.joined_at.to_rfc3339(),
             })
@@ -687,6 +695,7 @@ impl AccountRuntime {
                 user_id: m.user_id.to_string(),
                 email: m.email,
                 display_name: m.display_name,
+                avatar: m.avatar,
                 access: vault_access(m.role),
                 pending: m.pending,
             })
@@ -771,6 +780,7 @@ mod tests {
             actor_id: None,
             actor_email: Some("a@x.io".into()),
             actor_name: None,
+            actor_avatar: None,
             device_id: None,
             action: "member.role_changed".into(),
             vault_id: None,

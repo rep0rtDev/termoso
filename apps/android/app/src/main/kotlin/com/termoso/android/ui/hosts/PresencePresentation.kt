@@ -21,6 +21,8 @@ data class HostViewer(
     val since: String,
     /** This is the signed-in account (any of its devices). */
     val me: Boolean,
+    /** Profile picture tag, when the person has one. */
+    val avatar: String? = null,
 ) {
     /** Display name when set, else the email. */
     val name: String get() = displayName?.takeIf { it.isNotBlank() } ?: email
@@ -50,6 +52,7 @@ private fun viewer(e: PresenceEntryCard, sessions: List<PresenceSessionCard>): H
         protocols = sorted.map { it.protocol }.distinct(),
         since = sorted.firstOrNull()?.since ?: e.seenAt,
         me = e.me,
+        avatar = e.avatar,
     )
 }
 

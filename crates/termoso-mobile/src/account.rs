@@ -35,6 +35,8 @@ pub struct AccountCard {
     pub user_id: String,
     pub email: String,
     pub display_name: Option<String>,
+    /// Content tag of the profile picture (see `TermosoApp::user_avatar`).
+    pub avatar: Option<String>,
     pub is_admin: bool,
     pub device_id: String,
     /// RFC 3339.
@@ -48,6 +50,7 @@ impl From<StoredAccount> for AccountCard {
             user_id: a.user_id.to_string(),
             email: a.email,
             display_name: a.display_name,
+            avatar: a.avatar,
             is_admin: a.is_admin,
             device_id: a.device_id.to_string(),
             signed_in_at: a.signed_in_at.to_rfc3339(),
