@@ -4,6 +4,8 @@
 //! ciphertext. Synced through `/logs/*` when signed in.
 
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::{DateTime, Utc};
 use rusqlite::{OptionalExtension, params};
@@ -34,6 +36,65 @@ pub struct LogMeta {
     pub cols: u16,
     /// Terminal size at start.
     pub rows: u16,
+}
+
+/// Capture stops growing after this much output; the tail is dropped and
+/// the recording is flagged truncated.
+pub const MAX_CAPTURE_BYTES: usize = 64 * 1024 * 1024;
+
+/// In-flight recording of one terminal session.
+///
+/// Only bytes received from the remote side are captured, never keystrokes:
+/// anything typed while the remote has echo turned off (passwords, sudo
+/// prompts) therefore never reaches the log, and auth answers given through
+/// the app's own prompt dialogs are not part of the stream at all.
+pub struct Recorder {
+    id: Uuid,
+    meta: LogMeta,
+    buf: Mutex<Vec<u8>>,
+    truncated: AtomicBool,
+}
+
+impl Recorder {
+    /// Register the recording in `vault_id` and start buffering.
+    pub fn begin(store: &Store, vault_id: Uuid, meta: LogMeta) -> Result<Self> {
+        let id = store.begin_log(vault_id, &meta)?;
+        Ok(Self {
+            id,
+            meta,
+            buf: Mutex::new(Vec::new()),
+            truncated: AtomicBool::new(false),
+        })
+    }
+
+    /// Row id of the recording being written.
+    pub fn id(&self) -> Uuid {
+        self.id
+    }
+
+    /// Buffer remote output; silently stops at [`MAX_CAPTURE_BYTES`].
+    pub fn append(&self, bytes: &[u8]) {
+        let mut buf = self.buf.lock().unwrap_or_else(|p| p.into_inner());
+        let room = MAX_CAPTURE_BYTES.saturating_sub(buf.len());
+        if bytes.len() > room {
+            buf.extend_from_slice(&bytes[..room]);
+            self.truncated.store(true, Ordering::Relaxed);
+        } else {
+            buf.extend_from_slice(bytes);
+        }
+    }
+
+    /// Persist the capture under `dir`; called once when the session ends.
+    pub fn finish(&self, store: &Store, dir: &Path) -> Result<()> {
+        let body = std::mem::take(&mut *self.buf.lock().unwrap_or_else(|p| p.into_inner()));
+        let mut meta = self.meta.clone();
+        meta.ended_at = Some(Utc::now());
+        if self.truncated.load(Ordering::Relaxed) {
+            meta.label = format!("{} (truncated)", meta.label);
+        }
+        store.finish_log(self.id, &meta, &body, dir)?;
+        Ok(())
+    }
 }
 
 /// A recording as listed locally.

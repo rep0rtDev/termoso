@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.SyncProblem
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -61,6 +62,7 @@ private data class VaultCounts(
     val snippets: Int = 0,
     val known: Int = 0,
     val history: Int = 0,
+    val logs: Int = 0,
 )
 
 /** Vaults tab: vault picker, cloud/sync indicator, sections (Hosts, Keychain, Port forwarding, Snippets, Known hosts, History). */
@@ -77,6 +79,7 @@ fun VaultScreen(
     onOpenSnippets: () -> Unit,
     onOpenKnownHosts: () -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenLogs: () -> Unit,
 ) {
     val vaults by shell.vaults.collectAsStateWithLifecycle()
     val selectedId by shell.selectedVaultId.collectAsStateWithLifecycle()
@@ -98,6 +101,7 @@ fun VaultScreen(
                     snippets = snippets(id).size,
                     known = knownHosts().size,
                     history = history(200u).count { it.belongsTo(vault) },
+                    logs = sessionLogs().count { it.vaultId == id },
                 )
             }
         }.getOrDefault(VaultCounts())
@@ -184,6 +188,13 @@ fun VaultScreen(
                     badge = counts.history.toString(),
                     leading = { IconTile(Icons.Filled.History) },
                     modifier = Modifier.clickable(onClick = onOpenHistory),
+                )
+                RowDivider()
+                ChevronRow(
+                    title = "Recordings",
+                    badge = counts.logs.toString(),
+                    leading = { IconTile(Icons.Filled.Videocam) },
+                    modifier = Modifier.clickable(onClick = onOpenLogs),
                 )
             }
             Spacer(Modifier.height(16.dp))

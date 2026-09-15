@@ -135,6 +135,7 @@ fun SftpScreen(
     val prompt by conn.prompt.collectAsStateWithLifecycle()
     val transfers by conn.transfers.collectAsStateWithLifecycle()
     val conflict by vm.conflict.collectAsStateWithLifecycle()
+    val preview by vm.preview.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val clipboard = LocalClipboardManager.current
@@ -173,8 +174,23 @@ fun SftpScreen(
         }
     }
 
-    BackHandler(enabled = state.selecting || searching) {
+    BackHandler(enabled = preview == null && (state.selecting || searching)) {
         if (state.selecting) vm.clearSelection() else { searching = false; vm.setQuery("") }
+    }
+
+    preview?.let { p ->
+        FileViewer(
+            preview = p,
+            snackbar = snackbar,
+            onEdit = vm::startEditing,
+            onDraft = vm::editDraft,
+            onSave = vm::saveEdits,
+            onDiscard = vm::discardEdits,
+            onOpenWith = { vm.openWith(p.entry) },
+            onClose = vm::closePreview,
+        )
+        prompt?.let { pr -> PromptDialog(pr) { answer -> scope.launch { conn.answer(pr, answer) } } }
+        return
     }
 
     fun copyPath(paths: List<String>) {
@@ -196,6 +212,7 @@ fun SftpScreen(
                     onDownload = { vm.download(state.selectedEntries) },
                     onRename = { dialog = SftpDialog.Rename(state.selectedEntries.first()) },
                     onEdit = { onEdit(conn, state.selectedEntries.first().path); vm.clearSelection() },
+                    onOpenWith = { vm.openWith(state.selectedEntries.first()) },
                     onPermissions = { dialog = SftpDialog.Permissions(state.selectedEntries.first()) },
                     onCopyPath = { copyPath(state.selectedEntries.map { it.path }) },
                     onRemove = { dialog = SftpDialog.Remove(state.selectedEntries) },
@@ -490,6 +507,7 @@ private fun SelectionBar(
     onDownload: () -> Unit,
     onRename: () -> Unit,
     onEdit: () -> Unit,
+    onOpenWith: () -> Unit,
     onPermissions: () -> Unit,
     onCopyPath: () -> Unit,
     onRemove: () -> Unit,
@@ -519,6 +537,11 @@ private fun SelectionBar(
                                 text = { Text("Edit in terminal") },
                                 leadingIcon = { Icon(Icons.Filled.Edit, null) },
                                 onClick = { menu = false; onEdit() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Open with…") },
+                                leadingIcon = { Icon(Icons.Filled.OpenInNew, null) },
+                                onClick = { menu = false; onOpenWith() },
                             )
                         }
                         DropdownMenuItem(
