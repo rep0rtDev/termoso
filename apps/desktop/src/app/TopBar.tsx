@@ -19,6 +19,7 @@ import BookmarkAddedRoundedIcon from "@mui/icons-material/BookmarkAddedRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import type { DragEvent, MouseEvent, ReactNode } from "react";
+import type { Uuid } from "@/ipc/types";
 import { PqBadge, StatusDot } from "@/terminal/TerminalPane";
 import { MultiplayerTabButton } from "@/terminal/MultiplayerControl";
 import {
@@ -42,7 +43,8 @@ import {
   useTerminal,
   type TerminalTab,
 } from "@/terminal/store";
-import { saveTabAsTemplate, useWorkspaces } from "@/terminal/workspaces";
+import { addToWorkspace, saveTabAsTemplate, useWorkspaces } from "@/terminal/workspaces";
+import { MIME as HOST_MIME, droppedHostIds, isHostDrag, parseDragData } from "@/hosts/dnd";
 import { ActionMenu, InlineName, type MenuAction } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import { openSftpForSession, useSftp } from "@/sftp/store";
@@ -62,7 +64,7 @@ import { AppMenuButton } from "./AppMenu";
 import { TeamBlock } from "./TeamBlock";
 import { WindowControls } from "./WindowControls";
 import { VaultMenu, useActiveVault } from "./vault";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * Persistent top strip, doubling as the window title bar (the native frame is
@@ -75,6 +77,7 @@ export function TopBar() {
   const sftpCount = useSftp((s) => s.order.length);
   const active = tabs.find((t) => t.id === activeTabId);
   const [dragging, setDragging] = useState<string | null>(null);
+  const [newWorkspaceOver, mountNewWorkspaceDrop] = useHostDropNewWorkspace();
   const vault = useActiveVault();
   const [vaultMenu, setVaultMenu] = useState<HTMLElement | null>(null);
   const multiVault = vault.vaults.length > 1;
@@ -173,15 +176,24 @@ export function TopBar() {
             label="Serial"
           />
         )}
-        <Tooltip title="New tab">
-          <IconButton
-            onClick={goToNewTab}
-            sx={{ alignSelf: "center", mx: 0.5, width: 28, height: 28 }}
-            aria-label="New tab"
-          >
-            <AddRoundedIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        <Box
+          ref={mountNewWorkspaceDrop}
+          sx={{
+            alignSelf: "center",
+            mx: 0.5,
+            borderRadius: "50%",
+            boxShadow: newWorkspaceOver
+              ? "inset 0 0 0 1.5px var(--mui-palette-primary-main)"
+              : "none",
+            bgcolor: newWorkspaceOver ? "action.selected" : undefined,
+          }}
+        >
+          <Tooltip title="New tab">
+            <IconButton onClick={goToNewTab} sx={{ width: 28, height: 28 }} aria-label="New tab">
+              <AddRoundedIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
       {active && <PaneTools tab={active} />}
       <Box sx={{ display: "flex", alignItems: "center", pl: 0.5, pr: 1 }}>
@@ -306,6 +318,11 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
 
 const TAB_MIME = "application/x-termoso-tab";
 
+/** Where a drag hovers a tab: reorder before / after it, or drop hosts into it. */
+type DropSide = "before" | "after" | "into" | null;
+
+const hostTargets = (ids: Uuid[]) => ids.map((host_id) => ({ kind: "host" as const, host_id }));
+
 function TerminalTopTab({
   tab,
   active,
@@ -325,7 +342,7 @@ function TerminalTopTab({
   const templateName = useWorkspaces(
     (s) => s.templates.find((t) => t.id === tab.templateId)?.name ?? null,
   );
-  const [over, setOver] = useState<"before" | "after" | null>(null);
+  const [over, setOver] = useState<DropSide>(null);
   const [menu, setMenu] = useState<{ left: number; top: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
   if (!pane) return null;
@@ -391,6 +408,12 @@ function TerminalTopTab({
       setOver(null);
     },
     onDragOver: (e: DragEvent<HTMLElement>) => {
+      if (isHostDrag(e)) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setOver("into");
+        return;
+      }
       if (!dragging || dragging === tab.id) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
@@ -398,8 +421,26 @@ function TerminalTopTab({
     },
     onDragLeave: () => setOver(null),
     onDrop: (e: DragEvent<HTMLElement>) => {
-      const id = e.dataTransfer.getData(TAB_MIME) || dragging;
       setOver(null);
+      const hostIds = droppedHostIds(e);
+      if (hostIds.length > 0) {
+        e.preventDefault();
+        const added = addToWorkspace(
+          { kind: "tab", id: tab.id, name: tab.name ?? "" },
+          hostTargets(hostIds),
+          true,
+        );
+        if (added) {
+          const where = workspace ? `“${tab.name}”` : title;
+          snackbar.notify(
+            hostIds.length === 1
+              ? `Opened in ${where}`
+              : `Opened ${hostIds.length} hosts in ${where}`,
+          );
+        }
+        return;
+      }
+      const id = e.dataTransfer.getData(TAB_MIME) || dragging;
       if (!id || id === tab.id) return;
       e.preventDefault();
       const tabs = terminalStore.get().tabs;
@@ -476,8 +517,8 @@ interface TopTabProps {
   onClose?: () => void;
   onMiddleClick?: () => void;
   /** HTML5 drag handlers for reorderable tabs. */
-  drag?: DragHandlers & { draggable: boolean };
-  dropSide?: "before" | "after" | null;
+  drag?: Partial<DragHandlers> & { draggable?: boolean };
+  dropSide?: DropSide;
   faded?: boolean;
 }
 
@@ -487,6 +528,58 @@ interface DragHandlers {
   onDragOver: (e: DragEvent<HTMLElement>) => void;
   onDragLeave: () => void;
   onDrop: (e: DragEvent<HTMLElement>) => void;
+}
+
+/** Drop hosts on a non-terminal tab or the “+” button to open them as a new workspace. */
+/**
+ * Native drag listeners for the "+" button: a host dropped there opens in a new
+ * workspace. Bound directly because WebKitGTK delivers the drag events to the
+ * icon inside the button, where React's delegated handlers never saw them.
+ */
+function useHostDropNewWorkspace() {
+  const [over, setOver] = useState(false);
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const snackbar = useSnackbar();
+  useEffect(() => {
+    if (!el) return;
+    const hosts = (e: globalThis.DragEvent) =>
+      Array.from(e.dataTransfer?.types ?? []).includes(HOST_MIME);
+    const onDragOver = (e: globalThis.DragEvent) => {
+      if (!hosts(e) || !e.dataTransfer) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setOver(true);
+    };
+    const onDragLeave = (e: globalThis.DragEvent) => {
+      if (e.relatedTarget instanceof Node && el.contains(e.relatedTarget)) return;
+      setOver(false);
+    };
+    const onDrop = (e: globalThis.DragEvent) => {
+      setOver(false);
+      if (!hosts(e) || !e.dataTransfer) return;
+      const ids = parseDragData(e.dataTransfer.getData(HOST_MIME))?.ids ?? [];
+      if (ids.length === 0) return;
+      e.preventDefault();
+      if (addToWorkspace(null, hostTargets(ids))) {
+        snackbar.notify(
+          ids.length === 1
+            ? "Opened in a new workspace"
+            : `Opened ${ids.length} hosts in a new workspace`,
+        );
+      }
+    };
+    el.addEventListener("dragenter", onDragOver);
+    el.addEventListener("dragover", onDragOver);
+    el.addEventListener("dragleave", onDragLeave);
+    el.addEventListener("drop", onDrop);
+    return () => {
+      el.removeEventListener("dragenter", onDragOver);
+      el.removeEventListener("dragover", onDragOver);
+      el.removeEventListener("dragleave", onDragLeave);
+      el.removeEventListener("drop", onDrop);
+    };
+  }, [el, snackbar]);
+  return [over, setEl] as const;
 }
 
 function TopTab({
@@ -535,8 +628,11 @@ function TopTab({
             ? "-2px 0 0 0 var(--mui-palette-primary-main)"
             : dropSide === "after"
               ? "2px 0 0 0 var(--mui-palette-primary-main)"
-              : "none",
-        bgcolor: active ? "surface.highest" : "transparent",
+              : dropSide === "into"
+                ? "inset 0 0 0 1.5px var(--mui-palette-primary-main)"
+                : "none",
+        bgcolor:
+          dropSide === "into" ? "action.selected" : active ? "surface.highest" : "transparent",
         color: active ? "text.primary" : "text.secondary",
         "&:hover": { bgcolor: active ? "surface.highest" : "action.hover", color: "text.primary" },
         "&:hover .tab-close": { opacity: 1 },

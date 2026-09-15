@@ -301,7 +301,7 @@ export const COMMANDS: Command[] = [
     group: "Panes",
     keys: ["ctrl+alt+left"],
     enabled: hasPanes,
-    run: onActivePane((id) => focusNeighbor(id, "left")),
+    run: onActiveTab((id) => focusNeighbor(id, "left")),
   },
   {
     id: "pane.focusRight",
@@ -309,7 +309,7 @@ export const COMMANDS: Command[] = [
     group: "Panes",
     keys: ["ctrl+alt+right"],
     enabled: hasPanes,
-    run: onActivePane((id) => focusNeighbor(id, "right")),
+    run: onActiveTab((id) => focusNeighbor(id, "right")),
   },
   {
     id: "pane.focusUp",
@@ -317,7 +317,7 @@ export const COMMANDS: Command[] = [
     group: "Panes",
     keys: ["ctrl+alt+up"],
     enabled: hasPanes,
-    run: onActivePane((id) => focusNeighbor(id, "up")),
+    run: onActiveTab((id) => focusNeighbor(id, "up")),
   },
   {
     id: "pane.focusDown",
@@ -325,7 +325,7 @@ export const COMMANDS: Command[] = [
     group: "Panes",
     keys: ["ctrl+alt+down"],
     enabled: hasPanes,
-    run: onActivePane((id) => focusNeighbor(id, "down")),
+    run: onActiveTab((id) => focusNeighbor(id, "down")),
   },
   {
     id: "pane.broadcast",

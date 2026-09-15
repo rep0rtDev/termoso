@@ -126,6 +126,10 @@ pub struct Settings {
     /// Install the OSC 133 prompt markers into bash / zsh / fish after
     /// connecting: powers command history, autocomplete and prompt navigation.
     pub shell_integration: bool,
+    /// What to do with the command a workspace pane was running when it was
+    /// saved: `type` puts it on the prompt for the user to confirm, `run`
+    /// executes it, `never` restores only the working directory.
+    pub restore_commands: String,
     pub terminal_bell: bool,
     /// Render bold text with the bright ANSI colours.
     pub bright_bold: bool,
@@ -212,6 +216,7 @@ impl Default for Settings {
             confirm_paste_multiline: true,
             autocomplete: true,
             shell_integration: true,
+            restore_commands: "type".into(),
             terminal_bell: false,
             bright_bold: false,
             term_type: "xterm-256color".into(),
@@ -289,6 +294,11 @@ impl Settings {
         if self.sync_interval_seconds != 0 && !(30..=86_400).contains(&self.sync_interval_seconds) {
             return Err(DesktopError::invalid(
                 "syncIntervalSeconds must be 0 or between 30 and 86400",
+            ));
+        }
+        if !matches!(self.restore_commands.as_str(), "type" | "run" | "never") {
+            return Err(DesktopError::invalid(
+                "restoreCommands must be type, run or never",
             ));
         }
         if !matches!(self.update_check.as_str(), "manual" | "startup") {
