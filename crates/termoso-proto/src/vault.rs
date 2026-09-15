@@ -116,6 +116,9 @@ schema! {
         /// Display name.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub display_name: Option<String>,
+        /// Profile picture tag (see `UserProfile::avatar`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub avatar: Option<String>,
         /// Role.
         pub role: VaultRole,
         /// Key version the member's sealed key corresponds to.

@@ -14,6 +14,7 @@ use termoso_core::model::ResolvedHost;
 use termoso_core::ssh::{IpVersion, SshTarget};
 use termoso_core::store::Store;
 use termoso_crypto::keys::SymmetricKey;
+use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::account::{
@@ -40,6 +41,7 @@ use crate::team::{
 };
 
 const DB_FILE: &str = "vault.db";
+const AVATARS_DIR: &str = "avatars";
 
 static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
     tokio::runtime::Builder::new_multi_thread()
@@ -561,13 +563,27 @@ impl TermosoApp {
 
     // ---- history ------------------------------------------------------
 
+    /// Past connections, newest first. `vault_id` is the vault the saved
+    /// host lives in today; quick connects, local shells and deleted hosts
+    /// have none and belong to the local vault.
     pub fn history(&self, limit: u32) -> Result<Vec<HistoryItem>> {
+        let host_vaults: HashMap<Uuid, Uuid> = self
+            .store
+            .list::<termoso_core::model::Host>(None)?
+            .into_iter()
+            .map(|h| (h.id, h.vault_id))
+            .collect();
         Ok(self
             .store
             .connections(limit.clamp(1, 1000) as usize)?
             .into_iter()
             .map(|h| HistoryItem {
                 id: h.id.to_string(),
+                vault_id: h
+                    .data
+                    .host_id
+                    .and_then(|id| host_vaults.get(&id))
+                    .map(|u| u.to_string()),
                 host_id: h.data.host_id.map(|u| u.to_string()),
                 label: h.data.label,
                 target: h.data.target,
@@ -583,6 +599,24 @@ impl TermosoApp {
         Ok(self
             .store
             .clear_history(Some(termoso_proto::sync::HistoryKind::Connection))?)
+    }
+
+    /// Forget the connections shown under one vault: those of its hosts,
+    /// plus the vault-less ones (quick connect, local shell, deleted host)
+    /// when it is the local vault.
+    pub fn clear_vault_history(&self, vault_id: String) -> Result<()> {
+        let vault = vault_id.clone();
+        let is_local = self.store.local_vault()?.id == parse_id(&vault_id)?;
+        for item in self.history(1000)? {
+            let mine = match &item.vault_id {
+                Some(v) => *v == vault,
+                None => is_local,
+            };
+            if mine {
+                self.store.delete_history(parse_id(&item.id)?)?;
+            }
+        }
+        Ok(())
     }
 
     // ---- settings -----------------------------------------------------
@@ -692,6 +726,7 @@ impl TermosoApp {
     /// Revoke this device on the server and forget the account, synced
     /// vaults and keys locally. The local vault stays.
     pub fn account_sign_out(&self) -> Result<()> {
+        let _ = std::fs::remove_dir_all(self.profile_dir.join(AVATARS_DIR));
         RUNTIME.block_on(self.account.sign_out())
     }
 
@@ -805,6 +840,35 @@ impl TermosoApp {
     /// Who is connected to the team's hosts right now.
     pub fn team_presence(&self, team_id: String) -> Result<TeamPresenceCard> {
         RUNTIME.block_on(self.account.team_presence(team_id))
+    }
+
+    /// Profile picture `tag` of `user_id` as WebP bytes, from the on-disk
+    /// cache or the server; `None` when the server no longer has one. The
+    /// tag changes with the picture, so a cached file is never stale.
+    pub fn user_avatar(&self, user_id: String, tag: String) -> Result<Option<Vec<u8>>> {
+        if tag.is_empty() || !tag.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Ok(None);
+        }
+        let dir = self.profile_dir.join(AVATARS_DIR);
+        let path = dir.join(format!("{user_id}-{tag}.webp"));
+        if let Ok(bytes) = std::fs::read(&path) {
+            return Ok(Some(bytes));
+        }
+        let Some(bytes) = RUNTIME.block_on(self.account.user_avatar(user_id.clone()))? else {
+            return Ok(None);
+        };
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(&path, &bytes)?;
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            let prefix = format!("{user_id}-");
+            for e in entries.flatten() {
+                let name = e.file_name();
+                if name.to_string_lossy().starts_with(&prefix) && e.path() != path {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
+        }
+        Ok(Some(bytes))
     }
 
     /// Whether this account hides itself from teammates' presence views.

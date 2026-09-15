@@ -592,7 +592,13 @@ function MemberPicker({
         return (
           <li key={key} {...rest}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
-              <PersonAvatar size={24} seed={m.email} label={initialsOf(null, m.email)} />
+              <PersonAvatar
+                size={24}
+                seed={m.email}
+                label={initialsOf(null, m.email)}
+                userId={m.user_id}
+                avatar={m.avatar}
+              />
               <Box sx={{ minWidth: 0 }}>
                 <Typography variant="body2" noWrap>
                   {m.display_name ?? m.email}
@@ -712,7 +718,13 @@ function VaultMemberRow({
         borderRadius: 1.5,
       }}
     >
-      <PersonAvatar size={28} seed={m.email} label={initialsOf(null, m.email)} />
+      <PersonAvatar
+        size={28}
+        seed={m.email}
+        label={initialsOf(null, m.email)}
+        userId={m.user_id}
+        avatar={m.avatar}
+      />
       <Box sx={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 0.75 }}>
         <Typography
           variant="body2"
@@ -912,6 +924,8 @@ function NewVaultPanel({
                 seed={me?.email}
                 label={me ? initialsOf(null, me.email) : ""}
                 kind={me ? "account" : "guest"}
+                userId={me?.userId}
+                avatar={me?.avatar}
               />
               <Box sx={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 0.75 }}>
                 <Typography variant="body2" noWrap sx={{ minWidth: 0 }}>
@@ -931,7 +945,13 @@ function NewVaultPanel({
                   key={m.user_id}
                   sx={{ display: "flex", alignItems: "center", gap: 1, px: 0.5, minHeight: 40 }}
                 >
-                  <PersonAvatar size={28} seed={m.email} label={initialsOf(null, m.email)} />
+                  <PersonAvatar
+                    size={28}
+                    seed={m.email}
+                    label={initialsOf(null, m.email)}
+                    userId={m.user_id}
+                    avatar={m.avatar}
+                  />
                   <Typography variant="body2" noWrap sx={{ flex: 1, minWidth: 0 }}>
                     {m.display_name ?? m.email}
                   </Typography>

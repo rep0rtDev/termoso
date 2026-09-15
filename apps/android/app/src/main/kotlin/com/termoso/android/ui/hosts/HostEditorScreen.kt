@@ -53,6 +53,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.PickerRow
@@ -119,6 +120,7 @@ fun HostEditorScreen(shell: ShellViewModel, hostId: String?, groupId: String?, o
         val presence = rememberVaultPresence(shell, vault)
         val viewers = remember(presence, draft.id) { draft.id?.let { viewersByHost(presence)[it] } ?: emptyList() }
         HostForm(
+            repo = shell.repo,
             state = state,
             draft = draft,
             vm = vm,
@@ -135,6 +137,7 @@ fun HostEditorScreen(shell: ShellViewModel, hostId: String?, groupId: String?, o
 
 @Composable
 private fun HostForm(
+    repo: VaultRepository,
     state: HostEditorState,
     draft: HostDraft,
     vm: HostEditorViewModel,
@@ -156,7 +159,7 @@ private fun HostForm(
         }
 
         if (viewers.isNotEmpty()) {
-            ConnectedNowSection(viewers)
+            ConnectedNowSection(repo, viewers)
             Spacer(Modifier.height(12.dp))
         }
 

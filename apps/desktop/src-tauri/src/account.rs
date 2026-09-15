@@ -35,6 +35,7 @@ pub struct AccountCard {
     pub user_id: Uuid,
     pub email: String,
     pub display_name: Option<String>,
+    pub avatar: Option<String>,
     pub is_admin: bool,
     pub device_id: Uuid,
     pub signed_in_at: DateTime<Utc>,
@@ -47,6 +48,7 @@ impl From<StoredAccount> for AccountCard {
             user_id: a.user_id,
             email: a.email,
             display_name: a.display_name,
+            avatar: a.avatar,
             is_admin: a.is_admin,
             device_id: a.device_id,
             signed_in_at: a.signed_in_at,
@@ -523,6 +525,7 @@ pub async fn sign_out<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
         },
     };
     core::sign_out(&api, &state.store).await?;
+    crate::avatars::clear_cache(&state);
     state.account.update_status(|s| *s = SyncStatus::default());
     let _ = app.emit(SYNC_EVENT, SyncNotice::SignedOut);
     Ok(())

@@ -2,6 +2,7 @@ package com.termoso.android.ui
 
 import android.security.keystore.UserNotAuthenticatedException
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -104,20 +105,18 @@ fun TermosoRoot(container: AppContainer, vault: VaultState) {
         )
         is VaultState.Open -> {
             val settings by vault.repo.settings.collectAsStateWithLifecycle()
-            if (gated) {
-                LockedScreen(error = error, manual = true, authRequired = true, onRetry = {
-                    error = null
-                    scope.launch { if (prompt()) container.ungate() }
-                })
-            } else {
-                val session = remember(vault.repo) { SessionStoreOwner() }
-                DisposableEffect(session) { onDispose { session.viewModelStore.clear() } }
-                val restoring by vault.account.restoring.collectAsStateWithLifecycle()
-                val accountStatus by vault.account.status.collectAsStateWithLifecycle()
-                fun finishWelcome() {
-                    welcomeAuth = null
-                    scope.launch { vault.repo.updateSettings { it.copy(welcomeSeen = true) } }
-                }
+            val session = remember(vault.repo) { SessionStoreOwner() }
+            DisposableEffect(session) { onDispose { session.viewModelStore.clear() } }
+            val restoring by vault.account.restoring.collectAsStateWithLifecycle()
+            val accountStatus by vault.account.status.collectAsStateWithLifecycle()
+            fun finishWelcome() {
+                welcomeAuth = null
+                scope.launch { vault.repo.updateSettings { it.copy(welcomeSeen = true) } }
+            }
+            // The re-auth gate only covers the UI: the vault stays open, so
+            // navigation, the selected vault and the terminals underneath
+            // survive it.
+            Box {
                 CompositionLocalProvider(LocalViewModelStoreOwner provides session) {
                     when {
                         // A returning user who is still signed in never sees the welcome again.
@@ -148,6 +147,12 @@ fun TermosoRoot(container: AppContainer, vault: VaultState) {
                             },
                         )
                     }
+                }
+                if (gated) {
+                    LockedScreen(error = error, manual = true, authRequired = true, onRetry = {
+                        error = null
+                        scope.launch { if (prompt()) container.ungate() }
+                    })
                 }
             }
         }

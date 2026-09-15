@@ -32,6 +32,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "./ThemeToggle";
 import { useAuthState } from "@/auth/store";
+import { useAvatarUrl } from "@/components/UserAvatar";
 import { logout } from "@/auth/flows";
 import { useServerInfo } from "@/api/hooks";
 import { UnlockDialog } from "@/auth/UnlockDialog";
@@ -197,6 +198,7 @@ export function AppShell() {
   );
 
   const initials = (user?.display_name ?? user?.email ?? "?").slice(0, 1).toUpperCase();
+  const avatarUrl = useAvatarUrl(user?.id, user?.avatar);
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "surface.lowest" }}>
@@ -255,6 +257,8 @@ export function AppShell() {
               sx={{ ml: 0.5 }}
             >
               <Avatar
+                src={avatarUrl}
+                alt=""
                 sx={{
                   width: 26,
                   height: 26,

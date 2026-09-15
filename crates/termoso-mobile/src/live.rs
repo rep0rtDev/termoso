@@ -25,6 +25,8 @@ pub struct LiveParticipantCard {
     pub user_id: String,
     pub email: String,
     pub display_name: Option<String>,
+    /// Profile picture tag, fetched through `TermosoApp::user_avatar`.
+    pub avatar: Option<String>,
     /// The person sharing.
     pub is_host: bool,
     /// May type into the terminal (always true for the host).
@@ -63,6 +65,7 @@ pub(crate) fn cards(list: &[LiveParticipant], me: Uuid) -> Vec<LiveParticipantCa
             user_id: p.user_id.to_string(),
             email: p.email.clone(),
             display_name: p.display_name.clone(),
+            avatar: p.avatar.clone(),
             is_host: p.is_host,
             can_write: p.can_write,
             me: p.user_id == me,
@@ -294,6 +297,7 @@ mod tests {
                 user_id: Uuid::new_v4(),
                 email: "a@x".into(),
                 display_name: None,
+                avatar: None,
                 is_host: false,
                 can_write: false,
             },
@@ -301,6 +305,7 @@ mod tests {
                 user_id: me,
                 email: "me@x".into(),
                 display_name: Some("Me".into()),
+                avatar: None,
                 is_host: false,
                 can_write: true,
             },
@@ -308,6 +313,7 @@ mod tests {
                 user_id: host,
                 email: "host@x".into(),
                 display_name: None,
+                avatar: None,
                 is_host: true,
                 can_write: true,
             },

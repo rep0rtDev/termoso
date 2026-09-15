@@ -393,7 +393,13 @@ function TeamView({
                   <CompactRow
                     key={m.user_id}
                     avatar={
-                      <PersonAvatar size={36} seed={m.email} label={initialsOf(null, m.email)} />
+                      <PersonAvatar
+                        size={36}
+                        seed={m.email}
+                        label={initialsOf(null, m.email)}
+                        userId={m.user_id}
+                        avatar={m.avatar}
+                      />
                     }
                     primary={m.display_name ?? m.email}
                     owner={m.role === "owner"}
@@ -885,7 +891,11 @@ function MemberRow({
       }}
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, minWidth: 0 }}>
-        <PersonAvatar label={initialsOf(m.display_name, m.email)} />
+        <PersonAvatar
+          label={initialsOf(m.display_name, m.email)}
+          userId={m.user_id}
+          avatar={m.avatar}
+        />
         <Box sx={{ minWidth: 0 }}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 0 }}>
             <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
@@ -1063,7 +1073,13 @@ function PendingKeys({
             <EntityCard
               key={`${k.vault_id}:${k.user_id}`}
               dense
-              tile={<PersonAvatar label={initialsOf(m?.display_name, m?.email ?? "?")} />}
+              tile={
+                <PersonAvatar
+                  label={initialsOf(m?.display_name, m?.email ?? "?")}
+                  userId={m?.user_id}
+                  avatar={m?.avatar}
+                />
+              }
               title={m?.display_name ?? m?.email ?? "Unknown member"}
               subtitle={`${v?.name ?? "Vault"} · ${vaultRoleLabel[k.role]}`}
               trailing={

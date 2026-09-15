@@ -368,6 +368,36 @@ impl ApiClient {
             .await
     }
 
+    /// `PUT /account/avatar` — replace the profile picture with `image`
+    /// (any common raster format; the server shrinks it).
+    pub async fn put_avatar(&self, image: Vec<u8>, content_type: &str) -> Result<UserProfile> {
+        Self::send(
+            self.request(Method::PUT, "account/avatar")
+                .header(reqwest::header::CONTENT_TYPE, content_type)
+                .body(image),
+        )
+        .await
+    }
+
+    /// `DELETE /account/avatar`.
+    pub async fn delete_avatar(&self) -> Result<UserProfile> {
+        Self::send(self.request(Method::DELETE, "account/avatar")).await
+    }
+
+    /// `GET /users/{id}/avatar` — the normalised WebP, or `None` when the
+    /// user has no picture.
+    pub async fn user_avatar(&self, user_id: Uuid) -> Result<Option<Vec<u8>>> {
+        let resp = self
+            .request(Method::GET, &format!("users/{user_id}/avatar"))
+            .send()
+            .await?;
+        if resp.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let resp = check(resp).await?;
+        Ok(Some(resp.bytes().await?.to_vec()))
+    }
+
     /// `PUT /account/presence` — hide / show this account in team presence.
     pub async fn set_presence_hidden(&self, hidden: bool) -> Result<UserProfile> {
         Self::send(

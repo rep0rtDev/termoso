@@ -636,6 +636,9 @@ pub struct KnownHostItem {
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct HistoryItem {
     pub id: String,
+    /// Vault of the saved host; `None` for quick connects, local shells
+    /// and hosts that no longer exist.
+    pub vault_id: Option<String>,
     pub host_id: Option<String>,
     pub label: String,
     /// `user@address:port`.
