@@ -235,7 +235,14 @@ impl Store {
     /// their metadata has been pulled; rows whose vault key we do not hold
     /// are skipped.
     pub fn logs(&self) -> Result<Vec<LogItem>> {
-        let me = self.account()?.map(|a| a.user_id);
+        let account = self.account()?;
+        let me = account.as_ref().map(|a| a.user_id);
+        let self_author = account.map(|a| LogAuthor {
+            user_id: a.user_id,
+            email: a.email,
+            display_name: a.display_name,
+            avatar_tag: a.avatar,
+        });
         let rows = self.raw_rows("WHERE deleted = 0")?;
         let mut out = Vec::with_capacity(rows.len());
         for raw in rows {
@@ -251,11 +258,13 @@ impl Store {
                 Err(e) => return Err(e.into()),
             };
             let author_id = raw.author_id.as_deref().map(parse_uuid).transpose()?;
-            let author = raw
-                .author
-                .as_deref()
-                .map(serde_json::from_str::<LogAuthor>)
-                .transpose()?;
+            let mine = author_id.is_none_or(|a| Some(a) == me);
+            // Own recordings the server has not echoed back yet are ours.
+            let author = match raw.author.as_deref() {
+                Some(json) => Some(serde_json::from_str::<LogAuthor>(json)?),
+                None if mine => self_author.clone(),
+                None => None,
+            };
             out.push(LogItem {
                 id: r.id,
                 vault_id: r.vault_id,
@@ -265,7 +274,7 @@ impl Store {
                 uploaded: r.uploaded,
                 completed: r.completed,
                 created_at: parse_time(&raw.created_at)?,
-                mine: author_id.is_none_or(|a| Some(a) == me),
+                mine,
                 author,
                 pinned: raw.pinned,
                 note: raw.note,
@@ -669,7 +678,15 @@ mod tests {
         assert!(items[0].pinned);
         assert_eq!(items[0].note, "deploy went sideways");
         assert_eq!(items[0].note_by, Some(me));
-        assert!(items[1].mine && items[1].author.is_none() && !items[1].pinned);
+        assert!(items[1].mine && !items[1].pinned);
+        assert_eq!(
+            items[1]
+                .author
+                .as_ref()
+                .map(|a| (a.user_id, a.email.as_str())),
+            Some((me, "me@example.com")),
+            "own recording is attributed to me before the server echoes it"
+        );
         assert_eq!(
             store.logs_without_body().unwrap().len(),
             1,
