@@ -14,6 +14,7 @@ mod import;
 mod logs;
 mod mosh;
 mod multiplayer;
+mod presence;
 mod prompts;
 mod sessions;
 mod sftp;
@@ -274,6 +275,9 @@ pub fn run() {
             commands_tools::team_invite_revoke,
             commands_tools::team_pending_keys,
             commands_tools::team_audit,
+            commands_tools::team_presence,
+            commands_tools::account_profile,
+            commands_tools::account_set_presence_hidden,
             commands_tools::team_vault_create,
             commands_tools::team_vault_rename,
             commands_tools::team_vault_delete,

@@ -15,7 +15,8 @@ use reqwest::{Method, RequestBuilder, Response, StatusCode};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use termoso_proto::account::{
-    AccountKeys, ServerInfo, SettingsBlob, UpdateProfileRequest, UserProfile,
+    AccountKeys, PresenceVisibilityRequest, ServerInfo, SettingsBlob, UpdateProfileRequest,
+    UserProfile,
 };
 use termoso_proto::auth::{
     AuthResponse, Device, DeviceApproveRequest, DeviceApproveResendRequest, DeviceList,
@@ -39,7 +40,8 @@ use termoso_proto::sync::{
 };
 use termoso_proto::team::{
     AuditEventList, CreateInviteRequest, CreateTeamRequest, CreatedInvite, InviteList,
-    PendingVaultKeys, Team, TeamList, TeamMemberList, UpdateTeamMemberRequest, UpdateTeamRequest,
+    PendingVaultKeys, Team, TeamList, TeamMemberList, TeamPresence, UpdateTeamMemberRequest,
+    UpdateTeamRequest,
 };
 use termoso_proto::vault::{
     CreateVaultRequest, RotateVaultKeyRequest, RotateVaultKeyResponse, UpdateVaultRequest, Vault,
@@ -366,6 +368,15 @@ impl ApiClient {
             .await
     }
 
+    /// `PUT /account/presence` — hide / show this account in team presence.
+    pub async fn set_presence_hidden(&self, hidden: bool) -> Result<UserProfile> {
+        Self::send(
+            self.request(Method::PUT, "account/presence")
+                .json(&PresenceVisibilityRequest { hidden }),
+        )
+        .await
+    }
+
     /// `GET /account/settings` — encrypted settings blob.
     pub async fn settings(&self) -> Result<SettingsBlob> {
         self.get("account/settings").await
@@ -603,6 +614,11 @@ impl ApiClient {
     /// `GET /teams/{id}/pending-keys`.
     pub async fn team_pending_keys(&self, team_id: Uuid) -> Result<PendingVaultKeys> {
         self.get(&format!("teams/{team_id}/pending-keys")).await
+    }
+
+    /// `GET /teams/{id}/presence` — who is connected to which team-vault host.
+    pub async fn team_presence(&self, team_id: Uuid) -> Result<TeamPresence> {
+        self.get(&format!("teams/{team_id}/presence")).await
     }
 
     /// `GET /teams/{id}/audit` — team activity log, newest first.

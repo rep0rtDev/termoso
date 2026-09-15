@@ -20,6 +20,7 @@ use uuid::Uuid;
 
 use crate::connect::{ConnectUi, Connector, PromptAnswer, PromptRequest, connect_resolved};
 use crate::error::{MobileError, Result};
+use crate::presence::Slot;
 use crate::session::SessionState;
 use crate::settings::MobileSettings;
 
@@ -421,6 +422,8 @@ struct Inner {
     runtime: tokio::runtime::Handle,
     /// Fired by `disconnect`: aborts the connect and every transfer.
     closed: CancellationToken,
+    /// Team presence registration for a saved team-vault host.
+    presence: Option<Slot>,
 }
 
 /// A remote file system. Drop-safe: dropping the last reference closes the
@@ -438,6 +441,7 @@ pub(crate) struct SftpLaunch {
     pub resolved: Option<ResolvedHost>,
     pub settings: MobileSettings,
     pub listener: Arc<dyn SftpListener>,
+    pub presence: Option<Slot>,
 }
 
 impl SftpSession {
@@ -448,6 +452,7 @@ impl SftpSession {
             resolved,
             settings,
             listener,
+            presence,
         } = launch;
         let state = Arc::new(Mutex::new(SessionState::Connecting {
             detail: "Connecting…".into(),
@@ -469,6 +474,7 @@ impl SftpSession {
             queue: Mutex::new(TransferQueue::new(closed.clone())),
             runtime: runtime.clone(),
             closed,
+            presence,
         });
         let session = Arc::new(Self {
             id: Uuid::new_v4(),
@@ -694,6 +700,14 @@ impl Drop for SftpSession {
 
 impl Inner {
     fn set_state(&self, state: SessionState) {
+        if let Some(p) = &self.presence {
+            match state {
+                SessionState::Connected => p.connected(),
+                SessionState::Connecting { .. }
+                | SessionState::Closed { .. }
+                | SessionState::Failed { .. } => p.gone(),
+            }
+        }
         *self.state.lock().expect("state poisoned") = state.clone();
         self.listener.on_state(state);
     }

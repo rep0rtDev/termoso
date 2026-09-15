@@ -111,6 +111,8 @@ fun HostsScreen(
     val vault = vaults.firstOrNull { it.id == selectedVaultId }
     val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
     val openByHost = sessions.mapNotNull { it.hostId }.groupingBy { it }.eachCount()
+    val presence = rememberVaultPresence(shell, vault)
+    val viewersByHost = remember(presence) { viewersByHost(presence) }
 
     LaunchedEffect(state.error) {
         state.error?.let { shell.notify(it); vm.errorShown() }
@@ -219,6 +221,7 @@ fun HostsScreen(
             else -> HostList(
                 state = state,
                 openByHost = openByHost,
+                viewersByHost = viewersByHost,
                 padding = padding,
                 onOpenGroup = onOpenGroup,
                 onGroupLongPress = { dialog = HostsDialog.GroupMenu(it) },
@@ -286,6 +289,7 @@ private sealed interface HostsDialog {
 private fun HostList(
     state: HostsUiState,
     openByHost: Map<String, Int>,
+    viewersByHost: Map<String, List<HostViewer>>,
     padding: PaddingValues,
     onOpenGroup: (String) -> Unit,
     onGroupLongPress: (GroupItem) -> Unit,
@@ -340,6 +344,7 @@ private fun HostList(
                                     color = MaterialTheme.colorScheme.primary,
                                 )
                             }
+                            viewersByHost[h.id]?.let { PresenceStack(it) }
                             openByHost[h.id]?.let { OpenSessionsBadge(it) }
                         }
                     }

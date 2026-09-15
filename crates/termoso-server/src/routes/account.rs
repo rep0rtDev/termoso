@@ -16,6 +16,7 @@ use crate::codes;
 use crate::error::{ApiResult, Error, NoContent};
 use crate::events::{self, Event};
 use crate::extract::{Auth, Json as Body, StepUp};
+use crate::presence;
 use crate::ratelimit;
 use crate::routes::auth::{P_EMAIL_VERIFY, send_email_verification};
 use crate::session;
@@ -62,6 +63,27 @@ pub async fn update_profile(
         .bind(&name)
         .execute(&state.db)
         .await?;
+    let u = users::by_id(&state.db, auth.user_id()).await?;
+    let mfa = users::mfa_enabled(&state, &u).await?;
+    events::publish(&state, Event::AccountUpdated { user_id: u.id }).await?;
+    Ok(Json(users::profile(&u, mfa)))
+}
+
+#[utoipa::path(put, path = "/api/v1/account/presence", tag = "account",
+    request_body = PresenceVisibilityRequest, responses((status = 200, body = UserProfile)))]
+pub async fn put_presence(
+    State(state): State<AppState>,
+    auth: Auth,
+    Body(req): Body<PresenceVisibilityRequest>,
+) -> ApiResult<Json<UserProfile>> {
+    sqlx::query("UPDATE users SET presence_hidden = $2, updated_at = now() WHERE id = $1")
+        .bind(auth.user_id())
+        .bind(req.hidden)
+        .execute(&state.db)
+        .await?;
+    if req.hidden {
+        presence::clear_user(&state, auth.user_id()).await?;
+    }
     let u = users::by_id(&state.db, auth.user_id()).await?;
     let mfa = users::mfa_enabled(&state, &u).await?;
     events::publish(&state, Event::AccountUpdated { user_id: u.id }).await?;

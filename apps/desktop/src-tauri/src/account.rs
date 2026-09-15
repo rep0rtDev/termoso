@@ -138,6 +138,10 @@ pub enum SyncNotice {
     HistoryChanged,
     LogsChanged,
     AccountChanged,
+    /// Who is connected to what changed in a team.
+    PresenceChanged {
+        team_id: Uuid,
+    },
     /// The server revoked this device; the account was signed out locally.
     SignedOut,
 }
@@ -564,7 +568,15 @@ fn start_engine<R: Runtime>(app: &AppHandle<R>, state: &AppState, inner: &mut In
         runner,
         watcher,
     });
+    crate::presence::refresh(app);
     Ok(())
+}
+
+/// The running sync engine, if signed in.
+pub(crate) async fn engine<R: Runtime>(app: &AppHandle<R>) -> Option<Arc<SyncEngine>> {
+    let state = app.state::<AppState>();
+    let inner = state.account.inner.lock().await;
+    inner.engine.as_ref().map(|e| e.engine.clone())
 }
 
 async fn stop_engine(inner: &mut Inner) {
@@ -613,6 +625,7 @@ async fn on_event<R: Runtime>(app: &AppHandle<R>, ev: SyncEvent) -> bool {
         SyncEvent::HistoryChanged => SyncNotice::HistoryChanged,
         SyncEvent::LogsChanged => SyncNotice::LogsChanged,
         SyncEvent::AccountChanged => SyncNotice::AccountChanged,
+        SyncEvent::PresenceChanged { team_id } => SyncNotice::PresenceChanged { team_id },
         SyncEvent::SessionRevoked => {
             let mut inner = state.account.inner.lock().await;
             // We are the watcher task: stop the runner, let ourselves return.

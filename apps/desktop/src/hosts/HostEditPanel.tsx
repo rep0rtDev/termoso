@@ -54,6 +54,7 @@ import { openTerminal } from "@/terminal/store";
 import { terminalThemes } from "@/terminal/themes";
 import { monoFontFamily, sizes } from "@/theme/theme";
 import { ChainDialog, ProxyDialog } from "./HostAdvancedDialogs";
+import { ConnectedNowCard, useVaultPresence } from "./PresenceViews";
 
 const IP_VERSIONS: { value: IpVersion; label: string }[] = [
   { value: "auto", label: "Auto" },
@@ -143,6 +144,7 @@ function HostEditor({
   const snippets = useSnippets(vaultId);
   const proxies = useProxies(vaultId);
   const chains = useHostChains(vaultId);
+  const presence = useVaultPresence(vaultId);
   const save = useSaveHost();
   const del = useDeleteHost();
 
@@ -273,6 +275,7 @@ function HostEditor({
         }}
         sx={{ display: "contents" }}
       >
+        {hostId && <ConnectedNowCard viewers={presence.get(hostId) ?? []} />}
         <SectionCard title="Address">
           <Box sx={{ display: "flex", gap: 1.5, alignItems: "center" }}>
             <IconTile size={sizes.tile} color={icon?.color}>

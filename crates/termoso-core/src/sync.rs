@@ -24,6 +24,7 @@ use futures::{SinkExt, StreamExt};
 use termoso_proto::entities::SyncEntity;
 use termoso_proto::logs::{CreateLogRequest, UpdateLogRequest};
 use termoso_proto::sync::{HistoryPushRequest, MAX_BATCH, PullRequest, PushRequest, PushResult};
+use termoso_proto::team::PresenceSession;
 use termoso_proto::ws::{ClientMessage, ServerMessage};
 use tokio::sync::{Notify, broadcast};
 use tokio_tungstenite::tungstenite::Message;
@@ -130,6 +131,12 @@ pub enum SyncEvent {
     LogsChanged,
     /// Profile / security settings changed on the server.
     AccountChanged,
+    /// Who is connected to which host changed in a team — fetch
+    /// [`ApiClient::team_presence`] for a fresh snapshot.
+    PresenceChanged {
+        /// Team.
+        team_id: Uuid,
+    },
     /// The server revoked this session. The loop has stopped; the app should
     /// call [`account::sign_out_local`].
     SessionRevoked,
@@ -143,7 +150,13 @@ pub struct SyncEngine {
     events: broadcast::Sender<SyncEvent>,
     kick: Notify,
     running: tokio::sync::Mutex<()>,
+    presence: std::sync::Mutex<Vec<PresenceSession>>,
+    presence_kick: Notify,
 }
+
+/// How often the device re-sends its (unchanged) presence so the server
+/// knows it is still there.
+const PRESENCE_HEARTBEAT: Duration = Duration::from_secs(45);
 
 impl std::fmt::Debug for SyncEngine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -169,7 +182,48 @@ impl SyncEngine {
             events,
             kick: Notify::new(),
             running: tokio::sync::Mutex::new(()),
+            presence: std::sync::Mutex::new(Vec::new()),
+            presence_kick: Notify::new(),
         })
+    }
+
+    /// Replace the list of this device's live connections to team-vault
+    /// hosts. Sent to the server right away (and re-sent as a heartbeat while
+    /// non-empty); personal-vault sessions are the caller's job to leave out
+    /// but the server drops them anyway. An empty list clears presence.
+    pub fn set_presence(&self, mut sessions: Vec<PresenceSession>) {
+        sessions.sort_by(|a, b| a.since.cmp(&b.since).then(a.host_id.cmp(&b.host_id)));
+        sessions.dedup();
+        let changed = {
+            let mut cur = self.presence.lock().unwrap_or_else(|p| p.into_inner());
+            if *cur == sessions {
+                false
+            } else {
+                *cur = sessions;
+                true
+            }
+        };
+        if changed {
+            self.presence_kick.notify_one();
+        }
+    }
+
+    /// Current list given to [`SyncEngine::set_presence`].
+    pub fn presence(&self) -> Vec<PresenceSession> {
+        self.presence
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+    }
+
+    fn presence_frame(&self) -> Result<Option<String>> {
+        let sessions = self.presence();
+        if sessions.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(serde_json::to_string(&ClientMessage::Presence {
+            sessions,
+        })?))
     }
 
     /// Store this engine syncs.
@@ -680,6 +734,13 @@ impl SyncEngine {
         let mut pending = Pending::default();
         let mut ping = tokio::time::interval(Duration::from_secs(30));
         ping.tick().await;
+        if let Some(frame) = self.presence_frame()?
+            && ws.send(Message::Text(frame.into())).await.is_err()
+        {
+            return Ok(Stop::Disconnected);
+        }
+        let mut heartbeat = tokio::time::interval(PRESENCE_HEARTBEAT);
+        heartbeat.tick().await;
         let mut full = tokio::time::interval(self.opts.interval);
         full.tick().await;
         let debounce = tokio::time::sleep(Duration::MAX);
@@ -700,6 +761,20 @@ impl SyncEngine {
                 _ = full.tick() => {
                     pending.full = true;
                     debounce.as_mut().reset(tokio::time::Instant::now());
+                }
+                _ = self.presence_kick.notified() => {
+                    let frame = serde_json::to_string(&ClientMessage::Presence { sessions: self.presence() })?;
+                    if ws.send(Message::Text(frame.into())).await.is_err() {
+                        return Ok(Stop::Disconnected);
+                    }
+                    heartbeat.reset();
+                }
+                _ = heartbeat.tick() => {
+                    if let Some(frame) = self.presence_frame()?
+                        && ws.send(Message::Text(frame.into())).await.is_err()
+                    {
+                        return Ok(Stop::Disconnected);
+                    }
                 }
                 _ = self.kick.notified() => {
                     pending.full = true;
@@ -749,6 +824,9 @@ impl SyncEngine {
                         }
                         ServerMessage::AccountUpdated => {
                             pending.account = true;
+                        }
+                        ServerMessage::PresenceChanged { team_id } => {
+                            self.emit(SyncEvent::PresenceChanged { team_id });
                         }
                         ServerMessage::SessionRevoked => return Ok(Stop::Revoked),
                         ServerMessage::Error { code, message } => {
@@ -865,6 +943,7 @@ fn api_code(e: &CoreError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use termoso_crypto::keys::SymmetricKey;
 
     #[test]
     fn default_options_are_within_server_limits() {
@@ -885,5 +964,73 @@ mod tests {
         ))))
         .unwrap();
         assert!(matches!(m, Some(ServerMessage::HistoryChanged { seq: 5 })));
+        let team_id = Uuid::new_v4();
+        let m = decode(Some(Ok(Message::Text(
+            format!(r#"{{"type":"presence_changed","team_id":"{team_id}"}}"#).into(),
+        ))))
+        .unwrap();
+        assert!(matches!(m, Some(ServerMessage::PresenceChanged { team_id: t }) if t == team_id));
+    }
+
+    #[tokio::test]
+    async fn presence_is_deduplicated_and_only_kicks_on_change() {
+        let api = Arc::new(ApiClient::new("https://example.test").unwrap());
+        let store = Arc::new(Store::open_in_memory(SymmetricKey::generate()).unwrap());
+        let engine = SyncEngine::new(api, store, SyncOptions::default());
+        assert!(
+            engine.presence_frame().unwrap().is_none(),
+            "nothing → no heartbeat"
+        );
+
+        let since = chrono::Utc::now();
+        let a = PresenceSession {
+            vault_id: Uuid::new_v4(),
+            host_id: Uuid::new_v4(),
+            protocol: "ssh".into(),
+            since,
+        };
+        let b = PresenceSession {
+            vault_id: a.vault_id,
+            host_id: Uuid::new_v4(),
+            protocol: "sftp".into(),
+            since: since - chrono::Duration::seconds(5),
+        };
+        engine.set_presence(vec![a.clone(), b.clone(), a.clone()]);
+        assert_eq!(
+            engine.presence(),
+            vec![b.clone(), a.clone()],
+            "sorted by start, deduplicated"
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), engine.presence_kick.notified())
+                .await
+                .is_ok(),
+            "change wakes the sender"
+        );
+
+        engine.set_presence(vec![b.clone(), a.clone()]);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), engine.presence_kick.notified())
+                .await
+                .is_err(),
+            "same list → no wake-up"
+        );
+
+        let frame = engine.presence_frame().unwrap().expect("heartbeat frame");
+        let v: serde_json::Value = serde_json::from_str(&frame).unwrap();
+        assert_eq!(v["type"], "presence");
+        assert_eq!(v["sessions"].as_array().unwrap().len(), 2);
+        assert!(frame.contains(&a.host_id.to_string()));
+        assert!(!frame.contains("password") && !frame.contains("address"));
+
+        engine.set_presence(Vec::new());
+        assert!(engine.presence().is_empty());
+        assert!(engine.presence_frame().unwrap().is_none());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), engine.presence_kick.notified())
+                .await
+                .is_ok(),
+            "clearing is pushed right away"
+        );
     }
 }
