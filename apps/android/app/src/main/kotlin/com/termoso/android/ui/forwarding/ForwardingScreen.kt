@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -151,16 +152,13 @@ fun ForwardingScreen(
     ) { padding ->
         when {
             state.loading -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            state.rules.isEmpty() -> Column(
-                Modifier.fillMaxSize().padding(padding),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
+            state.rules.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 EmptyState(
                     title = "No port forwarding rules",
                     hint = "Reach a database behind a host, expose a local service on a server, or open a SOCKS proxy through it.",
+                    icon = Icons.Filled.SwapHoriz,
+                    action = { Button(onClick = onNewRule) { Text("Create a rule") } },
                 )
-                Button(onClick = onNewRule) { Text("Create a rule") }
             }
             else -> LazyColumn(
                 Modifier.fillMaxSize().padding(padding),

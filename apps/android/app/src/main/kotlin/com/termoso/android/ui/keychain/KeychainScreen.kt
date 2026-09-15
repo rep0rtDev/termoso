@@ -2,6 +2,7 @@ package com.termoso.android.ui.keychain
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -14,18 +15,21 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -102,11 +106,18 @@ fun KeychainScreen(
         },
     ) { padding ->
         if (keys.isEmpty() && identities.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding)) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 EmptyState(
-                    title = "Keychain is empty",
+                    title = "Add credentials",
                     hint = "Generate an SSH key or paste one from another machine, then reuse it across hosts. " +
                         "Identities bundle a username with a password or key.",
+                    icon = Icons.Filled.Key,
+                    action = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Button(onClick = onGenerate) { Text("Generate key") }
+                            TextButton(onClick = onImport) { Text("Paste or import key") }
+                        }
+                    },
                 )
             }
             return@SubScreen

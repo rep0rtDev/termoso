@@ -1,7 +1,6 @@
 package com.termoso.android.ui.snippets
 
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -117,26 +116,27 @@ fun SnippetsScreen(
     ) { padding ->
         when {
             state.loading -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            packages.isEmpty() && snippets.isEmpty() -> Column(
-                Modifier.fillMaxSize().padding(padding),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
+            packages.isEmpty() && snippets.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 EmptyState(
                     title = if (here == null) "No snippets yet" else "Empty package",
                     hint = "Save commands you type often and run them into one or many terminals, with {{variables}} filled in on the way.",
+                    icon = Icons.Filled.Code,
+                    action = if (vaultId == null) {
+                        null
+                    } else {
+                        {
+                            Box {
+                                Button(onClick = { fabMenu = true }) { Text("Create") }
+                                NewMenu(
+                                    expanded = fabMenu,
+                                    onDismiss = { fabMenu = false },
+                                    onSnippet = { onNewSnippet(vaultId, packageId) },
+                                    onPackage = { newPackage = true },
+                                )
+                            }
+                        }
+                    },
                 )
-                if (vaultId != null) {
-                    Box {
-                        Button(onClick = { fabMenu = true }) { Text("Create") }
-                        NewMenu(
-                            expanded = fabMenu,
-                            onDismiss = { fabMenu = false },
-                            onSnippet = { onNewSnippet(vaultId, packageId) },
-                            onPackage = { newPackage = true },
-                        )
-                    }
-                }
             }
             else -> LazyColumn(
                 Modifier.fillMaxSize().padding(padding),
