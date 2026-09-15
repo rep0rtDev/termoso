@@ -393,18 +393,17 @@ private fun ActiveSession(
     }
 
     // Shared files arrive while another screen may be up; offer them once this terminal is showing.
-    // Consuming re-keys this effect, so the rest runs on the screen scope.
+    // The share stays pending until the user answers, so a recomposition of
+    // this screen (navigation, rotation) re-offers rather than drops it.
     LaunchedEffect(pendingShare) {
         val uris = pendingShare ?: return@LaunchedEffect
-        onShareConsumed()
-        scope.launch {
-            session.state.first { it !is SessionState.Connecting }
-            FileDrop.blocker(session)?.let { why ->
-                snackbar.showSnackbar(why)
-                return@launch
-            }
-            confirmDrop = uris
+        session.state.first { it !is SessionState.Connecting }
+        FileDrop.blocker(session)?.let { why ->
+            onShareConsumed()
+            snackbar.showSnackbar(why)
+            return@LaunchedEffect
         }
+        confirmDrop = uris
     }
 
     val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -533,12 +532,17 @@ private fun ActiveSession(
         TerminalPanelSheet(shell = shell, session = session, controller = controller, onClose = { panelSheet = false })
     }
     confirmDrop?.let { uris ->
+        fun answer(send: Boolean) {
+            confirmDrop = null
+            onShareConsumed()
+            if (send) dropFiles(uris)
+        }
         AlertDialog(
-            onDismissRequest = { confirmDrop = null },
+            onDismissRequest = { answer(false) },
             title = { Text(if (uris.size == 1) "Send file to ${session.label}?" else "Send ${uris.size} files to ${session.label}?") },
             text = { Text("Copied to /tmp on the remote over this session's SSH connection; the path is typed at the prompt.") },
-            confirmButton = { TextButton(onClick = { confirmDrop = null; dropFiles(uris) }) { Text("Send") } },
-            dismissButton = { TextButton(onClick = { confirmDrop = null }) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { answer(true) }) { Text("Send") } },
+            dismissButton = { TextButton(onClick = { answer(false) }) { Text("Cancel") } },
         )
     }
     dropping?.let { p ->
