@@ -595,16 +595,26 @@ fn start_recording(
     }
 }
 
-fn finish_recording(state: &AppState, recorder: Option<Arc<Recorder>>) {
-    if let Some(rec) = recorder {
-        if let Err(e) = rec.finish(&state.store, &state.logs_dir()) {
-            tracing::warn!("saving session recording failed: {e}");
+/// Persist a finished recording and let the sync engine upload it right
+/// away, so a shared team recording reaches teammates without waiting for
+/// the periodic pass.
+async fn finish_recording<R: Runtime>(app: &AppHandle<R>, recorder: Option<Arc<Recorder>>) {
+    let Some(rec) = recorder else {
+        return;
+    };
+    let state = app.state::<AppState>();
+    match rec.finish(&state.store, &state.logs_dir()) {
+        Ok(()) => {
+            if let Some(engine) = crate::account::engine(app).await {
+                engine.request_sync();
+            }
         }
-        if let Ok(settings) = state.settings()
-            && let Err(e) = crate::logs::prune(&state.store, settings.log_retention_days)
-        {
-            tracing::debug!("log retention sweep failed: {e}");
-        }
+        Err(e) => tracing::warn!("saving session recording failed: {e}"),
+    }
+    if let Ok(settings) = state.settings()
+        && let Err(e) = crate::logs::prune(&state.store, settings.log_retention_days)
+    {
+        tracing::debug!("log retention sweep failed: {e}");
     }
 }
 
@@ -631,7 +641,7 @@ pub async fn close<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
         if let Some(hid) = live.history_id {
             finish_history(&state, hid, &live.info, None);
         }
-        finish_recording(&state, live.recorder);
+        finish_recording(app, live.recorder).await;
         let _ = app.emit(SESSION_EVENT, SessionEvent::Closed { id });
         crate::presence::refresh(app);
     }
@@ -698,7 +708,7 @@ async fn pump<R: Runtime>(
         if let Some(hid) = live.history_id {
             finish_history(&state, hid, &live.info, error);
         }
-        finish_recording(&state, live.recorder);
+        finish_recording(&app, live.recorder).await;
     }
     let _ = app.emit(SESSION_EVENT, SessionEvent::Closed { id });
     crate::presence::refresh(&app);
