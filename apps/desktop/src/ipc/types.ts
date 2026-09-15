@@ -75,6 +75,8 @@ export interface Settings {
   autocomplete: boolean;
   /** Install OSC 133 prompt markers into bash / zsh / fish after connecting. */
   shellIntegration: boolean;
+  /** Command a workspace pane was running when saved: put on the prompt, run, or dropped. */
+  restoreCommands: RestoreCommands;
   terminalBell: boolean;
   brightBold: boolean;
   termType: TermType;
@@ -107,6 +109,8 @@ export interface Settings {
 }
 
 export type UpdateCheck = "manual" | "startup";
+
+export type RestoreCommands = "type" | "run" | "never";
 
 export interface UpdateInfo {
   currentVersion: string;
@@ -1468,7 +1472,14 @@ export type LiveEvent =
 
 /** Split tree of a saved tab; leaves are connection targets. */
 export type LayoutTemplate =
-  | { kind: "leaf"; target: OpenTarget }
+  | {
+      kind: "leaf";
+      target: OpenTarget;
+      /** Working directory the shell reported (OSC 7) when the layout was saved. */
+      cwd?: string | null;
+      /** Command running (between the OSC 133 `C` and `D` marks) when saved. */
+      command?: string | null;
+    }
   | {
       kind: "split";
       direction: "row" | "column";

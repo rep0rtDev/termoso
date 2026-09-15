@@ -43,6 +43,7 @@ import {
   errorMessage,
   TERM_TYPES,
   type CursorStyle,
+  type RestoreCommands,
   type Settings,
   type SyncConflict,
   type TermType,
@@ -538,6 +539,22 @@ function Terminal({ s, update }: SectionProps) {
               checked={s.shellIntegration}
               onChange={(v) => update({ shellIntegration: v })}
             />
+          }
+        />
+        <SettingRow
+          label="Restore running commands"
+          hint="Workspaces and the previous session remember each pane's working directory and the command it was running. Reopening always returns to the directory; the command can be placed on the prompt for you to confirm, run right away, or dropped."
+          control={
+            <TextField
+              select
+              value={s.restoreCommands}
+              onChange={(e) => update({ restoreCommands: e.target.value as RestoreCommands })}
+              sx={{ width: 200 }}
+            >
+              <MenuItem value="type">Type, don't run</MenuItem>
+              <MenuItem value="run">Run automatically</MenuItem>
+              <MenuItem value="never">Directory only</MenuItem>
+            </TextField>
           }
         />
         <SettingRow

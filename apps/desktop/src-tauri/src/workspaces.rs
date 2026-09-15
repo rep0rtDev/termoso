@@ -1,6 +1,7 @@
 //! Workspace templates and the last open session, kept in the local store so
 //! the UI can offer "Restore previous session" and reopen saved workspaces.
-//! Only connection targets and layout are stored — never terminal contents.
+//! Only connection targets, layout and the shell's last reported working
+//! directory / running command are stored — never terminal contents.
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -13,6 +14,7 @@ use crate::state::AppState;
 const META_KEY: &str = "desktop.workspaces";
 const MAX_TEMPLATES: usize = 200;
 const MAX_NAME: usize = 120;
+const MAX_SHELL_STATE: usize = 4096;
 
 /// Split tree of a saved tab; leaves are connection targets.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -20,6 +22,12 @@ const MAX_NAME: usize = 120;
 pub enum LayoutTemplate {
     Leaf {
         target: OpenTarget,
+        /// Working directory the shell reported (OSC 7) when the layout was saved.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cwd: Option<String>,
+        /// Command that was running (between the OSC 133 `C` and `D` marks) when saved.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        command: Option<String>,
     },
     Split {
         /// `row` | `column`.
@@ -39,23 +47,33 @@ impl LayoutTemplate {
     }
 
     fn validate(&self) -> Result<()> {
-        if let Self::Split {
-            direction,
-            ratio,
-            first,
-            second,
-        } = self
-        {
-            if !matches!(direction.as_str(), "row" | "column") {
-                return Err(DesktopError::invalid(
-                    "split direction must be row or column",
-                ));
+        match self {
+            Self::Leaf { cwd, command, .. } => {
+                let ok = |s: &Option<String>| {
+                    s.as_ref()
+                        .is_none_or(|s| s.len() <= MAX_SHELL_STATE && !s.contains('\0'))
+                };
+                if !ok(cwd) || !ok(command) {
+                    return Err(DesktopError::invalid("leaf shell state is invalid"));
+                }
             }
-            if !(0.0..=1.0).contains(ratio) {
-                return Err(DesktopError::invalid("split ratio out of range"));
+            Self::Split {
+                direction,
+                ratio,
+                first,
+                second,
+            } => {
+                if !matches!(direction.as_str(), "row" | "column") {
+                    return Err(DesktopError::invalid(
+                        "split direction must be row or column",
+                    ));
+                }
+                if !(0.0..=1.0).contains(ratio) {
+                    return Err(DesktopError::invalid("split ratio out of range"));
+                }
+                first.validate()?;
+                second.validate()?;
             }
-            first.validate()?;
-            second.validate()?;
         }
         Ok(())
     }
@@ -163,7 +181,11 @@ mod tests {
     use super::*;
 
     fn leaf(target: OpenTarget) -> LayoutTemplate {
-        LayoutTemplate::Leaf { target }
+        LayoutTemplate::Leaf {
+            target,
+            cwd: None,
+            command: None,
+        }
     }
 
     #[test]
@@ -242,6 +264,41 @@ mod tests {
             }),
         };
         assert!(bad_split.validate().is_err());
+    }
+
+    #[test]
+    fn leaf_shell_state_is_optional_and_bounded() {
+        // v1 leaves carry only the target.
+        let v1: LayoutTemplate =
+            serde_json::from_str(r#"{"kind":"leaf","target":{"kind":"local"}}"#).unwrap();
+        assert_eq!(v1, leaf(OpenTarget::Local));
+        // Empty state serializes back to the v1 shape.
+        let json = serde_json::to_string(&v1).unwrap();
+        assert!(!json.contains("cwd") && !json.contains("command"));
+
+        let full = LayoutTemplate::Leaf {
+            target: OpenTarget::Local,
+            cwd: Some("/srv/app".into()),
+            command: Some("tail -f log".into()),
+        };
+        full.validate().unwrap();
+        let json = serde_json::to_string(&full).unwrap();
+        assert!(json.contains(r#""cwd":"/srv/app""#));
+        let back: LayoutTemplate = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, full);
+
+        let too_long = LayoutTemplate::Leaf {
+            target: OpenTarget::Local,
+            cwd: Some("x".repeat(MAX_SHELL_STATE + 1)),
+            command: None,
+        };
+        assert!(too_long.validate().is_err());
+        let nul = LayoutTemplate::Leaf {
+            target: OpenTarget::Local,
+            cwd: None,
+            command: Some("ls\0rm".into()),
+        };
+        assert!(nul.validate().is_err());
     }
 
     #[test]
