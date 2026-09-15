@@ -1,25 +1,31 @@
 package com.termoso.android.ui.team
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.GppMaybe
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -56,6 +62,7 @@ import com.termoso.android.ui.components.SwitchRow
 import com.termoso.android.ui.components.UserAvatar
 import com.termoso.android.ui.hosts.ConfirmDialog
 import com.termoso.android.ui.shell.ShellViewModel
+import com.termoso.android.ui.theme.Warning
 import com.termoso.core.InviteCard
 import com.termoso.core.PendingKeyCard
 import com.termoso.core.TeamMemberCard
@@ -181,6 +188,7 @@ fun TeamScreen(
                     MemberRow(
                         shell.repo,
                         m,
+                        mfaRequired = state.team?.requireMfa == true,
                         canManage = state.isAdmin && !m.me && (m.role != TeamRole.OWNER),
                         onMenu = { memberMenu = m },
                     )
@@ -247,9 +255,15 @@ fun TeamScreen(
                         onCheckedChange = { vm.setMultiplayer(it) },
                     )
                     RowDivider()
+                    val noMfa = state.members.count { it.mfaEnabled == false }
                     SwitchRow(
                         title = "Require two-factor authentication",
-                        subtitle = "Members without 2FA cannot open team vaults",
+                        subtitle = "Members without 2FA cannot open team vaults" +
+                            when (noMfa) {
+                                0 -> ""
+                                1 -> " · 1 member has no 2FA yet"
+                                else -> " · $noMfa members have no 2FA yet"
+                            },
                         checked = team.requireMfa,
                         onCheckedChange = { vm.setRequireMfa(it) },
                     )
@@ -375,17 +389,56 @@ fun TeamScreen(
 }
 
 @Composable
-private fun MemberRow(repo: VaultRepository, m: TeamMemberCard, canManage: Boolean, onMenu: () -> Unit) {
+private fun MemberRow(repo: VaultRepository, m: TeamMemberCard, mfaRequired: Boolean, canManage: Boolean, onMenu: () -> Unit) {
     ListRow(
         title = (m.displayName ?: m.email) + if (m.me) " (you)" else "",
         subtitle = if (m.displayName != null) "${m.email} · ${m.role.label()}" else m.role.label(),
         leading = { UserAvatar(repo, m.userId, m.avatar, m.displayName ?: m.email) },
-        trailing = if (canManage) {
-            { IconButton(onClick = onMenu) { Icon(Icons.Filled.MoreVert, contentDescription = "Manage") } }
+        trailing = if (canManage || m.mfaEnabled != null) {
+            {
+                MfaBadge(m.mfaEnabled, mfaRequired)
+                if (canManage) {
+                    IconButton(onClick = onMenu) { Icon(Icons.Filled.MoreVert, contentDescription = "Manage") }
+                }
+            }
         } else {
             null
         },
     )
+}
+
+/**
+ * Second-factor state of a team member as the server discloses it: admins see everyone, members
+ * only themselves ([enabled] is null otherwise and nothing is drawn).
+ */
+@Composable
+fun MfaBadge(enabled: Boolean?, required: Boolean) {
+    when (enabled) {
+        true -> Icon(
+            Icons.Filled.VerifiedUser,
+            contentDescription = "Two-factor authentication enabled",
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp),
+        )
+        false -> {
+            val tint = if (required) MaterialTheme.colorScheme.error else Warning
+            Row(
+                Modifier
+                    .border(1.dp, tint, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.GppMaybe, contentDescription = null, tint = tint, modifier = Modifier.size(12.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "No 2FA",
+                    color = tint,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
+        null -> Unit
+    }
 }
 
 @Composable

@@ -48,6 +48,7 @@ import { CopyField } from "@/components/CopyField";
 import { EmptyState } from "@/components/EmptyState";
 import { Loading } from "@/components/Loading";
 import { PageHeader } from "@/components/PageHeader";
+import { MfaBadge } from "@/components/MfaBadge";
 import { RoleChip } from "@/components/RoleChip";
 import { Section } from "@/components/Section";
 import { useSnackbar } from "@/components/Snackbar";
@@ -278,13 +279,16 @@ function MembersSection({ team }: { team: Team }) {
               return (
                 <TableRow key={m.user_id} hover>
                   <TableCell>
-                    <UserCell
-                      userId={m.user_id}
-                      email={m.email}
-                      displayName={m.display_name}
-                      avatar={m.avatar}
-                      you={m.user_id === me}
-                    />
+                    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                      <UserCell
+                        userId={m.user_id}
+                        email={m.email}
+                        displayName={m.display_name}
+                        avatar={m.avatar}
+                        you={m.user_id === me}
+                      />
+                      <MfaBadge m={m} required={team.require_mfa === true} />
+                    </Stack>
                   </TableCell>
                   <TableCell>
                     {canEdit ? (
