@@ -76,13 +76,34 @@ async fn avatar_lifecycle() {
     assert_eq!(resp.headers()[header::CONTENT_TYPE], "image/webp");
     let etag = resp.headers()[header::ETAG].to_str().unwrap().to_string();
     assert_eq!(etag, format!("\"{tag}\""));
+    // Unpinned URL: must revalidate, so a replaced picture never sticks.
+    assert_eq!(resp.headers()[header::CACHE_CONTROL], "private, no-cache");
+    let bytes = resp.bytes().await.expect("bytes");
+
+    // Pinned to the current tag: immutable. Pinned to anything else: not.
+    let pinned = s
+        .http()
+        .get(s.url(&format!("/users/{}/avatar?v={tag}", alice.id())))
+        .bearer_auth(bob.token())
+        .send()
+        .await
+        .expect("pinned");
+    assert_eq!(pinned.status(), StatusCode::OK);
     assert!(
-        resp.headers()[header::CACHE_CONTROL]
+        pinned.headers()[header::CACHE_CONTROL]
             .to_str()
             .unwrap()
             .contains("immutable")
     );
-    let bytes = resp.bytes().await.expect("bytes");
+    let stale = s
+        .http()
+        .get(s.url(&format!("/users/{}/avatar?v=0123456789abcdef", alice.id())))
+        .bearer_auth(bob.token())
+        .send()
+        .await
+        .expect("stale");
+    assert_eq!(stale.status(), StatusCode::OK);
+    assert_eq!(stale.headers()[header::CACHE_CONTROL], "private, no-cache");
     assert!(
         bytes.len() <= termoso_server::avatar::MAX_STORED,
         "{} bytes",
