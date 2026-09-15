@@ -289,6 +289,12 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
             sinks[id] = sink
             scratchOf[id] = scratch
         }
+        settleIfFinished(id)
+    }
+
+    // A tiny transfer can finish before its id comes back; the card is then already settled-looking.
+    private fun settleIfFinished(id: ULong) {
+        conn.transfers.value.firstOrNull { it.id == id && it.status.isFinished }?.let { settle(it) }
     }
 
     // ───────────────────────────── uploads ─────────────────────────────
@@ -379,6 +385,7 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
         }
         val id = conn.io { upload(scratch.absolutePath, remote) }
         synchronized(sinks) { scratchOf[id] = scratch }
+        settleIfFinished(id)
     }
 
     // ───────────────────────────── transfers ─────────────────────────────
