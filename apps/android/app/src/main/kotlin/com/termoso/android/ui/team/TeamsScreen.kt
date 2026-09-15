@@ -120,12 +120,15 @@ fun TeamsScreen(
                         title = "No team yet",
                         hint = "Share hosts, keys and snippets through end-to-end encrypted team vaults. " +
                             "The server only ever stores ciphertext.",
+                        icon = Icons.Filled.Group,
+                        action = {
+                            Row(horizontalArrangement = Arrangement.Center) {
+                                Button(onClick = { creating = true }) { Text("Create team") }
+                                Spacer(Modifier.size(12.dp))
+                                OutlinedButton(onClick = { joining = true }) { Text("Join with link") }
+                            }
+                        },
                     )
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        Button(onClick = { creating = true }) { Text("Create team") }
-                        Spacer(Modifier.size(12.dp))
-                        OutlinedButton(onClick = { joining = true }) { Text("Join with link") }
-                    }
                 }
                 else -> SectionCard {
                     state.teams.forEachIndexed { i, t ->
