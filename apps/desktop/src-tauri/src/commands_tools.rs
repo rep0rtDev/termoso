@@ -816,8 +816,12 @@ pub async fn vault_session_logging_set<R: Runtime>(
 }
 
 #[tauri::command]
-pub async fn log_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    logs::delete(&state.store, id)
+pub async fn log_delete<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
+    logs::delete(&app.state::<AppState>().store, id)?;
+    if let Some(engine) = account::engine(&app).await {
+        engine.request_sync();
+    }
+    Ok(())
 }
 
 #[tauri::command]
