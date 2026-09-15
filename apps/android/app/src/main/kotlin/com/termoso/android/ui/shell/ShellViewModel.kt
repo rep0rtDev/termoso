@@ -80,6 +80,12 @@ class ShellViewModel(
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
 
+    /** A shell on this device. */
+    suspend fun connectLocal(): TerminalSession? =
+        runCatching { sessions.connectLocal() }
+            .onFailure { notify(it.userMessage()) }
+            .getOrNull()
+
     /** Join a `termoso://join/…` share as a viewer; the link is validated in Rust. */
     suspend fun joinLive(link: String): TerminalSession? =
         runCatching { sessions.joinLive(link.trim()) }
