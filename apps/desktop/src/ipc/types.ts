@@ -95,6 +95,8 @@ export interface Settings {
   syncConflict: SyncConflict;
   syncIntervalSeconds: number;
   uploadLogs: boolean;
+  /** Sync identities, keys and certificates of the Personal vault; off keeps them on this device. */
+  syncCredentials: boolean;
   updateCheck: UpdateCheck;
   /** Release feed URL; empty = project default. */
   updateUrl: string;
@@ -214,6 +216,8 @@ export interface TeamMember {
   avatar?: string | null;
   role: TeamRole;
   joined_at: string;
+  /** Second factor enrolled; only admins and the member themself see it. */
+  mfa_enabled?: boolean | null;
 }
 
 export interface TeamInvite {
@@ -1273,6 +1277,8 @@ export interface AccountStatus {
   pending: LoginOutcome | null;
   sync: SyncStatus;
   vaults: LocalVault[];
+  /** Personal-vault credentials that exist only on this device (0 while credential sync is on). */
+  localCredentials: number;
 }
 
 export type SyncNotice =

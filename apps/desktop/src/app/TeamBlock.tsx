@@ -15,6 +15,7 @@ import {
 } from "@mui/material";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
+import CreateNewFolderOutlinedIcon from "@mui/icons-material/CreateNewFolderOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import CloudDoneRoundedIcon from "@mui/icons-material/CloudDoneRounded";
 import CloudOffRoundedIcon from "@mui/icons-material/CloudOffRounded";
@@ -25,6 +26,7 @@ import LoginRoundedIcon from "@mui/icons-material/LoginRounded";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { keys, useAccount, useTeamInvites, useTeamMembers, useTeams } from "@/ipc/hooks";
 import { useActiveVault } from "./vault";
+import { MfaBadge } from "@/team/MfaBadge";
 import * as ipc from "@/ipc/commands";
 import {
   errorMessage,
@@ -408,9 +410,12 @@ function TeamButton() {
                 userId={m.user_id}
                 avatar={m.avatar}
                 trailing={
-                  <Typography variant="caption" color="text.secondary">
-                    {teamRoleLabel[m.role]}
-                  </Typography>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                    {team && <MfaBadge m={m} required={team.require_mfa} />}
+                    <Typography variant="caption" color="text.secondary">
+                      {teamRoleLabel[m.role]}
+                    </Typography>
+                  </Box>
                 }
               />
             ))}
@@ -432,6 +437,24 @@ function TeamButton() {
                   <MemberRow key={i.id} name={null} email={i.email} invite />
                 ))}
               </>
+            )}
+            {team && (
+              <ListItemButton
+                onClick={() => {
+                  close();
+                  goToSettingsWith({ kind: "newVault", teamId: team.id });
+                }}
+                sx={{ borderRadius: 1.5, gap: 1.25, px: 1, py: 0.75 }}
+              >
+                <ListItemIcon sx={{ minWidth: 0 }}>
+                  <CreateNewFolderOutlinedIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText
+                  primary="New team vault"
+                  secondary={`Shared with ${team.name}, access per member`}
+                  slotProps={{ primary: { variant: "body2", sx: { fontWeight: 500 } } }}
+                />
+              </ListItemButton>
             )}
             {!team && !teams.isPending && (
               <ListItemButton

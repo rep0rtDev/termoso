@@ -850,3 +850,93 @@ async fn webauthn_security_key_register_login_and_delete() {
         AuthResponse::Authenticated(_)
     ));
 }
+
+/// Team admins see which members have a second factor; regular members only
+/// see their own status.
+#[tokio::test]
+async fn team_members_expose_mfa_status_to_admins_only() {
+    use termoso_proto::team::{
+        CreateInviteRequest, CreateTeamRequest, Team, TeamMemberList, TeamRole,
+    };
+
+    let Some(s) = server().await else { return };
+    let owner = register(s, &unique_email("mfa-owner"), "pw-owner-1234567").await;
+    let bob = register(s, &unique_email("mfa-bob"), "pw-bob-123456789").await;
+    let carol = register(s, &unique_email("mfa-carol"), "pw-carol-12345678").await;
+    let team: Team = s
+        .json(
+            Method::POST,
+            "/teams",
+            Some(owner.token()),
+            Some(&CreateTeamRequest { name: "Sec".into() }),
+        )
+        .await;
+    for who in [&bob, &carol] {
+        let invite: serde_json::Value = s
+            .json(
+                Method::POST,
+                &format!("/teams/{}/invites", team.id),
+                Some(owner.token()),
+                Some(&CreateInviteRequest {
+                    email: who.email.clone(),
+                    role: TeamRole::Member,
+                    vault_ids: vec![],
+                }),
+            )
+            .await;
+        let token = invite["url"].as_str().unwrap().rsplit('/').next().unwrap();
+        let _: Team = s
+            .json(
+                Method::POST,
+                &format!("/invites/{token}/accept"),
+                Some(who.token()),
+                NOBODY,
+            )
+            .await;
+    }
+    enroll_totp(s, &bob).await;
+
+    let members = |token: &str| {
+        let path = format!("/teams/{}/members", team.id);
+        let token = token.to_string();
+        async move {
+            let list: TeamMemberList = s.json(Method::GET, &path, Some(&token), NOBODY).await;
+            let mut v: Vec<(Uuid, Option<bool>)> = list
+                .members
+                .into_iter()
+                .map(|m| (m.user_id, m.mfa_enabled))
+                .collect();
+            v.sort();
+            v
+        }
+    };
+    let mut expected_admin = vec![
+        (owner.id(), Some(false)),
+        (bob.id(), Some(true)),
+        (carol.id(), Some(false)),
+    ];
+    expected_admin.sort();
+    assert_eq!(members(owner.token()).await, expected_admin);
+
+    // A plain member learns only about themself.
+    let mut expected_carol = vec![
+        (owner.id(), None),
+        (bob.id(), None),
+        (carol.id(), Some(false)),
+    ];
+    expected_carol.sort();
+    assert_eq!(members(carol.token()).await, expected_carol);
+
+    // Promoting Carol to admin reveals the rest; the security key path counts too.
+    s.expect_status(
+        Method::PATCH,
+        &format!("/teams/{}/members/{}", team.id, carol.id()),
+        Some(owner.token()),
+        Some(&termoso_proto::team::UpdateTeamMemberRequest {
+            role: TeamRole::Admin,
+        }),
+        StatusCode::NO_CONTENT,
+    )
+    .await;
+    assert_eq!(members(carol.token()).await, expected_admin);
+}

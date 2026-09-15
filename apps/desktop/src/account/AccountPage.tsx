@@ -25,7 +25,7 @@ import {
 } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
-import { keys, useAccount, useDevices, useProfile } from "@/ipc/hooks";
+import { keys, useAccount, useDevices, useProfile, useSettings } from "@/ipc/hooks";
 import { sizes } from "@/theme/theme";
 import { isReauthCancelled, withReauth } from "./reauth";
 import {
@@ -140,13 +140,18 @@ function SignedIn({
   const qc = useQueryClient();
   const devices = useDevices(true);
   const profile = useProfile(true);
+  const settings = useSettings();
   const [confirm, setConfirm] = useState<
-    { kind: "none" } | { kind: "signOut" } | { kind: "revoke"; device: Device }
+    | { kind: "none" }
+    | { kind: "signOut" }
+    | { kind: "revoke"; device: Device }
+    | { kind: "credentials"; on: boolean }
   >({
     kind: "none",
   });
   const a = status.account;
   const s = status.sync;
+  const syncCredentials = settings.data?.syncCredentials ?? true;
 
   const op = useMutation({
     mutationFn: async (job: () => Promise<string | null>) => withReauth(job),
@@ -159,6 +164,17 @@ function SignedIn({
       if (!isReauthCancelled(e)) snackbar.error(errorMessage(e));
     },
   });
+  const setCredentialSync = (on: boolean) =>
+    op.mutate(async () => {
+      const st = await ipc.accountSetCredentialSync(on);
+      qc.setQueryData(keys.account, st);
+      void qc.invalidateQueries({ queryKey: keys.settings });
+      return on
+        ? "Keys and identities are synced again"
+        : st.localCredentials > 0
+          ? `${st.localCredentials} credential${st.localCredentials === 1 ? "" : "s"} now stay on this device only`
+          : "Keys and identities now stay on this device";
+    });
 
   return (
     <>
@@ -220,7 +236,25 @@ function SignedIn({
         />
         <SettingRow label="Pushed" control={<Value>{String(s.pushed)}</Value>} />
         <SettingRow label="Pulled" control={<Value>{String(s.pulled)}</Value>} />
-        <SettingRow label="Conflicts" last control={<Value>{String(s.conflicts)}</Value>} />
+        <SettingRow label="Conflicts" control={<Value>{String(s.conflicts)}</Value>} />
+        <SettingRow
+          label="Sync keys and identities"
+          hint={
+            syncCredentials
+              ? "Identities, keys and certificates of your Personal vault are encrypted and synced like everything else."
+              : `Identities, keys and certificates of your Personal vault stay on this device${
+                  status.localCredentials > 0 ? ` (${status.localCredentials} here)` : ""
+                }; hosts, snippets and settings still sync. They are removed when you sign out.`
+          }
+          last
+          control={
+            <Switch
+              checked={syncCredentials}
+              disabled={settings.isPending || op.isPending}
+              onChange={(e) => setConfirm({ kind: "credentials", on: e.target.checked })}
+            />
+          }
+        />
       </SectionCard>
 
       <SectionCard
@@ -343,6 +377,28 @@ function SignedIn({
         >
           Synced vaults and their keys are removed from this device; your local vault stays. Data on
           the server is untouched and comes back when you sign in again.
+          {status.localCredentials > 0 && (
+            <Alert severity="warning" sx={{ mt: 1.5 }}>
+              Sync of keys and identities is off: {status.localCredentials} of them exist only on
+              this device and will be deleted with the account. Export them or turn the sync on
+              first if you want to keep them.
+            </Alert>
+          )}
+        </ConfirmDialog>
+      )}
+      {confirm.kind === "credentials" && (
+        <ConfirmDialog
+          open
+          title={confirm.on ? "Sync keys and identities?" : "Keep keys and identities local?"}
+          confirmLabel={confirm.on ? "Sync" : "Keep local"}
+          danger={!confirm.on}
+          busy={op.isPending}
+          onCancel={() => setConfirm({ kind: "none" })}
+          onConfirm={() => setCredentialSync(confirm.on)}
+        >
+          {confirm.on
+            ? "Identities, keys and certificates of your Personal vault are uploaded encrypted with your vault key and pulled from your other devices. The server never sees them in the clear."
+            : "Identities, keys and certificates of your Personal vault are deleted from the server and your other devices; the copies on this device stay and keep working. Hosts, groups, snippets and settings continue to sync. Keys added later stay here too, and everything local is deleted when you sign out."}
         </ConfirmDialog>
       )}
       {confirm.kind === "revoke" && (

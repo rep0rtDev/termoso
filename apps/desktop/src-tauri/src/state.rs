@@ -160,6 +160,10 @@ pub struct Settings {
     pub sync_interval_seconds: u32,
     /// Upload finished recordings to the account server.
     pub upload_logs: bool,
+    /// Sync identities, keys and certificates of the Personal vault. Off
+    /// keeps them on this device only (hosts etc. still sync); they are
+    /// removed together with the account on sign-out.
+    pub sync_credentials: bool,
     /// `manual` (never contacts the feed unless asked) | `startup`.
     pub update_check: String,
     /// Release feed URL; empty = project default. Point it at your own server
@@ -228,6 +232,7 @@ impl Default for Settings {
             sync_conflict: "newest_wins".into(),
             sync_interval_seconds: 300,
             upload_logs: false,
+            sync_credentials: true,
             update_check: "manual".into(),
             update_url: String::new(),
             welcome_seen: false,

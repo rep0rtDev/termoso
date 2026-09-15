@@ -734,6 +734,12 @@ impl TermosoApp {
         RUNTIME.block_on(self.account.sync_now())
     }
 
+    /// Turn Personal-vault credential sync on (push + re-pull) or off
+    /// (server tombstones, local rows kept). Also persisted in settings.
+    pub fn set_credential_sync(&self, on: bool) -> Result<AccountStatus> {
+        RUNTIME.block_on(self.account.set_credential_sync(on))
+    }
+
     pub fn sync_status(&self) -> SyncStatus {
         self.account.sync_status()
     }
