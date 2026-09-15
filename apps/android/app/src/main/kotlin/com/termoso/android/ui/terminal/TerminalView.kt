@@ -254,6 +254,12 @@ class TerminalController(private val session: TerminalSession) {
         session.rust.scrollToBottom()
     }
 
+    /** Paste [command] (bracketed when the shell asks for it) and press Enter. */
+    fun runCommand(command: String) {
+        session.rust.runCommand(command)
+        session.rust.scrollToBottom()
+    }
+
     /** Positive = towards history. On the alternate screen it becomes arrow keys. */
     fun scrollBy(lines: Int, altScreen: Boolean) {
         if (altScreen) {

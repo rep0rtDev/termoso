@@ -46,6 +46,7 @@ import com.termoso.android.ui.account.AuthMode
 import com.termoso.android.ui.account.ReauthHost
 import com.termoso.android.ui.account.SecurityKeysScreen
 import com.termoso.android.ui.account.SignInScreen
+import com.termoso.android.ui.account.SshIdFido2Screen
 import com.termoso.android.ui.account.SshIdScreen
 import com.termoso.android.ui.connections.ConnectionsScreen
 import com.termoso.android.ui.forwarding.ForwardEditorScreen
@@ -74,6 +75,8 @@ import com.termoso.android.ui.team.TeamsScreen
 import com.termoso.android.ui.terminal.TerminalScreen
 import com.termoso.android.ui.vault.HistoryScreen
 import com.termoso.android.ui.vault.KnownHostsScreen
+import com.termoso.android.ui.vault.SessionLogScreen
+import com.termoso.android.ui.vault.SessionLogsScreen
 import com.termoso.android.ui.vault.VaultScreen
 import com.termoso.core.KeyMods
 import com.termoso.core.PfKind
@@ -98,10 +101,13 @@ object Routes {
     const val TERMINAL_APPEARANCE = "terminalAppearance"
     const val KNOWN_HOSTS = "knownHosts"
     const val HISTORY = "history"
+    const val LOGS = "logs"
+    const val LOG = "log/{id}"
     const val TERMINAL = "terminal"
     const val ACCOUNT = "account"
     const val TEAMS = "teams"
     const val SSH_ID = "sshId"
+    const val SSH_ID_FIDO2 = "sshIdFido2"
     const val SECURITY_KEYS = "securityKeys"
     const val TEAM = "team/{id}"
     const val TEAM_ACTIVITY = "team/{id}/activity"
@@ -122,6 +128,7 @@ object Routes {
     fun hostEdit(id: String) = "hostEdit/$id"
     fun key(id: String) = "key/$id"
     fun identity(id: String) = "identity/$id"
+    fun log(id: String) = "log/$id"
     fun signIn(mode: AuthMode) = "signIn/${mode.name}"
     fun team(id: String) = "team/$id"
     fun teamActivity(id: String) = "team/$id/activity"
@@ -210,6 +217,23 @@ fun MainShell(
         scope.launch { if (shell.joinLive(link) != null) openTerminal() }
     }
 
+    // Files shared into the app: sent to the active terminal, or held until one is opened.
+    val pendingShare by container.pendingShare.collectAsStateWithLifecycle()
+    val openSessions by shell.sessions.sessions.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingShare, openSessions.isEmpty()) {
+        if (pendingShare == null) return@LaunchedEffect
+        if (openSessions.isEmpty()) {
+            shell.notify("Connect to a host; the shared files will be sent to that terminal")
+            nav.navigate(Routes.CONNECTIONS) {
+                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        } else {
+            openTerminal()
+        }
+    }
+
     fun connectHost(hostId: String, transport: Transport = Transport.AUTO) {
         scope.launch { if (shell.connectHost(hostId, transport) != null) openTerminal() }
     }
@@ -280,6 +304,7 @@ fun MainShell(
                     onOpenSnippets = { nav.navigate(Routes.snippets(null)) },
                     onOpenKnownHosts = { nav.navigate(Routes.KNOWN_HOSTS) },
                     onOpenHistory = { nav.navigate(Routes.HISTORY) },
+                    onOpenLogs = { nav.navigate(Routes.LOGS) },
                 )
             }
             composable(Routes.CONNECTIONS) {
@@ -315,7 +340,17 @@ fun MainShell(
                     onSecurityKeys = { nav.navigate(Routes.SECURITY_KEYS) },
                 )
             }
-            composable(Routes.SSH_ID) { SshIdScreen(shell = shell, account = account, onBack = { nav.popBackStack() }) }
+            composable(Routes.SSH_ID) {
+                SshIdScreen(
+                    shell = shell,
+                    account = account,
+                    onBack = { nav.popBackStack() },
+                    onAddSecurityKey = { nav.navigate(Routes.SSH_ID_FIDO2) },
+                )
+            }
+            composable(Routes.SSH_ID_FIDO2) {
+                SshIdFido2Screen(shell = shell, account = account, onClose = { nav.popBackStack() }, onDone = { nav.popBackStack() })
+            }
             composable(Routes.SECURITY_KEYS) {
                 SecurityKeysScreen(shell = shell, account = account, onBack = { nav.popBackStack() })
             }
@@ -431,6 +466,12 @@ fun MainShell(
             composable(Routes.HISTORY) {
                 HistoryScreen(shell = shell, onBack = { nav.popBackStack() }, onOpenHost = { nav.navigate(Routes.hostEdit(it)) })
             }
+            composable(Routes.LOGS) {
+                SessionLogsScreen(shell = shell, onBack = { nav.popBackStack() }, onOpen = { nav.navigate(Routes.log(it)) })
+            }
+            composable(Routes.LOG, arguments = listOf(idArg)) { entry ->
+                SessionLogScreen(shell = shell, logId = entry.arguments?.getString("id") ?: "", onBack = { nav.popBackStack() })
+            }
             composable(Routes.FORWARDING) {
                 ForwardingScreen(
                     shell = shell,
@@ -519,6 +560,8 @@ fun MainShell(
                     shell = shell,
                     onBack = { nav.popBackStack() },
                     onOpenSnippets = { nav.navigate(Routes.snippets(null)) },
+                    pendingShare = pendingShare,
+                    onShareConsumed = { container.consumeShare() },
                     onNewSession = {
                         // Leave the terminal first so it is not part of the
                         // saved tab state that restoreState would bring back.

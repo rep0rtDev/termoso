@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.inputmethod.InputMethodManager
@@ -39,12 +40,14 @@ import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -84,6 +87,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termoso.android.data.LiveEvent
 import com.termoso.android.data.SessionEvent
 import com.termoso.android.data.TerminalSession
+import com.termoso.android.data.userMessage
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.HostAvatar
 import com.termoso.android.ui.shell.ShellViewModel
@@ -92,6 +96,7 @@ import com.termoso.core.LiveEndReason
 import com.termoso.core.SessionState
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -105,6 +110,9 @@ fun TerminalScreen(
     onBack: () -> Unit,
     onNewSession: () -> Unit,
     onOpenSnippets: () -> Unit,
+    /** Files shared into the app, offered to the active terminal once; `null` when none. */
+    pendingShare: List<Uri>? = null,
+    onShareConsumed: () -> Unit = {},
 ) {
     val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
     val activeId by shell.sessions.activeId.collectAsStateWithLifecycle()
@@ -176,6 +184,8 @@ fun TerminalScreen(
                     haptics = settings.hapticFeedback,
                     bell = settings.terminalBell,
                     onOpenSnippets = onOpenSnippets,
+                    pendingShare = pendingShare,
+                    onShareConsumed = onShareConsumed,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
@@ -304,6 +314,8 @@ private fun ActiveSession(
     haptics: Boolean,
     bell: Boolean,
     onOpenSnippets: () -> Unit,
+    pendingShare: List<Uri>?,
+    onShareConsumed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -319,6 +331,9 @@ private fun ActiveSession(
     var imeShown by remember { mutableStateOf(false) }
     var hiddenInput by remember { mutableStateOf(false) }
     var snippetPicker by remember { mutableStateOf(false) }
+    var panelSheet by remember { mutableStateOf(false) }
+    var dropping by remember { mutableStateOf<DropProgress?>(null) }
+    var confirmDrop by remember { mutableStateOf<List<Uri>?>(null) }
     var menuAt by remember { mutableStateOf<Pair<CellPoint, Offset>?>(null) }
     var zoomDelta by rememberSaveable { mutableStateOf(0) }
     var scrolled by remember { mutableStateOf(false) }
@@ -360,13 +375,49 @@ private fun ActiveSession(
         if (haptics) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
     }
 
+    fun dropFiles(uris: List<Uri>) {
+        if (uris.isEmpty() || dropping != null) return
+        FileDrop.blocker(session)?.let { why ->
+            scope.launch { snackbar.showSnackbar(why) }
+            return
+        }
+        scope.launch {
+            dropping = DropProgress("", 0, uris.size, 0, null)
+            runCatching { FileDrop.send(context, session, uris) { dropping = it } }
+                .onSuccess { paths ->
+                    snackbar.showSnackbar(if (paths.size == 1) "Uploaded to ${paths.single()}" else "Uploaded ${paths.size} files to /tmp")
+                }
+                .onFailure { snackbar.showSnackbar("Upload failed: ${it.userMessage()}") }
+            dropping = null
+        }
+    }
+
+    // Shared files arrive while another screen may be up; offer them once this terminal is showing.
+    LaunchedEffect(pendingShare) {
+        val uris = pendingShare ?: return@LaunchedEffect
+        onShareConsumed()
+        session.state.first { it !is SessionState.Connecting }
+        FileDrop.blocker(session)?.let { why ->
+            snackbar.showSnackbar(why)
+            return@LaunchedEffect
+        }
+        confirmDrop = uris
+    }
+
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        dropFiles(uris)
+    }
+
     fun paste() {
         val clip = context.getSystemService<ClipboardManager>()?.primaryClip
-        val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
-        if (text.isNullOrEmpty()) {
-            scope.launch { snackbar.showSnackbar("Clipboard is empty") }
-        } else {
-            controller.paste(text)
+        val item = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)
+        val text = item?.coerceToText(context)?.toString()
+        val uri = item?.uri?.takeIf { it.scheme == "content" }
+        when {
+            !text.isNullOrEmpty() && (uri == null || text != uri.toString()) -> controller.paste(text)
+            // An image or file on the clipboard (gallery "copy", keyboard sticker): upload it instead.
+            uri != null -> dropFiles(listOf(uri))
+            else -> scope.launch { snackbar.showSnackbar("Clipboard is empty") }
         }
     }
 
@@ -418,6 +469,13 @@ private fun ActiveSession(
                                 scope.launch { snackbar.showSnackbar("Screen copied") }
                             },
                         )
+                        if (FileDrop.blocker(session) == null) {
+                            DropdownMenuItem(
+                                text = { Text("Send file…") },
+                                onClick = { menuAt = null; pickFiles.launch(arrayOf("*/*")) },
+                            )
+                        }
+                        DropdownMenuItem(text = { Text("History & themes") }, onClick = { menuAt = null; panelSheet = true })
                     }
                 }
                 StateOverlay(
@@ -450,6 +508,7 @@ private fun ActiveSession(
                 },
                 onHiddenInput = { hiddenInput = true },
                 onSnippets = { snippetPicker = true },
+                onPanel = { panelSheet = true },
                 onPaste = ::paste,
                 onKeyPressed = ::tap,
             )
@@ -465,6 +524,33 @@ private fun ActiveSession(
             sessionId = session.id,
             onOpenSnippets = onOpenSnippets,
             onClose = { snippetPicker = false },
+        )
+    }
+    if (panelSheet) {
+        TerminalPanelSheet(shell = shell, session = session, controller = controller, onClose = { panelSheet = false })
+    }
+    confirmDrop?.let { uris ->
+        AlertDialog(
+            onDismissRequest = { confirmDrop = null },
+            title = { Text(if (uris.size == 1) "Send file to ${session.label}?" else "Send ${uris.size} files to ${session.label}?") },
+            text = { Text("Copied to /tmp on the remote over this session's SSH connection; the path is typed at the prompt.") },
+            confirmButton = { TextButton(onClick = { confirmDrop = null; dropFiles(uris) }) { Text("Send") } },
+            dismissButton = { TextButton(onClick = { confirmDrop = null }) { Text("Cancel") } },
+        )
+    }
+    dropping?.let { p ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(if (p.count > 1) "Sending ${p.index + 1} of ${p.count}" else "Sending file") },
+            text = {
+                Column {
+                    Text(p.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(12.dp))
+                    p.fraction?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
+                        ?: LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {},
         )
     }
     if (hiddenInput) {
@@ -560,6 +646,6 @@ private fun OverlayCard(content: @Composable () -> Unit) {
     }
 }
 
-private fun copyToClipboard(context: android.content.Context, text: String) {
+internal fun copyToClipboard(context: android.content.Context, text: String) {
     context.getSystemService<ClipboardManager>()?.setPrimaryClip(ClipData.newPlainText("Termoso", text))
 }

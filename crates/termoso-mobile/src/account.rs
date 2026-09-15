@@ -8,6 +8,7 @@
 //! encrypted store. The recovery phrase is returned exactly once, from
 //! [`AccountRuntime::register`].
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 
@@ -23,6 +24,7 @@ use termoso_proto::auth::{Device, MfaCredential, MfaStatus, WebauthnCredentialIn
 use termoso_proto::entities::is_credential_kind;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::dto::{VaultInfo, parse_id};
@@ -371,6 +373,7 @@ struct Inner {
 pub struct AccountRuntime {
     store: Arc<Store>,
     presence: Arc<crate::presence::Tracker>,
+    logs_dir: PathBuf,
     device_name: Mutex<String>,
     inner: tokio::sync::Mutex<Inner>,
     status: Mutex<SyncStatus>,
@@ -378,10 +381,15 @@ pub struct AccountRuntime {
 }
 
 impl AccountRuntime {
-    pub(crate) fn new(store: Arc<Store>, presence: Arc<crate::presence::Tracker>) -> Arc<Self> {
+    pub(crate) fn new(
+        store: Arc<Store>,
+        presence: Arc<crate::presence::Tracker>,
+        logs_dir: PathBuf,
+    ) -> Arc<Self> {
         Arc::new(Self {
             store,
             presence,
+            logs_dir,
             device_name: Mutex::new("Android".into()),
             inner: tokio::sync::Mutex::new(Inner::default()),
             status: Mutex::new(SyncStatus::default()),
@@ -958,7 +966,7 @@ impl AccountRuntime {
             .clone()
             .ok_or_else(|| MobileError::invalid("no API client"))?;
         let opts = SyncOptions {
-            log_dir: None,
+            log_dir: Some(self.logs_dir.clone()),
             upload_logs: false,
             sync_credentials: MobileSettings::load(&self.store)?.sync_credentials,
             interval: Duration::from_secs(15 * 60),
@@ -1069,6 +1077,20 @@ impl AccountRuntime {
             }
         }
         false
+    }
+
+    /// Fetch a teammate's recording body into the local log cache.
+    pub async fn fetch_log(&self, id: Uuid) -> Result<()> {
+        let engine = {
+            let inner = self.inner.lock().await;
+            inner
+                .engine
+                .as_ref()
+                .map(|e| e.engine.clone())
+                .ok_or_else(|| MobileError::invalid("not signed in"))?
+        };
+        engine.download_log(id).await?;
+        Ok(())
     }
 
     pub async fn sync_now(&self) -> Result<SyncStatus> {

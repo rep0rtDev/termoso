@@ -14,6 +14,7 @@ import com.termoso.core.SessionState
 import com.termoso.core.SshSession
 import com.termoso.core.TerminalOptions
 import com.termoso.core.TerminalPalette
+import com.termoso.core.TerminalTheme
 import com.termoso.core.Transport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -187,6 +188,9 @@ class TerminalSession(
     val liveEnded: StateFlow<LiveEvent.Ended?> get() = live.ended
     val liveEvents: SharedFlow<LiveEvent> get() = live.events
 
+    /** Theme picked for this terminal only from the side panel; `null` follows the global setting. */
+    val themeOverride = MutableStateFlow<String?>(null)
+
     /** Can be reconnected by us (not a view, has a target). */
     val reconnectable: Boolean get() = !isView && (hostId != null || quick != null || local != null)
 
@@ -355,8 +359,15 @@ class SessionManager(
 
     /** Recolour every open terminal after the scheme changed in Settings. */
     suspend fun applyPalette(palette: TerminalPalette) = withContext(Dispatchers.IO) {
-        _sessions.value.forEach { runCatching { it.rust.setPalette(palette) } }
+        _sessions.value.filter { it.themeOverride.value == null }.forEach { runCatching { it.rust.setPalette(palette) } }
     }
+
+    /** Recolour one terminal; a `null` theme reverts it to [fallback] (the global theme). */
+    suspend fun applySessionTheme(session: TerminalSession, theme: TerminalTheme?, fallback: TerminalPalette) =
+        withContext(Dispatchers.IO) {
+            session.themeOverride.value = theme?.id
+            runCatching { session.rust.setPalette(theme?.palette ?: fallback) }
+        }
 
     private fun options(transport: Transport) = TerminalOptions(
         cols = 80u,

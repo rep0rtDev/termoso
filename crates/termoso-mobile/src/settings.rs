@@ -83,6 +83,10 @@ pub struct MobileSettings {
     /// together with the account on sign-out.
     #[serde(default = "default_true")]
     pub sync_credentials: bool,
+    /// Record terminal output of every session into the encrypted log
+    /// store (team vaults with session logging on record regardless).
+    #[serde(default)]
+    pub record_sessions: bool,
     /// Onboarding shown.
     pub welcome_seen: bool,
     /// Vault shown in the Vaults tab when the app was last used.
@@ -111,6 +115,7 @@ impl Default for MobileSettings {
             lock_on_background: false,
             lock_after_seconds: 0,
             sync_credentials: true,
+            record_sessions: false,
             welcome_seen: false,
             selected_vault_id: None,
         }
