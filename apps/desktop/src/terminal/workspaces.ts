@@ -156,11 +156,12 @@ export function startWorkspaces() {
     })
     .catch(() => update((w) => ({ ...w, loaded: true })))
     .finally(() => persist());
-  let seen = terminalStore.get().tabs;
+  // Panes are watched too: the shell's cwd / running command live there.
+  let seen = terminalStore.get();
   terminalStore.subscribe(() => {
-    const { tabs } = terminalStore.get();
-    if (tabs === seen) return;
-    seen = tabs;
+    const s = terminalStore.get();
+    if (s.tabs === seen.tabs && s.panes === seen.panes) return;
+    seen = s;
     persist();
   });
   window.addEventListener("beforeunload", () => persist(true));
