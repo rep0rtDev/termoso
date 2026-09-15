@@ -8,6 +8,8 @@ import { hostProtocols, type GroupNode, type HostCard } from "@/ipc/types";
 import { CardGrid, CheckTile, EntityCard, IconTile, SectionTitle } from "@/components/ui";
 import { HostAvatar } from "./HostAvatar";
 import type { HostDnd } from "./dnd";
+import type { HostViewer } from "./presence";
+import { PresenceStack } from "./PresenceViews";
 
 export interface HostCollectionProps {
   groups: GroupNode[];
@@ -27,6 +29,8 @@ export interface HostCollectionProps {
   onHostContext: (h: HostCard, e: MouseEvent<HTMLElement>) => void;
   /** Drag hosts onto group cards. */
   dnd?: HostDnd;
+  /** Teammates connected right now, by host id (team vaults only). */
+  presence?: ReadonlyMap<string, HostViewer[]>;
 }
 
 const CLOUD_SHORT: Record<string, string> = {
@@ -177,6 +181,9 @@ export function HostGrid(p: HostCollectionProps) {
                   onContextMenu={(e) => p.onHostContext(h, e)}
                   drag={p.dnd?.dragHost(h)}
                   sx={p.dnd?.dragging.has(h.id) ? { opacity: 0.45 } : undefined}
+                  trailing={
+                    p.presence?.has(h.id) && <PresenceStack viewers={p.presence.get(h.id) ?? []} />
+                  }
                   actions={
                     <>
                       <Tooltip title="Connect">

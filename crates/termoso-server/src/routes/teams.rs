@@ -12,6 +12,7 @@ use crate::audit;
 use crate::error::{ApiResult, Error, NoContent};
 use crate::events::{self, Event};
 use crate::extract::{Auth, Json as Body};
+use crate::presence;
 use crate::ratelimit;
 use crate::state::AppState;
 use crate::users;
@@ -95,10 +96,10 @@ fn validate_name(name: &str) -> ApiResult<String> {
 
 #[utoipa::path(get, path = "/api/v1/teams", tag = "teams", responses((status = 200, body = TeamList)))]
 pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<TeamList>> {
-    let rows: Vec<(Uuid, String, DateTime<Utc>, String, i64, bool, bool)> = sqlx::query_as(
+    let rows: Vec<(Uuid, String, DateTime<Utc>, String, i64, bool, bool, bool)> = sqlx::query_as(
         "SELECT t.id, t.name, t.created_at, m.role,
                 (SELECT count(*) FROM team_members x WHERE x.team_id = t.id),
-                t.multiplayer_enabled, t.require_mfa
+                t.multiplayer_enabled, t.require_mfa, t.presence_enabled
          FROM teams t JOIN team_members m ON m.team_id = t.id
          WHERE m.user_id = $1 ORDER BY t.created_at",
     )
@@ -109,7 +110,16 @@ pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<T
         teams: rows
             .into_iter()
             .map(
-                |(id, name, created_at, role, member_count, multiplayer_enabled, require_mfa)| {
+                |(
+                    id,
+                    name,
+                    created_at,
+                    role,
+                    member_count,
+                    multiplayer_enabled,
+                    require_mfa,
+                    presence_enabled,
+                )| {
                     Team {
                         id,
                         name,
@@ -118,6 +128,7 @@ pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<T
                         member_count,
                         multiplayer_enabled,
                         require_mfa,
+                        presence_enabled,
                     }
                 },
             )
@@ -169,6 +180,7 @@ pub async fn create(
         member_count: 1,
         multiplayer_enabled: true,
         require_mfa: false,
+        presence_enabled: false,
     }))
 }
 
@@ -179,15 +191,16 @@ pub async fn get(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Team>> {
     let role = my_role(&state.db, id, auth.user_id()).await?;
-    let (name, created_at, member_count, multiplayer_enabled, require_mfa): (
+    let (name, created_at, member_count, multiplayer_enabled, require_mfa, presence_enabled): (
         String,
         DateTime<Utc>,
         i64,
         bool,
         bool,
+        bool,
     ) = sqlx::query_as(
         "SELECT name, created_at, (SELECT count(*) FROM team_members WHERE team_id = $1),
-                multiplayer_enabled, require_mfa
+                multiplayer_enabled, require_mfa, presence_enabled
          FROM teams WHERE id = $1",
     )
     .bind(id)
@@ -201,6 +214,7 @@ pub async fn get(
         member_count,
         multiplayer_enabled,
         require_mfa,
+        presence_enabled,
     }))
 }
 
@@ -257,6 +271,23 @@ pub async fn update(
                 .details(serde_json::json!({ "require_mfa": on })),
         )
         .await;
+    }
+    if let Some(on) = req.presence_enabled {
+        sqlx::query("UPDATE teams SET presence_enabled = $2, updated_at = now() WHERE id = $1")
+            .bind(id)
+            .bind(on)
+            .execute(&state.db)
+            .await?;
+        audit::record(
+            &state.db,
+            audit::Entry::new(id, &auth, "team.settings")
+                .details(serde_json::json!({ "presence_enabled": on })),
+        )
+        .await;
+        if !on {
+            presence::clear_team(&state, id).await?;
+        }
+        events::publish(&state, Event::PresenceChanged { team_id: id }).await?;
     }
     events::publish(
         &state,
@@ -326,8 +357,17 @@ pub async fn members(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<TeamMemberList>> {
     my_role(&state.db, id, auth.user_id()).await?;
-    let rows: Vec<(Uuid, String, Option<String>, String, String, DateTime<Utc>)> = sqlx::query_as(
-        "SELECT u.id, u.email, u.display_name, m.role, u.public_key, m.joined_at
+    type Row = (
+        Uuid,
+        String,
+        Option<String>,
+        Option<String>,
+        String,
+        String,
+        DateTime<Utc>,
+    );
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT u.id, u.email, u.display_name, u.avatar_tag, m.role, u.public_key, m.joined_at
          FROM team_members m JOIN users u ON u.id = m.user_id
          WHERE m.team_id = $1 ORDER BY m.joined_at",
     )
@@ -338,10 +378,11 @@ pub async fn members(
         members: rows
             .into_iter()
             .map(
-                |(user_id, email, display_name, role, public_key, joined_at)| TeamMember {
+                |(user_id, email, display_name, avatar, role, public_key, joined_at)| TeamMember {
                     user_id,
                     email,
                     display_name,
+                    avatar,
                     role: parse_team_role(&role),
                     public_key,
                     joined_at,
@@ -442,6 +483,7 @@ async fn remove(state: &AppState, team_id: Uuid, user_id: Uuid) -> ApiResult<()>
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
+    presence::clear_user_in_team(state, team_id, user_id).await?;
     let mut ids = member_ids(&state.db, team_id).await?;
     ids.push(user_id);
     events::publish(
@@ -497,6 +539,25 @@ pub async fn leave(
     )
     .await;
     Ok(NoContent)
+}
+
+// ───────────────────────────── presence ─────────────────────────────
+
+#[utoipa::path(get, path = "/api/v1/teams/{id}/presence", tag = "teams", params(("id" = Uuid, Path)),
+    responses((status = 200, body = TeamPresence)))]
+pub async fn get_presence(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<TeamPresence>> {
+    my_role(&state.db, id, auth.user_id()).await?;
+    let (enabled,): (bool,) = sqlx::query_as("SELECT presence_enabled FROM teams WHERE id = $1")
+        .bind(id)
+        .fetch_one(&state.db)
+        .await?;
+    Ok(Json(
+        presence::snapshot(&state, id, auth.user_id(), enabled).await?,
+    ))
 }
 
 // ───────────────────────────── invites ─────────────────────────────

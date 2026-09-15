@@ -114,6 +114,41 @@ export async function requestWithStatus<T>(
   return { status: res.status, data };
 }
 
+/** Send a raw body (an image) and parse the JSON reply. */
+export async function upload<T>(method: string, path: string, blob: Blob): Promise<T> {
+  const headers = new Headers({ Accept: "application/json" });
+  if (blob.type !== "") headers.set("Content-Type", blob.type);
+  const token = tokenSource();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(new URL(API_BASE + path, window.location.origin), {
+    method,
+    headers,
+    body: blob,
+    credentials: "omit",
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const err = await parseError(res);
+    if (res.status === 401) onUnauthorized();
+    throw err;
+  }
+  return (await res.json()) as T;
+}
+
+/** Fetch a binary resource with the session token; `null` when it does not exist. */
+export async function fetchBlob(path: string): Promise<Blob | null> {
+  const headers = new Headers();
+  const token = tokenSource();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(new URL(API_BASE + path, window.location.origin), {
+    headers,
+    credentials: "omit",
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw await parseError(res);
+  return res.blob();
+}
+
 export const http = {
   get: <T>(path: string, opts?: RequestOptions) => request<T>("GET", path, undefined, opts),
   post: <T>(path: string, body?: unknown, opts?: RequestOptions) =>

@@ -15,7 +15,8 @@ use reqwest::{Method, RequestBuilder, Response, StatusCode};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use termoso_proto::account::{
-    AccountKeys, ServerInfo, SettingsBlob, UpdateProfileRequest, UserProfile,
+    AccountKeys, PresenceVisibilityRequest, ServerInfo, SettingsBlob, UpdateProfileRequest,
+    UserProfile,
 };
 use termoso_proto::auth::{
     AuthResponse, Device, DeviceApproveRequest, DeviceApproveResendRequest, DeviceList,
@@ -39,7 +40,8 @@ use termoso_proto::sync::{
 };
 use termoso_proto::team::{
     AuditEventList, CreateInviteRequest, CreateTeamRequest, CreatedInvite, InviteList,
-    PendingVaultKeys, Team, TeamList, TeamMemberList, UpdateTeamMemberRequest, UpdateTeamRequest,
+    PendingVaultKeys, Team, TeamList, TeamMemberList, TeamPresence, UpdateTeamMemberRequest,
+    UpdateTeamRequest,
 };
 use termoso_proto::vault::{
     CreateVaultRequest, RotateVaultKeyRequest, RotateVaultKeyResponse, UpdateVaultRequest, Vault,
@@ -366,6 +368,45 @@ impl ApiClient {
             .await
     }
 
+    /// `PUT /account/avatar` — replace the profile picture with `image`
+    /// (any common raster format; the server shrinks it).
+    pub async fn put_avatar(&self, image: Vec<u8>, content_type: &str) -> Result<UserProfile> {
+        Self::send(
+            self.request(Method::PUT, "account/avatar")
+                .header(reqwest::header::CONTENT_TYPE, content_type)
+                .body(image),
+        )
+        .await
+    }
+
+    /// `DELETE /account/avatar`.
+    pub async fn delete_avatar(&self) -> Result<UserProfile> {
+        Self::send(self.request(Method::DELETE, "account/avatar")).await
+    }
+
+    /// `GET /users/{id}/avatar` — the normalised WebP, or `None` when the
+    /// user has no picture.
+    pub async fn user_avatar(&self, user_id: Uuid) -> Result<Option<Vec<u8>>> {
+        let resp = self
+            .request(Method::GET, &format!("users/{user_id}/avatar"))
+            .send()
+            .await?;
+        if resp.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let resp = check(resp).await?;
+        Ok(Some(resp.bytes().await?.to_vec()))
+    }
+
+    /// `PUT /account/presence` — hide / show this account in team presence.
+    pub async fn set_presence_hidden(&self, hidden: bool) -> Result<UserProfile> {
+        Self::send(
+            self.request(Method::PUT, "account/presence")
+                .json(&PresenceVisibilityRequest { hidden }),
+        )
+        .await
+    }
+
     /// `GET /account/settings` — encrypted settings blob.
     pub async fn settings(&self) -> Result<SettingsBlob> {
         self.get("account/settings").await
@@ -603,6 +644,11 @@ impl ApiClient {
     /// `GET /teams/{id}/pending-keys`.
     pub async fn team_pending_keys(&self, team_id: Uuid) -> Result<PendingVaultKeys> {
         self.get(&format!("teams/{team_id}/pending-keys")).await
+    }
+
+    /// `GET /teams/{id}/presence` — who is connected to which team-vault host.
+    pub async fn team_presence(&self, team_id: Uuid) -> Result<TeamPresence> {
+        self.get(&format!("teams/{team_id}/presence")).await
     }
 
     /// `GET /teams/{id}/audit` — team activity log, newest first.

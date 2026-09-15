@@ -27,6 +27,15 @@ schema! {
         /// signed-in device or via the emailed link if it was not you).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub reset_scheduled_for: Option<DateTime<Utc>>,
+        /// Teammates never see which hosts this user is connected to, even in
+        /// teams that have presence turned on.
+        #[serde(default)]
+        pub presence_hidden: bool,
+        /// Content tag of the profile picture, `None` when there is none.
+        /// Fetch it from `GET /users/{id}/avatar`; the tag changes with the
+        /// picture, so it doubles as the cache key.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub avatar: Option<String>,
     }
 }
 
@@ -48,6 +57,14 @@ schema! {
         /// New display name (`null` clears it).
         #[serde(default)]
         pub display_name: Option<String>,
+    }
+}
+
+schema! {
+    /// `PUT /account/presence`
+    pub struct PresenceVisibilityRequest {
+        /// Hide this account from team presence.
+        pub hidden: bool,
     }
 }
 

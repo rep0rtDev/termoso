@@ -45,6 +45,9 @@ openidconnect = { workspace = true }
 oauth2 = { workspace = true }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 hex = "0.4"
+# Avatars: decode whatever the browser/phone sends, store a tiny lossy WebP.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp"] }
+webp = { version = "0.3", default-features = false }
 
 uuid = { workspace = true }
 chrono = { workspace = true }

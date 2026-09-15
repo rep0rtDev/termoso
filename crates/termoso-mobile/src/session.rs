@@ -28,6 +28,7 @@ use crate::connect::{ConnectUi, Connector, PromptAnswer, PromptRequest, connect_
 use crate::error::{MobileError, Result};
 use crate::keys::{KeyMods, SpecialKey, encode_key, encode_text};
 use crate::live::{LiveListener, LiveParticipantCard, LiveShare, ShareState, ViewState};
+use crate::presence::Slot;
 use crate::settings::MobileSettings;
 use crate::terminal::{Emulator, GridFrame, GridSnapshot, TermSignal, TerminalPalette};
 
@@ -136,6 +137,8 @@ struct Inner {
     share: Mutex<Option<Arc<ShareState>>>,
     /// Set when this terminal *is* a view of somebody else's share.
     view: Option<Arc<ViewState>>,
+    /// Team presence registration for a saved team-vault host.
+    presence: Option<Slot>,
 }
 
 impl Inner {
@@ -208,6 +211,7 @@ pub(crate) struct Launch {
     pub settings: MobileSettings,
     pub options: TerminalOptions,
     pub listener: Arc<dyn SessionListener>,
+    pub presence: Option<Slot>,
 }
 
 /// The `history` row of one connection: opened when the attempt starts,
@@ -263,6 +267,7 @@ impl SshSession {
             settings,
             options,
             listener,
+            presence,
         } = launch;
         let palette = options
             .palette
@@ -302,6 +307,7 @@ impl SshSession {
             title: Mutex::new(None),
             share: Mutex::new(None),
             view: None,
+            presence,
         });
         let session = Arc::new(Self {
             id: Uuid::new_v4(),
@@ -411,6 +417,7 @@ impl SshSession {
             title: Mutex::new(None),
             share: Mutex::new(None),
             view: Some(view.clone()),
+            presence: None,
         });
         let session = Arc::new(Self {
             id: Uuid::new_v4(),
@@ -690,6 +697,14 @@ impl Drop for SshSession {
 }
 
 fn set_state(inner: &Inner, state: SessionState) {
+    if let Some(p) = &inner.presence {
+        match state {
+            SessionState::Connected => p.connected(),
+            SessionState::Connecting { .. }
+            | SessionState::Closed { .. }
+            | SessionState::Failed { .. } => p.gone(),
+        }
+    }
     *inner.state.lock().expect("state poisoned") = state.clone();
     inner.listener.on_state(state);
 }

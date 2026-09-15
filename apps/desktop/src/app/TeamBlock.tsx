@@ -26,7 +26,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { keys, useAccount, useTeamInvites, useTeamMembers, useTeams } from "@/ipc/hooks";
 import { useActiveVault } from "./vault";
 import * as ipc from "@/ipc/commands";
-import { errorMessage, type AccountStatus, type TeamInvite, type TeamMember } from "@/ipc/types";
+import {
+  errorMessage,
+  type AccountStatus,
+  type TeamInvite,
+  type TeamMember,
+  type Uuid,
+} from "@/ipc/types";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
 import { AVATAR as BLOCK, PersonAvatar, initialsOf } from "@/team/PersonAvatar";
@@ -153,6 +159,8 @@ function AccountAvatar() {
           <PersonAvatar
             kind={account ? "account" : "guest"}
             label={account ? initialsOf(account.displayName, account.email) : ""}
+            userId={account?.userId}
+            avatar={account?.avatar}
           />
           {account && data && <SyncBadge a={data} />}
         </ButtonBase>
@@ -280,8 +288,22 @@ function TeamButton() {
 
   const others: TeamMember[] = (members.data ?? []).filter((m) => m.user_id !== account?.userId);
   const pending: TeamInvite[] = invites.data ?? [];
-  const stack: { key: string; email: string; name: string | null; invite: boolean }[] = [
-    ...others.map((m) => ({ key: m.user_id, email: m.email, name: m.display_name, invite: false })),
+  const stack: {
+    key: string;
+    email: string;
+    name: string | null;
+    invite: boolean;
+    userId?: Uuid;
+    avatar?: string | null;
+  }[] = [
+    ...others.map((m) => ({
+      key: m.user_id,
+      email: m.email,
+      name: m.display_name,
+      invite: false,
+      userId: m.user_id,
+      avatar: m.avatar,
+    })),
     ...pending.map((i) => ({ key: i.id, email: i.email, name: null, invite: true })),
   ].slice(0, 2);
 
@@ -316,6 +338,8 @@ function TeamButton() {
                 seed={p.email}
                 kind={p.invite ? "invite" : "account"}
                 label={initialsOf(p.name, p.email)}
+                userId={p.userId}
+                avatar={p.avatar}
               />
             </Box>
           ))}
@@ -366,6 +390,8 @@ function TeamButton() {
             <MemberRow
               name={account.displayName ?? null}
               email={account.email}
+              userId={account.userId}
+              avatar={account.avatar}
               trailing={
                 team ? (
                   <Typography variant="caption" color="text.secondary">
@@ -379,6 +405,8 @@ function TeamButton() {
                 key={m.user_id}
                 name={m.display_name}
                 email={m.email}
+                userId={m.user_id}
+                avatar={m.avatar}
                 trailing={
                   <Typography variant="caption" color="text.secondary">
                     {teamRoleLabel[m.role]}
@@ -462,11 +490,15 @@ function MemberRow({
   name,
   email,
   invite,
+  userId,
+  avatar,
   trailing,
 }: {
   name: string | null;
   email: string;
   invite?: boolean;
+  userId?: Uuid;
+  avatar?: string | null;
   trailing?: ReactNode;
 }) {
   return (
@@ -476,6 +508,8 @@ function MemberRow({
         seed={email}
         kind={invite ? "invite" : "account"}
         label={initialsOf(name, email)}
+        userId={userId}
+        avatar={avatar}
       />
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <Typography variant="body2" noWrap>

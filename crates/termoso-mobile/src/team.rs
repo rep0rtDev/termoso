@@ -24,6 +24,7 @@ use uuid::Uuid;
 use crate::account::{AccountRuntime, SyncChange};
 use crate::dto::{VaultAccess, parse_id};
 use crate::error::{MobileError, Result};
+use crate::presence::{self, TeamPresenceCard};
 
 type CoreError = termoso_core::error::CoreError;
 
@@ -78,6 +79,8 @@ pub struct TeamCard {
     pub member_count: u32,
     pub multiplayer_enabled: bool,
     pub require_mfa: bool,
+    /// Members can see which team-vault hosts teammates are connected to.
+    pub presence_enabled: bool,
     /// RFC 3339.
     pub created_at: String,
 }
@@ -91,6 +94,7 @@ impl From<proto::Team> for TeamCard {
             member_count: u32::try_from(t.member_count).unwrap_or(u32::MAX),
             multiplayer_enabled: t.multiplayer_enabled,
             require_mfa: t.require_mfa,
+            presence_enabled: t.presence_enabled,
             created_at: t.created_at.to_rfc3339(),
         }
     }
@@ -102,6 +106,7 @@ pub struct TeamMemberCard {
     pub user_id: String,
     pub email: String,
     pub display_name: Option<String>,
+    pub avatar: Option<String>,
     pub role: TeamRole,
     /// RFC 3339.
     pub joined_at: String,
@@ -147,6 +152,7 @@ pub struct VaultMemberCard {
     pub user_id: String,
     pub email: String,
     pub display_name: Option<String>,
+    pub avatar: Option<String>,
     pub access: VaultAccess,
     pub pending: bool,
     pub me: bool,
@@ -355,12 +361,13 @@ impl AccountRuntime {
         Ok(team.into())
     }
 
-    /// Multiplayer / require-2FA switches (admins only).
+    /// Multiplayer / require-2FA / presence switches (admins only).
     pub async fn set_team_security(
         self: &Arc<Self>,
         team_id: String,
         multiplayer_enabled: Option<bool>,
         require_mfa: Option<bool>,
+        presence_enabled: Option<bool>,
     ) -> Result<TeamCard> {
         Ok(self
             .api()
@@ -371,10 +378,39 @@ impl AccountRuntime {
                     name: None,
                     multiplayer_enabled,
                     require_mfa,
+                    presence_enabled,
                 },
             )
             .await?
             .into())
+    }
+
+    /// Who is connected to the team's hosts right now (empty entries while
+    /// the team has presence switched off).
+    pub async fn team_presence(self: &Arc<Self>, team_id: String) -> Result<TeamPresenceCard> {
+        let me = self.store().account()?.map(|a| a.user_id);
+        let presence = self.api().await?.team_presence(parse_id(&team_id)?).await?;
+        Ok(presence::card(presence, me))
+    }
+
+    /// Normalized WebP of a user's profile picture, `None` when they have none.
+    pub async fn user_avatar(self: &Arc<Self>, user_id: String) -> Result<Option<Vec<u8>>> {
+        Ok(self.api().await?.user_avatar(parse_id(&user_id)?).await?)
+    }
+
+    /// Whether this account hides itself from teammates' presence views.
+    pub async fn presence_hidden(self: &Arc<Self>) -> Result<bool> {
+        Ok(self.api().await?.account().await?.user.presence_hidden)
+    }
+
+    /// Hide (or show again) this account in teammates' presence views.
+    pub async fn set_presence_hidden(self: &Arc<Self>, hidden: bool) -> Result<bool> {
+        Ok(self
+            .api()
+            .await?
+            .set_presence_hidden(hidden)
+            .await?
+            .presence_hidden)
     }
 
     pub async fn delete_team(self: &Arc<Self>, team_id: String) -> Result<()> {
@@ -407,6 +443,7 @@ impl AccountRuntime {
                 user_id: m.user_id.to_string(),
                 email: m.email,
                 display_name: m.display_name,
+                avatar: m.avatar,
                 role: m.role.into(),
                 joined_at: m.joined_at.to_rfc3339(),
             })
@@ -658,6 +695,7 @@ impl AccountRuntime {
                 user_id: m.user_id.to_string(),
                 email: m.email,
                 display_name: m.display_name,
+                avatar: m.avatar,
                 access: vault_access(m.role),
                 pending: m.pending,
             })
@@ -742,6 +780,7 @@ mod tests {
             actor_id: None,
             actor_email: Some("a@x.io".into()),
             actor_name: None,
+            actor_avatar: None,
             device_id: None,
             action: "member.role_changed".into(),
             vault_id: None,

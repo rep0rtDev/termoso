@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.termoso.android.data.SessionManager
 import com.termoso.android.data.ForwardManager
+import com.termoso.android.data.PresenceManager
 import com.termoso.android.data.SftpConnection
 import com.termoso.android.data.SftpManager
 import com.termoso.android.data.TerminalSession
@@ -33,11 +34,12 @@ class ShellViewModel(
     val sessions: SessionManager,
     val sftp: SftpManager,
     val forwards: ForwardManager,
+    val presence: PresenceManager,
 ) : ViewModel() {
     private val _vaults = MutableStateFlow<List<VaultInfo>>(emptyList())
     val vaults: StateFlow<List<VaultInfo>> = _vaults.asStateFlow()
 
-    private val _selectedVaultId = MutableStateFlow<String?>(null)
+    private val _selectedVaultId = MutableStateFlow(repo.settings.value.selectedVaultId)
     val selectedVaultId: StateFlow<String?> = _selectedVaultId.asStateFlow()
 
     private val _notice = MutableStateFlow<String?>(null)
@@ -49,16 +51,25 @@ class ShellViewModel(
         }
     }
 
+    /**
+     * Refresh the vault list. The selection only moves when the list is
+     * known and the vault is really gone (left the team, signed out); a
+     * failed read keeps whatever the user had picked.
+     */
     private suspend fun reload() {
-        val list = runCatching { repo.read { vaults() } }.getOrDefault(emptyList())
+        val list = runCatching { repo.read { vaults() } }.getOrNull() ?: return
         _vaults.value = list
-        if (_selectedVaultId.value == null || list.none { it.id == _selectedVaultId.value }) {
-            _selectedVaultId.value = list.firstOrNull()?.id
+        if (list.isNotEmpty() && list.none { it.id == _selectedVaultId.value }) {
+            _selectedVaultId.value = list.first().id
         }
     }
 
     fun selectVault(id: String) {
+        if (_selectedVaultId.value == id) return
         _selectedVaultId.value = id
+        viewModelScope.launch {
+            runCatching { repo.updateSettings { it.copy(selectedVaultId = id) } }
+        }
     }
 
     fun notify(message: String) {

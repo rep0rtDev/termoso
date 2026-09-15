@@ -398,7 +398,13 @@ function MembersSection({
               return (
                 <TableRow key={m.user_id} hover>
                   <TableCell>
-                    <UserCell email={m.email} displayName={m.display_name} you={isMe} />
+                    <UserCell
+                      userId={m.user_id}
+                      email={m.email}
+                      displayName={m.display_name}
+                      avatar={m.avatar}
+                      you={isMe}
+                    />
                   </TableCell>
                   <TableCell>
                     {canEdit ? (

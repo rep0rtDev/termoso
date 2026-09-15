@@ -156,12 +156,14 @@ pub async fn rename<R: Runtime>(app: &AppHandle<R>, team_id: Uuid, name: &str) -
     Ok(team)
 }
 
-/// Settings → Team → Security: multiplayer / require-2FA switches (admins only).
+/// Settings → Team → Security: multiplayer / require-2FA / presence switches
+/// (admins only).
 pub async fn set_security<R: Runtime>(
     app: &AppHandle<R>,
     team_id: Uuid,
     multiplayer_enabled: Option<bool>,
     require_mfa: Option<bool>,
+    presence_enabled: Option<bool>,
 ) -> Result<Team> {
     let team = api(app)
         .await?
@@ -171,6 +173,7 @@ pub async fn set_security<R: Runtime>(
                 name: None,
                 multiplayer_enabled,
                 require_mfa,
+                presence_enabled,
             },
         )
         .await?;

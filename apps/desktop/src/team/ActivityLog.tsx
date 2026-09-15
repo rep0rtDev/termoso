@@ -56,6 +56,8 @@ function EventRow({ ev, ctx, dense }: { ev: AuditEvent; ctx: ActivityContext; de
         seed={seed}
         kind={ev.actor_id ? "account" : "guest"}
         label={initialsOf(ev.actor_name, ev.actor_email ?? "?")}
+        userId={ev.actor_id}
+        avatar={ev.actor_avatar}
       />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="body2" sx={{ wordBreak: "break-word" }}>

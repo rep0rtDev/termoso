@@ -19,6 +19,7 @@ use uuid::Uuid;
 use termoso_proto::ws::{ClientMessage, ServerMessage};
 
 use crate::events::Event;
+use crate::presence;
 use crate::session;
 use crate::state::AppState;
 
@@ -94,6 +95,14 @@ async fn vault_ids(state: &AppState, user_id: Uuid) -> anyhow::Result<HashSet<Uu
     Ok(rows.into_iter().map(|(id,)| id).collect())
 }
 
+async fn team_ids(state: &AppState, user_id: Uuid) -> anyhow::Result<HashSet<Uuid>> {
+    let rows: Vec<(Uuid,)> = sqlx::query_as("SELECT team_id FROM team_members WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_all(&state.db)
+        .await?;
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
 async fn serve(state: AppState, mut socket: WebSocket) -> anyhow::Result<()> {
     // 1. auth frame
     let first = match timeout(AUTH_TIMEOUT, socket.recv()).await {
@@ -111,6 +120,8 @@ async fn serve(state: AppState, mut socket: WebSocket) -> anyhow::Result<()> {
     let user_id = info.user_id;
     let session_id = info.session_id;
     let mut vaults = vault_ids(&state, user_id).await?;
+    let mut teams = team_ids(&state, user_id).await?;
+    let mut reporter = presence::Reporter::new(user_id, info.device_id);
     send(
         &mut socket,
         &ServerMessage::Hello {
@@ -120,8 +131,20 @@ async fn serve(state: AppState, mut socket: WebSocket) -> anyhow::Result<()> {
     )
     .await?;
     metrics::gauge!("termoso_ws_connections").increment(1.0);
-    let result = pump(&state, &mut socket, user_id, session_id, &mut vaults).await;
+    let result = pump(
+        &state,
+        &mut socket,
+        user_id,
+        session_id,
+        &mut vaults,
+        &mut teams,
+        &mut reporter,
+    )
+    .await;
     metrics::gauge!("termoso_ws_connections").decrement(1.0);
+    if let Err(e) = reporter.clear(&state).await {
+        tracing::debug!(error = %e, "could not clear presence on disconnect");
+    }
     result
 }
 
@@ -131,6 +154,8 @@ async fn pump(
     user_id: Uuid,
     session_id: Uuid,
     vaults: &mut HashSet<Uuid>,
+    teams: &mut HashSet<Uuid>,
+    reporter: &mut presence::Reporter,
 ) -> anyhow::Result<()> {
     let mut rx = state.events.subscribe();
     let mut ping = interval(PING_EVERY);
@@ -163,7 +188,11 @@ async fn pump(
                         *vaults = vault_ids(state, user_id).await?;
                         Some(ServerMessage::VaultsUpdated)
                     }
-                    Event::TeamsUpdated { user_ids } if user_ids.contains(&user_id) => Some(ServerMessage::TeamsUpdated),
+                    Event::TeamsUpdated { user_ids } if user_ids.contains(&user_id) => {
+                        *teams = team_ids(state, user_id).await?;
+                        Some(ServerMessage::TeamsUpdated)
+                    }
+                    Event::PresenceChanged { team_id } if teams.contains(&team_id) => Some(ServerMessage::PresenceChanged { team_id }),
                     Event::HistoryChanged { user_id: u, seq } if u == user_id => Some(ServerMessage::HistoryChanged { seq }),
                     Event::LogsChanged { user_id: u, seq } if u == user_id => Some(ServerMessage::LogsChanged { seq }),
                     Event::AccountUpdated { user_id: u } if u == user_id => Some(ServerMessage::AccountUpdated),
@@ -184,6 +213,11 @@ async fn pump(
                         last_seen = tokio::time::Instant::now();
                         match serde_json::from_str::<ClientMessage>(&t) {
                             Ok(ClientMessage::Ping) => send(socket, &ServerMessage::Pong).await?,
+                            Ok(ClientMessage::Presence { sessions }) => {
+                                if let Err(e) = reporter.report(state, sessions).await {
+                                    tracing::debug!(error = %e, "presence report failed");
+                                }
+                            }
                             Ok(ClientMessage::Auth { .. }) => {
                                 return close_with(socket, "protocol", "Already authenticated").await;
                             }

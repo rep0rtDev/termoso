@@ -56,6 +56,8 @@ export interface UserProfile {
   mfa_enabled: boolean;
   /** A destructive "start over" reset is scheduled for this moment (cancellable until then). */
   reset_scheduled_for?: string | null;
+  /** Content tag of the profile picture (`GET /users/{id}/avatar`); absent when none. */
+  avatar?: string;
 }
 
 export interface AccountKeys {
@@ -247,6 +249,7 @@ export interface TeamMember {
   user_id: string;
   email: string;
   display_name?: string;
+  avatar?: string;
   role: TeamRole;
   public_key: string;
   joined_at: string;
@@ -296,6 +299,7 @@ export interface VaultMember {
   user_id: string;
   email: string;
   display_name?: string;
+  avatar?: string;
   role: VaultRole;
   key_version: number;
   pending: boolean;

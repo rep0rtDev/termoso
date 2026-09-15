@@ -36,6 +36,7 @@ import androidx.navigation.navArgument
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.AppContainer
 import com.termoso.android.data.ForwardManager
+import com.termoso.android.data.PresenceManager
 import com.termoso.android.data.SessionManager
 import com.termoso.android.data.SftpConnection
 import com.termoso.android.data.SftpManager
@@ -151,9 +152,10 @@ fun MainShell(
     sftp: SftpManager,
     forwards: ForwardManager,
     account: AccountManager,
+    presence: PresenceManager,
     onLock: () -> Unit,
 ) {
-    val shell: ShellViewModel = viewModel { ShellViewModel(repo, sessions, sftp, forwards) }
+    val shell: ShellViewModel = viewModel { ShellViewModel(repo, sessions, sftp, forwards, presence) }
     val nav = rememberNavController()
     val scope = rememberCoroutineScope()
     val backStack by nav.currentBackStackEntryAsState()

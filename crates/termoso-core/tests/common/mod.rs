@@ -423,7 +423,7 @@ pub async fn login(server: &TestServer, email: &str, password: &str) -> Device {
                 return Device {
                     api,
                     store,
-                    signed_in,
+                    signed_in: *signed_in,
                 };
             }
             LoginStep::DeviceApprovalRequired { .. } => {

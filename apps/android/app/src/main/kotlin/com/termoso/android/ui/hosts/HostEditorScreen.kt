@@ -53,6 +53,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.PickerRow
@@ -115,10 +116,15 @@ fun HostEditorScreen(shell: ShellViewModel, hostId: String?, groupId: String?, o
             }
             return@Scaffold
         }
+        val vault = state.vaults.firstOrNull { it.id == draft.vaultId }
+        val presence = rememberVaultPresence(shell, vault)
+        val viewers = remember(presence, draft.id) { draft.id?.let { viewersByHost(presence)[it] } ?: emptyList() }
         HostForm(
+            repo = shell.repo,
             state = state,
             draft = draft,
             vm = vm,
+            viewers = viewers,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
@@ -130,7 +136,14 @@ fun HostEditorScreen(shell: ShellViewModel, hostId: String?, groupId: String?, o
 }
 
 @Composable
-private fun HostForm(state: HostEditorState, draft: HostDraft, vm: HostEditorViewModel, modifier: Modifier) {
+private fun HostForm(
+    repo: VaultRepository,
+    state: HostEditorState,
+    draft: HostDraft,
+    vm: HostEditorViewModel,
+    viewers: List<HostViewer>,
+    modifier: Modifier,
+) {
     var groupPicker by remember { mutableStateOf(false) }
     var tagPicker by remember { mutableStateOf(false) }
     var more by remember { mutableStateOf(hasAdvanced(draft)) }
@@ -142,6 +155,11 @@ private fun HostForm(state: HostEditorState, draft: HostDraft, vm: HostEditorVie
         if (draft.id == null && state.vaults.size > 1) {
             VaultRow(state.vaults, draft.vaultId, onSelect = vm::setVault)
         } else {
+            Spacer(Modifier.height(12.dp))
+        }
+
+        if (viewers.isNotEmpty()) {
+            ConnectedNowSection(repo, viewers)
             Spacer(Modifier.height(12.dp))
         }
 

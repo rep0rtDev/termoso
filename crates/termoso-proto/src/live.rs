@@ -59,6 +59,9 @@ schema! {
         /// Display name.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub display_name: Option<String>,
+        /// Profile picture tag (see `UserProfile::avatar`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub avatar: Option<String>,
         /// The person sharing the terminal.
         pub is_host: bool,
         /// May type into the terminal (always true for the host).

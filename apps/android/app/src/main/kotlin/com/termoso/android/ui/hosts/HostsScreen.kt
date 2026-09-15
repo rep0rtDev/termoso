@@ -72,6 +72,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.HostAvatar
 import com.termoso.android.ui.components.IconTile
@@ -111,6 +112,8 @@ fun HostsScreen(
     val vault = vaults.firstOrNull { it.id == selectedVaultId }
     val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
     val openByHost = sessions.mapNotNull { it.hostId }.groupingBy { it }.eachCount()
+    val presence = rememberVaultPresence(shell, vault)
+    val viewersByHost = remember(presence) { viewersByHost(presence) }
 
     LaunchedEffect(state.error) {
         state.error?.let { shell.notify(it); vm.errorShown() }
@@ -217,8 +220,10 @@ fun HostsScreen(
                 }
             }
             else -> HostList(
+                repo = shell.repo,
                 state = state,
                 openByHost = openByHost,
+                viewersByHost = viewersByHost,
                 padding = padding,
                 onOpenGroup = onOpenGroup,
                 onGroupLongPress = { dialog = HostsDialog.GroupMenu(it) },
@@ -284,8 +289,10 @@ private sealed interface HostsDialog {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HostList(
+    repo: VaultRepository,
     state: HostsUiState,
     openByHost: Map<String, Int>,
+    viewersByHost: Map<String, List<HostViewer>>,
     padding: PaddingValues,
     onOpenGroup: (String) -> Unit,
     onGroupLongPress: (GroupItem) -> Unit,
@@ -340,6 +347,7 @@ private fun HostList(
                                     color = MaterialTheme.colorScheme.primary,
                                 )
                             }
+                            viewersByHost[h.id]?.let { PresenceStack(repo, it) }
                             openByHost[h.id]?.let { OpenSessionsBadge(it) }
                         }
                     }

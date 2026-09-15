@@ -45,6 +45,9 @@ schema! {
         /// Members without two-factor authentication cannot open team vaults.
         #[serde(default)]
         pub require_mfa: bool,
+        /// Members see who is connected to which team-vault host right now.
+        #[serde(default)]
+        pub presence_enabled: bool,
     }
 }
 
@@ -81,6 +84,9 @@ schema! {
         /// Require two-factor authentication to open team vaults.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub require_mfa: Option<bool>,
+        /// Show members who is connected to which team-vault host.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub presence_enabled: Option<bool>,
     }
 }
 
@@ -94,6 +100,9 @@ schema! {
         /// Display name.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub display_name: Option<String>,
+        /// Profile picture tag (see `UserProfile::avatar`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub avatar: Option<String>,
         /// Role.
         pub role: TeamRole,
         /// X25519 public key (base64).
@@ -108,6 +117,59 @@ schema! {
     pub struct TeamMemberList {
         /// Members.
         pub members: Vec<TeamMember>,
+    }
+}
+
+schema! {
+    /// One live connection of a team member to a host in a team vault, as
+    /// reported by their device. Only routing metadata: the server never
+    /// learns the host's name or address.
+    #[derive(PartialEq, Eq, Hash)]
+    pub struct PresenceSession {
+        /// Team vault the host lives in.
+        pub vault_id: Uuid,
+        /// Host entity id.
+        pub host_id: Uuid,
+        /// `ssh` | `sftp` | `mosh` | `telnet` | `forwarding`.
+        pub protocol: String,
+        /// When the connection was established.
+        pub since: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// Everything one device of one member is connected to right now.
+    pub struct PresenceEntry {
+        /// Member.
+        pub user_id: Uuid,
+        /// Email.
+        pub email: String,
+        /// Display name.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub display_name: Option<String>,
+        /// Profile picture tag (see `UserProfile::avatar`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub avatar: Option<String>,
+        /// Device.
+        pub device_id: Uuid,
+        /// Device name as registered at login.
+        pub device_name: String,
+        /// `linux` | `windows` | `macos` | `android` | `ios` | `web`.
+        pub platform: String,
+        /// Live connections (only those in vaults the requester can see).
+        pub sessions: Vec<PresenceSession>,
+        /// Last heartbeat from the device.
+        pub seen_at: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/presence`
+    pub struct TeamPresence {
+        /// Whether the team has presence turned on; `entries` is empty otherwise.
+        pub enabled: bool,
+        /// Devices with at least one live connection.
+        pub entries: Vec<PresenceEntry>,
     }
 }
 
@@ -226,6 +288,9 @@ schema! {
         /// Actor display name at query time.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub actor_name: Option<String>,
+        /// Actor profile picture tag at query time (see `UserProfile::avatar`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub actor_avatar: Option<String>,
         /// Device the request came from.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub device_id: Option<Uuid>,

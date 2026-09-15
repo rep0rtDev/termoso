@@ -39,6 +39,7 @@ pub use history::{CommandHistory, ConnectionHistory, HistoryItem};
 pub use logs::{LogItem, LogMeta, LogRow};
 
 const SCHEMA: &str = include_str!("schema.sql");
+const ACCOUNT_AVATAR: &str = "account_avatar";
 const SCHEMA_VERSION: i64 = 1;
 
 /// A vault as seen by this device.
@@ -135,6 +136,8 @@ pub struct StoredAccount {
     pub email: String,
     /// Display name.
     pub display_name: Option<String>,
+    /// Content tag of the profile picture (`UserProfile::avatar`).
+    pub avatar: Option<String>,
     /// Server admin.
     pub is_admin: bool,
     /// Server-side device id of this installation.
@@ -468,6 +471,7 @@ impl Store {
 
     /// The signed-in account, if any.
     pub fn account(&self) -> Result<Option<StoredAccount>> {
+        let avatar = self.meta(ACCOUNT_AVATAR)?;
         let conn = self.conn();
         conn.query_row(
             "SELECT server_url, user_id, email, display_name, is_admin, device_id, public_key,
@@ -510,6 +514,7 @@ impl Store {
                     user_id: parse_uuid(&user_id)?,
                     email,
                     display_name,
+                    avatar,
                     is_admin,
                     device_id: parse_uuid(&device_id)?,
                     public_key,
@@ -581,7 +586,7 @@ impl Store {
                 account.signed_in_at.to_rfc3339(),
             ],
         )?;
-        Ok(())
+        self.set_account_avatar(account.avatar.as_deref())
     }
 
     /// Update the profile fields after a `GET /account`.
@@ -589,13 +594,21 @@ impl Store {
         &self,
         email: &str,
         display_name: Option<&str>,
+        avatar: Option<&str>,
         is_admin: bool,
     ) -> Result<()> {
         self.conn().execute(
             "UPDATE account SET email = ?1, display_name = ?2, is_admin = ?3 WHERE id = 1",
             params![email, display_name, is_admin],
         )?;
-        Ok(())
+        self.set_account_avatar(avatar)
+    }
+
+    fn set_account_avatar(&self, avatar: Option<&str>) -> Result<()> {
+        match avatar {
+            Some(tag) => self.set_meta(ACCOUNT_AVATAR, tag),
+            None => self.delete_meta(ACCOUNT_AVATAR),
+        }
     }
 
     /// Update the history / logs cursors.
@@ -616,6 +629,7 @@ impl Store {
             conn.execute("DELETE FROM account", [])?;
             conn.execute("DELETE FROM vaults WHERE kind <> 'local'", [])?;
         }
+        self.delete_meta(ACCOUNT_AVATAR)?;
         self.load_keys()
     }
 
@@ -736,6 +750,7 @@ mod tests {
             user_id: Uuid::new_v4(),
             email: "a@b.c".into(),
             display_name: None,
+            avatar: None,
             is_admin: false,
             device_id: Uuid::new_v4(),
             public_key: kp.public_b64(),

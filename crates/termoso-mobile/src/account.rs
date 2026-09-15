@@ -35,6 +35,8 @@ pub struct AccountCard {
     pub user_id: String,
     pub email: String,
     pub display_name: Option<String>,
+    /// Content tag of the profile picture (see `TermosoApp::user_avatar`).
+    pub avatar: Option<String>,
     pub is_admin: bool,
     pub device_id: String,
     /// RFC 3339.
@@ -48,6 +50,7 @@ impl From<StoredAccount> for AccountCard {
             user_id: a.user_id.to_string(),
             email: a.email,
             display_name: a.display_name,
+            avatar: a.avatar,
             is_admin: a.is_admin,
             device_id: a.device_id.to_string(),
             signed_in_at: a.signed_in_at.to_rfc3339(),
@@ -277,10 +280,16 @@ pub struct SecurityKeyRequest {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum SyncChange {
     Vaults,
-    Entities { vault_id: String },
+    Entities {
+        vault_id: String,
+    },
     History,
     Logs,
     Account,
+    /// Who is connected to what changed in this team.
+    Presence {
+        team_id: String,
+    },
 }
 
 /// Callbacks into Kotlin. Invoked from Rust worker threads; keep them quick
@@ -356,6 +365,7 @@ struct Inner {
 /// tasks only hold a [`Weak`] so an unlocked vault can be dropped.
 pub struct AccountRuntime {
     store: Arc<Store>,
+    presence: Arc<crate::presence::Tracker>,
     device_name: Mutex<String>,
     inner: tokio::sync::Mutex<Inner>,
     status: Mutex<SyncStatus>,
@@ -363,9 +373,10 @@ pub struct AccountRuntime {
 }
 
 impl AccountRuntime {
-    pub fn new(store: Arc<Store>) -> Arc<Self> {
+    pub(crate) fn new(store: Arc<Store>, presence: Arc<crate::presence::Tracker>) -> Arc<Self> {
         Arc::new(Self {
             store,
+            presence,
             device_name: Mutex::new("Android".into()),
             inner: tokio::sync::Mutex::new(Inner::default()),
             status: Mutex::new(SyncStatus::default()),
@@ -945,6 +956,7 @@ impl AccountRuntime {
             }
         });
         let runner = tokio::spawn(engine.clone().run(cancel.clone()));
+        self.presence.attach(&engine);
         let sshid: Weak<Self> = Arc::downgrade(self);
         tokio::spawn(async move {
             let Some(rt) = sshid.upgrade() else { return };
@@ -1002,6 +1014,9 @@ impl AccountRuntime {
             SyncEvent::HistoryChanged => notify(SyncChange::History),
             SyncEvent::LogsChanged => notify(SyncChange::Logs),
             SyncEvent::AccountChanged => notify(SyncChange::Account),
+            SyncEvent::PresenceChanged { team_id } => notify(SyncChange::Presence {
+                team_id: team_id.to_string(),
+            }),
             SyncEvent::SessionRevoked => {
                 let mut inner = self.inner.lock().await;
                 // We are the watcher task: stop the runner, let ourselves return.
