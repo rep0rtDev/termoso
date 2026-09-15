@@ -44,7 +44,7 @@ import {
   type TerminalTab,
 } from "@/terminal/store";
 import { addToWorkspace, saveTabAsTemplate, useWorkspaces } from "@/terminal/workspaces";
-import { droppedHostIds, isHostDrag } from "@/hosts/dnd";
+import { MIME as HOST_MIME, droppedHostIds, isHostDrag, parseDragData } from "@/hosts/dnd";
 import { ActionMenu, InlineName, type MenuAction } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import { openSftpForSession, useSftp } from "@/sftp/store";
@@ -64,7 +64,7 @@ import { AppMenuButton } from "./AppMenu";
 import { TeamBlock } from "./TeamBlock";
 import { WindowControls } from "./WindowControls";
 import { VaultMenu, useActiveVault } from "./vault";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * Persistent top strip, doubling as the window title bar (the native frame is
@@ -77,7 +77,7 @@ export function TopBar() {
   const sftpCount = useSftp((s) => s.order.length);
   const active = tabs.find((t) => t.id === activeTabId);
   const [dragging, setDragging] = useState<string | null>(null);
-  const newWorkspaceDrop = useHostDropNewWorkspace();
+  const [newWorkspaceOver, mountNewWorkspaceDrop] = useHostDropNewWorkspace();
   const vault = useActiveVault();
   const [vaultMenu, setVaultMenu] = useState<HTMLElement | null>(null);
   const multiVault = vault.vaults.length > 1;
@@ -176,17 +176,16 @@ export function TopBar() {
             label="Serial"
           />
         )}
-        {/* Drop target is a div: WebKitGTK delivers no drag events to <button>. */}
         <Box
-          {...newWorkspaceDrop.handlers}
+          ref={mountNewWorkspaceDrop}
           sx={{
             alignSelf: "center",
             mx: 0.5,
             borderRadius: "50%",
-            boxShadow: newWorkspaceDrop.over
+            boxShadow: newWorkspaceOver
               ? "inset 0 0 0 1.5px var(--mui-palette-primary-main)"
               : "none",
-            bgcolor: newWorkspaceDrop.over ? "action.selected" : undefined,
+            bgcolor: newWorkspaceOver ? "action.selected" : undefined,
           }}
         >
           <Tooltip title="New tab">
@@ -532,20 +531,33 @@ interface DragHandlers {
 }
 
 /** Drop hosts on a non-terminal tab or the “+” button to open them as a new workspace. */
+/**
+ * Native drag listeners for the "+" button: a host dropped there opens in a new
+ * workspace. Bound directly because WebKitGTK delivers the drag events to the
+ * icon inside the button, where React's delegated handlers never saw them.
+ */
 function useHostDropNewWorkspace() {
   const [over, setOver] = useState(false);
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
   const snackbar = useSnackbar();
-  const handlers: Partial<DragHandlers> = {
-    onDragOver: (e) => {
-      if (!isHostDrag(e)) return;
+  useEffect(() => {
+    if (!el) return;
+    const hosts = (e: globalThis.DragEvent) =>
+      Array.from(e.dataTransfer?.types ?? []).includes(HOST_MIME);
+    const onDragOver = (e: globalThis.DragEvent) => {
+      if (!hosts(e) || !e.dataTransfer) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
       setOver(true);
-    },
-    onDragLeave: () => setOver(false),
-    onDrop: (e) => {
+    };
+    const onDragLeave = (e: globalThis.DragEvent) => {
+      if (e.relatedTarget instanceof Node && el.contains(e.relatedTarget)) return;
       setOver(false);
-      const ids = droppedHostIds(e);
+    };
+    const onDrop = (e: globalThis.DragEvent) => {
+      setOver(false);
+      if (!hosts(e) || !e.dataTransfer) return;
+      const ids = parseDragData(e.dataTransfer.getData(HOST_MIME))?.ids ?? [];
       if (ids.length === 0) return;
       e.preventDefault();
       if (addToWorkspace(null, hostTargets(ids))) {
@@ -555,9 +567,19 @@ function useHostDropNewWorkspace() {
             : `Opened ${ids.length} hosts in a new workspace`,
         );
       }
-    },
-  };
-  return { over, handlers };
+    };
+    el.addEventListener("dragenter", onDragOver);
+    el.addEventListener("dragover", onDragOver);
+    el.addEventListener("dragleave", onDragLeave);
+    el.addEventListener("drop", onDrop);
+    return () => {
+      el.removeEventListener("dragenter", onDragOver);
+      el.removeEventListener("dragover", onDragOver);
+      el.removeEventListener("dragleave", onDragLeave);
+      el.removeEventListener("drop", onDrop);
+    };
+  }, [el, snackbar]);
+  return [over, setEl] as const;
 }
 
 function TopTab({
