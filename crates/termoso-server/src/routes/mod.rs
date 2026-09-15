@@ -79,6 +79,7 @@ pub fn router(state: AppState) -> Router {
             get(account::get).delete(account::delete_account),
         )
         .route("/account/profile", patch(account::update_profile))
+        .route("/account/presence", put(account::put_presence))
         .route(
             "/account/email/verify/send",
             post(account::email_verify_send),
@@ -143,6 +144,7 @@ pub fn router(state: AppState) -> Router {
             delete(teams::delete_invite),
         )
         .route("/teams/{id}/pending-keys", get(teams::pending_keys))
+        .route("/teams/{id}/presence", get(teams::get_presence))
         .route("/teams/{id}/audit", get(crate::audit::list))
         .route("/teams/{id}/vaults", post(vaults::create_team_vault))
         .route("/invites/{token}", get(teams::invite_preview))

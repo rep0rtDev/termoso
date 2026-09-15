@@ -351,6 +351,7 @@ pub async fn open<R: Runtime>(
             info: info.clone(),
         },
     );
+    crate::presence::refresh(&app);
     Ok(info)
 }
 
@@ -399,6 +400,7 @@ pub async fn close<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
         crate::edits::close_for_sftp(app, id).await;
         let _ = live.sftp.close().await;
         let _ = app.emit(SFTP_EVENT, SftpEvent::Closed { id });
+        crate::presence::refresh(app);
     }
     Ok(())
 }

@@ -579,6 +579,32 @@ impl TestServer {
             .await;
     }
 
+    /// Backdate one device's presence record so the server treats it as gone.
+    pub async fn age_presence(&self, team_id: Uuid, user_id: Uuid, device_id: Uuid) {
+        let client = redis::Client::open(redis_url()).expect("redis");
+        let mut conn = client
+            .get_multiplexed_async_connection()
+            .await
+            .expect("redis connection");
+        let key = format!("{}:presence:{team_id}", self.db_name);
+        let field = format!("{user_id}:{device_id}");
+        let raw: Vec<u8> = redis::cmd("HGET")
+            .arg(&key)
+            .arg(&field)
+            .query_async(&mut conn)
+            .await
+            .expect("presence record");
+        let mut v: serde_json::Value = serde_json::from_slice(&raw).expect("presence json");
+        v["seen_at"] = serde_json::json!(chrono::Utc::now() - chrono::Duration::minutes(10));
+        let _: () = redis::cmd("HSET")
+            .arg(&key)
+            .arg(&field)
+            .arg(serde_json::to_vec(&v).unwrap())
+            .query_async(&mut conn)
+            .await
+            .expect("age presence record");
+    }
+
     async fn forget(&self, key: &str) {
         let client = redis::Client::open(redis_url()).expect("redis");
         let mut conn = client

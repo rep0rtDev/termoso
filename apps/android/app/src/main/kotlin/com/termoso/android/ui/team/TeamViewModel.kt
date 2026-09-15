@@ -154,9 +154,11 @@ class TeamViewModel(
 
     fun rename(name: String) = mutate { repo.write { renameTeam(teamId, name) } }
 
-    fun setMultiplayer(on: Boolean) = mutate { repo.read { setTeamSecurity(teamId, on, null) } }
+    fun setMultiplayer(on: Boolean) = mutate { repo.read { setTeamSecurity(teamId, on, null, null) } }
 
-    fun setRequireMfa(on: Boolean) = mutate { repo.read { setTeamSecurity(teamId, null, on) } }
+    fun setRequireMfa(on: Boolean) = mutate { repo.read { setTeamSecurity(teamId, null, on, null) } }
+
+    fun setPresence(on: Boolean) = mutate { repo.read { setTeamSecurity(teamId, null, null, on) } }
 
     fun setRole(userId: String, role: TeamRole) = mutate { repo.read { setTeamMemberRole(teamId, userId, role) } }
 

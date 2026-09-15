@@ -158,10 +158,11 @@ impl Cache {
         })
     }
 
-    pub async fn hdel(&self, key: &str, field: &str) -> ApiResult<()> {
+    /// Remove one hash field; `true` when it existed.
+    pub async fn hdel(&self, key: &str, field: &str) -> ApiResult<bool> {
         let mut c = self.conn.clone();
-        let _: () = c.hdel(self.key(key), field).await?;
-        Ok(())
+        let n: i64 = c.hdel(self.key(key), field).await?;
+        Ok(n > 0)
     }
 
     pub async fn hgetall_json<T: DeserializeOwned>(&self, key: &str) -> ApiResult<Vec<T>> {

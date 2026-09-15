@@ -26,6 +26,7 @@ use crate::error::{MobileError, Result};
 use crate::fido2::{self, Fido2GenerateDraft, Fido2Listener, Fido2LoadDraft, SecurityKeyCard};
 use crate::forward::{self, PfRuleDraft, PfRuleItem, PfTunnel, TunnelLaunch, TunnelListener};
 use crate::live::{LiveListener, LiveShare};
+use crate::presence::{self, TeamPresenceCard};
 use crate::session::{
     Launch, LaunchTarget, SessionListener, SshSession, TerminalOptions, Transport, ViewerLaunch,
 };
@@ -171,6 +172,7 @@ pub struct TermosoApp {
     store: Arc<Store>,
     profile_dir: PathBuf,
     account: Arc<AccountRuntime>,
+    presence: Arc<presence::Tracker>,
 }
 
 impl Drop for TermosoApp {
@@ -193,10 +195,12 @@ impl TermosoApp {
         let dir = PathBuf::from(profile_dir);
         std::fs::create_dir_all(&dir)?;
         let store = Arc::new(Store::open(&dir.join(DB_FILE), master)?);
+        let presence = presence::Tracker::new(store.clone());
         Ok(Arc::new(Self {
-            account: AccountRuntime::new(store.clone()),
+            account: AccountRuntime::new(store.clone(), presence.clone()),
             store,
             profile_dir: dir,
+            presence,
         }))
     }
 
@@ -784,15 +788,33 @@ impl TermosoApp {
         team_id: String,
         multiplayer_enabled: Option<bool>,
         require_mfa: Option<bool>,
+        presence_enabled: Option<bool>,
     ) -> Result<TeamCard> {
-        RUNTIME.block_on(
-            self.account
-                .set_team_security(team_id, multiplayer_enabled, require_mfa),
-        )
+        RUNTIME.block_on(self.account.set_team_security(
+            team_id,
+            multiplayer_enabled,
+            require_mfa,
+            presence_enabled,
+        ))
     }
 
     pub fn delete_team(&self, team_id: String) -> Result<()> {
         RUNTIME.block_on(self.account.delete_team(team_id))
+    }
+
+    /// Who is connected to the team's hosts right now.
+    pub fn team_presence(&self, team_id: String) -> Result<TeamPresenceCard> {
+        RUNTIME.block_on(self.account.team_presence(team_id))
+    }
+
+    /// Whether this account hides itself from teammates' presence views.
+    pub fn presence_hidden(&self) -> Result<bool> {
+        RUNTIME.block_on(self.account.presence_hidden())
+    }
+
+    /// Hide (or show again) this account in teammates' presence views.
+    pub fn set_presence_hidden(&self, hidden: bool) -> Result<bool> {
+        RUNTIME.block_on(self.account.set_presence_hidden(hidden))
     }
 
     pub fn leave_team(&self, team_id: String) -> Result<()> {
@@ -908,6 +930,19 @@ impl TermosoApp {
             }
             _ => resolved.protocol(),
         };
+        let mosh = match options.transport {
+            Transport::Mosh => true,
+            Transport::Ssh | Transport::Telnet => false,
+            Transport::Auto => resolved.ssh.use_mosh,
+        };
+        let presence = Some(self.presence.slot(
+            resolved.host.id,
+            match (protocol, mosh) {
+                ("telnet", _) => "telnet",
+                (_, true) => "mosh",
+                (_, false) => "ssh",
+            },
+        ));
         let target = match protocol {
             "telnet" => LaunchTarget::Telnet {
                 host: resolved.host.data.address.clone(),
@@ -934,6 +969,7 @@ impl TermosoApp {
                 settings: MobileSettings::load(&self.store)?,
                 options,
                 listener,
+                presence,
             },
         ))
     }
@@ -973,6 +1009,7 @@ impl TermosoApp {
                 settings: MobileSettings::load(&self.store)?,
                 options,
                 listener,
+                presence: None,
             },
         ))
     }
@@ -1012,6 +1049,7 @@ impl TermosoApp {
                 settings: MobileSettings::load(&self.store)?,
                 options,
                 listener,
+                presence: None,
             },
         ))
     }
@@ -1074,6 +1112,7 @@ impl TermosoApp {
         listener: Arc<dyn SftpListener>,
     ) -> Result<Arc<SftpSession>> {
         let (resolved, target) = self.ssh_host(&host_id)?;
+        let presence = Some(self.presence.slot(resolved.host.id, "sftp"));
         Ok(SftpSession::launch(
             RUNTIME.handle().clone(),
             SftpLaunch {
@@ -1082,6 +1121,7 @@ impl TermosoApp {
                 resolved: Some(resolved),
                 settings: MobileSettings::load(&self.store)?,
                 listener,
+                presence,
             },
         ))
     }
@@ -1100,6 +1140,7 @@ impl TermosoApp {
                 resolved: None,
                 settings: MobileSettings::load(&self.store)?,
                 listener,
+                presence: None,
             },
         ))
     }
@@ -1137,6 +1178,7 @@ impl TermosoApp {
         listener: Arc<dyn TunnelListener>,
     ) -> Result<Arc<PfTunnel>> {
         let rule = forward::resolve_for_tunnel(&self.store, parse_id(&rule_id)?)?;
+        let presence = self.presence.slot(rule.data.host_id, "forward");
         Ok(PfTunnel::launch(
             RUNTIME.handle().clone(),
             TunnelLaunch {
@@ -1144,6 +1186,7 @@ impl TermosoApp {
                 rule,
                 settings: MobileSettings::load(&self.store)?,
                 listener,
+                presence,
             },
         ))
     }

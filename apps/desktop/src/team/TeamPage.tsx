@@ -487,6 +487,19 @@ function TeamView({
               )
             }
           />
+          <SecurityRow
+            label="Show who is connected"
+            hint="Members see which team-vault hosts teammates are connected to right now. Only the host and protocol are shared — never what happens inside a session. Anyone can hide themselves in Account."
+            enabled={team.presence_enabled}
+            canChange={admin}
+            onChange={(on) =>
+              op.mutate(() =>
+                ipc
+                  .teamSetSecurity(team.id, { presenceEnabled: on })
+                  .then(() => (on ? "Presence enabled" : "Presence disabled")),
+              )
+            }
+          />
         </SectionCard>
         <ActivityCard team={team} onOpen={() => setActivity(true)} />
         {dialogs}

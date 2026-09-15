@@ -18,6 +18,7 @@ use uuid::Uuid;
 use crate::connect::{ConnectUi, Connector, PromptAnswer, PromptRequest, connect_resolved};
 use crate::dto::{millis, parse_id, parse_opt_id};
 use crate::error::{MobileError, Result};
+use crate::presence::Slot;
 use crate::settings::MobileSettings;
 
 /// Retries after the transport of a running tunnel drops: 2, 4, 8, 16, 32, 60 s.
@@ -167,6 +168,8 @@ struct Inner {
     live: Mutex<Option<Arc<Live>>>,
     /// Fired by `stop`: aborts the connect, the tunnel and any retry.
     stopped: CancellationToken,
+    /// Team presence registration for the rule's host.
+    presence: Slot,
 }
 
 /// One rule's tunnel. Drop-safe: dropping the last reference stops it.
@@ -182,6 +185,7 @@ pub(crate) struct TunnelLaunch {
     pub rule: Entity<PfRule>,
     pub settings: MobileSettings,
     pub listener: Arc<dyn TunnelListener>,
+    pub presence: Slot,
 }
 
 impl PfTunnel {
@@ -191,6 +195,7 @@ impl PfTunnel {
             rule,
             settings,
             listener,
+            presence,
         } = launch;
         let state = Arc::new(Mutex::new(TunnelState::Connecting {
             detail: "Connecting…".into(),
@@ -208,6 +213,7 @@ impl PfTunnel {
             state,
             live: Mutex::new(None),
             stopped: CancellationToken::new(),
+            presence,
         });
         let tunnel = Arc::new(Self {
             rule_id: rule.id,
@@ -272,6 +278,13 @@ impl Drop for PfTunnel {
 
 impl Inner {
     fn set_state(&self, state: TunnelState) {
+        match state {
+            TunnelState::Running { .. } => self.presence.connected(),
+            TunnelState::Connecting { .. }
+            | TunnelState::Reconnecting { .. }
+            | TunnelState::Failed { .. }
+            | TunnelState::Stopped => self.presence.gone(),
+        }
         *self.state.lock().expect("state poisoned") = state.clone();
         self.listener.on_state(state);
     }

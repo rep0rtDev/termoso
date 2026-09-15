@@ -323,6 +323,16 @@ impl Forwards {
             .copied()
             .collect()
     }
+
+    /// Running tunnels with the time each came up.
+    pub fn running_since(&self) -> Vec<(Uuid, DateTime<Utc>)> {
+        self.live
+            .lock()
+            .expect("forwards poisoned")
+            .iter()
+            .map(|(id, l)| (*id, l.started_at))
+            .collect()
+    }
 }
 
 // ───────────────────────────── rules (store) ─────────────────────────────
@@ -518,6 +528,7 @@ fn emit<R: Runtime>(app: &AppHandle<R>, id: Uuid) {
     let state = app.state::<AppState>();
     let runtime = state.forwards.runtime(id);
     let _ = app.emit(FORWARD_EVENT, ForwardEvent::Changed { id, runtime });
+    crate::presence::refresh(app);
 }
 
 /// Open the tunnel for rule `id`. Prompts (host key, password…) are routed
