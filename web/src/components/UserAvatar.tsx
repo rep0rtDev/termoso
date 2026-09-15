@@ -5,7 +5,7 @@ import { accountApi } from "@/api/endpoints";
 /**
  * Object URLs for downloaded pictures, keyed by `user:tag`. The tag changes
  * with the picture, so an entry never goes stale; the browser's HTTP cache
- * (the server marks the response immutable) covers reloads.
+ * (the server marks tag-pinned responses immutable) covers reloads.
  */
 const urls = new Map<string, Promise<string | null>>();
 
@@ -14,7 +14,7 @@ function avatarUrl(userId: string, tag: string): Promise<string | null> {
   let p = urls.get(key);
   if (!p) {
     p = accountApi
-      .avatar(userId)
+      .avatar(userId, tag)
       .then((blob) => (blob ? URL.createObjectURL(blob) : null))
       .catch(() => null);
     urls.set(key, p);

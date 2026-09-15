@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use axum::Json;
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
@@ -128,30 +128,42 @@ pub async fn delete_avatar(
     Ok(Json(users::profile(&u, mfa)))
 }
 
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct AvatarQuery {
+    /// Content tag the client expects (`UserProfile.avatar`). When it matches
+    /// the stored picture the response is cacheable forever, because the URL
+    /// then changes together with the picture.
+    pub v: Option<String>,
+}
+
 /// Anyone signed in may see anyone's picture: it is the same information a
-/// teammate sees next to your name, and the tag in the URL makes the
-/// response immutable, so clients cache it for as long as they like.
-#[utoipa::path(get, path = "/api/v1/users/{id}/avatar", tag = "account",
+/// teammate sees next to your name. Responses carry the tag as `ETag`;
+/// requests pinned to the current tag via `?v=` are marked immutable, others
+/// must revalidate so a replaced picture never sticks in an HTTP cache.
+#[utoipa::path(get, path = "/api/v1/users/{id}/avatar", tag = "account", params(AvatarQuery),
     responses((status = 200, content_type = "image/webp"), (status = 304), (status = 404)))]
 pub async fn user_avatar(
     State(state): State<AppState>,
     _auth: Auth,
     Path(id): Path<Uuid>,
+    Query(q): Query<AvatarQuery>,
     headers: HeaderMap,
 ) -> ApiResult<Response> {
     let (bytes, tag) = avatar::load(&state.db, id)
         .await?
         .ok_or_else(|| Error::not_found("Avatar"))?;
     let etag = format!("\"{tag}\"");
+    let cache = if q.v.as_deref() == Some(tag.as_str()) {
+        "private, max-age=31536000, immutable"
+    } else {
+        "private, no-cache"
+    };
     let common = [
         (
             header::ETAG,
             HeaderValue::from_str(&etag).map_err(|e| Error::Internal(e.into()))?,
         ),
-        (
-            header::CACHE_CONTROL,
-            HeaderValue::from_static("private, max-age=31536000, immutable"),
-        ),
+        (header::CACHE_CONTROL, HeaderValue::from_static(cache)),
     ];
     let unchanged = headers
         .get(header::IF_NONE_MATCH)
