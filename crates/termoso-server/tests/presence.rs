@@ -422,6 +422,52 @@ async fn presence_end_to_end() {
             .iter()
             .any(|e| e.user_id == bob.id())
     );
+    // Hide → unhide within one heartbeat: the device's list never changed
+    // from its point of view, but its record was dropped, so the unchanged
+    // heartbeat must be stored and fanned out again.
+    for hidden in [true, false] {
+        let _: UserProfile = s
+            .json(
+                Method::PUT,
+                "/account/presence",
+                Some(bob.token()),
+                Some(&PresenceVisibilityRequest { hidden }),
+            )
+            .await;
+    }
+    until_presence(&mut owner_ws, team.id).await;
+    assert!(
+        presence(s, team.id, owner.token())
+            .await
+            .entries
+            .iter()
+            .all(|e| e.user_id != bob.id())
+    );
+    let bob_on_shared = session(shared.id, shared_host, "ssh");
+    send(
+        &mut bob_ws,
+        &ClientMessage::Presence {
+            sessions: vec![bob_on_shared.clone()],
+        },
+    )
+    .await;
+    until_presence(&mut owner_ws, team.id).await;
+    assert!(
+        presence(s, team.id, owner.token())
+            .await
+            .entries
+            .iter()
+            .any(|e| e.user_id == bob.id())
+    );
+    // …and the very next heartbeat is quiet again.
+    send(
+        &mut bob_ws,
+        &ClientMessage::Presence {
+            sessions: vec![bob_on_shared],
+        },
+    )
+    .await;
+    expect_quiet(&mut owner_ws).await;
 
     // A device that stopped reporting drops out after the stale window.
     s.age_presence(team.id, owner.id(), second.device_id).await;
@@ -498,4 +544,16 @@ async fn presence_end_to_end() {
     set_presence_enabled(s, team.id, owner.token(), true).await;
     let p = presence(s, team.id, owner.token()).await;
     assert!(p.enabled && p.entries.is_empty());
+    // The still-connected device re-sends its unchanged list → stored and
+    // announced, as if it had just connected.
+    drain(&mut owner_ws2).await;
+    send(
+        &mut owner_ws2,
+        &ClientMessage::Presence {
+            sessions: vec![session(shared.id, shared_host, "ssh")],
+        },
+    )
+    .await;
+    until_presence(&mut owner_ws2, team.id).await;
+    assert_eq!(presence(s, team.id, owner.token()).await.entries.len(), 1);
 }
