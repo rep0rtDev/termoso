@@ -8,7 +8,9 @@ use std::sync::Mutex;
 use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 use termoso_core::model::LogBookmark;
-use termoso_core::store::{LogItem, LogMeta, Store};
+use termoso_core::store::{LocalVault, LocalVaultKind, LogItem, LogMeta, Store};
+use termoso_core::termoso_proto::logs::MAX_NOTE_CHARS;
+use termoso_core::termoso_proto::vault::VaultRole;
 use uuid::Uuid;
 
 use crate::error::{DesktopError, Result};
@@ -90,6 +92,29 @@ pub struct LogCard {
     pub completed: bool,
     pub created_at: DateTime<Utc>,
     pub bookmarks: usize,
+    /// Recorded by this account / device.
+    pub mine: bool,
+    /// Lives in a team vault (teammates see it too).
+    pub team: bool,
+    /// Who recorded it, when it came from the server.
+    pub author: Option<LogAuthorCard>,
+    pub pinned: bool,
+    pub note: String,
+    pub note_by: Option<Uuid>,
+    /// May pin / annotate (write role in the vault).
+    pub can_annotate: bool,
+    /// May delete (author, or manager of the vault).
+    pub can_delete: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LogAuthorCard {
+    pub user_id: Uuid,
+    pub email: String,
+    pub display_name: Option<String>,
+    /// Picture tag for `user_avatar`.
+    pub avatar: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -111,11 +136,13 @@ pub struct LogBody {
     pub bytes: usize,
 }
 
-fn card(item: LogItem, bookmarks: usize) -> LogCard {
+fn card(item: LogItem, vault: Option<&LocalVault>, bookmarks: usize) -> LogCard {
     let duration_secs = item
         .meta
         .ended_at
         .map(|e| (e - item.meta.started_at).num_seconds().max(0));
+    let team = vault.is_some_and(|v| v.kind == LocalVaultKind::Team);
+    let role = vault.map_or(VaultRole::Manager, |v| v.role);
     LogCard {
         id: item.id,
         vault_id: item.vault_id,
@@ -134,11 +161,25 @@ fn card(item: LogItem, bookmarks: usize) -> LogCard {
         completed: item.completed,
         created_at: item.created_at,
         bookmarks,
+        mine: item.mine,
+        team,
+        author: item.author.map(|a| LogAuthorCard {
+            user_id: a.user_id,
+            email: a.email,
+            display_name: a.display_name,
+            avatar: a.avatar_tag,
+        }),
+        pinned: item.pinned,
+        note: item.note,
+        note_by: item.note_by,
+        can_annotate: role.can_write(),
+        can_delete: item.mine || role.can_manage(),
     }
 }
 
 pub fn list(store: &Store) -> Result<Vec<LogCard>> {
     let bookmarks = store.list::<LogBookmark>(None)?;
+    let vaults = store.vaults()?;
     let mut out: Vec<LogCard> = store
         .logs()?
         .into_iter()
@@ -147,11 +188,64 @@ pub fn list(store: &Store) -> Result<Vec<LogCard>> {
                 .iter()
                 .filter(|b| b.data.log_id == item.id)
                 .count();
-            card(item, n)
+            let vault = vaults.iter().find(|v| v.id == item.vault_id);
+            card(item, vault, n)
         })
         .collect();
-    out.sort_by_key(|a| std::cmp::Reverse(a.started_at));
+    // Pinned recordings stay on top; the rest newest first.
+    out.sort_by_key(|a| (std::cmp::Reverse(a.pinned), std::cmp::Reverse(a.started_at)));
     Ok(out)
+}
+
+fn find(store: &Store, id: Uuid) -> Result<LogCard> {
+    list(store)?
+        .into_iter()
+        .find(|l| l.id == id)
+        .ok_or_else(|| DesktopError::not_found(format!("log {id}")))
+}
+
+/// Validate a team note the way the server does, so the user hears about a
+/// problem before the request leaves.
+pub fn check_note(note: &str) -> Result<()> {
+    if note.chars().count() > MAX_NOTE_CHARS {
+        return Err(DesktopError::invalid(format!(
+            "note is longer than {MAX_NOTE_CHARS} characters"
+        )));
+    }
+    if note
+        .chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\t')
+    {
+        return Err(DesktopError::invalid("note contains control characters"));
+    }
+    Ok(())
+}
+
+/// Pin / annotate a recording that the server has not seen (local vault, or
+/// not uploaded yet): the annotation stays on this device.
+pub fn annotate_local(
+    store: &Store,
+    id: Uuid,
+    pinned: Option<bool>,
+    note: Option<&str>,
+) -> Result<LogCard> {
+    let cur = find(store, id)?;
+    if !cur.can_annotate {
+        return Err(DesktopError::forbidden(
+            "Editor role required to pin or annotate",
+        ));
+    }
+    let note = note.map(str::trim);
+    if let Some(n) = note {
+        check_note(n)?;
+    }
+    let pinned = pinned.unwrap_or(cur.pinned);
+    let (note, note_by) = match note {
+        Some(n) if n != cur.note => (n.to_string(), None),
+        _ => (cur.note.clone(), cur.note_by),
+    };
+    store.annotate_log(id, pinned, &note, note_by)?;
+    find(store, id)
 }
 
 pub fn read(store: &Store, id: Uuid) -> Result<LogBody> {
@@ -171,6 +265,11 @@ pub fn export(store: &Store, id: Uuid, path: &str) -> Result<usize> {
 }
 
 pub fn delete(store: &Store, id: Uuid) -> Result<()> {
+    if !find(store, id)?.can_delete {
+        return Err(DesktopError::forbidden(
+            "Only the author or a vault manager can delete this recording",
+        ));
+    }
     for b in store.list::<LogBookmark>(None)? {
         if b.data.log_id == id {
             store.delete(b.id)?;
@@ -187,8 +286,10 @@ pub fn prune(store: &Store, days: u32) -> Result<usize> {
     }
     let cutoff = Utc::now() - Duration::days(i64::from(days));
     let mut n = 0;
+    // Teammates' recordings are the team's to keep; retention is about
+    // what this account recorded.
     for item in store.logs()? {
-        if item.completed && item.meta.started_at < cutoff {
+        if item.mine && item.completed && item.meta.started_at < cutoff {
             delete(store, item.id)?;
             n += 1;
         }

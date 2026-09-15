@@ -646,7 +646,7 @@ function Logs({ s, update }: SectionProps) {
       />
       <SettingRow
         label="Upload to the account server"
-        hint="Encrypted with your vault key before leaving the device; requires being signed in."
+        hint="Encrypted with your vault key before leaving the device; requires being signed in. Team vaults with session recording turned on by a manager always share their recordings."
         last
         control={<Toggle checked={s.uploadLogs} onChange={(v) => update({ uploadLogs: v })} />}
       />

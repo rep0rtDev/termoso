@@ -66,6 +66,11 @@ schema! {
         pub sealed_key: Option<String>,
         /// Current key version (bumped on rotation).
         pub key_version: i32,
+        /// Team vaults only: every member's client records sessions to hosts
+        /// of this vault and uploads them for the team (encrypted with the
+        /// vault key, so the server still sees nothing).
+        #[serde(default)]
+        pub session_logging: bool,
     }
 }
 
@@ -103,6 +108,9 @@ schema! {
         /// New name.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub name: Option<String>,
+        /// Turn team session logging on/off (manager; team vaults only).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub session_logging: Option<bool>,
     }
 }
 

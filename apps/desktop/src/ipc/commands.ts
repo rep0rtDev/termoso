@@ -474,6 +474,11 @@ export const logsList = () => invoke<LogCard[]>("logs_list");
 export const logRead = (id: Uuid) => invoke<LogBody>("log_read", { id });
 export const logExport = (id: Uuid, path: string) => invoke<number>("log_export", { id, path });
 export const logDelete = (id: Uuid) => invoke<null>("log_delete", { id });
+/** Pin / annotate for the team; `undefined` leaves a field as it is. */
+export const logAnnotate = (id: Uuid, patch: { pinned?: boolean; note?: string }) =>
+  invoke<LogCard>("log_annotate", { id, pinned: patch.pinned ?? null, note: patch.note ?? null });
+export const vaultSessionLoggingSet = (vaultId: Uuid, on: boolean) =>
+  invoke<null>("vault_session_logging_set", { vaultId, on });
 export const logBookmarks = (logId: Uuid) => invoke<BookmarkCard[]>("log_bookmarks", { logId });
 export const logBookmarkAdd = (logId: Uuid, offset: number, note: string) =>
   invoke<BookmarkCard>("log_bookmark_add", { logId, offset, note });

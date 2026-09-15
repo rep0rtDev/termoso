@@ -109,6 +109,8 @@ async fn log_lifecycle_upload_download_delete() {
         Some(&UpdateLogRequest {
             meta: None,
             size_bytes: Some(payload.len() as i64),
+            pinned: None,
+            note: None,
         }),
         StatusCode::BAD_REQUEST,
     )
@@ -130,6 +132,8 @@ async fn log_lifecycle_upload_download_delete() {
         Some(&UpdateLogRequest {
             meta: None,
             size_bytes: Some(payload.len() as i64 - 1),
+            pinned: None,
+            note: None,
         }),
         StatusCode::BAD_REQUEST,
     )
@@ -142,6 +146,8 @@ async fn log_lifecycle_upload_download_delete() {
             Some(&UpdateLogRequest {
                 meta: Some(meta("ssh host-1 (finished)")),
                 size_bytes: Some(payload.len() as i64),
+                pinned: None,
+                note: None,
             }),
         )
         .await;
@@ -190,6 +196,8 @@ async fn log_lifecycle_upload_download_delete() {
             Some(&UpdateLogRequest {
                 meta: None,
                 size_bytes: None,
+                pinned: None,
+                note: None,
             }),
             StatusCode::NOT_FOUND,
         )
@@ -245,6 +253,8 @@ async fn log_lifecycle_upload_download_delete() {
         Some(&UpdateLogRequest {
             meta: Some(meta("zombie")),
             size_bytes: None,
+            pinned: None,
+            note: None,
         }),
         StatusCode::NOT_FOUND,
     )

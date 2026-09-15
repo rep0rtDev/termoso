@@ -35,6 +35,11 @@ pub enum Event {
         user_id: Uuid,
         seq: i64,
     },
+    /// A log in a team vault changed. Delivered to every vault member.
+    VaultLogsChanged {
+        vault_id: Uuid,
+        seq: i64,
+    },
     AccountUpdated {
         user_id: Uuid,
     },
