@@ -91,7 +91,10 @@ pub struct HostItem {
     /// The SSH section opens over Mosh by default.
     pub use_mosh: bool,
     pub username: String,
+    /// Port of the primary protocol.
     pub port: u16,
+    /// Set when the host also has a Telnet section.
+    pub telnet_port: Option<u16>,
     pub tags: Vec<String>,
     pub os_name: Option<String>,
     pub icon: Option<String>,
@@ -111,6 +114,7 @@ impl From<hosts::HostCard> for HostItem {
             group_id: c.group_id.map(|g| g.to_string()),
             group_path: c.group_path,
             protocol: c.protocol,
+            telnet_port: c.telnet_port,
             use_mosh: c.use_mosh,
             username: c.username,
             port: c.port,
@@ -133,7 +137,7 @@ pub struct EnvVar {
 
 /// What the host editor edits. `None` for optional fields means "inherit /
 /// unset". Fields the mobile editor does not expose (proxy, jump chain,
-/// Telnet section, colour scheme…) are preserved on save.
+/// colour scheme…) are preserved on save.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct HostDraft {
     pub id: Option<String>,
@@ -170,6 +174,36 @@ pub struct HostDraft {
     pub timeout: Option<u32>,
     /// Set by the core when the stored inline identity has a password.
     pub has_password: bool,
+    /// The host has an SSH section (the SSH fields above belong to it). A
+    /// host needs this or `telnet`.
+    pub ssh: bool,
+    /// Telnet section; `None` = not reachable over Telnet.
+    pub telnet: Option<TelnetDraft>,
+}
+
+/// Telnet section of the host editor.
+#[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
+pub struct TelnetDraft {
+    /// `None` = 23.
+    pub port: Option<u16>,
+    pub username: String,
+    /// `None` keeps the stored password when editing; `Some("")` clears it.
+    pub password: Option<String>,
+    pub identity_id: Option<String>,
+    /// Set by the core when the stored inline identity has a password.
+    pub has_password: bool,
+}
+
+impl From<hosts::TelnetForm> for TelnetDraft {
+    fn from(t: hosts::TelnetForm) -> Self {
+        Self {
+            port: t.port,
+            username: t.username,
+            password: None,
+            identity_id: t.identity_id.map(|i| i.to_string()),
+            has_password: t.has_password,
+        }
+    }
 }
 
 impl HostDraft {
@@ -201,6 +235,8 @@ impl HostDraft {
             keep_alive_interval: None,
             timeout: None,
             has_password: false,
+            ssh: true,
+            telnet: None,
         }
     }
 }
@@ -237,6 +273,8 @@ impl From<hosts::HostForm> for HostDraft {
             keep_alive_interval: f.keep_alive_interval,
             timeout: f.timeout,
             has_password: f.has_password,
+            ssh: f.ssh,
+            telnet: f.telnet.map(Into::into),
         }
     }
 }
@@ -250,7 +288,7 @@ impl HostDraft {
         base.label = self.label;
         base.address = self.address;
         base.group_id = parse_opt_id(&self.group_id)?;
-        base.ssh = true;
+        base.ssh = self.ssh || self.telnet.is_none();
         base.port = self.port;
         base.username = self.username;
         base.password = self.password;
@@ -277,6 +315,20 @@ impl HostDraft {
             .collect();
         base.keep_alive_interval = self.keep_alive_interval;
         base.timeout = self.timeout;
+        base.telnet = match self.telnet {
+            None => None,
+            Some(t) => {
+                let stored = base.telnet.take().unwrap_or_default();
+                Some(hosts::TelnetForm {
+                    port: t.port,
+                    username: t.username,
+                    password: t.password,
+                    identity_id: parse_opt_id(&t.identity_id)?,
+                    color_scheme: stored.color_scheme,
+                    has_password: stored.has_password,
+                })
+            }
+        };
         Ok(base)
     }
 }

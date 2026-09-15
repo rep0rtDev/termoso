@@ -65,8 +65,10 @@ import com.termoso.android.ui.keychain.SshIdRows
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.vault.vaultLabel
 import com.termoso.core.HostDraft
+import com.termoso.core.IdentityItem
 import com.termoso.core.InheritedInfo
 import com.termoso.core.TagItem
+import com.termoso.core.TelnetDraft
 import com.termoso.core.VaultInfo
 import com.termoso.core.moshDefaultServerCommand
 
@@ -167,72 +169,52 @@ private fun HostForm(state: HostEditorState, draft: HostDraft, vm: HostEditorVie
             )
         }
 
-        SectionLabel("SSH")
-        SectionCard {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                FormField(
-                    draft.port?.toString() ?: "",
-                    { v -> vm.update { it.copy(port = v.filter(Char::isDigit).take(5).toUIntOrNull()?.takeIf { p -> p in 1u..65535u }?.toUShort()) } },
-                    "Port",
-                    placeholder = inherited?.port?.toString() ?: "22",
-                    keyboard = KeyboardType.Number,
-                )
-                IdentityRow(state, draft, onPick = { id -> vm.update { it.copy(identityId = id) } })
-                if (identity == null) {
+        val telnet = draft.telnet
+        if (draft.ssh) {
+            ProtocolHeader("SSH", removable = telnet != null) { vm.update { it.copy(ssh = false) } }
+            SshSection(state, draft, vm, inherited, identity)
+        }
+
+        if (telnet != null) {
+            ProtocolHeader("Telnet", removable = draft.ssh) { vm.update { it.copy(telnet = null) } }
+            SectionCard {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     FormField(
-                        draft.username,
-                        { v -> vm.update { it.copy(username = v) } },
-                        "Username",
-                        placeholder = inherited?.username ?: if (draft.sshId || inherited?.sshId == true) "SSH ID handle" else "root",
+                        telnet.port?.toString() ?: "",
+                        { v -> vm.updateTelnet { it.copy(port = v.filter(Char::isDigit).take(5).toUIntOrNull()?.takeIf { p -> p in 1u..65535u }?.toUShort()) } },
+                        "Port",
+                        placeholder = "23",
+                        keyboard = KeyboardType.Number,
                     )
-                    PasswordField(draft, inherited, onChange = { v -> vm.update { it.copy(password = v) } })
-                    KeyRow(state, draft, onPick = { id -> vm.update { it.copy(sshKeyId = id) } })
-                    SshIdRows(
-                        sshId = draft.sshId,
-                        keyType = draft.sshIdKeyType,
-                        onSshId = { v -> vm.update { it.copy(sshId = v) } },
-                        onKeyType = { v -> vm.update { it.copy(sshIdKeyType = v) } },
-                        usernameHint = draft.username.isBlank() && inherited?.username.isNullOrBlank(),
+                    FormField(telnet.username, { v -> vm.updateTelnet { it.copy(username = v) } }, "Username")
+                    PasswordField(
+                        password = telnet.password,
+                        hasPassword = telnet.hasPassword,
+                        inheritedHint = false,
+                        onChange = { v -> vm.updateTelnet { it.copy(password = v) } },
                     )
-                } else {
                     Text(
-                        if (identity.sshId) {
-                            "Username, password, key and SSH ID come from the identity “${identity.label}”."
-                        } else {
-                            "Username, password and key come from the identity “${identity.label}”."
-                        },
+                        "Telnet is not encrypted: anything typed, including the password, crosses the network in the clear.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            RowDivider()
-            SwitchRow(
-                title = "Agent forwarding",
-                checked = draft.agentForwarding,
-                onCheckedChange = { v -> vm.update { it.copy(agentForwarding = v) } },
-            )
-            RowDivider()
-            SwitchRow(
-                title = "Mosh",
-                subtitle = "Roaming UDP session; SSH only starts mosh-server on the host",
-                checked = draft.useMosh,
-                onCheckedChange = { v -> vm.update { it.copy(useMosh = v) } },
-            )
-            if (draft.useMosh) {
-                Box(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
-                    FormField(
-                        draft.moshServerCommand ?: "",
-                        { v -> vm.update { it.copy(moshServerCommand = v.takeIf { c -> c.isNotBlank() }) } },
-                        "mosh-server command",
-                        placeholder = remember { moshDefaultServerCommand() },
-                    )
+        }
+
+        if (!draft.ssh || telnet == null) {
+            Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!draft.ssh) {
+                    TextButton(onClick = { vm.update { it.copy(ssh = true) } }) {
+                        Icon(Icons.Filled.Add, contentDescription = null)
+                        Text("Add SSH")
+                    }
                 }
-            }
-            if (state.snippets.isNotEmpty() || draft.startupSnippetId != null) {
-                RowDivider()
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    StartupSnippetRow(state, draft, onPick = { id -> vm.update { it.copy(startupSnippetId = id) } })
+                if (telnet == null) {
+                    TextButton(onClick = { vm.update { it.copy(telnet = TelnetDraft(port = null, username = "", password = null, identityId = null, hasPassword = false)) } }) {
+                        Icon(Icons.Filled.Add, contentDescription = null)
+                        Text("Add Telnet")
+                    }
                 }
             }
         }
@@ -336,6 +318,89 @@ private fun HostForm(state: HostEditorState, draft: HostDraft, vm: HostEditorVie
 }
 
 @Composable
+private fun SshSection(
+    state: HostEditorState,
+    draft: HostDraft,
+    vm: HostEditorViewModel,
+    inherited: InheritedInfo?,
+    identity: IdentityItem?,
+) {
+    SectionCard {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            FormField(
+                draft.port?.toString() ?: "",
+                { v -> vm.update { it.copy(port = v.filter(Char::isDigit).take(5).toUIntOrNull()?.takeIf { p -> p in 1u..65535u }?.toUShort()) } },
+                "Port",
+                placeholder = inherited?.port?.toString() ?: "22",
+                keyboard = KeyboardType.Number,
+            )
+            IdentityRow(state, draft, onPick = { id -> vm.update { it.copy(identityId = id) } })
+            if (identity == null) {
+                FormField(
+                    draft.username,
+                    { v -> vm.update { it.copy(username = v) } },
+                    "Username",
+                    placeholder = inherited?.username ?: if (draft.sshId || inherited?.sshId == true) "SSH ID handle" else "root",
+                )
+                PasswordField(
+                    password = draft.password,
+                    hasPassword = draft.hasPassword,
+                    inheritedHint = inherited?.hasPassword == true,
+                    onChange = { v -> vm.update { it.copy(password = v) } },
+                )
+                KeyRow(state, draft, onPick = { id -> vm.update { it.copy(sshKeyId = id) } })
+                SshIdRows(
+                    sshId = draft.sshId,
+                    keyType = draft.sshIdKeyType,
+                    onSshId = { v -> vm.update { it.copy(sshId = v) } },
+                    onKeyType = { v -> vm.update { it.copy(sshIdKeyType = v) } },
+                    usernameHint = draft.username.isBlank() && inherited?.username.isNullOrBlank(),
+                )
+            } else {
+                Text(
+                    if (identity.sshId) {
+                        "Username, password, key and SSH ID come from the identity “${identity.label}”."
+                    } else {
+                        "Username, password and key come from the identity “${identity.label}”."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        RowDivider()
+        SwitchRow(
+            title = "Agent forwarding",
+            checked = draft.agentForwarding,
+            onCheckedChange = { v -> vm.update { it.copy(agentForwarding = v) } },
+        )
+        RowDivider()
+        SwitchRow(
+            title = "Mosh",
+            subtitle = "Roaming UDP session; SSH only starts mosh-server on the host",
+            checked = draft.useMosh,
+            onCheckedChange = { v -> vm.update { it.copy(useMosh = v) } },
+        )
+        if (draft.useMosh) {
+            Box(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+                FormField(
+                    draft.moshServerCommand ?: "",
+                    { v -> vm.update { it.copy(moshServerCommand = v.takeIf { c -> c.isNotBlank() }) } },
+                    "mosh-server command",
+                    placeholder = remember { moshDefaultServerCommand() },
+                )
+            }
+        }
+        if (state.snippets.isNotEmpty() || draft.startupSnippetId != null) {
+            RowDivider()
+            Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                StartupSnippetRow(state, draft, onPick = { id -> vm.update { it.copy(startupSnippetId = id) } })
+            }
+        }
+    }
+}
+
+@Composable
 private fun StartupSnippetRow(state: HostEditorState, draft: HostDraft, onPick: (String?) -> Unit) {
     val snippet = state.snippets.firstOrNull { it.id == draft.startupSnippetId }
     PickerRow(
@@ -360,24 +425,39 @@ private fun tagSummary(draft: HostDraft, tags: List<TagItem>): String {
     }
 }
 
+/** Section title with an optional "Remove" for the protocol it heads. */
 @Composable
-private fun PasswordField(draft: HostDraft, inherited: InheritedInfo?, onChange: (String?) -> Unit) {
+private fun ProtocolHeader(title: String, removable: Boolean, onRemove: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) { SectionLabel(title) }
+        if (removable) {
+            TextButton(onClick = onRemove) { Text("Remove") }
+        }
+    }
+}
+
+/**
+ * Password editor over the draft convention: `null` keeps the stored secret
+ * ([hasPassword]), `""` clears it, anything else replaces it.
+ */
+@Composable
+private fun PasswordField(password: String?, hasPassword: Boolean, inheritedHint: Boolean, onChange: (String?) -> Unit) {
     var visible by remember { mutableStateOf(false) }
-    val stored = draft.password == null && draft.hasPassword
+    val stored = password == null && hasPassword
     FormField(
-        value = draft.password ?: "",
+        value = password ?: "",
         onChange = { onChange(it) },
         label = if (stored) "Password · saved" else "Password",
         placeholder = when {
             stored -> "••••••••"
-            inherited?.hasPassword == true -> "Inherited from group"
+            inheritedHint -> "Inherited from group"
             else -> null
         },
         keyboard = KeyboardType.Password,
         visual = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
         trailing = {
             Row {
-                if (draft.hasPassword) {
+                if (hasPassword) {
                     TextButton(onClick = { onChange(if (stored) "" else null) }) {
                         Text(if (stored) "Clear" else "Keep saved")
                     }

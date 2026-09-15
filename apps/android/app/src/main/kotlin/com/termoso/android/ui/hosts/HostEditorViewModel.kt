@@ -12,6 +12,7 @@ import com.termoso.core.InheritedInfo
 import com.termoso.core.KeyItem
 import com.termoso.core.SnippetItem
 import com.termoso.core.TagItem
+import com.termoso.core.TelnetDraft
 import com.termoso.core.VaultInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -81,6 +82,11 @@ class HostEditorViewModel(
 
     fun update(transform: (HostDraft) -> HostDraft) {
         _state.update { s -> s.draft?.let { s.copy(draft = transform(it)) } ?: s }
+    }
+
+    /** Edit the Telnet section; no-op while the host has none. */
+    fun updateTelnet(transform: (TelnetDraft) -> TelnetDraft) = update { d ->
+        d.telnet?.let { d.copy(telnet = transform(it)) } ?: d
     }
 
     /** Switching vault (new hosts only) resets group/tags/key/identity, which are per-vault. */
@@ -159,6 +165,7 @@ class HostEditorViewModel(
                 label = draft.label.trim(),
                 address = draft.address.trim(),
                 username = draft.username.trim(),
+                telnet = draft.telnet?.let { it.copy(username = it.username.trim()) },
                 envVariables = draft.envVariables.filter { it.name.isNotBlank() },
             )
             runCatching { repo.write { saveHost(clean) } }

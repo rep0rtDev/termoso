@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -125,7 +126,7 @@ fun ConnectionsScreen(
             OutlinedTextField(
                 value = target,
                 onValueChange = { target = it },
-                placeholder = { Text("user@host:port or join link") },
+                placeholder = { Text("user@host:port, telnet://host or join link") },
                 label = { Text("Quick connect") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -170,6 +171,15 @@ fun ConnectionsScreen(
                 )
                 RowDivider()
                 ChevronRow(
+                    title = "Local terminal",
+                    subtitle = "A shell on this device",
+                    leading = { IconTile(Icons.Filled.PhoneAndroid) },
+                    modifier = Modifier.clickable {
+                        scope.launch { if (shell.connectLocal() != null) onOpenTerminal() }
+                    },
+                )
+                RowDivider()
+                ChevronRow(
                     title = "SFTP",
                     subtitle = "Browse and transfer files on a host",
                     leading = { IconTile(Icons.Filled.FolderOpen) },
@@ -185,7 +195,7 @@ fun ConnectionsScreen(
                 RowDivider()
                 ListRow(
                     title = "Quick connect",
-                    subtitle = "Type user@host above and press Go",
+                    subtitle = "Type user@host or telnet://host above and press Go",
                     leading = { IconTile(Icons.Filled.Terminal) },
                 )
             }
