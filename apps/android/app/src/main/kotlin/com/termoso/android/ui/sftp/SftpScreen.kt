@@ -270,10 +270,11 @@ fun SftpScreen(
                     state.loading && state.entries.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         if (connState is SessionState.Connected) CircularProgressIndicator()
                     }
-                    state.visible.isEmpty() -> Box(Modifier.fillMaxSize()) {
+                    state.visible.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         EmptyState(
                             title = if (state.query.isBlank()) "Empty folder" else "Nothing found",
                             hint = if (state.query.isBlank()) "Upload files here or create a folder from the menu." else "Try another name.",
+                            icon = if (state.query.isBlank()) Icons.Filled.FolderOpen else Icons.Filled.Search,
                         )
                     }
                     else -> EntryList(

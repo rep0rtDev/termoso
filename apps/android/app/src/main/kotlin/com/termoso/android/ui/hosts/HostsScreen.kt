@@ -2,7 +2,9 @@ package com.termoso.android.ui.hosts
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -12,8 +14,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -23,6 +28,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
@@ -32,6 +38,7 @@ import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -56,6 +63,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
@@ -98,6 +106,8 @@ fun HostsScreen(
     val vaults by shell.vaults.collectAsStateWithLifecycle()
     val selectedVaultId by shell.selectedVaultId.collectAsStateWithLifecycle()
     val vault = vaults.firstOrNull { it.id == selectedVaultId }
+    val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
+    val openByHost = sessions.mapNotNull { it.hostId }.groupingBy { it }.eachCount()
 
     LaunchedEffect(state.error) {
         state.error?.let { shell.notify(it); vm.errorShown() }
@@ -183,18 +193,29 @@ fun HostsScreen(
             state.loading -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
-            state.visibleGroups.isEmpty() && state.visibleHosts.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding)) {
-                EmptyState(
-                    title = if (state.query.isBlank()) "No hosts yet" else "Nothing found",
-                    hint = if (state.query.isBlank()) {
-                        "Tap + to add your first host. Everything is stored in the encrypted vault on this device."
-                    } else {
-                        "Try another name, address, user or tag."
-                    },
-                )
+            state.visibleGroups.isEmpty() && state.visibleHosts.isEmpty() -> Box(
+                Modifier.fillMaxSize().padding(padding),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (state.query.isBlank()) {
+                    EmptyState(
+                        title = if (state.group == null) "No hosts yet" else "Empty group",
+                        hint = "Save a server with its credentials to connect in one tap. " +
+                            "Everything stays in the encrypted vault.",
+                        icon = Icons.Filled.Dns,
+                        action = { Button(onClick = onNewHost) { Text("Add host") } },
+                    )
+                } else {
+                    EmptyState(
+                        title = "Nothing found",
+                        hint = "Try another name, address, user or tag.",
+                        icon = Icons.Filled.Search,
+                    )
+                }
             }
             else -> HostList(
                 state = state,
+                openByHost = openByHost,
                 padding = padding,
                 onOpenGroup = onOpenGroup,
                 onGroupLongPress = { dialog = HostsDialog.GroupMenu(it) },
@@ -261,6 +282,7 @@ private sealed interface HostsDialog {
 @Composable
 private fun HostList(
     state: HostsUiState,
+    openByHost: Map<String, Int>,
     padding: PaddingValues,
     onOpenGroup: (String) -> Unit,
     onGroupLongPress: (GroupItem) -> Unit,
@@ -315,11 +337,33 @@ private fun HostList(
                                     color = MaterialTheme.colorScheme.primary,
                                 )
                             }
+                            openByHost[h.id]?.let { OpenSessionsBadge(it) }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** “N open” pill on a host card while it has terminal sessions, like the Active badge in Termius. */
+@Composable
+private fun OpenSessionsBadge(count: Int) {
+    Row(
+        Modifier
+            .padding(start = 8.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Box(Modifier.size(6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+        Text(
+            if (count == 1) "Active" else "$count active",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer,
+        )
     }
 }
 

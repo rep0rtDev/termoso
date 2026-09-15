@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.termoso.android.ui.theme.Emerald
@@ -175,20 +177,34 @@ fun IconTile(
     }
 }
 
-/** Card-shaped empty state with a title and a hint. */
+/** Centered empty state: optional icon tile, title, hint and an optional call to action. */
 @Composable
-fun EmptyState(title: String, hint: String, modifier: Modifier = Modifier) {
+fun EmptyState(
+    title: String,
+    hint: String,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    action: (@Composable () -> Unit)? = null,
+) {
     Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        if (icon != null) {
+            IconTile(icon, size = 56, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(16.dp))
+        }
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(6.dp))
         Text(
             hint,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            textAlign = TextAlign.Center,
         )
+        if (action != null) {
+            Spacer(Modifier.height(20.dp))
+            action()
+        }
     }
 }
