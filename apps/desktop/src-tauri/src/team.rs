@@ -33,8 +33,11 @@ pub struct TeamMemberCard {
     pub user_id: Uuid,
     pub email: String,
     pub display_name: Option<String>,
+    pub avatar: Option<String>,
     pub role: TeamRole,
     pub joined_at: DateTime<Utc>,
+    /// Second factor enrolled; `None` when the server keeps it private.
+    pub mfa_enabled: Option<bool>,
 }
 
 /// Team-vault member still waiting for their sealed copy of the vault key.
@@ -225,8 +228,10 @@ pub async fn members<R: Runtime>(app: &AppHandle<R>, team_id: Uuid) -> Result<Ve
             user_id: m.user_id,
             email: m.email,
             display_name: m.display_name,
+            avatar: m.avatar,
             role: m.role,
             joined_at: m.joined_at,
+            mfa_enabled: m.mfa_enabled,
         })
         .collect())
 }
