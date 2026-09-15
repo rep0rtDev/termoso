@@ -208,12 +208,8 @@ fun MainShell(
         scope.launch { if (shell.joinLive(link) != null) openTerminal() }
     }
 
-    fun connectHost(hostId: String) {
-        scope.launch { if (shell.connectHost(hostId) != null) openTerminal() }
-    }
-
-    fun connectHostMosh(hostId: String) {
-        scope.launch { if (shell.connectHost(hostId, Transport.MOSH) != null) openTerminal() }
+    fun connectHost(hostId: String, transport: Transport = Transport.AUTO) {
+        scope.launch { if (shell.connectHost(hostId, transport) != null) openTerminal() }
     }
 
     fun openSftp(connectionId: String) {
@@ -288,7 +284,7 @@ fun MainShell(
                 ConnectionsScreen(
                     shell = shell,
                     onAddHost = { nav.navigate(Routes.hostNew(null)) },
-                    onConnectHost = ::connectHost,
+                    onConnectHost = { connectHost(it) },
                     onOpenTerminal = ::openTerminal,
                     onNewSftp = { nav.navigate(Routes.SFTP_PICK) },
                     onOpenSftp = ::openSftp,
@@ -367,8 +363,8 @@ fun MainShell(
                     onOpenGroup = { nav.navigate(Routes.hosts(it)) },
                     onNewHost = { nav.navigate(Routes.hostNew(group)) },
                     onEditHost = { nav.navigate(Routes.hostEdit(it)) },
-                    onConnect = ::connectHost,
-                    onConnectMosh = ::connectHostMosh,
+                    onConnect = { connectHost(it) },
+                    onConnectWith = ::connectHost,
                     onSftp = ::sftpHost,
                     onForward = { nav.navigate(Routes.pfNew(PfKind.LOCAL, null, it)) },
                 )
