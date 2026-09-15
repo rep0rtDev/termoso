@@ -72,6 +72,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.HostAvatar
 import com.termoso.android.ui.components.IconTile
@@ -219,6 +220,7 @@ fun HostsScreen(
                 }
             }
             else -> HostList(
+                repo = shell.repo,
                 state = state,
                 openByHost = openByHost,
                 viewersByHost = viewersByHost,
@@ -287,6 +289,7 @@ private sealed interface HostsDialog {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HostList(
+    repo: VaultRepository,
     state: HostsUiState,
     openByHost: Map<String, Int>,
     viewersByHost: Map<String, List<HostViewer>>,
@@ -344,7 +347,7 @@ private fun HostList(
                                     color = MaterialTheme.colorScheme.primary,
                                 )
                             }
-                            viewersByHost[h.id]?.let { PresenceStack(it) }
+                            viewersByHost[h.id]?.let { PresenceStack(repo, it) }
                             openByHost[h.id]?.let { OpenSessionsBadge(it) }
                         }
                     }

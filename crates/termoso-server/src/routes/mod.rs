@@ -17,6 +17,7 @@ pub mod web;
 use std::time::Duration;
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderValue, Method, header};
 use axum::routing::{delete, get, patch, post, put};
 use tower_http::compression::CompressionLayer;
@@ -80,6 +81,13 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/account/profile", patch(account::update_profile))
         .route("/account/presence", put(account::put_presence))
+        .route(
+            "/account/avatar",
+            put(account::put_avatar)
+                .delete(account::delete_avatar)
+                .layer(DefaultBodyLimit::max(crate::avatar::MAX_UPLOAD)),
+        )
+        .route("/users/{id}/avatar", get(account::user_avatar))
         .route(
             "/account/email/verify/send",
             post(account::email_verify_send),

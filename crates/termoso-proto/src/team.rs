@@ -100,6 +100,9 @@ schema! {
         /// Display name.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub display_name: Option<String>,
+        /// Profile picture tag (see `UserProfile::avatar`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub avatar: Option<String>,
         /// Role.
         pub role: TeamRole,
         /// X25519 public key (base64).
@@ -144,6 +147,9 @@ schema! {
         /// Display name.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub display_name: Option<String>,
+        /// Profile picture tag (see `UserProfile::avatar`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub avatar: Option<String>,
         /// Device.
         pub device_id: Uuid,
         /// Device name as registered at login.
@@ -282,6 +288,9 @@ schema! {
         /// Actor display name at query time.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub actor_name: Option<String>,
+        /// Actor profile picture tag at query time (see `UserProfile::avatar`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub actor_avatar: Option<String>,
         /// Device the request came from.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub device_id: Option<Uuid>,

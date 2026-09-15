@@ -5,6 +5,7 @@ export interface HostViewer {
   userId: Uuid;
   email: string;
   displayName: string | null;
+  avatar: string | null;
   deviceId: Uuid;
   deviceName: string;
   platform: string;
@@ -52,6 +53,7 @@ function viewer(e: PresenceEntry, sessions: PresenceSession[], myUserId: Uuid | 
     userId: e.user_id,
     email: e.email,
     displayName: e.display_name ?? null,
+    avatar: e.avatar ?? null,
     deviceId: e.device_id,
     deviceName: e.device_name,
     platform: e.platform,

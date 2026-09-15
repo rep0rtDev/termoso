@@ -357,8 +357,17 @@ pub async fn members(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<TeamMemberList>> {
     my_role(&state.db, id, auth.user_id()).await?;
-    let rows: Vec<(Uuid, String, Option<String>, String, String, DateTime<Utc>)> = sqlx::query_as(
-        "SELECT u.id, u.email, u.display_name, m.role, u.public_key, m.joined_at
+    type Row = (
+        Uuid,
+        String,
+        Option<String>,
+        Option<String>,
+        String,
+        String,
+        DateTime<Utc>,
+    );
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT u.id, u.email, u.display_name, u.avatar_tag, m.role, u.public_key, m.joined_at
          FROM team_members m JOIN users u ON u.id = m.user_id
          WHERE m.team_id = $1 ORDER BY m.joined_at",
     )
@@ -369,10 +378,11 @@ pub async fn members(
         members: rows
             .into_iter()
             .map(
-                |(user_id, email, display_name, role, public_key, joined_at)| TeamMember {
+                |(user_id, email, display_name, avatar, role, public_key, joined_at)| TeamMember {
                     user_id,
                     email,
                     display_name,
+                    avatar,
                     role: parse_team_role(&role),
                     public_key,
                     joined_at,

@@ -249,9 +249,10 @@ pub async fn snapshot(
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
-    let users: HashMap<Uuid, (String, Option<String>)> =
-        sqlx::query_as::<_, (Uuid, String, Option<String>)>(
-            "SELECT u.id, u.email, u.display_name FROM users u
+    type UserRow = (Uuid, String, Option<String>, Option<String>);
+    let users: HashMap<Uuid, (String, Option<String>, Option<String>)> =
+        sqlx::query_as::<_, UserRow>(
+            "SELECT u.id, u.email, u.display_name, u.avatar_tag FROM users u
          JOIN team_members tm ON tm.user_id = u.id AND tm.team_id = $2
          WHERE u.id = ANY($1) AND NOT u.presence_hidden AND NOT u.disabled",
         )
@@ -260,7 +261,7 @@ pub async fn snapshot(
         .fetch_all(&state.db)
         .await?
         .into_iter()
-        .map(|(id, email, name)| (id, (email, name)))
+        .map(|(id, email, name, avatar)| (id, (email, name, avatar)))
         .collect();
     let device_ids: Vec<Uuid> = stored.iter().map(|e| e.device_id).collect();
     let devices: HashMap<Uuid, (String, String)> = sqlx::query_as::<_, (Uuid, String, String)>(
@@ -276,7 +277,7 @@ pub async fn snapshot(
     let mut entries: Vec<PresenceEntry> = stored
         .into_iter()
         .filter_map(|e| {
-            let (email, display_name) = users.get(&e.user_id)?.clone();
+            let (email, display_name, avatar) = users.get(&e.user_id)?.clone();
             let (device_name, platform) = devices.get(&e.device_id)?.clone();
             let sessions: Vec<PresenceSession> = e
                 .sessions
@@ -290,6 +291,7 @@ pub async fn snapshot(
                 user_id: e.user_id,
                 email,
                 display_name,
+                avatar,
                 device_id: e.device_id,
                 device_name,
                 platform,

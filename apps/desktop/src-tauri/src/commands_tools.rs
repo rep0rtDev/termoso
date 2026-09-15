@@ -18,6 +18,7 @@ use crate::account::{
     self, AccountStatus, LoginForm, LoginOutcome, ReauthOutcome, RegisterForm, Registered,
     SYNC_EVENT, SyncNotice, SyncStatus,
 };
+use crate::avatars;
 use crate::backup::{self, BackupSummary};
 use crate::cloud::{self, CloudImportReport, CloudPreview, CloudSelection};
 use crate::error::{DesktopError, Result};
@@ -1071,6 +1072,18 @@ pub async fn team_presence<R: Runtime>(app: AppHandle<R>, team_id: Uuid) -> Resu
 #[tauri::command]
 pub async fn account_profile<R: Runtime>(app: AppHandle<R>) -> Result<UserProfile> {
     presence::profile(&app).await
+}
+
+/// Raw WebP bytes (empty when there is no picture) so the webview can build
+/// a blob URL without a base64 round trip.
+#[tauri::command]
+pub async fn user_avatar<R: Runtime>(
+    app: AppHandle<R>,
+    user_id: Uuid,
+    tag: String,
+) -> Result<tauri::ipc::Response> {
+    let bytes = avatars::user_avatar(&app, user_id, tag).await?;
+    Ok(tauri::ipc::Response::new(bytes.unwrap_or_default()))
 }
 
 #[tauri::command]

@@ -142,6 +142,7 @@ export interface VaultMember {
   user_id: Uuid;
   email: string;
   display_name?: string | null;
+  avatar?: string | null;
   role: VaultRole;
   key_version: number;
   pending: boolean;
@@ -175,6 +176,7 @@ export interface PresenceEntry {
   user_id: Uuid;
   email: string;
   display_name?: string | null;
+  avatar?: string | null;
   device_id: Uuid;
   device_name: string;
   platform: string;
@@ -199,12 +201,14 @@ export interface UserProfile {
   reset_scheduled_for?: string | null;
   /** Teammates never see which hosts this user is connected to. */
   presence_hidden: boolean;
+  avatar?: string | null;
 }
 
 export interface TeamMember {
   user_id: Uuid;
   email: string;
   display_name: string | null;
+  avatar?: string | null;
   role: TeamRole;
   joined_at: string;
 }
@@ -244,6 +248,7 @@ export interface AuditEvent {
   actor_id?: Uuid;
   actor_email?: string;
   actor_name?: string;
+  actor_avatar?: string;
   device_id?: Uuid;
   action: string;
   vault_id?: Uuid;
@@ -1198,6 +1203,8 @@ export interface AccountCard {
   userId: Uuid;
   email: string;
   displayName: string | null;
+  /** Content tag of the profile picture; `null` when none. */
+  avatar: string | null;
   isAdmin: boolean;
   deviceId: Uuid;
   signedInAt: string;
@@ -1411,6 +1418,7 @@ export interface LiveParticipant {
   userId: Uuid;
   email: string;
   displayName: string | null;
+  avatar: string | null;
   isHost: boolean;
   /** Keystrokes of this person reach the shared terminal. */
   canWrite: boolean;

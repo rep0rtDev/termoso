@@ -1,4 +1,4 @@
-import { http, requestWithStatus } from "./client";
+import { fetchBlob, http, requestWithStatus, upload } from "./client";
 import type {
   AccountResponse,
   AdminStats,
@@ -130,6 +130,10 @@ export const accountApi = {
   get: (token?: string) => http.get<AccountResponse>("/account", token ? { token } : undefined),
   updateProfile: (display_name: string | null) =>
     http.patch<UserProfile>("/account/profile", { display_name }),
+  putAvatar: (image: Blob) => upload<UserProfile>("PUT", "/account/avatar", image),
+  deleteAvatar: () => http.delete<UserProfile>("/account/avatar"),
+  /** Client-side cache key + fetch for `GET /users/{id}/avatar`. */
+  avatar: (user_id: string) => fetchBlob(`/users/${encodeURIComponent(user_id)}/avatar`),
   emailVerifySend: () => http.post<undefined>("/account/email/verify/send"),
   emailVerifyConfirm: (code: string) =>
     http.post<undefined>("/account/email/verify/confirm", { code }),

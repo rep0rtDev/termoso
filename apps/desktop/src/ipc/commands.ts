@@ -550,6 +550,10 @@ export const teamSetSecurity = (
 /** Who is connected to the team's hosts right now (empty when presence is off). */
 export const teamPresence = (teamId: Uuid) => invoke<TeamPresence>("team_presence", { teamId });
 export const accountProfile = () => invoke<UserProfile>("account_profile");
+/** `data:` URL of a user's picture (disk-cached by tag), or `null` when the server has none. */
+/** WebP bytes of a profile picture; empty when the user has none. */
+export const userAvatar = (userId: Uuid, tag: string) =>
+  invoke<ArrayBuffer>("user_avatar", { userId, tag });
 export const accountSetPresenceHidden = (hidden: boolean) =>
   invoke<UserProfile>("account_set_presence_hidden", { hidden });
 export const teamDelete = (teamId: Uuid) => invoke<null>("team_delete", { teamId });

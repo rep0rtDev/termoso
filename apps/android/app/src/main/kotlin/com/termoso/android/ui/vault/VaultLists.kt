@@ -109,21 +109,25 @@ fun KnownHostsScreen(shell: ShellViewModel, onBack: () -> Unit) {
     }
 }
 
-/** Past connections, newest first. */
+/** Past connections of the selected vault, newest first. */
 @Composable
 fun HistoryScreen(shell: ShellViewModel, onBack: () -> Unit, onOpenHost: (String) -> Unit) {
     val revision by shell.repo.revision.collectAsStateWithLifecycle()
+    val vaults by shell.vaults.collectAsStateWithLifecycle()
+    val selectedId by shell.selectedVaultId.collectAsStateWithLifecycle()
+    val vault = vaults.firstOrNull { it.id == selectedId }
     val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf<List<HistoryItem>>(emptyList()) }
     var confirmClear by remember { mutableStateOf(false) }
-    LaunchedEffect(revision) {
+    LaunchedEffect(revision, vault) {
+        val v = vault ?: return@LaunchedEffect
         runCatching { shell.repo.read { history(200u) } }
-            .onSuccess { items = it }
+            .onSuccess { items = it.filter { h -> h.belongsTo(v) } }
             .onFailure { shell.notify(it.userMessage()) }
     }
 
     SubScreen(
-        "History",
+        if (vault != null) "History · ${vault.name}" else "History",
         onBack,
         actions = {
             if (items.isNotEmpty()) {
@@ -162,12 +166,13 @@ fun HistoryScreen(shell: ShellViewModel, onBack: () -> Unit, onOpenHost: (String
     if (confirmClear) {
         ConfirmDialog(
             title = "Clear history?",
-            text = "Removes all ${items.size} entries from this device.",
+            text = "Removes all ${items.size} entries of this vault from this device.",
             confirm = "Clear",
             onConfirm = {
                 confirmClear = false
+                val id = vault?.id ?: return@ConfirmDialog
                 scope.launch {
-                    runCatching { shell.repo.write { clearHistory() } }
+                    runCatching { shell.repo.write { clearVaultHistory(id) } }
                         .onFailure { shell.notify(it.userMessage()) }
                 }
             },

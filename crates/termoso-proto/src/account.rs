@@ -31,6 +31,11 @@ schema! {
         /// teams that have presence turned on.
         #[serde(default)]
         pub presence_hidden: bool,
+        /// Content tag of the profile picture, `None` when there is none.
+        /// Fetch it from `GET /users/{id}/avatar`; the tag changes with the
+        /// picture, so it doubles as the cache key.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub avatar: Option<String>,
     }
 }
 
