@@ -157,7 +157,12 @@ fun ConnectedNowSection(viewers: List<HostViewer>) {
                             modifier = Modifier.size(14.dp),
                         )
                         Text(
-                            "${v.deviceName} · ${platformLabel(v.platform)}",
+                            platformLabel(v.platform),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            "· ${v.deviceName}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,

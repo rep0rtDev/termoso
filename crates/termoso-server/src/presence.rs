@@ -96,7 +96,7 @@ impl Reporter {
                 sessions: sessions.clone(),
                 seen_at: now,
             };
-            state
+            let added = state
                 .cache
                 .hset_json(
                     &key(*team_id),
@@ -105,7 +105,10 @@ impl Reporter {
                     HASH_TTL,
                 )
                 .await?;
-            if self.reported.get(team_id) != Some(sessions) {
+            // `added` covers records someone else removed behind our back
+            // (hide → unhide, team switch off → on): the list is unchanged
+            // for us, but teammates have to learn about it again.
+            if added || self.reported.get(team_id) != Some(sessions) {
                 events::publish(state, Event::PresenceChanged { team_id: *team_id }).await?;
             }
         }

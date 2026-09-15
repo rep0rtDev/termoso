@@ -208,12 +208,37 @@ impl SyncEngine {
         }
     }
 
+    /// Re-send the current list right away even though it did not change,
+    /// so a record the server dropped (hidden account, team switch off) is
+    /// back without waiting for the next heartbeat.
+    pub fn republish_presence(&self) {
+        self.presence_kick.notify_one();
+    }
+
     /// Current list given to [`SyncEngine::set_presence`].
     pub fn presence(&self) -> Vec<PresenceSession> {
         self.presence
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .clone()
+    }
+
+    /// Whether any of our live connections is in one of the team's vaults.
+    /// The team's presence being invalidated may mean an admin just switched
+    /// it on again (the server dropped every record while it was off) – the
+    /// device re-sends its unchanged list so it is stored again; the server
+    /// only fans out when that actually adds something.
+    fn presence_in_team(&self, team_id: Uuid) -> Result<bool> {
+        let sessions = self.presence();
+        if sessions.is_empty() {
+            return Ok(false);
+        }
+        Ok(self
+            .store
+            .vaults()?
+            .iter()
+            .filter(|v| v.team_id == Some(team_id))
+            .any(|v| sessions.iter().any(|s| s.vault_id == v.id)))
     }
 
     fn presence_frame(&self) -> Result<Option<String>> {
@@ -824,9 +849,16 @@ impl SyncEngine {
                         }
                         ServerMessage::AccountUpdated => {
                             pending.account = true;
+                            // Possibly "show me again" after hiding, from any device.
+                            if !self.presence().is_empty() {
+                                self.republish_presence();
+                            }
                         }
                         ServerMessage::PresenceChanged { team_id } => {
                             self.emit(SyncEvent::PresenceChanged { team_id });
+                            if matches!(self.presence_in_team(team_id), Ok(true)) {
+                                self.republish_presence();
+                            }
                         }
                         ServerMessage::SessionRevoked => return Ok(Stop::Revoked),
                         ServerMessage::Error { code, message } => {
@@ -1031,6 +1063,53 @@ mod tests {
                 .await
                 .is_ok(),
             "clearing is pushed right away"
+        );
+    }
+
+    #[tokio::test]
+    async fn republish_resends_unchanged_list_only_for_own_teams() {
+        use crate::store::LocalVaultKind;
+        use termoso_proto::vault::VaultRole;
+
+        let api = Arc::new(ApiClient::new("https://example.test").unwrap());
+        let store = Arc::new(Store::open_in_memory(SymmetricKey::generate()).unwrap());
+        let team = Uuid::new_v4();
+        let vault = Uuid::new_v4();
+        store
+            .upsert_vault(
+                vault,
+                LocalVaultKind::Team,
+                "Ops",
+                Some(team),
+                VaultRole::Editor,
+                Some(&SymmetricKey::generate()),
+                1,
+            )
+            .unwrap();
+        let engine = SyncEngine::new(api, store, SyncOptions::default());
+
+        assert!(!engine.presence_in_team(team).unwrap(), "nothing live");
+
+        engine.set_presence(vec![PresenceSession {
+            vault_id: vault,
+            host_id: Uuid::new_v4(),
+            protocol: "ssh".into(),
+            since: chrono::Utc::now(),
+        }]);
+        engine.presence_kick.notified().await;
+
+        assert!(engine.presence_in_team(team).unwrap());
+        assert!(
+            !engine.presence_in_team(Uuid::new_v4()).unwrap(),
+            "another team's switch does not concern us"
+        );
+
+        engine.republish_presence();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), engine.presence_kick.notified())
+                .await
+                .is_ok(),
+            "explicit republish wakes the sender without a list change"
         );
     }
 }
