@@ -92,6 +92,9 @@ fun AccountScreen(
     var devicesError by remember { mutableStateOf<String?>(null) }
     var syncing by remember { mutableStateOf(false) }
     var confirmSignOut by remember { mutableStateOf(false) }
+    var confirmCredentials by remember { mutableStateOf<Boolean?>(null) }
+    var credentialsBusy by remember { mutableStateOf(false) }
+    val settings by shell.repo.settings.collectAsStateWithLifecycle()
     var revoking by remember { mutableStateOf<DeviceCard?>(null) }
 
     suspend fun loadDevices() {
@@ -197,6 +200,20 @@ fun AccountScreen(
                     title = "End-to-end encrypted",
                     subtitle = "The server stores only ciphertext; keys stay on your devices",
                     leading = { IconTile(Icons.Filled.Lock) },
+                )
+                RowDivider()
+                SwitchRow(
+                    title = "Sync keys and identities",
+                    subtitle = if (settings.syncCredentials) {
+                        "Identities, keys and certificates of your Personal vault sync encrypted like everything else"
+                    } else {
+                        "Keys of your Personal vault stay on this phone" +
+                            (if (status.localCredentials > 0u) " (${status.localCredentials} here)" else "") +
+                            "; hosts and snippets still sync. They are deleted when you sign out"
+                    },
+                    checked = settings.syncCredentials,
+                    enabled = !credentialsBusy,
+                    onCheckedChange = { on -> confirmCredentials = on },
                 )
             }
 
@@ -325,10 +342,21 @@ fun AccountScreen(
             onDismissRequest = { confirmSignOut = false },
             title = { Text("Sign out?") },
             text = {
-                Text(
-                    "This device is removed from your account and the synced vaults are deleted from this phone. " +
-                        "Your local vault and its hosts stay. You can sign in again any time.",
-                )
+                Column {
+                    Text(
+                        "This device is removed from your account and the synced vaults are deleted from this phone. " +
+                            "Your local vault and its hosts stay. You can sign in again any time.",
+                    )
+                    if (status.localCredentials > 0u) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Sync of keys and identities is off: ${status.localCredentials} of them exist only on this phone " +
+                                "and will be deleted with the account. Export them or turn the sync on first to keep them.",
+                            color = Warning,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -343,6 +371,40 @@ fun AccountScreen(
             dismissButton = { TextButton(onClick = { confirmSignOut = false }) { Text("Cancel") } },
         )
     }
+    confirmCredentials?.let { on ->
+        AlertDialog(
+            onDismissRequest = { confirmCredentials = null },
+            title = { Text(if (on) "Sync keys and identities?" else "Keep keys and identities on this phone?") },
+            text = {
+                Text(
+                    if (on) {
+                        "Identities, keys and certificates of your Personal vault are uploaded encrypted with your vault key " +
+                            "and pulled from your other devices. The server never sees them in the clear."
+                    } else {
+                        "Identities, keys and certificates of your Personal vault are deleted from the server and your other " +
+                            "devices; the copies on this phone stay and keep working. Hosts, groups, snippets and settings " +
+                            "continue to sync. Keys added later stay here too, and everything local is deleted when you sign out."
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmCredentials = null
+                    credentialsBusy = true
+                    scope.launch {
+                        runCatching { account.setCredentialSync(on) }
+                            .onSuccess {
+                                shell.notify(if (on) "Keys and identities are synced again" else "Keys and identities now stay on this phone")
+                            }
+                            .onFailure { shell.notify(it.userMessage()) }
+                        credentialsBusy = false
+                    }
+                }) { Text(if (on) "Sync" else "Keep local", color = if (on) MaterialTheme.colorScheme.primary else Danger) }
+            },
+            dismissButton = { TextButton(onClick = { confirmCredentials = null }) { Text("Cancel") } },
+        )
+    }
+
     revoking?.let { d ->
         AlertDialog(
             onDismissRequest = { revoking = null },

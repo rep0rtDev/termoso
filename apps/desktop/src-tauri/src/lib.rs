@@ -260,6 +260,7 @@ pub fn run() {
             commands_tools::account_register,
             commands_tools::account_sign_out,
             commands_tools::account_sync_now,
+            commands_tools::account_set_credential_sync,
             commands_tools::account_devices,
             commands_tools::account_device_revoke,
             commands_tools::account_vault_members,

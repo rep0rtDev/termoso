@@ -21,7 +21,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::{SinkExt, StreamExt};
-use termoso_proto::entities::SyncEntity;
+use termoso_proto::entities::{SyncEntity, is_credential_kind};
 use termoso_proto::logs::{CreateLogRequest, LogListResponse, UpdateLogRequest};
 use termoso_proto::sync::{HistoryPushRequest, MAX_BATCH, PullRequest, PushRequest, PushResult};
 use termoso_proto::team::PresenceSession;
@@ -35,7 +35,7 @@ use uuid::Uuid;
 use crate::account;
 use crate::api::ApiClient;
 use crate::error::{CoreError, Result};
-use crate::store::{EntityRow, LocalVaultKind, Store};
+use crate::store::{EntityFilter, EntityRow, LocalVaultKind, Store};
 
 const STALE_KEY_VERSION: &str = "stale_key_version";
 
@@ -65,6 +65,13 @@ pub struct SyncOptions {
     /// a team vault's `session_logging` policy are uploaded regardless: the
     /// manager turned that on so the vault sees them.
     pub upload_logs: bool,
+    /// Sync identities, keys and certificates of the Personal vault. When
+    /// off they stay on this device: never pushed (not even encrypted) and
+    /// not pulled either, so a device that opted out neither leaks nor
+    /// receives credentials. Team vaults are unaffected. Flipping it off
+    /// should be followed by [`SyncEngine::purge_credentials`], flipping it
+    /// back on by [`SyncEngine::resync_credentials`].
+    pub sync_credentials: bool,
     /// Full sync interval while the realtime loop is running.
     pub interval: Duration,
     /// Debounce between a WebSocket nudge and the sync it triggers.
@@ -78,6 +85,7 @@ impl Default for SyncOptions {
             batch: MAX_BATCH,
             log_dir: None,
             upload_logs: true,
+            sync_credentials: true,
             interval: Duration::from_secs(15 * 60),
             debounce: Duration::from_millis(300),
         }
@@ -317,6 +325,105 @@ impl SyncEngine {
             .collect())
     }
 
+    /// The vault whose credentials stay on this device, if any.
+    fn local_credentials_vault(&self) -> Result<Option<Uuid>> {
+        if self.opts.sync_credentials {
+            return Ok(None);
+        }
+        Ok(self.store.personal_vault()?.map(|v| v.id))
+    }
+
+    /// Whether a row is a credential kept off the server. Tombstones still
+    /// go up: deleting reveals nothing and clears the server copy.
+    fn keeps_local(&self, row: &EntityRow, local_vault: Option<Uuid>) -> bool {
+        local_vault == Some(row.vault_id) && !row.deleted && is_credential_kind(&row.kind)
+    }
+
+    /// Take the Personal vault's identities, keys and certificates off the
+    /// server (tombstones) while keeping the local rows, which stay dirty so
+    /// they go back up if credential sync is switched on again. Call after
+    /// building the engine with `sync_credentials = false`. Returns how many
+    /// rows the server had.
+    pub async fn purge_credentials(&self) -> Result<usize> {
+        let _guard = self.running.lock().await;
+        let Some(vault) = self.store.personal_vault()? else {
+            return Ok(0);
+        };
+        if !vault.unlocked {
+            return Ok(0);
+        }
+        let mut pending: Vec<EntityRow> = self
+            .store
+            .rows(&EntityFilter {
+                vault_id: Some(vault.id),
+                ..EntityFilter::default()
+            })?
+            .into_iter()
+            .filter(|r| is_credential_kind(&r.kind) && r.version > 0)
+            .collect();
+        let mut purged = 0;
+        for _ in 0..3 {
+            if pending.is_empty() {
+                break;
+            }
+            let mut retry = Vec::new();
+            for chunk in pending.chunks(self.opts.batch) {
+                let req = PushRequest {
+                    changes: Vec::new(),
+                    deletes: chunk.iter().map(EntityRow::to_delete).collect(),
+                };
+                for res in self.api.sync_push(&req).await?.results {
+                    match res {
+                        PushResult::Ok { id, version, seq } => {
+                            self.store.rebase_local(id, version, seq)?;
+                            purged += 1;
+                        }
+                        PushResult::Conflict { id, server } => {
+                            self.store.rebase_local(id, server.version, server.seq)?;
+                            if let Some(row) = self.store.row(id)? {
+                                retry.push(row);
+                            }
+                        }
+                        PushResult::Error { id, code } => {
+                            if code == termoso_proto::error::codes::NOT_FOUND {
+                                self.store.rebase_local(id, 0, 0)?;
+                            } else {
+                                return Err(CoreError::Invalid(format!("purge {id}: {code}")));
+                            }
+                        }
+                    }
+                }
+            }
+            pending = retry;
+        }
+        if !pending.is_empty() {
+            return Err(CoreError::Invalid(
+                "credentials kept changing on the server while purging".into(),
+            ));
+        }
+        self.emit(SyncEvent::EntitiesChanged { vault_id: vault.id });
+        Ok(purged)
+    }
+
+    /// Bring the Personal vault's credentials back into sync after
+    /// [`SyncOptions::sync_credentials`] was switched on: local-only rows are
+    /// pushed (they are still dirty) and the vault is re-pulled from the
+    /// start so credentials other devices uploaded meanwhile arrive.
+    pub async fn resync_credentials(&self) -> Result<SyncReport> {
+        let _guard = self.running.lock().await;
+        let mut report = SyncReport::default();
+        let Some(vault) = self.store.personal_vault()? else {
+            return Ok(report);
+        };
+        if !vault.unlocked {
+            return Ok(report);
+        }
+        self.store.set_vault_cursor(vault.id, 0)?;
+        self.sync_vault_into(vault.id, &mut report).await?;
+        self.pull_entities_into(&[vault.id], &mut report).await?;
+        Ok(report)
+    }
+
     /// Push then pull a single vault.
     pub async fn sync_vault(&self, vault_id: Uuid) -> Result<SyncReport> {
         let _guard = self.running.lock().await;
@@ -343,7 +450,9 @@ impl SyncEngine {
     async fn push_entities_into(&self, vault_id: Uuid, report: &mut SyncReport) -> Result<bool> {
         let mut retry = false;
         let mut stale_key = false;
-        let rows = self.store.dirty_rows(vault_id)?;
+        let local_vault = self.local_credentials_vault()?;
+        let mut rows = self.store.dirty_rows(vault_id)?;
+        rows.retain(|r| !self.keeps_local(r, local_vault));
         for chunk in rows.chunks(self.opts.batch) {
             let by_id: HashMap<Uuid, &EntityRow> = chunk.iter().map(|r| (r.id, r)).collect();
             let mut req = PushRequest {
@@ -447,6 +556,7 @@ impl SyncEngine {
             cursors.insert(*id, self.store.vault(*id)?.cursor);
         }
         let mut touched: Vec<Uuid> = Vec::new();
+        let local_vault = self.local_credentials_vault()?;
         loop {
             let resp = self
                 .api
@@ -456,6 +566,9 @@ impl SyncEngine {
                 })
                 .await?;
             for e in &resp.entities {
+                if local_vault == Some(e.vault_id) && is_credential_kind(&e.kind) {
+                    continue;
+                }
                 if self.apply_pulled(e)? {
                     report.pulled += 1;
                     if !touched.contains(&e.vault_id) {

@@ -356,7 +356,11 @@ pub async fn members(
     auth: Auth,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<TeamMemberList>> {
-    my_role(&state.db, id, auth.user_id()).await?;
+    let me = my_role(&state.db, id, auth.user_id()).await?;
+    // Whether a member has a second factor is visible to the team's admins
+    // (who are responsible for enforcing `require_mfa`) and to the member
+    // themself; other members do not learn each other's security posture.
+    let sees_mfa = me.is_admin() || auth.session.is_admin;
     type Row = (
         Uuid,
         String,
@@ -365,9 +369,12 @@ pub async fn members(
         String,
         String,
         DateTime<Utc>,
+        bool,
     );
     let rows: Vec<Row> = sqlx::query_as(
-        "SELECT u.id, u.email, u.display_name, u.avatar_tag, m.role, u.public_key, m.joined_at
+        "SELECT u.id, u.email, u.display_name, u.avatar_tag, m.role, u.public_key, m.joined_at,
+                u.totp_enabled
+                OR EXISTS (SELECT 1 FROM webauthn_credentials w WHERE w.user_id = u.id)
          FROM team_members m JOIN users u ON u.id = m.user_id
          WHERE m.team_id = $1 ORDER BY m.joined_at",
     )
@@ -378,14 +385,17 @@ pub async fn members(
         members: rows
             .into_iter()
             .map(
-                |(user_id, email, display_name, avatar, role, public_key, joined_at)| TeamMember {
-                    user_id,
-                    email,
-                    display_name,
-                    avatar,
-                    role: parse_team_role(&role),
-                    public_key,
-                    joined_at,
+                |(user_id, email, display_name, avatar, role, public_key, joined_at, mfa)| {
+                    TeamMember {
+                        user_id,
+                        email,
+                        display_name,
+                        avatar,
+                        role: parse_team_role(&role),
+                        public_key,
+                        joined_at,
+                        mfa_enabled: (sees_mfa || user_id == auth.user_id()).then_some(mfa),
+                    }
                 },
             )
             .collect(),

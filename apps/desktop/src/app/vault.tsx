@@ -5,6 +5,7 @@
 
 import {
   Chip,
+  Divider,
   ListItemIcon,
   ListItemText,
   Menu,
@@ -14,7 +15,9 @@ import {
   type SxProps,
   type Theme,
 } from "@mui/material";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
+import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
 import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import LockRoundedIcon from "@mui/icons-material/LockRounded";
@@ -160,6 +163,35 @@ export function VaultMenu({
           No vaults yet
         </Typography>
       )}
+      <Divider />
+      <MenuItem
+        onClick={() => {
+          onClose();
+          goToSettingsWith({ kind: "newVault" });
+        }}
+        sx={{ py: 0.75 }}
+      >
+        <ListItemIcon>
+          <AddRoundedIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText
+          primary="New vault"
+          secondary="Local, personal or shared with your team"
+          slotProps={{ secondary: { sx: { fontSize: 11 } } }}
+        />
+      </MenuItem>
+      <MenuItem
+        onClick={() => {
+          onClose();
+          goToSettings("vaults");
+        }}
+        sx={{ py: 0.75 }}
+      >
+        <ListItemIcon>
+          <SettingsRoundedIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText primary="Manage vaults" />
+      </MenuItem>
     </Menu>
   );
 }
