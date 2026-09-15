@@ -306,6 +306,8 @@ const fakeVault = (v: BackupVaultSummary): LocalVault => ({
   unlocked: true,
   key_version: 0,
   cursor: 0,
+  session_logging: false,
+  logs_cursor: 0,
 });
 
 // ───────────────────────────── restore ─────────────────────────────

@@ -58,6 +58,7 @@ import {
 import { goToSettings, goToSettingsWith, useSettingsIntent } from "@/app/navigation";
 import { vaultHint, vaultIcon } from "@/app/vault";
 import { PersonAvatar, initialsOf } from "./PersonAvatar";
+import { SecurityRow } from "./TeamPage";
 import { VAULT_ROLES, isTeamAdmin, vaultRoleHint, vaultRoleLabel } from "./roles";
 
 type Panel = { kind: "vault"; id: Uuid } | { kind: "new"; teamId: Uuid | null };
@@ -505,6 +506,29 @@ function VaultDetails({
               })}
             </Stack>
           )}
+        </SectionCard>
+      )}
+
+      {isTeam && (
+        <SectionCard title="Session logs">
+          <SecurityRow
+            label="Record members' sessions"
+            hint="Every terminal session to a host of this vault is recorded on the member's device, encrypted with the vault key and shared with the vault. Members can read each other's recordings; editors can pin and comment on them. Only vault managers change this."
+            enabled={v.session_logging}
+            canChange={manager}
+            onChange={(on) =>
+              op.mutate(() =>
+                ipc
+                  .vaultSessionLoggingSet(v.id, on)
+                  .then(() =>
+                    on ? "Sessions in this vault are now recorded" : "Session recording turned off",
+                  ),
+              )
+            }
+          />
+          <Typography variant="caption" color="text.secondary">
+            Recordings never leave a device unencrypted; the server stores ciphertext only.
+          </Typography>
         </SectionCard>
       )}
 

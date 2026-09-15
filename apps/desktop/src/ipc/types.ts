@@ -135,6 +135,9 @@ export interface LocalVault {
   unlocked: boolean;
   key_version: number;
   cursor: number;
+  /** Team vault: the manager turned on recording of every member's sessions. */
+  session_logging: boolean;
+  logs_cursor: number;
 }
 
 /** Member of a team vault as the server sees it. */
@@ -1180,6 +1183,24 @@ export interface LogCard {
   completed: boolean;
   createdAt: string;
   bookmarks: number;
+  /** Recorded by this account / device. */
+  mine: boolean;
+  /** Lives in a team vault (teammates see it too). */
+  team: boolean;
+  author: LogAuthor | null;
+  pinned: boolean;
+  note: string;
+  noteBy: Uuid | null;
+  canAnnotate: boolean;
+  canDelete: boolean;
+}
+
+export interface LogAuthor {
+  userId: Uuid;
+  email: string;
+  displayName: string | null;
+  /** Picture tag for `userAvatar`. */
+  avatar: string | null;
 }
 
 export interface BookmarkCard {

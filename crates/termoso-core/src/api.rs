@@ -699,6 +699,21 @@ impl ApiClient {
         .await
     }
 
+    /// `GET /vaults/{id}/logs?since=&limit=` — every member's logs in a
+    /// (team) vault, paged by the vault counter.
+    pub async fn vault_logs(
+        &self,
+        vault_id: Uuid,
+        since: i64,
+        limit: u32,
+    ) -> Result<LogListResponse> {
+        self.get_query(
+            &format!("vaults/{vault_id}/logs"),
+            &[("since", since.to_string()), ("limit", limit.to_string())],
+        )
+        .await
+    }
+
     /// `POST /logs` — register a log and get a presigned upload URL.
     pub async fn create_log(&self, req: &CreateLogRequest) -> Result<CreateLogResponse> {
         self.post("logs", req).await

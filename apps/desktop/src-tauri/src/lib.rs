@@ -236,6 +236,8 @@ pub fn run() {
             commands_tools::logs_list,
             commands_tools::log_read,
             commands_tools::log_export,
+            commands_tools::log_annotate,
+            commands_tools::vault_session_logging_set,
             commands_tools::log_delete,
             commands_tools::log_bookmarks,
             commands_tools::log_bookmark_add,

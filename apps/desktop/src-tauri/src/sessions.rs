@@ -21,7 +21,7 @@ use termoso_core::ssh::{
     Algorithms, AuthMethod, ConnectOptions, ConnectPhase, ConnectProgress, IpVersion, SshClient,
     SshTarget,
 };
-use termoso_core::store::{ConnectionHistory, LogMeta};
+use termoso_core::store::{ConnectionHistory, LocalVaultKind, LogMeta};
 use termoso_core::telnet::{TelnetOptions, TelnetTerminal};
 use termoso_core::terminal::{SharedTerminal, TermEvent, TermEvents, TermSize};
 use tokio::task::JoinHandle;
@@ -558,13 +558,21 @@ fn start_recording(
     size: TermSize,
 ) -> Option<Arc<Recorder>> {
     let settings = state.settings().ok()?;
-    if !settings.record_sessions {
-        return None;
-    }
     let vault_id = match vault_id {
         Some(v) => v,
         None => state.store.local_vault().ok()?.id,
     };
+    // The user's own switch records everything; a team vault whose manager
+    // turned session logging on records its hosts' sessions for the team
+    // regardless.
+    let team_policy = state
+        .store
+        .vault(vault_id)
+        .ok()
+        .is_some_and(|v| v.kind == LocalVaultKind::Team && v.session_logging);
+    if !settings.record_sessions && !team_policy {
+        return None;
+    }
     let meta = LogMeta {
         host_id: info.host_id,
         label: info.title.clone(),
@@ -587,16 +595,26 @@ fn start_recording(
     }
 }
 
-fn finish_recording(state: &AppState, recorder: Option<Arc<Recorder>>) {
-    if let Some(rec) = recorder {
-        if let Err(e) = rec.finish(&state.store, &state.logs_dir()) {
-            tracing::warn!("saving session recording failed: {e}");
+/// Persist a finished recording and let the sync engine upload it right
+/// away, so a shared team recording reaches teammates without waiting for
+/// the periodic pass.
+async fn finish_recording<R: Runtime>(app: &AppHandle<R>, recorder: Option<Arc<Recorder>>) {
+    let Some(rec) = recorder else {
+        return;
+    };
+    let state = app.state::<AppState>();
+    match rec.finish(&state.store, &state.logs_dir()) {
+        Ok(()) => {
+            if let Some(engine) = crate::account::engine(app).await {
+                engine.request_sync();
+            }
         }
-        if let Ok(settings) = state.settings()
-            && let Err(e) = crate::logs::prune(&state.store, settings.log_retention_days)
-        {
-            tracing::debug!("log retention sweep failed: {e}");
-        }
+        Err(e) => tracing::warn!("saving session recording failed: {e}"),
+    }
+    if let Ok(settings) = state.settings()
+        && let Err(e) = crate::logs::prune(&state.store, settings.log_retention_days)
+    {
+        tracing::debug!("log retention sweep failed: {e}");
     }
 }
 
@@ -623,7 +641,7 @@ pub async fn close<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
         if let Some(hid) = live.history_id {
             finish_history(&state, hid, &live.info, None);
         }
-        finish_recording(&state, live.recorder);
+        finish_recording(app, live.recorder).await;
         let _ = app.emit(SESSION_EVENT, SessionEvent::Closed { id });
         crate::presence::refresh(app);
     }
@@ -690,7 +708,7 @@ async fn pump<R: Runtime>(
         if let Some(hid) = live.history_id {
             finish_history(&state, hid, &live.info, error);
         }
-        finish_recording(&state, live.recorder);
+        finish_recording(&app, live.recorder).await;
     }
     let _ = app.emit(SESSION_EVENT, SessionEvent::Closed { id });
     crate::presence::refresh(&app);

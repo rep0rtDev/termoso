@@ -15,16 +15,17 @@
 //!   └─ logs     upload finished recordings, push deletions → pull metadata
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use futures::{SinkExt, StreamExt};
 use termoso_proto::entities::SyncEntity;
-use termoso_proto::logs::{CreateLogRequest, UpdateLogRequest};
+use termoso_proto::logs::{CreateLogRequest, LogListResponse, UpdateLogRequest};
 use termoso_proto::sync::{HistoryPushRequest, MAX_BATCH, PullRequest, PushRequest, PushResult};
 use termoso_proto::team::PresenceSession;
+use termoso_proto::vault::UpdateVaultRequest;
 use termoso_proto::ws::{ClientMessage, ServerMessage};
 use tokio::sync::{Notify, broadcast};
 use tokio_tungstenite::tungstenite::Message;
@@ -34,7 +35,7 @@ use uuid::Uuid;
 use crate::account;
 use crate::api::ApiClient;
 use crate::error::{CoreError, Result};
-use crate::store::{EntityRow, Store};
+use crate::store::{EntityRow, LocalVaultKind, Store};
 
 const STALE_KEY_VERSION: &str = "stale_key_version";
 
@@ -60,7 +61,9 @@ pub struct SyncOptions {
     /// Directory for downloaded session-log bodies. `None` disables body
     /// downloads (metadata still syncs).
     pub log_dir: Option<PathBuf>,
-    /// Upload finished recordings from synced vaults.
+    /// Upload finished recordings from synced vaults. Recordings made under
+    /// a team vault's `session_logging` policy are uploaded regardless: the
+    /// manager turned that on so the vault sees them.
     pub upload_logs: bool,
     /// Full sync interval while the realtime loop is running.
     pub interval: Duration,
@@ -570,8 +573,14 @@ impl SyncEngine {
 
     async fn sync_logs_into(&self, report: &mut SyncReport) -> Result<()> {
         let account = self.store.account()?.ok_or(CoreError::NotSignedIn)?;
-        if self.opts.upload_logs {
-            for row in self.store.logs_to_upload()? {
+        let vaults = self.store.vaults()?;
+        let shared: HashSet<Uuid> = vaults
+            .iter()
+            .filter(|v| v.kind == LocalVaultKind::Team && v.session_logging)
+            .map(|v| v.id)
+            .collect();
+        for row in self.store.logs_to_upload()? {
+            if self.opts.upload_logs || shared.contains(&row.vault_id) {
                 match self.upload_log(&row).await {
                     Ok(seq) => {
                         self.store.mark_log_uploaded(row.id, seq)?;
@@ -593,13 +602,69 @@ impl SyncEngine {
                 Err(e) if e.is_api_code(termoso_proto::error::codes::NOT_FOUND) => {
                     self.store.forget_log(row.id)?
                 }
+                // A teammate's recording we may only read: the row comes
+                // back and the deletion is dropped.
+                Err(e) if e.is_api_code(termoso_proto::error::codes::FORBIDDEN) => {
+                    self.store.restore_log(row.id)?;
+                    report.errors.push((row.id, api_code(&e)));
+                }
                 Err(e) => return Err(e),
             }
         }
-        let mut since = account.logs_cursor;
+        let mut changed = self
+            .pull_logs(
+                account.logs_cursor,
+                report,
+                |since| self.api.logs(since, self.opts.batch as u32),
+                |since| self.store.set_account_cursors(None, Some(since)),
+            )
+            .await?;
+        // Teammates' recordings: one cursor per team vault we hold a key for.
+        for v in vaults {
+            if v.kind != LocalVaultKind::Team || !v.unlocked {
+                continue;
+            }
+            let pulled = self
+                .pull_logs(
+                    v.logs_cursor,
+                    report,
+                    |since| self.api.vault_logs(v.id, since, self.opts.batch as u32),
+                    |since| self.store.set_vault_logs_cursor(v.id, since),
+                )
+                .await;
+            match pulled {
+                Ok(c) => changed |= c,
+                // Lost the vault between the list and the pull; the vault
+                // list refresh will remove it.
+                Err(e)
+                    if e.is_api_code(termoso_proto::error::codes::NOT_FOUND)
+                        || e.is_api_code(termoso_proto::error::codes::FORBIDDEN) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        if changed {
+            self.emit(SyncEvent::LogsChanged);
+        }
+        Ok(())
+    }
+
+    /// Page through one log listing from `since`, mirroring rows and
+    /// advancing the cursor with `save`. Returns whether anything arrived.
+    async fn pull_logs<F, Fut, S>(
+        &self,
+        mut since: i64,
+        report: &mut SyncReport,
+        fetch: F,
+        save: S,
+    ) -> Result<bool>
+    where
+        F: Fn(i64) -> Fut,
+        Fut: std::future::Future<Output = Result<LogListResponse>>,
+        S: Fn(i64) -> Result<()>,
+    {
         let mut changed = false;
         loop {
-            let resp = self.api.logs(since, self.opts.batch as u32).await?;
+            let resp = fetch(since).await?;
             if !resp.logs.is_empty() {
                 self.store.apply_remote_logs(&resp.logs)?;
                 report.logs.1 += resp.logs.len();
@@ -614,16 +679,13 @@ impl SyncEngine {
                 .max(resp.since);
             if next > since {
                 since = next;
-                self.store.set_account_cursors(None, Some(since))?;
+                save(since)?;
             }
             if !resp.has_more || resp.logs.is_empty() {
                 break;
             }
         }
-        if changed {
-            self.emit(SyncEvent::LogsChanged);
-        }
-        Ok(())
+        Ok(changed)
     }
 
     async fn upload_log(&self, row: &crate::store::LogRow) -> Result<i64> {
@@ -653,6 +715,8 @@ impl SyncEngine {
                 &UpdateLogRequest {
                     meta: None,
                     size_bytes: Some(size),
+                    pinned: None,
+                    note: None,
                 },
             )
             .await?;
@@ -670,6 +734,52 @@ impl SyncEngine {
         let target = self.api.log_download_url(id).await?;
         let body = self.api.download_log_object(&target).await?;
         self.store.cache_log_body(id, &body, dir)
+    }
+
+    /// Pin / annotate a recording for the team (write role in the vault).
+    /// The note is shared plaintext metadata: it is meant for a short
+    /// "what happened here", never for terminal output.
+    pub async fn annotate_log(
+        &self,
+        id: Uuid,
+        pinned: Option<bool>,
+        note: Option<String>,
+    ) -> Result<()> {
+        let log = self
+            .api
+            .update_log(
+                id,
+                &UpdateLogRequest {
+                    meta: None,
+                    size_bytes: None,
+                    pinned,
+                    note,
+                },
+            )
+            .await?;
+        self.store
+            .annotate_log(id, log.pinned, &log.note, log.note_by)?;
+        self.emit(SyncEvent::LogsChanged);
+        Ok(())
+    }
+
+    /// Turn recording of every member's sessions in a team vault on or off
+    /// (vault manager only).
+    pub async fn set_vault_session_logging(&self, vault_id: Uuid, on: bool) -> Result<()> {
+        let v = self
+            .api
+            .update_vault(
+                vault_id,
+                &UpdateVaultRequest {
+                    name: None,
+                    session_logging: Some(on),
+                },
+            )
+            .await?;
+        self.store
+            .set_vault_session_logging(vault_id, v.session_logging)?;
+        self.emit(SyncEvent::VaultsChanged);
+        Ok(())
     }
 
     // ───────────────────────────── realtime ─────────────────────────────
@@ -842,6 +952,13 @@ impl SyncEngine {
                             let cur = self.store.account()?.map_or(0, |a| a.logs_cursor);
                             if seq > cur {
                                 pending.logs = true;
+                            }
+                        }
+                        ServerMessage::VaultLogsChanged { vault_id, seq } => {
+                            match self.store.vault(vault_id).ok() {
+                                Some(v) if v.logs_cursor >= seq => {}
+                                Some(_) => pending.logs = true,
+                                None => pending.vault_list = true,
                             }
                         }
                         ServerMessage::VaultsUpdated | ServerMessage::TeamsUpdated => {
