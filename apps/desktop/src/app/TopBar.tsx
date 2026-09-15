@@ -188,6 +188,7 @@ export function TopBar() {
               boxShadow: newWorkspaceDrop.over
                 ? "inset 0 0 0 1.5px var(--mui-palette-primary-main)"
                 : "none",
+              bgcolor: newWorkspaceDrop.over ? "action.selected" : undefined,
             }}
             aria-label="New tab"
           >
@@ -410,7 +411,7 @@ function TerminalTopTab({
     onDragOver: (e: DragEvent<HTMLElement>) => {
       if (isHostDrag(e)) {
         e.preventDefault();
-        e.dataTransfer.dropEffect = "copy";
+        e.dataTransfer.dropEffect = "move";
         setOver("into");
         return;
       }
@@ -538,7 +539,7 @@ function useHostDropNewWorkspace() {
     onDragOver: (e) => {
       if (!isHostDrag(e)) return;
       e.preventDefault();
-      e.dataTransfer.dropEffect = "copy";
+      e.dataTransfer.dropEffect = "move";
       setOver(true);
     },
     onDragLeave: () => setOver(false),
@@ -608,7 +609,8 @@ function TopTab({
               : dropSide === "into"
                 ? "inset 0 0 0 1.5px var(--mui-palette-primary-main)"
                 : "none",
-        bgcolor: active ? "surface.highest" : "transparent",
+        bgcolor:
+          dropSide === "into" ? "action.selected" : active ? "surface.highest" : "transparent",
         color: active ? "text.primary" : "text.secondary",
         "&:hover": { bgcolor: active ? "surface.highest" : "action.hover", color: "text.primary" },
         "&:hover .tab-close": { opacity: 1 },
