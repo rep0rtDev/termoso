@@ -15,7 +15,7 @@
 //!   └─ logs     upload finished recordings, push deletions → pull metadata
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -61,7 +61,9 @@ pub struct SyncOptions {
     /// Directory for downloaded session-log bodies. `None` disables body
     /// downloads (metadata still syncs).
     pub log_dir: Option<PathBuf>,
-    /// Upload finished recordings from synced vaults.
+    /// Upload finished recordings from synced vaults. Recordings made under
+    /// a team vault's `session_logging` policy are uploaded regardless: the
+    /// manager turned that on so the vault sees them.
     pub upload_logs: bool,
     /// Full sync interval while the realtime loop is running.
     pub interval: Duration,
@@ -571,8 +573,14 @@ impl SyncEngine {
 
     async fn sync_logs_into(&self, report: &mut SyncReport) -> Result<()> {
         let account = self.store.account()?.ok_or(CoreError::NotSignedIn)?;
-        if self.opts.upload_logs {
-            for row in self.store.logs_to_upload()? {
+        let vaults = self.store.vaults()?;
+        let shared: HashSet<Uuid> = vaults
+            .iter()
+            .filter(|v| v.kind == LocalVaultKind::Team && v.session_logging)
+            .map(|v| v.id)
+            .collect();
+        for row in self.store.logs_to_upload()? {
+            if self.opts.upload_logs || shared.contains(&row.vault_id) {
                 match self.upload_log(&row).await {
                     Ok(seq) => {
                         self.store.mark_log_uploaded(row.id, seq)?;
@@ -612,7 +620,7 @@ impl SyncEngine {
             )
             .await?;
         // Teammates' recordings: one cursor per team vault we hold a key for.
-        for v in self.store.vaults()? {
+        for v in vaults {
             if v.kind != LocalVaultKind::Team || !v.unlocked {
                 continue;
             }
