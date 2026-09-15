@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -63,10 +64,11 @@ fun KnownHostsScreen(shell: ShellViewModel, onBack: () -> Unit) {
 
     SubScreen("Known hosts", onBack) { padding ->
         if (items.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding)) {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 EmptyState(
                     title = "No known hosts",
                     hint = "Server keys you accept when connecting are remembered here.",
+                    icon = Icons.Filled.Fingerprint,
                 )
             }
             return@SubScreen
@@ -130,8 +132,12 @@ fun HistoryScreen(shell: ShellViewModel, onBack: () -> Unit, onOpenHost: (String
         },
     ) { padding ->
         if (items.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding)) {
-                EmptyState(title = "No connections yet", hint = "Sessions you open show up here with their duration.")
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                EmptyState(
+                    title = "No connections yet",
+                    hint = "Sessions you open show up here with their duration.",
+                    icon = Icons.Filled.History,
+                )
             }
             return@SubScreen
         }
