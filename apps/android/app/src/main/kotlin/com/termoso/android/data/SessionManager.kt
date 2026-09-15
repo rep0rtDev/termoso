@@ -5,6 +5,7 @@ import com.termoso.core.LiveEndReason
 import com.termoso.core.LiveListener
 import com.termoso.core.LiveParticipantCard
 import com.termoso.core.LiveShare
+import com.termoso.core.LocalShell
 import com.termoso.core.PromptAnswer
 import com.termoso.core.PromptRequest
 import com.termoso.core.QuickTarget
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /** A prompt the user has to answer before the connection can continue. */
 data class PendingPrompt(val id: ULong, val request: PromptRequest)
@@ -168,6 +170,8 @@ class TerminalSession(
     private val bridge: SessionBridge,
     /** True for a terminal joined from somebody's share: read-only until granted. */
     val isView: Boolean = false,
+    /** Set for a shell running on this device. */
+    val local: LocalShell? = null,
     private val live: LiveBridge = LiveBridge(),
 ) {
     val state: StateFlow<SessionState> get() = bridge.state
@@ -184,7 +188,7 @@ class TerminalSession(
     val liveEvents: SharedFlow<LiveEvent> get() = live.events
 
     /** Can be reconnected by us (not a view, has a target). */
-    val reconnectable: Boolean get() = !isView && (hostId != null || quick != null)
+    val reconnectable: Boolean get() = !isView && (hostId != null || quick != null || local != null)
 
     internal val liveListener: LiveBridge get() = live
 
@@ -200,7 +204,12 @@ class TerminalSession(
  * The foreground service mirrors the session count so Android keeps the process
  * (and the sockets) alive while the user is in another app.
  */
-class SessionManager(private val repo: VaultRepository, private val keepAlive: KeepAlive) {
+class SessionManager(
+    private val repo: VaultRepository,
+    private val keepAlive: KeepAlive,
+    /** `HOME` and working directory of local shells; created on first use. */
+    private val localHome: File,
+) {
     private val _sessions = MutableStateFlow<List<TerminalSession>>(emptyList())
     val sessions: StateFlow<List<TerminalSession>> = _sessions.asStateFlow()
 
@@ -219,9 +228,15 @@ class SessionManager(private val repo: VaultRepository, private val keepAlive: K
         val host: HostItem = repo.read { host(hostId) }
         val bridge = SessionBridge()
         val rust = repo.read { connectHost(hostId, options(transport), bridge) }
-        val user = host.username.takeIf { it.isNotBlank() }?.let { "$it@" } ?: ""
-        val mosh = transport == Transport.MOSH || (transport == Transport.AUTO && host.useMosh)
-        val target = "$user${host.address}:${host.port}" + if (mosh) " · Mosh" else ""
+        val telnet = transport == Transport.TELNET || host.protocol == "telnet"
+        val user = host.username.takeIf { it.isNotBlank() && !telnet }?.let { "$it@" } ?: ""
+        val mosh = !telnet && (transport == Transport.MOSH || (transport == Transport.AUTO && host.useMosh))
+        val suffix = when {
+            telnet -> " · Telnet"
+            mosh -> " · Mosh"
+            else -> ""
+        }
+        val target = "$user${host.address}:${if (telnet) host.telnetPort ?: host.port else host.port}$suffix"
         return register(
             TerminalSession(
                 rust.id(),
@@ -229,7 +244,7 @@ class SessionManager(private val repo: VaultRepository, private val keepAlive: K
                 target,
                 hostId,
                 null,
-                transport,
+                if (telnet) Transport.TELNET else transport,
                 host.osName,
                 rust,
                 bridge,
@@ -239,9 +254,36 @@ class SessionManager(private val repo: VaultRepository, private val keepAlive: K
 
     suspend fun connectQuick(target: QuickTarget): TerminalSession {
         val bridge = SessionBridge()
-        val rust = repo.read { connectQuick(target, options(Transport.SSH), bridge) }
-        val text = "${target.username}@${target.host}:${target.port}"
-        return register(TerminalSession(rust.id(), target.host, text, null, target, Transport.SSH, null, rust, bridge))
+        val telnet = target.protocol == "telnet"
+        val transport = if (telnet) Transport.TELNET else Transport.SSH
+        val rust = repo.read { connectQuick(target, options(transport), bridge) }
+        val text = if (telnet) "${target.host}:${target.port} · Telnet" else "${target.username}@${target.host}:${target.port}"
+        return register(TerminalSession(rust.id(), target.host, text, null, target, transport, null, rust, bridge))
+    }
+
+    /** A shell on this device (`/system/bin/sh` in [localHome] unless [shell] says otherwise). */
+    suspend fun connectLocal(shell: LocalShell = LocalShell(argv = emptyList(), home = "", env = emptyList())): TerminalSession {
+        val bridge = SessionBridge()
+        val home = shell.home.ifBlank {
+            withContext(Dispatchers.IO) { localHome.mkdirs() }
+            localHome.absolutePath
+        }
+        val rust = repo.read { connectLocal(shell.copy(home = home), options(Transport.SSH), bridge) }
+        val program = shell.argv.firstOrNull()?.substringAfterLast('/') ?: "sh"
+        return register(
+            TerminalSession(
+                id = rust.id(),
+                label = "Local",
+                target = "$program on this device",
+                hostId = null,
+                quick = null,
+                transport = Transport.SSH,
+                savedOsName = "android",
+                rust = rust,
+                bridge = bridge,
+                local = shell,
+            ),
+        )
     }
 
     /**
@@ -302,6 +344,7 @@ class SessionManager(private val repo: VaultRepository, private val keepAlive: K
         val fresh = when {
             old.hostId != null -> connectHost(old.hostId, old.transport)
             old.quick != null -> connectQuick(old.quick)
+            old.local != null -> connectLocal(old.local)
             else -> return null
         }
         _sessions.update { list -> list.filterNot { it.id == fresh.id }.map { if (it.id == id) fresh else it } }
