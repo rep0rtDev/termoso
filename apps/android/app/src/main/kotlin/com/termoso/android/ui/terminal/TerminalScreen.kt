@@ -393,15 +393,18 @@ private fun ActiveSession(
     }
 
     // Shared files arrive while another screen may be up; offer them once this terminal is showing.
+    // Consuming re-keys this effect, so the rest runs on the screen scope.
     LaunchedEffect(pendingShare) {
         val uris = pendingShare ?: return@LaunchedEffect
         onShareConsumed()
-        session.state.first { it !is SessionState.Connecting }
-        FileDrop.blocker(session)?.let { why ->
-            snackbar.showSnackbar(why)
-            return@LaunchedEffect
+        scope.launch {
+            session.state.first { it !is SessionState.Connecting }
+            FileDrop.blocker(session)?.let { why ->
+                snackbar.showSnackbar(why)
+                return@launch
+            }
+            confirmDrop = uris
         }
-        confirmDrop = uris
     }
 
     val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
