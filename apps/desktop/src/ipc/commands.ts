@@ -12,6 +12,9 @@ import type {
   CloudImportReport,
   CloudPreview,
   CloudSelection,
+  CloudSyncConfig,
+  CloudSyncGroup,
+  CloudSyncSecret,
   CommandHistory,
   Conflict,
   ConnectionHistory,
@@ -45,6 +48,7 @@ import type {
   ImportReport,
   ImportSelection,
   ImportSource,
+  LocalDevice,
   Inherited,
   KeyCard,
   KeyPreview,
@@ -455,6 +459,30 @@ export const cloudDiscover = (vaultId: Uuid, config: CloudConfig) =>
 export const cloudImport = (vaultId: Uuid, previewId: Uuid, selection: CloudSelection) =>
   invoke<CloudImportReport>("cloud_import", { vaultId, previewId, selection });
 export const cloudDiscard = (previewId: Uuid) => invoke<null>("cloud_discard", { previewId });
+
+// ───────────────────────────── cloud sync groups ─────────────────────────────
+
+export const cloudSyncList = (vaultId: Uuid | null) =>
+  invoke<CloudSyncGroup[]>("cloud_sync_list", { vaultId });
+export const cloudSyncGet = (groupId: Uuid) =>
+  invoke<CloudSyncGroup | null>("cloud_sync_get", { groupId });
+/** `secret === null` keeps the one already stored for the group. */
+export const cloudSyncSave = (
+  groupId: Uuid,
+  config: CloudSyncConfig,
+  secret: CloudSyncSecret | null,
+) => invoke<CloudSyncGroup>("cloud_sync_save", { groupId, config, secret });
+export const cloudSyncForget = (groupId: Uuid) => invoke<null>("cloud_sync_forget", { groupId });
+export const cloudSyncRun = (groupId: Uuid) =>
+  invoke<CloudSyncGroup>("cloud_sync_run", { groupId });
+export const onCloudSync = (cb: (g: CloudSyncGroup) => void): Promise<UnlistenFn> =>
+  listen<CloudSyncGroup>("cloud-sync", (ev) => cb(ev.payload));
+
+// ───────────────────────────── local discovery ─────────────────────────────
+
+/** Browse the LAN over mDNS; returns candidates, creates nothing. */
+export const mdnsBrowse = (timeoutMs?: number) =>
+  invoke<LocalDevice[]>("mdns_browse", { timeoutMs: timeoutMs ?? null });
 
 // ───────────────────────────── export / backup ─────────────────────────────
 

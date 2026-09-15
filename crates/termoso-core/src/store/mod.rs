@@ -299,6 +299,15 @@ impl Store {
         self.set_meta(key, &ct)
     }
 
+    /// Keys of every setting starting with `prefix`, sorted.
+    pub fn meta_keys(&self, prefix: &str) -> Result<Vec<String>> {
+        let conn = self.conn();
+        let mut st =
+            conn.prepare("SELECT key FROM meta WHERE substr(key, 1, ?2) = ?1 ORDER BY key")?;
+        let rows = st.query_map(params![prefix, prefix.len() as i64], |r| r.get(0))?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
     /// Delete a setting.
     pub fn delete_meta(&self, key: &str) -> Result<()> {
         self.conn()

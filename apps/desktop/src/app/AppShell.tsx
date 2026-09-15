@@ -21,7 +21,7 @@ import { RestoreBanner } from "@/terminal/RestoreBanner";
 import { startSftpEvents } from "@/sftp/store";
 import { startUpdateEvents } from "@/update/store";
 import { UpdateBanner } from "@/update/UpdateBanner";
-import { useAccount, useSettings, useSyncNotices } from "@/ipc/hooks";
+import { useAccount, useCloudSyncEvents, useSettings, useSyncNotices } from "@/ipc/hooks";
 import { WelcomeScreen } from "@/welcome/WelcomeScreen";
 import { RecoveryPrompt } from "@/account/SignIn";
 import { goToSettings, isHomeTab, isNewTab, isSerialTab, isSftpTab, useNav } from "./navigation";
@@ -45,6 +45,7 @@ export function AppShell() {
   const settings = useSettings();
 
   useSyncNotices();
+  useCloudSyncEvents();
   useEffect(() => {
     startTerminalEvents(queryClient);
     startMultiplayerEvents();
