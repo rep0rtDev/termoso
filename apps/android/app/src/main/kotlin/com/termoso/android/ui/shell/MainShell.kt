@@ -229,7 +229,7 @@ fun MainShell(
                 launchSingleTop = true
                 restoreState = true
             }
-        } else {
+        } else if (nav.currentDestination?.route != Routes.TERMINAL) {
             openTerminal()
         }
     }
