@@ -318,7 +318,13 @@ function ParticipantRow({
       sx={{ alignItems: "center", px: 0.5, py: 0.5, borderRadius: 1.5, bgcolor: "action.hover" }}
     >
       <Box sx={{ position: "relative", display: "flex" }}>
-        <PersonAvatar label={initialsOf(p.displayName, p.email)} seed={p.email} size={28} />
+        <PersonAvatar
+          label={initialsOf(p.displayName, p.email)}
+          seed={p.email}
+          size={28}
+          userId={p.userId}
+          avatar={p.avatar}
+        />
         <Box
           sx={{
             position: "absolute",

@@ -269,6 +269,8 @@ struct Presence {
     user_id: Uuid,
     email: String,
     display_name: Option<String>,
+    #[serde(default)]
+    avatar: Option<String>,
     is_host: bool,
     can_write: bool,
     /// Socket that owns this entry; a second device of the same user replaces it.
@@ -282,6 +284,7 @@ impl Presence {
             user_id: self.user_id,
             email: self.email.clone(),
             display_name: self.display_name.clone(),
+            avatar: self.avatar.clone(),
             is_host: self.is_host,
             can_write: self.can_write,
         }
@@ -519,6 +522,7 @@ async fn serve(state: AppState, session_id: Uuid, mut socket: WebSocket) -> anyh
                 user_id: conn.user_id,
                 email: user.email,
                 display_name: user.display_name,
+                avatar: user.avatar_tag,
                 is_host,
                 can_write: is_host,
                 conn: conn.id,

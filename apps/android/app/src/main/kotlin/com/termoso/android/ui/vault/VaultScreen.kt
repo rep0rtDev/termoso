@@ -85,8 +85,9 @@ fun VaultScreen(
     val accountStatus by account.status.collectAsStateWithLifecycle()
 
     var counts by remember { mutableStateOf(VaultCounts()) }
-    LaunchedEffect(selectedId, revision) {
-        val id = selectedId ?: return@LaunchedEffect
+    LaunchedEffect(selected, revision) {
+        val vault = selected ?: return@LaunchedEffect
+        val id = vault.id
         counts = runCatching {
             shell.repo.read {
                 VaultCounts(
@@ -96,7 +97,7 @@ fun VaultScreen(
                     forwards = pfRules(id).size,
                     snippets = snippets(id).size,
                     known = knownHosts().size,
-                    history = history(200u).size,
+                    history = history(200u).count { it.belongsTo(vault) },
                 )
             }
         }.getOrDefault(VaultCounts())

@@ -145,6 +145,7 @@ type Row = (
     Option<Uuid>,
     Option<String>,
     Option<String>,
+    Option<String>,
     Option<Uuid>,
     String,
     Option<Uuid>,
@@ -183,7 +184,7 @@ pub async fn list(
         return Err(Error::bad_request("action filter too long"));
     }
     let rows: Vec<Row> = sqlx::query_as(
-        "SELECT e.id, e.team_id, e.actor_id, a.email, a.display_name, e.device_id, e.action,
+        "SELECT e.id, e.team_id, e.actor_id, a.email, a.display_name, a.avatar_tag, e.device_id, e.action,
                 e.vault_id, e.target_user, t.email, e.details, e.created_at
          FROM team_audit_events e
          LEFT JOIN users a ON a.id = e.actor_id
@@ -217,6 +218,7 @@ pub async fn list(
                 actor_id,
                 actor_email,
                 actor_name,
+                actor_avatar,
                 device_id,
                 action,
                 vault_id,
@@ -230,6 +232,7 @@ pub async fn list(
                 actor_id,
                 actor_email,
                 actor_name,
+                actor_avatar,
                 device_id: device_id.filter(|_| role.is_admin() || actor_id == Some(me)),
                 action,
                 vault_id,

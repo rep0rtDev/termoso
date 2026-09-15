@@ -1,6 +1,5 @@
 package com.termoso.android.ui.account
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,8 +44,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -56,11 +53,13 @@ import com.termoso.android.data.ReauthCancelled
 import com.termoso.android.data.userMessage
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.IconTile
+import com.termoso.android.ui.components.UserAvatar
 import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.SubScreen
+import com.termoso.android.ui.components.SwitchRow
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.theme.Danger
 import com.termoso.android.ui.theme.Emerald
@@ -87,6 +86,7 @@ fun AccountScreen(
     onSecurityKeys: () -> Unit,
 ) {
     val status by account.status.collectAsStateWithLifecycle()
+    val hidden by shell.presence.hidden.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var devices by remember { mutableStateOf<List<DeviceCard>?>(null) }
     var devicesError by remember { mutableStateOf<String?>(null) }
@@ -101,7 +101,10 @@ fun AccountScreen(
     }
 
     LaunchedEffect(status.account?.userId) {
-        if (status.account != null) loadDevices()
+        if (status.account != null) {
+            loadDevices()
+            shell.presence.loadHidden()
+        }
     }
 
     val card = status.account
@@ -122,7 +125,15 @@ fun AccountScreen(
             Spacer(Modifier.height(8.dp))
             SectionCard {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(card.displayName ?: card.email)
+                    UserAvatar(
+                        repo = shell.repo,
+                        userId = card.userId,
+                        tag = card.avatar,
+                        name = card.displayName ?: card.email,
+                        size = 48,
+                        shape = RoundedCornerShape(12.dp),
+                        textStyle = MaterialTheme.typography.titleLarge,
+                    )
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -218,6 +229,18 @@ fun AccountScreen(
                     subtitle = "FIDO2 keys over USB or NFC as the second factor for signing in",
                     leading = { IconTile(Icons.Filled.Security) },
                     modifier = Modifier.clickable(onClick = onSecurityKeys),
+                )
+                RowDivider()
+                SwitchRow(
+                    title = "Show me as connected",
+                    subtitle = "Teammates see which team-vault host you are on — host and protocol only",
+                    checked = hidden == false,
+                    enabled = hidden != null,
+                    onCheckedChange = { on ->
+                        scope.launch {
+                            runCatching { shell.presence.setHidden(!on) }.onFailure { shell.notify(it.userMessage()) }
+                        }
+                    },
                 )
             }
 
@@ -336,24 +359,6 @@ fun AccountScreen(
                 }) { Text("Sign out", color = Danger) }
             },
             dismissButton = { TextButton(onClick = { revoking = null }) { Text("Cancel") } },
-        )
-    }
-}
-
-@Composable
-private fun Avatar(name: String) {
-    Box(
-        Modifier
-            .size(48.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Emerald),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?",
-            color = Color.White,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
         )
     }
 }

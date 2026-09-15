@@ -21,6 +21,7 @@ mod fido2;
 mod forward;
 mod keys;
 mod live;
+mod presence;
 mod session;
 mod settings;
 mod sftp;
@@ -44,6 +45,7 @@ pub use forward::{
 };
 pub use keys::{KeyMods, SpecialKey, control_code, encode_key, encode_text};
 pub use live::{LiveEndReason, LiveListener, LiveParticipantCard, LiveShare, is_live_link};
+pub use presence::{PresenceEntryCard, PresenceSessionCard, TeamPresenceCard};
 pub use session::*;
 pub use settings::MobileSettings;
 pub use sftp::*;

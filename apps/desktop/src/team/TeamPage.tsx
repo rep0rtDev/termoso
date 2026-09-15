@@ -393,7 +393,13 @@ function TeamView({
                   <CompactRow
                     key={m.user_id}
                     avatar={
-                      <PersonAvatar size={36} seed={m.email} label={initialsOf(null, m.email)} />
+                      <PersonAvatar
+                        size={36}
+                        seed={m.email}
+                        label={initialsOf(null, m.email)}
+                        userId={m.user_id}
+                        avatar={m.avatar}
+                      />
                     }
                     primary={m.display_name ?? m.email}
                     owner={m.role === "owner"}
@@ -484,6 +490,19 @@ function TeamView({
                 ipc
                   .teamSetSecurity(team.id, { requireMfa: on })
                   .then(() => (on ? "2FA is now required" : "2FA is no longer required")),
+              )
+            }
+          />
+          <SecurityRow
+            label="Show who is connected"
+            hint="Members see which team-vault hosts teammates are connected to right now. Only the host and protocol are shared — never what happens inside a session. Anyone can hide themselves in Account."
+            enabled={team.presence_enabled}
+            canChange={admin}
+            onChange={(on) =>
+              op.mutate(() =>
+                ipc
+                  .teamSetSecurity(team.id, { presenceEnabled: on })
+                  .then(() => (on ? "Presence enabled" : "Presence disabled")),
               )
             }
           />
@@ -872,7 +891,11 @@ function MemberRow({
       }}
     >
       <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, minWidth: 0 }}>
-        <PersonAvatar label={initialsOf(m.display_name, m.email)} />
+        <PersonAvatar
+          label={initialsOf(m.display_name, m.email)}
+          userId={m.user_id}
+          avatar={m.avatar}
+        />
         <Box sx={{ minWidth: 0 }}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 0 }}>
             <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
@@ -1050,7 +1073,13 @@ function PendingKeys({
             <EntityCard
               key={`${k.vault_id}:${k.user_id}`}
               dense
-              tile={<PersonAvatar label={initialsOf(m?.display_name, m?.email ?? "?")} />}
+              tile={
+                <PersonAvatar
+                  label={initialsOf(m?.display_name, m?.email ?? "?")}
+                  userId={m?.user_id}
+                  avatar={m?.avatar}
+                />
+              }
               title={m?.display_name ?? m?.email ?? "Unknown member"}
               subtitle={`${v?.name ?? "Vault"} · ${vaultRoleLabel[k.role]}`}
               trailing={

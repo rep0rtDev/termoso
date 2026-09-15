@@ -23,6 +23,10 @@ pub enum Event {
     TeamsUpdated {
         user_ids: Vec<Uuid>,
     },
+    /// Who is connected to what changed in a team. Delivered to every member.
+    PresenceChanged {
+        team_id: Uuid,
+    },
     HistoryChanged {
         user_id: Uuid,
         seq: i64,

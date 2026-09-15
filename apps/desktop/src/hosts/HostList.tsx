@@ -1,4 +1,5 @@
 import {
+  Box,
   IconButton,
   Table,
   TableBody,
@@ -13,6 +14,7 @@ import { hostProtocols } from "@/ipc/types";
 import { PROTOCOL_NAME } from "./ConnectSplit";
 import { HostAvatar } from "./HostAvatar";
 import { GroupTile, groupSubtitle, SelectableTile, type HostCollectionProps } from "./HostGrid";
+import { PresenceStack } from "./PresenceViews";
 
 const rowSx = {
   "& td": { py: 0.5 },
@@ -116,9 +118,14 @@ export function HostList(p: HostCollectionProps) {
                 />
               </TableCell>
               <TableCell>
-                <Typography variant="body1" sx={{ fontWeight: 500 }} noWrap>
-                  {h.label}
-                </Typography>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <Typography variant="body1" sx={{ fontWeight: 500 }} noWrap>
+                    {h.label}
+                  </Typography>
+                  {p.presence?.has(h.id) && (
+                    <PresenceStack viewers={p.presence.get(h.id) ?? []} size={18} />
+                  )}
+                </Box>
                 {p.showPath && h.groupPath.length > 0 && (
                   <Typography
                     variant="caption"

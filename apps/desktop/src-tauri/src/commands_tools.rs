@@ -7,9 +7,9 @@ use serde::Deserialize;
 
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use termoso_core::secrets::MasterKeySource;
-use termoso_proto::account::ServerInfo;
+use termoso_proto::account::{ServerInfo, UserProfile};
 use termoso_proto::auth::{Device, MfaCredential};
-use termoso_proto::team::{Invite, Team, TeamRole};
+use termoso_proto::team::{Invite, Team, TeamPresence, TeamRole};
 use termoso_proto::vault::{VaultMember, VaultRole};
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -18,6 +18,7 @@ use crate::account::{
     self, AccountStatus, LoginForm, LoginOutcome, ReauthOutcome, RegisterForm, Registered,
     SYNC_EVENT, SyncNotice, SyncStatus,
 };
+use crate::avatars;
 use crate::backup::{self, BackupSummary};
 use crate::cloud::{self, CloudImportReport, CloudPreview, CloudSelection};
 use crate::error::{DesktopError, Result};
@@ -29,6 +30,7 @@ use crate::keychain::{
 };
 use crate::logs::{self, BookmarkCard, LogBody, LogCard};
 use crate::multiplayer::{self, ShareInfo};
+use crate::presence;
 use crate::sessions;
 use crate::snippets::{self, PackageNode, RunResult, SnippetCard, SnippetForm};
 use crate::sshid::{self, SshIdFido2Form, SshIdView};
@@ -966,8 +968,16 @@ pub async fn team_set_security<R: Runtime>(
     team_id: Uuid,
     multiplayer_enabled: Option<bool>,
     require_mfa: Option<bool>,
+    presence_enabled: Option<bool>,
 ) -> Result<Team> {
-    team::set_security(&app, team_id, multiplayer_enabled, require_mfa).await
+    team::set_security(
+        &app,
+        team_id,
+        multiplayer_enabled,
+        require_mfa,
+        presence_enabled,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -1052,6 +1062,36 @@ pub async fn team_audit<R: Runtime>(
     filter: Option<team::AuditFilter>,
 ) -> Result<team::AuditPage> {
     team::audit(&app, team_id, filter.unwrap_or_default()).await
+}
+
+#[tauri::command]
+pub async fn team_presence<R: Runtime>(app: AppHandle<R>, team_id: Uuid) -> Result<TeamPresence> {
+    presence::team(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn account_profile<R: Runtime>(app: AppHandle<R>) -> Result<UserProfile> {
+    presence::profile(&app).await
+}
+
+/// Raw WebP bytes (empty when there is no picture) so the webview can build
+/// a blob URL without a base64 round trip.
+#[tauri::command]
+pub async fn user_avatar<R: Runtime>(
+    app: AppHandle<R>,
+    user_id: Uuid,
+    tag: String,
+) -> Result<tauri::ipc::Response> {
+    let bytes = avatars::user_avatar(&app, user_id, tag).await?;
+    Ok(tauri::ipc::Response::new(bytes.unwrap_or_default()))
+}
+
+#[tauri::command]
+pub async fn account_set_presence_hidden<R: Runtime>(
+    app: AppHandle<R>,
+    hidden: bool,
+) -> Result<UserProfile> {
+    presence::set_hidden(&app, hidden).await
 }
 
 #[tauri::command]

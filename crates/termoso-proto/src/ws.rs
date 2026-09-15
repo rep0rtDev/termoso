@@ -7,6 +7,7 @@
 use uuid::Uuid;
 
 use crate::schema;
+use crate::team::PresenceSession;
 
 schema! {
     /// Frames sent by the client.
@@ -19,6 +20,13 @@ schema! {
         },
         /// Keep-alive.
         Ping,
+        /// Full list of this device's live connections to team-vault hosts.
+        /// Idempotent: send on every change and at least every minute; an
+        /// empty list (or a closed socket) clears the device's presence.
+        Presence {
+            /// Live connections.
+            sessions: Vec<PresenceSession>,
+        },
     }
 }
 
@@ -57,6 +65,12 @@ schema! {
         VaultsUpdated,
         /// Team list / membership changed – reload `GET /teams`.
         TeamsUpdated,
+        /// Who is connected to what in this team changed – reload
+        /// `GET /teams/{id}/presence`.
+        PresenceChanged {
+            /// Team.
+            team_id: Uuid,
+        },
         /// Account keys or settings blob changed.
         AccountUpdated,
         /// This device's session was revoked; the socket closes after this.

@@ -125,24 +125,25 @@ impl Cache {
         Ok(())
     }
 
+    /// Set one hash field and refresh the hash TTL; `true` when the field
+    /// did not exist before.
     pub async fn hset_json<T: Serialize>(
         &self,
         key: &str,
         field: &str,
         value: &T,
         ttl: Duration,
-    ) -> ApiResult<()> {
+    ) -> ApiResult<bool> {
         let mut c = self.conn.clone();
         let body = serde_json::to_vec(value)?;
         let k = self.key(key);
-        let _: () = redis::pipe()
+        let (added,): (i64,) = redis::pipe()
             .hset(&k, field, body)
-            .ignore()
             .expire(&k, ttl.as_secs().max(1) as i64)
             .ignore()
             .query_async(&mut c)
             .await?;
-        Ok(())
+        Ok(added > 0)
     }
 
     pub async fn hget_json<T: DeserializeOwned>(
@@ -158,10 +159,11 @@ impl Cache {
         })
     }
 
-    pub async fn hdel(&self, key: &str, field: &str) -> ApiResult<()> {
+    /// Remove one hash field; `true` when it existed.
+    pub async fn hdel(&self, key: &str, field: &str) -> ApiResult<bool> {
         let mut c = self.conn.clone();
-        let _: () = c.hdel(self.key(key), field).await?;
-        Ok(())
+        let n: i64 = c.hdel(self.key(key), field).await?;
+        Ok(n > 0)
     }
 
     pub async fn hgetall_json<T: DeserializeOwned>(&self, key: &str) -> ApiResult<Vec<T>> {
