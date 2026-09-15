@@ -61,6 +61,14 @@ schema! {
             /// Latest seq.
             seq: i64,
         },
+        /// A teammate's log in a team vault changed; pull
+        /// `GET /vaults/{id}/logs` with your vault cursor.
+        VaultLogsChanged {
+            /// Vault.
+            vault_id: Uuid,
+            /// Latest vault seq.
+            seq: i64,
+        },
         /// Vault list / membership / keys changed – reload `GET /vaults`.
         VaultsUpdated,
         /// Team list / membership changed – reload `GET /teams`.

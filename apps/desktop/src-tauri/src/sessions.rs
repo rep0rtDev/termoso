@@ -21,7 +21,7 @@ use termoso_core::ssh::{
     Algorithms, AuthMethod, ConnectOptions, ConnectPhase, ConnectProgress, IpVersion, SshClient,
     SshTarget,
 };
-use termoso_core::store::{ConnectionHistory, LogMeta};
+use termoso_core::store::{ConnectionHistory, LocalVaultKind, LogMeta};
 use termoso_core::telnet::{TelnetOptions, TelnetTerminal};
 use termoso_core::terminal::{SharedTerminal, TermEvent, TermEvents, TermSize};
 use tokio::task::JoinHandle;
@@ -558,13 +558,21 @@ fn start_recording(
     size: TermSize,
 ) -> Option<Arc<Recorder>> {
     let settings = state.settings().ok()?;
-    if !settings.record_sessions {
-        return None;
-    }
     let vault_id = match vault_id {
         Some(v) => v,
         None => state.store.local_vault().ok()?.id,
     };
+    // The user's own switch records everything; a team vault whose manager
+    // turned session logging on records its hosts' sessions for the team
+    // regardless.
+    let team_policy = state
+        .store
+        .vault(vault_id)
+        .ok()
+        .is_some_and(|v| v.kind == LocalVaultKind::Team && v.session_logging);
+    if !settings.record_sessions && !team_policy {
+        return None;
+    }
     let meta = LogMeta {
         host_id: info.host_id,
         label: info.title.clone(),

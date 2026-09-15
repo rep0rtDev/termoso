@@ -138,8 +138,8 @@ fn validate_sealed(sealed: &str) -> ApiResult<()> {
 
 #[utoipa::path(get, path = "/api/v1/vaults", tag = "vaults", responses((status = 200, body = VaultList)))]
 pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<VaultList>> {
-    let rows: Vec<(Uuid, String, Option<Uuid>, String, DateTime<Utc>, String, Option<String>, i32)> = sqlx::query_as(
-        "SELECT v.id, v.kind, v.team_id, v.name, v.created_at, vm.role, vm.sealed_key, v.key_version
+    let rows: Vec<(Uuid, String, Option<Uuid>, String, DateTime<Utc>, String, Option<String>, i32, bool)> = sqlx::query_as(
+        "SELECT v.id, v.kind, v.team_id, v.name, v.created_at, vm.role, vm.sealed_key, v.key_version, v.session_logging
          FROM vaults v JOIN vault_members vm ON vm.vault_id = v.id
          WHERE vm.user_id = $1 AND v.deleted_at IS NULL
          ORDER BY v.kind, v.created_at",
@@ -151,7 +151,17 @@ pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<V
         vaults: rows
             .into_iter()
             .map(
-                |(id, kind, team_id, name, created_at, role, sealed_key, key_version)| Vault {
+                |(
+                    id,
+                    kind,
+                    team_id,
+                    name,
+                    created_at,
+                    role,
+                    sealed_key,
+                    key_version,
+                    session_logging,
+                )| Vault {
                     id,
                     kind: if kind == "team" {
                         VaultKind::Team
@@ -164,6 +174,7 @@ pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<V
                     my_role: parse_vault_role(&role),
                     sealed_key,
                     key_version,
+                    session_logging,
                 },
             )
             .collect(),
@@ -177,8 +188,13 @@ pub async fn get(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Vault>> {
     let a = access(&state.db, id, auth.user_id()).await?;
-    let (name, created_at, sealed_key): (String, DateTime<Utc>, Option<String>) = sqlx::query_as(
-        "SELECT v.name, v.created_at, vm.sealed_key FROM vaults v
+    let (name, created_at, sealed_key, session_logging): (
+        String,
+        DateTime<Utc>,
+        Option<String>,
+        bool,
+    ) = sqlx::query_as(
+        "SELECT v.name, v.created_at, vm.sealed_key, v.session_logging FROM vaults v
          LEFT JOIN vault_members vm ON vm.vault_id = v.id AND vm.user_id = $2 WHERE v.id = $1",
     )
     .bind(id)
@@ -194,6 +210,7 @@ pub async fn get(
         my_role: a.role,
         sealed_key,
         key_version: a.key_version,
+        session_logging,
     }))
 }
 
@@ -275,6 +292,7 @@ pub async fn create_team_vault(
         my_role: VaultRole::Manager,
         sealed_key: Some(me.sealed_key.clone()),
         key_version: 1,
+        session_logging: false,
     }))
 }
 
@@ -287,6 +305,7 @@ pub async fn update(
     Body(req): Body<UpdateVaultRequest>,
 ) -> ApiResult<Json<Vault>> {
     let a = require_manage(&state, id, auth.user_id()).await?;
+    let mut changed = false;
     if let Some(name) = &req.name {
         let name = validate_name(name)?;
         sqlx::query("UPDATE vaults SET name = $2, updated_at = now() WHERE id = $1")
@@ -303,6 +322,31 @@ pub async fn update(
             )
             .await;
         }
+        changed = true;
+    }
+    if let Some(on) = req.session_logging {
+        let Some(team_id) = a.team_id else {
+            return Err(Error::forbidden("Session logging is a team vault setting"));
+        };
+        let r = sqlx::query(
+            "UPDATE vaults SET session_logging = $2, updated_at = now() WHERE id = $1 AND session_logging <> $2",
+        )
+        .bind(id)
+        .bind(on)
+        .execute(&state.db)
+        .await?;
+        if r.rows_affected() > 0 {
+            audit::record(
+                &state.db,
+                audit::Entry::new(team_id, &auth, "vault.session_logging")
+                    .vault(id)
+                    .details(serde_json::json!({ "enabled": on })),
+            )
+            .await;
+            changed = true;
+        }
+    }
+    if changed {
         events::publish(
             &state,
             Event::VaultsUpdated {

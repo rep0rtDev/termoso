@@ -13,29 +13,38 @@ import {
   ListItemText,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import ArticleRoundedIcon from "@mui/icons-material/ArticleRounded";
 import BookmarkAddRoundedIcon from "@mui/icons-material/BookmarkAddRounded";
 import BookmarkRoundedIcon from "@mui/icons-material/BookmarkRounded";
+import ChatBubbleOutlineRoundedIcon from "@mui/icons-material/ChatBubbleOutlineRounded";
+import CloudDownloadOutlinedIcon from "@mui/icons-material/CloudDownloadOutlined";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import FileDownloadRoundedIcon from "@mui/icons-material/FileDownloadRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import FiberManualRecordRoundedIcon from "@mui/icons-material/FiberManualRecordRounded";
+import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
+import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
+import PushPinRoundedIcon from "@mui/icons-material/PushPinRounded";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { save as saveFile } from "@tauri-apps/plugin-dialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
-import { goToSettings } from "@/app/navigation";
+import { goToSettings, goToSettingsWith } from "@/app/navigation";
+import { useActiveVault } from "@/app/vault";
 import { Page, PageBody, PageHeader } from "@/components/PageHeader";
 import { EntityCard, Field, IconTile, InfoBar, Loading, ToolIconButton } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
 import { keys, useBookmarks, useLogBody, useLogs, useSettings } from "@/ipc/hooks";
-import { errorMessage, type LogCard, type Uuid } from "@/ipc/types";
+import { errorMessage, type LogAuthor, type LogCard, type Uuid } from "@/ipc/types";
 import { formatSize } from "@/sftp/format";
+import { PersonAvatar, initialsOf } from "@/team/PersonAvatar";
 import { sizes } from "@/theme/theme";
 import { LogViewer, type ViewerHandle } from "./LogViewer";
+import { authorName, authorsOf, recordingState, visibleLogs } from "./team";
 
 function duration(secs: number | null): string {
   if (secs === null) return "—";
@@ -90,6 +99,109 @@ function BookmarkDialog({
   );
 }
 
+/** Shared comment under the viewer header: read-only text, or an editor for those who may write. */
+function NoteBar({
+  log,
+  busy,
+  onSave,
+}: {
+  log: LogCard;
+  busy: boolean;
+  onSave: (note: string) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  if (draft === null && !log.note) {
+    if (!log.canAnnotate || !log.team) return null;
+    return (
+      <Box sx={{ px: 2, py: 0.5, borderBottom: 1, borderColor: "border.light" }}>
+        <Button
+          size="small"
+          color="inherit"
+          startIcon={<ChatBubbleOutlineRoundedIcon sx={{ fontSize: 16 }} />}
+          onClick={() => setDraft("")}
+          sx={{ color: "text.secondary", fontWeight: 400 }}
+        >
+          Add a comment for the team
+        </Button>
+      </Box>
+    );
+  }
+  if (draft !== null) {
+    return (
+      <Box
+        sx={{
+          px: 2,
+          py: 1,
+          borderBottom: 1,
+          borderColor: "border.light",
+          display: "flex",
+          gap: 1,
+          alignItems: "flex-start",
+        }}
+      >
+        <TextField
+          autoFocus
+          fullWidth
+          multiline
+          minRows={1}
+          maxRows={6}
+          size="small"
+          placeholder="What happened in this session?"
+          value={draft}
+          disabled={busy}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setDraft(null);
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) onSave(draft.trim());
+          }}
+          slotProps={{ htmlInput: { maxLength: 2000 } }}
+        />
+        <Button size="small" color="inherit" disabled={busy} onClick={() => setDraft(null)}>
+          Cancel
+        </Button>
+        <Button
+          size="small"
+          variant="contained"
+          disabled={busy || draft.trim() === log.note}
+          onClick={() => onSave(draft.trim())}
+        >
+          Save
+        </Button>
+      </Box>
+    );
+  }
+  return (
+    <Box
+      sx={{
+        px: 2,
+        py: 1,
+        borderBottom: 1,
+        borderColor: "border.light",
+        display: "flex",
+        gap: 1,
+        alignItems: "flex-start",
+        bgcolor: "surface.low",
+      }}
+    >
+      <ChatBubbleOutlineRoundedIcon sx={{ fontSize: 16, mt: 0.3, color: "text.secondary" }} />
+      <Typography variant="body2" sx={{ flex: 1, whiteSpace: "pre-wrap", minWidth: 0 }}>
+        {log.note}
+      </Typography>
+      {log.canAnnotate && (
+        <Button
+          size="small"
+          color="inherit"
+          disabled={busy}
+          onClick={() => setDraft(log.note)}
+          sx={{ color: "text.secondary", fontWeight: 400 }}
+        >
+          Edit
+        </Button>
+      )}
+    </Box>
+  );
+}
+
 function Viewer({
   log,
   onClose,
@@ -132,6 +244,14 @@ function Viewer({
     return `Exported ${formatSize(n)} to ${path}`;
   };
 
+  const annotate = (patch: { pinned?: boolean; note?: string }, msg: string | null) =>
+    op.mutate(async () => {
+      await ipc.logAnnotate(log.id, patch);
+      return msg;
+    });
+
+  const who = log.author && !log.mine ? authorName(log.author) : null;
+
   return (
     <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <Box
@@ -146,6 +266,15 @@ function Viewer({
           minHeight: 48,
         }}
       >
+        {log.author && (
+          <PersonAvatar
+            size={28}
+            label={initialsOf(log.author.displayName, log.author.email)}
+            seed={log.author.email}
+            userId={log.author.userId}
+            avatar={log.author.avatar}
+          />
+        )}
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="subtitle2" noWrap>
             {log.label}
@@ -159,11 +288,31 @@ function Viewer({
             </Typography>
           </Typography>
           <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
+            {who && `${who} · `}
             {new Date(log.startedAt).toLocaleString()} · {duration(log.durationSecs)} ·{" "}
             {formatSize(log.sizeBytes)} · {log.cols}×{log.rows}
             {!log.completed && " · in progress"}
           </Typography>
         </Box>
+        {log.team && (
+          <ToolIconButton
+            title={
+              !log.canAnnotate
+                ? "Editors can pin recordings for the team"
+                : log.pinned
+                  ? "Unpin"
+                  : "Pin for the team"
+            }
+            disabled={!log.canAnnotate || op.isPending}
+            onClick={() => annotate({ pinned: !log.pinned }, log.pinned ? "Unpinned" : "Pinned")}
+          >
+            {log.pinned ? (
+              <PushPinRoundedIcon fontSize="small" color="primary" />
+            ) : (
+              <PushPinOutlinedIcon fontSize="small" />
+            )}
+          </ToolIconButton>
+        )}
         <ToolIconButton
           title="Bookmark the line at the top of the view"
           disabled={!handle}
@@ -174,17 +323,39 @@ function Viewer({
         <ToolIconButton title="Export as plain file" onClick={() => op.mutate(exportLog)}>
           <FileDownloadRoundedIcon fontSize="small" />
         </ToolIconButton>
-        <ToolIconButton title="Delete recording" onClick={() => setDialog({ kind: "delete" })}>
+        <ToolIconButton
+          title={
+            log.canDelete
+              ? "Delete recording"
+              : "Only the author or a vault manager can delete this recording"
+          }
+          disabled={!log.canDelete}
+          onClick={() => setDialog({ kind: "delete" })}
+        >
           <DeleteOutlineRoundedIcon fontSize="small" />
         </ToolIconButton>
         <ToolIconButton title="Close" onClick={onClose}>
           <CloseRoundedIcon fontSize="small" />
         </ToolIconButton>
       </Box>
+      <NoteBar
+        key={log.note}
+        log={log}
+        busy={op.isPending}
+        onSave={(note) => annotate({ note }, note ? "Comment saved" : "Comment removed")}
+      />
       <Box sx={{ flex: 1, minHeight: 0, display: "flex" }}>
         {body.isPending || settings.isPending ? (
           <Box sx={{ flex: 1 }}>
-            <Loading />
+            {log.cached ? (
+              <Loading />
+            ) : (
+              <EmptyState
+                icon={<CloudDownloadOutlinedIcon />}
+                title="Downloading recording"
+                description="Fetching the encrypted recording from the server; it is decrypted on this device only."
+              />
+            )}
           </Box>
         ) : body.error ? (
           <Box sx={{ flex: 1 }}>
@@ -281,9 +452,74 @@ function Viewer({
             })
           }
         >
-          The recording of <b>{log.label}</b> and its bookmarks will be removed from this device.
+          {log.team ? (
+            <>
+              The recording of <b>{log.label}</b>
+              {who && (
+                <>
+                  {" "}
+                  by <b>{who}</b>
+                </>
+              )}{" "}
+              will be removed for everyone in the vault, together with your bookmarks.
+            </>
+          ) : (
+            <>
+              The recording of <b>{log.label}</b> and its bookmarks will be removed from this device
+              {log.uploaded && " and your other devices"}.
+            </>
+          )}
         </ConfirmDialog>
       )}
+    </Box>
+  );
+}
+
+function AuthorFilter({
+  authors,
+  list,
+  value,
+  onChange,
+}: {
+  authors: LogAuthor[];
+  list: LogCard[];
+  value: Uuid | null;
+  onChange: (id: Uuid | null) => void;
+}) {
+  if (authors.length < 2) return null;
+  return (
+    <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap", pb: 1.5 }}>
+      <Chip
+        size="small"
+        label={`Everyone · ${list.length}`}
+        color={value === null ? "primary" : "default"}
+        variant={value === null ? "filled" : "outlined"}
+        onClick={() => onChange(null)}
+      />
+      {authors.map((a) => {
+        const n = list.filter((l) => l.author?.userId === a.userId).length;
+        return (
+          <Chip
+            key={a.userId}
+            size="small"
+            avatar={
+              <Box component="span" sx={{ display: "flex", ml: "2px !important" }}>
+                <PersonAvatar
+                  size={18}
+                  label={initialsOf(a.displayName, a.email)}
+                  seed={a.email}
+                  userId={a.userId}
+                  avatar={a.avatar}
+                />
+              </Box>
+            }
+            label={`${authorName(a)} · ${n}`}
+            color={value === a.userId ? "primary" : "default"}
+            variant={value === a.userId ? "filled" : "outlined"}
+            onClick={() => onChange(value === a.userId ? null : a.userId)}
+          />
+        );
+      })}
     </Box>
   );
 }
@@ -291,41 +527,95 @@ function Viewer({
 export function LogsPage() {
   const logs = useLogs();
   const settings = useSettings();
+  const vault = useActiveVault();
+  const snackbar = useSnackbar();
+  const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<Uuid | null>(null);
+  const [authorId, setAuthorId] = useState<Uuid | null>(null);
+
+  const vaultId = vault.data?.id ?? null;
+  const isTeam = vault.data?.kind === "team";
+  const manager = isTeam && vault.data?.role === "manager";
+  const inVault = useMemo(() => visibleLogs(logs.data ?? [], vaultId, null), [logs.data, vaultId]);
+  const authors = useMemo(() => authorsOf(inVault), [inVault]);
+  const list = useMemo(() => visibleLogs(inVault, null, authorId), [inVault, authorId]);
   const selected = useMemo(
-    () => (logs.data ?? []).find((l) => l.id === selectedId) ?? null,
-    [logs.data, selectedId],
+    () => inVault.find((l) => l.id === selectedId) ?? null,
+    [inVault, selectedId],
   );
 
-  const recordingOff = settings.data !== undefined && !settings.data.recordSessions;
-  const list = logs.data ?? [];
+  const state = recordingState(vault.data, settings.data?.recordSessions ?? true);
+  const recordingOff = settings.data !== undefined && state === "off";
+
+  const teamToggle = useMutation({
+    mutationFn: (on: boolean) => ipc.vaultSessionLoggingSet(vaultId ?? "", on),
+    onSuccess: (_r, on) => {
+      void qc.invalidateQueries({ queryKey: keys.vaults });
+      snackbar.notify(on ? "Sessions in this vault are now recorded" : "Team recording turned off");
+    },
+    onError: (e) => snackbar.error(errorMessage(e)),
+  });
+
+  const headerAction =
+    state === "team" ? (
+      <Chip
+        size="small"
+        icon={<GroupsRoundedIcon />}
+        label="Recording for the team"
+        title="A vault manager turned on session logging: every member's sessions to this vault's hosts are recorded and shared with the vault."
+        onClick={() => vault.data && goToSettingsWith({ kind: "vault", id: vault.data.id })}
+        sx={{ "& .MuiChip-icon": { color: "error.main", fontSize: 14 } }}
+      />
+    ) : manager && vaultId ? (
+      <Button
+        variant="tonal"
+        startIcon={<GroupsRoundedIcon />}
+        disabled={teamToggle.isPending}
+        onClick={() => teamToggle.mutate(true)}
+      >
+        Record for the team
+      </Button>
+    ) : recordingOff ? (
+      <Button
+        variant="tonal"
+        startIcon={<FiberManualRecordRoundedIcon color="error" />}
+        onClick={() => goToSettings("logs")}
+      >
+        Enable recording
+      </Button>
+    ) : (
+      <Chip
+        size="small"
+        icon={<FiberManualRecordRoundedIcon />}
+        label="Recording new sessions"
+        sx={{ "& .MuiChip-icon": { color: "error.main", fontSize: 12 } }}
+      />
+    );
 
   return (
     <Page>
       <PageHeader
         actions={
-          recordingOff ? (
-            <Button
-              variant="tonal"
-              startIcon={<FiberManualRecordRoundedIcon color="error" />}
-              onClick={() => goToSettings("logs")}
-            >
-              Enable recording
-            </Button>
-          ) : (
-            <Chip
-              size="small"
-              icon={<FiberManualRecordRoundedIcon />}
-              label="Recording new sessions"
-              sx={{ "& .MuiChip-icon": { color: "error.main", fontSize: 12 } }}
-            />
-          )
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            {headerAction}
+            {state !== "team" && manager && vaultId && !recordingOff && (
+              <Tooltip title="Sessions are recorded for you only until team recording is on">
+                <Chip
+                  size="small"
+                  icon={<FiberManualRecordRoundedIcon />}
+                  label="Recording for you"
+                  sx={{ "& .MuiChip-icon": { color: "error.main", fontSize: 12 } }}
+                />
+              </Tooltip>
+            )}
+          </Box>
         }
         trailing={
-          list.length > 0 && (
+          inVault.length > 0 && (
             <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
-              {list.length} {list.length === 1 ? "recording" : "recordings"} ·{" "}
-              {formatSize(list.reduce((n, l) => n + l.sizeBytes, 0))}
+              {isTeam && vault.data ? `${vault.data.name} · ` : ""}
+              {inVault.length} {inVault.length === 1 ? "recording" : "recordings"} ·{" "}
+              {formatSize(inVault.reduce((n, l) => n + l.sizeBytes, 0))}
             </Typography>
           )
         }
@@ -343,7 +633,7 @@ export function LogsPage() {
           }}
         >
           <PageBody>
-            {recordingOff && list.length > 0 && (
+            {recordingOff && inVault.length > 0 && (
               <InfoBar
                 action={
                   <Button size="small" onClick={() => goToSettings("logs")}>
@@ -354,20 +644,46 @@ export function LogsPage() {
                 Session recording is off — new terminals are not captured.
               </InfoBar>
             )}
-            {logs.isPending ? (
+            {isTeam && !selected && (
+              <AuthorFilter
+                authors={authors}
+                list={inVault}
+                value={authorId}
+                onChange={setAuthorId}
+              />
+            )}
+            {logs.isPending || vault.isPending ? (
               <Loading />
             ) : logs.error ? (
               <EmptyState title="Could not load logs" description={errorMessage(logs.error)} />
             ) : list.length === 0 ? (
               <EmptyState
-                icon={<ArticleRoundedIcon />}
-                title="No recordings"
-                description="Turn on session recording in Settings and every terminal session will be captured here, encrypted and stored locally."
+                icon={isTeam ? <GroupsRoundedIcon /> : <ArticleRoundedIcon />}
+                title={isTeam ? "No team recordings yet" : "No recordings"}
+                description={
+                  isTeam
+                    ? state === "team"
+                      ? "Sessions to this vault's hosts are recorded on each member's device and shared here, encrypted with the vault key."
+                      : manager
+                        ? "Turn on session logging for this vault and every member's sessions to its hosts will be captured here, readable by the whole vault."
+                        : "A vault manager can turn on session logging so the whole vault sees each other's recordings. Your own recordings appear here when recording is on in Settings."
+                    : "Turn on session recording in Settings and every terminal session will be captured here, encrypted and stored locally."
+                }
                 action={
-                  recordingOff && (
-                    <Button variant="contained" onClick={() => goToSettings("logs")}>
-                      Open settings
+                  isTeam && manager && state !== "team" ? (
+                    <Button
+                      variant="contained"
+                      disabled={teamToggle.isPending}
+                      onClick={() => teamToggle.mutate(true)}
+                    >
+                      Record for the team
                     </Button>
+                  ) : (
+                    recordingOff && (
+                      <Button variant="contained" onClick={() => goToSettings("logs")}>
+                        Open settings
+                      </Button>
+                    )
                   )
                 }
               />
@@ -380,9 +696,19 @@ export function LogsPage() {
                     selected={l.id === selectedId}
                     onClick={() => setSelectedId(l.id)}
                     tile={
-                      <IconTile size={sizes.tileSmall} tone={l.completed ? "neutral" : "danger"}>
-                        <ArticleRoundedIcon />
-                      </IconTile>
+                      l.author && l.team ? (
+                        <PersonAvatar
+                          size={sizes.tileSmall}
+                          label={initialsOf(l.author.displayName, l.author.email)}
+                          seed={l.author.email}
+                          userId={l.author.userId}
+                          avatar={l.author.avatar}
+                        />
+                      ) : (
+                        <IconTile size={sizes.tileSmall} tone={l.completed ? "neutral" : "danger"}>
+                          <ArticleRoundedIcon />
+                        </IconTile>
+                      )
                     }
                     title={
                       <>
@@ -407,18 +733,52 @@ export function LogsPage() {
                         )}
                       </>
                     }
-                    subtitle={`${new Date(l.startedAt).toLocaleString()} · ${duration(
+                    subtitle={`${
+                      l.author && l.team ? `${l.mine ? "You" : authorName(l.author)} · ` : ""
+                    }${new Date(l.startedAt).toLocaleString()} · ${duration(
                       l.durationSecs,
                     )} · ${formatSize(l.sizeBytes)}`}
+                    meta={
+                      l.note ? (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          noWrap
+                          sx={{ display: "flex", alignItems: "center", gap: 0.5, mt: 0.25 }}
+                        >
+                          <ChatBubbleOutlineRoundedIcon sx={{ fontSize: 13, flexShrink: 0 }} />
+                          <Box
+                            component="span"
+                            sx={{ overflow: "hidden", textOverflow: "ellipsis" }}
+                          >
+                            {l.note}
+                          </Box>
+                        </Typography>
+                      ) : undefined
+                    }
                     trailing={
-                      l.bookmarks > 0 && (
-                        <Chip
-                          size="small"
-                          variant="outlined"
-                          icon={<BookmarkRoundedIcon />}
-                          label={l.bookmarks}
-                        />
-                      )
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                        {l.pinned && (
+                          <PushPinRoundedIcon
+                            sx={{ fontSize: 16, color: "primary.main" }}
+                            titleAccess="Pinned"
+                          />
+                        )}
+                        {!l.cached && l.uploaded && (
+                          <CloudDownloadOutlinedIcon
+                            sx={{ fontSize: 16, color: "text.disabled" }}
+                            titleAccess="Not downloaded yet"
+                          />
+                        )}
+                        {l.bookmarks > 0 && (
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            icon={<BookmarkRoundedIcon />}
+                            label={l.bookmarks}
+                          />
+                        )}
+                      </Box>
                     }
                   />
                 ))}

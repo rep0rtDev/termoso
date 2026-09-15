@@ -47,6 +47,7 @@ import { useSnackbar } from "@/components/Snackbar";
 import { UserCell } from "@/components/UserCell";
 import { formatDate } from "@/components/format";
 import { rotateVaultKey, upsertMemberWithKey } from "@/vaults/keys";
+import { SessionLogsSection } from "./SessionLogsSection";
 
 export function VaultPage() {
   const { id = "" } = useParams();
@@ -109,11 +110,14 @@ function VaultDetail({ vault }: { vault: Vault }) {
           </Typography>
         </Section>
       ) : (
-        <MembersSection
-          vault={vault}
-          manager={manager}
-          teamAdmin={team.data ? team.data.my_role !== "member" : false}
-        />
+        <>
+          <MembersSection
+            vault={vault}
+            manager={manager}
+            teamAdmin={team.data ? team.data.my_role !== "member" : false}
+          />
+          <SessionLogsSection vault={vault} manager={manager} />
+        </>
       )}
     </>
   );
@@ -139,7 +143,7 @@ function VaultActions({ vault, manager }: { vault: Vault; manager: boolean }) {
     await qc.invalidateQueries({ queryKey: queryKeys.vaultMembers(vault.id) });
   };
   const rename = useMutation({
-    mutationFn: () => vaultsApi.update(vault.id, name.trim()),
+    mutationFn: () => vaultsApi.update(vault.id, { name: name.trim() }),
     onSuccess: async () => {
       setRenameOpen(false);
       await invalidate();

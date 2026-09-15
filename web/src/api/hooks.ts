@@ -17,6 +17,7 @@ export const queryKeys = {
   vaults: ["vaults"] as const,
   vault: (id: string) => ["vaults", id] as const,
   vaultMembers: (id: string) => ["vaults", id, "members"] as const,
+  vaultLogs: (id: string) => ["vaults", id, "logs"] as const,
   adminStats: ["admin", "stats"] as const,
   adminUsers: (q: string, offset: number, limit: number) =>
     ["admin", "users", q, offset, limit] as const,

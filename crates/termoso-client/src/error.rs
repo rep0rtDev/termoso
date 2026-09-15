@@ -27,6 +27,10 @@ impl ClientError {
     pub fn not_found(message: impl Into<String>) -> Self {
         Self::new("not_found", message)
     }
+
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self::new("forbidden", message)
+    }
 }
 
 impl std::fmt::Display for ClientError {
