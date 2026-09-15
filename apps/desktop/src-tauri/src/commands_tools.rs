@@ -725,19 +725,103 @@ pub async fn logs_list(state: State<'_, AppState>) -> Result<Vec<LogCard>> {
     logs::list(&state.store)
 }
 
+/// Fetch the encrypted body from the server when it is not on this device
+/// yet (a teammate's recording, or our own from another device).
+async fn ensure_body<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
+    let state = app.state::<AppState>();
+    let card = logs::list(&state.store)?
+        .into_iter()
+        .find(|l| l.id == id)
+        .ok_or_else(|| DesktopError::not_found(format!("log {id}")))?;
+    if card.cached || !card.uploaded {
+        return Ok(());
+    }
+    let engine = account::engine(app)
+        .await
+        .ok_or_else(|| DesktopError::invalid("sign in to download this recording"))?;
+    engine.download_log(id).await?;
+    Ok(())
+}
+
 #[tauri::command]
-pub async fn log_read(state: State<'_, AppState>, id: Uuid) -> Result<LogBody> {
+pub async fn log_read<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    id: Uuid,
+) -> Result<LogBody> {
+    ensure_body(&app, id).await?;
     logs::read(&state.store, id)
 }
 
 #[tauri::command]
-pub async fn log_export(state: State<'_, AppState>, id: Uuid, path: String) -> Result<usize> {
+pub async fn log_export<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    id: Uuid,
+    path: String,
+) -> Result<usize> {
+    ensure_body(&app, id).await?;
     logs::export(&state.store, id, &path)
 }
 
+/// Pin / annotate for the team. Goes through the server when it knows the
+/// recording (so teammates see it); otherwise stays local.
 #[tauri::command]
-pub async fn log_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    logs::delete(&state.store, id)
+pub async fn log_annotate<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    id: Uuid,
+    pinned: Option<bool>,
+    note: Option<String>,
+) -> Result<LogCard> {
+    let card = logs::list(&state.store)?
+        .into_iter()
+        .find(|l| l.id == id)
+        .ok_or_else(|| DesktopError::not_found(format!("log {id}")))?;
+    let note = note.map(|n| n.trim().to_string());
+    if let Some(n) = &note {
+        logs::check_note(n)?;
+    }
+    match account::engine(&app).await {
+        Some(engine) if card.uploaded => {
+            if !card.can_annotate {
+                return Err(DesktopError::forbidden(
+                    "Editor role required to pin or annotate",
+                ));
+            }
+            engine.annotate_log(id, pinned, note).await?;
+            logs::list(&state.store)?
+                .into_iter()
+                .find(|l| l.id == id)
+                .ok_or_else(|| DesktopError::not_found(format!("log {id}")))
+        }
+        _ => logs::annotate_local(&state.store, id, pinned, note.as_deref()),
+    }
+}
+
+/// Turn recording of every member's sessions in a team vault on or off
+/// (vault manager).
+#[tauri::command]
+pub async fn vault_session_logging_set<R: Runtime>(
+    app: AppHandle<R>,
+    vault_id: Uuid,
+    on: bool,
+) -> Result<()> {
+    let engine = account::engine(&app)
+        .await
+        .ok_or_else(|| DesktopError::invalid("sign in to change team vault settings"))?;
+    engine.set_vault_session_logging(vault_id, on).await?;
+    let _ = app.emit(SYNC_EVENT, SyncNotice::VaultsChanged);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn log_delete<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
+    logs::delete(&app.state::<AppState>().store, id)?;
+    if let Some(engine) = account::engine(&app).await {
+        engine.request_sync();
+    }
+    Ok(())
 }
 
 #[tauri::command]

@@ -300,7 +300,8 @@ schema! {
         /// `vault.deleted`, `vault.key_rotated`, `vault.access_granted`,
         /// `vault.access_changed`, `vault.access_revoked`, `entity.created`,
         /// `entity.updated`, `entity.deleted`, `multiplayer.started`,
-        /// `multiplayer.joined`, `multiplayer.stopped`.
+        /// `multiplayer.joined`, `multiplayer.stopped`, `vault.session_logging`,
+        /// `log.updated`, `log.deleted`.
         pub action: String,
         /// Vault involved, if any.
         #[serde(default, skip_serializing_if = "Option::is_none")]

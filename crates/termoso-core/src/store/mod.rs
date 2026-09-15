@@ -40,7 +40,20 @@ pub use logs::{LogItem, LogMeta, LogRow};
 
 const SCHEMA: &str = include_str!("schema.sql");
 const ACCOUNT_AVATAR: &str = "account_avatar";
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
+
+/// Schema 1 → 2: team session logs (per-vault logging flag and cursor,
+/// author / pin / note on log rows).
+const MIGRATE_V2: &str = "
+BEGIN;
+ALTER TABLE vaults ADD COLUMN session_logging INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE vaults ADD COLUMN logs_cursor INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_logs ADD COLUMN author_id TEXT;
+ALTER TABLE session_logs ADD COLUMN author TEXT;
+ALTER TABLE session_logs ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_logs ADD COLUMN note TEXT NOT NULL DEFAULT '';
+ALTER TABLE session_logs ADD COLUMN note_by TEXT;
+COMMIT;";
 
 /// A vault as seen by this device.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,6 +74,10 @@ pub struct LocalVault {
     pub key_version: i32,
     /// Pull cursor.
     pub cursor: i64,
+    /// Team vault records every member's sessions (manager setting).
+    pub session_logging: bool,
+    /// `GET /vaults/{id}/logs` cursor.
+    pub logs_cursor: i64,
 }
 
 /// Vault kind including the device-only local vault.
@@ -211,6 +228,10 @@ impl Store {
         match store.meta("schema_version")? {
             None => store.set_meta("schema_version", &SCHEMA_VERSION.to_string())?,
             Some(v) if v.parse::<i64>().ok() == Some(SCHEMA_VERSION) => {}
+            Some(v) if v.parse::<i64>().ok() == Some(1) => {
+                store.conn().execute_batch(MIGRATE_V2)?;
+                store.set_meta("schema_version", &SCHEMA_VERSION.to_string())?;
+            }
             Some(v) => {
                 return Err(CoreError::Invalid(format!(
                     "database schema {v} is newer than this client"
@@ -355,7 +376,8 @@ impl Store {
     pub fn vaults(&self) -> Result<Vec<LocalVault>> {
         let conn = self.conn();
         let mut st = conn.prepare(
-            "SELECT id, kind, name, team_id, role, wrapped_key IS NOT NULL, key_version, cursor
+            "SELECT id, kind, name, team_id, role, wrapped_key IS NOT NULL, key_version, cursor,
+                    session_logging, logs_cursor
              FROM vaults ORDER BY kind = 'local' DESC, kind, name",
         )?;
         let rows = st.query_map([], |r| {
@@ -368,11 +390,24 @@ impl Store {
                 r.get::<_, bool>(5)?,
                 r.get::<_, i32>(6)?,
                 r.get::<_, i64>(7)?,
+                r.get::<_, bool>(8)?,
+                r.get::<_, i64>(9)?,
             ))
         })?;
         let mut out = Vec::new();
         for row in rows {
-            let (id, kind, name, team_id, role, unlocked, key_version, cursor) = row?;
+            let (
+                id,
+                kind,
+                name,
+                team_id,
+                role,
+                unlocked,
+                key_version,
+                cursor,
+                session_logging,
+                logs_cursor,
+            ) = row?;
             out.push(LocalVault {
                 id: parse_uuid(&id)?,
                 kind: LocalVaultKind::parse(&kind)?,
@@ -382,6 +417,8 @@ impl Store {
                 unlocked,
                 key_version,
                 cursor,
+                session_logging,
+                logs_cursor,
             });
         }
         Ok(out)
@@ -463,6 +500,24 @@ impl Store {
         self.conn().execute(
             "UPDATE vaults SET cursor = ?2 WHERE id = ?1",
             params![id.to_string(), cursor],
+        )?;
+        Ok(())
+    }
+
+    /// Update the team-logs pull cursor for a vault.
+    pub fn set_vault_logs_cursor(&self, id: Uuid, cursor: i64) -> Result<()> {
+        self.conn().execute(
+            "UPDATE vaults SET logs_cursor = ?2 WHERE id = ?1",
+            params![id.to_string(), cursor],
+        )?;
+        Ok(())
+    }
+
+    /// Mirror the server's per-vault session logging flag.
+    pub fn set_vault_session_logging(&self, id: Uuid, on: bool) -> Result<()> {
+        self.conn().execute(
+            "UPDATE vaults SET session_logging = ?2 WHERE id = ?1",
+            params![id.to_string(), on],
         )?;
         Ok(())
     }
@@ -641,7 +696,10 @@ impl Store {
             "DELETE FROM entities WHERE vault_id IN (SELECT id FROM vaults WHERE kind <> 'local')",
             [],
         )?;
-        conn.execute("UPDATE vaults SET cursor = 0 WHERE kind <> 'local'", [])?;
+        conn.execute(
+            "UPDATE vaults SET cursor = 0, logs_cursor = 0 WHERE kind <> 'local'",
+            [],
+        )?;
         Ok(())
     }
 
@@ -786,6 +844,66 @@ mod tests {
             store.vault_key(vid),
             Err(CoreError::VaultLocked(_))
         ));
+    }
+
+    #[test]
+    fn migrates_schema_v1_databases() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("db.sqlite");
+        let master = SymmetricKey::generate();
+        let local_id;
+        let log_id;
+        {
+            let store = Store::open(&path, master.clone()).unwrap();
+            local_id = store.local_vault().unwrap().id;
+            log_id = store
+                .begin_log(
+                    local_id,
+                    &crate::store::LogMeta {
+                        host_id: None,
+                        label: "old".into(),
+                        target: "local".into(),
+                        protocol: "local".into(),
+                        started_at: Utc::now(),
+                        ended_at: None,
+                        cols: 80,
+                        rows: 24,
+                    },
+                )
+                .unwrap();
+            // Strip everything schema 2 added, as a client from before it
+            // would have left the file.
+            store
+                .conn()
+                .execute_batch(
+                    "ALTER TABLE vaults DROP COLUMN session_logging;
+                     ALTER TABLE vaults DROP COLUMN logs_cursor;
+                     ALTER TABLE session_logs DROP COLUMN author_id;
+                     ALTER TABLE session_logs DROP COLUMN author;
+                     ALTER TABLE session_logs DROP COLUMN pinned;
+                     ALTER TABLE session_logs DROP COLUMN note;
+                     ALTER TABLE session_logs DROP COLUMN note_by;",
+                )
+                .unwrap();
+            store.set_meta("schema_version", "1").unwrap();
+        }
+        let store = Store::open(&path, master.clone()).unwrap();
+        assert_eq!(
+            store.meta("schema_version").unwrap().as_deref(),
+            Some(&*SCHEMA_VERSION.to_string())
+        );
+        let local = store.local_vault().unwrap();
+        assert_eq!(local.id, local_id);
+        assert!(!local.session_logging);
+        assert_eq!(local.logs_cursor, 0);
+        let logs = store.logs().unwrap();
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].id, log_id);
+        assert!(logs[0].mine && !logs[0].pinned && logs[0].note.is_empty());
+        assert!(logs[0].author.is_none());
+        // Reopening an already migrated file is a no-op.
+        drop(store);
+        Store::open(&path, master).unwrap();
     }
 
     #[test]

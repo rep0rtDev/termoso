@@ -424,7 +424,13 @@ pub async fn rename_vault<R: Runtime>(
     let name = clean_name(name)?;
     api(app)
         .await?
-        .update_vault(vault_id, &UpdateVaultRequest { name: Some(name) })
+        .update_vault(
+            vault_id,
+            &UpdateVaultRequest {
+                name: Some(name),
+                session_logging: None,
+            },
+        )
         .await?;
     refresh(app).await
 }

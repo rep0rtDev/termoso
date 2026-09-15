@@ -20,7 +20,9 @@ CREATE TABLE IF NOT EXISTS vaults (
     wrapped_key TEXT,                    -- vault key wrapped with the master key; NULL = pending
     key_version INTEGER NOT NULL DEFAULT 1,
     cursor      INTEGER NOT NULL DEFAULT 0,
-    created_at  TEXT NOT NULL
+    created_at  TEXT NOT NULL,
+    session_logging INTEGER NOT NULL DEFAULT 0, -- team vault: record every member's sessions
+    logs_cursor INTEGER NOT NULL DEFAULT 0      -- GET /vaults/{id}/logs cursor (team vaults)
 );
 
 CREATE TABLE IF NOT EXISTS entities (
@@ -79,5 +81,10 @@ CREATE TABLE IF NOT EXISTS session_logs (
     completed    INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT NOT NULL,
     seq          INTEGER NOT NULL DEFAULT 0,
-    deleted      INTEGER NOT NULL DEFAULT 0
+    deleted      INTEGER NOT NULL DEFAULT 0,
+    author_id    TEXT,                          -- NULL = recorded on this device by this account
+    author       TEXT,                          -- JSON LogAuthor (plaintext profile, no secrets)
+    pinned       INTEGER NOT NULL DEFAULT 0,
+    note         TEXT NOT NULL DEFAULT '',
+    note_by      TEXT
 );

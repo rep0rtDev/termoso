@@ -6,12 +6,34 @@ use uuid::Uuid;
 use crate::schema;
 
 schema! {
+    /// Who recorded a log, as shown to teammates.
+    pub struct LogAuthor {
+        /// User id.
+        pub user_id: Uuid,
+        /// Email.
+        pub email: String,
+        /// Display name.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub display_name: Option<String>,
+        /// Avatar tag (see `GET /users/{id}/avatar`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub avatar_tag: Option<String>,
+    }
+}
+
+schema! {
     /// Session log metadata.
     pub struct SessionLog {
         /// Client-generated UUID.
         pub id: Uuid,
         /// Vault whose key encrypts `meta` and the object (personal or team).
         pub vault_id: Uuid,
+        /// Who recorded it.
+        #[serde(default)]
+        pub user_id: Uuid,
+        /// Author profile (absent for tombstones).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub author: Option<LogAuthor>,
         /// Encrypted metadata (host label, address, start/end time, size…).
         /// AAD = `termoso/v1/log/<id>`.
         pub meta: String,
@@ -23,13 +45,26 @@ schema! {
         pub completed: bool,
         /// Created.
         pub created_at: DateTime<Utc>,
-        /// Server sequence for incremental listing.
+        /// Server sequence for incremental listing: the author's counter in
+        /// `GET /logs`, the vault's counter in `GET /vaults/{id}/logs`.
         pub seq: i64,
         /// Tombstone.
         #[serde(default)]
         pub deleted: bool,
+        /// Pinned by a teammate (kept at the top, exempt from retention).
+        #[serde(default)]
+        pub pinned: bool,
+        /// Plaintext team note (never contains terminal output).
+        #[serde(default)]
+        pub note: String,
+        /// Who wrote/edited the note last.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub note_by: Option<Uuid>,
     }
 }
+
+/// Longest team note accepted by the server.
+pub const MAX_NOTE_CHARS: usize = 2000;
 
 schema! {
     /// `POST /logs` – reserve a log and get an upload URL.
@@ -69,6 +104,12 @@ schema! {
         /// Final size (marks the upload as completed).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub size_bytes: Option<i64>,
+        /// Pin / unpin (team vaults: editor or above; personal: owner).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub pinned: Option<bool>,
+        /// Replace the note (empty string clears it).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub note: Option<String>,
     }
 }
 
@@ -83,7 +124,7 @@ schema! {
 }
 
 schema! {
-    /// `GET /logs?since=&limit=`
+    /// `GET /logs?since=&limit=` and `GET /vaults/{id}/logs?since=&limit=`
     pub struct LogListResponse {
         /// Logs.
         pub logs: Vec<SessionLog>,

@@ -679,6 +679,24 @@ async fn session_logs_upload_download_and_delete() {
     // Re-running the upload is idempotent.
     assert_eq!(ea.sync_once().await.unwrap().logs, (0, 0));
 
+    // With uploads off, a personal recording stays on the device (a team
+    // vault's `session_logging` policy is the only thing that overrides it).
+    let kept = a.store.begin_log(vault, &log_meta("local")).unwrap();
+    a.store
+        .finish_log(kept, &log_meta("local"), b"$ ls\r\n", dir_a.path())
+        .unwrap();
+    let ea_off = engine(
+        &a,
+        SyncOptions {
+            log_dir: Some(dir_a.path().to_path_buf()),
+            upload_logs: false,
+            ..SyncOptions::default()
+        },
+    );
+    assert_eq!(ea_off.sync_once().await.unwrap().logs.0, 0);
+    assert_eq!(a.api.logs(0, 10).await.unwrap().logs.len(), 1);
+    a.store.delete_log(kept).unwrap();
+
     // Delete on B tombstones locally, then propagates.
     b.store.delete_log(id).unwrap();
     assert!(b.store.logs().unwrap().is_empty());

@@ -667,7 +667,10 @@ impl AccountRuntime {
             .await?
             .update_vault(
                 parse_id(&vault_id)?,
-                &UpdateVaultRequest { name: Some(name) },
+                &UpdateVaultRequest {
+                    name: Some(name),
+                    session_logging: None,
+                },
             )
             .await?;
         self.refresh_vaults().await

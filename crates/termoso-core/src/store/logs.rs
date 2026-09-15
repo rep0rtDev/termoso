@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use termoso_crypto::aead::{self, Aad};
-use termoso_proto::logs::SessionLog;
+use termoso_proto::logs::{LogAuthor, SessionLog};
 use uuid::Uuid;
 
 use super::{Store, parse_time, parse_uuid};
@@ -55,6 +55,16 @@ pub struct LogItem {
     pub completed: bool,
     /// Created.
     pub created_at: DateTime<Utc>,
+    /// Recorded by this account (or on this device, for the local vault).
+    pub mine: bool,
+    /// Who recorded it, when known from the server.
+    pub author: Option<LogAuthor>,
+    /// Pinned by a teammate.
+    pub pinned: bool,
+    /// Team note.
+    pub note: String,
+    /// Who wrote the note last.
+    pub note_by: Option<Uuid>,
 }
 
 /// A row as the sync engine sees it.
@@ -90,73 +100,67 @@ fn body_aad(id: Uuid) -> Aad {
     Aad::label(&["log", &id.to_string(), "body"])
 }
 
-const SELECT: &str = "SELECT id, vault_id, meta, key_version, size_bytes, local_path, uploaded, completed, created_at, seq, deleted FROM session_logs";
+const SELECT: &str = "SELECT id, vault_id, meta, key_version, size_bytes, local_path, uploaded, completed, created_at, seq, deleted,
+                             author_id, author, pinned, note, note_by FROM session_logs";
 
-type RawLog = (
-    String,
-    String,
-    String,
-    i32,
-    i64,
-    Option<String>,
-    bool,
-    bool,
-    String,
-    i64,
-    bool,
-);
-
-fn row_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<RawLog> {
-    Ok((
-        r.get(0)?,
-        r.get(1)?,
-        r.get(2)?,
-        r.get(3)?,
-        r.get(4)?,
-        r.get(5)?,
-        r.get(6)?,
-        r.get(7)?,
-        r.get(8)?,
-        r.get(9)?,
-        r.get(10)?,
-    ))
+/// Everything in a row; `LogRow` is the sync-relevant subset.
+struct RawLog {
+    row: LogRow,
+    created_at: String,
+    author_id: Option<String>,
+    author: Option<String>,
+    pinned: bool,
+    note: String,
+    note_by: Option<String>,
 }
 
-fn into_row(raw: RawLog) -> Result<LogRow> {
-    let (
-        id,
-        vault_id,
-        meta,
-        key_version,
-        size_bytes,
-        local_path,
-        uploaded,
-        completed,
-        _created,
-        seq,
-        deleted,
-    ) = raw;
-    Ok(LogRow {
-        id: parse_uuid(&id)?,
-        vault_id: parse_uuid(&vault_id)?,
-        meta,
-        key_version,
-        size_bytes,
+fn row_from(r: &rusqlite::Row<'_>) -> rusqlite::Result<RawLog> {
+    let id: String = r.get(0)?;
+    let vault_id: String = r.get(1)?;
+    let local_path: Option<String> = r.get(5)?;
+    let row = LogRow {
+        id: parse_uuid(&id).map_err(|e| invalid(0, e))?,
+        vault_id: parse_uuid(&vault_id).map_err(|e| invalid(1, e))?,
+        meta: r.get(2)?,
+        key_version: r.get(3)?,
+        size_bytes: r.get(4)?,
         local_path: local_path.map(PathBuf::from),
-        uploaded,
-        completed,
-        seq,
-        deleted,
+        uploaded: r.get(6)?,
+        completed: r.get(7)?,
+        seq: r.get(9)?,
+        deleted: r.get(10)?,
+    };
+    Ok(RawLog {
+        row,
+        created_at: r.get(8)?,
+        author_id: r.get(11)?,
+        author: r.get(12)?,
+        pinned: r.get(13)?,
+        note: r.get(14)?,
+        note_by: r.get(15)?,
     })
 }
 
+fn invalid(col: usize, e: CoreError) -> rusqlite::Error {
+    rusqlite::Error::FromSqlConversionFailure(col, rusqlite::types::Type::Text, Box::new(e))
+}
+
 impl Store {
-    fn log_rows(&self, where_clause: &str) -> Result<Vec<LogRow>> {
+    fn raw_rows(&self, where_clause: &str) -> Result<Vec<RawLog>> {
         let conn = self.conn();
-        let mut st = conn.prepare(&format!("{SELECT} {where_clause} ORDER BY created_at DESC"))?;
+        let mut st = conn.prepare(&format!(
+            "{SELECT} {where_clause} ORDER BY pinned DESC, created_at DESC"
+        ))?;
         let rows = st.query_map([], row_from)?;
-        rows.map(|r| r.map_err(CoreError::from).and_then(into_row))
-            .collect()
+        rows.map(|r| r.map_err(CoreError::from)).collect()
+    }
+
+    fn log_rows(&self, where_clause: &str) -> Result<Vec<LogRow>> {
+        Ok(self
+            .raw_rows(where_clause)?
+            .into_iter()
+            .map(|r| r.row)
+            .collect())
     }
 
     fn log_row(&self, id: Uuid) -> Result<LogRow> {
@@ -167,8 +171,7 @@ impl Store {
                 row_from,
             )
             .optional()?
-            .map(into_row)
-            .transpose()?
+            .map(|r| r.row)
             .ok_or_else(|| CoreError::NotFound(format!("log {id}")))
     }
 
@@ -227,20 +230,41 @@ impl Store {
         Ok(aead::decrypt(&key, &body_aad(id), &ct)?)
     }
 
-    /// Recordings visible on this device (deleted ones excluded).
+    /// Recordings visible on this device (deleted ones excluded), pinned
+    /// first, then newest first. Teammates' recordings are included once
+    /// their metadata has been pulled; rows whose vault key we do not hold
+    /// are skipped.
     pub fn logs(&self) -> Result<Vec<LogItem>> {
-        let rows = self.log_rows("WHERE deleted = 0")?;
+        let account = self.account()?;
+        let me = account.as_ref().map(|a| a.user_id);
+        let self_author = account.map(|a| LogAuthor {
+            user_id: a.user_id,
+            email: a.email,
+            display_name: a.display_name,
+            avatar_tag: a.avatar,
+        });
+        let rows = self.raw_rows("WHERE deleted = 0")?;
         let mut out = Vec::with_capacity(rows.len());
-        for r in rows {
+        for raw in rows {
+            let r = raw.row;
             let Ok(key) = self.vault_key(r.vault_id) else {
                 continue;
             };
-            let pt = aead::decrypt_str(&key, &meta_aad(r.id), &r.meta)?;
-            let created_at: String = self.conn().query_row(
-                "SELECT created_at FROM session_logs WHERE id = ?1",
-                params![r.id.to_string()],
-                |x| x.get(0),
-            )?;
+            let pt = match aead::decrypt_str(&key, &meta_aad(r.id), &r.meta) {
+                Ok(pt) => pt,
+                // A teammate's row encrypted with a key version we have not
+                // caught up with yet; it will decrypt after the next pull.
+                Err(_) if raw.author_id.is_some() => continue,
+                Err(e) => return Err(e.into()),
+            };
+            let author_id = raw.author_id.as_deref().map(parse_uuid).transpose()?;
+            let mine = author_id.is_none_or(|a| Some(a) == me);
+            // Own recordings the server has not echoed back yet are ours.
+            let author = match raw.author.as_deref() {
+                Some(json) => Some(serde_json::from_str::<LogAuthor>(json)?),
+                None if mine => self_author.clone(),
+                None => None,
+            };
             out.push(LogItem {
                 id: r.id,
                 vault_id: r.vault_id,
@@ -249,10 +273,39 @@ impl Store {
                 cached: r.local_path.is_some(),
                 uploaded: r.uploaded,
                 completed: r.completed,
-                created_at: parse_time(&created_at)?,
+                created_at: parse_time(&raw.created_at)?,
+                mine,
+                author,
+                pinned: raw.pinned,
+                note: raw.note,
+                note_by: raw.note_by.as_deref().map(parse_uuid).transpose()?,
             });
         }
         Ok(out)
+    }
+
+    /// Apply a pin/note change the server confirmed (or, for local-only
+    /// recordings, the user's own annotation).
+    pub fn annotate_log(
+        &self,
+        id: Uuid,
+        pinned: bool,
+        note: &str,
+        note_by: Option<Uuid>,
+    ) -> Result<()> {
+        let n = self.conn().execute(
+            "UPDATE session_logs SET pinned = ?2, note = ?3, note_by = ?4 WHERE id = ?1 AND deleted = 0",
+            params![
+                id.to_string(),
+                pinned,
+                note,
+                note_by.map(|u| u.to_string())
+            ],
+        )?;
+        if n == 0 {
+            return Err(CoreError::NotFound(format!("log {id}")));
+        }
+        Ok(())
     }
 
     /// Delete a recording. Removes the body file; the row becomes a tombstone
@@ -293,6 +346,12 @@ impl Store {
         self.log_rows("WHERE deleted = 1 AND seq > 0")
     }
 
+    /// Completed recordings that are not on this device yet (e.g. teammates'
+    /// uploads), for prefetching.
+    pub fn logs_without_body(&self) -> Result<Vec<LogRow>> {
+        self.log_rows("WHERE deleted = 0 AND completed = 1 AND uploaded = 1 AND local_path IS NULL")
+    }
+
     /// Encrypted body bytes for upload.
     pub fn log_body_ciphertext(&self, id: Uuid) -> Result<Vec<u8>> {
         let row = self.log_row(id)?;
@@ -307,6 +366,16 @@ impl Store {
         self.conn().execute(
             "UPDATE session_logs SET uploaded = 1, seq = ?2 WHERE id = ?1",
             params![id.to_string(), seq],
+        )?;
+        Ok(())
+    }
+
+    /// Undo a local tombstone the server refused (the body stays gone until
+    /// downloaded again).
+    pub fn restore_log(&self, id: Uuid) -> Result<()> {
+        self.conn().execute(
+            "UPDATE session_logs SET deleted = 0 WHERE id = ?1",
+            params![id.to_string()],
         )?;
         Ok(())
     }
@@ -349,13 +418,17 @@ impl Store {
                 )?;
                 continue;
             }
+            let author = l.author.as_ref().map(serde_json::to_string).transpose()?;
             conn.execute(
-                "INSERT INTO session_logs (id, vault_id, meta, key_version, size_bytes, local_path, uploaded, completed, created_at, seq, deleted)
-                 VALUES (?1, ?2, ?3, ?4, ?5, NULL, 1, ?6, ?7, ?8, 0)
+                "INSERT INTO session_logs (id, vault_id, meta, key_version, size_bytes, local_path, uploaded, completed, created_at, seq, deleted,
+                                           author_id, author, pinned, note, note_by)
+                 VALUES (?1, ?2, ?3, ?4, ?5, NULL, 1, ?6, ?7, ?8, 0, ?9, ?10, ?11, ?12, ?13)
                  ON CONFLICT(id) DO UPDATE SET
                    meta = CASE WHEN session_logs.deleted = 1 THEN session_logs.meta ELSE excluded.meta END,
                    key_version = excluded.key_version, size_bytes = excluded.size_bytes,
-                   uploaded = 1, completed = excluded.completed, seq = excluded.seq",
+                   uploaded = 1, completed = excluded.completed, seq = excluded.seq,
+                   author_id = excluded.author_id, author = excluded.author,
+                   pinned = excluded.pinned, note = excluded.note, note_by = excluded.note_by",
                 params![
                     l.id.to_string(),
                     l.vault_id.to_string(),
@@ -365,6 +438,11 @@ impl Store {
                     l.completed,
                     l.created_at.to_rfc3339(),
                     l.seq,
+                    (!l.user_id.is_nil()).then(|| l.user_id.to_string()),
+                    author,
+                    l.pinned,
+                    l.note,
+                    l.note_by.map(|u| u.to_string()),
                 ],
             )?;
         }
@@ -491,6 +569,8 @@ mod tests {
             .apply_remote_logs(&[SessionLog {
                 id,
                 vault_id: vid,
+                user_id: Uuid::nil(),
+                author: None,
                 meta: tomb[0].meta.clone(),
                 key_version: 1,
                 size_bytes: 4,
@@ -498,6 +578,9 @@ mod tests {
                 created_at: Utc::now(),
                 seq: 7,
                 deleted: false,
+                pinned: false,
+                note: String::new(),
+                note_by: None,
             }])
             .unwrap();
         assert!(store.logs().unwrap().is_empty());
@@ -506,6 +589,159 @@ mod tests {
         store.forget_log(id).unwrap();
         assert!(store.logs_to_delete_remote().unwrap().is_empty());
         assert!(store.log_row(id).is_err());
+    }
+
+    #[test]
+    fn teammates_recordings_keep_author_pin_and_note() {
+        let (store, vid) = synced_store();
+        let dir = tempfile::tempdir().unwrap();
+        let key = store.vault_key(vid).unwrap();
+        let me = Uuid::new_v4();
+        let mate = Uuid::new_v4();
+        let kp = termoso_crypto::keys::KeyPair::generate();
+        store
+            .save_account(
+                &crate::store::StoredAccount {
+                    server_url: "https://t.example".into(),
+                    user_id: me,
+                    email: "me@example.com".into(),
+                    display_name: None,
+                    avatar: None,
+                    is_admin: false,
+                    device_id: Uuid::new_v4(),
+                    public_key: kp.public_b64(),
+                    key_version: 1,
+                    history_cursor: 0,
+                    logs_cursor: 0,
+                    signed_in_at: Utc::now(),
+                },
+                "tok",
+                &kp,
+            )
+            .unwrap();
+        store
+            .upsert_vault(
+                vid,
+                LocalVaultKind::Team,
+                "Ops",
+                Some(Uuid::new_v4()),
+                VaultRole::Editor,
+                Some(&key),
+                1,
+            )
+            .unwrap();
+
+        let theirs = Uuid::new_v4();
+        let m = meta();
+        let meta_ct =
+            aead::encrypt_str(&key, &meta_aad(theirs), &serde_json::to_string(&m).unwrap())
+                .unwrap();
+        let remote = SessionLog {
+            id: theirs,
+            vault_id: vid,
+            user_id: mate,
+            author: Some(LogAuthor {
+                user_id: mate,
+                email: "mate@example.com".into(),
+                display_name: Some("Mate".into()),
+                avatar_tag: Some("abc".into()),
+            }),
+            meta: meta_ct,
+            key_version: 1,
+            size_bytes: 12,
+            completed: true,
+            created_at: Utc::now(),
+            seq: 3,
+            deleted: false,
+            pinned: true,
+            note: "deploy went sideways".into(),
+            note_by: Some(me),
+        };
+        store
+            .apply_remote_logs(std::slice::from_ref(&remote))
+            .unwrap();
+
+        // My own recording, with nothing from the server yet.
+        let mine = store.begin_log(vid, &meta()).unwrap();
+        store
+            .finish_log(mine, &meta(), b"$ ok", dir.path())
+            .unwrap();
+
+        let items = store.logs().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].id, theirs, "pinned first");
+        assert!(!items[0].mine && !items[0].cached && items[0].uploaded);
+        assert_eq!(items[0].meta, m, "metadata decrypted with the vault key");
+        let a = items[0].author.as_ref().unwrap();
+        assert_eq!((a.user_id, a.email.as_str()), (mate, "mate@example.com"));
+        assert_eq!(a.avatar_tag.as_deref(), Some("abc"));
+        assert!(items[0].pinned);
+        assert_eq!(items[0].note, "deploy went sideways");
+        assert_eq!(items[0].note_by, Some(me));
+        assert!(items[1].mine && !items[1].pinned);
+        assert_eq!(
+            items[1]
+                .author
+                .as_ref()
+                .map(|a| (a.user_id, a.email.as_str())),
+            Some((me, "me@example.com")),
+            "own recording is attributed to me before the server echoes it"
+        );
+        assert_eq!(
+            store.logs_without_body().unwrap().len(),
+            1,
+            "teammate's body is fetched lazily"
+        );
+        assert!(store.read_log(theirs).is_err());
+
+        // A row encrypted with a key version we do not hold yet is skipped
+        // rather than breaking the whole listing.
+        let other_key = SymmetricKey::generate();
+        let stale = Uuid::new_v4();
+        store
+            .apply_remote_logs(&[SessionLog {
+                id: stale,
+                user_id: mate,
+                seq: 4,
+                pinned: false,
+                note: String::new(),
+                note_by: None,
+                meta: aead::encrypt_str(
+                    &other_key,
+                    &meta_aad(stale),
+                    &serde_json::to_string(&m).unwrap(),
+                )
+                .unwrap(),
+                key_version: 2,
+                ..remote.clone()
+            }])
+            .unwrap();
+        assert_eq!(store.logs().unwrap().len(), 2);
+
+        // Annotation echo from the server, then a refused delete restores.
+        store.annotate_log(theirs, false, "", None).unwrap();
+        let t = store
+            .logs()
+            .unwrap()
+            .into_iter()
+            .find(|l| l.id == theirs)
+            .unwrap();
+        assert!(!t.pinned && t.note.is_empty() && t.note_by.is_none());
+        store.delete_log(theirs).unwrap();
+        assert_eq!(store.logs_to_delete_remote().unwrap().len(), 1);
+        store.restore_log(theirs).unwrap();
+        assert!(store.logs_to_delete_remote().unwrap().is_empty());
+        assert!(store.logs().unwrap().iter().any(|l| l.id == theirs));
+
+        // The remote tombstone wins over everything.
+        store
+            .apply_remote_logs(&[SessionLog {
+                deleted: true,
+                author: None,
+                ..remote
+            }])
+            .unwrap();
+        assert!(store.logs().unwrap().iter().all(|l| l.id != theirs));
     }
 
     #[test]

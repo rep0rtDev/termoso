@@ -10,6 +10,7 @@ import type {
   DeviceInfo,
   Invite,
   InvitePreview,
+  LogListResponse,
   LoginStartResponse,
   MfaCredential,
   MfaStatus,
@@ -23,6 +24,7 @@ import type {
   SecurityEvent,
   ServerInfo,
   ServerSettings,
+  SessionLog,
   SettingsBlob,
   SsoProvider,
   SsoResult,
@@ -199,11 +201,22 @@ export const teamsApi = {
   acceptInvite: (token: string) => http.post<Team>(`/invites/${encodeURIComponent(token)}/accept`),
 };
 
+export const logsApi = {
+  /** Pin / comment (editors), or fix up one's own recording (author). */
+  update: (id: string, patch: { pinned?: boolean; note?: string }) =>
+    http.patch<SessionLog>(`/logs/${id}`, patch),
+  delete: (id: string) => http.delete<undefined>(`/logs/${id}`),
+};
+
 export const vaultsApi = {
   list: () => http.get<{ vaults: Vault[] }>("/vaults"),
   get: (id: string) => http.get<Vault>(`/vaults/${id}`),
-  update: (id: string, name: string) => http.patch<Vault>(`/vaults/${id}`, { name }),
+  update: (id: string, patch: { name?: string; session_logging?: boolean }) =>
+    http.patch<Vault>(`/vaults/${id}`, patch),
   delete: (id: string) => http.delete<undefined>(`/vaults/${id}`),
+  /** Recordings every member of a team vault shares, oldest first from `since`. */
+  logs: (id: string, since = 0, limit = 100) =>
+    http.get<LogListResponse>(`/vaults/${id}/logs?since=${since}&limit=${limit}`),
   members: (id: string) => http.get<{ members: VaultMember[] }>(`/vaults/${id}/members`),
   upsertMember: (id: string, userId: string, role: VaultRole, sealed_key: string) =>
     http.put<VaultMember>(`/vaults/${id}/members/${userId}`, { user_id: userId, role, sealed_key }),
