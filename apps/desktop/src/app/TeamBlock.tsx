@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import {
+  Alert,
   Box,
   ButtonBase,
   CircularProgress,
@@ -126,6 +127,7 @@ function AccountAvatar() {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [confirmOut, setConfirmOut] = useState(false);
   const account = data?.account ?? null;
+  const localCredentials = data?.localCredentials ?? 0;
 
   const op = useMutation({
     mutationFn: async (job: () => Promise<string | null>) => job(),
@@ -263,6 +265,13 @@ function AccountAvatar() {
       >
         Synced vaults and their keys are removed from this device; your local vault stays. Data on
         the server is untouched and comes back when you sign in again.
+        {localCredentials > 0 && (
+          <Alert severity="warning" sx={{ mt: 1.5 }}>
+            Sync of keys and identities is off: {localCredentials} of them exist only on this device
+            and will be deleted with the account. Export them or turn the sync on first if you want
+            to keep them.
+          </Alert>
+        )}
       </ConfirmDialog>
     </>
   );
