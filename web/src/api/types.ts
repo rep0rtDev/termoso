@@ -243,6 +243,7 @@ export interface Team {
   created_at: string;
   my_role: TeamRole;
   member_count: number;
+  require_mfa?: boolean;
 }
 
 export interface TeamMember {
@@ -253,6 +254,8 @@ export interface TeamMember {
   role: TeamRole;
   public_key: string;
   joined_at: string;
+  /** Second factor enrolled; only disclosed to team admins and the member themself. */
+  mfa_enabled?: boolean | null;
 }
 
 export interface Invite {
