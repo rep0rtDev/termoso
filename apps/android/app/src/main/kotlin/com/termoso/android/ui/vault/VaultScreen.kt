@@ -12,16 +12,21 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -37,11 +42,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.data.AccountManager
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.shell.ShellViewModel
+import com.termoso.android.ui.theme.Emerald
+import com.termoso.core.SyncState
 import com.termoso.core.VaultInfo
 import com.termoso.core.VaultKind
 
@@ -55,11 +63,14 @@ private data class VaultCounts(
     val history: Int = 0,
 )
 
-/** Vaults tab: vault picker + sections (Hosts, Keychain, Known hosts, History). */
+/** Vaults tab: vault picker, cloud/sync indicator, sections (Hosts, Keychain, Port forwarding, Snippets, Known hosts, History). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultScreen(
     shell: ShellViewModel,
+    account: AccountManager,
+    onOpenAccount: () -> Unit,
+    onSignIn: () -> Unit,
     onOpenHosts: () -> Unit,
     onOpenKeychain: () -> Unit,
     onOpenForwarding: () -> Unit,
@@ -71,6 +82,7 @@ fun VaultScreen(
     val selectedId by shell.selectedVaultId.collectAsStateWithLifecycle()
     val revision by shell.repo.revision.collectAsStateWithLifecycle()
     val selected = vaults.firstOrNull { it.id == selectedId }
+    val accountStatus by account.status.collectAsStateWithLifecycle()
 
     var counts by remember { mutableStateOf(VaultCounts()) }
     LaunchedEffect(selectedId, revision) {
@@ -92,7 +104,35 @@ fun VaultScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { VaultPicker(vaults, selected, onSelect = shell::selectVault) })
+            TopAppBar(
+                title = { VaultPicker(vaults, selected, onSelect = shell::selectVault) },
+                actions = {
+                    val signedIn = accountStatus.account != null
+                    val sync = accountStatus.sync
+                    IconButton(onClick = if (signedIn) onOpenAccount else onSignIn) {
+                        Icon(
+                            when {
+                                !signedIn -> Icons.Filled.CloudQueue
+                                sync.state == SyncState.OFFLINE -> Icons.Filled.CloudOff
+                                sync.state == SyncState.ERROR -> Icons.Filled.SyncProblem
+                                else -> Icons.Filled.Cloud
+                            },
+                            contentDescription = when {
+                                !signedIn -> "Sign in to sync"
+                                sync.state == SyncState.SYNCING -> "Syncing"
+                                sync.state == SyncState.OFFLINE -> "Offline"
+                                sync.state == SyncState.ERROR -> "Sync failed"
+                                else -> "Synced"
+                            },
+                            tint = when {
+                                !signedIn -> MaterialTheme.colorScheme.onSurfaceVariant
+                                sync.state == SyncState.ERROR -> MaterialTheme.colorScheme.error
+                                else -> Emerald
+                            },
+                        )
+                    }
+                },
+            )
         },
     ) { padding ->
         Column(

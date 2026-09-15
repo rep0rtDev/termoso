@@ -273,6 +273,9 @@ fun MainShell(
             composable(Routes.VAULT) {
                 VaultScreen(
                     shell = shell,
+                    account = account,
+                    onOpenAccount = { nav.navigate(Routes.ACCOUNT) },
+                    onSignIn = { nav.navigate(Routes.signIn(AuthMode.SignIn)) },
                     onOpenHosts = { nav.navigate(Routes.hosts(null)) },
                     onOpenKeychain = { nav.navigate(Routes.KEYCHAIN) },
                     onOpenForwarding = { nav.navigate(Routes.FORWARDING) },

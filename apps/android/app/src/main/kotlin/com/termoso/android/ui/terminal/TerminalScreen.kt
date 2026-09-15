@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
@@ -155,7 +156,14 @@ fun TerminalScreen(
                 onNew = onNewSession,
             )
             if (active == null) {
-                EmptyState("No sessions", "Connect to a host to open a terminal.", Modifier.weight(1f))
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    EmptyState(
+                        title = "No sessions",
+                        hint = "Connect to a host to open a terminal.",
+                        icon = Icons.Filled.Terminal,
+                        action = { Button(onClick = onNewSession) { Text("New connection") } },
+                    )
+                }
             } else {
                 ActiveSession(
                     session = active,
