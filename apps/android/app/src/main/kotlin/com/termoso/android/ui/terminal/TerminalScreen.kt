@@ -399,8 +399,9 @@ private fun ActiveSession(
         val uris = pendingShare ?: return@LaunchedEffect
         session.state.first { it !is SessionState.Connecting }
         FileDrop.blocker(session)?.let { why ->
+            // Consuming re-keys this effect, so the snackbar runs on the screen scope.
+            scope.launch { snackbar.showSnackbar(why) }
             onShareConsumed()
-            snackbar.showSnackbar(why)
             return@LaunchedEffect
         }
         confirmDrop = uris
