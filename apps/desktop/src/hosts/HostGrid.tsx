@@ -3,6 +3,7 @@ import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
+import CloudSyncOutlinedIcon from "@mui/icons-material/CloudSyncOutlined";
 import type { MouseEvent, ReactNode } from "react";
 import { hostProtocols, type GroupNode, type HostCard } from "@/ipc/types";
 import { CardGrid, CheckTile, EntityCard, IconTile, SectionTitle } from "@/components/ui";
@@ -31,6 +32,8 @@ export interface HostCollectionProps {
   dnd?: HostDnd;
   /** Teammates connected right now, by host id (team vaults only). */
   presence?: ReadonlyMap<string, HostViewer[]>;
+  /** Groups mirrored from a cloud account, by group id. */
+  cloudSynced?: ReadonlySet<string>;
 }
 
 const CLOUD_SHORT: Record<string, string> = {
@@ -93,13 +96,13 @@ export function SelectableTile({
   );
 }
 
-export function GroupTile({ g, size }: { g: GroupNode; size?: number }) {
+export function GroupTile({ g, size, cloud }: { g: GroupNode; size?: number; cloud?: boolean }) {
   return (
     <IconTile size={size} sx={{ position: "relative" }}>
       <FolderRoundedIcon />
-      {g.hasConfig && (
-        <Tooltip title="Hosts inherit credentials from this group">
-          <KeyRoundedIcon
+      {cloud ? (
+        <Tooltip title="Synced with a cloud account">
+          <CloudSyncOutlinedIcon
             sx={{
               position: "absolute",
               right: -3,
@@ -112,6 +115,23 @@ export function GroupTile({ g, size }: { g: GroupNode; size?: number }) {
             }}
           />
         </Tooltip>
+      ) : (
+        g.hasConfig && (
+          <Tooltip title="Hosts inherit credentials from this group">
+            <KeyRoundedIcon
+              sx={{
+                position: "absolute",
+                right: -3,
+                bottom: -3,
+                fontSize: "12px !important",
+                color: "primary.main",
+                bgcolor: "surface.high",
+                borderRadius: "50%",
+                p: "2px",
+              }}
+            />
+          </Tooltip>
+        )
       )}
     </IconTile>
   );
@@ -128,7 +148,7 @@ export function HostGrid(p: HostCollectionProps) {
               <EntityCard
                 key={g.id}
                 dense
-                tile={<GroupTile g={g} />}
+                tile={<GroupTile g={g} cloud={p.cloudSynced?.has(g.id)} />}
                 title={g.label}
                 subtitle={groupSubtitle(g)}
                 onClick={() => p.onOpenGroup(g.id)}
