@@ -132,8 +132,9 @@ export const accountApi = {
     http.patch<UserProfile>("/account/profile", { display_name }),
   putAvatar: (image: Blob) => upload<UserProfile>("PUT", "/account/avatar", image),
   deleteAvatar: () => http.delete<UserProfile>("/account/avatar"),
-  /** Client-side cache key + fetch for `GET /users/{id}/avatar`. */
-  avatar: (user_id: string) => fetchBlob(`/users/${encodeURIComponent(user_id)}/avatar`),
+  /** `GET /users/{id}/avatar?v={tag}` — the tag pins the URL so the browser's HTTP cache never serves a replaced picture. */
+  avatar: (user_id: string, tag: string) =>
+    fetchBlob(`/users/${encodeURIComponent(user_id)}/avatar?v=${encodeURIComponent(tag)}`),
   emailVerifySend: () => http.post<undefined>("/account/email/verify/send"),
   emailVerifyConfirm: (code: string) =>
     http.post<undefined>("/account/email/verify/confirm", { code }),
