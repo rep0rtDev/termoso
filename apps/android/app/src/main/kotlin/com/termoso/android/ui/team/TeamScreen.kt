@@ -251,6 +251,13 @@ fun TeamScreen(
                         onCheckedChange = { vm.setRequireMfa(it) },
                     )
                     RowDivider()
+                    SwitchRow(
+                        title = "Show who is connected",
+                        subtitle = "Members see who is on which team-vault host right now (only the host and protocol; each member can hide themselves)",
+                        checked = team.presenceEnabled,
+                        onCheckedChange = { vm.setPresence(it) },
+                    )
+                    RowDivider()
                     ChevronRow(
                         title = "Activity log",
                         subtitle = "Who joined, invited, granted access, rotated keys",

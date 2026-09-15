@@ -61,6 +61,7 @@ import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.SubScreen
+import com.termoso.android.ui.components.SwitchRow
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.theme.Danger
 import com.termoso.android.ui.theme.Emerald
@@ -87,6 +88,7 @@ fun AccountScreen(
     onSecurityKeys: () -> Unit,
 ) {
     val status by account.status.collectAsStateWithLifecycle()
+    val hidden by shell.presence.hidden.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var devices by remember { mutableStateOf<List<DeviceCard>?>(null) }
     var devicesError by remember { mutableStateOf<String?>(null) }
@@ -101,7 +103,10 @@ fun AccountScreen(
     }
 
     LaunchedEffect(status.account?.userId) {
-        if (status.account != null) loadDevices()
+        if (status.account != null) {
+            loadDevices()
+            shell.presence.loadHidden()
+        }
     }
 
     val card = status.account
@@ -218,6 +223,18 @@ fun AccountScreen(
                     subtitle = "FIDO2 keys over USB or NFC as the second factor for signing in",
                     leading = { IconTile(Icons.Filled.Security) },
                     modifier = Modifier.clickable(onClick = onSecurityKeys),
+                )
+                RowDivider()
+                SwitchRow(
+                    title = "Show me as connected",
+                    subtitle = "Teammates see which team-vault host you are on — host and protocol only",
+                    checked = hidden == false,
+                    enabled = hidden != null,
+                    onCheckedChange = { on ->
+                        scope.launch {
+                            runCatching { shell.presence.setHidden(!on) }.onFailure { shell.notify(it.userMessage()) }
+                        }
+                    },
                 )
             }
 

@@ -96,7 +96,9 @@ import type {
   Team,
   TeamInvite,
   TeamMember,
+  TeamPresence,
   TeamRole,
+  UserProfile,
   VaultAccess,
   VaultMember,
   VaultRole,
@@ -543,8 +545,13 @@ export const teamRename = (teamId: Uuid, name: string) =>
   invoke<Team>("team_rename", { teamId, name });
 export const teamSetSecurity = (
   teamId: Uuid,
-  patch: { multiplayerEnabled?: boolean; requireMfa?: boolean },
+  patch: { multiplayerEnabled?: boolean; requireMfa?: boolean; presenceEnabled?: boolean },
 ) => invoke<Team>("team_set_security", { teamId, ...patch });
+/** Who is connected to the team's hosts right now (empty when presence is off). */
+export const teamPresence = (teamId: Uuid) => invoke<TeamPresence>("team_presence", { teamId });
+export const accountProfile = () => invoke<UserProfile>("account_profile");
+export const accountSetPresenceHidden = (hidden: boolean) =>
+  invoke<UserProfile>("account_set_presence_hidden", { hidden });
 export const teamDelete = (teamId: Uuid) => invoke<null>("team_delete", { teamId });
 export const teamLeave = (teamId: Uuid) => invoke<null>("team_leave", { teamId });
 export const teamAcceptInvite = (link: string) => invoke<Team>("team_accept_invite", { link });

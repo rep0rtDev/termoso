@@ -785,6 +785,7 @@ mod tests {
                 is_admin: false,
                 mfa_enabled: false,
                 reset_scheduled_for: None,
+                presence_hidden: false,
             },
             keys: termoso_proto::account::AccountKeys {
                 public_key: pair.public_b64(),

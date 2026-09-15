@@ -27,12 +27,13 @@ pub struct UserRow {
     pub disabled: bool,
     pub created_at: DateTime<Utc>,
     pub reset_scheduled_for: Option<DateTime<Utc>>,
+    pub presence_hidden: bool,
 }
 
 const COLUMNS: &str =
     "id, email, email_verified, display_name, opaque_record, public_key, wrapped_private_key,
     recovery_wrapped_private_key, recovery_verifier_hash, key_version, totp_secret, totp_enabled,
-    is_admin, disabled, created_at, reset_scheduled_for";
+    is_admin, disabled, created_at, reset_scheduled_for, presence_hidden";
 
 pub async fn by_id<'e, E>(db: E, id: Uuid) -> ApiResult<UserRow>
 where
@@ -93,6 +94,7 @@ pub fn profile(u: &UserRow, mfa_enabled: bool) -> UserProfile {
         is_admin: u.is_admin,
         mfa_enabled,
         reset_scheduled_for: u.reset_scheduled_for,
+        presence_hidden: u.presence_hidden,
     }
 }
 

@@ -532,6 +532,7 @@ pub async fn open<R: Runtime>(
             info: info.clone(),
         },
     );
+    crate::presence::refresh(&app);
     if let Some(client) = opened.client {
         detect_shell_in_background(&app, id, client);
     }
@@ -624,6 +625,7 @@ pub async fn close<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
         }
         finish_recording(&state, live.recorder);
         let _ = app.emit(SESSION_EVENT, SessionEvent::Closed { id });
+        crate::presence::refresh(app);
     }
     Ok(())
 }
@@ -691,6 +693,7 @@ async fn pump<R: Runtime>(
         finish_recording(&state, live.recorder);
     }
     let _ = app.emit(SESSION_EVENT, SessionEvent::Closed { id });
+    crate::presence::refresh(&app);
 }
 
 const STARTUP_SNIPPET_DELAY: Duration = Duration::from_millis(400);

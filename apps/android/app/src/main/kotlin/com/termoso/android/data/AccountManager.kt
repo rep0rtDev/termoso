@@ -79,6 +79,11 @@ class AccountManager(
     /** One-shot messages worth a snackbar (e.g. signed out by the server). */
     val notices: SharedFlow<String> = _notices.asSharedFlow()
 
+    private val _presenceChanges = MutableSharedFlow<String>(extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /** Team ids whose presence snapshot the server says changed. */
+    val presenceChanges: SharedFlow<String> = _presenceChanges.asSharedFlow()
+
     private val _reauthRequest = MutableStateFlow<ReauthRequest?>(null)
 
     /** Non-null while a guarded action waits for the step-up prompt. */
@@ -219,6 +224,10 @@ class AccountManager(
     }
 
     override fun onChanged(change: SyncChange) {
+        if (change is SyncChange.Presence) {
+            _presenceChanges.tryEmit(change.teamId)
+            return
+        }
         repo.bump()
         if (change is SyncChange.Vaults || change is SyncChange.Account) {
             scope.launch { runCatching { refresh() } }

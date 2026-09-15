@@ -141,6 +141,7 @@ fun TermosoRoot(container: AppContainer, vault: VaultState) {
                             sftp = vault.sftp,
                             forwards = vault.forwards,
                             account = vault.account,
+                            presence = vault.presence,
                             onLock = {
                                 manualLock = true
                                 scope.launch { container.lockVault() }

@@ -16,6 +16,7 @@ pub mod live;
 pub mod mail;
 pub mod metrics;
 pub mod openapi;
+pub mod presence;
 pub mod ratelimit;
 pub mod routes;
 pub mod session;
