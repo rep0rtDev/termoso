@@ -117,9 +117,15 @@ export function describeEvent(ev: AuditEvent, ctx: ActivityContext): ActivityLin
     case "member.removed":
       text = `removed ${target} from the team`;
       if (prev) meta = `was ${roleText(prev)}`;
+      else if (str(d.account) === "converted") meta = "account converted to individual";
+      break;
+    case "member.account_deleted":
+      text = `deleted ${target}'s account`;
+      if (role) meta = `was ${roleText(role)}`;
       break;
     case "member.left":
       text = "left the team";
+      if (str(d.account) === "converted") meta = "account converted to individual";
       break;
     case "invite.created":
       text = `invited ${str(d.email) ?? "someone"}${role ? ` as ${roleText(role)}` : ""}`;

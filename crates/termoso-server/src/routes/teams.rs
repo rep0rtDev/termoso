@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::audit;
 use crate::error::{ApiResult, Error, NoContent};
 use crate::events::{self, Event};
-use crate::extract::{Auth, Json as Body};
+use crate::extract::{Auth, Json as Body, StepUp};
 use crate::presence;
 use crate::ratelimit;
 use crate::state::AppState;
@@ -370,11 +370,13 @@ pub async fn members(
         String,
         DateTime<Utc>,
         bool,
+        bool,
     );
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT u.id, u.email, u.display_name, u.avatar_tag, m.role, u.public_key, m.joined_at,
                 u.totp_enabled
-                OR EXISTS (SELECT 1 FROM webauthn_credentials w WHERE w.user_id = u.id)
+                OR EXISTS (SELECT 1 FROM webauthn_credentials w WHERE w.user_id = u.id),
+                u.managed_by_team_id IS NOT DISTINCT FROM m.team_id
          FROM team_members m JOIN users u ON u.id = m.user_id
          WHERE m.team_id = $1 ORDER BY m.joined_at",
     )
@@ -385,7 +387,17 @@ pub async fn members(
         members: rows
             .into_iter()
             .map(
-                |(user_id, email, display_name, avatar, role, public_key, joined_at, mfa)| {
+                |(
+                    user_id,
+                    email,
+                    display_name,
+                    avatar,
+                    role,
+                    public_key,
+                    joined_at,
+                    mfa,
+                    managed,
+                )| {
                     TeamMember {
                         user_id,
                         email,
@@ -395,6 +407,7 @@ pub async fn members(
                         public_key,
                         joined_at,
                         mfa_enabled: (sees_mfa || user_id == auth.user_id()).then_some(mfa),
+                        managed,
                     }
                 },
             )
@@ -440,6 +453,14 @@ pub async fn update_member(
                 .bind(user_id)
                 .execute(&mut *tx)
                 .await?;
+            // An owner answers to nobody: the account stops being managed.
+            sqlx::query(
+                "UPDATE users SET managed_by_team_id = NULL WHERE id = $1 AND managed_by_team_id = $2",
+            )
+            .bind(user_id)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
             tx.commit().await?;
         }
         TeamRole::Admin | TeamRole::Member => {
@@ -477,14 +498,25 @@ pub async fn update_member(
     .map(NoContent::from)
 }
 
-/// Remove a member: drops their team membership and access to every team vault.
-async fn remove(state: &AppState, team_id: Uuid, user_id: Uuid) -> ApiResult<()> {
+/// Remove a member: drops their team membership and access to every team
+/// vault. An account the team created keeps existing as an individual one;
+/// returns whether that conversion happened.
+async fn remove(state: &AppState, team_id: Uuid, user_id: Uuid) -> ApiResult<bool> {
     let mut tx = state.db.begin().await?;
     sqlx::query("DELETE FROM team_members WHERE team_id = $1 AND user_id = $2")
         .bind(team_id)
         .bind(user_id)
         .execute(&mut *tx)
         .await?;
+    let converted = sqlx::query(
+        "UPDATE users SET managed_by_team_id = NULL WHERE id = $1 AND managed_by_team_id = $2",
+    )
+    .bind(user_id)
+    .bind(team_id)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected()
+        > 0;
     sqlx::query(
         "DELETE FROM vault_members vm USING vaults v WHERE vm.vault_id = v.id AND v.team_id = $1 AND vm.user_id = $2",
     )
@@ -503,7 +535,8 @@ async fn remove(state: &AppState, team_id: Uuid, user_id: Uuid) -> ApiResult<()>
         },
     )
     .await?;
-    events::publish(state, Event::VaultsUpdated { user_ids: ids }).await
+    events::publish(state, Event::VaultsUpdated { user_ids: ids }).await?;
+    Ok(converted)
 }
 
 #[utoipa::path(delete, path = "/api/v1/teams/{id}/members/{user_id}", tag = "teams",
@@ -520,12 +553,108 @@ pub async fn remove_member(
     if target == TeamRole::Owner {
         return Err(Error::forbidden("The owner cannot be removed"));
     }
-    remove(&state, id, user_id).await?;
+    let converted = remove(&state, id, user_id).await?;
     audit::record(
         &state.db,
         audit::Entry::new(id, &auth, "member.removed")
             .user(user_id)
-            .details(serde_json::json!({ "role": team_role_str(target) })),
+            .details(serde_json::json!({
+                "role": team_role_str(target),
+                "account": if converted { "converted" } else { "kept" },
+            })),
+    )
+    .await;
+    if converted {
+        notify_conversion(&state, id, user_id).await;
+    }
+    Ok(NoContent)
+}
+
+/// Tell a former managed member that the account is now theirs alone.
+async fn notify_conversion(state: &AppState, team_id: Uuid, user_id: Uuid) {
+    let (Ok(u), Ok(team)) = (
+        users::by_id(&state.db, user_id).await,
+        team_name(&state.db, team_id).await,
+    ) else {
+        return;
+    };
+    users::notify(
+        state,
+        &u.email,
+        "account converted to individual",
+        &format!(
+            "You were removed from the team \"{team}\". The account was created through that \
+             team's invitation; it is now an individual account that only you control."
+        ),
+    )
+    .await;
+}
+
+async fn team_name<'e, E: PgExecutor<'e>>(db: E, team_id: Uuid) -> ApiResult<String> {
+    let (name,): (String,) = sqlx::query_as("SELECT name FROM teams WHERE id = $1")
+        .bind(team_id)
+        .fetch_one(db)
+        .await?;
+    Ok(name)
+}
+
+/// `DELETE /teams/{id}/members/{user_id}/account` — the owner deletes an
+/// account the team created (sign-up through its invitation). Everything the
+/// user has — devices, personal vault, logs — goes with it; accounts that
+/// existed before joining can only be removed from the team.
+#[utoipa::path(delete, path = "/api/v1/teams/{id}/members/{user_id}/account", tag = "teams",
+    params(("id" = Uuid, Path), ("user_id" = Uuid, Path)),
+    responses((status = 204), (status = 409, description = "Not a team-created account, or it owns teams")))]
+pub async fn delete_member_account(
+    State(state): State<AppState>,
+    StepUp(auth): StepUp,
+    Path((id, user_id)): Path<(Uuid, Uuid)>,
+) -> ApiResult<NoContent> {
+    if my_role(&state.db, id, auth.user_id()).await? != TeamRole::Owner {
+        return Err(Error::forbidden(
+            "Only the owner can delete a member's account",
+        ));
+    }
+    let target = my_role(&state.db, id, user_id)
+        .await
+        .map_err(|_| Error::not_found("Member"))?;
+    if target == TeamRole::Owner {
+        return Err(Error::forbidden("The owner cannot be removed"));
+    }
+    let u = users::by_id(&state.db, user_id).await?;
+    if u.managed_by_team_id != Some(id) {
+        return Err(Error::conflict(
+            "This account was not created by the team; remove the member instead",
+        ));
+    }
+    let (owned,): (i64,) = sqlx::query_as("SELECT count(*) FROM teams WHERE owner_id = $1")
+        .bind(user_id)
+        .fetch_one(&state.db)
+        .await?;
+    if owned > 0 {
+        return Err(Error::conflict(
+            "The member owns other teams; they must transfer or delete them first",
+        ));
+    }
+    let team = team_name(&state.db, id).await?;
+    // Written before the row disappears so the entry keeps the user reference.
+    audit::record(
+        &state.db,
+        audit::Entry::new(id, &auth, "member.account_deleted")
+            .user(user_id)
+            .details(serde_json::json!({ "role": team_role_str(target), "email": u.email })),
+    )
+    .await;
+    users::delete(&state, user_id).await?;
+    presence::clear_user_in_team(&state, id, user_id).await?;
+    users::notify(
+        &state,
+        &u.email,
+        "account deleted",
+        &format!(
+            "The owner of the team \"{team}\" deleted your Termoso account, which was created \
+             through that team's invitation. All its data and devices were removed."
+        ),
     )
     .await;
     Ok(NoContent)
@@ -541,11 +670,13 @@ pub async fn leave(
     if role == TeamRole::Owner {
         return Err(Error::forbidden("Transfer ownership before leaving"));
     }
-    remove(&state, id, auth.user_id()).await?;
+    let converted = remove(&state, id, auth.user_id()).await?;
     audit::record(
         &state.db,
-        audit::Entry::new(id, &auth, "member.left")
-            .details(serde_json::json!({ "role": team_role_str(role) })),
+        audit::Entry::new(id, &auth, "member.left").details(serde_json::json!({
+            "role": team_role_str(role),
+            "account": if converted { "converted" } else { "kept" },
+        })),
     )
     .await;
     Ok(NoContent)
