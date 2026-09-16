@@ -45,22 +45,42 @@
       el.dispatchEvent(new MouseEvent(type, opts));
     }
   };
-  // xterm listens for keydown on its hidden textarea and turns the key into
-  // terminal input itself, so synthetic events exercise the real input path.
+  // xterm takes printable characters from `input` events on its hidden
+  // textarea and control keys from `keydown`, so synthetic events exercise the
+  // real browser input path down to the PTY.
   const typeInto = (textarea, text) => {
     for (const ch of text) {
-      const enter = ch === "\n";
-      textarea.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: enter ? "Enter" : ch,
-          code: enter ? "Enter" : `Key${ch.toUpperCase()}`,
-          keyCode: enter ? 13 : ch.charCodeAt(0),
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
+      if (ch === "\n") {
+        textarea.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "Enter",
+            code: "Enter",
+            keyCode: 13,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      } else {
+        textarea.dispatchEvent(
+          new InputEvent("input", {
+            data: ch,
+            inputType: "insertText",
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      }
     }
   };
+  const xtermGl = () => {
+    for (const canvas of document.querySelectorAll(".xterm canvas")) {
+      const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
+      if (gl) return gl;
+    }
+    return null;
+  };
+  const rowsText = () =>
+    [...document.querySelectorAll(".xterm-rows > div")].map((r) => r.textContent).join("\n");
 
   try {
     const info = await invoke("app_info");
@@ -90,14 +110,16 @@
       `session ${sessions[0].id} protocol=${sessions[0].protocol} target=${sessions[0].target}`,
     );
     await sleep(2500); // let the shell start and the integration install
-    const probeCanvas = document.createElement("canvas");
-    const webgl = ["webgl2", "webgl"].find((k) => probeCanvas.getContext(k)) ?? "none";
-    const canvases = [...document.querySelectorAll(".xterm canvas")].map((c) => {
-      const r = c.getBoundingClientRect();
-      return `${Math.round(r.width)}x${Math.round(r.height)}`;
-    });
-    const rows = document.querySelectorAll(".xterm-rows > div").length;
-    await report(`renderer webgl=${webgl} canvases=[${canvases}] domRows=${rows}`);
+    const gl = xtermGl();
+    if (gl) {
+      const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+      const name = dbg
+        ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)
+        : gl.getParameter(gl.RENDERER);
+      await report(`renderer webgl (${name}) lost=${gl.isContextLost()}`);
+    } else {
+      await report(`renderer dom rows=${document.querySelectorAll(".xterm-rows > div").length}`);
+    }
     await shot("terminal");
 
     const marker = `termoso-smoke-${Date.now().toString(36)}`;
@@ -106,12 +128,12 @@
     typeInto(textarea, `${command}\n`);
     const recorded = async () =>
       (await invoke("history_commands", { limit: 50 })).some((h) => h.data.command === command);
-    let via = "keydown";
+    let via = "input events";
     try {
       await waitFor("command in history", async () => (await recorded()) || null, 12000);
     } catch {
       via = "terminal_write";
-      await report("keydown input not recorded, retrying through terminal_write");
+      await report("typed input not recorded, retrying through terminal_write");
       await invoke("terminal_write", { id: sessions[0].id, data: `${command}\r` });
       await waitFor(
         "command in history (terminal_write)",
@@ -122,10 +144,31 @@
     await report(`shell integration recorded the command (input via ${via})`);
     await shot("terminal-output");
 
+    // Simulate a GPU context loss (sleep / eGPU unplug on a real Mac): the
+    // WebGL addon must hand over to the DOM renderer without losing the
+    // buffer, which also lets us read the screen as text.
+    if (gl) {
+      const lose = gl.getExtension("WEBGL_lose_context");
+      if (!lose) throw new Error("WEBGL_lose_context unavailable");
+      lose.loseContext();
+    }
+    const screen = await waitFor(
+      "echo output on the DOM-rendered screen",
+      () => {
+        const text = rowsText();
+        return text.split(marker).length > 2 ? text : null;
+      },
+      15000,
+    );
+    await report(`screen has ${screen.split("\n").length} rows, echo output visible`);
+    await shot("terminal-dom");
+
     // The sidebar only exists on the Vaults tab; the terminal tab hides it.
     click(await waitFor("vaults tab", () => byText("[role=tab]", "Vaults")));
     click(await waitFor("settings nav", () => byText("div[role=button], a, button", "Settings")));
-    await waitFor("settings page", () => document.body.textContent.includes("Appearance"));
+    await waitFor("settings page", () => byText("div[role=button], a, button", "Account & sync"));
+    click(await waitFor("general section", () => byText("div[role=button], a, button", "General")));
+    await waitFor("general settings", () => document.body.textContent.includes("Appearance"));
     await shot("settings");
 
     await report("DONE");
