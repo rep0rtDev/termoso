@@ -2,7 +2,9 @@
 
 pub mod account;
 pub mod admin;
+pub mod ai;
 pub mod auth;
+pub mod bridges;
 pub mod history;
 pub mod logs;
 pub mod mfa;
@@ -81,6 +83,8 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/account/profile", patch(account::update_profile))
         .route("/account/presence", put(account::put_presence))
+        .route("/account/ai", get(ai::status).put(ai::put_settings))
+        .route("/ai/command", post(ai::command))
         .route(
             "/account/avatar",
             put(account::put_avatar)
@@ -107,6 +111,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/account/devices", get(account::devices))
         .route("/account/devices/{id}", delete(account::revoke_device))
+        .route("/account/bridges", get(bridges::list).post(bridges::create))
+        .route("/account/bridges/{id}", delete(bridges::revoke))
+        .route("/account/bridges/{id}/vaults", put(bridges::set_vaults))
+        .route("/bridge/me", get(bridges::me))
         .route(
             "/account/sshid",
             get(sshid::get).post(sshid::create).delete(sshid::delete),

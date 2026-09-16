@@ -228,6 +228,10 @@ export interface RecoveryRotation {
   recoveryWrappedPrivateKey: string;
   recoveryVerifier: string;
 }
+export interface GeneratedKeyPair {
+  privateKey: string;
+  publicKey: string;
+}
 "#;
 
 /// Generate a fresh account key set from the OPAQUE export key.
@@ -350,6 +354,25 @@ pub fn recovery_verifier(recovery_phrase: &str) -> Result<String, WasmError> {
 pub fn recovery_words(recovery_phrase: &str) -> Result<Vec<String>, WasmError> {
     let r = RecoveryKey::parse(recovery_phrase).map_err(js_err)?;
     Ok(r.words().into_iter().map(str::to_owned).collect())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedKeyPair {
+    /// X25519 secret, base64. Handed to a bridge or device once, never stored server-side.
+    pub private_key: String,
+    /// Matching public key, base64.
+    pub public_key: String,
+}
+
+/// Fresh X25519 key pair for a recipient other than the account (API bridge).
+#[wasm_bindgen(unchecked_return_type = "GeneratedKeyPair")]
+pub fn generate_key_pair() -> Result<JsValue, WasmError> {
+    let pair = KeyPair::generate();
+    to_js(&GeneratedKeyPair {
+        private_key: SymmetricKey::from_bytes(pair.secret_bytes()).to_b64(),
+        public_key: pair.public_b64(),
+    })
 }
 
 /// Public key (base64) for a base64 private key.

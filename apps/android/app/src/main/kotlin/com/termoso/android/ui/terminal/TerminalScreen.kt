@@ -118,6 +118,7 @@ fun TerminalScreen(
     onBack: () -> Unit,
     onNewSession: () -> Unit,
     onOpenSnippets: () -> Unit,
+    onOpenAccount: () -> Unit,
     /** Files shared into the app, offered to the active terminal once; `null` when none. */
     pendingShare: List<Uri>? = null,
     onShareConsumed: () -> Unit = {},
@@ -190,6 +191,7 @@ fun TerminalScreen(
                     snackbar = snackbar,
                     settings = settings,
                     onOpenSnippets = onOpenSnippets,
+                    onOpenAccount = onOpenAccount,
                     onNewSession = onNewSession,
                     pendingShare = pendingShare,
                     onShareConsumed = onShareConsumed,
@@ -318,6 +320,7 @@ private fun ActiveSession(
     snackbar: SnackbarHostState,
     settings: MobileSettings,
     onOpenSnippets: () -> Unit,
+    onOpenAccount: () -> Unit,
     onNewSession: () -> Unit,
     pendingShare: List<Uri>?,
     onShareConsumed: () -> Unit,
@@ -348,6 +351,7 @@ private fun ActiveSession(
     var imeShown by remember { mutableStateOf(false) }
     var hiddenInput by remember { mutableStateOf(false) }
     var snippetPicker by remember { mutableStateOf(false) }
+    var askAi by remember { mutableStateOf(false) }
     var panelSheet by remember { mutableStateOf(false) }
     var dropping by remember { mutableStateOf<DropProgress?>(null) }
     var confirmDrop by remember { mutableStateOf<List<Uri>?>(null) }
@@ -620,6 +624,7 @@ private fun ActiveSession(
                 onToggleIme = ::toggleIme,
                 onHiddenInput = { hiddenInput = true },
                 onSnippets = { snippetPicker = true },
+                onAskAi = { askAi = true },
                 onPanel = { panelSheet = true },
                 onPaste = ::paste,
                 onKeyPressed = ::tap,
@@ -636,6 +641,16 @@ private fun ActiveSession(
             sessionId = session.id,
             onOpenSnippets = onOpenSnippets,
             onClose = { snippetPicker = false },
+        )
+    }
+    if (askAi) {
+        AskAiSheet(
+            shell = shell,
+            session = session,
+            connected = state is SessionState.Connected && canWrite,
+            onInsert = { controller.paste(it) },
+            onOpenAccount = onOpenAccount,
+            onClose = { askAi = false },
         )
     }
     if (panelSheet) {

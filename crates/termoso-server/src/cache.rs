@@ -93,6 +93,25 @@ impl Cache {
         Ok(())
     }
 
+    /// Current value of a counter created by [`Self::incr_window`] (0 when absent).
+    pub async fn counter(&self, key: &str) -> ApiResult<u64> {
+        let mut c = self.conn.clone();
+        let v: Option<u64> = c.get(self.key(key)).await?;
+        Ok(v.unwrap_or(0))
+    }
+
+    /// Undo one [`Self::incr_window`] step (e.g. a quota slot the caller
+    /// could not use). Never goes below zero.
+    pub async fn decr(&self, key: &str) -> ApiResult<()> {
+        let mut c = self.conn.clone();
+        let key = self.key(key);
+        let v: i64 = c.decr(&key, 1i64).await?;
+        if v < 0 {
+            let _: () = c.del(&key).await?;
+        }
+        Ok(())
+    }
+
     /// Fixed-window counter. Returns the new count and remaining TTL.
     pub async fn incr_window(&self, key: &str, window: Duration) -> ApiResult<(u64, u64)> {
         let mut c = self.conn.clone();

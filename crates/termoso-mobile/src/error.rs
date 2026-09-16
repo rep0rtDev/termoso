@@ -97,6 +97,14 @@ impl From<CoreError> for MobileError {
             CoreError::Api { ref code, .. } if code == codes::REAUTH_REQUIRED => {
                 Self::ReauthRequired
             }
+            CoreError::Api {
+                ref code,
+                ref message,
+                ..
+            } if stable_api_kind(code).is_some() => Self::Other {
+                kind: stable_api_kind(code).unwrap_or("api").to_string(),
+                detail: message.clone(),
+            },
             other => Self::Other {
                 kind: other.kind().to_string(),
                 detail: other.to_string(),
@@ -178,4 +186,68 @@ impl From<uniffi::UnexpectedUniFFICallbackError> for MobileError {
     }
 }
 
+/// Server codes the UI branches on by name; they reach Kotlin as their own
+/// `kind` (mirroring `ClientError`) instead of the generic `"api"`.
+fn stable_api_kind(code: &str) -> Option<&'static str> {
+    match code {
+        codes::AI_NOT_ENABLED => Some(codes::AI_NOT_ENABLED),
+        codes::AI_QUOTA_EXCEEDED => Some(codes::AI_QUOTA_EXCEEDED),
+        codes::AI_BUSY => Some(codes::AI_BUSY),
+        codes::AI_UNAVAILABLE => Some(codes::AI_UNAVAILABLE),
+        codes::UNAUTHORIZED | codes::TOKEN_EXPIRED => Some("unauthorized"),
+        _ => None,
+    }
+}
+
 pub type Result<T> = std::result::Result<T, MobileError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn api(code: &str, message: &str) -> MobileError {
+        CoreError::Api {
+            status: 503,
+            code: code.into(),
+            message: message.into(),
+        }
+        .into()
+    }
+
+    #[test]
+    fn ai_codes_keep_their_kind() {
+        for code in [
+            codes::AI_NOT_ENABLED,
+            codes::AI_QUOTA_EXCEEDED,
+            codes::AI_BUSY,
+            codes::AI_UNAVAILABLE,
+        ] {
+            match api(code, "m") {
+                MobileError::Other { kind, detail } => {
+                    assert_eq!(kind, code);
+                    assert_eq!(detail, "m");
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn expired_token_is_unauthorized_kind() {
+        match api(codes::TOKEN_EXPIRED, "m") {
+            MobileError::Other { kind, .. } => assert_eq!(kind, "unauthorized"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn other_api_codes_stay_generic() {
+        match api(codes::CONFLICT, "m") {
+            MobileError::Other { kind, detail } => {
+                assert_eq!(kind, "api");
+                assert!(detail.contains("server 503"));
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+}

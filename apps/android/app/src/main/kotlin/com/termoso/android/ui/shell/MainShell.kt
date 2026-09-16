@@ -34,6 +34,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.termoso.android.data.AccountManager
+import com.termoso.android.data.AiManager
 import com.termoso.android.data.AppContainer
 import com.termoso.android.data.ForwardManager
 import com.termoso.android.data.PresenceManager
@@ -162,9 +163,10 @@ fun MainShell(
     forwards: ForwardManager,
     account: AccountManager,
     presence: PresenceManager,
+    ai: AiManager,
     onLock: () -> Unit,
 ) {
-    val shell: ShellViewModel = viewModel { ShellViewModel(repo, sessions, sftp, forwards, presence) }
+    val shell: ShellViewModel = viewModel { ShellViewModel(repo, sessions, sftp, forwards, presence, ai) }
     val nav = rememberNavController()
     val scope = rememberCoroutineScope()
     val backStack by nav.currentBackStackEntryAsState()
@@ -564,6 +566,7 @@ fun MainShell(
                     shell = shell,
                     onBack = { nav.popBackStack() },
                     onOpenSnippets = { nav.navigate(Routes.snippets(null)) },
+                    onOpenAccount = { nav.navigate(Routes.ACCOUNT) },
                     pendingShare = pendingShare,
                     onShareConsumed = { container.consumeShare() },
                     onHardwareKeyHook = { container.hardwareKeyHook = it },

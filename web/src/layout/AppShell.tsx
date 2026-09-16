@@ -19,6 +19,7 @@ import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import PersonOutlineRoundedIcon from "@mui/icons-material/PersonOutlineRounded";
 import ShieldOutlinedIcon from "@mui/icons-material/ShieldOutlined";
 import DevicesOutlinedIcon from "@mui/icons-material/DevicesOutlined";
+import HubOutlinedIcon from "@mui/icons-material/HubOutlined";
 import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
@@ -55,6 +56,7 @@ const accountNav: NavItem[] = [
 const workspaceNav: NavItem[] = [
   { to: "/team", label: "Teams", icon: <GroupsOutlinedIcon /> },
   { to: "/vaults", label: "Vaults", icon: <LockOutlinedIcon /> },
+  { to: "/bridges", label: "API Bridge", icon: <HubOutlinedIcon /> },
 ];
 
 const adminNav: NavItem[] = [

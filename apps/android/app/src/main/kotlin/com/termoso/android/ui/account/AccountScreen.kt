@@ -61,6 +61,8 @@ import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.SubScreen
 import com.termoso.android.ui.components.SwitchRow
 import com.termoso.android.ui.shell.ShellViewModel
+import com.termoso.android.ui.terminal.aiProviderLabel
+import com.termoso.android.ui.terminal.aiRemainingToday
 import com.termoso.android.ui.theme.Danger
 import com.termoso.android.ui.theme.Emerald
 import com.termoso.android.ui.theme.Warning
@@ -87,6 +89,7 @@ fun AccountScreen(
 ) {
     val status by account.status.collectAsStateWithLifecycle()
     val hidden by shell.presence.hidden.collectAsStateWithLifecycle()
+    val ai by shell.ai.status.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var devices by remember { mutableStateOf<List<DeviceCard>?>(null) }
     var devicesError by remember { mutableStateOf<String?>(null) }
@@ -107,6 +110,7 @@ fun AccountScreen(
         if (status.account != null) {
             loadDevices()
             shell.presence.loadHidden()
+            shell.ai.refresh()
         }
     }
 
@@ -259,6 +263,42 @@ fun AccountScreen(
                         }
                     },
                 )
+            }
+
+            SectionLabel("AI command suggestions")
+            SectionCard {
+                val s = ai
+                when {
+                    s == null -> ListRow(title = "Checking the server…")
+                    !s.available -> ListRow(
+                        title = "Not offered by this server",
+                        subtitle = "The operator can point TERMOSO_AI__* at a Chutes key or any OpenAI-compatible endpoint",
+                    )
+                    else -> {
+                        SwitchRow(
+                            title = "Suggest commands from a description",
+                            subtitle = "${aiRemainingToday(s)} of ${s.dailyQuota} left today · " +
+                                aiProviderLabel(s) +
+                                (if (s.confidential) " · confidential compute" else ""),
+                            checked = s.enabled,
+                            onCheckedChange = { on ->
+                                scope.launch {
+                                    runCatching { shell.ai.setEnabled(on) }.onFailure { shell.notify(it.userMessage()) }
+                                }
+                            },
+                        )
+                        RowDivider()
+                        Text(
+                            "Sends only your request text and an OS/shell label — never terminal output, history, " +
+                                "host addresses, credentials or vault contents. The command is shown for you to run; " +
+                                "it is never executed on its own." +
+                                if (s.confidential) " Confidential compute means the operator cannot read requests, but the model does; this is not end-to-end encryption." else "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        )
+                    }
+                }
             }
 
             SectionLabel("Vaults on this device")

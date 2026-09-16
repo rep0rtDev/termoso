@@ -8,6 +8,7 @@ export const queryKeys = {
   account: ["account"] as const,
   mfa: ["account", "mfa"] as const,
   devices: ["account", "devices"] as const,
+  bridges: ["account", "bridges"] as const,
   securityEvents: ["account", "security-events"] as const,
   teams: ["teams"] as const,
   team: (id: string) => ["teams", id] as const,

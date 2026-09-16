@@ -48,6 +48,28 @@ export async function upsertMemberWithKey(
   );
 }
 
+/** Vaults an API bridge can be given: the caller can write to them and holds the current key. */
+export function bridgeEligible(vaults: Vault[]): Vault[] {
+  return vaults.filter((v) => v.my_role !== "viewer" && !!v.sealed_key);
+}
+
+/**
+ * Seals the caller's copy of each vault key to a bridge public key. Runs entirely
+ * in this tab: the server receives sealed boxes only.
+ */
+export async function sealVaultKeysFor(
+  bridgePublicKey: string,
+  vaults: Vault[],
+): Promise<{ vault_id: string; sealed_key: string }[]> {
+  await requireUnlocked();
+  const out = [];
+  for (const v of vaults) {
+    const vaultKey = await openMyVaultKey(v);
+    out.push({ vault_id: v.id, sealed_key: sealVaultKey(bridgePublicKey, vaultKey) });
+  }
+  return out;
+}
+
 /**
  * Rotates the vault key: generates a new one locally and seals it to every
  * member who currently holds a key (pending members stay pending). Entities

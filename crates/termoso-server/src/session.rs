@@ -29,7 +29,12 @@ pub struct SessionInfo {
     pub email_verified: bool,
     pub last_used_at: DateTime<Utc>,
     #[serde(default)]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(default)]
     pub reauth_at: Option<DateTime<Utc>>,
+    /// Set for API-bridge sessions, which are confined to sync.
+    #[serde(default)]
+    pub bridge_id: Option<Uuid>,
 }
 
 impl SessionInfo {
@@ -37,6 +42,9 @@ impl SessionInfo {
         self.reauth_at.is_some_and(|t| Utc::now() - t < STEP_UP_TTL)
     }
 }
+
+/// Bridge sessions do not slide: they live until revoked from the cabinet.
+const BRIDGE_TTL: chrono::Duration = chrono::Duration::days(365 * 20);
 
 fn cache_key(token_hash: &str) -> String {
     format!("sess:{token_hash}")
@@ -142,6 +150,34 @@ pub async fn issue(
     Ok((token, expires_at))
 }
 
+/// Create the session behind an API bridge. Never inside the step-up window
+/// (a bridge cannot touch account settings anyway).
+pub async fn issue_bridge(
+    state: &AppState,
+    user_id: Uuid,
+    device_id: Uuid,
+    bridge_id: Uuid,
+) -> ApiResult<String> {
+    let token = random_token();
+    sqlx::query(
+        "INSERT INTO sessions (id, user_id, device_id, token_hash, expires_at, bridge_id)
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(Uuid::new_v4())
+    .bind(user_id)
+    .bind(device_id)
+    .bind(hash_token(&token))
+    .bind(Utc::now() + BRIDGE_TTL)
+    .bind(bridge_id)
+    .execute(&state.db)
+    .await?;
+    sqlx::query("UPDATE devices SET approved_at = now(), last_seen_at = now() WHERE id = $1")
+        .bind(device_id)
+        .execute(&state.db)
+        .await?;
+    Ok(token)
+}
+
 pub async fn validate(state: &AppState, token: &str) -> ApiResult<SessionInfo> {
     let h = hash_token(token);
     let key = cache_key(&h);
@@ -159,11 +195,13 @@ pub async fn validate(state: &AppState, token: &str) -> ApiResult<SessionInfo> {
         bool,
         bool,
         DateTime<Utc>,
+        DateTime<Utc>,
         Option<DateTime<Utc>>,
+        Option<Uuid>,
     );
     let row: Option<Row> = sqlx::query_as(
         "SELECT s.id, s.user_id, s.device_id, s.expires_at, u.is_admin, u.disabled, u.email_verified,
-                s.last_used_at, s.reauth_at
+                s.last_used_at, s.created_at, s.reauth_at, s.bridge_id
          FROM sessions s JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()",
     )
@@ -179,7 +217,9 @@ pub async fn validate(state: &AppState, token: &str) -> ApiResult<SessionInfo> {
         disabled,
         email_verified,
         last_used_at,
+        created_at,
         reauth_at,
+        bridge_id,
     )) = row
     else {
         return Err(Error::unauthorized());
@@ -193,19 +233,29 @@ pub async fn validate(state: &AppState, token: &str) -> ApiResult<SessionInfo> {
         disabled,
         email_verified,
         last_used_at,
+        created_at: Some(created_at),
         reauth_at,
+        bridge_id,
     };
     state.cache.set_json(&key, &info, CACHE_TTL).await?;
     Ok(info)
 }
 
 /// Sliding expiry + last-seen bookkeeping, at most every 5 minutes per session.
+/// A bridge's first request is recorded immediately so its cabinet entry
+/// switches from "never used" as soon as the container comes up.
 pub async fn touch(state: &AppState, info: &SessionInfo, ip: Option<&str>) -> ApiResult<()> {
-    if Utc::now() - info.last_used_at < chrono::Duration::minutes(5) {
+    let first_bridge_use =
+        info.bridge_id.is_some() && info.created_at.is_some_and(|c| info.last_used_at <= c);
+    if !first_bridge_use && Utc::now() - info.last_used_at < chrono::Duration::minutes(5) {
         return Ok(());
     }
-    let settings = state.settings().await?;
-    let new_exp = Utc::now() + chrono::Duration::days(settings.session_ttl_days.max(1) as i64);
+    let new_exp = if info.bridge_id.is_some() {
+        info.expires_at
+    } else {
+        let settings = state.settings().await?;
+        Utc::now() + chrono::Duration::days(settings.session_ttl_days.max(1) as i64)
+    };
     sqlx::query("UPDATE sessions SET last_used_at = now(), expires_at = $2 WHERE id = $1")
         .bind(info.session_id)
         .bind(new_exp)
@@ -295,11 +345,14 @@ pub async fn revoke_device(state: &AppState, user_id: Uuid, device_id: Uuid) -> 
     Ok(())
 }
 
-/// Revoke every session of the user except `keep`.
+/// Revoke every interactive session of the user except `keep`. API bridges
+/// are separate credentials with their own revocation in the cabinet and
+/// stay untouched.
 pub async fn revoke_all(state: &AppState, user_id: Uuid, keep: Option<Uuid>) -> ApiResult<()> {
     let rows: Vec<(Uuid, String)> = sqlx::query_as(
         "UPDATE sessions SET revoked_at = now()
-         WHERE user_id = $1 AND revoked_at IS NULL AND ($2::uuid IS NULL OR id <> $2)
+         WHERE user_id = $1 AND revoked_at IS NULL AND bridge_id IS NULL
+           AND ($2::uuid IS NULL OR id <> $2)
          RETURNING id, token_hash",
     )
     .bind(user_id)

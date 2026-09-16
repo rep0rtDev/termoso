@@ -13,6 +13,7 @@
 
 #![allow(dead_code)]
 
+pub mod llm;
 pub mod oidc;
 
 use std::collections::HashMap;
@@ -39,7 +40,8 @@ use termoso_proto::auth::{
 };
 use termoso_server::Inner;
 use termoso_server::config::{
-    Config, S3Config, SmtpConfig, SmtpSecurity, SsoKindConfig, SsoProviderConfig, WebauthnConfig,
+    AiConfig, Config, S3Config, SmtpConfig, SmtpSecurity, SsoKindConfig, SsoProviderConfig,
+    WebauthnConfig,
 };
 use uuid::Uuid;
 
@@ -72,6 +74,7 @@ pub struct TestServer {
     /// Mailpit REST API base URL when email is configured.
     pub mailpit: Option<String>,
     pub idp: oidc::MockIdp,
+    pub llm: llm::MockLlm,
 }
 
 static SERVER: tokio::sync::OnceCell<Option<TestServer>> = tokio::sync::OnceCell::const_new();
@@ -220,6 +223,8 @@ async fn boot() -> Option<TestServer> {
     let addr = listener.local_addr().expect("addr");
     let idp_listener = bind_ephemeral();
     let idp_addr = idp_listener.local_addr().expect("addr");
+    let llm_listener = bind_ephemeral();
+    let llm_addr = llm_listener.local_addr().expect("addr");
 
     let s3 = s3_config().await;
     let smtp = smtp_config().await;
@@ -275,6 +280,16 @@ async fn boot() -> Option<TestServer> {
             rp_name: "Termoso Test".into(),
         }),
         sso,
+        ai: Some(AiConfig {
+            url: format!("http://{llm_addr}/v1"),
+            api_key: llm::API_KEY.into(),
+            model: llm::MODEL.into(),
+            provider: llm::PROVIDER.into(),
+            confidential: true,
+            daily_quota: llm::DAILY_QUOTA,
+            max_prompt_chars: llm::MAX_PROMPT_CHARS,
+            timeout_secs: 5,
+        }),
         ..Config::default()
     };
     cfg.validate().expect("valid test config");
@@ -282,7 +297,8 @@ async fn boot() -> Option<TestServer> {
     // Each `#[tokio::test]` owns a runtime that is torn down when the test
     // ends, so the shared server (and the mock IdP) must live on their own
     // runtime/thread.
-    let (ready_tx, ready_rx) = std::sync::mpsc::channel::<anyhow::Result<oidc::MockIdp>>();
+    let (ready_tx, ready_rx) =
+        std::sync::mpsc::channel::<anyhow::Result<(oidc::MockIdp, llm::MockLlm)>>();
     std::thread::Builder::new()
         .name("termoso-test-server".into())
         .spawn(move || {
@@ -293,6 +309,13 @@ async fn boot() -> Option<TestServer> {
             rt.block_on(async move {
                 let idp = match oidc::serve(idp_listener).await {
                     Ok(i) => i,
+                    Err(e) => {
+                        let _ = ready_tx.send(Err(e));
+                        return;
+                    }
+                };
+                let llm = match llm::serve(llm_listener).await {
+                    Ok(l) => l,
                     Err(e) => {
                         let _ = ready_tx.send(Err(e));
                         return;
@@ -318,7 +341,7 @@ async fn boot() -> Option<TestServer> {
                 tokio::spawn(termoso_server::ws::run_fanout(state.clone()));
                 tokio::spawn(termoso_server::live::run_fanout(state.clone()));
                 let app = termoso_server::app(state);
-                let _ = ready_tx.send(Ok(idp));
+                let _ = ready_tx.send(Ok((idp, llm)));
                 axum::serve(
                     listener,
                     app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -328,7 +351,7 @@ async fn boot() -> Option<TestServer> {
             });
         })
         .expect("spawn server thread");
-    let idp = ready_rx
+    let (idp, llm) = ready_rx
         .recv()
         .expect("server thread died")
         .expect("server state");
@@ -341,6 +364,7 @@ async fn boot() -> Option<TestServer> {
         storage,
         mailpit,
         idp,
+        llm,
     })
 }
 
@@ -566,6 +590,18 @@ impl TestServer {
         let hash = termoso_server::util::hash_token(token);
         self.sql(
             "UPDATE sessions SET reauth_at = now() - interval '1 hour' WHERE token_hash = $1",
+            &hash,
+        )
+        .await;
+        self.forget(&format!("sess:{hash}")).await;
+    }
+
+    /// Make the session look idle so the next request records a fresh
+    /// `last_used_at` (touches are throttled to once per few minutes).
+    pub async fn age_last_used(&self, token: &str) {
+        let hash = termoso_server::util::hash_token(token);
+        self.sql(
+            "UPDATE sessions SET last_used_at = now() - interval '10 minutes' WHERE token_hash = $1",
             &hash,
         )
         .await;

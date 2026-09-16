@@ -13,6 +13,7 @@
 uniffi::setup_scaffolding!("termoso");
 
 mod account;
+mod ai;
 mod app;
 mod connect;
 mod dto;
@@ -32,6 +33,7 @@ mod terminal;
 mod themes;
 
 pub use account::*;
+pub use ai::{AiStatusCard, AiSuggestionCard, AiTarget};
 pub use app::*;
 pub use connect::{HostKeyChoice, InteractiveQuestionInfo, PromptAnswer, PromptRequest};
 pub use dto::*;

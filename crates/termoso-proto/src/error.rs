@@ -54,4 +54,12 @@ pub mod codes {
     /// The operation needs a fresh step-up (`POST /auth/reauth/start`) of the
     /// current session.
     pub const REAUTH_REQUIRED: &str = "reauth_required";
+    /// The account has not opted in to AI command suggestions.
+    pub const AI_NOT_ENABLED: &str = "ai_not_enabled";
+    /// Today's AI suggestion quota is spent (`details.retry_after` seconds).
+    pub const AI_QUOTA_EXCEEDED: &str = "ai_quota_exceeded";
+    /// The AI provider is rate-limiting; retry shortly.
+    pub const AI_BUSY: &str = "ai_busy";
+    /// The AI provider failed or answered garbage.
+    pub const AI_UNAVAILABLE: &str = "ai_unavailable";
 }
