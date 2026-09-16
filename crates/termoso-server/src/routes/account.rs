@@ -413,6 +413,7 @@ pub async fn devices(State(state): State<AppState>, auth: Auth) -> ApiResult<Jso
          FROM devices d
          WHERE d.user_id = $1
            AND EXISTS (SELECT 1 FROM sessions s WHERE s.device_id = d.id AND s.revoked_at IS NULL AND s.expires_at > now())
+           AND NOT EXISTS (SELECT 1 FROM bridges b WHERE b.device_id = d.id)
          ORDER BY d.last_seen_at DESC",
     )
     .bind(auth.user_id())

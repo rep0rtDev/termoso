@@ -29,6 +29,10 @@ impl Auth {
     pub fn device_id(&self) -> Uuid {
         self.session.device_id
     }
+    /// Set when the caller is an API bridge rather than a person.
+    pub fn bridge_id(&self) -> Option<Uuid> {
+        self.session.bridge_id
+    }
     /// Fails unless this session completed a step-up recently.
     pub fn require_step_up(&self) -> Result<(), Error> {
         if self.session.step_up_fresh() {
@@ -37,6 +41,19 @@ impl Auth {
             Err(Error::reauth_required())
         }
     }
+}
+
+/// Routes an API-bridge session may call. Everything else — account, teams,
+/// vaults, logs, live sessions — is off limits so a leaked bridge token
+/// cannot reach beyond the vaults sealed to it.
+fn bridge_allowed(method: &http::Method, path: &str) -> bool {
+    let path = path.strip_prefix(termoso_proto::API_PREFIX).unwrap_or(path);
+    matches!(
+        (method, path),
+        (&http::Method::POST, "/sync/push")
+            | (&http::Method::POST, "/sync/pull")
+            | (&http::Method::GET, "/bridge/me")
+    )
 }
 
 pub fn bearer(headers: &HeaderMap) -> Option<&str> {
@@ -102,6 +119,11 @@ impl FromRequestParts<AppState> for Auth {
         let info = session::validate(state, token).await?;
         if info.disabled {
             return Err(Error::account_disabled());
+        }
+        if info.bridge_id.is_some() && !bridge_allowed(&parts.method, parts.uri.path()) {
+            return Err(Error::forbidden(
+                "API bridge tokens may only sync and read /bridge/me",
+            ));
         }
         let ip = client_ip(parts, state.cfg.trust_proxy);
         session::touch(state, &info, ip.as_deref()).await?;
