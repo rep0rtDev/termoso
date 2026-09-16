@@ -60,9 +60,15 @@ final class SmokeUITests: XCTestCase {
         el("hostEditor.cancel").tap()
 
         app.tabBars.buttons["Settings"].tap()
-        let core = el("settings.coreVersion")
-        XCTAssertTrue(core.waitForExistence(timeout: 5))
+        XCTAssertTrue(el("settings.theme").waitForExistence(timeout: 5))
         snap("06-settings")
+        // About is the last section; List rows below the fold do not exist yet.
+        let core = el("settings.coreVersion")
+        for _ in 0 ..< 6 where !core.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(core.waitForExistence(timeout: 5), "About → Core row not reachable")
+        snap("06-settings-about")
     }
 
     func testSelfHostedRequiresValidURL() throws {
@@ -72,11 +78,14 @@ final class SmokeUITests: XCTestCase {
 
         let url = el("welcome.selfHosted.url")
         XCTAssertTrue(url.waitForExistence(timeout: 5))
-        let cont = el("welcome.selfHosted.continue")
-        XCTAssertFalse(cont.isEnabled)
+        // Toolbar items wrap the button in a container that carries the same
+        // identifier but not the disabled state, so target the button itself.
+        let cont = app.buttons.matching(identifier: "welcome.selfHosted.continue").firstMatch
+        XCTAssertTrue(cont.waitForExistence(timeout: 5))
+        XCTAssertFalse(cont.isEnabled, "Continue must stay disabled for an empty address")
         url.tap()
         url.typeText("termoso.example.com")
-        XCTAssertTrue(cont.isEnabled)
+        XCTAssertTrue(cont.isEnabled, "bare host name should normalise to https://")
         snap("07-self-hosted")
         cont.tap()
 
