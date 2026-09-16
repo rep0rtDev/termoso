@@ -29,6 +29,8 @@ pub struct SessionInfo {
     pub email_verified: bool,
     pub last_used_at: DateTime<Utc>,
     #[serde(default)]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(default)]
     pub reauth_at: Option<DateTime<Utc>>,
     /// Set for API-bridge sessions, which are confined to sync.
     #[serde(default)]
@@ -193,12 +195,13 @@ pub async fn validate(state: &AppState, token: &str) -> ApiResult<SessionInfo> {
         bool,
         bool,
         DateTime<Utc>,
+        DateTime<Utc>,
         Option<DateTime<Utc>>,
         Option<Uuid>,
     );
     let row: Option<Row> = sqlx::query_as(
         "SELECT s.id, s.user_id, s.device_id, s.expires_at, u.is_admin, u.disabled, u.email_verified,
-                s.last_used_at, s.reauth_at, s.bridge_id
+                s.last_used_at, s.created_at, s.reauth_at, s.bridge_id
          FROM sessions s JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = $1 AND s.revoked_at IS NULL AND s.expires_at > now()",
     )
@@ -214,6 +217,7 @@ pub async fn validate(state: &AppState, token: &str) -> ApiResult<SessionInfo> {
         disabled,
         email_verified,
         last_used_at,
+        created_at,
         reauth_at,
         bridge_id,
     )) = row
@@ -229,6 +233,7 @@ pub async fn validate(state: &AppState, token: &str) -> ApiResult<SessionInfo> {
         disabled,
         email_verified,
         last_used_at,
+        created_at: Some(created_at),
         reauth_at,
         bridge_id,
     };
@@ -237,8 +242,12 @@ pub async fn validate(state: &AppState, token: &str) -> ApiResult<SessionInfo> {
 }
 
 /// Sliding expiry + last-seen bookkeeping, at most every 5 minutes per session.
+/// A bridge's first request is recorded immediately so its cabinet entry
+/// switches from "never used" as soon as the container comes up.
 pub async fn touch(state: &AppState, info: &SessionInfo, ip: Option<&str>) -> ApiResult<()> {
-    if Utc::now() - info.last_used_at < chrono::Duration::minutes(5) {
+    let first_bridge_use =
+        info.bridge_id.is_some() && info.created_at.is_some_and(|c| info.last_used_at <= c);
+    if !first_bridge_use && Utc::now() - info.last_used_at < chrono::Duration::minutes(5) {
         return Ok(());
     }
     let new_exp = if info.bridge_id.is_some() {

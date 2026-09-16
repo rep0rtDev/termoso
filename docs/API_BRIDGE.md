@@ -17,11 +17,13 @@ self-hosted) sees the bridge as one more device that syncs opaque blobs.
 
 ## How it works
 
-1. In the web cabinet you create a bridge and choose which vaults it may
-   write. Your browser generates an X25519 key pair for the bridge, seals each
-   vault key to its public key and uploads only the sealed keys plus the
-   public key. It downloads a **credentials file** once — the server never
-   sees the private key.
+1. In the web cabinet (**API Bridge** page, `/bridges`) you create a bridge
+   and choose which vaults it may write — any vault where you are an editor or
+   manager and hold the current key. Your browser generates an X25519 key
+   pair for the bridge, seals each vault key to its public key and uploads
+   only the sealed keys plus the public key. It downloads a **credentials
+   file** once — the server never sees the private key. The same page lists
+   bridges with their last use, edits/re-seals vault sets and revokes them.
 2. The bridge container starts with that file, logs in with its own token
    (a separate, revocable session that can only call `/sync/*` and
    `/bridge/me`), opens the sealed vault keys locally and mirrors the vaults.

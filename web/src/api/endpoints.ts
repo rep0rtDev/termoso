@@ -6,6 +6,9 @@ import type {
   AdminUpdateUserRequest,
   AdminUser,
   AuthResponse,
+  Bridge,
+  BridgeVaultKey,
+  CreateBridgeResponse,
   Device,
   DeviceInfo,
   Invite,
@@ -206,6 +209,15 @@ export const logsApi = {
   update: (id: string, patch: { pinned?: boolean; note?: string }) =>
     http.patch<SessionLog>(`/logs/${id}`, patch),
   delete: (id: string) => http.delete<undefined>(`/logs/${id}`),
+};
+
+export const bridgesApi = {
+  list: () => http.get<{ bridges: Bridge[] }>("/account/bridges"),
+  create: (name: string, public_key: string, vaults: BridgeVaultKey[]) =>
+    http.post<CreateBridgeResponse>("/account/bridges", { name, public_key, vaults }),
+  setVaults: (id: string, vaults: BridgeVaultKey[]) =>
+    http.put<Bridge>(`/account/bridges/${id}/vaults`, vaults),
+  revoke: (id: string) => http.delete<undefined>(`/account/bridges/${id}`),
 };
 
 export const vaultsApi = {
