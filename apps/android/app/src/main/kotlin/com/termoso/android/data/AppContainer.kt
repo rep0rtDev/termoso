@@ -1,6 +1,7 @@
 package com.termoso.android.data
 
 import android.content.Context
+import android.net.Uri
 import android.os.SystemClock
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -86,6 +87,22 @@ class AppContainer(context: Context) {
 
     fun consumeJoin() {
         _pendingJoin.value = null
+    }
+
+    /**
+     * Files shared into the app (`ACTION_SEND[_MULTIPLE]`), waiting for the
+     * terminal to offer sending them to the active session. Content URIs stay
+     * on the Kotlin side; Rust only ever sees app-owned scratch copies.
+     */
+    private val _pendingShare = MutableStateFlow<List<Uri>?>(null)
+    val pendingShare: StateFlow<List<Uri>?> = _pendingShare.asStateFlow()
+
+    fun offerShare(uris: List<Uri>) {
+        if (uris.isNotEmpty()) _pendingShare.value = uris
+    }
+
+    fun consumeShare() {
+        _pendingShare.value = null
     }
 
     init {

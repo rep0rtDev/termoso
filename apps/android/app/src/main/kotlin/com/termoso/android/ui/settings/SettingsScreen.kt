@@ -232,6 +232,14 @@ fun SettingsScreen(
                     checked = settings.terminalBell,
                     onCheckedChange = { v -> set { it.copy(terminalBell = v) } },
                 )
+                RowDivider()
+                SwitchRow(
+                    title = "Record sessions",
+                    subtitle = "Keep what the remote side prints in the encrypted vault (never what you type). " +
+                        "Team vaults with session logging on record regardless.",
+                    checked = settings.recordSessions,
+                    onCheckedChange = { v -> set { it.copy(recordSessions = v) } },
+                )
             }
 
             SectionLabel("Security")

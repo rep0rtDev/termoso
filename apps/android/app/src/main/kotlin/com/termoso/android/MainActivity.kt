@@ -1,6 +1,7 @@
 package com.termoso.android
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -50,13 +51,49 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun handleLink(intent: Intent?, container: AppContainer) {
-        val link = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString ?: return
+        when (intent?.action) {
+            Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE -> {
+                container.offerShare(sharedUris(intent))
+                // Consumed: a rotation must not re-offer the same files.
+                intent.action = Intent.ACTION_MAIN
+                return
+            }
+            Intent.ACTION_VIEW -> Unit
+            else -> return
+        }
+        val link = intent.dataString ?: return
         when (classifyLink(link)) {
             LinkKind.Invite -> container.offerInvite(link)
             LinkKind.Join -> container.offerJoin(link)
             LinkKind.Other -> Unit
         }
     }
+}
+
+/** Content URIs of a share intent: `EXTRA_STREAM` first, then the clip items (keyboard image paste, some galleries). */
+internal fun sharedUris(intent: Intent): List<Uri> {
+    val out = LinkedHashSet<Uri>()
+    if (intent.action == Intent.ACTION_SEND_MULTIPLE) {
+        val list = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM)
+        }
+        list?.forEach { out += it }
+    } else {
+        val one = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(Intent.EXTRA_STREAM)
+        }
+        one?.let { out += it }
+    }
+    intent.clipData?.let { clip ->
+        for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let { out += it }
+    }
+    return out.filter { it.scheme == "content" }
 }
 
 @Composable
