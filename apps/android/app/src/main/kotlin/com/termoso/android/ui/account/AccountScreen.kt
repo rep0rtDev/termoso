@@ -277,9 +277,9 @@ fun AccountScreen(
                     else -> {
                         SwitchRow(
                             title = "Suggest commands from a description",
-                            subtitle = aiProviderLabel(s) +
-                                (if (s.confidential) " · confidential compute" else "") +
-                                " · ${aiRemainingToday(s)} of ${s.dailyQuota} left today",
+                            subtitle = "${aiRemainingToday(s)} of ${s.dailyQuota} left today · " +
+                                aiProviderLabel(s) +
+                                (if (s.confidential) " · confidential compute" else ""),
                             checked = s.enabled,
                             onCheckedChange = { on ->
                                 scope.launch {
