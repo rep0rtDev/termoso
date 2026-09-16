@@ -227,7 +227,7 @@ jobs:
           set -o pipefail
           xcodebuild build-for-testing -project Termoso.xcodeproj -scheme Termoso \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
-            -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO | tee "$RUNNER_TEMP/build.log" | grep -E 'error:|warning:|\*\*' || true
+            -derivedDataPath "$RUNNER_TEMP/dd" | tee "$RUNNER_TEMP/build.log" | grep -E 'error:|warning:|\*\*' || true
           grep -q '\*\* TEST BUILD SUCCEEDED \*\*' "$RUNNER_TEMP/build.log"
         working-directory: apps/ios
       - name: XCTest + XCUITest (simulator)

@@ -16,13 +16,13 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     TARGETED_DEVICE_FAMILY: "1"
-    # Sideload builds are signed by the user (AltStore/SideStore/Xcode); CI
-    # produces an unsigned archive. Set CODE_SIGN_IDENTITY/DEVELOPMENT_TEAM
-    # locally in Xcode to run on a device.
+    # Sideload builds are signed by the user (AltStore/SideStore/Xcode); the
+    # release archive is built with CODE_SIGNING_ALLOWED=NO. Simulator builds
+    # are ad-hoc signed so Xcode embeds the keychain-access-groups /
+    # application-identifier entitlements the Keychain needs. Set
+    # CODE_SIGN_IDENTITY/DEVELOPMENT_TEAM locally in Xcode to run on a device.
     CODE_SIGN_STYLE: Manual
-    CODE_SIGN_IDENTITY: ""
-    CODE_SIGNING_REQUIRED: NO
-    CODE_SIGNING_ALLOWED: NO
+    CODE_SIGN_IDENTITY: "-"
     DEVELOPMENT_TEAM: ""
 
 packages:

@@ -122,6 +122,7 @@ final class VaultsModelTests: XCTestCase {
         var a = try model.newHostDraft(groupId: nil)
         a.label = "alpha"
         a.address = "alpha.example"
+        a.username = "deploy"
         a.tagIds = [web.id]
         try model.saveHost(a)
 
@@ -136,6 +137,7 @@ final class VaultsModelTests: XCTestCase {
         XCTAssertEqual(model.hosts(inGroup: prod.id, matching: "", tag: nil).map(\.label), ["bravo"])
         XCTAssertEqual(model.hosts(inGroup: nil, matching: "10.1", tag: nil).map(\.label), ["bravo"], "search spans groups")
         XCTAssertEqual(model.hosts(inGroup: nil, matching: "root", tag: nil).map(\.label), ["bravo"])
+        XCTAssertEqual(model.hosts(inGroup: nil, matching: "deploy", tag: nil).map(\.label), ["alpha"])
         XCTAssertEqual(model.hosts(inGroup: nil, matching: "", tag: "web").map(\.label), ["alpha"])
         XCTAssertEqual(model.groups(inGroup: nil).map(\.label), ["prod"])
 
