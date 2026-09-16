@@ -25,6 +25,7 @@ use termoso_core::terminal::{SharedTerminal, TermEvent, TermEvents, TermSize};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+use crate::autocomplete::{Completer, SuggestionItem};
 use crate::connect::{ConnectUi, Connector, PromptAnswer, PromptRequest, connect_resolved};
 use crate::error::{MobileError, Result};
 use crate::keys::{KeyMods, SpecialKey, encode_key, encode_text};
@@ -185,9 +186,16 @@ struct Inner {
     presence: Option<Slot>,
     /// Saved host this terminal is on, for command history and recordings.
     host_id: Option<Uuid>,
+    /// Vault of that host; scopes the snippets offered by autocomplete.
+    vault_id: Option<Uuid>,
+    /// A local shell's starting directory and home (`~` and relative paths
+    /// in suggestions resolve against them); `None` for anything remote.
+    local: Option<(String, String)>,
     /// Where the cursor was when the current command line started being
     /// typed; `None` while nothing is pending.
     typed: Mutex<Option<InputMark>>,
+    /// Autocomplete state (directory listing cache).
+    completer: Completer,
     /// The authenticated SSH connection while a plain SSH shell is up
     /// (Mosh drops its SSH leg), for side channels such as file drops.
     ssh: Mutex<Option<Arc<SshClient>>>,
@@ -253,6 +261,20 @@ impl Inner {
 
     fn forget_typing(&self) {
         *self.typed.lock().expect("typed poisoned") = None;
+        self.completer.invalidate();
+    }
+
+    /// What has been typed at the current prompt so far, as echoed by the
+    /// remote. `None` while nothing is pending, on the alternate screen
+    /// (editors, pagers) and for a view of somebody else's terminal.
+    fn typed_line(&self) -> Option<String> {
+        if self.view.is_some() {
+            return None;
+        }
+        let mark = (*self.typed.lock().expect("typed poisoned"))?;
+        let em = self.emulator.lock().expect("emulator poisoned");
+        let until = em.input_mark();
+        em.input_between(&mark, &until)
     }
 
     /// Enter was pressed: the echoed line since the mark is the command.
@@ -264,6 +286,7 @@ impl Inner {
         let Some(mark) = self.typed.lock().expect("typed poisoned").take() else {
             return;
         };
+        self.completer.invalidate();
         if self.view.is_some() {
             return;
         }
@@ -535,6 +558,25 @@ impl SshSession {
             LaunchTarget::Telnet { host_id, .. } => *host_id,
             LaunchTarget::Local { .. } => None,
         };
+        let vault_id = match &target {
+            LaunchTarget::Ssh { resolved, .. } => resolved.as_ref().map(|r| r.host.vault_id),
+            LaunchTarget::Telnet { .. } | LaunchTarget::Local { .. } => None,
+        };
+        let local = match &target {
+            LaunchTarget::Local { cwd, env, .. } => {
+                let home = env
+                    .iter()
+                    .find(|(k, _)| k == "HOME")
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                let cwd = cwd
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| home.clone());
+                Some((cwd, home))
+            }
+            _ => None,
+        };
         let palette = options
             .palette
             .clone()
@@ -575,7 +617,10 @@ impl SshSession {
             view: None,
             presence,
             host_id,
+            vault_id,
+            local,
             typed: Mutex::new(None),
+            completer: Completer::new(),
             ssh: Mutex::new(None),
             recorder: Mutex::new(None),
             logs_dir,
@@ -705,7 +750,10 @@ impl SshSession {
             view: Some(view.clone()),
             presence: None,
             host_id: None,
+            vault_id: None,
+            local: None,
             typed: Mutex::new(None),
+            completer: Completer::new(),
             ssh: Mutex::new(None),
             recorder: Mutex::new(None),
             logs_dir: std::path::PathBuf::new(),
@@ -792,6 +840,35 @@ impl SshSession {
         *self.inner.share.lock().expect("share poisoned") = Some(state);
         Ok(live)
     }
+
+    /// Entries of `dir` as seen by this session, or `None` when it cannot
+    /// list (Telnet, Mosh, disconnected, timed out).
+    fn list_dir(&self, dir: &str) -> Option<Vec<termoso_core::autocomplete::DirEntry>> {
+        if dir.contains('\0') || dir.len() > 4096 {
+            return None;
+        }
+        if let Some((cwd, home)) = &self.inner.local {
+            let expanded = match dir.strip_prefix('~') {
+                Some(rest) if !home.is_empty() => {
+                    format!("{home}/{}", rest.trim_start_matches('/'))
+                }
+                _ => dir.to_string(),
+            };
+            return Some(termoso_core::autocomplete::list_local_dir(
+                Some(cwd.as_str()).filter(|c| !c.is_empty()),
+                &expanded,
+            ));
+        }
+        let client = self.inner.ssh.lock().expect("ssh poisoned").clone()?;
+        let cmd = termoso_core::autocomplete::remote_ls_command(None, dir);
+        let out = self.runtime.block_on(async move {
+            tokio::time::timeout(crate::autocomplete::LIST_TIMEOUT, client.exec(&cmd, None))
+                .await
+                .ok()?
+                .ok()
+        })?;
+        Some(termoso_core::autocomplete::parse_ls(&out.stdout_str()))
+    }
 }
 
 #[uniffi::export]
@@ -848,6 +925,42 @@ impl SshSession {
         if !mods.ctrl && text.contains(['\r', '\n']) {
             self.inner.commit_typing(&self.runtime);
         }
+    }
+
+    /// What the user has typed at the current prompt, or `None` when there
+    /// is nothing to complete (nothing pending, alternate screen, a view).
+    pub fn typed_line(&self) -> Option<String> {
+        self.inner.typed_line()
+    }
+
+    /// Suggestions for the line being typed, best first (see
+    /// [`SuggestionItem`]). Sources: the command catalogue, this device's
+    /// command history, one-line snippets of the host's vault and, for SSH
+    /// and local shells, a listing of the directory the current token
+    /// points at (fetched over a side channel, so the interactive shell
+    /// never sees it; relative paths resolve against the home directory).
+    /// Blocks the calling thread for at most a few seconds while a remote
+    /// listing is fetched; call it off the UI thread. Empty when nothing is
+    /// being typed.
+    pub fn suggestions(&self) -> Vec<SuggestionItem> {
+        let Some(line) = self.inner.typed_line() else {
+            return Vec::new();
+        };
+        let (items, path) = Completer::offline(&self.inner.store, self.inner.vault_id, &line);
+        let Some(query) = path else {
+            return crate::autocomplete::finish(items, None);
+        };
+        let entries = match self.inner.completer.cached(&query.dir) {
+            Some(entries) => Some(entries),
+            None => {
+                let fetched = self.list_dir(&query.dir);
+                if let Some(entries) = &fetched {
+                    self.inner.completer.remember(&query.dir, entries.clone());
+                }
+                fetched
+            }
+        };
+        crate::autocomplete::finish(items, entries.map(|e| (&query, e)))
     }
 
     /// Visible screen as text (for copy / accessibility).

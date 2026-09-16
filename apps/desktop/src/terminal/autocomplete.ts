@@ -97,7 +97,11 @@ function commandIndex(words: string[]): number {
   while (i < words.length && ASSIGNMENT.test(words[i] ?? "")) i++;
   while (i < words.length && WRAPPERS.has(words[i] ?? "")) {
     i++;
-    while (i < words.length && (words[i] ?? "").startsWith("-")) i++;
+    while (
+      i < words.length &&
+      ((words[i] ?? "").startsWith("-") || ASSIGNMENT.test(words[i] ?? ""))
+    )
+      i++;
   }
   return i;
 }

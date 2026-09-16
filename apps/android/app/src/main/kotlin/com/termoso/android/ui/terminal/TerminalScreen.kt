@@ -99,10 +99,14 @@ import com.termoso.android.ui.snippets.SnippetPickerSheet
 import com.termoso.core.LiveEndReason
 import com.termoso.core.MobileSettings
 import com.termoso.core.SessionState
+import com.termoso.core.SuggestionItem
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Lines one volume press scrolls through the history. */
 private const val VOLUME_SCROLL_LINES = 3
@@ -359,6 +363,24 @@ private fun ActiveSession(
     var zoomDelta by rememberSaveable { mutableStateOf(0) }
     var scrolled by remember { mutableStateOf(false) }
 
+    val autocompleteOn = autocompleteAllowed(settings.autocomplete, state, canWrite, session.isView)
+    val frameTick by session.frameTick.collectAsStateWithLifecycle()
+    val completions = remember(session) { AutocompleteTracker() }
+    var suggestions by remember(session) { mutableStateOf<List<SuggestionItem>>(emptyList()) }
+    // Re-keyed by every rendered frame; the delay collapses output bursts.
+    LaunchedEffect(session, frameTick, autocompleteOn) {
+        if (!autocompleteOn) {
+            completions.reset()
+            suggestions = emptyList()
+            return@LaunchedEffect
+        }
+        delay(AUTOCOMPLETE_DEBOUNCE_MS)
+        val next = withContext(Dispatchers.IO) {
+            completions.next(session.rust.typedLine()) { session.rust.suggestions() }
+        }
+        if (next != null) suggestions = next
+    }
+
     LaunchedEffect(session) {
         session.events.collect { ev ->
             when (ev) {
@@ -613,6 +635,15 @@ private fun ActiveSession(
                     onClose = { scope.launch { shell.sessions.close(session.id) } },
                 )
             }
+            AutocompleteStrip(
+                items = suggestions,
+                onPick = { item ->
+                    suggestionInsert(item)?.let {
+                        tap()
+                        controller.sendText(it)
+                    }
+                },
+            )
             KeyPanel(
                 controller = controller,
                 rows = keyRows,

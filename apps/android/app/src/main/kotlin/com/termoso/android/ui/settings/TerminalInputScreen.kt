@@ -192,6 +192,14 @@ fun TerminalInputScreen(shell: ShellViewModel, onBack: () -> Unit) {
                         checked = settings.hidePanelWithKeyboard,
                         onCheckedChange = { v -> set { it.copy(hidePanelWithKeyboard = v) } },
                     )
+                    RowDivider()
+                    SwitchRow(
+                        title = "Autocomplete",
+                        subtitle = "Suggest commands, options, paths, history and snippets above the key panel while you type. " +
+                            "A tap inserts; nothing runs until you press Enter.",
+                        checked = settings.autocomplete,
+                        onCheckedChange = { v -> set { it.copy(autocomplete = v) } },
+                    )
                 }
             }
 
