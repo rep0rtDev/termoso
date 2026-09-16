@@ -282,6 +282,7 @@ pub fn run() {
             commands_tools::team_members,
             commands_tools::team_member_set_role,
             commands_tools::team_member_remove,
+            commands_tools::team_member_delete_account,
             commands_tools::team_invites,
             commands_tools::team_invite,
             commands_tools::team_invite_revoke,

@@ -7,6 +7,8 @@ use termoso_proto::account::{AccountKeys, UserProfile};
 use uuid::Uuid;
 
 use crate::error::{ApiResult, Error};
+use crate::events::{self, Event};
+use crate::session;
 use crate::state::AppState;
 
 #[derive(Debug, Clone, FromRow)]
@@ -29,12 +31,14 @@ pub struct UserRow {
     pub reset_scheduled_for: Option<DateTime<Utc>>,
     pub presence_hidden: bool,
     pub avatar_tag: Option<String>,
+    pub managed_by_team_id: Option<Uuid>,
 }
 
 const COLUMNS: &str =
     "id, email, email_verified, display_name, opaque_record, public_key, wrapped_private_key,
     recovery_wrapped_private_key, recovery_verifier_hash, key_version, totp_secret, totp_enabled,
-    is_admin, disabled, created_at, reset_scheduled_for, presence_hidden, avatar_tag";
+    is_admin, disabled, created_at, reset_scheduled_for, presence_hidden, avatar_tag,
+    managed_by_team_id";
 
 pub async fn by_id<'e, E>(db: E, id: Uuid) -> ApiResult<UserRow>
 where
@@ -97,7 +101,52 @@ pub fn profile(u: &UserRow, mfa_enabled: bool) -> UserProfile {
         reset_scheduled_for: u.reset_scheduled_for,
         presence_hidden: u.presence_hidden,
         avatar: u.avatar_tag.clone(),
+        managed_by_team_id: u.managed_by_team_id,
     }
+}
+
+/// Delete an account: revokes every session, drops the user row (the schema
+/// cascades to devices, vault memberships, logs, bridges …), removes stored
+/// log objects and tells people who shared vaults with the user. Callers
+/// check that the user owns no teams first.
+pub async fn delete(state: &AppState, user_id: Uuid) -> ApiResult<()> {
+    let affected: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT DISTINCT vm2.user_id FROM vault_members vm JOIN vault_members vm2 ON vm2.vault_id = vm.vault_id
+         WHERE vm.user_id = $1 AND vm2.user_id <> $1",
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+    let log_keys: Vec<(String,)> =
+        sqlx::query_as("SELECT object_key FROM session_logs WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_all(&state.db)
+            .await?;
+    session::revoke_all(state, user_id, None).await?;
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(user_id)
+        .execute(&state.db)
+        .await?;
+    if let Some(storage) = &state.storage {
+        for (k,) in log_keys {
+            if let Err(e) = storage.delete(&k).await {
+                tracing::warn!(error = %e, key = %k, "could not delete log object");
+            }
+        }
+    }
+    let user_ids: Vec<Uuid> = affected.into_iter().map(|(id,)| id).collect();
+    if !user_ids.is_empty() {
+        events::publish(
+            state,
+            Event::VaultsUpdated {
+                user_ids: user_ids.clone(),
+            },
+        )
+        .await?;
+        events::publish(state, Event::TeamsUpdated { user_ids }).await?;
+    }
+    metrics::counter!("termoso_account_deletions_total").increment(1);
+    Ok(())
 }
 
 /// Best-effort security notification to the account owner. Plain text, no

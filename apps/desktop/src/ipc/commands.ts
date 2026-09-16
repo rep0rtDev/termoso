@@ -610,6 +610,9 @@ export const teamMemberSetRole = (teamId: Uuid, userId: Uuid, role: TeamRole) =>
   invoke<null>("team_member_set_role", { teamId, userId, role });
 export const teamMemberRemove = (teamId: Uuid, userId: Uuid) =>
   invoke<null>("team_member_remove", { teamId, userId });
+/** Owner-only; the server asks for a fresh re-authentication. */
+export const teamMemberDeleteAccount = (teamId: Uuid, userId: Uuid) =>
+  invoke<null>("team_member_delete_account", { teamId, userId });
 export const teamInvites = (teamId: Uuid) => invoke<TeamInvite[]>("team_invites", { teamId });
 export const teamInvite = (teamId: Uuid, emails: string[], role: TeamRole, vaultIds: Uuid[]) =>
   invoke<InviteResult[]>("team_invite", { teamId, emails, role, vaultIds });

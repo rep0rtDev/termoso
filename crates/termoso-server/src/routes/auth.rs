@@ -253,10 +253,15 @@ pub async fn register_finish(
     let is_admin = state.is_bootstrap_admin(&email);
 
     let mut tx = state.db.begin().await?;
+    let managed_by = invite
+        .as_ref()
+        .filter(|_| invite_matches)
+        .map(|i| i.team_id);
     let inserted = sqlx::query(
         "INSERT INTO users (id, email, email_verified, display_name, opaque_record, public_key,
-            wrapped_private_key, recovery_wrapped_private_key, recovery_verifier_hash, is_admin)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            wrapped_private_key, recovery_wrapped_private_key, recovery_verifier_hash, is_admin,
+            managed_by_team_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT DO NOTHING",
     )
     .bind(user_id)
@@ -269,6 +274,7 @@ pub async fn register_finish(
     .bind(&req.keys.recovery_wrapped_private_key)
     .bind(hash_token(&req.keys.recovery_verifier))
     .bind(is_admin)
+    .bind(managed_by)
     .execute(&mut *tx)
     .await?;
     if inserted.rows_affected() == 0 {

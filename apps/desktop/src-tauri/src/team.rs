@@ -38,6 +38,8 @@ pub struct TeamMemberCard {
     pub joined_at: DateTime<Utc>,
     /// Second factor enrolled; `None` when the server keeps it private.
     pub mfa_enabled: Option<bool>,
+    /// Account was created through this team's invitation; the owner may delete it.
+    pub managed: bool,
 }
 
 /// Team-vault member still waiting for their sealed copy of the vault key.
@@ -232,6 +234,7 @@ pub async fn members<R: Runtime>(app: &AppHandle<R>, team_id: Uuid) -> Result<Ve
             role: m.role,
             joined_at: m.joined_at,
             mfa_enabled: m.mfa_enabled,
+            managed: m.managed,
         })
         .collect())
 }
@@ -258,13 +261,33 @@ pub async fn remove_member<R: Runtime>(
 ) -> Result<()> {
     let api = api(app).await?;
     api.remove_team_member(team_id, user_id).await?;
+    rotate_after_removal(app, &api, team_id).await
+}
+
+/// Owner-only: delete the whole account of a member this team created, then
+/// rotate the team-vault keys they held like a plain removal does.
+pub async fn delete_member_account<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    user_id: Uuid,
+) -> Result<()> {
+    let api = api(app).await?;
+    api.delete_team_member_account(team_id, user_id).await?;
+    rotate_after_removal(app, &api, team_id).await
+}
+
+async fn rotate_after_removal<R: Runtime>(
+    app: &AppHandle<R>,
+    api: &ApiClient,
+    team_id: Uuid,
+) -> Result<()> {
     let state = app.state::<AppState>();
     let vaults = state.store.vaults()?;
     for v in vaults
         .iter()
         .filter(|v| v.team_id == Some(team_id) && v.unlocked && v.role.can_manage())
     {
-        if let Err(e) = rotate_with(&api, &state, v.id).await {
+        if let Err(e) = rotate_with(api, &state, v.id).await {
             tracing::warn!(vault = %v.id, "rotate after member removal: {e}");
         }
     }
