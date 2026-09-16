@@ -69,6 +69,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.termoso.ios.tests
+        GENERATE_INFOPLIST_FILE: YES
 
   TermosoUITests:
     type: bundle.ui-testing
@@ -80,6 +81,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.termoso.ios.uitests
+        GENERATE_INFOPLIST_FILE: YES
 
 schemes:
   Termoso:
