@@ -209,7 +209,7 @@ export function tabTitle(tab: TerminalTab, s: TerminalState = terminalStore.get(
   return tab.paneIds.length > 1 ? `${title} (+${tab.paneIds.length - 1})` : title;
 }
 
-export type SidePanelTab = "search" | "snippets" | "history" | "themes" | "info";
+export type SidePanelTab = "search" | "snippets" | "history" | "themes" | "ask" | "info";
 
 export const HOME_TAB = "home";
 
@@ -481,6 +481,11 @@ export function copySelection(paneId: Uuid) {
 
 export function pasteClipboard(paneId: Uuid) {
   void readClipboard().then((t) => pasteInto(paneId, t));
+}
+
+/** Types `text` at the prompt the way a paste does (bracketed paste, multi-line confirm); never appends Enter. */
+export function pasteText(paneId: Uuid, text: string) {
+  pasteInto(paneId, text);
 }
 
 function pasteInto(paneId: Uuid, text: string, force = false) {

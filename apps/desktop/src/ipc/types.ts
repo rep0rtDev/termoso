@@ -213,6 +213,28 @@ export interface UserProfile {
   avatar?: string | null;
 }
 
+/** `GET /account/ai`: what the server offers and whether this account opted in. */
+export interface AiStatus {
+  /** The server has a model configured at all. */
+  available: boolean;
+  /** This account opted in. */
+  enabled: boolean;
+  provider: string | null;
+  model: string | null;
+  /** The model runs in confidential compute (TEE): the operator cannot read prompts. */
+  confidential: boolean;
+  daily_quota: number;
+  used_today: number;
+}
+
+/** One suggestion; text for the user to read and paste, never executed here. */
+export interface AiCommandResponse {
+  /** Empty when the model declined (see `explanation`). */
+  command: string;
+  explanation: string | null;
+  remaining_today: number;
+}
+
 export interface TeamMember {
   user_id: Uuid;
   email: string;

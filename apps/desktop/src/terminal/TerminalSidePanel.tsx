@@ -30,6 +30,7 @@ import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
 import PaletteRoundedIcon from "@mui/icons-material/PaletteRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import RocketLaunchOutlinedIcon from "@mui/icons-material/RocketLaunchOutlined";
+import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import RemoveRoundedIcon from "@mui/icons-material/RemoveRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
@@ -47,6 +48,7 @@ import { ActionMenu, Loading, Mono, SearchField, type MenuAction } from "@/compo
 import { ThemeCard } from "@/settings/ThemeGallery";
 import { FontPicker } from "@/settings/FontPicker";
 import { SearchBar } from "./SearchBar";
+import { AskAiPanel } from "./AskAiPanel";
 import { VariablesDialog } from "@/snippets/SnippetsPage";
 import { ALL_HOSTS, CommandHistoryList, ConnectionHistoryList } from "@/history/ShellHistory";
 import { RunTargets } from "@/snippets/RunStatus";
@@ -75,6 +77,7 @@ const TABS: { id: SidePanelTab; label: string; icon: React.ReactNode }[] = [
   { id: "snippets", label: "Snippets", icon: <DataObjectRoundedIcon /> },
   { id: "history", label: "History", icon: <HistoryRoundedIcon /> },
   { id: "themes", label: "Themes", icon: <PaletteRoundedIcon /> },
+  { id: "ask", label: "Ask AI", icon: <AutoAwesomeOutlinedIcon /> },
   { id: "info", label: "Session info", icon: <InfoOutlinedIcon /> },
 ];
 
@@ -135,6 +138,7 @@ export function TerminalSidePanel({ tab }: { tab: TerminalTab }) {
           {panel === "snippets" && <SnippetsPanel pane={pane} />}
           {panel === "history" && <HistoryPanel pane={pane} />}
           {panel === "themes" && <ThemesPanel tab={tab} pane={pane} />}
+          {panel === "ask" && <AskAiPanel pane={pane} />}
           {panel === "info" && <InfoPanel pane={pane} tab={tab} />}
         </Box>
       </Box>

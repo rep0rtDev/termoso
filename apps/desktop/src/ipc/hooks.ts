@@ -37,6 +37,7 @@ export const keys = {
   teamPendingKeys: (id: Uuid) => ["account", "teams", id, "pending-keys"] as const,
   presence: (teamId: Uuid) => ["presence", teamId] as const,
   profile: ["account", "profile"] as const,
+  ai: ["account", "ai"] as const,
   serialPorts: ["serialPorts"] as const,
 };
 
@@ -266,6 +267,9 @@ export const useTeamPresence = (teamId: Uuid | null) =>
   });
 export const useProfile = (enabled: boolean) =>
   useQuery({ queryKey: keys.profile, queryFn: ipc.accountProfile, enabled, staleTime: 60_000 });
+/** AI suggestions: provider on offer, opt-in state, today's quota. */
+export const useAiStatus = (enabled: boolean) =>
+  useQuery({ queryKey: keys.ai, queryFn: ipc.aiStatus, enabled, staleTime: 60_000 });
 export const useTeamPendingKeys = (teamId: Uuid | null, enabled = true) =>
   useQuery({
     queryKey: keys.teamPendingKeys(teamId ?? ""),

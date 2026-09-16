@@ -47,6 +47,7 @@ const MENU: { label: string; entries: Entry[] }[] = [
       "term.zoomOut",
       "term.zoomReset",
       "term.sidePanel",
+      "term.askAi",
       null,
       "window.fullscreen",
     ],

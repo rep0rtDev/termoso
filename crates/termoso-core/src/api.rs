@@ -18,6 +18,7 @@ use termoso_proto::account::{
     AccountKeys, PresenceVisibilityRequest, ServerInfo, SettingsBlob, UpdateProfileRequest,
     UserProfile,
 };
+use termoso_proto::ai::{AiCommandRequest, AiCommandResponse, AiSettingsRequest, AiStatus};
 use termoso_proto::auth::{
     AuthResponse, Device, DeviceApproveRequest, DeviceApproveResendRequest, DeviceList,
     LoginFinishRequest, LoginStartRequest, LoginStartResponse, MfaCredential, MfaStatus,
@@ -405,6 +406,29 @@ impl ApiClient {
                 .json(&PresenceVisibilityRequest { hidden }),
         )
         .await
+    }
+
+    // ───────────────────────────── ai ─────────────────────────────
+
+    /// `GET /account/ai` — provider on offer, opt-in state and today's quota.
+    pub async fn ai_status(&self) -> Result<AiStatus> {
+        self.get("account/ai").await
+    }
+
+    /// `PUT /account/ai` — opt in to (or out of) AI command suggestions.
+    pub async fn set_ai_enabled(&self, enabled: bool) -> Result<AiStatus> {
+        Self::send(
+            self.request(Method::PUT, "account/ai")
+                .json(&AiSettingsRequest { enabled }),
+        )
+        .await
+    }
+
+    /// `POST /ai/command` — one shell command for a short request. Only the
+    /// request text and the OS/shell labels leave the machine; the caller
+    /// decides what (if anything) to do with the answer.
+    pub async fn ai_command(&self, req: &AiCommandRequest) -> Result<AiCommandResponse> {
+        self.post("ai/command", req).await
     }
 
     /// `GET /account/settings` — encrypted settings blob.
