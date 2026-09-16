@@ -2,6 +2,7 @@
 
 pub mod account;
 pub mod admin;
+pub mod ai;
 pub mod auth;
 pub mod bridges;
 pub mod history;
@@ -82,6 +83,8 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/account/profile", patch(account::update_profile))
         .route("/account/presence", put(account::put_presence))
+        .route("/account/ai", get(ai::status).put(ai::put_settings))
+        .route("/ai/command", post(ai::command))
         .route(
             "/account/avatar",
             put(account::put_avatar)

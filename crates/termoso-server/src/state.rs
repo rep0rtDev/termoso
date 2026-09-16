@@ -35,6 +35,8 @@ pub struct Inner {
     pub opaque: opaque::Server,
     pub master_key: SymmetricKey,
     pub sso: SsoRegistry,
+    /// Command-suggestion model client, when configured.
+    pub ai: Option<crate::ai::Ai>,
     /// `host[:port]` of `TERMOSO_SSHID_URL`, matched against `Host`.
     pub sshid_host: Option<String>,
     /// Local fan-out of bus events to WebSocket connections on this instance.
@@ -97,9 +99,11 @@ impl Inner {
         let opaque = load_opaque_server(&db, &master_key).await?;
         let sso = SsoRegistry::from_config(&cfg).await?;
         let sshid_host = cfg.sshid_host();
+        let ai = cfg.ai.as_ref().map(crate::ai::Ai::new).transpose()?;
 
         Ok(Arc::new(Inner {
             sshid_host,
+            ai,
             cfg,
             db,
             cache,

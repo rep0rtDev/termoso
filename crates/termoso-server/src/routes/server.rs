@@ -24,6 +24,7 @@ pub async fn info(State(state): State<AppState>) -> ApiResult<Json<ServerInfo>> 
             email: state.mailer.is_some(),
             webauthn: state.webauthn.is_some(),
             teams: settings.users_can_create_teams,
+            ai: state.ai.is_some(),
         },
         max_entity_bytes: settings.max_entity_bytes,
         max_log_bytes: settings.max_log_bytes,
