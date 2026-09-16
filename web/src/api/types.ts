@@ -424,3 +424,47 @@ export interface Page<T> {
   items: T[];
   total: number;
 }
+
+// ── API bridges ─────────────────────────────────────────────────────────
+
+/** A vault an API bridge may write to; `sealed_key` is absent after a key rotation until re-sealed. */
+export interface BridgeVault {
+  vault_id: string;
+  name: string;
+  kind: VaultKind;
+  team_id?: string;
+  role: VaultRole;
+  key_version: number;
+  sealed_key?: string;
+}
+
+export interface Bridge {
+  id: string;
+  name: string;
+  device_id: string;
+  public_key: string;
+  vaults: BridgeVault[];
+  created_at: string;
+  last_used_at?: string;
+  last_ip?: string;
+}
+
+export interface BridgeVaultKey {
+  vault_id: string;
+  sealed_key: string;
+}
+
+export interface CreateBridgeResponse {
+  bridge: Bridge;
+  /** Shown once; the server keeps only a hash. */
+  token: string;
+}
+
+/** `termoso-bridge.json` mounted into the bridge container. */
+export interface BridgeCredentials {
+  version: 1;
+  server: string;
+  bridge_id: string;
+  private_key: string;
+  token: string;
+}

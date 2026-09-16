@@ -16,6 +16,7 @@ import { SsoCallbackPage } from "./pages/auth/SsoCallbackPage";
 import { AccountPage } from "./pages/account/AccountPage";
 import { SecurityPage } from "./pages/account/SecurityPage";
 import { DevicesPage } from "./pages/account/DevicesPage";
+import { BridgesPage } from "./pages/account/BridgesPage";
 import { DeleteAccountPage } from "./pages/account/DeleteAccountPage";
 import { TeamsPage } from "./pages/team/TeamsPage";
 import { TeamPage } from "./pages/team/TeamPage";
@@ -62,6 +63,7 @@ export const router = createBrowserRouter([
           { path: "/confirm/email", element: <Navigate to="/account#email" replace /> },
           { path: "/security", element: <SecurityPage /> },
           { path: "/devices", element: <DevicesPage /> },
+          { path: "/bridges", element: <BridgesPage /> },
           { path: "/delete-account", element: <DeleteAccountPage /> },
           { path: "/team", element: <TeamsPage /> },
           { path: "/team/:id", element: <TeamPage /> },
