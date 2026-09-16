@@ -140,9 +140,11 @@ jobs:
   # Everything else runs on Linux, so this is what catches a broken
   # `cfg(target_os = "macos")` branch or a bundle setting the macOS bundler
   # rejects. The debug .app is ad-hoc signed exactly like a release without
-  # Apple secrets (docs/RELEASING.md).
+  # Apple secrets (docs/RELEASING.md), then actually launched: the runner has
+  # a GUI session, so apps/desktop/smoke drives welcome → hosts → local zsh →
+  # settings inside the real WKWebView and screenshots the window.
   macos:
-    name: macos (clippy + core tests + tauri build --debug)
+    name: macos (clippy + core tests + tauri build --debug + runtime smoke)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
@@ -173,6 +175,18 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$app"
           codesign -dv "$app" 2>&1 | grep -E '^(Identifier|TeamIdentifier|Signature)'
           lipo -info "$exe"
+      - name: Runtime smoke
+        run: apps/desktop/smoke/macos.sh target/debug/bundle/macos/Termoso.app "$RUNNER_TEMP/smoke"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: macos-smoke
+          path: |
+            ${{ runner.temp }}/smoke/*.png
+            ${{ runner.temp }}/smoke/report.txt
+            ${{ runner.temp }}/smoke/app.log
+          if-no-files-found: ignore
+          retention-days: 14
 
   android:
     name: android (cargo-ndk + gradle assembleDebug + lint)
