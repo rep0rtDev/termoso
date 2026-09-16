@@ -325,11 +325,12 @@ pub async fn group_delete(
     id: Uuid,
     recursive: Option<bool>,
 ) -> Result<()> {
-    if recursive.unwrap_or(false) {
-        hosts::delete_group_recursive(&state.store, id)
+    let delete = if recursive.unwrap_or(false) {
+        hosts::delete_group_recursive
     } else {
-        hosts::delete_group(&state.store, id)
-    }
+        hosts::delete_group
+    };
+    crate::cloud_sync::delete_group_with(&state.store, id, delete)
 }
 
 #[tauri::command]
