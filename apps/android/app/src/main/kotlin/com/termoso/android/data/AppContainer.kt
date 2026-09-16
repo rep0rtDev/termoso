@@ -25,6 +25,7 @@ sealed interface VaultState {
         val forwards: ForwardManager,
         val account: AccountManager,
         val presence: PresenceManager,
+        val ai: AiManager,
     ) : VaultState
 }
 
@@ -148,6 +149,7 @@ class AppContainer(context: Context) {
                 forwards = ForwardManager(it, keepAlive),
                 account = account,
                 presence = PresenceManager(it, account),
+                ai = AiManager(it, account),
             )
         }
     }
@@ -161,6 +163,7 @@ class AppContainer(context: Context) {
         open.sftp.closeAll()
         open.forwards.closeAll()
         open.presence.close()
+        open.ai.close()
         open.account.close()
         fido2.close()
         withContext(Dispatchers.IO) { open.repo.app.close() }

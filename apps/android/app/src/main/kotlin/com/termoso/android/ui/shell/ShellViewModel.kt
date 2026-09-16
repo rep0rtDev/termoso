@@ -2,6 +2,7 @@ package com.termoso.android.ui.shell
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.termoso.android.data.AiManager
 import com.termoso.android.data.SessionManager
 import com.termoso.android.data.ForwardManager
 import com.termoso.android.data.PresenceManager
@@ -35,6 +36,7 @@ class ShellViewModel(
     val sftp: SftpManager,
     val forwards: ForwardManager,
     val presence: PresenceManager,
+    val ai: AiManager,
 ) : ViewModel() {
     private val _vaults = MutableStateFlow<List<VaultInfo>>(emptyList())
     val vaults: StateFlow<List<VaultInfo>> = _vaults.asStateFlow()

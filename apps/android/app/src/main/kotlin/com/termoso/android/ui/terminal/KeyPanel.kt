@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardTab
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DataObject
 import androidx.compose.material.icons.filled.Keyboard
@@ -90,6 +91,7 @@ fun KeyPanel(
     onToggleIme: () -> Unit,
     onHiddenInput: () -> Unit,
     onSnippets: () -> Unit,
+    onAskAi: () -> Unit,
     onPaste: () -> Unit,
     onKeyPressed: () -> Unit,
     modifier: Modifier = Modifier,
@@ -121,6 +123,7 @@ fun KeyPanel(
         Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
             IconKey(Icons.Filled.Password, "Hidden input", Modifier.weight(1f)) { onKeyPressed(); onHiddenInput() }
             IconKey(Icons.Filled.DataObject, "Snippets", Modifier.weight(1f)) { onKeyPressed(); onSnippets() }
+            IconKey(Icons.Filled.AutoAwesome, "Ask AI", Modifier.weight(1f)) { onKeyPressed(); onAskAi() }
             IconKey(Icons.Filled.ContentPaste, "Paste", Modifier.weight(1f)) { onKeyPressed(); onPaste() }
             TextKey(
                 PanelKey.Special("shift\ntab", SpecialKey.TAB, shift = true),
