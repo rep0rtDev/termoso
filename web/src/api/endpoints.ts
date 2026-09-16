@@ -11,6 +11,8 @@ import type {
   CreateBridgeResponse,
   Device,
   DeviceInfo,
+  DigestCadence,
+  DigestSubscription,
   Invite,
   InvitePreview,
   LogListResponse,
@@ -25,6 +27,7 @@ import type {
   RecoveryStartResponse,
   RegisterFinishRequest,
   SecurityEvent,
+  SendDigestResponse,
   ServerInfo,
   ServerSettings,
   SessionLog,
@@ -194,6 +197,11 @@ export const teamsApi = {
   /** Owner-only: delete the whole account of a member created by this team's invitation. */
   deleteMemberAccount: (id: string, userId: string) =>
     http.delete<undefined>(`/teams/${id}/members/${userId}/account`),
+  digest: (id: string) => http.get<DigestSubscription>(`/teams/${id}/digest`),
+  updateDigest: (id: string, cadence: DigestCadence | null) =>
+    http.put<DigestSubscription>(`/teams/${id}/digest`, { cadence }),
+  sendDigest: (id: string, cadence: DigestCadence) =>
+    http.post<SendDigestResponse>(`/teams/${id}/digest/send`, { cadence }),
   invites: (id: string) => http.get<{ invites: Invite[] }>(`/teams/${id}/invites`),
   createInvite: (id: string, email: string, role: TeamRole, vault_ids: string[]) =>
     http.post<Invite & { url: string }>(`/teams/${id}/invites`, { email, role, vault_ids }),

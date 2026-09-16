@@ -243,7 +243,7 @@ All routes live under `/api/v1`. Authenticated routes take
 | auth | OPAQUE `register/{start,finish}`, `login/{start,finish}`, `password/{start,finish}`, recovery-key login, MFA step, device approval, step-up `reauth/{start,finish}`, `start-over/*`, SSO (`sso/providers`, `sso/{provider}/start`, callback), `logout` |
 | account | profile, e-mail change/verification, devices, key material, recovery-key rotation, security events, deletion |
 | account/mfa | TOTP, WebAuthn, backup codes |
-| teams | teams, members & roles, invites; the owner can delete accounts that were created through the team's invitation (`DELETE /teams/{id}/members/{user}/account`, step-up + audit) |
+| teams | teams, members & roles, invites; the owner can delete accounts that were created through the team's invitation (`DELETE /teams/{id}/members/{user}/account`, step-up + audit); activity log (`GET /teams/{id}/audit`) and its opt-in per-admin e-mail digest (`GET/PUT /teams/{id}/digest` daily/weekly, `POST /teams/{id}/digest/send`; needs SMTP, mailed 07:00 UTC after the period, nothing sent for a quiet period) |
 | vaults | personal & team vaults, members, sealed vault keys, key rotation, pending keys |
 | sync | `push` / `pull` of encrypted entities with per-vault cursors, version conflicts and tombstones |
 | history | encrypted command / connection history |

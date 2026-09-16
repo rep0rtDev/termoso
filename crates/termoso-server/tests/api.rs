@@ -23,7 +23,9 @@ use termoso_proto::sync::{
     PullRequest, PullResponse, PushRequest, PushResponse, PushResult,
 };
 use termoso_proto::team::{
-    AuditEventList, CreateInviteRequest, CreateTeamRequest, Team, TeamMemberList, TeamRole,
+    AuditEventList, CreateInviteRequest, CreateTeamRequest, DigestCadence, DigestSubscription,
+    SendDigestRequest, SendDigestResponse, Team, TeamMemberList, TeamRole, UpdateDigestRequest,
+    UpdateTeamRequest,
 };
 use termoso_proto::vault::{
     CreateVaultRequest, Vault, VaultKind, VaultList, VaultMemberUpsert, VaultRole,
@@ -1324,6 +1326,213 @@ async fn owner_deletes_team_created_accounts_only() {
         StatusCode::CONFLICT,
     )
     .await;
+}
+
+/// Admins opt in to a daily/weekly e-mail digest of the activity log; it is
+/// built from the same audit rows, skipped for quiet periods, sent once per
+/// period even with several server instances, and dropped when the
+/// subscriber stops being an admin.
+#[tokio::test]
+async fn team_activity_digest_is_opt_in_per_admin() {
+    let s = server!();
+    if s.mailpit.is_none() {
+        eprintln!("skipping: Mailpit not configured");
+        return;
+    }
+    let owner = register(s, &unique_email("dig-own"), "pw-owner-123456789").await;
+    let admin = register(s, &unique_email("dig-adm"), "pw-admin-123456789").await;
+    let member = register(s, &unique_email("dig-mem"), "pw-member-12345678").await;
+    let team: Team = s
+        .json(
+            Method::POST,
+            "/teams",
+            Some(owner.token()),
+            Some(&CreateTeamRequest {
+                name: "Digest".into(),
+            }),
+        )
+        .await;
+    for (u, role) in [(&admin, TeamRole::Admin), (&member, TeamRole::Member)] {
+        let t = invite(s, team.id, owner.token(), &u.email, role).await;
+        let _: Team = s
+            .json(
+                Method::POST,
+                &format!("/invites/{t}/accept"),
+                Some(u.token()),
+                NOBODY,
+            )
+            .await;
+    }
+    let digest_path = format!("/teams/{}/digest", team.id);
+
+    // Members don't get the admin view by mail either.
+    s.expect_status(
+        Method::GET,
+        &digest_path,
+        Some(member.token()),
+        NOBODY,
+        StatusCode::FORBIDDEN,
+    )
+    .await;
+    s.expect_status(
+        Method::PUT,
+        &digest_path,
+        Some(member.token()),
+        Some(&UpdateDigestRequest {
+            cadence: Some(DigestCadence::Daily),
+        }),
+        StatusCode::FORBIDDEN,
+    )
+    .await;
+
+    // Nobody is subscribed until they ask.
+    let sub: DigestSubscription = s
+        .json(Method::GET, &digest_path, Some(admin.token()), NOBODY)
+        .await;
+    assert_eq!(sub.cadence, None);
+    let sub: DigestSubscription = s
+        .json(
+            Method::PUT,
+            &digest_path,
+            Some(admin.token()),
+            Some(&UpdateDigestRequest {
+                cadence: Some(DigestCadence::Weekly),
+            }),
+        )
+        .await;
+    assert_eq!(sub.cadence, Some(DigestCadence::Weekly));
+    let sub: DigestSubscription = s
+        .json(
+            Method::PUT,
+            &digest_path,
+            Some(owner.token()),
+            Some(&UpdateDigestRequest {
+                cadence: Some(DigestCadence::Daily),
+            }),
+        )
+        .await;
+    assert_eq!(sub.cadence, Some(DigestCadence::Daily));
+    // The owner's subscription is their own, not the admin's.
+    let sub: DigestSubscription = s
+        .json(Method::GET, &digest_path, Some(admin.token()), NOBODY)
+        .await;
+    assert_eq!(sub.cadence, Some(DigestCadence::Weekly));
+
+    let _: Team = s
+        .json(
+            Method::PATCH,
+            &format!("/teams/{}", team.id),
+            Some(owner.token()),
+            Some(&UpdateTeamRequest {
+                name: Some("Digest Ops".into()),
+                ..Default::default()
+            }),
+        )
+        .await;
+
+    // "Send now" mails the last day to the caller only.
+    let before = s.email_count(&admin.email).await;
+    let r: SendDigestResponse = s
+        .json(
+            Method::POST,
+            &format!("{digest_path}/send"),
+            Some(admin.token()),
+            Some(&SendDigestRequest {
+                cadence: Some(DigestCadence::Daily),
+            }),
+        )
+        .await;
+    assert!(r.sent);
+    assert!(r.events >= 4, "{r:?}");
+    let body = s
+        .emailed_body(&admin.email, "Digest Ops: activity for")
+        .await;
+    assert!(
+        body.contains("renamed the team to \"Digest Ops\""),
+        "{body}"
+    );
+    assert!(body.contains("joined the team as Admin"), "{body}");
+    assert!(body.contains("Invitations: 4"), "{body}");
+    // Three accounts share the display name; the digest tells them apart.
+    assert!(
+        body.contains(&format!(
+            "Test User ({}) joined the team as Admin",
+            admin.email
+        )),
+        "{body}"
+    );
+    assert!(
+        body.contains(&format!("/team/{}", team.id)),
+        "footer links to the team page: {body}"
+    );
+    assert_eq!(s.email_count(&admin.email).await, before + 1);
+
+    // The scheduler: pretend it is the morning after (daily) and the next
+    // Monday morning (weekly); each subscription is mailed exactly once, and a
+    // second instance running the same tick finds nothing left to claim.
+    let (smtp, _) = smtp_config().await.expect("mailpit");
+    let mailer = termoso_server::mail::Mailer::new(&smtp, "Termoso Test").expect("mailer");
+    let db = sqlx::PgPool::connect(&s.database_url).await.expect("db");
+    let today = chrono::Utc::now().date_naive();
+    let at_8 = |d: chrono::NaiveDate| d.and_hms_opt(8, 0, 0).expect("time").and_utc();
+    let tomorrow = today.succ_opt().expect("date");
+    let days_to_monday = 7 - chrono::Datelike::weekday(&today).num_days_from_monday();
+    let next_monday = today
+        .checked_add_days(chrono::Days::new(u64::from(days_to_monday)))
+        .expect("date");
+    let owner_before = s.email_count(&owner.email).await;
+    let admin_before = s.email_count(&admin.email).await;
+    let mut sent = 0;
+    for now in [at_8(tomorrow), at_8(next_monday), at_8(next_monday)] {
+        sent += termoso_server::digest::send_due(&db, &mailer, "http://cabinet.test", now)
+            .await
+            .expect("send_due");
+    }
+    assert_eq!(sent, 2, "one daily for the owner, one weekly for the admin");
+    let body = s
+        .emailed_body(&owner.email, "Digest Ops: activity for")
+        .await;
+    assert!(body.contains("Timeline (UTC):"), "{body}");
+    assert!(body.contains("http://cabinet.test/team/"), "{body}");
+    assert_eq!(s.email_count(&owner.email).await, owner_before + 1);
+    assert_eq!(s.email_count(&admin.email).await, admin_before + 1);
+    let sub: DigestSubscription = s
+        .json(Method::GET, &digest_path, Some(owner.token()), NOBODY)
+        .await;
+    assert_eq!(
+        sub.last_sent_at,
+        Some(at_8(next_monday) - chrono::TimeDelta::hours(8))
+    );
+
+    // Unsubscribing is a null cadence.
+    let sub: DigestSubscription = s
+        .json(
+            Method::PUT,
+            &digest_path,
+            Some(owner.token()),
+            Some(&UpdateDigestRequest { cadence: None }),
+        )
+        .await;
+    assert_eq!(sub.cadence, None);
+
+    // Demoted to member: the subscription goes with the admin role.
+    s.expect_status(
+        Method::PATCH,
+        &format!("/teams/{}/members/{}", team.id, admin.id()),
+        Some(owner.token()),
+        Some(&serde_json::json!({ "role": "member" })),
+        StatusCode::NO_CONTENT,
+    )
+    .await;
+    termoso_server::digest::send_due(&db, &mailer, "http://cabinet.test", at_8(next_monday))
+        .await
+        .expect("send_due");
+    let (left,): (i64,) = sqlx::query_as("SELECT count(*) FROM team_digests WHERE team_id = $1")
+        .bind(team.id)
+        .fetch_one(&db)
+        .await
+        .expect("count");
+    assert_eq!(left, 0);
 }
 
 async fn invite(s: &TestServer, team_id: Uuid, token: &str, email: &str, role: TeamRole) -> String {

@@ -154,7 +154,7 @@ async fn s3_config() -> Option<S3Config> {
     })
 }
 
-async fn smtp_config() -> Option<(SmtpConfig, String)> {
+pub async fn smtp_config() -> Option<(SmtpConfig, String)> {
     let smtp =
         std::env::var("TERMOSO_TEST_SMTP_ADDR").unwrap_or_else(|_| DEFAULT_MAILPIT_SMTP.into());
     let api =
