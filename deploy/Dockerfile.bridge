@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1.7
+#
+# termoso-bridge: the API Bridge that runs in *your* infrastructure. It holds
+# the bridge private key and the vault keys, encrypts hosts/groups/credentials
+# locally and pushes only ciphertext to the Termoso server.
+
+FROM rust:1-bookworm AS build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY apps/desktop/src-tauri ./apps/desktop/src-tauri
+RUN --mount=type=cache,id=cargo-registry-bridge,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=target-bridge,target=/src/target \
+    cargo build --release --locked -p termoso-bridge \
+    && cp target/release/termoso-bridge /termoso-bridge
+
+FROM gcr.io/distroless/cc-debian12:nonroot
+COPY --from=build /termoso-bridge /usr/local/bin/termoso-bridge
+ENV TERMOSO_BRIDGE_CREDENTIALS=/etc/termoso/bridge.json \
+    TERMOSO_BRIDGE_LISTEN=0.0.0.0:8080
+EXPOSE 8080
+USER nonroot
+ENTRYPOINT ["/usr/local/bin/termoso-bridge"]

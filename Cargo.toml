@@ -8,6 +8,7 @@ members = [
     "crates/termoso-mobile",
     "crates/termoso-mobile/uniffi-bindgen",
     "crates/termoso-server",
+    "crates/termoso-bridge",
     "crates/termoso-wasm",
     "apps/desktop/src-tauri",
 ]
@@ -26,6 +27,7 @@ termoso-crypto = { path = "crates/termoso-crypto" }
 termoso-proto = { path = "crates/termoso-proto" }
 termoso-core = { path = "crates/termoso-core", default-features = false }
 termoso-client = { path = "crates/termoso-client", default-features = false }
+termoso-bridge = { path = "crates/termoso-bridge" }
 
 # mobile bindings
 uniffi = { version = "0.32.0", default-features = false }

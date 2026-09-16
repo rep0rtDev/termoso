@@ -71,3 +71,5 @@ tokio-tungstenite = "0.29"
 rsa = { version = "0.9", features = ["sha2"] }
 # Software CTAP2 authenticator drives the WebAuthn ceremonies end to end.
 termoso-core = { workspace = true, features = ["fido2-soft"] }
+# The API bridge runtime is exercised end to end against the in-process server.
+termoso-bridge = { workspace = true }
