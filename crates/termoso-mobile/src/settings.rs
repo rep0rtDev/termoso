@@ -148,6 +148,10 @@ pub struct MobileSettings {
     /// keyboard is attached.
     #[serde(default)]
     pub hide_panel_with_keyboard: bool,
+    /// Suggestions strip above the key panel while typing at a prompt
+    /// (commands, options, history, snippets, paths).
+    #[serde(default = "default_true")]
+    pub autocomplete: bool,
     /// Two-finger pinch changes the terminal text size.
     #[serde(default = "default_true")]
     pub pinch_zoom: bool,
@@ -193,6 +197,7 @@ impl Default for MobileSettings {
             volume_down_action: String::new(),
             hardware_hotkeys: default_hotkeys(),
             hide_panel_with_keyboard: false,
+            autocomplete: true,
             pinch_zoom: true,
             swipe_arrows: true,
             swipe_sessions: true,
