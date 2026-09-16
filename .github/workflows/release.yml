@@ -1,12 +1,15 @@
 name: Desktop release
 
-# Builds signed desktop bundles. On a `v*` tag it assembles a draft GitHub
-# release with the installers, their minisign `.sig` files and the updater
-# manifest `latest.json`, then adds SHA256SUMS and publishes it once every
-# asset is in place (so `releases/latest` never points at a half-uploaded
-# release). Run manually (workflow_dispatch) or on a pull request touching
-# packaging, it only uploads the bundles as workflow artifacts, so the
-# pipeline can be exercised without publishing.
+# Builds signed desktop bundles, signed Android APKs and the unsigned iOS
+# .ipa (sideload: signed on the user's side by AltStore/SideStore, see
+# docs/IOS_SIDELOAD.md) with its AltStore source `termoso-altstore.json`.
+# On a `v*` tag it assembles a draft GitHub release with the installers, their
+# minisign `.sig` files and the updater manifest `latest.json`, then adds
+# SHA256SUMS and publishes it once every asset is in place (so
+# `releases/latest` never points at a half-uploaded release). Run manually
+# (workflow_dispatch) or on a pull request touching packaging, it only uploads
+# the bundles as workflow artifacts, so the pipeline can be exercised without
+# publishing.
 #
 # Required repository secrets (see docs/RELEASING.md):
 #   TAURI_SIGNING_PRIVATE_KEY           minisign private key (from `tauri signer generate`)
@@ -35,6 +38,9 @@ on:
       - apps/desktop/package.json
       - apps/android/app/build.gradle.kts
       - apps/android/gradle.properties
+      - apps/ios/project.yml
+      - apps/ios/build-core.sh
+      - apps/ios/altstore/**
 
 concurrency:
   group: release-${{ github.ref }}
@@ -59,6 +65,8 @@ jobs:
           ws=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           echo "package.json=$pkg workspace=$ws ref=$GITHUB_REF_NAME"
           [ "$pkg" = "$ws" ] || { echo "::error::apps/desktop/package.json and Cargo.toml versions differ"; exit 1; }
+          ios=$(sed -n 's/^    MARKETING_VERSION: "\(.*\)"/\1/p' apps/ios/project.yml | head -1)
+          [ "$ios" = "$ws" ] || { echo "::error::apps/ios/project.yml MARKETING_VERSION ($ios) differs from Cargo.toml ($ws)"; exit 1; }
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             [ "$GITHUB_REF_NAME" = "v$pkg" ] || { echo "::error::tag $GITHUB_REF_NAME does not match version $pkg"; exit 1; }
           fi
@@ -269,16 +277,74 @@ jobs:
           retention-days: 14
           path: apps/android/out/*.apk
 
+  # Unsigned device build. There is deliberately no Apple identity here: a
+  # free Apple ID can only sign on the user's own device/Mac (7-day profile),
+  # which AltStore/SideStore do from the source JSON published next to the .ipa.
+  ios:
+    name: ios (unsigned .ipa for sideloading)
+    needs: version
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ios-release
+      - run: brew install xcodegen
+      - run: sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+      - name: Rust core (device, release) + Swift bindings + xcframework
+        run: ./build-core.sh --release --device --no-sim
+        working-directory: apps/ios
+      - run: xcodegen generate
+        working-directory: apps/ios
+      - name: Archive (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild archive -project Termoso.xcodeproj -scheme Termoso -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Termoso.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+            | tee "$RUNNER_TEMP/archive.log" | grep -E 'error:|warning:|\*\*' || true
+          grep -q '\*\* ARCHIVE SUCCEEDED \*\*' "$RUNNER_TEMP/archive.log"
+        working-directory: apps/ios
+      - name: Package .ipa
+        run: |
+          v=${{ needs.version.outputs.version }}
+          app="$RUNNER_TEMP/Termoso.xcarchive/Products/Applications/Termoso.app"
+          test -d "$app" || { echo "::error::no Termoso.app in the archive"; ls -R "$RUNNER_TEMP/Termoso.xcarchive"; exit 1; }
+          plutil -p "$app/Info.plist" | grep -E 'CFBundleIdentifier|CFBundleShortVersionString|CFBundleVersion|MinimumOSVersion'
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")" = "$v" ] || { echo "::error::app version differs from $v"; exit 1; }
+          lipo -info "$app/Termoso" | grep -q arm64
+          test -d "$app/Frameworks" && ls "$app/Frameworks" || echo "(no embedded frameworks: Rust core is statically linked)"
+          mkdir -p "$RUNNER_TEMP/ipa/Payload" out
+          cp -R "$app" "$RUNNER_TEMP/ipa/Payload/"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry "$GITHUB_WORKSPACE/apps/ios/out/termoso-$v-ios.ipa" Payload)
+          ls -l out
+          unzip -l "out/termoso-$v-ios.ipa" | tail -3
+        working-directory: apps/ios
+      - uses: actions/upload-artifact@v6
+        with:
+          name: termoso-ios-${{ needs.version.outputs.version }}
+          if-no-files-found: error
+          retention-days: 14
+          path: apps/ios/out/*.ipa
+
   publish:
     name: checksums + publish
     if: github.ref_type == 'tag'
-    needs: [version, bundle, android]
+    needs: [version, bundle, android, ios]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: apps/ios/altstore
+          path: src
       - name: Locate the draft release
         id: rel
         run: |
@@ -290,6 +356,10 @@ jobs:
         with:
           name: termoso-android-${{ needs.version.outputs.version }}
           path: android
+      - uses: actions/download-artifact@v6
+        with:
+          name: termoso-ios-${{ needs.version.outputs.version }}
+          path: ios
       - name: Upload APKs to the draft release
         run: |
           for f in android/*.apk; do
@@ -297,6 +367,25 @@ jobs:
               "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/${{ steps.rel.outputs.id }}/assets?name=$(basename "$f")" \
               --input "$f" > /dev/null
           done
+      # The AltStore/SideStore source is regenerated for every release and
+      # always fetched through releases/latest/download/, so the URL users add
+      # once stays valid (docs/IOS_SIDELOAD.md).
+      - name: Upload .ipa + AltStore source to the draft release
+        run: |
+          v=${{ needs.version.outputs.version }}
+          ipa=ios/termoso-$v-ios.ipa
+          test -f "$ipa"
+          python3 src/apps/ios/altstore/render.py \
+            --template src/apps/ios/altstore/source.template.json \
+            --repo "$GITHUB_REPOSITORY" --tag "$GITHUB_REF_NAME" --version "$v" \
+            --ipa "$ipa" --out termoso-altstore.json
+          python3 -m json.tool termoso-altstore.json | head -40
+          gh api --method POST -H 'Content-Type: application/octet-stream' \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/${{ steps.rel.outputs.id }}/assets?name=$(basename "$ipa")" \
+            --input "$ipa" > /dev/null
+          gh api --method POST -H 'Content-Type: application/json' \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/${{ steps.rel.outputs.id }}/assets?name=termoso-altstore.json" \
+            --input termoso-altstore.json > /dev/null
       - name: Download and verify assets
         run: |
           mkdir assets && cd assets
@@ -314,6 +403,10 @@ jobs:
           for abi in arm64-v8a armeabi-v7a x86_64 universal; do
             [ -e "termoso-${{ needs.version.outputs.version }}-$abi.apk" ] || { echo "::error::missing APK for $abi"; exit 1; }
           done
+          test -f "termoso-${{ needs.version.outputs.version }}-ios.ipa" || { echo "::error::missing iOS .ipa"; exit 1; }
+          test -f termoso-altstore.json || { echo "::error::missing termoso-altstore.json"; exit 1; }
+          jq -e --arg v "${{ needs.version.outputs.version }}" '.apps[0].versions[0] | select(.version == $v) | .downloadURL, .sha256' termoso-altstore.json
+          [ "$(jq -r '.apps[0].versions[0].sha256' termoso-altstore.json)" = "$(sha256sum "termoso-${{ needs.version.outputs.version }}-ios.ipa" | cut -d' ' -f1)" ] || { echo "::error::altstore sha256 does not match the uploaded .ipa"; exit 1; }
           for f in *.AppImage *.msi *.exe *.app.tar.gz; do
             [ -e "$f.sig" ] || { echo "::error::missing signature for $f"; exit 1; }
           done

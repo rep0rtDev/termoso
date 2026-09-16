@@ -53,8 +53,9 @@ static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
         .expect("tokio runtime")
 });
 
-/// Route Rust `tracing` output to logcat (tag `termoso`) on Android, stderr
-/// elsewhere. Idempotent. Never logs secrets: the core masks them.
+/// Route Rust `tracing` output to logcat (tag `termoso`) on Android, the
+/// unified log (subsystem `com.termoso`) on iOS, stderr elsewhere.
+/// Idempotent. Never logs secrets: the core masks them.
 #[uniffi::export]
 pub fn init_logging(verbose: bool) {
     use tracing_subscriber::prelude::*;
@@ -66,7 +67,9 @@ pub fn init_logging(verbose: bool) {
     let filter = tracing_subscriber::filter::LevelFilter::from_level(level);
     #[cfg(target_os = "android")]
     let layer = tracing_android::layer("termoso").ok();
-    #[cfg(not(target_os = "android"))]
+    #[cfg(target_os = "ios")]
+    let layer = Some(tracing_oslog::OsLogger::new("com.termoso", "core"));
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let layer = Some(tracing_subscriber::fmt::layer().with_target(false));
     if let Some(layer) = layer {
         let _ = tracing_subscriber::registry()
@@ -151,7 +154,8 @@ pub struct QuickTarget {
 }
 
 /// What [`App::connect_local`] starts. Everything empty → the platform's
-/// shell (`/system/bin/sh` on Android, `$SHELL` elsewhere) in `home`.
+/// shell (`/system/bin/sh` on Android, `/bin/sh` on iOS, `$SHELL` elsewhere)
+/// in `home`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
 pub struct LocalShell {
     /// Program and arguments.
@@ -1542,6 +1546,9 @@ fn ssh_target(resolved: &ResolvedHost) -> SshTarget {
 fn default_local_shell() -> String {
     if cfg!(target_os = "android") {
         return "/system/bin/sh".into();
+    }
+    if cfg!(target_os = "ios") {
+        return "/bin/sh".into();
     }
     std::env::var("SHELL")
         .ok()

@@ -3,3 +3,9 @@ package_name = "com.termoso.core"
 cdylib_name = "termoso_mobile"
 android = true
 android_cleaner = true
+
+[bindings.swift]
+module_name = "TermosoCore"
+ffi_module_name = "TermosoCoreFFI"
+generate_module_map = true
+link_frameworks = ["Security", "CoreFoundation"]
