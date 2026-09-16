@@ -244,6 +244,8 @@ export interface TeamMember {
   joined_at: string;
   /** Second factor enrolled; only admins and the member themself see it. */
   mfa_enabled?: boolean | null;
+  /** Account was created through this team's invitation; the owner may delete it. */
+  managed: boolean;
 }
 
 export interface TeamInvite {

@@ -627,6 +627,13 @@ impl ApiClient {
         self.delete(&format!("teams/{id}/members/{user_id}")).await
     }
 
+    /// Owner-only: delete the account of a member the team created
+    /// (sign-up through its invitation). Requires a fresh step-up.
+    pub async fn delete_team_member_account(&self, id: Uuid, user_id: Uuid) -> Result<()> {
+        self.delete(&format!("teams/{id}/members/{user_id}/account"))
+            .await
+    }
+
     /// `GET /teams/{id}/invites` — pending invitations.
     pub async fn team_invites(&self, id: Uuid) -> Result<InviteList> {
         self.get(&format!("teams/{id}/invites")).await

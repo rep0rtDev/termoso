@@ -36,6 +36,12 @@ schema! {
         /// picture, so it doubles as the cache key.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub avatar: Option<String>,
+        /// Set when the account was created by accepting this team's invitation
+        /// and is still a member: the team owner can delete the account
+        /// (`DELETE /teams/{id}/members/{user_id}/account`). Leaving the team or
+        /// being removed turns it into an ordinary individual account.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub managed_by_team_id: Option<Uuid>,
     }
 }
 

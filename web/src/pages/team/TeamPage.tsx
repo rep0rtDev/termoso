@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Checkbox,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -19,6 +20,8 @@ import {
   ListItem,
   ListItemText,
   MenuItem,
+  Radio,
+  RadioGroup,
   Select,
   Stack,
   Table,
@@ -42,7 +45,7 @@ import { teamsApi, vaultsApi } from "@/api/endpoints";
 import { queryKeys } from "@/api/hooks";
 import type { PendingVaultKey, Team, TeamMember, TeamRole, Vault, VaultRole } from "@/api/types";
 import { useAuthState } from "@/auth/store";
-import { UnlockCancelled } from "@/auth/unlock";
+import { UnlockCancelled, withStepUp } from "@/auth/unlock";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CopyField } from "@/components/CopyField";
 import { EmptyState } from "@/components/EmptyState";
@@ -241,16 +244,23 @@ function MembersSection({ team }: { team: Team }) {
     onError: (e) => snack.error(errorMessage(e)),
   });
   const remove = useMutation({
-    mutationFn: (userId: string) => teamsApi.removeMember(team.id, userId),
-    onSuccess: async () => {
+    mutationFn: ({ userId, action }: { userId: string; action: MemberRemoval }) =>
+      action === "delete_account"
+        ? withStepUp(() => teamsApi.deleteMemberAccount(team.id, userId))
+        : teamsApi.removeMember(team.id, userId),
+    onSuccess: async (_data, { action }) => {
       setRemoving(null);
       await invalidate();
       snack.notify(
-        "Member removed. Rotate affected vault keys to revoke their stale copies.",
+        action === "delete_account"
+          ? "Account deleted. Rotate affected vault keys to revoke their stale copies."
+          : "Member removed. Rotate affected vault keys to revoke their stale copies.",
         "info",
       );
     },
-    onError: (e) => snack.error(errorMessage(e)),
+    onError: (e) => {
+      if (!(e instanceof UnlockCancelled)) snack.error(errorMessage(e));
+    },
   });
 
   const admin = isAdmin(team.my_role);
@@ -288,6 +298,11 @@ function MembersSection({ team }: { team: Team }) {
                         you={m.user_id === me}
                       />
                       <MfaBadge m={m} required={team.require_mfa === true} />
+                      {m.managed && (
+                        <Tooltip title="Account was created through this team's invitation; the owner can delete it">
+                          <Chip label="Team account" size="small" variant="outlined" />
+                        </Tooltip>
+                      )}
                     </Stack>
                   </TableCell>
                   <TableCell>
@@ -334,19 +349,16 @@ function MembersSection({ team }: { team: Team }) {
           </TableBody>
         </Table>
       )}
-      <ConfirmDialog
-        open={removing !== null}
-        title="Remove member?"
-        confirmLabel="Remove"
-        danger
+      <RemoveMemberDialog
+        key={removing?.user_id ?? ""}
+        member={removing}
+        canDeleteAccount={team.my_role === "owner"}
         busy={remove.isPending}
         onCancel={() => setRemoving(null)}
-        onConfirm={() => {
-          if (removing) remove.mutate(removing.user_id);
+        onConfirm={(action) => {
+          if (removing) remove.mutate({ userId: removing.user_id, action });
         }}
-      >
-        {removing?.email} loses access to the team and its vaults.
-      </ConfirmDialog>
+      />
       <ConfirmDialog
         open={transfer !== null}
         title="Transfer ownership?"
@@ -360,6 +372,106 @@ function MembersSection({ team }: { team: Team }) {
         {transfer?.email} becomes the owner of “{team.name}” and you become an admin.
       </ConfirmDialog>
     </Section>
+  );
+}
+
+type MemberRemoval = "remove" | "delete_account";
+
+function RemoveMemberDialog({
+  member,
+  canDeleteAccount,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  member: TeamMember | null;
+  canDeleteAccount: boolean;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (action: MemberRemoval) => void;
+}) {
+  const [action, setAction] = useState<MemberRemoval>("remove");
+  const [typed, setTyped] = useState("");
+  const email = member?.email ?? "";
+  const offerDelete = canDeleteAccount && member?.managed === true;
+  const deleting = offerDelete && action === "delete_account";
+  const confirmed = !deleting || typed.trim().toLowerCase() === email.toLowerCase();
+
+  return (
+    <Dialog open={member !== null} onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
+      <DialogTitle>{deleting ? "Delete account?" : "Remove member?"}</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2}>
+          {offerDelete ? (
+            <>
+              <DialogContentText>
+                {email} was created through this team's invitation. Choose what happens to the
+                account.
+              </DialogContentText>
+              <RadioGroup
+                value={action}
+                onChange={(e) => setAction(e.target.value as MemberRemoval)}
+              >
+                <FormControlLabel
+                  value="remove"
+                  control={<Radio size="small" />}
+                  label={
+                    <>
+                      <Typography variant="body2">Remove from team</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Becomes an individual account and keeps its personal vault; loses access to
+                        the team and its vaults.
+                      </Typography>
+                    </>
+                  }
+                />
+                <FormControlLabel
+                  value="delete_account"
+                  control={<Radio size="small" color="error" />}
+                  label={
+                    <>
+                      <Typography variant="body2" color="error">
+                        Delete the account
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Permanently deletes the account, its personal vault, devices and session
+                        logs. Cannot be undone.
+                      </Typography>
+                    </>
+                  }
+                />
+              </RadioGroup>
+              {deleting && (
+                <TextField
+                  label={`Type ${email} to confirm`}
+                  value={typed}
+                  onChange={(e) => setTyped(e.target.value)}
+                  autoComplete="off"
+                  size="small"
+                  fullWidth
+                  autoFocus
+                />
+              )}
+            </>
+          ) : (
+            <DialogContentText>{email} loses access to the team and its vaults.</DialogContentText>
+          )}
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={onCancel} disabled={busy} color="inherit">
+          Cancel
+        </Button>
+        <Button
+          onClick={() => onConfirm(deleting ? "delete_account" : "remove")}
+          variant="contained"
+          color="error"
+          disabled={busy || !confirmed}
+        >
+          {deleting ? "Delete account" : "Remove"}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 

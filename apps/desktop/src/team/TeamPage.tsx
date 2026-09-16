@@ -8,8 +8,11 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   IconButton,
   MenuItem,
+  Radio,
+  RadioGroup,
   Stack,
   TextField,
   Tooltip,
@@ -33,6 +36,7 @@ import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
 import { MfaBadge } from "./MfaBadge";
 import { useMutation } from "@tanstack/react-query";
+import { isReauthCancelled, withReauth } from "@/account/reauth";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { Page, PageBody } from "@/components/PageHeader";
@@ -253,7 +257,9 @@ function TeamView({
       invalidate();
       if (msg) snackbar.notify(msg);
     },
-    onError: (e) => snackbar.error(errorMessage(e)),
+    onError: (e) => {
+      if (!isReauthCancelled(e)) snackbar.error(errorMessage(e));
+    },
   });
 
   const menuItems: MenuAction[] = [
@@ -652,6 +658,13 @@ function TeamView({
                       .then(() => `${m.display_name ?? m.email} removed from ${team.name}`),
                   )
                 }
+                onDeleteAccount={() =>
+                  op.mutate(() =>
+                    withReauth(() => ipc.teamMemberDeleteAccount(team.id, m.user_id)).then(
+                      () => `Account ${m.email} deleted`,
+                    ),
+                  )
+                }
               />
             ))}
             {inviteList.map((inv) => (
@@ -872,12 +885,14 @@ function MemberRow({
   me,
   onRole,
   onRemove,
+  onDeleteAccount,
 }: {
   team: Team;
   m: TeamMember;
   me: boolean;
   onRole: (role: TeamRole) => void;
   onRemove: () => void;
+  onDeleteAccount: () => void;
 }) {
   const admin = isTeamAdmin(team.my_role);
   const owner = team.my_role === "owner";
@@ -885,6 +900,7 @@ function MemberRow({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const canChange = admin && !me && m.role !== "owner";
   const canRemove = admin && !me && m.role !== "owner";
+  const canDeleteAccount = canRemove && owner && m.managed;
   const name = m.display_name ?? m.email;
   return (
     <Box
@@ -913,6 +929,11 @@ function MemberRow({
             </Typography>
             {me && <Chip size="small" label="you" />}
             <MfaBadge m={m} required={team.require_mfa} />
+            {m.managed && admin && (
+              <Tooltip title="Account was created through this team's invitation">
+                <Chip size="small" variant="outlined" label="team account" />
+              </Tooltip>
+            )}
           </Box>
           {m.display_name && (
             <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
@@ -970,21 +991,141 @@ function MemberRow({
       >
         You become an admin. Only the owner can delete the team or hand ownership on again.
       </ConfirmDialog>
-      <ConfirmDialog
-        open={confirmRemove}
-        title={`Remove ${name}?`}
-        confirmLabel="Remove"
-        danger
-        onCancel={() => setConfirmRemove(false)}
-        onConfirm={() => {
-          setConfirmRemove(false);
-          onRemove();
-        }}
-      >
-        They lose access to every vault of {team.name}. Keys of the vaults they could open are
-        rotated so old copies stop working.
-      </ConfirmDialog>
+      {canDeleteAccount ? (
+        <RemoveOrDeleteDialog
+          open={confirmRemove}
+          member={m}
+          teamName={team.name}
+          onCancel={() => setConfirmRemove(false)}
+          onRemove={() => {
+            setConfirmRemove(false);
+            onRemove();
+          }}
+          onDeleteAccount={() => {
+            setConfirmRemove(false);
+            onDeleteAccount();
+          }}
+        />
+      ) : (
+        <ConfirmDialog
+          open={confirmRemove}
+          title={`Remove ${name}?`}
+          confirmLabel="Remove"
+          danger
+          onCancel={() => setConfirmRemove(false)}
+          onConfirm={() => {
+            setConfirmRemove(false);
+            onRemove();
+          }}
+        >
+          They lose access to every vault of {team.name}. Keys of the vaults they could open are
+          rotated so old copies stop working.
+        </ConfirmDialog>
+      )}
     </Box>
+  );
+}
+
+// Owner removing a member whose account this team created: keep the account
+// as an individual one, or delete it outright (typed confirmation + re-auth).
+function RemoveOrDeleteDialog({
+  open,
+  member,
+  teamName,
+  onCancel,
+  onRemove,
+  onDeleteAccount,
+}: {
+  open: boolean;
+  member: TeamMember;
+  teamName: string;
+  onCancel: () => void;
+  onRemove: () => void;
+  onDeleteAccount: () => void;
+}) {
+  const [action, setAction] = useState<"remove" | "delete">("remove");
+  const [typed, setTyped] = useState("");
+  const deleting = action === "delete";
+  const confirmed = !deleting || typed.trim().toLowerCase() === member.email.toLowerCase();
+  const name = member.display_name ?? member.email;
+  const close = () => {
+    setAction("remove");
+    setTyped("");
+    onCancel();
+  };
+  return (
+    <Dialog open={open} onClose={close} maxWidth="xs" fullWidth>
+      <DialogTitle>{deleting ? `Delete ${name}'s account?` : `Remove ${name}?`}</DialogTitle>
+      <DialogContent>
+        <Stack spacing={1.5}>
+          <Typography variant="body2" color="text.secondary">
+            This account was created through {teamName}'s invitation. Choose what happens to it.
+          </Typography>
+          <RadioGroup
+            value={action}
+            onChange={(e) => setAction(e.target.value as "remove" | "delete")}
+          >
+            <FormControlLabel
+              value="remove"
+              control={<Radio size="small" />}
+              label={
+                <Box>
+                  <Typography variant="body2">Remove from team</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Keeps the account as an individual one with its personal vault; loses access to
+                    every vault of {teamName}.
+                  </Typography>
+                </Box>
+              }
+            />
+            <FormControlLabel
+              value="delete"
+              control={<Radio size="small" color="error" />}
+              label={
+                <Box>
+                  <Typography variant="body2" color="error">
+                    Delete the account
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Permanently deletes the account, its personal vault, devices and session logs.
+                    Cannot be undone.
+                  </Typography>
+                </Box>
+              }
+            />
+          </RadioGroup>
+          {deleting && (
+            <TextField
+              size="small"
+              label={`Type ${member.email} to confirm`}
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              autoComplete="off"
+              autoFocus
+              fullWidth
+            />
+          )}
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button onClick={close} color="inherit">
+          Cancel
+        </Button>
+        <Button
+          variant="contained"
+          color="error"
+          disabled={!confirmed}
+          onClick={() => {
+            const run = deleting ? onDeleteAccount : onRemove;
+            setAction("remove");
+            setTyped("");
+            run();
+          }}
+        >
+          {deleting ? "Delete account" : "Remove"}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 

@@ -150,6 +150,10 @@ pub fn router(state: AppState) -> Router {
             "/teams/{id}/members/{user_id}",
             patch(teams::update_member).delete(teams::remove_member),
         )
+        .route(
+            "/teams/{id}/members/{user_id}/account",
+            delete(teams::delete_member_account),
+        )
         .route("/teams/{id}/leave", post(teams::leave))
         .route(
             "/teams/{id}/invites",
