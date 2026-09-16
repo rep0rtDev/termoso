@@ -48,6 +48,12 @@ pub const SYNC_PUSH: Limit = Limit {
     max: 120,
     window: Duration::from_secs(60),
 };
+/// Burst cap on AI suggestions per user, on top of the daily quota.
+pub const AI_USER: Limit = Limit {
+    name: "ai",
+    max: 10,
+    window: Duration::from_secs(60),
+};
 
 pub async fn check(state: &AppState, limit: Limit, subject: &str) -> ApiResult<()> {
     let key = format!("rl:{}:{}", limit.name, subject);

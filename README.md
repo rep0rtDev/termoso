@@ -66,6 +66,17 @@ docs/              API Bridge, releasing, benchmarks
 * **API Bridge** automation stays zero-knowledge: the bridge container runs in
   your infrastructure, holds the vault keys and pushes only ciphertext — see
   [docs/API_BRIDGE.md](docs/API_BRIDGE.md).
+* **AI command suggestions** are off until the account opts in, and the only
+  thing that leaves the server is the short request the user typed plus the
+  host's OS/shell label — never the terminal buffer, host names, credentials or
+  vault contents. The model answers with one command that the client shows for
+  review; nothing is executed automatically. Requests are relayed through the
+  server with the operator's key (per-account daily quota; prompts and answers
+  are not logged). Termoso Cloud uses a model running in a TEE (confidential
+  compute: the model sees the text, the hosting operator does not — this is not
+  end-to-end encryption). Self-hosted servers point `TERMOSO_AI__*` at their own
+  Chutes key or any OpenAI-compatible endpoint (including a local one), or leave
+  it unset to have no AI at all.
 
 ## Running it
 
@@ -116,6 +127,7 @@ annotated list; the source of truth is `crates/termoso-server/src/config.rs`.
 | `TERMOSO_WEBAUTHN__*` | passkeys (optional) |
 | `TERMOSO_ANDROID_APP_LINKS` | `<package>=<SHA-256 cert fingerprint>` pairs published at `/.well-known/assetlinks.json` so the Android app opens this server's `/invite/…` and `/join/…` links directly (optional) |
 | `TERMOSO_SSO__<slug>__*` | OIDC providers; `google`, `github`, `microsoft` presets |
+| `TERMOSO_AI__*` | AI command suggestions (optional): `API_KEY` (required to enable), `URL` (OpenAI-compatible base, default `https://llm.chutes.ai/v1`), `MODEL` (default `GLM-4.7-Flash-NVFP4-TEE`), `PROVIDER` (label shown to users), `CONFIDENTIAL` (show the TEE badge; set `false` for ordinary endpoints), `DAILY_QUOTA` (per account, default 50), `MAX_PROMPT_CHARS` (default 500), `TIMEOUT_SECS` |
 | `TERMOSO_METRICS__ENABLED` | opt-in Prometheus metrics on a private listener |
 | `TERMOSO_REDIS_PREFIX` | key prefix when several deployments share one Redis |
 
@@ -225,6 +237,7 @@ All routes live under `/api/v1`. Authenticated routes take
 | history | encrypted command / connection history |
 | logs | session-log upload via pre-signed multipart URLs, listing, deletion |
 | ws | realtime notifications (vault changed, session revoked, account updated) |
+| account/ai, ai | AI opt-in + status (`GET/PUT account/ai`), `POST ai/command` → one suggested command (never executed) |
 | account/bridges | API bridges: create with sealed vault keys, list, re-seal after rotation, revoke; `bridge/me` for the bridge itself |
 | admin | users (disable, reset MFA, revoke sessions), teams, server settings, stats, e-mail test |
 

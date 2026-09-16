@@ -73,6 +73,9 @@ impl Modify for BearerAuth {
         crate::routes::bridges::set_vaults,
         crate::routes::bridges::revoke,
         crate::routes::bridges::me,
+        crate::routes::ai::status,
+        crate::routes::ai::put_settings,
+        crate::routes::ai::command,
         crate::routes::sshid::get,
         crate::routes::sshid::create,
         crate::routes::sshid::delete,
@@ -160,6 +163,7 @@ impl Modify for BearerAuth {
         (name = "live", description = "Multiplayer: end-to-end encrypted live terminal relay"),
         (name = "sshid", description = "SSH ID: public handle listing device-bound SSH public keys"),
         (name = "bridges", description = "API bridges: headless clients that encrypt hosts/groups/credentials locally and sync them"),
+        (name = "ai", description = "AI command suggestions: opt-in, quota-limited, text in / one command out, nothing executed"),
         (name = "admin", description = "Server administration"),
     )
 )]

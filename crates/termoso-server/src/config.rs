@@ -57,6 +57,8 @@ pub struct Config {
     pub webauthn: Option<WebauthnConfig>,
     pub metrics: MetricsConfig,
     pub sso: BTreeMap<String, SsoProviderConfig>,
+    /// AI command suggestions (`POST /ai/command`). Absent = feature off.
+    pub ai: Option<AiConfig>,
     /// Serve the Swagger UI at `/api/docs`.
     pub swagger_ui: bool,
     /// Seconds between confirming a "start over" account reset and being
@@ -100,6 +102,38 @@ pub struct SmtpConfig {
     pub security: SmtpSecurity,
     /// `From:` header, e.g. `Termoso <no-reply@termoso.com>`.
     pub from: String,
+}
+
+/// Any OpenAI-compatible chat-completions endpoint. The default preset is
+/// Chutes' GLM-4.7-Flash chute running inside a TEE.
+///
+/// `TERMOSO_AI__API_KEY=…` alone turns the feature on with the defaults.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AiConfig {
+    /// Base URL ending in `/v1` (the server appends `/chat/completions`).
+    #[serde(default = "default_ai_url")]
+    pub url: String,
+    /// Bearer token for the endpoint. Never logged, never sent to clients.
+    pub api_key: String,
+    /// Model identifier passed in the request body.
+    #[serde(default = "default_ai_model")]
+    pub model: String,
+    /// Provider name shown to users ("Suggested by …").
+    #[serde(default = "default_ai_provider")]
+    pub provider: String,
+    /// The model runs in a trusted execution environment (confidential
+    /// compute). Shown as a badge; set to `false` for ordinary endpoints.
+    #[serde(default = "default_true")]
+    pub confidential: bool,
+    /// Requests per account per UTC day.
+    #[serde(default = "default_ai_daily_quota")]
+    pub daily_quota: u32,
+    /// Upper bound on the user's request text, in characters.
+    #[serde(default = "default_ai_max_prompt_chars")]
+    pub max_prompt_chars: usize,
+    /// Upstream request timeout.
+    #[serde(default = "default_ai_timeout_secs")]
+    pub timeout_secs: u64,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
@@ -175,6 +209,24 @@ fn default_presign_secs() -> u64 {
 fn default_smtp_port() -> u16 {
     587
 }
+fn default_ai_url() -> String {
+    "https://llm.chutes.ai/v1".into()
+}
+fn default_ai_model() -> String {
+    "GLM-4.7-Flash-NVFP4-TEE".into()
+}
+fn default_ai_provider() -> String {
+    "Chutes".into()
+}
+fn default_ai_daily_quota() -> u32 {
+    50
+}
+fn default_ai_max_prompt_chars() -> usize {
+    500
+}
+fn default_ai_timeout_secs() -> u64 {
+    30
+}
 fn default_rp_name() -> String {
     "Termoso".into()
 }
@@ -204,6 +256,7 @@ impl Default for Config {
             webauthn: None,
             metrics: MetricsConfig::default(),
             sso: BTreeMap::new(),
+            ai: None,
             swagger_ui: true,
             start_over_delay_secs: 24 * 3600,
         }
@@ -241,6 +294,25 @@ impl Config {
             crate::routes::web::validate_dir(&dir)?;
         }
         self.android_app_links()?;
+        if let Some(ai) = &self.ai {
+            anyhow::ensure!(
+                !ai.api_key.trim().is_empty(),
+                "TERMOSO_AI__API_KEY must not be empty"
+            );
+            let parsed = url::Url::parse(&ai.url).context("TERMOSO_AI__URL must be a URL")?;
+            anyhow::ensure!(
+                matches!(parsed.scheme(), "http" | "https"),
+                "TERMOSO_AI__URL must be http(s)"
+            );
+            anyhow::ensure!(
+                !ai.model.trim().is_empty(),
+                "TERMOSO_AI__MODEL must not be empty"
+            );
+            anyhow::ensure!(
+                ai.daily_quota > 0 && ai.max_prompt_chars > 0 && ai.timeout_secs > 0,
+                "TERMOSO_AI__DAILY_QUOTA, MAX_PROMPT_CHARS and TIMEOUT_SECS must be positive"
+            );
+        }
         Ok(())
     }
 
