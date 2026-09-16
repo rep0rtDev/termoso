@@ -35,6 +35,49 @@ fn default_view() -> String {
 fn default_app_theme() -> String {
     "system".into()
 }
+fn default_hotkeys() -> String {
+    "ctrl_shift".into()
+}
+
+/// One button of a custom key-panel group. `action` is a small grammar the
+/// Android side parses: optional `ctrl+`/`alt+`/`shift+` prefixes, then
+/// `key:<SPECIAL>` (`key:ESCAPE`, `key:F5`), `text:<literal>` or
+/// `mod:ctrl|alt|shift` for a sticky modifier. Unknown actions are dropped
+/// at render time rather than failing the whole layout.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct PanelKeyDef {
+    pub label: String,
+    pub action: String,
+}
+
+/// A row of the expandable key panel. Groups are shown in list order; a
+/// disabled group stays in the editor but is not rendered.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+#[serde(default, rename_all = "camelCase")]
+pub struct KeyGroup {
+    pub id: String,
+    pub name: String,
+    pub keys: Vec<PanelKeyDef>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for KeyGroup {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: String::new(),
+            keys: Vec::new(),
+            enabled: true,
+        }
+    }
+}
+
+/// Upper bounds so a corrupt or malicious sync payload cannot blow up the panel.
+pub const MAX_KEY_GROUPS: usize = 24;
+pub const MAX_KEYS_PER_GROUP: usize = 16;
+const MAX_KEY_TEXT: usize = 64;
 
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(default, rename_all = "camelCase")]
@@ -87,6 +130,36 @@ pub struct MobileSettings {
     /// store (team vaults with session logging on record regardless).
     #[serde(default)]
     pub record_sessions: bool,
+    /// What the hardware volume keys do while a terminal is in front; empty
+    /// or `disabled` leaves them to the system. Values are either a UI action
+    /// (`font_up`, `font_down`, `scroll_up`, `scroll_down`, `next_session`,
+    /// `prev_session`, `toggle_keyboard`, `close_session`) or a key action in
+    /// the [`PanelKeyDef::action`] grammar.
+    #[serde(default)]
+    pub volume_up_action: String,
+    #[serde(default)]
+    pub volume_down_action: String,
+    /// Physical-keyboard app shortcuts (session switching, close, new, zoom):
+    /// `disabled` | `ctrl` | `ctrl_shift`. Ctrl+Shift by default so Ctrl+W,
+    /// Ctrl+T and friends keep reaching the shell.
+    #[serde(default = "default_hotkeys")]
+    pub hardware_hotkeys: String,
+    /// Collapse the on-screen key panel to its toggle while a physical
+    /// keyboard is attached.
+    #[serde(default)]
+    pub hide_panel_with_keyboard: bool,
+    /// Two-finger pinch changes the terminal text size.
+    #[serde(default = "default_true")]
+    pub pinch_zoom: bool,
+    /// Horizontal one-finger swipe sends ←/→ per cell travelled.
+    #[serde(default = "default_true")]
+    pub swipe_arrows: bool,
+    /// Two-finger horizontal swipe switches between open sessions.
+    #[serde(default = "default_true")]
+    pub swipe_sessions: bool,
+    /// Custom rows of the expandable key panel; empty means the built-in layout.
+    #[serde(default)]
+    pub key_groups: Vec<KeyGroup>,
     /// Onboarding shown.
     pub welcome_seen: bool,
     /// Vault shown in the Vaults tab when the app was last used.
@@ -116,6 +189,14 @@ impl Default for MobileSettings {
             lock_after_seconds: 0,
             sync_credentials: true,
             record_sessions: false,
+            volume_up_action: String::new(),
+            volume_down_action: String::new(),
+            hardware_hotkeys: default_hotkeys(),
+            hide_panel_with_keyboard: false,
+            pinch_zoom: true,
+            swipe_arrows: true,
+            swipe_sessions: true,
+            key_groups: Vec::new(),
             welcome_seen: false,
             selected_vault_id: None,
         }
@@ -137,7 +218,130 @@ impl MobileSettings {
         if s.term_type.trim().is_empty() {
             s.term_type = default_term();
         }
+        if !matches!(
+            s.hardware_hotkeys.as_str(),
+            "disabled" | "ctrl" | "ctrl_shift"
+        ) {
+            s.hardware_hotkeys = default_hotkeys();
+        }
+        s.key_groups = sanitize_groups(std::mem::take(&mut s.key_groups));
         store.set_meta(SETTINGS_META, &serde_json::to_string(&s)?)?;
         Ok(())
+    }
+}
+
+/// Drop empty/oversized groups and keys, trim labels, and make ids unique so
+/// the Android editor can key its list on them.
+fn sanitize_groups(groups: Vec<KeyGroup>) -> Vec<KeyGroup> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for (i, mut g) in groups.into_iter().enumerate() {
+        if out.len() >= MAX_KEY_GROUPS {
+            break;
+        }
+        g.keys.retain(|k| !k.action.trim().is_empty());
+        g.keys.truncate(MAX_KEYS_PER_GROUP);
+        if g.keys.is_empty() {
+            continue;
+        }
+        for k in &mut g.keys {
+            k.label = k.label.trim().chars().take(12).collect();
+            k.action = k.action.chars().take(MAX_KEY_TEXT).collect();
+        }
+        g.name = g.name.trim().chars().take(32).collect();
+        if g.id.trim().is_empty() || !seen.insert(g.id.clone()) {
+            g.id = format!("g{}", i + 1);
+            while !seen.insert(g.id.clone()) {
+                g.id.push('x');
+            }
+        }
+        out.push(g);
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(action: &str) -> PanelKeyDef {
+        PanelKeyDef {
+            label: format!("  {action}  "),
+            action: action.into(),
+        }
+    }
+
+    #[test]
+    fn defaults_are_conservative() {
+        let s = MobileSettings::default();
+        assert!(s.volume_up_action.is_empty() && s.volume_down_action.is_empty());
+        assert_eq!(s.hardware_hotkeys, "ctrl_shift");
+        assert!(s.pinch_zoom && s.swipe_arrows && s.swipe_sessions);
+        assert!(!s.hide_panel_with_keyboard);
+        assert!(s.key_groups.is_empty());
+    }
+
+    #[test]
+    fn old_settings_json_still_loads() {
+        let s: MobileSettings =
+            serde_json::from_str(r#"{"appTheme":"dark","recordSessions":true}"#).unwrap();
+        assert_eq!(s.app_theme, "dark");
+        assert!(s.record_sessions);
+        assert_eq!(s.hardware_hotkeys, "ctrl_shift");
+        assert!(s.key_groups.is_empty());
+    }
+
+    #[test]
+    fn group_without_enabled_defaults_to_enabled() {
+        let g: KeyGroup = serde_json::from_str(
+            r#"{"id":"a","name":"Nav","keys":[{"label":"←","action":"key:LEFT"}]}"#,
+        )
+        .unwrap();
+        assert!(g.enabled);
+    }
+
+    #[test]
+    fn sanitize_drops_empty_and_dedups_ids() {
+        let groups = vec![
+            KeyGroup {
+                id: "a".into(),
+                name: " Nav ".into(),
+                keys: vec![key("key:LEFT"), key("   ")],
+                enabled: true,
+            },
+            KeyGroup {
+                id: "a".into(),
+                name: "Dup".into(),
+                keys: vec![key("text:|")],
+                enabled: false,
+            },
+            KeyGroup {
+                id: "".into(),
+                name: "Empty".into(),
+                keys: vec![],
+                enabled: true,
+            },
+        ];
+        let out = sanitize_groups(groups);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].name, "Nav");
+        assert_eq!(out[0].keys.len(), 1);
+        assert_eq!(out[0].keys[0].label, "key:LEFT");
+        assert_eq!(out[1].id, "g2");
+        assert!(!out[1].enabled);
+    }
+
+    #[test]
+    fn sanitize_caps_sizes() {
+        let big = KeyGroup {
+            id: "x".into(),
+            name: "x".into(),
+            keys: (0..40).map(|_| key("text:a")).collect(),
+            enabled: true,
+        };
+        let groups: Vec<KeyGroup> = (0..40).map(|_| big.clone()).collect();
+        let out = sanitize_groups(groups);
+        assert_eq!(out.len(), MAX_KEY_GROUPS);
+        assert!(out.iter().all(|g| g.keys.len() == MAX_KEYS_PER_GROUP));
     }
 }

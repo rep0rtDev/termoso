@@ -47,7 +47,7 @@ pub use keys::{KeyMods, SpecialKey, control_code, encode_key, encode_text};
 pub use live::{LiveEndReason, LiveListener, LiveParticipantCard, LiveShare, is_live_link};
 pub use presence::{PresenceEntryCard, PresenceSessionCard, TeamPresenceCard};
 pub use session::*;
-pub use settings::MobileSettings;
+pub use settings::{KeyGroup, MobileSettings, PanelKeyDef};
 pub use sftp::*;
 pub use snippets::{SnippetDraft, SnippetItem, SnippetPackageItem, SnippetRun};
 pub use sshid::{
