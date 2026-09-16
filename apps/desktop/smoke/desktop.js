@@ -26,7 +26,7 @@
   const waitFor = async (what, probe, ms = 20000) => {
     const end = Date.now() + ms;
     while (Date.now() < end) {
-      const v = probe();
+      const v = await probe();
       if (v) return v;
       await sleep(200);
     }
@@ -90,6 +90,14 @@
       `session ${sessions[0].id} protocol=${sessions[0].protocol} target=${sessions[0].target}`,
     );
     await sleep(2500); // let the shell start and the integration install
+    const probeCanvas = document.createElement("canvas");
+    const webgl = ["webgl2", "webgl"].find((k) => probeCanvas.getContext(k)) ?? "none";
+    const canvases = [...document.querySelectorAll(".xterm canvas")].map((c) => {
+      const r = c.getBoundingClientRect();
+      return `${Math.round(r.width)}x${Math.round(r.height)}`;
+    });
+    const rows = document.querySelectorAll(".xterm-rows > div").length;
+    await report(`renderer webgl=${webgl} canvases=[${canvases}] domRows=${rows}`);
     await shot("terminal");
 
     const marker = `termoso-smoke-${Date.now().toString(36)}`;
@@ -114,6 +122,8 @@
     await report(`shell integration recorded the command (input via ${via})`);
     await shot("terminal-output");
 
+    // The sidebar only exists on the Vaults tab; the terminal tab hides it.
+    click(await waitFor("vaults tab", () => byText("[role=tab]", "Vaults")));
     click(await waitFor("settings nav", () => byText("div[role=button], a, button", "Settings")));
     await waitFor("settings page", () => document.body.textContent.includes("Appearance"));
     await shot("settings");
