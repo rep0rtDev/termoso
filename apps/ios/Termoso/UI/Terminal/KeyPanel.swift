@@ -147,6 +147,7 @@ struct KeyPanel: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(Theme.terminalPanel)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("terminal.keyPanel")
     }
 
@@ -220,6 +221,7 @@ struct SuggestionStrip: View {
         }
         .frame(height: 38)
         .background(Theme.terminalChrome)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("terminal.suggestions")
     }
 
