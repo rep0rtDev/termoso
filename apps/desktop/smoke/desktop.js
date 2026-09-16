@@ -47,30 +47,35 @@
   };
   // xterm takes printable characters from `input` events on its hidden
   // textarea and control keys from `keydown`, so synthetic events exercise the
-  // real browser input path down to the PTY.
+  // real browser input path down to the PTY. xterm calls preventDefault on
+  // every key it consumed; a synthetic Enter it did not consume (WebKit may
+  // ignore `keyCode` in the init dict) is sent as a CR insertText instead.
+  const insert = (textarea, data) =>
+    textarea.dispatchEvent(
+      new InputEvent("input", { data, inputType: "insertText", bubbles: true, cancelable: true }),
+    );
   const typeInto = (textarea, text) => {
+    const notes = new Set();
     for (const ch of text) {
       if (ch === "\n") {
-        textarea.dispatchEvent(
-          new KeyboardEvent("keydown", {
-            key: "Enter",
-            code: "Enter",
-            keyCode: 13,
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
+        const ev = new KeyboardEvent("keydown", {
+          key: "Enter",
+          code: "Enter",
+          keyCode: 13,
+          bubbles: true,
+          cancelable: true,
+        });
+        textarea.dispatchEvent(ev);
+        if (ev.defaultPrevented) notes.add("enter=keydown");
+        else {
+          notes.add("enter=insertText");
+          insert(textarea, "\r");
+        }
       } else {
-        textarea.dispatchEvent(
-          new InputEvent("input", {
-            data: ch,
-            inputType: "insertText",
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
+        insert(textarea, ch);
       }
     }
+    return [...notes].join(",");
   };
   const xtermGl = () => {
     for (const canvas of document.querySelectorAll(".xterm canvas")) {
@@ -125,7 +130,8 @@
     const marker = `termoso-smoke-${Date.now().toString(36)}`;
     const command = `echo ${marker}`;
     textarea.focus();
-    typeInto(textarea, `${command}\n`);
+    const typed = typeInto(textarea, `${command}\n`);
+    await report(`typed command through the xterm textarea (${typed})`);
     const recorded = async () =>
       (await invoke("history_commands", { limit: 50 })).some((h) => h.data.command === command);
     let via = "input events";
@@ -134,7 +140,8 @@
     } catch {
       via = "terminal_write";
       await report("typed input not recorded, retrying through terminal_write");
-      await invoke("terminal_write", { id: sessions[0].id, data: `${command}\r` });
+      // ^U first: whatever the typed attempt left on the line must not merge.
+      await invoke("terminal_write", { id: sessions[0].id, data: `\x15${command}\r` });
       await waitFor(
         "command in history (terminal_write)",
         async () => (await recorded()) || null,
