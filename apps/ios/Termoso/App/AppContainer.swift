@@ -26,8 +26,12 @@ final class AppContainer {
     let preferences: AppPreferences
     let masterKeys: any MasterKeyStore
     let coreVersion: String = TermosoCore.coreVersion()
+    /// Set under `--ui-test`: the terminal mirrors its visible text into the
+    /// accessibility tree so XCUITest can assert on shell output.
+    let uiTestMode: Bool
 
     init(launch: LaunchOptions) {
+        uiTestMode = launch.ephemeralProfile
         if launch.ephemeralProfile {
             profileDir = FileManager.default.temporaryDirectory
                 .appendingPathComponent("termoso-ui-test-\(UUID().uuidString)", isDirectory: true)
@@ -43,6 +47,7 @@ final class AppContainer {
 
     /// Explicit wiring for tests and previews.
     init(profileDir: URL, preferences: AppPreferences, masterKeys: any MasterKeyStore) {
+        uiTestMode = false
         self.profileDir = profileDir
         self.preferences = preferences
         self.masterKeys = masterKeys

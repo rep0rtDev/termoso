@@ -52,16 +52,17 @@ final class SmokeUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["ubuntu@pq.example.org"].firstMatch.exists)
         snap("05-hosts-one")
 
-        // Reopen to confirm the draft round-trips through the core.
-        row.tap()
+        // Reopen to confirm the draft round-trips through the core. Tapping
+        // the row connects; the pencil edits.
+        el("hosts.edit.pqssh").tap()
         let editLabel = el("hostEditor.label")
         XCTAssertTrue(editLabel.waitForExistence(timeout: 5))
         XCTAssertEqual(editLabel.value as? String, "pqssh")
         el("hostEditor.cancel").tap()
 
-        app.tabBars.buttons["Settings"].tap()
+        app.tabBars.buttons["Profile"].tap()
         XCTAssertTrue(el("settings.theme").waitForExistence(timeout: 5))
-        snap("06-settings")
+        snap("06-profile")
         // About is the last section; List rows below the fold do not exist yet.
         let core = el("settings.coreVersion")
         for _ in 0 ..< 6 where !core.exists {
@@ -90,6 +91,63 @@ final class SmokeUITests: XCTestCase {
         cont.tap()
 
         XCTAssertTrue(el("vaults.hosts").waitForExistence(timeout: 10))
+    }
+
+    /// Terminal over the local shell (simulator only): the session opens,
+    /// typed input reaches the shell and its output comes back through the
+    /// Rust grid. The canvas mirrors visible text into its accessibility
+    /// value under `--ui-test`.
+    func testLocalShellTerminalRoundTrip() throws {
+        let offline = el("welcome.offline")
+        XCTAssertTrue(offline.waitForExistence(timeout: 20))
+        offline.tap()
+
+        app.tabBars.buttons["Connections"].tap()
+        XCTAssertTrue(el("connections.empty").waitForExistence(timeout: 5))
+        snap("10-connections-empty")
+        let local = el("connections.localShell")
+        XCTAssertTrue(local.waitForExistence(timeout: 5), "local shell entry missing (not a simulator build?)")
+        local.tap()
+
+        let canvas = el("terminal.canvas")
+        XCTAssertTrue(canvas.waitForExistence(timeout: 10), "terminal did not open")
+        XCTAssertTrue(el("terminal.keyPanel").waitForExistence(timeout: 5))
+        // Wait for the shell prompt: connecting overlay goes away.
+        let connecting = el("terminal.state.connecting")
+        _ = connecting.waitForNonExistence(timeout: 15)
+        snap("11-terminal-open")
+
+        canvas.tap()
+        canvas.typeText("echo termoso-$((40+2))\n")
+        let output = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == 'terminal.canvas' AND value CONTAINS 'termoso-42'"))
+            .firstMatch
+        XCTAssertTrue(output.waitForExistence(timeout: 15), "shell output did not reach the grid: \(canvas.value ?? "nil")")
+        snap("12-terminal-echo")
+
+        // Extra keys: Ctrl+C via the sticky modifier, then Tab.
+        el("terminal.key.ctrl").tap()
+        canvas.typeText("c")
+        el("terminal.key.special.tab").tap()
+
+        // Back to Connections: the session is listed and live.
+        el("terminal.close").tap()
+        XCTAssertTrue(el("connections.sessions").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'connections.session.'")).firstMatch.exists)
+        snap("13-connections-live")
+
+        // Disconnect from inside the terminal and confirm the closed state.
+        app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'connections.session.'")).firstMatch.tap()
+        XCTAssertTrue(canvas.waitForExistence(timeout: 5))
+        el("terminal.more").tap()
+        // Confirmation-dialog actions do not carry SwiftUI identifiers.
+        let disconnect = app.buttons["Disconnect"].firstMatch
+        XCTAssertTrue(disconnect.waitForExistence(timeout: 5))
+        disconnect.tap()
+        XCTAssertTrue(el("terminal.state.closed").waitForExistence(timeout: 10), "session did not report closed")
+        snap("14-terminal-closed")
+        el("terminal.closeSession").tap()
+        XCTAssertTrue(el("connections.empty").waitForExistence(timeout: 5))
     }
 
     /// Identifier lookup independent of the element type SwiftUI picks
