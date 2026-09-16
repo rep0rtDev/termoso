@@ -105,6 +105,7 @@ fun TerminalScreen(
     onBack: () -> Unit,
     onNewSession: () -> Unit,
     onOpenSnippets: () -> Unit,
+    onOpenAccount: () -> Unit,
 ) {
     val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
     val activeId by shell.sessions.activeId.collectAsStateWithLifecycle()
@@ -176,6 +177,7 @@ fun TerminalScreen(
                     haptics = settings.hapticFeedback,
                     bell = settings.terminalBell,
                     onOpenSnippets = onOpenSnippets,
+                    onOpenAccount = onOpenAccount,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
@@ -304,6 +306,7 @@ private fun ActiveSession(
     haptics: Boolean,
     bell: Boolean,
     onOpenSnippets: () -> Unit,
+    onOpenAccount: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -319,6 +322,7 @@ private fun ActiveSession(
     var imeShown by remember { mutableStateOf(false) }
     var hiddenInput by remember { mutableStateOf(false) }
     var snippetPicker by remember { mutableStateOf(false) }
+    var askAi by remember { mutableStateOf(false) }
     var menuAt by remember { mutableStateOf<Pair<CellPoint, Offset>?>(null) }
     var zoomDelta by rememberSaveable { mutableStateOf(0) }
     var scrolled by remember { mutableStateOf(false) }
@@ -450,6 +454,7 @@ private fun ActiveSession(
                 },
                 onHiddenInput = { hiddenInput = true },
                 onSnippets = { snippetPicker = true },
+                onAskAi = { askAi = true },
                 onPaste = ::paste,
                 onKeyPressed = ::tap,
             )
@@ -465,6 +470,16 @@ private fun ActiveSession(
             sessionId = session.id,
             onOpenSnippets = onOpenSnippets,
             onClose = { snippetPicker = false },
+        )
+    }
+    if (askAi) {
+        AskAiSheet(
+            shell = shell,
+            session = session,
+            connected = state is SessionState.Connected && canWrite,
+            onInsert = { controller.paste(it) },
+            onOpenAccount = onOpenAccount,
+            onClose = { askAi = false },
         )
     }
     if (hiddenInput) {
@@ -560,6 +575,6 @@ private fun OverlayCard(content: @Composable () -> Unit) {
     }
 }
 
-private fun copyToClipboard(context: android.content.Context, text: String) {
+internal fun copyToClipboard(context: android.content.Context, text: String) {
     context.getSystemService<ClipboardManager>()?.setPrimaryClip(ClipData.newPlainText("Termoso", text))
 }
