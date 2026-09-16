@@ -1,0 +1,102 @@
+# xcodegen spec — `xcodegen generate` produces Termoso.xcodeproj (not checked in).
+# Run ./build-core.sh first so the TermosoCore package has its xcframework.
+name: Termoso
+options:
+  bundleIdPrefix: com.termoso
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "15.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    # Sideload builds are signed by the user (AltStore/SideStore/Xcode); the
+    # release archive is built with CODE_SIGNING_ALLOWED=NO. Simulator builds
+    # are ad-hoc signed so Xcode embeds the keychain-access-groups /
+    # application-identifier entitlements the Keychain needs. Set
+    # CODE_SIGN_IDENTITY/DEVELOPMENT_TEAM locally in Xcode to run on a device.
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+
+packages:
+  TermosoCore:
+    path: TermosoCore
+
+targets:
+  Termoso:
+    type: application
+    platform: iOS
+    sources:
+      - path: Termoso
+    dependencies:
+      - package: TermosoCore
+    info:
+      path: Termoso/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Termoso
+        CFBundleName: Termoso
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        ITSAppUsesNonExemptEncryption: false
+        NSLocalNetworkUsageDescription: Termoso connects to SSH servers on your local network.
+        LSApplicationCategoryType: public.app-category.developer-tools
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.termoso.ios
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        OTHER_LDFLAGS: ["-lresolv"]
+
+  TermosoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: TermosoTests
+    dependencies:
+      - target: Termoso
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.termoso.ios.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+  TermosoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: TermosoUITests
+    dependencies:
+      - target: Termoso
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.termoso.ios.uitests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Termoso:
+    build:
+      targets:
+        Termoso: all
+        TermosoTests: [test]
+        TermosoUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - TermosoTests
+        - TermosoUITests
+    archive:
+      config: Release

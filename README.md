@@ -30,9 +30,12 @@ crates/
 apps/
   desktop/         Tauri 2 desktop app (Linux, Windows, macOS); Rust owns state, storage and
                    sessions, React + MUI is the rendering layer only
+  android/         Kotlin + Compose client over termoso-mobile (UniFFI/JNI)
+  ios/             SwiftUI client over the same termoso-mobile core (UniFFI Swift, xcodegen);
+                   distributed as an unsigned .ipa + AltStore/SideStore source
 web/               web cabinet (Vite + React + MUI); all crypto runs in the WASM module
 deploy/            Dockerfile, Dockerfile.bridge, docker-compose for production and dev
-docs/              API Bridge, releasing, benchmarks
+docs/              API Bridge, releasing, iOS sideloading, benchmarks
 ```
 
 ## Security model (short)
@@ -197,6 +200,26 @@ the release feed when you click *Check for updates* (or opt into a startup
 check), verifies every download against the public key compiled into the app,
 and the feed URL can be pointed at your own HTTPS server. See
 [docs/RELEASING.md](docs/RELEASING.md).
+
+#### iOS app
+
+`apps/ios` is a SwiftUI client (iOS 17+) over the same Rust core as Android
+(`crates/termoso-mobile` via UniFFI Swift bindings). It is built on macOS:
+
+```bash
+cd apps/ios
+./build-core.sh                 # Rust → TermosoCoreFFI.xcframework + TermosoCore.swift (simulator)
+xcodegen generate               # Termoso.xcodeproj (brew install xcodegen)
+open Termoso.xcodeproj
+```
+
+There is no App Store listing and no Apple Developer account behind the
+project: every `v*` release ships an **unsigned** `termoso-<version>-ios.ipa`
+and an AltStore/SideStore source, `termoso-altstore.json`. Add
+`https://github.com/rep0rtDev/termoso/releases/latest/download/termoso-altstore.json`
+as a source in AltStore or SideStore and it installs the app signed with your
+own Apple ID and refreshes the 7-day profile in the background — see
+[docs/IOS_SIDELOAD.md](docs/IOS_SIDELOAD.md) for the flow and its limits.
 
 ### Tests
 
