@@ -115,7 +115,7 @@ if grep -E '^\S+\s+ERROR' "$out/app.log"; then
 fi
 test -s "$out/profile/vault.db" || fail "profile store was not created"
 
-for shot in welcome hosts terminal terminal-output settings; do
+for shot in welcome hosts terminal terminal-output terminal-dom settings; do
   f="$out/$shot.png"
   test -s "$f" || fail "missing screenshot $shot"
   size=$(stat -f%z "$f")
