@@ -200,7 +200,7 @@ impl TermosoApp {
         let store = Arc::new(Store::open(&dir.join(DB_FILE), master)?);
         let presence = presence::Tracker::new(store.clone());
         Ok(Arc::new(Self {
-            account: AccountRuntime::new(store.clone(), presence.clone()),
+            account: AccountRuntime::new(store.clone(), presence.clone(), dir.join("logs")),
             store,
             profile_dir: dir,
             presence,
@@ -602,6 +602,97 @@ impl TermosoApp {
             .clear_history(Some(termoso_proto::sync::HistoryKind::Connection))?)
     }
 
+    /// Commands entered at shell prompts, newest first. Lines that carried
+    /// an inline credential were never stored (see the session module).
+    pub fn command_history(&self, limit: u32) -> Result<Vec<CommandHistoryItem>> {
+        Ok(self
+            .store
+            .commands(limit.clamp(1, 1000) as usize)?
+            .into_iter()
+            .map(|h| CommandHistoryItem {
+                id: h.id.to_string(),
+                host_id: h.data.host_id.map(|u| u.to_string()),
+                command: h.data.command,
+                at: millis(h.created_at),
+            })
+            .collect())
+    }
+
+    pub fn delete_command_history(&self, id: String) -> Result<()> {
+        Ok(self.store.delete_history(parse_id(&id)?)?)
+    }
+
+    pub fn clear_command_history(&self) -> Result<()> {
+        Ok(self
+            .store
+            .clear_history(Some(termoso_proto::sync::HistoryKind::Command))?)
+    }
+
+    // ---- session logs -------------------------------------------------
+
+    /// Recordings this device can read: its own and, for team vaults with
+    /// session logging on, teammates' (once synced). Newest first.
+    pub fn session_logs(&self) -> Result<Vec<SessionLogCard>> {
+        let mut out: Vec<SessionLogCard> = self
+            .store
+            .logs()?
+            .into_iter()
+            .map(|item| SessionLogCard {
+                id: item.id.to_string(),
+                vault_id: item.vault_id.to_string(),
+                host_id: item.meta.host_id.map(|u| u.to_string()),
+                label: item.meta.label,
+                target: item.meta.target,
+                protocol: item.meta.protocol,
+                started_at: millis(item.meta.started_at),
+                ended_at: item.meta.ended_at.map(millis),
+                bytes: item.size_bytes.max(0) as u64,
+                mine: item.mine,
+                author: item.author.map(|a| a.display_name.unwrap_or(a.email)),
+                completed: item.completed,
+                downloaded: item.cached,
+                pinned: item.pinned,
+                note: item.note,
+            })
+            .collect();
+        out.sort_by_key(|c| std::cmp::Reverse(c.started_at));
+        Ok(out)
+    }
+
+    /// Decrypted recording as text (invalid UTF-8 replaced). Fetches a
+    /// teammate's body from the server when it is not on this device yet.
+    pub fn session_log_text(&self, id: String) -> Result<String> {
+        let id = parse_id(&id)?;
+        let body = match self.store.read_log(id) {
+            Ok(b) => b,
+            Err(e) => {
+                RUNTIME
+                    .block_on(self.account.fetch_log(id))
+                    .map_err(|_| e)?;
+                self.store.read_log(id)?
+            }
+        };
+        Ok(String::from_utf8_lossy(&body).into_owned())
+    }
+
+    pub fn delete_session_log(&self, id: String) -> Result<()> {
+        let id = parse_id(&id)?;
+        let item = self
+            .store
+            .logs()?
+            .into_iter()
+            .find(|l| l.id == id)
+            .ok_or_else(|| MobileError::not_found("recording"))?;
+        if !item.mine {
+            return Err(MobileError::invalid(
+                "Only the author can delete this recording from here",
+            ));
+        }
+        self.store.delete_log(id)?;
+        self.account.sync_in_background();
+        Ok(())
+    }
+
     /// Forget the connections shown under one vault: those of its hosts,
     /// plus the vault-less ones (quick connect, local shell, deleted host)
     /// when it is the local vault.
@@ -803,6 +894,41 @@ impl TermosoApp {
     /// Remove one published key (another device's, or a FIDO2 key).
     pub fn sshid_remove_key(&self, id: String) -> Result<SshIdView> {
         RUNTIME.block_on(self.account.sshid_remove_key(id))
+    }
+
+    /// Publish a keychain security key under the SSH ID (see
+    /// [`AccountRuntime::sshid_attach_security_key`]).
+    pub fn sshid_attach_security_key(&self, key_id: String) -> Result<SshIdView> {
+        RUNTIME.block_on(self.account.sshid_attach_security_key(key_id))
+    }
+
+    /// Create a credential on an attached security key and publish it
+    /// under the SSH ID in one go. The handle is kept unencrypted in the
+    /// personal vault (the local one when signed out of sync) so it
+    /// follows the account like the desktop does. Blocks until the token
+    /// is touched: call off the main thread.
+    pub fn sshid_add_fido2(
+        &self,
+        mut draft: Fido2GenerateDraft,
+        listener: Option<Arc<dyn Fido2Listener>>,
+    ) -> Result<SshIdView> {
+        let view = RUNTIME.block_on(self.account.sshid_view())?;
+        let handle = match (&view.signed_in, &view.handle) {
+            (true, Some(h)) => h.clone(),
+            (false, _) => return Err(MobileError::invalid("sign in to use SSH ID")),
+            (true, None) => return Err(MobileError::invalid("SSH ID is not set up")),
+        };
+        draft.vault_id = match self.store.personal_vault()? {
+            Some(v) => v.id.to_string(),
+            None => self.store.local_vault()?.id.to_string(),
+        };
+        draft.passphrase = None;
+        draft.remember_passphrase = false;
+        if draft.comment.trim().is_empty() {
+            draft.comment = format!("{handle}@termoso");
+        }
+        let key = fido2::generate(&fido2::registry(), &self.store, draft, listener)?;
+        RUNTIME.block_on(self.account.sshid_attach_security_key(key.id))
     }
 
     /// Delete the SSH ID and every key published under it; identities that
@@ -1037,6 +1163,7 @@ impl TermosoApp {
                 port: resolved.telnet.as_ref().and_then(|t| t.port).unwrap_or(23),
                 ip_version: IpVersion::parse(&resolved.host.data.ip_version),
                 host_id: Some(resolved.host.id),
+                vault_id: Some(resolved.host.vault_id),
                 label: resolved.host.data.label.clone(),
             },
             "ssh" => LaunchTarget::Ssh {
@@ -1058,6 +1185,8 @@ impl TermosoApp {
                 options,
                 listener,
                 presence,
+                logs_dir: self.profile_dir.join("logs"),
+                account: Some(self.account.clone()),
             },
         ))
     }
@@ -1098,6 +1227,8 @@ impl TermosoApp {
                 options,
                 listener,
                 presence: None,
+                logs_dir: self.profile_dir.join("logs"),
+                account: Some(self.account.clone()),
             },
         ))
     }
@@ -1121,6 +1252,7 @@ impl TermosoApp {
                     port: target.port,
                     ip_version: IpVersion::Auto,
                     host_id: None,
+                    vault_id: None,
                     label: host.to_string(),
                 }
             }
@@ -1138,6 +1270,8 @@ impl TermosoApp {
                 options,
                 listener,
                 presence: None,
+                logs_dir: self.profile_dir.join("logs"),
+                account: Some(self.account.clone()),
             },
         ))
     }

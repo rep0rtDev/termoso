@@ -625,6 +625,14 @@ impl SftpSession {
             .block_on(async move { Ok(live.sftp.read(&path).await?) })
     }
 
+    /// Overwrite (or create) `path` with `data`; for saving edited text
+    /// files. The file's mode is preserved when it already exists.
+    pub fn write(&self, path: String, data: Vec<u8>) -> Result<()> {
+        let live = self.live()?;
+        self.runtime
+            .block_on(async move { Ok(live.sftp.write(&path, &data).await?) })
+    }
+
     /// Queue a download of `remote` into the local file `local_path`
     /// (parents are created, an existing file is replaced). Returns the
     /// transfer id; progress arrives on the listener.

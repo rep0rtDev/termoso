@@ -632,6 +632,36 @@ pub struct KnownHostItem {
     pub updated_at: i64,
 }
 
+/// A command typed at a shell prompt, newest first.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct CommandHistoryItem {
+    pub id: String,
+    pub host_id: Option<String>,
+    pub command: String,
+    pub at: i64,
+}
+
+/// A terminal recording known to this device.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SessionLogCard {
+    pub id: String,
+    pub vault_id: String,
+    pub host_id: Option<String>,
+    pub label: String,
+    pub target: String,
+    pub protocol: String,
+    pub started_at: i64,
+    pub ended_at: Option<i64>,
+    pub bytes: u64,
+    pub mine: bool,
+    pub author: Option<String>,
+    pub completed: bool,
+    /// Body is on this device (a teammate's is fetched on first open).
+    pub downloaded: bool,
+    pub pinned: bool,
+    pub note: String,
+}
+
 /// A past connection, newest first.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct HistoryItem {

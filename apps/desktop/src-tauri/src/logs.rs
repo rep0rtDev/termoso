@@ -2,75 +2,17 @@
 //! playback text, export and bookmarks. Bodies never leave Rust unencrypted
 //! except for the explicit `read`/`export` operations.
 
-use std::path::Path;
-use std::sync::Mutex;
-
 use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 use termoso_core::model::LogBookmark;
-use termoso_core::store::{LocalVault, LocalVaultKind, LogItem, LogMeta, Store};
+use termoso_core::store::{LocalVault, LocalVaultKind, LogItem, Store};
 use termoso_core::termoso_proto::logs::MAX_NOTE_CHARS;
 use termoso_core::termoso_proto::vault::VaultRole;
 use uuid::Uuid;
 
 use crate::error::{DesktopError, Result};
 
-/// Capture stops growing after this much output; the tail is dropped and
-/// the recording is flagged truncated.
-pub const MAX_CAPTURE_BYTES: usize = 64 * 1024 * 1024;
-
-/// In-flight recording of one terminal session.
-///
-/// Only bytes received from the remote side are captured, never keystrokes:
-/// anything typed while the remote has echo turned off (passwords, sudo
-/// prompts) therefore never reaches the log, and auth answers given through
-/// the app's own prompt dialogs are not part of the stream at all.
-pub struct Recorder {
-    id: Uuid,
-    meta: LogMeta,
-    buf: Mutex<Vec<u8>>,
-    truncated: std::sync::atomic::AtomicBool,
-}
-
-impl Recorder {
-    pub fn begin(store: &Store, vault_id: Uuid, meta: LogMeta) -> Result<Self> {
-        let id = store.begin_log(vault_id, &meta)?;
-        Ok(Self {
-            id,
-            meta,
-            buf: Mutex::new(Vec::new()),
-            truncated: std::sync::atomic::AtomicBool::new(false),
-        })
-    }
-
-    pub fn id(&self) -> Uuid {
-        self.id
-    }
-
-    pub fn append(&self, bytes: &[u8]) {
-        let mut buf = self.buf.lock().expect("recorder poisoned");
-        let room = MAX_CAPTURE_BYTES.saturating_sub(buf.len());
-        if bytes.len() > room {
-            buf.extend_from_slice(&bytes[..room]);
-            self.truncated
-                .store(true, std::sync::atomic::Ordering::Relaxed);
-        } else {
-            buf.extend_from_slice(bytes);
-        }
-    }
-
-    /// Persist the capture; called once when the session ends.
-    pub fn finish(&self, store: &Store, dir: &Path) -> Result<()> {
-        let body = std::mem::take(&mut *self.buf.lock().expect("recorder poisoned"));
-        let mut meta = self.meta.clone();
-        meta.ended_at = Some(Utc::now());
-        if self.truncated.load(std::sync::atomic::Ordering::Relaxed) {
-            meta.label = format!("{} (truncated)", meta.label);
-        }
-        store.finish_log(self.id, &meta, &body, dir)?;
-        Ok(())
-    }
-}
+pub use termoso_core::store::Recorder;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -350,6 +292,7 @@ pub fn delete_bookmark(store: &Store, id: Uuid) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use termoso_core::store::{LogMeta, MAX_CAPTURE_BYTES};
     use termoso_core::termoso_crypto::keys::SymmetricKey;
 
     fn store() -> Store {

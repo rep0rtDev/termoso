@@ -6,6 +6,7 @@ mod ai;
 mod avatars;
 mod backup;
 mod cloud;
+mod cloud_sync;
 mod commands;
 mod commands_tools;
 mod complete;
@@ -229,6 +230,12 @@ pub fn run() {
             commands_tools::cloud_discover,
             commands_tools::cloud_import,
             commands_tools::cloud_discard,
+            commands_tools::cloud_sync_list,
+            commands_tools::cloud_sync_get,
+            commands_tools::cloud_sync_save,
+            commands_tools::cloud_sync_forget,
+            commands_tools::cloud_sync_run,
+            commands_tools::mdns_browse,
             commands_tools::hosts_export_csv,
             commands_tools::backup_export,
             commands_tools::backup_inspect,
@@ -346,4 +353,5 @@ async fn startup(app: tauri::AppHandle) {
     if settings.update_check == "startup" {
         update::check_on_startup(&app).await;
     }
+    tauri::async_runtime::spawn(cloud_sync::scheduler(app));
 }

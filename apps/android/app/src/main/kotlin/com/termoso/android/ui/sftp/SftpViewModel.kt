@@ -91,6 +91,10 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
     private val _conflict = MutableStateFlow<UploadConflict?>(null)
     val conflict: StateFlow<UploadConflict?> = _conflict.asStateFlow()
 
+    private val _preview = MutableStateFlow<PreviewState?>(null)
+    /** File open in the in-app viewer/editor; survives list navigation until closed. */
+    val preview: StateFlow<PreviewState?> = _preview.asStateFlow()
+
     private val sinks = HashMap<ULong, Sink>()
     private val scratchOf = HashMap<ULong, File>()
     /** Failures already announced, so re-emitted cards don't repeat the notice. */
@@ -138,7 +142,79 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
     }
 
     fun open(entry: SftpEntry) {
-        if (entry.isDir) navigate(entry.path) else openWith(entry)
+        if (entry.isDir) navigate(entry.path) else preview(entry)
+    }
+
+    // ───────────────────────────── viewer / editor ─────────────────────────────
+
+    /** Text and images open in-app; anything else falls back to "Open with". */
+    fun preview(entry: SftpEntry) {
+        if (entry.isDir) return
+        clearSelection()
+        val kind = FilePreview.classify(entry.name, entry.size?.toLong())
+        if (kind is PreviewKind.Unsupported) {
+            notice(kind.reason)
+            openWith(entry)
+            return
+        }
+        _preview.value = PreviewState(entry)
+        viewModelScope.launch {
+            val loaded = runCatching {
+                val bytes = conn.io { read(entry.path) }
+                withContext(Dispatchers.Default) { decode(entry, kind, bytes) }
+            }
+            // The user may have closed the viewer (or opened another file) meanwhile.
+            if (_preview.value?.entry?.path != entry.path) return@launch
+            loaded.onSuccess { state ->
+                if (state == null) {
+                    _preview.value = null
+                    notice("Not a text or image file")
+                    openWith(entry)
+                } else {
+                    _preview.value = state
+                }
+            }.onFailure { e -> _preview.update { it?.copy(loading = false, error = e.userMessage()) } }
+        }
+    }
+
+    private fun decode(entry: SftpEntry, kind: PreviewKind, bytes: ByteArray): PreviewState? =
+        when (kind) {
+            PreviewKind.Image -> FilePreview.decodeImage(bytes)?.let { PreviewState(entry, loading = false, image = it) }
+            PreviewKind.Text, PreviewKind.Sniff -> {
+                if (bytes.size > FilePreview.TEXT_LIMIT) return null
+                FilePreview.decodeText(bytes)?.let { PreviewState(entry, loading = false, text = it) }
+            }
+            is PreviewKind.Unsupported -> null
+        }
+
+    fun startEditing() = _preview.update { p -> if (p?.text != null && p.draft == null) p.copy(draft = p.text) else p }
+
+    fun editDraft(text: String) = _preview.update { p -> if (p?.editing == true) p.copy(draft = text) else p }
+
+    /** Drop the buffer, back to read-only view. */
+    fun discardEdits() = _preview.update { it?.copy(draft = null, error = null) }
+
+    /** Upload the buffer over the same SFTP session; mode of the remote file is preserved by core. */
+    fun saveEdits() {
+        val p = _preview.value ?: return
+        val draft = p.draft ?: return
+        if (p.saving) return
+        _preview.update { it?.copy(saving = true, error = null) }
+        viewModelScope.launch {
+            runCatching { conn.io { write(p.entry.path, draft.toByteArray(Charsets.UTF_8)) } }
+                .onSuccess {
+                    _preview.update { cur ->
+                        if (cur?.entry?.path == p.entry.path) cur.copy(text = draft, draft = null, saving = false) else cur
+                    }
+                    notice("Saved ${p.entry.name}")
+                    if (p.entry.path.substringBeforeLast('/', "/").ifBlank { "/" } == _state.value.path) refresh()
+                }
+                .onFailure { e -> _preview.update { it?.copy(saving = false, error = e.userMessage()) } }
+        }
+    }
+
+    fun closePreview() {
+        _preview.value = null
     }
 
     fun toggle(entry: SftpEntry) = _state.update { s ->
@@ -213,6 +289,12 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
             sinks[id] = sink
             scratchOf[id] = scratch
         }
+        settleIfFinished(id)
+    }
+
+    // A tiny transfer can finish before its id comes back; the card is then already settled-looking.
+    private fun settleIfFinished(id: ULong) {
+        conn.transfers.value.firstOrNull { it.id == id && it.status.isFinished }?.let { settle(it) }
     }
 
     // ───────────────────────────── uploads ─────────────────────────────
@@ -303,6 +385,7 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
         }
         val id = conn.io { upload(scratch.absolutePath, remote) }
         synchronized(sinks) { scratchOf[id] = scratch }
+        settleIfFinished(id)
     }
 
     // ───────────────────────────── transfers ─────────────────────────────

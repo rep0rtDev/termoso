@@ -1,7 +1,9 @@
 package com.termoso.android.data
 
 import android.content.Context
+import android.net.Uri
 import android.os.SystemClock
+import android.view.KeyEvent
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -88,6 +90,31 @@ class AppContainer(context: Context) {
     fun consumeJoin() {
         _pendingJoin.value = null
     }
+
+    /**
+     * Files shared into the app (`ACTION_SEND[_MULTIPLE]`), waiting for the
+     * terminal to offer sending them to the active session. Content URIs stay
+     * on the Kotlin side; Rust only ever sees app-owned scratch copies.
+     */
+    private val _pendingShare = MutableStateFlow<List<Uri>?>(null)
+    val pendingShare: StateFlow<List<Uri>?> = _pendingShare.asStateFlow()
+
+    fun offerShare(uris: List<Uri>) {
+        if (uris.isNotEmpty()) _pendingShare.value = uris
+    }
+
+    fun consumeShare() {
+        _pendingShare.value = null
+    }
+
+    /**
+     * Hardware-key hook installed by the terminal while it is on screen
+     * (volume-key bindings, Ctrl(+Shift) hotkeys). The activity consults it
+     * before normal dispatch; `null` or a `false` return keeps the system
+     * behaviour, so volume keys stay volume keys everywhere else.
+     */
+    @Volatile
+    var hardwareKeyHook: ((KeyEvent) -> Boolean)? = null
 
     init {
         ProcessLifecycleOwner.get().lifecycle.addObserver(

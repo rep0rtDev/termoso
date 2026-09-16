@@ -182,7 +182,7 @@ private fun ThemeGroup(title: String, items: List<TerminalTheme>, selectedId: St
 
 /** Background tile with the eight normal ANSI colours, like the desktop theme gallery. */
 @Composable
-private fun PaletteSwatch(p: TerminalPalette) {
+fun PaletteSwatch(p: TerminalPalette) {
     Row(
         Modifier.size(width = 56.dp, height = 36.dp).clip(RoundedCornerShape(8.dp)).background(rgb(p.background)).padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -236,7 +236,7 @@ private fun TerminalPreview(p: TerminalPalette, family: String, sizeSp: Int, cur
     }
 }
 
-private fun rgb(v: UInt) = Color(v.toInt() or (0xFF shl 24))
+internal fun rgb(v: UInt) = Color(v.toInt() or (0xFF shl 24))
 
 /** Compose font family for a registry name; falls back to the platform monospace. */
 fun composeFamily(name: String): FontFamily {

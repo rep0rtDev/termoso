@@ -292,6 +292,14 @@ impl Dimensions for Size {
     }
 }
 
+/// A spot in the terminal text, in scrollback-absolute coordinates (see
+/// [`Emulator::input_mark`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InputMark {
+    pub line: i64,
+    pub col: usize,
+}
+
 /// The emulator: feed bytes, take snapshots.
 pub struct Emulator {
     term: Term<Proxy>,
@@ -366,6 +374,70 @@ impl Emulator {
 
     pub fn mode(&self) -> TermMode {
         *self.term.mode()
+    }
+
+    /// Where the cursor is right now, in coordinates that survive the
+    /// screen scrolling: `line` counts from the top of the scrollback.
+    pub fn input_mark(&self) -> InputMark {
+        let grid = self.term.grid();
+        let cursor = grid.cursor.point;
+        InputMark {
+            line: grid.history_size() as i64 + i64::from(cursor.line.0),
+            col: cursor.column.0,
+        }
+    }
+
+    /// The screen text between `from` and the row of `until`: what the user
+    /// typed at a shell prompt, as echoed by the remote (so edits,
+    /// completions and no-echo passwords are reflected). On `until`'s row
+    /// the text runs past `until.col` only while it is contiguous, so a
+    /// late echo is picked up but a right-hand prompt is not. `None` on the
+    /// alternate screen or when the span has scrolled out of the buffer.
+    pub fn input_between(&self, from: &InputMark, until: &InputMark) -> Option<String> {
+        if self.mode().contains(TermMode::ALT_SCREEN) || until.line < from.line {
+            return None;
+        }
+        let grid = self.term.grid();
+        let history = grid.history_size() as i64;
+        let rows = i64::from(self.size.rows);
+        let cols = self.size.cols as usize;
+        let mut out = String::new();
+        for abs in from.line..=until.line {
+            let visible = abs - history;
+            if !(-history..rows).contains(&visible) {
+                return None;
+            }
+            let row = &grid[alacritty_terminal::index::Line(visible as i32)];
+            let start = if abs == from.line { from.col } else { 0 };
+            let mut end = if abs == until.line {
+                let mut end = until.col.min(cols);
+                while end < cols && row[alacritty_terminal::index::Column(end)].c != ' ' {
+                    end += 1;
+                }
+                end
+            } else {
+                cols
+            };
+            end = end.max(start).min(cols);
+            let mut text = String::new();
+            for col in start..end {
+                let cell = &row[alacritty_terminal::index::Column(col)];
+                if cell.flags.contains(Flags::WIDE_CHAR_SPACER) {
+                    continue;
+                }
+                text.push(cell.c);
+            }
+            let wrapped = row[alacritty_terminal::index::Column(cols - 1)]
+                .flags
+                .contains(Flags::WRAPLINE);
+            if abs == until.line || wrapped {
+                out.push_str(&text);
+            } else {
+                out.push_str(text.trim_end());
+                out.push('\n');
+            }
+        }
+        Some(out.trim().to_string())
     }
 
     /// Text of the visible screen, one line per row (trailing blanks
@@ -509,6 +581,57 @@ mod tests {
 
     fn emu() -> (Emulator, mpsc::UnboundedReceiver<TermSignal>) {
         Emulator::new(20, 5, 100, TerminalPalette::termoso_dark())
+    }
+
+    #[test]
+    fn input_between_reads_the_echoed_command() {
+        let (mut e, _rx) = emu();
+        e.feed(b"$ ");
+        let from = e.input_mark();
+        e.feed(b"ls -la");
+        let until = e.input_mark();
+        assert_eq!(e.input_between(&from, &until).as_deref(), Some("ls -la"));
+        // Late echo past `until.col` is picked up while contiguous.
+        e.feed(b"h");
+        assert_eq!(e.input_between(&from, &until).as_deref(), Some("ls -lah"));
+        // A right-hand prompt is separated by blanks and stays out.
+        e.feed(b"   12:00");
+        assert_eq!(e.input_between(&from, &until).as_deref(), Some("ls -lah"));
+        // Output after Enter is on other rows and not part of the command.
+        e.feed(b"\r\ntotal 0\r\n$ ");
+        assert_eq!(e.input_between(&from, &until).as_deref(), Some("ls -lah"));
+    }
+
+    #[test]
+    fn input_between_follows_wrapped_and_scrolled_lines() {
+        let (mut e, _rx) = emu();
+        e.feed(b"$ ");
+        let from = e.input_mark();
+        e.feed(b"echo aaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        let until = e.input_mark();
+        assert_eq!(
+            e.input_between(&from, &until).as_deref(),
+            Some("echo aaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
+        // Scroll the command into the history: absolute coordinates hold.
+        for _ in 0..8 {
+            e.feed(b"\r\nline");
+        }
+        assert_eq!(
+            e.input_between(&from, &until).as_deref(),
+            Some("echo aaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
+    }
+
+    #[test]
+    fn input_between_is_empty_when_nothing_was_echoed() {
+        let (mut e, _rx) = emu();
+        e.feed(b"Password: ");
+        let from = e.input_mark();
+        let until = e.input_mark();
+        assert_eq!(e.input_between(&from, &until).as_deref(), Some(""));
+        e.feed(b"\x1b[?1049h");
+        assert!(e.input_between(&from, &until).is_none());
     }
 
     #[test]

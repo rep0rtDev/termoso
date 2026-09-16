@@ -4,8 +4,11 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.net.Uri
 import android.os.Build
 import android.view.HapticFeedbackConstants
+import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,12 +42,14 @@ import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -63,6 +68,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -71,6 +77,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -84,15 +91,21 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termoso.android.data.LiveEvent
 import com.termoso.android.data.SessionEvent
 import com.termoso.android.data.TerminalSession
+import com.termoso.android.data.userMessage
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.HostAvatar
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.snippets.SnippetPickerSheet
 import com.termoso.core.LiveEndReason
+import com.termoso.core.MobileSettings
 import com.termoso.core.SessionState
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+/** Lines one volume press scrolls through the history. */
+private const val VOLUME_SCROLL_LINES = 3
 
 /**
  * Terminal tab host: session chips on top, the active terminal in the middle,
@@ -106,6 +119,11 @@ fun TerminalScreen(
     onNewSession: () -> Unit,
     onOpenSnippets: () -> Unit,
     onOpenAccount: () -> Unit,
+    /** Files shared into the app, offered to the active terminal once; `null` when none. */
+    pendingShare: List<Uri>? = null,
+    onShareConsumed: () -> Unit = {},
+    /** Installs (or, with `null`, removes) the activity-level hardware-key hook while a terminal is shown. */
+    onHardwareKeyHook: (((KeyEvent) -> Boolean)?) -> Unit = {},
 ) {
     val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
     val activeId by shell.sessions.activeId.collectAsStateWithLifecycle()
@@ -168,16 +186,16 @@ fun TerminalScreen(
             } else {
                 ActiveSession(
                     session = active,
+                    sessions = sessions,
                     shell = shell,
                     snackbar = snackbar,
-                    fontSize = settings.terminalFontSize.toInt(),
-                    fontFamily = settings.terminalFontFamily,
-                    cursorBlink = settings.cursorBlink,
-                    cursorStyle = settings.cursorStyle,
-                    haptics = settings.hapticFeedback,
-                    bell = settings.terminalBell,
+                    settings = settings,
                     onOpenSnippets = onOpenSnippets,
                     onOpenAccount = onOpenAccount,
+                    onNewSession = onNewSession,
+                    pendingShare = pendingShare,
+                    onShareConsumed = onShareConsumed,
+                    onHardwareKeyHook = onHardwareKeyHook,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
@@ -297,32 +315,46 @@ private fun SessionChip(session: TerminalSession, active: Boolean, onClick: () -
 @Composable
 private fun ActiveSession(
     session: TerminalSession,
+    sessions: List<TerminalSession>,
     shell: ShellViewModel,
     snackbar: SnackbarHostState,
-    fontSize: Int,
-    fontFamily: String,
-    cursorBlink: Boolean,
-    cursorStyle: String,
-    haptics: Boolean,
-    bell: Boolean,
+    settings: MobileSettings,
     onOpenSnippets: () -> Unit,
     onOpenAccount: () -> Unit,
+    onNewSession: () -> Unit,
+    pendingShare: List<Uri>?,
+    onShareConsumed: () -> Unit,
+    onHardwareKeyHook: (((KeyEvent) -> Boolean)?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
     val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
     val scope = rememberCoroutineScope()
     val controller = remember(session) { TerminalController(session) }
     val state by session.state.collectAsStateWithLifecycle()
     val prompt by session.prompt.collectAsStateWithLifecycle()
     val canWrite by session.canWrite.collectAsStateWithLifecycle()
 
+    val fontSize = settings.terminalFontSize.toInt()
+    val haptics = settings.hapticFeedback
+    val bell = settings.terminalBell
+    val keyRows = remember(settings.keyGroups) { KeyGroups.rows(settings.keyGroups) }
+    val hardwareKeyboard = configuration.keyboard == Configuration.KEYBOARD_QWERTY &&
+        configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
+    // The user can pull the panel back while a keyboard is attached; detaching resets that.
+    var panelForced by remember(hardwareKeyboard) { mutableStateOf(false) }
+    val panelCollapsed = settings.hidePanelWithKeyboard && hardwareKeyboard && !panelForced
+
     var panelExpanded by rememberSaveable { mutableStateOf(false) }
     var imeShown by remember { mutableStateOf(false) }
     var hiddenInput by remember { mutableStateOf(false) }
     var snippetPicker by remember { mutableStateOf(false) }
     var askAi by remember { mutableStateOf(false) }
+    var panelSheet by remember { mutableStateOf(false) }
+    var dropping by remember { mutableStateOf<DropProgress?>(null) }
+    var confirmDrop by remember { mutableStateOf<List<Uri>?>(null) }
     var menuAt by remember { mutableStateOf<Pair<CellPoint, Offset>?>(null) }
     var zoomDelta by rememberSaveable { mutableStateOf(0) }
     var scrolled by remember { mutableStateOf(false) }
@@ -364,14 +396,147 @@ private fun ActiveSession(
         if (haptics) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
     }
 
+    fun zoom(delta: Int) {
+        zoomDelta = (zoomDelta + delta).coerceIn(6 - fontSize, 40 - fontSize)
+    }
+
+    fun toggleIme() {
+        val imm = context.getSystemService<InputMethodManager>()
+        val input = controller.inputView
+        if (imeShown) {
+            imm?.hideSoftInputFromWindow(view.windowToken, 0)
+            imeShown = false
+        } else if (input != null) {
+            input.requestFocus()
+            imm?.showSoftInput(input, 0)
+            imeShown = true
+        }
+    }
+
+    fun switchSession(forward: Boolean) {
+        val index = sessions.indexOfFirst { it.id == session.id }
+        val next = HardwareKeys.neighbour(sessions.size, index, forward) ?: return
+        shell.sessions.setActive(sessions[next].id)
+    }
+
+    fun dropFiles(uris: List<Uri>) {
+        if (uris.isEmpty() || dropping != null) return
+        FileDrop.blocker(session)?.let { why ->
+            scope.launch { snackbar.showSnackbar(why) }
+            return
+        }
+        scope.launch {
+            dropping = DropProgress("", 0, uris.size, 0, null)
+            runCatching { FileDrop.send(context, session, uris) { dropping = it } }
+                .onSuccess { paths ->
+                    snackbar.showSnackbar(if (paths.size == 1) "Uploaded to ${paths.single()}" else "Uploaded ${paths.size} files to /tmp")
+                }
+                .onFailure { snackbar.showSnackbar("Upload failed: ${it.userMessage()}") }
+            dropping = null
+        }
+    }
+
+    // Shared files arrive while another screen may be up; offer them once this terminal is showing.
+    // The share stays pending until the user answers, so a recomposition of
+    // this screen (navigation, rotation) re-offers rather than drops it.
+    LaunchedEffect(pendingShare) {
+        val uris = pendingShare ?: return@LaunchedEffect
+        session.state.first { it !is SessionState.Connecting }
+        FileDrop.blocker(session)?.let { why ->
+            // Consuming re-keys this effect, so the snackbar runs on the screen scope.
+            scope.launch { snackbar.showSnackbar(why) }
+            onShareConsumed()
+            return@LaunchedEffect
+        }
+        confirmDrop = uris
+    }
+
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        dropFiles(uris)
+    }
+
     fun paste() {
         val clip = context.getSystemService<ClipboardManager>()?.primaryClip
-        val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
-        if (text.isNullOrEmpty()) {
-            scope.launch { snackbar.showSnackbar("Clipboard is empty") }
-        } else {
-            controller.paste(text)
+        val item = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)
+        val text = item?.coerceToText(context)?.toString()
+        val uri = item?.uri?.takeIf { it.scheme == "content" }
+        when {
+            !text.isNullOrEmpty() && (uri == null || text != uri.toString()) -> controller.paste(text)
+            // An image or file on the clipboard (gallery "copy", keyboard sticker): upload it instead.
+            uri != null -> dropFiles(listOf(uri))
+            else -> scope.launch { snackbar.showSnackbar("Clipboard is empty") }
         }
+    }
+
+    fun run(action: InputAction) {
+        when (action) {
+            InputAction.Disabled -> Unit
+            is InputAction.Key -> {
+                tap()
+                controller.press(action.key)
+            }
+            is InputAction.Ui -> when (action.action) {
+                UiAction.FONT_UP -> zoom(1)
+                UiAction.FONT_DOWN -> zoom(-1)
+                UiAction.SCROLL_UP -> controller.scrollBy(VOLUME_SCROLL_LINES, controller.altScreen())
+                UiAction.SCROLL_DOWN -> controller.scrollBy(-VOLUME_SCROLL_LINES, controller.altScreen())
+                UiAction.NEXT_SESSION -> switchSession(forward = true)
+                UiAction.PREV_SESSION -> switchSession(forward = false)
+                UiAction.TOGGLE_KEYBOARD -> toggleIme()
+                UiAction.CLOSE_SESSION -> scope.launch { shell.sessions.close(session.id) }
+            }
+        }
+    }
+
+    fun run(hotkey: Hotkey) {
+        when (hotkey) {
+            Hotkey.PREV_SESSION -> switchSession(forward = false)
+            Hotkey.NEXT_SESSION -> switchSession(forward = true)
+            Hotkey.CLOSE_SESSION -> scope.launch { shell.sessions.close(session.id) }
+            Hotkey.NEW_SESSION -> onNewSession()
+            Hotkey.CLONE_SESSION -> scope.launch {
+                when {
+                    session.hostId != null -> shell.connectHost(session.hostId, session.transport)
+                    session.quick != null -> shell.connectQuick(session.quick)
+                    session.local != null -> shell.connectLocal()
+                    else -> snackbar.showSnackbar("This session cannot be cloned")
+                }
+            }
+            Hotkey.FONT_UP -> zoom(1)
+            Hotkey.FONT_DOWN -> zoom(-1)
+            Hotkey.FONT_RESET -> zoomDelta = 0
+            Hotkey.PASTE -> paste()
+            Hotkey.TOGGLE_PANEL -> if (panelCollapsed) panelForced = true else panelExpanded = !panelExpanded
+        }
+        hotkey.toast?.let { scope.launch { snackbar.showSnackbar(it) } }
+    }
+
+    // Activity-level hook: volume bindings and Ctrl(+Shift) hotkeys never reach the
+    // shell. Both DOWN and UP of a bound key are swallowed so the system does not
+    // see half a press; anything unbound falls through untouched.
+    val hook: (KeyEvent) -> Boolean = { ev ->
+        val volume = HardwareKeys.volumeAction(ev.keyCode, settings.volumeUpAction, settings.volumeDownAction)
+        val hotkey = if (volume == null) {
+            HardwareKeys.hotkey(ev.keyCode, ev.isCtrlPressed, ev.isShiftPressed, ev.isAltPressed, settings.hardwareHotkeys)
+        } else {
+            null
+        }
+        when {
+            volume != null -> {
+                if (ev.action == KeyEvent.ACTION_DOWN) run(volume)
+                true
+            }
+            hotkey != null -> {
+                if (ev.action == KeyEvent.ACTION_DOWN && ev.repeatCount == 0) run(hotkey)
+                true
+            }
+            else -> false
+        }
+    }
+    val currentHook by rememberUpdatedState(hook)
+    DisposableEffect(onHardwareKeyHook) {
+        onHardwareKeyHook { currentHook(it) }
+        onDispose { onHardwareKeyHook(null) }
     }
 
     Box(modifier) {
@@ -382,14 +547,20 @@ private fun ActiveSession(
                     session = session,
                     controller = controller,
                     fontSizeSp = (fontSize + zoomDelta).coerceIn(6, 40),
-                    fontFamily = fontFamily,
-                    cursorBlink = cursorBlink,
-                    cursorStyle = cursorStyle,
+                    fontFamily = settings.terminalFontFamily,
+                    cursorBlink = settings.cursorBlink,
+                    cursorStyle = settings.cursorStyle,
                     modifier = Modifier.fillMaxSize(),
                     onFrame = { scrolled = it.frame.displayOffset > 0u },
                     onTap = { imeShown = true },
                     onLongPress = { cell, offset -> menuAt = cell to offset },
-                    onZoom = { d -> zoomDelta = (zoomDelta + d).coerceIn(6 - fontSize, 40 - fontSize) },
+                    onZoom = ::zoom,
+                    gestures = TerminalGestures(
+                        pinchZoom = settings.pinchZoom,
+                        swipeArrows = settings.swipeArrows,
+                        swipeSessions = settings.swipeSessions,
+                    ),
+                    onSwipeSession = ::switchSession,
                 )
                 if (scrolled) {
                     SmallFloatingActionButton(
@@ -422,6 +593,13 @@ private fun ActiveSession(
                                 scope.launch { snackbar.showSnackbar("Screen copied") }
                             },
                         )
+                        if (FileDrop.blocker(session) == null) {
+                            DropdownMenuItem(
+                                text = { Text("Send file…") },
+                                onClick = { menuAt = null; pickFiles.launch(arrayOf("*/*")) },
+                            )
+                        }
+                        DropdownMenuItem(text = { Text("History & themes") }, onClick = { menuAt = null; panelSheet = true })
                     }
                 }
                 StateOverlay(
@@ -437,24 +615,17 @@ private fun ActiveSession(
             }
             KeyPanel(
                 controller = controller,
+                rows = keyRows,
                 expanded = panelExpanded,
+                collapsed = panelCollapsed,
                 imeShown = imeShown,
                 onToggleExpanded = { panelExpanded = !panelExpanded },
-                onToggleIme = {
-                    val imm = context.getSystemService<InputMethodManager>()
-                    val input = controller.inputView
-                    if (imeShown) {
-                        imm?.hideSoftInputFromWindow(view.windowToken, 0)
-                        imeShown = false
-                    } else if (input != null) {
-                        input.requestFocus()
-                        imm?.showSoftInput(input, 0)
-                        imeShown = true
-                    }
-                },
+                onToggleCollapsed = { panelForced = true },
+                onToggleIme = ::toggleIme,
                 onHiddenInput = { hiddenInput = true },
                 onSnippets = { snippetPicker = true },
                 onAskAi = { askAi = true },
+                onPanel = { panelSheet = true },
                 onPaste = ::paste,
                 onKeyPressed = ::tap,
             )
@@ -480,6 +651,38 @@ private fun ActiveSession(
             onInsert = { controller.paste(it) },
             onOpenAccount = onOpenAccount,
             onClose = { askAi = false },
+        )
+    }
+    if (panelSheet) {
+        TerminalPanelSheet(shell = shell, session = session, controller = controller, onClose = { panelSheet = false })
+    }
+    confirmDrop?.let { uris ->
+        fun answer(send: Boolean) {
+            confirmDrop = null
+            onShareConsumed()
+            if (send) dropFiles(uris)
+        }
+        AlertDialog(
+            onDismissRequest = { answer(false) },
+            title = { Text(if (uris.size == 1) "Send file to ${session.label}?" else "Send ${uris.size} files to ${session.label}?") },
+            text = { Text("Copied to /tmp on the remote over this session's SSH connection; the path is typed at the prompt.") },
+            confirmButton = { TextButton(onClick = { answer(true) }) { Text("Send") } },
+            dismissButton = { TextButton(onClick = { answer(false) }) { Text("Cancel") } },
+        )
+    }
+    dropping?.let { p ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(if (p.count > 1) "Sending ${p.index + 1} of ${p.count}" else "Sending file") },
+            text = {
+                Column {
+                    Text(p.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(12.dp))
+                    p.fraction?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
+                        ?: LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {},
         )
     }
     if (hiddenInput) {

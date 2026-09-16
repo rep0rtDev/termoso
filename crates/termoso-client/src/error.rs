@@ -85,6 +85,12 @@ impl From<termoso_core::cloud::CloudError> for ClientError {
     }
 }
 
+impl From<termoso_core::mdns::MdnsError> for ClientError {
+    fn from(e: termoso_core::mdns::MdnsError) -> Self {
+        Self::new(e.kind(), e.to_string())
+    }
+}
+
 impl From<serde_json::Error> for ClientError {
     fn from(e: serde_json::Error) -> Self {
         Self::new("json", e.to_string())
