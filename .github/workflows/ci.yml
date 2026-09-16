@@ -161,7 +161,8 @@ jobs:
         working-directory: apps/desktop
       - run: cargo clippy -p termoso-core -p termoso-desktop --all-targets --locked
       - run: cargo test -p termoso-core --locked
-      - run: npm run tauri build -- --debug --bundles app --ci
+      # No updater key on CI: build the .app only, skip the signed updater tarball.
+      - run: npm run tauri build -- --debug --bundles app --ci --config '{"bundle":{"createUpdaterArtifacts":false}}'
         working-directory: apps/desktop
       - name: Inspect the bundle
         run: |
