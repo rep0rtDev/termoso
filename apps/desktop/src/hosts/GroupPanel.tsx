@@ -38,6 +38,7 @@ import { useActiveVault } from "@/app/vault";
 import { monoFontFamily, sizes } from "@/theme/theme";
 import { AgentForwardingRow, CredentialsFields } from "./CredentialsFields";
 import { ChainDialog, ProxyDialog } from "./HostAdvancedDialogs";
+import { CloudSyncSection } from "./CloudSyncSection";
 
 interface Props {
   vaultId: Uuid;
@@ -435,6 +436,8 @@ function GroupEditor({
             ))
           )}
         </SectionCard>
+
+        {node && <CloudSyncSection group={node} readOnly={readOnly} />}
       </Box>
 
       <ProxyDialog
