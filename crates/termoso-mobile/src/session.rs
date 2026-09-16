@@ -17,8 +17,9 @@ use termoso_core::live::{HostShare, LiveEvent, ViewerJoin};
 use termoso_core::model::ResolvedHost;
 use termoso_core::mosh::{self, MoshError};
 use termoso_core::pty::{LocalShellOptions, LocalTerminal};
+use termoso_core::sftp::{Progress, Sftp, TransferOptions};
 use termoso_core::ssh::{IpVersion, SshClient, SshTarget};
-use termoso_core::store::{ConnectionHistory, Store};
+use termoso_core::store::{CommandHistory, ConnectionHistory, LogMeta, Recorder, Store};
 use termoso_core::telnet::{TelnetOptions, TelnetTerminal};
 use termoso_core::terminal::{SharedTerminal, TermEvent, TermEvents, TermSize};
 use tokio::sync::mpsc;
@@ -30,13 +31,21 @@ use crate::keys::{KeyMods, SpecialKey, encode_key, encode_text};
 use crate::live::{LiveListener, LiveParticipantCard, LiveShare, ShareState, ViewState};
 use crate::presence::Slot;
 use crate::settings::MobileSettings;
-use crate::terminal::{Emulator, GridFrame, GridSnapshot, TermSignal, TerminalPalette};
+use crate::terminal::{Emulator, GridFrame, GridSnapshot, InputMark, TermSignal, TerminalPalette};
 
 /// Give the shell time to print its prompt before the startup snippet lands.
 const STARTUP_SNIPPET_DELAY: Duration = Duration::from_millis(400);
 
 /// Telnet TCP connect timeout.
 const TELNET_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Longest command line kept in the history (matches the desktop).
+const MAX_COMMAND_CHARS: usize = 4096;
+/// How long after Enter the command line is re-read for late echo.
+const ECHO_GRACE: Duration = Duration::from_millis(250);
+
+/// Files sent into a terminal land here on the remote side.
+const REMOTE_DROP_DIR: &str = "/tmp";
 
 /// Where the session is.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -71,6 +80,41 @@ pub trait SessionListener: Send + Sync {
     fn on_clipboard(&self, text: String);
     /// The remote OS was recognised (stored on the host when there is one).
     fn on_os_detected(&self, os_name: String);
+}
+
+/// Progress of a file being sent into a terminal ([`SshSession::send_file`]).
+#[uniffi::export(with_foreign)]
+pub trait FileDropListener: Send + Sync {
+    /// `total` is 0 when unknown.
+    fn on_progress(&self, done: u64, total: u64);
+}
+
+/// A file name safe to use under the remote temp directory: no path
+/// separators, control characters or shell-hostile leading dashes.
+pub(crate) fn safe_drop_name(name: &str) -> String {
+    let mut out: String = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\'' | '`' | '$' => '_',
+            c if c.is_control() || c.is_whitespace() => '_',
+            c => c,
+        })
+        .collect();
+    while out.starts_with('-') || out.starts_with('.') {
+        out.remove(0);
+    }
+    if out.chars().count() > 120 {
+        let ext = out.rsplit_once('.').map(|(_, e)| e.to_string());
+        out = out.chars().take(100).collect();
+        if let Some(ext) = ext.filter(|e| e.len() <= 10) {
+            out.push('.');
+            out.push_str(&ext);
+        }
+    }
+    if out.is_empty() {
+        out = format!("termoso-{}", Uuid::new_v4().simple());
+    }
+    out
 }
 
 /// Which transport carries the shell.
@@ -139,6 +183,217 @@ struct Inner {
     view: Option<Arc<ViewState>>,
     /// Team presence registration for a saved team-vault host.
     presence: Option<Slot>,
+    /// Saved host this terminal is on, for command history and recordings.
+    host_id: Option<Uuid>,
+    /// Where the cursor was when the current command line started being
+    /// typed; `None` while nothing is pending.
+    typed: Mutex<Option<InputMark>>,
+    /// The authenticated SSH connection while a plain SSH shell is up
+    /// (Mosh drops its SSH leg), for side channels such as file drops.
+    ssh: Mutex<Option<Arc<SshClient>>>,
+    /// Encrypted output capture, when recording is on for this session.
+    recorder: Mutex<Option<Arc<Recorder>>>,
+    /// Where finished recordings are written.
+    logs_dir: std::path::PathBuf,
+    /// Sync trigger for a finished recording.
+    account: Option<Arc<crate::account::AccountRuntime>>,
+}
+
+impl Inner {
+    fn recorder(&self) -> Option<Arc<Recorder>> {
+        self.recorder.lock().expect("recorder poisoned").clone()
+    }
+
+    /// Begin capturing output when the user's switch or the team vault's
+    /// policy says so. Failures only disable the recording.
+    fn start_recording(&self, settings: &MobileSettings, vault_id: Option<Uuid>, meta: LogMeta) {
+        let vault_id = match vault_id.or_else(|| self.store.local_vault().ok().map(|v| v.id)) {
+            Some(v) => v,
+            None => return,
+        };
+        let team_policy = self.store.vault(vault_id).ok().is_some_and(|v| {
+            v.kind == termoso_core::store::LocalVaultKind::Team && v.session_logging
+        });
+        if !settings.record_sessions && !team_policy {
+            return;
+        }
+        match Recorder::begin(&self.store, vault_id, meta) {
+            Ok(r) => *self.recorder.lock().expect("recorder poisoned") = Some(Arc::new(r)),
+            Err(e) => tracing::warn!("session recording disabled: {e}"),
+        }
+    }
+
+    /// Persist the capture (if any) and let the sync engine upload it.
+    fn finish_recording(&self) {
+        let Some(rec) = self.recorder.lock().expect("recorder poisoned").take() else {
+            return;
+        };
+        match rec.finish(&self.store, &self.logs_dir) {
+            Ok(()) => {
+                if let Some(account) = &self.account {
+                    account.sync_in_background();
+                }
+            }
+            Err(e) => tracing::warn!("saving session recording failed: {e}"),
+        }
+    }
+
+    /// Remember where the command line starts, unless one is pending.
+    fn mark_typing(&self) {
+        let mut typed = self.typed.lock().expect("typed poisoned");
+        if typed.is_none() {
+            *typed = Some(
+                self.emulator
+                    .lock()
+                    .expect("emulator poisoned")
+                    .input_mark(),
+            );
+        }
+    }
+
+    fn forget_typing(&self) {
+        *self.typed.lock().expect("typed poisoned") = None;
+    }
+
+    /// Enter was pressed: the echoed line since the mark is the command.
+    /// Reads the screen, so whatever the remote refused to echo (passwords)
+    /// is not there; obvious inline secrets are skipped as well. The line
+    /// is read again shortly after, since the echo of the last keystrokes
+    /// may still be in flight.
+    fn commit_typing(self: &Arc<Self>, runtime: &tokio::runtime::Handle) {
+        let Some(mark) = self.typed.lock().expect("typed poisoned").take() else {
+            return;
+        };
+        if self.view.is_some() {
+            return;
+        }
+        let (until, first) = {
+            let em = self.emulator.lock().expect("emulator poisoned");
+            let until = em.input_mark();
+            (until, em.input_between(&mark, &until))
+        };
+        let inner = self.clone();
+        runtime.spawn(async move {
+            tokio::time::sleep(ECHO_GRACE).await;
+            let later = inner
+                .emulator
+                .lock()
+                .expect("emulator poisoned")
+                .input_between(&mark, &until);
+            let command = match (first, later) {
+                (Some(f), Some(l)) if l.starts_with(&f) => l,
+                (Some(f), _) => f,
+                (None, Some(l)) => l,
+                (None, None) => return,
+            };
+            inner.record_command(command);
+        });
+    }
+
+    fn record_command(&self, command: String) {
+        if command.is_empty()
+            || command.chars().count() > MAX_COMMAND_CHARS
+            || looks_like_secret(&command)
+        {
+            return;
+        }
+        let _ = self.store.record_command(&CommandHistory {
+            host_id: self.host_id,
+            command,
+        });
+    }
+}
+
+/// Mirror of the desktop's `looksLikeSecret`: command lines that carry a
+/// credential inline are not worth keeping.
+pub(crate) fn looks_like_secret(command: &str) -> bool {
+    let c = command.trim();
+    let lower = c.to_ascii_lowercase();
+    let words: Vec<&str> = lower.split_whitespace().collect();
+
+    // `password=…`, `token: …`, `API_KEY=…`, `--secret=…` anywhere.
+    const NAMES: [&str; 11] = [
+        "password",
+        "passwd",
+        "pass",
+        "secret",
+        "token",
+        "apikey",
+        "api_key",
+        "api-key",
+        "private_key",
+        "private-key",
+        "access_key",
+    ];
+    let assigns = lower
+        .split(|ch: char| ch.is_whitespace() || ch == ';' || ch == '|' || ch == '&')
+        .any(|tok| {
+            let Some(idx) = tok.find(['=', ':']) else {
+                return false;
+            };
+            let (name, value) = tok.split_at(idx);
+            let name = name.trim_start_matches('-').trim_start_matches('$');
+            let value = value[1..].trim_start_matches(['=', ':']);
+            !value.is_empty()
+                && !value.starts_with('/')
+                && (NAMES.iter().any(|n| name.contains(n))
+                    || name.ends_with("_key")
+                    || name.ends_with("-key"))
+        });
+    if assigns {
+        return true;
+    }
+
+    // `export FOO_TOKEN=…`
+    if words
+        .windows(2)
+        .any(|w| w[0] == "export" && w[1].contains('=') && has_secret_hint(w[1]))
+    {
+        return true;
+    }
+    // `mysql … -pSECRET`
+    let db = ["mysql", "mysqladmin", "mysqldump", "mariadb"];
+    if words.iter().any(|w| db.contains(w))
+        && words.iter().any(|w| w.len() > 2 && w.starts_with("-p"))
+    {
+        return true;
+    }
+    // `sshpass -p SECRET`
+    if words.windows(3).any(|w| w[0] == "sshpass" && w[1] == "-p") {
+        return true;
+    }
+    // `curl -u user:pass`
+    let http = ["curl", "wget", "http"];
+    if words.iter().any(|w| http.contains(w))
+        && words
+            .windows(2)
+            .any(|w| (w[0] == "-u" || w[0] == "--user") && w[1].contains(':'))
+    {
+        return true;
+    }
+    if lower.contains("authorization:") && (lower.contains("bearer ") || lower.contains("basic ")) {
+        return true;
+    }
+    // `echo secret | sudo passwd`, `printf … | chpasswd`
+    if (words.first() == Some(&"echo") || words.first() == Some(&"printf")) && lower.contains('|') {
+        let tail = lower.rsplit('|').next().unwrap_or("");
+        let tail = tail.trim().trim_start_matches("sudo ").trim();
+        if tail.starts_with("passwd")
+            || tail.starts_with("chpasswd")
+            || tail.starts_with("su ")
+            || tail == "su"
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn has_secret_hint(assignment: &str) -> bool {
+    let name = assignment.split('=').next().unwrap_or("");
+    ["key", "token", "secret", "pass"]
+        .iter()
+        .any(|k| name.contains(k))
 }
 
 impl Inner {
@@ -195,6 +450,7 @@ pub(crate) enum LaunchTarget {
         port: u16,
         ip_version: IpVersion,
         host_id: Option<Uuid>,
+        vault_id: Option<Uuid>,
         label: String,
     },
     /// A shell on this device.
@@ -212,6 +468,9 @@ pub(crate) struct Launch {
     pub options: TerminalOptions,
     pub listener: Arc<dyn SessionListener>,
     pub presence: Option<Slot>,
+    /// Directory for finished recordings (`<profile>/logs`).
+    pub logs_dir: std::path::PathBuf,
+    pub account: Option<Arc<crate::account::AccountRuntime>>,
 }
 
 /// The `history` row of one connection: opened when the attempt starts,
@@ -268,7 +527,14 @@ impl SshSession {
             options,
             listener,
             presence,
+            logs_dir,
+            account,
         } = launch;
+        let host_id = match &target {
+            LaunchTarget::Ssh { resolved, .. } => resolved.as_ref().map(|r| r.host.id),
+            LaunchTarget::Telnet { host_id, .. } => *host_id,
+            LaunchTarget::Local { .. } => None,
+        };
         let palette = options
             .palette
             .clone()
@@ -308,6 +574,12 @@ impl SshSession {
             share: Mutex::new(None),
             view: None,
             presence,
+            host_id,
+            typed: Mutex::new(None),
+            ssh: Mutex::new(None),
+            recorder: Mutex::new(None),
+            logs_dir,
+            account,
         });
         let session = Arc::new(Self {
             id: Uuid::new_v4(),
@@ -341,14 +613,28 @@ impl SshSession {
                 port,
                 ip_version,
                 host_id,
+                vault_id,
                 label,
             } => {
                 runtime.spawn(run_telnet(
-                    inner, host, port, ip_version, host_id, label, term_type, signals,
+                    inner,
+                    TelnetLaunch {
+                        host,
+                        port,
+                        ip_version,
+                        host_id,
+                        vault_id,
+                        label,
+                        term_type,
+                    },
+                    settings,
+                    signals,
                 ));
             }
             LaunchTarget::Local { argv, cwd, env } => {
-                runtime.spawn(run_local(inner, argv, cwd, env, term_type, signals));
+                runtime.spawn(run_local(
+                    inner, argv, cwd, env, term_type, settings, signals,
+                ));
             }
         }
         session
@@ -418,6 +704,12 @@ impl SshSession {
             share: Mutex::new(None),
             view: Some(view.clone()),
             presence: None,
+            host_id: None,
+            typed: Mutex::new(None),
+            ssh: Mutex::new(None),
+            recorder: Mutex::new(None),
+            logs_dir: std::path::PathBuf::new(),
+            account: None,
         });
         let session = Arc::new(Self {
             id: Uuid::new_v4(),
@@ -536,12 +828,26 @@ impl SshSession {
             .expect("emulator poisoned")
             .mode()
             .contains(alacritty_terminal::term::TermMode::APP_CURSOR);
+        match key {
+            SpecialKey::Enter if !mods.ctrl && !mods.alt => self.inner.commit_typing(&self.runtime),
+            SpecialKey::Enter | SpecialKey::Escape => self.inner.forget_typing(),
+            _ => self.inner.mark_typing(),
+        }
         self.write(encode_key(key, mods, app_cursor));
     }
 
     /// Send typed text, applying Ctrl/Alt from the key panel.
     pub fn send_text(&self, text: String, mods: KeyMods) {
+        if mods.ctrl {
+            // ^C, ^D, ^L… abandon whatever was being typed.
+            self.inner.forget_typing();
+        } else {
+            self.inner.mark_typing();
+        }
         self.write(encode_text(&text, mods));
+        if !mods.ctrl && text.contains(['\r', '\n']) {
+            self.inner.commit_typing(&self.runtime);
+        }
     }
 
     /// Visible screen as text (for copy / accessibility).
@@ -576,7 +882,74 @@ impl SshSession {
         if bracketed {
             data.extend_from_slice(b"\x1b[201~");
         }
+        self.inner.mark_typing();
         self.write(data);
+    }
+
+    /// Type `command` and run it, as if entered at the prompt.
+    pub fn run_command(&self, command: String) {
+        let line = command.trim_end_matches(['\r', '\n']).to_string();
+        if line.is_empty() {
+            return;
+        }
+        self.paste(line);
+        self.send_key(SpecialKey::Enter, KeyMods::default());
+    }
+
+    /// `true` when [`SshSession::send_file`] can work: a plain SSH shell
+    /// that is connected right now.
+    pub fn can_send_files(&self) -> bool {
+        self.inner.ssh.lock().expect("ssh poisoned").is_some()
+    }
+
+    /// Copy a local file to the remote's temp directory over a side SFTP
+    /// channel of this session's connection and type the resulting path at
+    /// the prompt (shell-quoted, no newline). `name` is the file name to
+    /// use remotely; it is sanitised and made unique. Returns the remote
+    /// path. Blocks the calling thread while uploading; `listener` gets
+    /// progress.
+    pub fn send_file(
+        &self,
+        local_path: String,
+        name: String,
+        listener: Option<Arc<dyn FileDropListener>>,
+    ) -> Result<String> {
+        let client = self
+            .inner
+            .ssh
+            .lock()
+            .expect("ssh poisoned")
+            .clone()
+            .ok_or_else(|| MobileError::invalid("This terminal cannot receive files"))?;
+        let local = std::path::PathBuf::from(&local_path);
+        let base = safe_drop_name(&name);
+        let remote = self.runtime.block_on(async move {
+            let sftp = Sftp::open(&client).await?;
+            let mut remote = format!("{REMOTE_DROP_DIR}/{base}");
+            let mut n = 1;
+            while sftp.exists(&remote).await? {
+                n += 1;
+                remote = match base.rsplit_once('.') {
+                    Some((stem, ext)) if !stem.is_empty() => {
+                        format!("{REMOTE_DROP_DIR}/{stem}-{n}.{ext}")
+                    }
+                    _ => format!("{REMOTE_DROP_DIR}/{base}-{n}"),
+                };
+            }
+            let progress = listener.clone().map(|l| {
+                Arc::new(move |p: Progress| l.on_progress(p.done, p.total.unwrap_or(0)))
+                    as termoso_core::sftp::ProgressFn
+            });
+            let opts = TransferOptions {
+                progress,
+                ..TransferOptions::default()
+            };
+            let result = sftp.upload(&local, &remote, &opts).await;
+            let _ = sftp.close().await;
+            result.map(|_| remote).map_err(MobileError::from)
+        })?;
+        self.paste(format!("'{}' ", remote.replace('\'', "'\\''")));
+        Ok(remote)
     }
 
     /// `true` for a terminal that mirrors somebody else's share.
@@ -719,20 +1092,19 @@ async fn run(
     signals: mpsc::UnboundedReceiver<TermSignal>,
 ) {
     let protocol = if mosh { "mosh" } else { "ssh" };
-    let history = HistoryEntry::start(
-        inner.store.clone(),
-        ConnectionHistory {
-            host_id: resolved.as_ref().map(|r| r.host.id),
-            label: resolved
-                .as_ref()
-                .map(|r| r.host.data.label.clone())
-                .unwrap_or_else(|| target.host.clone()),
-            target: target.display(),
-            protocol: protocol.into(),
-            duration_secs: None,
-            error: None,
-        },
-    );
+    let row = ConnectionHistory {
+        host_id: resolved.as_ref().map(|r| r.host.id),
+        label: resolved
+            .as_ref()
+            .map(|r| r.host.data.label.clone())
+            .unwrap_or_else(|| target.host.clone()),
+        target: target.display(),
+        protocol: protocol.into(),
+        duration_secs: None,
+        error: None,
+    };
+    let vault_id = resolved.as_ref().map(|r| r.host.vault_id);
+    let history = HistoryEntry::start(inner.store.clone(), row.clone());
     let finish = |error: Option<String>| history.finish(error);
     let fail = |inner: &Inner, e: MobileError| {
         finish(Some(e.to_string()));
@@ -836,7 +1208,9 @@ async fn run(
         }
     };
     *inner.terminal.lock().expect("terminal poisoned") = Some(terminal.clone());
+    *inner.ssh.lock().expect("ssh poisoned") = ssh.clone();
     inner.start_writer(&tokio::runtime::Handle::current(), terminal.clone());
+    inner.start_recording(&settings, vault_id, log_meta(&row, &inner));
     set_state(&inner, SessionState::Connected);
     if let Some(script) = crate::snippets::startup_script(
         &inner.store,
@@ -859,11 +1233,28 @@ async fn run(
     let reason = pump(&inner, &terminal, events, signals).await;
     finish(reason.clone());
     *inner.terminal.lock().expect("terminal poisoned") = None;
+    inner.ssh.lock().expect("ssh poisoned").take();
     inner.end_share(&tokio::runtime::Handle::current());
     if let Some(client) = ssh {
         let _ = client.disconnect().await;
     }
+    inner.finish_recording();
     set_state(&inner, SessionState::Closed { reason });
+}
+
+/// Recording metadata for the connection `row`, sized to the current view.
+fn log_meta(row: &ConnectionHistory, inner: &Inner) -> LogMeta {
+    let size = *inner.size.lock().expect("size poisoned");
+    LogMeta {
+        host_id: row.host_id,
+        label: row.label.clone(),
+        target: row.target.clone(),
+        protocol: row.protocol.clone(),
+        started_at: chrono::Utc::now(),
+        ended_at: None,
+        cols: size.cols,
+        rows: size.rows,
+    }
 }
 
 /// Open a terminal that needs no SSH leg (telnet, local shell): record it,
@@ -871,6 +1262,7 @@ async fn run(
 async fn run_direct<F, Fut>(
     inner: Arc<Inner>,
     row: ConnectionHistory,
+    recording: Option<(MobileSettings, Option<Uuid>)>,
     detail: &str,
     open: F,
     signals: mpsc::UnboundedReceiver<TermSignal>,
@@ -878,7 +1270,7 @@ async fn run_direct<F, Fut>(
     F: FnOnce(TermSize) -> Fut,
     Fut: std::future::Future<Output = Result<(SharedTerminal, TermEvents)>>,
 {
-    let history = HistoryEntry::start(inner.store.clone(), row);
+    let history = HistoryEntry::start(inner.store.clone(), row.clone());
     set_state(
         &inner,
         SessionState::Connecting {
@@ -911,6 +1303,9 @@ async fn run_direct<F, Fut>(
     };
     *inner.terminal.lock().expect("terminal poisoned") = Some(terminal.clone());
     inner.start_writer(&tokio::runtime::Handle::current(), terminal.clone());
+    if let Some((settings, vault_id)) = &recording {
+        inner.start_recording(settings, *vault_id, log_meta(&row, &inner));
+    }
     set_state(&inner, SessionState::Connected);
 
     let reason = pump(&inner, &terminal, events, signals).await;
@@ -918,20 +1313,35 @@ async fn run_direct<F, Fut>(
     *inner.terminal.lock().expect("terminal poisoned") = None;
     inner.end_share(&tokio::runtime::Handle::current());
     let _ = terminal.close().await;
+    inner.finish_recording();
     set_state(&inner, SessionState::Closed { reason });
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn run_telnet(
-    inner: Arc<Inner>,
+struct TelnetLaunch {
     host: String,
     port: u16,
     ip_version: IpVersion,
     host_id: Option<Uuid>,
+    vault_id: Option<Uuid>,
     label: String,
     term_type: String,
+}
+
+async fn run_telnet(
+    inner: Arc<Inner>,
+    launch: TelnetLaunch,
+    settings: MobileSettings,
     signals: mpsc::UnboundedReceiver<TermSignal>,
 ) {
+    let TelnetLaunch {
+        host,
+        port,
+        ip_version,
+        host_id,
+        vault_id,
+        label,
+        term_type,
+    } = launch;
     let row = ConnectionHistory {
         host_id,
         label: if label.trim().is_empty() {
@@ -948,6 +1358,7 @@ async fn run_telnet(
     run_direct(
         inner,
         row,
+        Some((settings, vault_id)),
         &detail,
         |size| async move {
             let (term, events) = TelnetTerminal::connect(TelnetOptions {
@@ -972,6 +1383,7 @@ async fn run_local(
     cwd: Option<std::path::PathBuf>,
     mut env: Vec<(String, String)>,
     term_type: String,
+    settings: MobileSettings,
     signals: mpsc::UnboundedReceiver<TermSignal>,
 ) {
     let row = ConnectionHistory {
@@ -986,9 +1398,12 @@ async fn run_local(
         error: None,
     };
     env.push(("TERM".into(), term_type));
+    // A local shell is recorded only on the user's own say-so.
+    let recording = settings.record_sessions.then_some((settings, None));
     run_direct(
         inner,
         row,
+        recording,
         "Starting shell…",
         |size| async move {
             let (term, events) = LocalTerminal::spawn(LocalShellOptions {
@@ -1078,6 +1493,7 @@ async fn pump(
     mut events: TermEvents,
     mut signals: mpsc::UnboundedReceiver<TermSignal>,
 ) -> Option<String> {
+    let recorder = inner.recorder();
     loop {
         tokio::select! {
             ev = events.recv() => {
@@ -1096,6 +1512,9 @@ async fn pump(
                         TermEvent::Output(bytes) => {
                             if let Some(share) = &share {
                                 share.publisher.publish(Bytes::copy_from_slice(&bytes));
+                            }
+                            if let Some(rec) = &recorder {
+                                rec.append(&bytes);
                             }
                             inner.emulator.lock().expect("emulator poisoned").feed(&bytes);
                             dirty = true;
@@ -1152,5 +1571,47 @@ async fn pump(
             }
             _ = inner.closed.notified() => return None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn secret_filter_matches_desktop() {
+        for c in [
+            "mysql -u root -pS3cret db",
+            "export API_TOKEN=abc",
+            "curl -u bob:hunter2 https://x",
+            "sshpass -p hunter2 ssh host",
+            "echo hunter2 | sudo passwd bob",
+            "PASSWORD=x ./run",
+            "curl -H 'Authorization: Bearer abc' x",
+            "docker login --password=hunter2",
+        ] {
+            assert!(looks_like_secret(c), "{c}");
+        }
+        for c in [
+            "ls -la",
+            "cat /etc/passwd",
+            "ssh-keygen -t ed25519",
+            "mysql -u root -p db",
+            "export PATH=/usr/bin",
+            "git push --force",
+            "grep token= config.example",
+        ] {
+            assert!(!looks_like_secret(c), "{c}");
+        }
+    }
+
+    #[test]
+    fn drop_names_are_shell_safe() {
+        assert_eq!(safe_drop_name("photo.jpg"), "photo.jpg");
+        assert_eq!(safe_drop_name("../a/b c'$x.txt"), "_a_b_c__x.txt");
+        assert_eq!(safe_drop_name("--rf"), "rf");
+        assert!(safe_drop_name("").starts_with("termoso-"));
+        let long = safe_drop_name(&format!("{}.tar.gz", "x".repeat(300)));
+        assert!(long.chars().count() <= 111 && long.ends_with(".gz"));
     }
 }

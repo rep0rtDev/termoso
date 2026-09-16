@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -65,6 +66,7 @@ import com.termoso.android.ui.components.SubScreen
 import com.termoso.android.ui.keychain.copyText
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.core.DeviceKeyCard
+import com.termoso.core.KeyItem
 import com.termoso.core.SshIdKeyCard
 import com.termoso.core.SshIdKeyKind
 import com.termoso.core.SshIdView
@@ -87,6 +89,8 @@ data class SshIdUiState(
     val view: SshIdView? = null,
     val working: Boolean = false,
     val error: String? = null,
+    /** Keychain security keys that could be published under the handle; `null` while not asked for. */
+    val attachable: List<KeyItem>? = null,
 )
 
 /**
@@ -114,6 +118,25 @@ class SshIdViewModel(private val repo: VaultRepository, private val account: Acc
 
     suspend fun delete(): Boolean = call { sshidDelete() }
 
+    /** Publish an existing keychain `sk-*` key under the handle (only its public half leaves the phone). */
+    suspend fun attach(keyId: String): Boolean = call { sshidAttachSecurityKey(keyId) }
+
+    /**
+     * Security keys from every unlocked vault that are not yet published: the
+     * Rust side refuses passphrase-protected handles and duplicates, so they
+     * are left out of the picker up front.
+     */
+    fun loadAttachable() {
+        val published = _state.value.view?.keys?.map { it.publicKey.trim() }?.toSet().orEmpty()
+        viewModelScope.launch {
+            runCatching { repo.read { keys(null) } }
+                .onSuccess { all -> _state.update { it.copy(attachable = attachableKeys(all, published)) } }
+                .onFailure { e -> _state.update { it.copy(error = e.userMessage()) } }
+        }
+    }
+
+    fun attachableShown() = _state.update { it.copy(attachable = null) }
+
     private suspend fun call(guarded: Boolean = true, block: TermosoApp.() -> SshIdView): Boolean {
         _state.update { it.copy(working = true, error = null) }
         return runCatching { if (guarded) account.withReauth { repo.read(block) } else repo.read(block) }
@@ -125,8 +148,12 @@ class SshIdViewModel(private val repo: VaultRepository, private val account: Acc
     }
 }
 
+/** Pure filter behind [SshIdViewModel.loadAttachable]. */
+fun attachableKeys(all: List<KeyItem>, published: Set<String>): List<KeyItem> =
+    all.filter { it.securityKey && !it.unreadable && (!it.encrypted || it.hasPassphrase) && it.publicKey.trim() !in published }
+
 @Composable
-fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Unit) {
+fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Unit, onAddSecurityKey: () -> Unit) {
     val vm: SshIdViewModel = viewModel { SshIdViewModel(shell.repo, account) }
     val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -202,6 +229,8 @@ fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Un
                     onCopy = { label, text -> copyText(context, label, text); shell.notify("$label copied") },
                     onRemoveKey = { removeKey = it },
                     onPublish = { scope.launch { if (vm.publish()) shell.notify("Keys published") } },
+                    onAddSecurityKey = onAddSecurityKey,
+                    onAttachSecurityKey = vm::loadAttachable,
                 )
             }
             Spacer(Modifier.height(24.dp))
@@ -244,6 +273,16 @@ fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Un
                 }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+        )
+    }
+    state.attachable?.let { keys ->
+        AttachKeyDialog(
+            keys = keys,
+            onPick = { k ->
+                vm.attachableShown()
+                scope.launch { if (vm.attach(k.id)) shell.notify("“${k.label}” published under @$handle") }
+            },
+            onDismiss = vm::attachableShown,
         )
     }
     removeKey?.let { k ->
@@ -316,6 +355,8 @@ private fun HandleSections(
     onCopy: (String, String) -> Unit,
     onRemoveKey: (SshIdKeyCard) -> Unit,
     onPublish: () -> Unit,
+    onAddSecurityKey: () -> Unit,
+    onAttachSecurityKey: () -> Unit,
 ) {
     val handle = view.handle ?: return
     val url = view.url ?: return
@@ -393,12 +434,65 @@ private fun HandleSections(
             }
         }
     }
+
+    SectionLabel("Security keys")
+    SectionCard {
+        ListRow(
+            title = "New security key",
+            subtitle = "Create a credential on a FIDO2 token (USB or NFC) and publish it",
+            leading = { IconTile(Icons.Filled.Usb) },
+            modifier = Modifier.clickable(enabled = !working, onClick = onAddSecurityKey),
+        )
+        RowDivider()
+        ListRow(
+            title = "Publish a key from the keychain",
+            subtitle = "An sk-* key already in a vault on this phone",
+            leading = { IconTile(Icons.Filled.VpnKey) },
+            modifier = Modifier.clickable(enabled = !working, onClick = onAttachSecurityKey),
+        )
+    }
+    Text(
+        "Only the public key and its type go to the server; the credential stays on the token. " +
+            "Provision servers with /all or the SK type to accept it.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+    )
     if (working) {
         Spacer(Modifier.height(16.dp))
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
         }
     }
+}
+
+@Composable
+private fun AttachKeyDialog(keys: List<KeyItem>, onPick: (KeyItem) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Publish a security key") },
+        text = {
+            if (keys.isEmpty()) {
+                Text(
+                    "No security key to publish: every sk-* key in the unlocked vaults is already under this handle, " +
+                        "or its handle is passphrase-protected without the passphrase remembered.",
+                )
+            } else {
+                Column {
+                    keys.forEachIndexed { i, k ->
+                        if (i > 0) RowDivider()
+                        ListRow(
+                            title = k.label,
+                            subtitle = "${k.keyType} · ${k.fingerprint}",
+                            leading = { IconTile(Icons.Filled.Usb) },
+                            modifier = Modifier.clickable { onPick(k) },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(if (keys.isEmpty()) "OK" else "Cancel") } },
+    )
 }
 
 @Composable

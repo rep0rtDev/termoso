@@ -12,7 +12,7 @@ use termoso_core::model::SshKey;
 use termoso_core::ssh::AuthMethod;
 use termoso_core::sshid as core;
 use termoso_core::store::Store;
-use termoso_proto::sshid::{SshIdKeyType, SshIdProfile, normalize_handle};
+use termoso_proto::sshid::{AddFido2KeyRequest, SshIdKeyType, SshIdProfile, normalize_handle};
 use zeroize::Zeroizing;
 
 use crate::account::AccountRuntime;
@@ -281,6 +281,61 @@ impl AccountRuntime {
         let profile = publish(&api, &store, profile).await?;
         core::set_handle(&store, Some(&profile.handle))?;
         view_of(&store, Some(profile))
+    }
+
+    /// Attach a security key from the keychain to the SSH ID: its public
+    /// key is published under the handle and the stored handle is flagged
+    /// so [`auth_methods`] offers it. The token keeps the private key; the
+    /// server only ever sees the public half.
+    pub async fn sshid_attach_security_key(&self, key_id: String) -> Result<SshIdView> {
+        let id = parse_id(&key_id)?;
+        let api = self.api().await?;
+        let store = self.store_arc();
+        let profile = api
+            .sshid()
+            .await?
+            .ok_or_else(|| MobileError::invalid("SSH ID is not set up"))?;
+        let entity = store
+            .get::<SshKey>(id)?
+            .ok_or_else(|| MobileError::invalid("key not found"))?;
+        let mut key = entity.data;
+        if !termoso_core::fido2::is_sk_type(&key.key_type) {
+            return Err(MobileError::invalid(
+                "only security keys (sk-*) can be attached this way",
+            ));
+        }
+        let info = keys::inspect(&key.private_key)?;
+        if info.encrypted && key.passphrase.is_none() {
+            return Err(MobileError::invalid(
+                "passphrase-protected security keys cannot be attached to SSH ID",
+            ));
+        }
+        let key_type = match info.key_type.as_str() {
+            "sk-ssh-ed25519@openssh.com" => SshIdKeyType::Ed25519Sk,
+            "sk-ecdsa-sha2-nistp256@openssh.com" => SshIdKeyType::EcdsaSk,
+            t => return Err(MobileError::invalid(format!("unexpected key type {t}"))),
+        };
+        let public_key = key
+            .public_key
+            .clone()
+            .unwrap_or_else(|| info.public_key.clone());
+        if profile
+            .keys
+            .iter()
+            .any(|k| same_key(&k.public_key, &public_key))
+        {
+            return Err(MobileError::invalid("this key is already published"));
+        }
+        api.add_sshid_fido2_key(&AddFido2KeyRequest {
+            label: key.label.clone(),
+            key_type,
+            public_key,
+        })
+        .await?;
+        key.ssh_id = true;
+        store.update(id, &key)?;
+        let profile = api.sshid().await?;
+        view_of(&store, profile)
     }
 
     /// Delete the SSH ID: every published key goes with it on the server,
