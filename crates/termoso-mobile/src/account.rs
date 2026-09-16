@@ -380,6 +380,12 @@ pub struct AccountRuntime {
     listener: Mutex<Option<Arc<dyn SyncListener>>>,
 }
 
+const DEFAULT_DEVICE_NAME: &str = if cfg!(target_os = "ios") {
+    "iPhone"
+} else {
+    "Android"
+};
+
 impl AccountRuntime {
     pub(crate) fn new(
         store: Arc<Store>,
@@ -390,7 +396,7 @@ impl AccountRuntime {
             store,
             presence,
             logs_dir,
-            device_name: Mutex::new("Android".into()),
+            device_name: Mutex::new(DEFAULT_DEVICE_NAME.into()),
             inner: tokio::sync::Mutex::new(Inner::default()),
             status: Mutex::new(SyncStatus::default()),
             listener: Mutex::new(None),

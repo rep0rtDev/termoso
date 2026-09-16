@@ -188,6 +188,90 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # SwiftUI client over the same Rust core (UniFFI Swift). The simulator slice
+  # is enough to compile, run XCTest against the real core and drive the UI
+  # smoke (XCUITest) — screenshots and the .xcresult are uploaded.
+  ios:
+    name: ios (rust sim core + uniffi swift + xcodebuild + XCTest/XCUITest)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ios
+      - run: brew install xcodegen
+      - run: sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+      - run: xcodebuild -version && xcodegen --version
+      - name: Rust core (simulator) + Swift bindings + xcframework
+        run: ./build-core.sh --debug --sim --no-device
+        working-directory: apps/ios
+      - run: xcodegen generate
+        working-directory: apps/ios
+      - name: Pick a simulator
+        id: sim
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json,sys
+          d=json.load(sys.stdin)["devices"]
+          picks=[(rt,dev) for rt,devs in d.items() if "iOS" in rt for dev in devs if dev["name"].startswith("iPhone")]
+          picks.sort(key=lambda p:(p[0],p[1]["name"]))
+          print(picks[-1][1]["udid"])')
+          xcrun simctl boot "$udid" || true
+          xcrun simctl list devices | grep "$udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing -project Termoso.xcodeproj -scheme Termoso \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO | tee "$RUNNER_TEMP/build.log" | grep -E 'error:|warning:|\*\*' || true
+          grep -q '\*\* TEST BUILD SUCCEEDED \*\*' "$RUNNER_TEMP/build.log"
+        working-directory: apps/ios
+      - name: XCTest + XCUITest (simulator)
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building -project Termoso.xcodeproj -scheme Termoso \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/dd" -resultBundlePath "$RUNNER_TEMP/Termoso.xcresult" \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 180 \
+            | tee "$RUNNER_TEMP/test.log" | grep -E 'Test Case|Test Suite|error|failed|passed|\*\*' || true
+          grep -q '\*\* TEST EXECUTE SUCCEEDED \*\*' "$RUNNER_TEMP/test.log"
+        working-directory: apps/ios
+      - name: Export screenshots
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/screens"
+          xcrun xcresulttool export attachments --path "$RUNNER_TEMP/Termoso.xcresult" --output-path "$RUNNER_TEMP/screens" || true
+          ls -la "$RUNNER_TEMP/screens" || true
+          # Give the PNGs their test-assigned names when the manifest is present.
+          python3 - "$RUNNER_TEMP/screens" <<'EOF' || true
+          import json, os, sys
+          d = sys.argv[1]
+          m = os.path.join(d, "manifest.json")
+          if os.path.exists(m):
+              for entry in json.load(open(m)):
+                  for a in entry.get("attachments", []):
+                      src = os.path.join(d, a["exportedFileName"])
+                      dst = os.path.join(d, a.get("suggestedHumanReadableName") or a["exportedFileName"])
+                      if os.path.exists(src) and src != dst:
+                          os.replace(src, dst)
+          EOF
+          (cd "$RUNNER_TEMP" && zip -qr Termoso.xcresult.zip Termoso.xcresult) || true
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ios-simulator
+          path: |
+            ${{ runner.temp }}/screens/*.png
+            ${{ runner.temp }}/build.log
+            ${{ runner.temp }}/test.log
+            ${{ runner.temp }}/Termoso.xcresult.zip
+          if-no-files-found: ignore
+          retention-days: 14
+
   android:
     name: android (cargo-ndk + gradle assembleDebug + lint)
     runs-on: ubuntu-latest

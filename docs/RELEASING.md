@@ -12,6 +12,7 @@ GitHub Actions.
 | Windows | NSIS `*-setup.exe`, `*.msi` | `*-setup.exe` + `.sig` (preferred), `*.msi` + `.sig` |
 | macOS | `*_aarch64.dmg` (Apple Silicon), `*_x64.dmg` (Intel) | `*_aarch64.app.tar.gz` / `*_x64.app.tar.gz` + `.sig` |
 | Android | `termoso-<version>-{arm64-v8a,armeabi-v7a,x86_64,universal}.apk` | — (no in-app updater on Android; the APKs carry the standard v2/v3 APK signature) |
+| iOS | `termoso-<version>-ios.ipa` (**unsigned**, sideload) | `termoso-altstore.json` — AltStore/SideStore source; the store app signs with the user's Apple ID and refreshes the 7-day profile, see [IOS_SIDELOAD.md](IOS_SIDELOAD.md) |
 
 plus:
 
@@ -27,9 +28,10 @@ compromised web server or mirror cannot push code to users.
 
 ## Cutting a release
 
-1. Bump the version in **both** `apps/desktop/package.json` and the workspace
-   `Cargo.toml` (the workflow fails if they differ, or if the tag does not
-   match them). Run `cargo check -p termoso-desktop` so `Cargo.lock` follows.
+1. Bump the version in `apps/desktop/package.json`, the workspace
+   `Cargo.toml` and `MARKETING_VERSION` in `apps/ios/project.yml` (the
+   workflow fails if they differ, or if the tag does not match them). Run
+   `cargo check -p termoso-desktop` so `Cargo.lock` follows.
 2. Merge to `main`, then tag and push:
 
    ```bash
@@ -42,7 +44,8 @@ compromised web server or mirror cannot push code to users.
    updater feed.
 3. The workflow builds Linux, Windows, macOS (two native builds rather than
    one universal binary: half the download, and the updater picks the right
-   one) and Android in parallel, signs the artifacts, assembles a **draft**
+   one), Android and iOS in parallel, signs the artifacts (except the iOS
+   `.ipa`, which is signed on the user's device), assembles a **draft**
    release, verifies that every bundle and signature is present, rebuilds
    `latest.json` from the uploaded assets (the parallel jobs each merge their
    own entries into it, and a concurrent upload can drop one), adds
@@ -52,7 +55,8 @@ compromised web server or mirror cannot push code to users.
 
 Pull requests that touch packaging (the workflow itself, `tauri.conf.json`,
 `tauri.macos.conf.json`, capabilities, icons, the desktop
-`Cargo.toml`/`package.json`) and
+`Cargo.toml`/`package.json`, the Android Gradle files, `apps/ios/project.yml`,
+`build-core.sh` and the AltStore template) and
 `workflow_dispatch` (the **Run workflow** button) build the same bundles and
 attach them to the workflow run as artifacts without creating a release —
 that is how packaging changes are smoke-tested.
