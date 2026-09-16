@@ -28,7 +28,7 @@ crates/
   termoso-core     client engine: encrypted local store, SSH/SFTP/Telnet/PTY, port
                    forwarding, SSH agent, account + sync client
 apps/
-  desktop/         Tauri 2 desktop app (Linux, Windows); Rust owns state, storage and
+  desktop/         Tauri 2 desktop app (Linux, Windows, macOS); Rust owns state, storage and
                    sessions, React + MUI is the rendering layer only
 web/               web cabinet (Vite + React + MUI); all crypto runs in the WASM module
 deploy/            Dockerfile, Dockerfile.bridge, docker-compose for production and dev
@@ -163,24 +163,36 @@ origin only — there are no third-party scripts, fonts or analytics.
 
 #### Desktop app
 
-Requires Node 22.12+ and the [Tauri 2 Linux prerequisites](https://tauri.app/start/prerequisites/)
-(`libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libudev-dev`).
+Requires Node 22.12+ and the [Tauri 2 prerequisites](https://tauri.app/start/prerequisites/)
+(Linux: `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libudev-dev`;
+macOS: Xcode command line tools).
 
 ```bash
 cd apps/desktop
 npm ci
 npm run tauri dev          # Vite on :5174 + the Rust app with hot reload
-npm run tauri build        # .deb / .rpm / .AppImage (Linux), NSIS / MSI (Windows)
+npm run tauri build        # .deb / .rpm / .AppImage (Linux), NSIS / MSI (Windows), .app / .dmg (macOS)
 ```
 
 The profile (encrypted SQLite store, settings) lives in the OS data directory
-(`~/.local/share/termoso/default` on Linux); `TERMOSO_PROFILE_DIR` overrides it.
-The store key sits in the OS keychain (Secret Service / Credential Manager) with
-an owner-only file fallback when no keychain is available. `TERMOSO_LOG` sets the
-log filter (stderr only).
+(`~/.local/share/termoso/default` on Linux, `~/Library/Application Support/termoso/default`
+on macOS); `TERMOSO_PROFILE_DIR` overrides it. The store key sits in the OS
+keychain (Secret Service / Credential Manager / Keychain) with an owner-only
+file fallback when no keychain is available. `TERMOSO_LOG` sets the log filter
+(stderr only).
 
-Releases (`.deb`, `.rpm`, AppImage, NSIS, MSI) are built and minisign-signed by
-CI on every `v*` tag. The built-in updater is off by default: it only contacts
+On macOS the shortcuts use ⌘ where Linux and Windows use Ctrl (⌘C copies a
+selection, ⌘V pastes, ⌘T new tab, ⌘K command palette), so the Control key
+reaches the shell unchanged — Ctrl+C is still SIGINT. The stored shortcut
+settings are shared across platforms; only the modifier they map to differs.
+The window uses the native title bar and traffic lights.
+
+Releases (`.deb`, `.rpm`, AppImage, NSIS, MSI, `.dmg` for Apple Silicon and
+Intel) are built and minisign-signed by CI on every `v*` tag. The macOS builds
+are ad-hoc signed unless a Developer ID is configured, so the first launch
+needs `xattr -cr /Applications/Termoso.app` (or right-click → Open) — see
+[docs/RELEASING.md](docs/RELEASING.md#macos-signing-and-gatekeeper). The
+built-in updater is off by default: it only contacts
 the release feed when you click *Check for updates* (or opt into a startup
 check), verifies every download against the public key compiled into the app,
 and the feed URL can be pointed at your own HTTPS server. See

@@ -4,7 +4,7 @@
 // dependency cycle.
 
 import { createStore, useStore } from "@/lib/store";
-import { chordMatches, formatChord } from "./keymap";
+import { chordMatches, formatChord, primaryKey, secondaryKey } from "./keymap";
 
 export type CommandGroup =
   "Navigation" | "Tabs" | "Panes" | "Terminal" | "Workspace" | "Create" | "Window";
@@ -85,10 +85,10 @@ export function commandForEvent(ev: KeyboardEvent): Command | null {
   return null;
 }
 
-/** Ctrl+1 … Ctrl+9 select a session tab by position; not rebindable. */
+/** Ctrl+1 … Ctrl+9 (⌘ on macOS) select a session tab by position; not rebindable. */
 export function tabDigit(ev: KeyboardEvent): number | null {
   if (shortcutsStore.get().recording) return null;
-  if (!(ev.ctrlKey || ev.metaKey) || ev.shiftKey || ev.altKey) return null;
+  if (!primaryKey(ev) || secondaryKey(ev) || ev.shiftKey || ev.altKey) return null;
   const m = /^Digit([1-9])$/.exec(ev.code);
   return m ? Number(m[1]) : null;
 }

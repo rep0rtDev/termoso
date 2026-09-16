@@ -24,6 +24,11 @@ import {
 import { SearchField, SectionCard } from "@/components/ui";
 import { omit } from "@/lib/store";
 import type { Settings } from "@/ipc/types";
+import { IS_MAC } from "@/lib/platform";
+
+const MOD = IS_MAC ? "Cmd" : "Ctrl";
+const ALT = IS_MAC ? "Option" : "Alt";
+const SUPER = IS_MAC ? "Ctrl" : "Super";
 
 interface Props {
   s: Settings;
@@ -80,9 +85,9 @@ export function KeyboardPage({ s, update }: Props) {
         }
       >
         <Typography variant="body2" color="text.secondary">
-          Click a shortcut to change it. Shortcuts need Ctrl, Alt or Super (or an F-key) so they
-          never swallow what you type into a terminal. Ctrl+1 … Ctrl+9 always switch to the tab in
-          that position.
+          Click a shortcut to change it. Shortcuts need {MOD}, {ALT} or {SUPER} (or an F-key) so
+          they never swallow what you type into a terminal. {MOD}+1 … {MOD}+9 always switch to the
+          tab in that position.
         </Typography>
         {groups.map(([group, list]) => (
           <Box key={group}>
@@ -289,7 +294,7 @@ function RecordDialog({
           sx={{ display: "block", mt: 1, color: rejected ? "warning.main" : "text.secondary" }}
         >
           {rejected
-            ? "Add Ctrl, Alt or Super — plain keys would be typed into the terminal."
+            ? `Add ${MOD}, ${ALT} or ${SUPER} — plain keys would be typed into the terminal.`
             : conflicts.length > 0
               ? `Already used by ${conflicts.map((c) => `“${c.title}”`).join(", ")} — saving will unbind it.`
               : "Enter saves, Esc cancels."}

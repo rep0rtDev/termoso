@@ -137,6 +137,43 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  # Everything else runs on Linux, so this is what catches a broken
+  # `cfg(target_os = "macos")` branch or a bundle setting the macOS bundler
+  # rejects. The debug .app is ad-hoc signed exactly like a release without
+  # Apple secrets (docs/RELEASING.md).
+  macos:
+    name: macos (clippy + core tests + tauri build --debug)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: macos
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: apps/desktop
+      - run: cargo clippy -p termoso-core -p termoso-desktop --all-targets --locked
+      - run: cargo test -p termoso-core --locked
+      # No updater key on CI: build the .app only, skip the signed updater tarball.
+      - run: npm run tauri build -- --debug --bundles app --ci --config '{"bundle":{"createUpdaterArtifacts":false}}'
+        working-directory: apps/desktop
+      - name: Inspect the bundle
+        run: |
+          app=target/debug/bundle/macos/Termoso.app
+          exe="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+          test -x "$exe" || { echo "::error::no executable at $exe"; ls -R "$app"; exit 1; }
+          plutil -p "$app/Contents/Info.plist" | grep -E 'CFBundleIdentifier|CFBundleShortVersionString|LSMinimumSystemVersion|CFBundleURLSchemes'
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | grep -E '^(Identifier|TeamIdentifier|Signature)'
+          lipo -info "$exe"
+
   android:
     name: android (cargo-ndk + gradle assembleDebug + lint)
     runs-on: ubuntu-latest

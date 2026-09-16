@@ -31,6 +31,7 @@ import { keys } from "@/ipc/hooks";
 import { createStore, omit, useStore } from "@/lib/store";
 import { dismissControlHint, viewerJoined } from "./multiplayer";
 import { commandForEvent, tabDigit } from "@/app/shortcuts";
+import { primaryKey } from "@/app/keymap";
 import { terminalFontStack } from "./fonts";
 import {
   complete,
@@ -638,8 +639,9 @@ function createRuntime(paneId: Uuid): Runtime {
       ev.stopPropagation();
       return false;
     }
-    const ctrl = ev.ctrlKey || ev.metaKey;
-    if (ctrl && ev.code === "KeyC" && !ev.shiftKey && term.hasSelection()) {
+    // Ctrl (⌘ on macOS, where Ctrl+C must stay SIGINT) + C copies a selection.
+    const ctrl = primaryKey(ev);
+    if (ctrl && ev.code === "KeyC" && !ev.shiftKey && !ev.altKey && term.hasSelection()) {
       void copyText(term.getSelection());
       term.clearSelection();
       return false;

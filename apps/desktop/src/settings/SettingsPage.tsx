@@ -37,6 +37,7 @@ import { KeyboardPage } from "./KeyboardPage";
 import { SftpPage } from "./SftpPage";
 import { TeamPage } from "@/team/TeamPage";
 import { VaultsPage } from "@/team/VaultsPage";
+import { IS_MAC } from "@/lib/platform";
 import { SshIdPage } from "@/sshid/SshIdPage";
 import { ThemeGallery } from "./ThemeGallery";
 import {
@@ -262,11 +263,12 @@ function General({ s, update }: SectionProps) {
         <SettingRow
           label="Post-quantum key exchange"
           hint="Offers hybrid ML-KEM-768 + X25519 (mlkem768x25519-sha256) first; servers without it negotiate a classical exchange."
+          last={IS_MAC}
           control={
             <Toggle checked={s.postQuantumKex} onChange={(v) => update({ postQuantumKex: v })} />
           }
         />
-        <DeepLinksRow />
+        {!IS_MAC && <DeepLinksRow />}
       </SectionCard>
 
       <SectionCard title="SSH agent">

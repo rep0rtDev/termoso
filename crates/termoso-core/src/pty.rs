@@ -51,6 +51,35 @@ fn size(s: TermSize) -> PtySize {
     }
 }
 
+/// `$SHELL` as a login shell on macOS (Terminal.app / iTerm do the same, and
+/// `~/.zprofile` is where Homebrew puts its PATH); the plain default elsewhere.
+fn default_shell_command() -> CommandBuilder {
+    let shell = std::env::var_os("SHELL").filter(|s| !s.is_empty());
+    if let (true, Some(shell)) = (cfg!(target_os = "macos"), shell) {
+        let mut cmd = CommandBuilder::new(shell);
+        cmd.arg("-l");
+        return cmd;
+    }
+    CommandBuilder::new_default_prog()
+}
+
+/// A user-picked shell, run the way Terminal.app would: a bare POSIX shell on
+/// macOS gets `-l`; explicit arguments are always taken as given.
+fn shell_command(argv: &[String]) -> CommandBuilder {
+    let mut cmd = CommandBuilder::from_argv(argv.iter().map(Into::into).collect());
+    if cfg!(target_os = "macos") && argv.len() == 1 && is_login_capable_shell(&argv[0]) {
+        cmd.arg("-l");
+    }
+    cmd
+}
+
+fn is_login_capable_shell(program: &str) -> bool {
+    matches!(
+        program.rsplit('/').next().unwrap_or(program),
+        "zsh" | "bash" | "sh" | "fish" | "tcsh" | "csh" | "ksh" | "dash"
+    )
+}
+
 /// Base name of the shell [`LocalTerminal::spawn`] starts when `argv` is
 /// empty (`$SHELL` on Unix, `cmd` on Windows).
 pub fn default_shell_name() -> Option<String> {
@@ -71,9 +100,9 @@ impl LocalTerminal {
             .map_err(|e| CoreError::Terminal(e.to_string()))?;
 
         let mut cmd = if opts.argv.is_empty() {
-            CommandBuilder::new_default_prog()
+            default_shell_command()
         } else {
-            CommandBuilder::from_argv(opts.argv.iter().map(Into::into).collect())
+            shell_command(&opts.argv)
         };
         if let Some(cwd) = &opts.cwd {
             cmd.cwd(cwd);
@@ -81,6 +110,11 @@ impl LocalTerminal {
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
         cmd.env("TERM_PROGRAM", "termoso");
+        // GUI apps on macOS inherit no locale; without one the shell (and every
+        // ssh session started from it) falls back to ASCII.
+        if cfg!(target_os = "macos") && std::env::var_os("LANG").is_none() {
+            cmd.env("LANG", "en_US.UTF-8");
+        }
         for (k, v) in &opts.env {
             cmd.env(k, v);
         }
@@ -189,6 +223,15 @@ impl TerminalSession for LocalTerminal {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn login_shell_detection() {
+        assert!(is_login_capable_shell("/bin/zsh"));
+        assert!(is_login_capable_shell("/opt/homebrew/bin/fish"));
+        assert!(is_login_capable_shell("bash"));
+        assert!(!is_login_capable_shell("/usr/bin/python3"));
+        assert!(!is_login_capable_shell("wsl.exe -d Ubuntu"));
+    }
 
     #[tokio::test]
     async fn local_shell_echoes_and_exits() {
