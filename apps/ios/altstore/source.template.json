@@ -1,0 +1,42 @@
+{
+  "name": "Termoso",
+  "identifier": "com.termoso.altstore",
+  "subtitle": "Free, private SSH client — self-hosted or Termoso Cloud",
+  "description": "Termoso is a free, open-source SSH/SFTP client with end-to-end encrypted vaults, team sharing and no telemetry. This source publishes the iOS build straight from GitHub Releases; AltStore/SideStore sign it with your own Apple ID and refresh the 7-day profile automatically.",
+  "iconURL": "https://raw.githubusercontent.com/{repo}/main/apps/ios/Termoso/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+  "website": "https://github.com/{repo}",
+  "tintColor": "#10B981",
+  "featuredApps": ["com.termoso.ios"],
+  "apps": [
+    {
+      "name": "Termoso",
+      "bundleIdentifier": "com.termoso.ios",
+      "developerName": "Termoso contributors",
+      "subtitle": "SSH · SFTP · encrypted vaults · teams",
+      "localizedDescription": "SSH client built for people, not for data collection.\n\n• Local encrypted vault with the master key in the iOS Keychain (this device only)\n• Hosts, groups and tags shared with the desktop and Android clients\n• Termoso Cloud or your own self-hosted server — or fully offline\n• No telemetry, no accounts required, no paywalls\n\nThis is the first iOS increment: vaults, hosts and settings. Terminal, SFTP and port forwarding are next.",
+      "iconURL": "https://raw.githubusercontent.com/{repo}/main/apps/ios/Termoso/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+      "tintColor": "#10B981",
+      "category": "developer",
+      "screenshots": [],
+      "versions": [
+        {
+          "version": "{version}",
+          "buildVersion": "{build}",
+          "date": "{date}",
+          "localizedDescription": "Termoso {version} — release notes: https://github.com/{repo}/releases/tag/{tag}",
+          "downloadURL": "https://github.com/{repo}/releases/download/{tag}/{ipa_name}",
+          "size": "{size}",
+          "sha256": "{sha256}",
+          "minOSVersion": "17.0"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSLocalNetworkUsageDescription": "Termoso connects to SSH servers on your local network."
+        }
+      }
+    }
+  ],
+  "news": []
+}
