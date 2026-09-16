@@ -97,6 +97,7 @@ struct TerminalScreen: View {
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("terminal.screen")
     }
 

@@ -91,6 +91,7 @@ struct ConnectionsView: View {
                     .accessibilityIdentifier("connections.clearFinished")
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("connections.sessions")
     }
 
