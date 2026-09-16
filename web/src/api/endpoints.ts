@@ -191,6 +191,9 @@ export const teamsApi = {
     http.patch<TeamMember>(`/teams/${id}/members/${userId}`, { role }),
   removeMember: (id: string, userId: string) =>
     http.delete<undefined>(`/teams/${id}/members/${userId}`),
+  /** Owner-only: delete the whole account of a member created by this team's invitation. */
+  deleteMemberAccount: (id: string, userId: string) =>
+    http.delete<undefined>(`/teams/${id}/members/${userId}/account`),
   invites: (id: string) => http.get<{ invites: Invite[] }>(`/teams/${id}/invites`),
   createInvite: (id: string, email: string, role: TeamRole, vault_ids: string[]) =>
     http.post<Invite & { url: string }>(`/teams/${id}/invites`, { email, role, vault_ids }),

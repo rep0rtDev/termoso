@@ -114,6 +114,11 @@ schema! {
         /// members get `None`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub mfa_enabled: Option<bool>,
+        /// The account was created through this team's invitation and can be
+        /// deleted by the owner (`DELETE /teams/{id}/members/{user_id}/account`);
+        /// removing such a member instead converts it into an individual account.
+        #[serde(default)]
+        pub managed: bool,
     }
 }
 

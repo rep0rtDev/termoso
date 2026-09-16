@@ -1178,6 +1178,15 @@ pub async fn team_member_remove<R: Runtime>(
 }
 
 #[tauri::command]
+pub async fn team_member_delete_account<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    user_id: Uuid,
+) -> Result<()> {
+    team::delete_member_account(&app, team_id, user_id).await
+}
+
+#[tauri::command]
 pub async fn team_invites<R: Runtime>(app: AppHandle<R>, team_id: Uuid) -> Result<Vec<Invite>> {
     team::invites(&app, team_id).await
 }

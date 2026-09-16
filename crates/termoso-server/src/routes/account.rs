@@ -593,41 +593,6 @@ pub async fn delete_account(
             "Transfer or delete the teams you own first",
         ));
     }
-    let affected: Vec<(Uuid,)> = sqlx::query_as(
-        "SELECT DISTINCT vm2.user_id FROM vault_members vm JOIN vault_members vm2 ON vm2.vault_id = vm.vault_id
-         WHERE vm.user_id = $1 AND vm2.user_id <> $1",
-    )
-    .bind(u.id)
-    .fetch_all(&state.db)
-    .await?;
-    let log_keys: Vec<(String,)> =
-        sqlx::query_as("SELECT object_key FROM session_logs WHERE user_id = $1")
-            .bind(u.id)
-            .fetch_all(&state.db)
-            .await?;
-    session::revoke_all(&state, u.id, None).await?;
-    sqlx::query("DELETE FROM users WHERE id = $1")
-        .bind(u.id)
-        .execute(&state.db)
-        .await?;
-    if let Some(storage) = &state.storage {
-        for (k,) in log_keys {
-            if let Err(e) = storage.delete(&k).await {
-                tracing::warn!(error = %e, key = %k, "could not delete log object");
-            }
-        }
-    }
-    let user_ids: Vec<Uuid> = affected.into_iter().map(|(id,)| id).collect();
-    if !user_ids.is_empty() {
-        events::publish(
-            &state,
-            Event::VaultsUpdated {
-                user_ids: user_ids.clone(),
-            },
-        )
-        .await?;
-        events::publish(&state, Event::TeamsUpdated { user_ids }).await?;
-    }
-    metrics::counter!("termoso_account_deletions_total").increment(1);
+    users::delete(&state, u.id).await?;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }

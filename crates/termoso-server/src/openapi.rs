@@ -103,6 +103,7 @@ impl Modify for BearerAuth {
         crate::routes::teams::members,
         crate::routes::teams::update_member,
         crate::routes::teams::remove_member,
+        crate::routes::teams::delete_member_account,
         crate::routes::teams::leave,
         crate::routes::teams::invites,
         crate::routes::teams::create_invite,

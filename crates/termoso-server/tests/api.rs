@@ -22,7 +22,9 @@ use termoso_proto::sync::{
     EntityChange, EntityDelete, HistoryEntry, HistoryKind, HistoryPullResponse, HistoryPushRequest,
     PullRequest, PullResponse, PushRequest, PushResponse, PushResult,
 };
-use termoso_proto::team::{AuditEventList, CreateInviteRequest, CreateTeamRequest, Team, TeamRole};
+use termoso_proto::team::{
+    AuditEventList, CreateInviteRequest, CreateTeamRequest, Team, TeamMemberList, TeamRole,
+};
 use termoso_proto::vault::{
     CreateVaultRequest, Vault, VaultKind, VaultList, VaultMemberUpsert, VaultRole,
 };
@@ -1121,4 +1123,245 @@ async fn admin_endpoints_require_admin() {
         StatusCode::BAD_REQUEST,
     )
     .await;
+}
+
+/// Accounts created through a team invitation are "managed": the owner can
+/// delete them outright, while pre-existing accounts can only be removed.
+/// Removing or leaving turns a managed account into an individual one.
+#[tokio::test]
+async fn owner_deletes_team_created_accounts_only() {
+    let s = server!();
+    let owner = register(s, &unique_email("own"), "pw-owner-123456789").await;
+    let admin = register(s, &unique_email("adm"), "pw-admin-123456789").await;
+    let team: Team = s
+        .json(
+            Method::POST,
+            "/teams",
+            Some(owner.token()),
+            Some(&CreateTeamRequest { name: "Ops".into() }),
+        )
+        .await;
+    // Admin existed before joining; Carol and Dave sign up through invitations.
+    let t = invite(s, team.id, owner.token(), &admin.email, TeamRole::Admin).await;
+    let _: Team = s
+        .json(
+            Method::POST,
+            &format!("/invites/{t}/accept"),
+            Some(admin.token()),
+            NOBODY,
+        )
+        .await;
+    let carol_email = unique_email("carol");
+    let t = invite(s, team.id, owner.token(), &carol_email, TeamRole::Member).await;
+    let carol = register_with(s, &carol_email, "pw-carol-123456789", Some(t)).await;
+    let dave_email = unique_email("dave");
+    let t = invite(s, team.id, owner.token(), &dave_email, TeamRole::Member).await;
+    let dave = register_with(s, &dave_email, "pw-dave-1234567890", Some(t)).await;
+    assert_eq!(carol.session.user.managed_by_team_id, Some(team.id));
+    assert_eq!(admin.session.user.managed_by_team_id, None);
+
+    let members: TeamMemberList = s
+        .json(
+            Method::GET,
+            &format!("/teams/{}/members", team.id),
+            Some(owner.token()),
+            NOBODY,
+        )
+        .await;
+    let managed = |id: Uuid| {
+        members
+            .members
+            .iter()
+            .find(|m| m.user_id == id)
+            .unwrap()
+            .managed
+    };
+    assert!(!managed(owner.id()));
+    assert!(!managed(admin.id()));
+    assert!(managed(carol.id()));
+    assert!(managed(dave.id()));
+
+    let account_path = |id: Uuid| format!("/teams/{}/members/{}/account", team.id, id);
+    // Admins can't; only the owner.
+    s.expect_status(
+        Method::DELETE,
+        &account_path(carol.id()),
+        Some(admin.token()),
+        NOBODY,
+        StatusCode::FORBIDDEN,
+    )
+    .await;
+    // Pre-existing accounts are off limits even for the owner.
+    s.expect_status(
+        Method::DELETE,
+        &account_path(admin.id()),
+        Some(owner.token()),
+        NOBODY,
+        StatusCode::CONFLICT,
+    )
+    .await;
+    // Needs a fresh step-up.
+    s.age_step_up(owner.token()).await;
+    let v = s
+        .expect_status(
+            Method::DELETE,
+            &account_path(carol.id()),
+            Some(owner.token()),
+            NOBODY,
+            StatusCode::FORBIDDEN,
+        )
+        .await;
+    assert_eq!(v["code"], "reauth_required");
+    let AuthResponse::Authenticated(fresh) =
+        try_login(s, &owner.email, &owner.password).await.unwrap()
+    else {
+        panic!("login")
+    };
+    // A managed member who owns another team must hand it over first.
+    let _: Team = s
+        .json(
+            Method::POST,
+            "/teams",
+            Some(carol.token()),
+            Some(&CreateTeamRequest {
+                name: "Side".into(),
+            }),
+        )
+        .await;
+    s.expect_status(
+        Method::DELETE,
+        &account_path(carol.id()),
+        Some(&fresh.token),
+        NOBODY,
+        StatusCode::CONFLICT,
+    )
+    .await;
+
+    // Dave goes: account, sessions and membership are gone; audit keeps the trace.
+    s.expect_status(
+        Method::DELETE,
+        &account_path(dave.id()),
+        Some(&fresh.token),
+        NOBODY,
+        StatusCode::NO_CONTENT,
+    )
+    .await;
+    s.expect_status(
+        Method::GET,
+        "/account",
+        Some(dave.token()),
+        NOBODY,
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
+    assert!(
+        try_login(s, &dave.email, "pw-dave-1234567890")
+            .await
+            .is_err()
+    );
+    let members: TeamMemberList = s
+        .json(
+            Method::GET,
+            &format!("/teams/{}/members", team.id),
+            Some(&fresh.token),
+            NOBODY,
+        )
+        .await;
+    assert!(members.members.iter().all(|m| m.user_id != dave.id()));
+    s.expect_status(
+        Method::DELETE,
+        &account_path(dave.id()),
+        Some(&fresh.token),
+        NOBODY,
+        StatusCode::NOT_FOUND,
+    )
+    .await;
+    let log: AuditEventList = s
+        .json(
+            Method::GET,
+            &format!("/teams/{}/audit", team.id),
+            Some(&fresh.token),
+            NOBODY,
+        )
+        .await;
+    let deleted = log
+        .events
+        .iter()
+        .find(|e| e.action == "member.account_deleted")
+        .expect("audit entry");
+    assert_eq!(deleted.target_user, Some(dave.id()));
+
+    // Removing Carol from the team converts the account: it keeps working and
+    // is no longer managed, so re-inviting doesn't make it deletable again.
+    s.expect_status(
+        Method::DELETE,
+        &format!("/teams/{}/members/{}", team.id, carol.id()),
+        Some(&fresh.token),
+        NOBODY,
+        StatusCode::NO_CONTENT,
+    )
+    .await;
+    let me: serde_json::Value = s
+        .json(Method::GET, "/account", Some(carol.token()), NOBODY)
+        .await;
+    assert!(me["user"]["managed_by_team_id"].is_null(), "{me}");
+    let removed = log_action(s, team.id, &fresh.token, "member.removed").await;
+    assert_eq!(removed["details"]["account"], "converted");
+    let t = invite(s, team.id, owner.token(), &carol.email, TeamRole::Member).await;
+    let _: Team = s
+        .json(
+            Method::POST,
+            &format!("/invites/{t}/accept"),
+            Some(carol.token()),
+            NOBODY,
+        )
+        .await;
+    s.expect_status(
+        Method::DELETE,
+        &account_path(carol.id()),
+        Some(&fresh.token),
+        NOBODY,
+        StatusCode::CONFLICT,
+    )
+    .await;
+}
+
+async fn invite(s: &TestServer, team_id: Uuid, token: &str, email: &str, role: TeamRole) -> String {
+    let invite: serde_json::Value = s
+        .json(
+            Method::POST,
+            &format!("/teams/{team_id}/invites"),
+            Some(token),
+            Some(&CreateInviteRequest {
+                email: email.to_string(),
+                role,
+                vault_ids: vec![],
+            }),
+        )
+        .await;
+    invite["url"]
+        .as_str()
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_string()
+}
+
+async fn log_action(s: &TestServer, team_id: Uuid, token: &str, action: &str) -> serde_json::Value {
+    let log: serde_json::Value = s
+        .json(
+            Method::GET,
+            &format!("/teams/{team_id}/audit"),
+            Some(token),
+            NOBODY,
+        )
+        .await;
+    log["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["action"] == action)
+        .cloned()
+        .unwrap_or_else(|| panic!("{action} missing in {log}"))
 }
