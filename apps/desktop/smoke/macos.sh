@@ -86,7 +86,7 @@ while [ "$SECONDS" -lt "$deadline" ]; do
     case "$line" in
       "shot "*) shoot "${line#shot }" ;;
       DONE) status=ok ;;
-      "FAIL "*) status=fail ;;
+      "FAIL "*) status=fail; shoot failure ;;
     esac
   done
   [ -z "$status" ] || break
