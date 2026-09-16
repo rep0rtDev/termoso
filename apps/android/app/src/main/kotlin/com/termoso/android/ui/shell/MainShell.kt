@@ -68,6 +68,7 @@ import com.termoso.android.ui.sftp.SftpScreen
 import com.termoso.android.ui.snippets.SnippetEditorScreen
 import com.termoso.android.ui.snippets.SnippetsScreen
 import com.termoso.android.ui.settings.TerminalAppearanceScreen
+import com.termoso.android.ui.settings.TerminalInputScreen
 import com.termoso.android.ui.team.TeamActivityScreen
 import com.termoso.android.ui.team.TeamScreen
 import com.termoso.android.ui.team.TeamVaultScreen
@@ -99,6 +100,7 @@ object Routes {
     const val IDENTITY_NEW = "identityNew"
     const val IDENTITY_EDIT = "identity/{id}"
     const val TERMINAL_APPEARANCE = "terminalAppearance"
+    const val TERMINAL_INPUT = "terminalInput"
     const val KNOWN_HOSTS = "knownHosts"
     const val HISTORY = "history"
     const val LOGS = "logs"
@@ -326,9 +328,11 @@ fun MainShell(
                     onSignIn = { nav.navigate(Routes.signIn(AuthMode.SignIn)) },
                     onLock = onLock,
                     onTerminalAppearance = { nav.navigate(Routes.TERMINAL_APPEARANCE) },
+                    onTerminalInput = { nav.navigate(Routes.TERMINAL_INPUT) },
                 )
             }
             composable(Routes.TERMINAL_APPEARANCE) { TerminalAppearanceScreen(shell = shell, onBack = { nav.popBackStack() }) }
+            composable(Routes.TERMINAL_INPUT) { TerminalInputScreen(shell = shell, onBack = { nav.popBackStack() }) }
             composable(Routes.ACCOUNT) {
                 AccountScreen(
                     shell = shell,
@@ -562,6 +566,7 @@ fun MainShell(
                     onOpenSnippets = { nav.navigate(Routes.snippets(null)) },
                     pendingShare = pendingShare,
                     onShareConsumed = { container.consumeShare() },
+                    onHardwareKeyHook = { container.hardwareKeyHook = it },
                     onNewSession = {
                         // Leave the terminal first so it is not part of the
                         // saved tab state that restoreState would bring back.

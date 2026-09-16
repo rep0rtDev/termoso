@@ -3,6 +3,7 @@ package com.termoso.android.data
 import android.content.Context
 import android.net.Uri
 import android.os.SystemClock
+import android.view.KeyEvent
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -104,6 +105,15 @@ class AppContainer(context: Context) {
     fun consumeShare() {
         _pendingShare.value = null
     }
+
+    /**
+     * Hardware-key hook installed by the terminal while it is on screen
+     * (volume-key bindings, Ctrl(+Shift) hotkeys). The activity consults it
+     * before normal dispatch; `null` or a `false` return keeps the system
+     * behaviour, so volume keys stay volume keys everywhere else.
+     */
+    @Volatile
+    var hardwareKeyHook: ((KeyEvent) -> Boolean)? = null
 
     init {
         ProcessLifecycleOwner.get().lifecycle.addObserver(
