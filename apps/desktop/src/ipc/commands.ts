@@ -5,6 +5,8 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AccountStatus,
   AgentKeys,
+  AiCommandResponse,
+  AiStatus,
   AppInfo,
   BookmarkCard,
   CertificateCard,
@@ -564,6 +566,14 @@ export const userAvatar = (userId: Uuid, tag: string) =>
   invoke<ArrayBuffer>("user_avatar", { userId, tag });
 export const accountSetPresenceHidden = (hidden: boolean) =>
   invoke<UserProfile>("account_set_presence_hidden", { hidden });
+export const aiStatus = () => invoke<AiStatus>("ai_status");
+export const aiSetEnabled = (enabled: boolean) => invoke<AiStatus>("ai_set_enabled", { enabled });
+/**
+ * One command for a short request. Rust attaches only the session's OS and
+ * shell labels; the answer is shown, never run.
+ */
+export const aiAsk = (prompt: string, sessionId: Uuid | null) =>
+  invoke<AiCommandResponse>("ai_ask", { form: { prompt, sessionId } });
 export const teamDelete = (teamId: Uuid) => invoke<null>("team_delete", { teamId });
 export const teamLeave = (teamId: Uuid) => invoke<null>("team_leave", { teamId });
 export const teamAcceptInvite = (link: string) => invoke<Team>("team_accept_invite", { link });

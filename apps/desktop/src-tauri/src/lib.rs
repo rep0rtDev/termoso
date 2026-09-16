@@ -2,6 +2,7 @@
 //! sessions; the webview only renders and forwards user input.
 
 mod account;
+mod ai;
 mod avatars;
 mod backup;
 mod cloud;
@@ -283,6 +284,9 @@ pub fn run() {
             commands_tools::account_profile,
             commands_tools::user_avatar,
             commands_tools::account_set_presence_hidden,
+            commands_tools::ai_status,
+            commands_tools::ai_set_enabled,
+            commands_tools::ai_ask,
             commands_tools::team_vault_create,
             commands_tools::team_vault_rename,
             commands_tools::team_vault_delete,

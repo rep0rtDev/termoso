@@ -8,6 +8,7 @@ use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use termoso_core::secrets::MasterKeySource;
 use termoso_proto::account::{ServerInfo, UserProfile};
+use termoso_proto::ai::{AiCommandResponse, AiStatus};
 use termoso_proto::auth::{Device, MfaCredential};
 use termoso_proto::team::{Invite, Team, TeamPresence, TeamRole};
 use termoso_proto::vault::{VaultMember, VaultRole};
@@ -18,6 +19,7 @@ use crate::account::{
     self, AccountStatus, LoginForm, LoginOutcome, ReauthOutcome, RegisterForm, Registered,
     SYNC_EVENT, SyncNotice, SyncStatus,
 };
+use crate::ai::{self, AskForm};
 use crate::avatars;
 use crate::backup::{self, BackupSummary};
 use crate::cloud::{self, CloudImportReport, CloudPreview, CloudSelection};
@@ -1184,6 +1186,21 @@ pub async fn account_set_presence_hidden<R: Runtime>(
     hidden: bool,
 ) -> Result<UserProfile> {
     presence::set_hidden(&app, hidden).await
+}
+
+#[tauri::command]
+pub async fn ai_status<R: Runtime>(app: AppHandle<R>) -> Result<AiStatus> {
+    ai::status(&app).await
+}
+
+#[tauri::command]
+pub async fn ai_set_enabled<R: Runtime>(app: AppHandle<R>, enabled: bool) -> Result<AiStatus> {
+    ai::set_enabled(&app, enabled).await
+}
+
+#[tauri::command]
+pub async fn ai_ask<R: Runtime>(app: AppHandle<R>, form: AskForm) -> Result<AiCommandResponse> {
+    ai::ask(&app, form).await
 }
 
 #[tauri::command]

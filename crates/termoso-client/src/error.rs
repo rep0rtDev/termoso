@@ -59,6 +59,14 @@ impl From<CoreError> for ClientError {
                     "rate_limited"
                 } else if code == codes::MULTIPLAYER_DISABLED {
                     "multiplayer_disabled"
+                } else if code == codes::AI_NOT_ENABLED {
+                    "ai_not_enabled"
+                } else if code == codes::AI_QUOTA_EXCEEDED {
+                    "ai_quota_exceeded"
+                } else if code == codes::AI_BUSY {
+                    "ai_busy"
+                } else if code == codes::AI_UNAVAILABLE {
+                    "ai_unavailable"
                 } else if code == codes::UNAUTHORIZED || code == codes::TOKEN_EXPIRED {
                     "unauthorized"
                 } else {

@@ -20,6 +20,7 @@ import {
   resetZoom,
   selectAll,
   setActiveTab,
+  setSidePanel,
   isSearchOpen,
   setSearchOpen,
   splitActivePane,
@@ -358,7 +359,7 @@ export const COMMANDS: Command[] = [
     id: "term.selectAll",
     title: "Select all",
     group: "Terminal",
-    keys: ["ctrl+shift+a"],
+    keys: ["ctrl+alt+a"],
     enabled: hasTab,
     run: onActivePane(selectAll),
   },
@@ -412,6 +413,15 @@ export const COMMANDS: Command[] = [
     keys: ["ctrl+."],
     enabled: hasTab,
     run: () => toggleSidePanel(),
+  },
+  {
+    id: "term.askAi",
+    title: "Ask AI for a command",
+    group: "Terminal",
+    keywords: "ai suggest command assistant",
+    keys: ["ctrl+shift+a"],
+    enabled: hasTab,
+    run: () => setSidePanel(terminalStore.get().sidePanel === "ask" ? null : "ask"),
   },
 
   // Workspace
