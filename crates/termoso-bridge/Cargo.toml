@@ -1,0 +1,36 @@
+[package]
+name = "termoso-bridge"
+description = "Termoso API Bridge: a self-hosted REST endpoint that encrypts hosts, groups and credentials locally and syncs them into your vaults"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "termoso-bridge"
+path = "src/main.rs"
+
+[dependencies]
+termoso-crypto = { workspace = true }
+termoso-proto = { workspace = true }
+
+tokio = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+url = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+subtle = { workspace = true }

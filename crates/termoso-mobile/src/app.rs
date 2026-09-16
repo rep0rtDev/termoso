@@ -22,6 +22,7 @@ use crate::account::{
     MfaMethod, ReauthOutcome, RegisterForm, Registered, SecurityKeyCredential, SecurityKeyRequest,
     ServerCard, SyncListener, SyncStatus,
 };
+use crate::ai::{AiStatusCard, AiSuggestionCard, AiTarget};
 use crate::dto::*;
 use crate::error::{MobileError, Result};
 use crate::fido2::{self, Fido2GenerateDraft, Fido2Listener, Fido2LoadDraft, SecurityKeyCard};
@@ -1001,6 +1002,23 @@ impl TermosoApp {
             }
         }
         Ok(Some(bytes))
+    }
+
+    /// Whether the server offers AI command suggestions and whether this
+    /// account turned them on.
+    pub fn ai_status(&self) -> Result<AiStatusCard> {
+        RUNTIME.block_on(self.account.ai_status())
+    }
+
+    /// Opt in to (or out of) AI command suggestions for this account.
+    pub fn set_ai_enabled(&self, enabled: bool) -> Result<AiStatusCard> {
+        RUNTIME.block_on(self.account.set_ai_enabled(enabled))
+    }
+
+    /// One shell command for a short request. Sends the request text and the
+    /// target's OS label only; the answer is returned, never typed.
+    pub fn ai_ask(&self, prompt: String, target: AiTarget) -> Result<AiSuggestionCard> {
+        RUNTIME.block_on(self.account.ai_ask(prompt, target))
     }
 
     /// Whether this account hides itself from teammates' presence views.

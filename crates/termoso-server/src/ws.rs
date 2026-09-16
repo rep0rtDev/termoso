@@ -114,7 +114,7 @@ async fn serve(state: AppState, mut socket: WebSocket) -> anyhow::Result<()> {
         _ => return close_with(&mut socket, "auth_required", "First frame must be auth").await,
     };
     let info = match session::validate(&state, &token).await {
-        Ok(i) if !i.disabled => i,
+        Ok(i) if !i.disabled && i.bridge_id.is_none() => i,
         _ => return close_with(&mut socket, "unauthorized", "Invalid session").await,
     };
     let user_id = info.user_id;

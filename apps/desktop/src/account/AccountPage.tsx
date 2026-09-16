@@ -25,7 +25,9 @@ import {
 } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
-import { keys, useAccount, useDevices, useProfile, useSettings } from "@/ipc/hooks";
+import { keys, useAccount, useAiStatus, useDevices, useProfile, useSettings } from "@/ipc/hooks";
+import { Disclosure as AiDisclosure } from "@/terminal/AskAiPanel";
+import { providerLabel, remainingToday } from "@/terminal/askai";
 import { sizes } from "@/theme/theme";
 import { isReauthCancelled, withReauth } from "./reauth";
 import {
@@ -140,6 +142,7 @@ function SignedIn({
   const qc = useQueryClient();
   const devices = useDevices(true);
   const profile = useProfile(true);
+  const ai = useAiStatus(true);
   const settings = useSettings();
   const [confirm, setConfirm] = useState<
     | { kind: "none" }
@@ -285,6 +288,55 @@ function SignedIn({
             />
           }
         />
+      </SectionCard>
+
+      <SectionCard
+        title="AI command suggestions"
+        description="Ask AI in the terminal side panel (Ctrl+Shift+A) turns a short request into one command for you to review. Off until you turn it on."
+      >
+        {ai.data && !ai.data.available ? (
+          <Typography variant="body2" color="text.secondary">
+            This server has no AI provider configured. Self-hosted: set{" "}
+            <Mono>TERMOSO_AI__API_KEY</Mono> (your own Chutes key or any OpenAI-compatible endpoint
+            via <Mono>TERMOSO_AI__URL</Mono>).
+          </Typography>
+        ) : (
+          <>
+            <SettingRow
+              label="Ask AI"
+              hint={
+                ai.data
+                  ? ai.data.enabled
+                    ? `${providerLabel(ai.data)} · ${remainingToday(ai.data)} of ${ai.data.daily_quota} requests left today`
+                    : `Off. ${providerLabel(ai.data)}, ${ai.data.daily_quota} requests per day once enabled.`
+                  : ai.isError
+                    ? errorMessage(ai.error)
+                    : "Loading…"
+              }
+              last={!ai.data}
+              control={
+                <Switch
+                  checked={ai.data?.enabled ?? false}
+                  disabled={!ai.data || op.isPending}
+                  onChange={(e) =>
+                    op.mutate(async () => {
+                      const st = await ipc.aiSetEnabled(e.target.checked);
+                      qc.setQueryData(keys.ai, st);
+                      return st.enabled
+                        ? "AI suggestions are on for this account"
+                        : "AI suggestions are off";
+                    })
+                  }
+                />
+              }
+            />
+            {ai.data && (
+              <Box sx={{ pt: 1 }}>
+                <AiDisclosure status={ai.data} />
+              </Box>
+            )}
+          </>
+        )}
       </SectionCard>
 
       <SectionCard title="Vaults on this device">

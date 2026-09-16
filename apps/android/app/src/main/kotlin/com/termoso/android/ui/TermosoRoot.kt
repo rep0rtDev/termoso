@@ -141,6 +141,7 @@ fun TermosoRoot(container: AppContainer, vault: VaultState) {
                             forwards = vault.forwards,
                             account = vault.account,
                             presence = vault.presence,
+                            ai = vault.ai,
                             onLock = {
                                 manualLock = true
                                 scope.launch { container.lockVault() }

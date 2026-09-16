@@ -1,7 +1,7 @@
 import init, * as wasm from "./pkg/termoso_wasm";
 import wasmUrl from "./pkg/termoso_wasm_bg.wasm?url";
 
-export type { NewAccountKeys, RecoveryRotation } from "./pkg/termoso_wasm";
+export type { GeneratedKeyPair, NewAccountKeys, RecoveryRotation } from "./pkg/termoso_wasm";
 
 let ready: Promise<void> | null = null;
 
@@ -69,6 +69,7 @@ export const rotateRecovery = wasm.rotate_recovery;
 export const recoveryVerifier = wasm.recovery_verifier;
 export const recoveryWords = wasm.recovery_words;
 export const publicKeyOf = wasm.public_key_of;
+export const generateKeyPair = wasm.generate_key_pair;
 export const generateVaultKey = wasm.generate_vault_key;
 export const sealVaultKey = wasm.seal_vault_key;
 export const openVaultKey = wasm.open_vault_key;

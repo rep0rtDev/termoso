@@ -179,5 +179,9 @@ schema! {
         pub webauthn: bool,
         /// Teams can be created by regular users.
         pub teams: bool,
+        /// An AI model for command suggestions is configured (opt-in per
+        /// account, see `GET /account/ai`).
+        #[serde(default)]
+        pub ai: bool,
     }
 }

@@ -149,6 +149,35 @@ impl Error {
     pub fn quota_exceeded(msg: impl Into<String>) -> Self {
         Self::new(StatusCode::INSUFFICIENT_STORAGE, "quota_exceeded", msg)
     }
+    pub fn ai_not_enabled() -> Self {
+        Self::new(
+            StatusCode::FORBIDDEN,
+            codes::AI_NOT_ENABLED,
+            "AI suggestions are turned off for this account",
+        )
+    }
+    pub fn ai_quota_exceeded(resets_in_secs: u64) -> Self {
+        Self::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            codes::AI_QUOTA_EXCEEDED,
+            "Daily AI suggestion quota reached",
+        )
+        .with_details(serde_json::json!({ "retry_after": resets_in_secs }))
+    }
+    pub fn ai_busy() -> Self {
+        Self::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            codes::AI_BUSY,
+            "The AI provider is busy, try again in a moment",
+        )
+    }
+    pub fn ai_unavailable() -> Self {
+        Self::new(
+            StatusCode::BAD_GATEWAY,
+            codes::AI_UNAVAILABLE,
+            "The AI provider did not answer",
+        )
+    }
     pub fn feature_disabled(what: &str) -> Self {
         Self::new(
             StatusCode::NOT_IMPLEMENTED,
