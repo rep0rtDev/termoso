@@ -246,6 +246,21 @@ export interface Team {
   require_mfa?: boolean;
 }
 
+/** How often an admin receives the team activity digest by e-mail. */
+export type DigestCadence = "daily" | "weekly";
+
+/** The caller's own digest subscription; nobody else receives it. */
+export interface DigestSubscription {
+  cadence?: DigestCadence;
+  /** End of the last period that was mailed. */
+  last_sent_at?: string;
+}
+
+export interface SendDigestResponse {
+  events: number;
+  sent: boolean;
+}
+
 export interface TeamMember {
   user_id: string;
   email: string;

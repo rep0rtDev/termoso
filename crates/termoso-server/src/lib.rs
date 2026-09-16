@@ -11,6 +11,7 @@ pub mod avatar;
 pub mod cache;
 pub mod codes;
 pub mod config;
+pub mod digest;
 pub mod error;
 pub mod events;
 pub mod extract;
