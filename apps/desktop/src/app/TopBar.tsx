@@ -64,12 +64,16 @@ import { AppMenuButton } from "./AppMenu";
 import { TeamBlock } from "./TeamBlock";
 import { WindowControls } from "./WindowControls";
 import { VaultMenu, useActiveVault } from "./vault";
+import { IS_MAC, MAC_TRAFFIC_LIGHTS_WIDTH } from "@/lib/platform";
+import { withHint } from "./shortcuts";
 import { useEffect, useState } from "react";
 
 /**
  * Persistent top strip, doubling as the window title bar (the native frame is
  * off): Vaults · SFTP · terminal tabs · [+]  ……  pane tools · avatar + team ·
  * window controls. Empty space drags the window; double-click toggles maximize.
+ * On macOS the native traffic lights overlay the left edge and the window
+ * buttons on the right are the system's, so neither is drawn here.
  */
 export function TopBar() {
   const tabs = useTerminal((s) => s.tabs);
@@ -93,7 +97,7 @@ export function TopBar() {
         bgcolor: "surface.lowest",
         borderBottom: 1,
         borderColor: "border.light",
-        pl: 1,
+        pl: IS_MAC ? `${MAC_TRAFFIC_LIGHTS_WIDTH}px` : 1,
         userSelect: "none",
       }}
     >
@@ -200,7 +204,7 @@ export function TopBar() {
         {active && <Divider orientation="vertical" flexItem sx={{ my: 1.25, mr: 1 }} />}
         <TeamBlock />
       </Box>
-      <WindowControls />
+      {!IS_MAC && <WindowControls />}
     </Box>
   );
 }
@@ -213,7 +217,7 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, px: 1 }}>
       {tab.zoom !== 1 && (
-        <Tooltip title="Reset zoom (Ctrl+0)">
+        <Tooltip title={withHint("Reset zoom", "term.zoomReset")}>
           <Box
             component="button"
             onClick={() => resetZoom(tab.id)}
@@ -235,12 +239,12 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
           </Box>
         </Tooltip>
       )}
-      <Tooltip title="Split right (Ctrl+Shift+D)">
+      <Tooltip title={withHint("Split right", "pane.splitRight")}>
         <IconButton onClick={() => splitActivePane(tab.id, "row")}>
           <VerticalSplitRoundedIcon fontSize="small" />
         </IconButton>
       </Tooltip>
-      <Tooltip title="Split down (Ctrl+Shift+Alt+D)">
+      <Tooltip title={withHint("Split down", "pane.splitDown")}>
         <IconButton onClick={() => splitActivePane(tab.id, "column")}>
           <HorizontalSplitRoundedIcon fontSize="small" />
         </IconButton>
@@ -248,8 +252,8 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
       <Tooltip
         title={
           tab.viewMode === "split"
-            ? "Show terminals as a list (Ctrl+Alt+M)"
-            : "Show terminals side by side (Ctrl+Alt+M)"
+            ? withHint("Show terminals as a list", "ws.viewMode")
+            : withHint("Show terminals side by side", "ws.viewMode")
         }
       >
         <span>
@@ -277,7 +281,7 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
           </IconButton>
         </span>
       </Tooltip>
-      <Tooltip title="Find (Ctrl+Shift+F)">
+      <Tooltip title={withHint("Find", "term.find")}>
         <IconButton
           onClick={() => setSearchOpen(!searchOpen)}
           sx={searchOpen ? { color: "text.primary", bgcolor: "action.selected" } : undefined}
@@ -285,7 +289,7 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
           <SearchRoundedIcon fontSize="small" />
         </IconButton>
       </Tooltip>
-      <Tooltip title="Clear buffer (Ctrl+Shift+K)">
+      <Tooltip title={withHint("Clear buffer", "term.clear")}>
         <IconButton onClick={() => clearBuffer(tab.activePaneId)}>
           <DeleteSweepRoundedIcon fontSize="small" />
         </IconButton>
@@ -304,7 +308,7 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
           </IconButton>
         </span>
       </Tooltip>
-      <Tooltip title="Side panel: snippets, history, themes, info (Ctrl+Shift+B)">
+      <Tooltip title={withHint("Side panel: snippets, history, themes, info", "term.sidePanel")}>
         <IconButton
           onClick={() => toggleSidePanel()}
           sx={sidePanel ? { color: "text.primary", bgcolor: "action.selected" } : undefined}
