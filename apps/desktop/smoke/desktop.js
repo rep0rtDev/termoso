@@ -132,23 +132,20 @@
     textarea.focus();
     const typed = typeInto(textarea, `${command}\n`);
     await report(`typed command through the xterm textarea (${typed})`);
-    const recorded = async () =>
-      (await invoke("history_commands", { limit: 50 })).some((h) => h.data.command === command);
-    let via = "input events";
+    const history = async () =>
+      (await invoke("history_commands", { limit: 50 })).map((h) => h.data.command);
     try {
-      await waitFor("command in history", async () => (await recorded()) || null, 12000);
-    } catch {
-      via = "terminal_write";
-      await report("typed input not recorded, retrying through terminal_write");
-      // ^U first: whatever the typed attempt left on the line must not merge.
-      await invoke("terminal_write", { id: sessions[0].id, data: `\x15${command}\r` });
       await waitFor(
-        "command in history (terminal_write)",
-        async () => (await recorded()) || null,
+        "typed command in history",
+        async () => ((await history()).includes(command) ? true : null),
         12000,
       );
+    } catch (e) {
+      // Whatever the shell did get tells the story (dropped, reordered...).
+      const got = (await history()).filter((c) => c.includes("smoke"));
+      throw new Error(`${e.message}; history has ${JSON.stringify(got)}`);
     }
-    await report(`shell integration recorded the command (input via ${via})`);
+    await report("shell integration recorded the typed command verbatim");
     await shot("terminal-output");
 
     // Simulate a GPU context loss (sleep / eGPU unplug on a real Mac): the

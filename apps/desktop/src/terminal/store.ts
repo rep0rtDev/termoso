@@ -970,7 +970,7 @@ function applyRestore(paneId: Uuid) {
   rt.restore = null;
   rt.skipRecord = state.cwd !== null;
   const text = restoreKeystrokes(state, currentSettings?.restoreCommands ?? "type");
-  if (text) ipc.terminalWrite(paneId, text).catch(() => undefined);
+  if (text) void writeOrdered(paneId, text);
 }
 
 /**
@@ -1026,7 +1026,7 @@ function scheduleIntegration(paneId: Uuid, shell: string) {
     r.integration = "sent";
     if (r.shell.active) return;
     const script = integrationCommand(kind, r.term.buffer.active.cursorX, r.term.cols);
-    ipc.terminalWrite(paneId, script).catch(() => undefined);
+    void writeOrdered(paneId, script);
     if (r.restore) {
       setTimeout(() => {
         const cur = runtimes.get(paneId);
@@ -1335,6 +1335,39 @@ export function runCommand(paneId: Uuid, command: string) {
   void sendInput(paneId, `${command.replace(/\r?\n/g, "\r")}\r`);
 }
 
+/**
+ * Per-pane outbox: every Tauri command runs as its own task, so two
+ * back-to-back `terminal_write`s may reach the PTY out of order. Only one
+ * write is in flight per pane; input arriving meanwhile is appended and goes
+ * out as the next chunk.
+ */
+const outbox = new Map<Uuid, { buf: string; busy: boolean }>();
+
+function writeOrdered(paneId: Uuid, data: string): Promise<void> {
+  let box = outbox.get(paneId);
+  if (!box) {
+    box = { buf: "", busy: false };
+    outbox.set(paneId, box);
+  }
+  box.buf += data;
+  if (box.busy) return Promise.resolve();
+  return drainOutbox(paneId, box);
+}
+
+async function drainOutbox(paneId: Uuid, box: { buf: string; busy: boolean }) {
+  box.busy = true;
+  try {
+    while (box.buf) {
+      const chunk = box.buf;
+      box.buf = "";
+      await ipc.terminalWrite(paneId, chunk).catch(() => undefined);
+    }
+  } finally {
+    box.busy = false;
+    if (!runtimes.has(paneId)) outbox.delete(paneId);
+  }
+}
+
 async function sendInput(paneId: Uuid, data: string) {
   const s = terminalStore.get();
   // Enter in a dropped pane is the snackbar's "Reconnect ⏎".
@@ -1352,9 +1385,7 @@ async function sendInput(paneId: Uuid, data: string) {
       : [paneId];
   await Promise.all(
     targets.map((id) =>
-      s.panes[id]?.status === "connected"
-        ? ipc.terminalWrite(id, data).catch(() => undefined)
-        : Promise.resolve(),
+      s.panes[id]?.status === "connected" ? writeOrdered(id, data) : Promise.resolve(),
     ),
   );
 }
