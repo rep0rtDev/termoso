@@ -1,9 +1,11 @@
 package com.termoso.android
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -48,6 +50,18 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleLink(intent, (application as TermosoApplication).container)
+    }
+
+    /**
+     * Terminal-installed hook first (volume bindings, app hotkeys); everything else as usual.
+     * ComponentActivity marks this override as restricted although it is the only place that
+     * sees volume keys and chords before the focused view consumes them.
+     */
+    @SuppressLint("RestrictedApi")
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val hook = (application as TermosoApplication).container.hardwareKeyHook
+        if (hook != null && hook(event)) return true
+        return super.dispatchKeyEvent(event)
     }
 
     private fun handleLink(intent: Intent?, container: AppContainer) {

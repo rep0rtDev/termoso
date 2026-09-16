@@ -4,9 +4,11 @@ import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.view.HapticFeedbackConstants
+import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -66,6 +68,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -74,6 +77,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -93,11 +97,15 @@ import com.termoso.android.ui.components.HostAvatar
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.snippets.SnippetPickerSheet
 import com.termoso.core.LiveEndReason
+import com.termoso.core.MobileSettings
 import com.termoso.core.SessionState
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+/** Lines one volume press scrolls through the history. */
+private const val VOLUME_SCROLL_LINES = 3
 
 /**
  * Terminal tab host: session chips on top, the active terminal in the middle,
@@ -113,6 +121,8 @@ fun TerminalScreen(
     /** Files shared into the app, offered to the active terminal once; `null` when none. */
     pendingShare: List<Uri>? = null,
     onShareConsumed: () -> Unit = {},
+    /** Installs (or, with `null`, removes) the activity-level hardware-key hook while a terminal is shown. */
+    onHardwareKeyHook: (((KeyEvent) -> Boolean)?) -> Unit = {},
 ) {
     val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
     val activeId by shell.sessions.activeId.collectAsStateWithLifecycle()
@@ -175,17 +185,15 @@ fun TerminalScreen(
             } else {
                 ActiveSession(
                     session = active,
+                    sessions = sessions,
                     shell = shell,
                     snackbar = snackbar,
-                    fontSize = settings.terminalFontSize.toInt(),
-                    fontFamily = settings.terminalFontFamily,
-                    cursorBlink = settings.cursorBlink,
-                    cursorStyle = settings.cursorStyle,
-                    haptics = settings.hapticFeedback,
-                    bell = settings.terminalBell,
+                    settings = settings,
                     onOpenSnippets = onOpenSnippets,
+                    onNewSession = onNewSession,
                     pendingShare = pendingShare,
                     onShareConsumed = onShareConsumed,
+                    onHardwareKeyHook = onHardwareKeyHook,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
@@ -305,27 +313,36 @@ private fun SessionChip(session: TerminalSession, active: Boolean, onClick: () -
 @Composable
 private fun ActiveSession(
     session: TerminalSession,
+    sessions: List<TerminalSession>,
     shell: ShellViewModel,
     snackbar: SnackbarHostState,
-    fontSize: Int,
-    fontFamily: String,
-    cursorBlink: Boolean,
-    cursorStyle: String,
-    haptics: Boolean,
-    bell: Boolean,
+    settings: MobileSettings,
     onOpenSnippets: () -> Unit,
+    onNewSession: () -> Unit,
     pendingShare: List<Uri>?,
     onShareConsumed: () -> Unit,
+    onHardwareKeyHook: (((KeyEvent) -> Boolean)?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
     val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
     val scope = rememberCoroutineScope()
     val controller = remember(session) { TerminalController(session) }
     val state by session.state.collectAsStateWithLifecycle()
     val prompt by session.prompt.collectAsStateWithLifecycle()
     val canWrite by session.canWrite.collectAsStateWithLifecycle()
+
+    val fontSize = settings.terminalFontSize.toInt()
+    val haptics = settings.hapticFeedback
+    val bell = settings.terminalBell
+    val keyRows = remember(settings.keyGroups) { KeyGroups.rows(settings.keyGroups) }
+    val hardwareKeyboard = configuration.keyboard == Configuration.KEYBOARD_QWERTY &&
+        configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
+    // The user can pull the panel back while a keyboard is attached; detaching resets that.
+    var panelForced by remember(hardwareKeyboard) { mutableStateOf(false) }
+    val panelCollapsed = settings.hidePanelWithKeyboard && hardwareKeyboard && !panelForced
 
     var panelExpanded by rememberSaveable { mutableStateOf(false) }
     var imeShown by remember { mutableStateOf(false) }
@@ -373,6 +390,29 @@ private fun ActiveSession(
 
     fun tap() {
         if (haptics) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+    }
+
+    fun zoom(delta: Int) {
+        zoomDelta = (zoomDelta + delta).coerceIn(6 - fontSize, 40 - fontSize)
+    }
+
+    fun toggleIme() {
+        val imm = context.getSystemService<InputMethodManager>()
+        val input = controller.inputView
+        if (imeShown) {
+            imm?.hideSoftInputFromWindow(view.windowToken, 0)
+            imeShown = false
+        } else if (input != null) {
+            input.requestFocus()
+            imm?.showSoftInput(input, 0)
+            imeShown = true
+        }
+    }
+
+    fun switchSession(forward: Boolean) {
+        val index = sessions.indexOfFirst { it.id == session.id }
+        val next = HardwareKeys.neighbour(sessions.size, index, forward) ?: return
+        shell.sessions.setActive(sessions[next].id)
     }
 
     fun dropFiles(uris: List<Uri>) {
@@ -424,6 +464,77 @@ private fun ActiveSession(
         }
     }
 
+    fun run(action: InputAction) {
+        when (action) {
+            InputAction.Disabled -> Unit
+            is InputAction.Key -> {
+                tap()
+                controller.press(action.key)
+            }
+            is InputAction.Ui -> when (action.action) {
+                UiAction.FONT_UP -> zoom(1)
+                UiAction.FONT_DOWN -> zoom(-1)
+                UiAction.SCROLL_UP -> controller.scrollBy(VOLUME_SCROLL_LINES, controller.altScreen())
+                UiAction.SCROLL_DOWN -> controller.scrollBy(-VOLUME_SCROLL_LINES, controller.altScreen())
+                UiAction.NEXT_SESSION -> switchSession(forward = true)
+                UiAction.PREV_SESSION -> switchSession(forward = false)
+                UiAction.TOGGLE_KEYBOARD -> toggleIme()
+                UiAction.CLOSE_SESSION -> scope.launch { shell.sessions.close(session.id) }
+            }
+        }
+    }
+
+    fun run(hotkey: Hotkey) {
+        when (hotkey) {
+            Hotkey.PREV_SESSION -> switchSession(forward = false)
+            Hotkey.NEXT_SESSION -> switchSession(forward = true)
+            Hotkey.CLOSE_SESSION -> scope.launch { shell.sessions.close(session.id) }
+            Hotkey.NEW_SESSION -> onNewSession()
+            Hotkey.CLONE_SESSION -> scope.launch {
+                when {
+                    session.hostId != null -> shell.connectHost(session.hostId, session.transport)
+                    session.quick != null -> shell.connectQuick(session.quick)
+                    session.local != null -> shell.connectLocal()
+                    else -> snackbar.showSnackbar("This session cannot be cloned")
+                }
+            }
+            Hotkey.FONT_UP -> zoom(1)
+            Hotkey.FONT_DOWN -> zoom(-1)
+            Hotkey.FONT_RESET -> zoomDelta = 0
+            Hotkey.PASTE -> paste()
+            Hotkey.TOGGLE_PANEL -> if (panelCollapsed) panelForced = true else panelExpanded = !panelExpanded
+        }
+        hotkey.toast?.let { scope.launch { snackbar.showSnackbar(it) } }
+    }
+
+    // Activity-level hook: volume bindings and Ctrl(+Shift) hotkeys never reach the
+    // shell. Both DOWN and UP of a bound key are swallowed so the system does not
+    // see half a press; anything unbound falls through untouched.
+    val hook: (KeyEvent) -> Boolean = { ev ->
+        val volume = HardwareKeys.volumeAction(ev.keyCode, settings.volumeUpAction, settings.volumeDownAction)
+        val hotkey = if (volume == null) {
+            HardwareKeys.hotkey(ev.keyCode, ev.isCtrlPressed, ev.isShiftPressed, ev.isAltPressed, settings.hardwareHotkeys)
+        } else {
+            null
+        }
+        when {
+            volume != null -> {
+                if (ev.action == KeyEvent.ACTION_DOWN) run(volume)
+                true
+            }
+            hotkey != null -> {
+                if (ev.action == KeyEvent.ACTION_DOWN && ev.repeatCount == 0) run(hotkey)
+                true
+            }
+            else -> false
+        }
+    }
+    val currentHook by rememberUpdatedState(hook)
+    DisposableEffect(onHardwareKeyHook) {
+        onHardwareKeyHook { currentHook(it) }
+        onDispose { onHardwareKeyHook(null) }
+    }
+
     Box(modifier) {
         Column(Modifier.fillMaxSize()) {
             if (session.isView) ViewBanner(canWrite)
@@ -432,14 +543,20 @@ private fun ActiveSession(
                     session = session,
                     controller = controller,
                     fontSizeSp = (fontSize + zoomDelta).coerceIn(6, 40),
-                    fontFamily = fontFamily,
-                    cursorBlink = cursorBlink,
-                    cursorStyle = cursorStyle,
+                    fontFamily = settings.terminalFontFamily,
+                    cursorBlink = settings.cursorBlink,
+                    cursorStyle = settings.cursorStyle,
                     modifier = Modifier.fillMaxSize(),
                     onFrame = { scrolled = it.frame.displayOffset > 0u },
                     onTap = { imeShown = true },
                     onLongPress = { cell, offset -> menuAt = cell to offset },
-                    onZoom = { d -> zoomDelta = (zoomDelta + d).coerceIn(6 - fontSize, 40 - fontSize) },
+                    onZoom = ::zoom,
+                    gestures = TerminalGestures(
+                        pinchZoom = settings.pinchZoom,
+                        swipeArrows = settings.swipeArrows,
+                        swipeSessions = settings.swipeSessions,
+                    ),
+                    onSwipeSession = ::switchSession,
                 )
                 if (scrolled) {
                     SmallFloatingActionButton(
@@ -494,21 +611,13 @@ private fun ActiveSession(
             }
             KeyPanel(
                 controller = controller,
+                rows = keyRows,
                 expanded = panelExpanded,
+                collapsed = panelCollapsed,
                 imeShown = imeShown,
                 onToggleExpanded = { panelExpanded = !panelExpanded },
-                onToggleIme = {
-                    val imm = context.getSystemService<InputMethodManager>()
-                    val input = controller.inputView
-                    if (imeShown) {
-                        imm?.hideSoftInputFromWindow(view.windowToken, 0)
-                        imeShown = false
-                    } else if (input != null) {
-                        input.requestFocus()
-                        imm?.showSoftInput(input, 0)
-                        imeShown = true
-                    }
-                },
+                onToggleCollapsed = { panelForced = true },
+                onToggleIme = ::toggleIme,
                 onHiddenInput = { hiddenInput = true },
                 onSnippets = { snippetPicker = true },
                 onPanel = { panelSheet = true },
