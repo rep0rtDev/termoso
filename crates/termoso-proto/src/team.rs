@@ -305,7 +305,8 @@ schema! {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub device_id: Option<Uuid>,
         /// What happened: `team.created`, `team.renamed`, `team.settings`,
-        /// `member.role`, `member.removed`, `member.left`, `invite.created`,
+        /// `member.role`, `member.removed`, `member.account_deleted`,
+        /// `member.left`, `invite.created`,
         /// `invite.revoked`, `invite.accepted`, `vault.created`, `vault.renamed`,
         /// `vault.deleted`, `vault.key_rotated`, `vault.access_granted`,
         /// `vault.access_changed`, `vault.access_revoked`, `entity.created`,
