@@ -21,6 +21,7 @@ mod presence;
 mod prompts;
 mod sessions;
 mod sftp;
+mod smoke;
 mod snippets;
 mod sshid;
 mod state;
@@ -82,7 +83,9 @@ pub fn run() {
             tauri::async_runtime::spawn(startup(handle));
             Ok(())
         })
+        .on_page_load(smoke::on_page_load)
         .invoke_handler(tauri::generate_handler![
+            smoke::smoke_report,
             commands::app_info,
             commands::deep_links_register,
             commands::settings_get,
