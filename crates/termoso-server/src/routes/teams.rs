@@ -68,7 +68,11 @@ pub async fn my_role<'e, E: PgExecutor<'e>>(
         .ok_or_else(|| Error::not_found("Team"))
 }
 
-async fn require_admin(state: &AppState, team_id: Uuid, user_id: Uuid) -> ApiResult<TeamRole> {
+pub(crate) async fn require_admin(
+    state: &AppState,
+    team_id: Uuid,
+    user_id: Uuid,
+) -> ApiResult<TeamRole> {
     let role = my_role(&state.db, team_id, user_id).await?;
     if !role.is_admin() {
         return Err(Error::forbidden("Team admin role required"));
@@ -590,7 +594,7 @@ async fn notify_conversion(state: &AppState, team_id: Uuid, user_id: Uuid) {
     .await;
 }
 
-async fn team_name<'e, E: PgExecutor<'e>>(db: E, team_id: Uuid) -> ApiResult<String> {
+pub(crate) async fn team_name<'e, E: PgExecutor<'e>>(db: E, team_id: Uuid) -> ApiResult<String> {
     let (name,): (String,) = sqlx::query_as("SELECT name FROM teams WHERE id = $1")
         .bind(team_id)
         .fetch_one(db)

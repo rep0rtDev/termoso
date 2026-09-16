@@ -15,6 +15,7 @@ export const queryKeys = {
   teamMembers: (id: string) => ["teams", id, "members"] as const,
   teamInvites: (id: string) => ["teams", id, "invites"] as const,
   teamPendingKeys: (id: string) => ["teams", id, "pending-keys"] as const,
+  teamDigest: (id: string) => ["teams", id, "digest"] as const,
   vaults: ["vaults"] as const,
   vault: (id: string) => ["vaults", id] as const,
   vaultMembers: (id: string) => ["vaults", id, "members"] as const,

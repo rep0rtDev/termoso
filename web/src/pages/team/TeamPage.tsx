@@ -34,6 +34,7 @@ import {
   Typography,
 } from "@mui/material";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import LockOpenRoundedIcon from "@mui/icons-material/LockOpenRounded";
 import PersonAddAltRoundedIcon from "@mui/icons-material/PersonAddAltRounded";
@@ -42,8 +43,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link as RouterLink, useNavigate, useParams } from "react-router";
 import { errorMessage } from "@/api/client";
 import { teamsApi, vaultsApi } from "@/api/endpoints";
-import { queryKeys } from "@/api/hooks";
-import type { PendingVaultKey, Team, TeamMember, TeamRole, Vault, VaultRole } from "@/api/types";
+import { queryKeys, useServerInfo } from "@/api/hooks";
+import type {
+  DigestCadence,
+  PendingVaultKey,
+  Team,
+  TeamMember,
+  TeamRole,
+  Vault,
+  VaultRole,
+} from "@/api/types";
 import { useAuthState } from "@/auth/store";
 import { UnlockCancelled, withStepUp } from "@/auth/unlock";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -53,7 +62,7 @@ import { Loading } from "@/components/Loading";
 import { PageHeader } from "@/components/PageHeader";
 import { MfaBadge } from "@/components/MfaBadge";
 import { RoleChip } from "@/components/RoleChip";
-import { Section } from "@/components/Section";
+import { Section, SettingRow } from "@/components/Section";
 import { useSnackbar } from "@/components/Snackbar";
 import { UserCell } from "@/components/UserCell";
 import { formatDate, formatRelative } from "@/components/format";
@@ -90,6 +99,7 @@ function TeamDetail({ team }: { team: Team }) {
       <MembersSection team={team} />
       {admin && <InvitesSection team={team} />}
       <TeamVaultsSection team={team} />
+      {admin && <DigestSection team={team} />}
     </>
   );
 }
@@ -681,6 +691,122 @@ function InvitesSection({ team }: { team: Team }) {
       >
         The invitation link stops working immediately.
       </ConfirmDialog>
+    </Section>
+  );
+}
+
+type DigestChoice = DigestCadence | "off";
+
+const digestLabel: Record<DigestChoice, string> = {
+  off: "Off",
+  daily: "Daily",
+  weekly: "Weekly",
+};
+
+/** Opt-in e-mail digest of the activity log — the caller's own subscription only. */
+function DigestSection({ team }: { team: Team }) {
+  const qc = useQueryClient();
+  const snack = useSnackbar();
+  const { session } = useAuthState();
+  const info = useServerInfo();
+  const sub = useQuery({
+    queryKey: queryKeys.teamDigest(team.id),
+    queryFn: () => teamsApi.digest(team.id),
+  });
+  const emailOk = info.data?.features.email ?? false;
+  const verified = session?.user.email_verified ?? false;
+  const cadence: DigestChoice = sub.data?.cadence ?? "off";
+
+  const update = useMutation({
+    mutationFn: (next: DigestChoice) =>
+      teamsApi.updateDigest(team.id, next === "off" ? null : next),
+    onSuccess: async (r, next) => {
+      qc.setQueryData(queryKeys.teamDigest(team.id), r);
+      await qc.invalidateQueries({ queryKey: queryKeys.teamDigest(team.id) });
+      snack.notify(
+        next === "off"
+          ? "Activity digest turned off"
+          : `You'll receive the ${digestLabel[next].toLowerCase()} digest at ${session?.user.email ?? "your address"}`,
+      );
+    },
+    onError: (e) => snack.error(errorMessage(e)),
+  });
+  const send = useMutation({
+    mutationFn: () => teamsApi.sendDigest(team.id, cadence === "weekly" ? "weekly" : "daily"),
+    onSuccess: (r) => {
+      snack.notify(
+        r.sent
+          ? `Sent — ${r.events} ${r.events === 1 ? "event" : "events"}`
+          : `Nothing to send: no activity in the last ${cadence === "weekly" ? "week" : "day"}`,
+      );
+    },
+    onError: (e) => snack.error(errorMessage(e)),
+  });
+
+  const disabled = !emailOk || !verified || update.isPending;
+  const hint = !emailOk
+    ? "This server has no outgoing e-mail configured, so digests can't be sent."
+    : !verified
+      ? "Verify your e-mail address in Account first."
+      : undefined;
+
+  return (
+    <Section
+      title="Activity digest"
+      description="Get the team activity log by e-mail. It goes only to you, contains the same events as the log (who did what, never vault contents), and is skipped for quiet periods."
+      actions={
+        <Button
+          variant="outlined"
+          startIcon={<MailOutlineRoundedIcon />}
+          disabled={disabled || send.isPending}
+          onClick={() => send.mutate()}
+        >
+          Send now
+        </Button>
+      }
+    >
+      {hint && (
+        <Alert severity="info" sx={{ mb: 1.5 }}>
+          {hint}
+        </Alert>
+      )}
+      <SettingRow
+        label="Frequency"
+        description={
+          cadence === "off"
+            ? "Not subscribed."
+            : cadence === "daily"
+              ? "Every morning (07:00 UTC) for the previous day."
+              : "Every Monday morning (07:00 UTC) for the previous week."
+        }
+        control={
+          <Select<DigestChoice>
+            size="small"
+            value={cadence}
+            disabled={disabled || sub.isPending}
+            onChange={(e) => update.mutate(e.target.value)}
+            sx={{ minWidth: 120 }}
+          >
+            {(["off", "daily", "weekly"] as const).map((c) => (
+              <MenuItem key={c} value={c}>
+                {digestLabel[c]}
+              </MenuItem>
+            ))}
+          </Select>
+        }
+        divider={cadence !== "off"}
+      />
+      {cadence !== "off" && sub.data?.last_sent_at && (
+        <SettingRow
+          label="Last sent"
+          control={
+            <Typography variant="body2" color="text.secondary">
+              {formatRelative(sub.data.last_sent_at)}
+            </Typography>
+          }
+          divider={false}
+        />
+      )}
     </Section>
   );
 }

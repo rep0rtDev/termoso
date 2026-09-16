@@ -341,3 +341,77 @@ schema! {
         pub next_before: Option<i64>,
     }
 }
+
+schema! {
+    /// How often an admin receives the team activity digest by e-mail.
+    #[derive(Copy, PartialEq, Eq)]
+    #[serde(rename_all = "snake_case")]
+    pub enum DigestCadence {
+        /// Every morning (07:00 UTC) for the previous UTC day.
+        Daily,
+        /// Every Monday morning (07:00 UTC) for the previous week.
+        Weekly,
+    }
+}
+
+impl DigestCadence {
+    /// Storage / wire name.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DigestCadence::Daily => "daily",
+            DigestCadence::Weekly => "weekly",
+        }
+    }
+
+    /// Inverse of [`Self::as_str`].
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "daily" => Some(DigestCadence::Daily),
+            "weekly" => Some(DigestCadence::Weekly),
+            _ => None,
+        }
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/digest` — the caller's own digest subscription.
+    /// Digests are opt-in per admin; nobody else receives them.
+    pub struct DigestSubscription {
+        /// `None` when the caller has not subscribed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub cadence: Option<DigestCadence>,
+        /// End of the last period that was mailed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub last_sent_at: Option<DateTime<Utc>>,
+    }
+}
+
+schema! {
+    /// `PUT /teams/{id}/digest` — subscribe (`cadence` set) or unsubscribe
+    /// (`cadence` null).
+    pub struct UpdateDigestRequest {
+        /// Desired cadence, or `None` to stop receiving digests.
+        #[serde(default)]
+        pub cadence: Option<DigestCadence>,
+    }
+}
+
+schema! {
+    /// `POST /teams/{id}/digest/send` — mail the caller the digest for the
+    /// most recent period right away.
+    pub struct SendDigestRequest {
+        /// Period length; defaults to the subscription's cadence, then daily.
+        #[serde(default)]
+        pub cadence: Option<DigestCadence>,
+    }
+}
+
+schema! {
+    /// `POST /teams/{id}/digest/send` result.
+    pub struct SendDigestResponse {
+        /// Number of events in the mailed period. Nothing is sent when zero.
+        pub events: u32,
+        /// Whether an e-mail went out.
+        pub sent: bool,
+    }
+}
