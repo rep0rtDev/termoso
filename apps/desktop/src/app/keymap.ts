@@ -1,11 +1,20 @@
 // Keyboard chords: parsing, formatting and matching against `KeyboardEvent`s.
 // A chord is stored as `ctrl+shift+k` — modifiers in a fixed order, then one
 // key name derived from `KeyboardEvent.code` so layouts don't matter.
+//
+// `ctrl` is the platform's primary modifier: the Control key on Linux and
+// Windows, ⌘ on macOS (where the real Control key is `meta`, so terminal
+// control characters keep working). Defaults and stored overrides are thus
+// portable between platforms.
+
+import { IS_MAC } from "@/lib/platform";
 
 export interface Chord {
+  /** Primary modifier: Ctrl, or ⌘ on macOS. */
   ctrl: boolean;
   shift: boolean;
   alt: boolean;
+  /** Secondary modifier: Super, or the Control key on macOS. */
   meta: boolean;
   /** `KeyboardEvent.code`, e.g. `KeyK`, `Digit1`, `Period`, `ArrowLeft`, `Tab`. */
   code: string;
@@ -97,13 +106,19 @@ export function parseChord(text: string): Chord | null {
   return chord;
 }
 
+/** Primary modifier state of an event (Ctrl, or ⌘ on macOS). */
+export const primaryKey = (ev: KeyboardEvent): boolean => (IS_MAC ? ev.metaKey : ev.ctrlKey);
+
+/** Secondary modifier state of an event (Super, or Control on macOS). */
+export const secondaryKey = (ev: KeyboardEvent): boolean => (IS_MAC ? ev.ctrlKey : ev.metaKey);
+
 export function chordFromEvent(ev: KeyboardEvent): Chord | null {
   if (isModifierCode(ev.code) || !keyName(ev.code)) return null;
   return {
-    ctrl: ev.ctrlKey,
+    ctrl: primaryKey(ev),
     shift: ev.shiftKey,
     alt: ev.altKey,
-    meta: ev.metaKey,
+    meta: secondaryKey(ev),
     code: ev.code,
   };
 }
@@ -146,10 +161,10 @@ export function chordParts(text: string | null): string[] {
   const c = parseChord(text);
   if (!c) return [text];
   const parts: string[] = [];
-  if (c.ctrl) parts.push("Ctrl");
+  if (c.ctrl) parts.push(IS_MAC ? "Cmd" : "Ctrl");
   if (c.shift) parts.push("Shift");
-  if (c.alt) parts.push("Alt");
-  if (c.meta) parts.push("Super");
+  if (c.alt) parts.push(IS_MAC ? "Option" : "Alt");
+  if (c.meta) parts.push(IS_MAC ? "Ctrl" : "Super");
   const name = keyName(c.code) ?? c.code;
   parts.push(DISPLAY_NAMES[name] ?? name.toUpperCase());
   return parts;
@@ -165,10 +180,10 @@ export function chordMatches(chord: string, ev: KeyboardEvent): boolean {
   if (!c) return false;
   return (
     c.code === ev.code &&
-    c.ctrl === ev.ctrlKey &&
+    c.ctrl === primaryKey(ev) &&
     c.shift === ev.shiftKey &&
     c.alt === ev.altKey &&
-    c.meta === ev.metaKey
+    c.meta === secondaryKey(ev)
   );
 }
 

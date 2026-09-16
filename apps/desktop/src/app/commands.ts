@@ -42,6 +42,7 @@ import {
   requestCreate,
 } from "./navigation";
 import { commandForEvent, registerCommands, tabDigit, type Command } from "./shortcuts";
+import { IS_MAC } from "@/lib/platform";
 
 export const DOCS_URL = "https://github.com/rep0rtDev/termoso#readme";
 
@@ -343,7 +344,7 @@ export const COMMANDS: Command[] = [
     id: "term.copy",
     title: "Copy",
     group: "Terminal",
-    keys: ["ctrl+shift+c"],
+    keys: [IS_MAC ? "ctrl+c" : "ctrl+shift+c"],
     enabled: hasTab,
     run: onActivePane(copySelection),
   },
@@ -351,7 +352,7 @@ export const COMMANDS: Command[] = [
     id: "term.paste",
     title: "Paste",
     group: "Terminal",
-    keys: ["ctrl+shift+v"],
+    keys: [IS_MAC ? "ctrl+v" : "ctrl+shift+v"],
     enabled: hasTab,
     run: onActivePane(pasteClipboard),
   },
@@ -481,7 +482,7 @@ export const COMMANDS: Command[] = [
     id: "window.fullscreen",
     title: "Toggle full screen",
     group: "Window",
-    keys: ["f11"],
+    keys: IS_MAC ? ["ctrl+meta+f", "f11"] : ["f11"],
     run: () => {
       void win.isFullscreen().then((f) => win.setFullscreen(!f));
     },
