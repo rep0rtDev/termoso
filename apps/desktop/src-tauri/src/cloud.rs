@@ -74,7 +74,7 @@ pub struct CloudSelection {
     pub remove_missing: bool,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudImportReport {
     pub created: usize,
@@ -210,13 +210,31 @@ pub fn apply_cached(
     )
 }
 
-/// Create / refresh hosts for the selected `instances`.
+/// Create / refresh hosts for the selected `instances`; missing hosts are
+/// removed anywhere in the vault.
 pub fn apply(
     store: &Store,
     vault_id: Uuid,
     provider: CloudProvider,
     instances: &[CloudInstance],
     selection: &CloudSelection,
+) -> Result<CloudImportReport> {
+    apply_scoped(store, vault_id, provider, instances, selection, None)
+}
+
+/// Like [`apply`], but with `remove_scope` set only linked hosts sitting in
+/// one of those groups count as "missing": a sync group for one region
+/// must not delete hosts another region's group (or a one-shot import
+/// elsewhere in the vault) created. Matching for refresh stays vault-wide,
+/// so a host the user moved out of the group keeps following the provider
+/// instead of being duplicated.
+pub fn apply_scoped(
+    store: &Store,
+    vault_id: Uuid,
+    provider: CloudProvider,
+    instances: &[CloudInstance],
+    selection: &CloudSelection,
+    remove_scope: Option<&HashSet<Uuid>>,
 ) -> Result<CloudImportReport> {
     if let Some(gid) = selection.group_id {
         let g = store.require::<Group>(gid)?;
@@ -322,6 +340,11 @@ pub fn apply(
         let listed: HashSet<&str> = instances.iter().map(|i| i.instance_id.as_str()).collect();
         for (iid, h) in existing {
             if listed.contains(iid.as_str()) || touched.contains(&iid) {
+                continue;
+            }
+            if let Some(scope) = remove_scope
+                && !h.data.group_id.is_some_and(|g| scope.contains(&g))
+            {
                 continue;
             }
             hosts::delete(store, h.id)?;

@@ -63,6 +63,9 @@ fun TerminalView(
     onTap: () -> Unit = {},
     onLongPress: (CellPoint, Offset) -> Unit = { _, _ -> },
     onZoom: (Int) -> Unit = {},
+    gestures: TerminalGestures = TerminalGestures(),
+    /** Two-finger horizontal swipe; `true` = towards the next session. */
+    onSwipeSession: (Boolean) -> Unit = {},
 ) {
     val density = LocalDensity.current
     val context = LocalContext.current
@@ -122,8 +125,11 @@ fun TerminalView(
     val currentTap by rememberUpdatedState(onTap)
     val currentLongPress by rememberUpdatedState(onLongPress)
     val currentZoom by rememberUpdatedState(onZoom)
+    val currentSwipe by rememberUpdatedState(onSwipeSession)
+    val currentGestures by rememberUpdatedState(gestures)
     val currentMetrics by rememberUpdatedState(metrics)
     val currentGrid by rememberUpdatedState(grid)
+    val slop = with(density) { 12.dp.toPx() }
 
     Box(
         modifier
@@ -150,31 +156,66 @@ fun TerminalView(
             .pointerInput(session) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
+                    val g = currentGestures
                     var scrollAcc = 0f
+                    var arrowAcc = 0f
                     var zoomAcc = 1f
+                    var panAcc = Offset.Zero
                     var multi = false
+                    var swiped = false
+                    var axis = Axis.NONE
                     do {
                         val event = awaitPointerEvent()
                         val pressed = event.changes.count { it.pressed }
                         if (pressed >= 2) {
                             multi = true
-                            zoomAcc *= event.calculateZoom()
-                            if (zoomAcc > 1.12f) {
-                                currentZoom(1)
-                                zoomAcc = 1f
-                            } else if (zoomAcc < 0.89f) {
-                                currentZoom(-1)
-                                zoomAcc = 1f
+                            panAcc += event.calculatePan()
+                            if (g.pinchZoom) {
+                                zoomAcc *= event.calculateZoom()
+                                if (zoomAcc > 1.12f) {
+                                    currentZoom(1)
+                                    zoomAcc = 1f
+                                } else if (zoomAcc < 0.89f) {
+                                    currentZoom(-1)
+                                    zoomAcc = 1f
+                                }
+                            }
+                            // A steady sideways drag with two fingers (not a pinch) changes session.
+                            if (g.swipeSessions && !swiped && zoomAcc in 0.95f..1.05f &&
+                                abs(panAcc.x) > slop * 5 && abs(panAcc.x) > abs(panAcc.y) * 2
+                            ) {
+                                swiped = true
+                                currentSwipe(panAcc.x < 0)
                             }
                             event.changes.forEach { it.consume() }
                         } else if (!multi) {
-                            scrollAcc += event.calculatePan().y
-                            val cellH = currentMetrics.height
-                            val lines = (scrollAcc / cellH).toInt()
-                            if (lines != 0) {
-                                scrollAcc -= lines * cellH
-                                controller.scrollBy(lines, currentGrid?.frame?.altScreen == true)
-                                event.changes.forEach { it.consume() }
+                            val pan = event.calculatePan()
+                            scrollAcc += pan.y
+                            arrowAcc += pan.x
+                            if (axis == Axis.NONE) {
+                                axis = when {
+                                    abs(scrollAcc) > slop -> Axis.VERTICAL
+                                    g.swipeArrows && abs(arrowAcc) > slop -> Axis.HORIZONTAL
+                                    else -> Axis.NONE
+                                }
+                                if (axis == Axis.HORIZONTAL) arrowAcc = 0f
+                            }
+                            if (axis == Axis.VERTICAL) {
+                                val cellH = currentMetrics.height
+                                val lines = (scrollAcc / cellH).toInt()
+                                if (lines != 0) {
+                                    scrollAcc -= lines * cellH
+                                    controller.scrollBy(lines, currentGrid?.frame?.altScreen == true)
+                                    event.changes.forEach { it.consume() }
+                                }
+                            } else if (axis == Axis.HORIZONTAL) {
+                                val cellW = currentMetrics.width
+                                val cells = (arrowAcc / cellW).toInt()
+                                if (cells != 0) {
+                                    arrowAcc -= cells * cellW
+                                    controller.arrows(cells)
+                                    event.changes.forEach { it.consume() }
+                                }
                             }
                         }
                     } while (event.changes.any { it.pressed })
@@ -208,6 +249,15 @@ fun TerminalView(
         )
     }
 }
+
+/** Which touch gestures the terminal surface reacts to, from settings. */
+data class TerminalGestures(
+    val pinchZoom: Boolean = true,
+    val swipeArrows: Boolean = true,
+    val swipeSessions: Boolean = true,
+)
+
+private enum class Axis { NONE, VERTICAL, HORIZONTAL }
 
 /** Scroll-position helper for the scroll-to-bottom affordance. */
 fun CellGrid.scrolledLines(): Int = frame.displayOffset.toInt()
@@ -254,6 +304,12 @@ class TerminalController(private val session: TerminalSession) {
         session.rust.scrollToBottom()
     }
 
+    /** Paste [command] (bracketed when the shell asks for it) and press Enter. */
+    fun runCommand(command: String) {
+        session.rust.runCommand(command)
+        session.rust.scrollToBottom()
+    }
+
     /** Positive = towards history. On the alternate screen it becomes arrow keys. */
     fun scrollBy(lines: Int, altScreen: Boolean) {
         if (altScreen) {
@@ -265,6 +321,14 @@ class TerminalController(private val session: TerminalSession) {
     }
 
     fun scrollToBottom() = session.rust.scrollToBottom()
+
+    fun altScreen(): Boolean = session.rust.frame().altScreen
+
+    /** Horizontal swipe: positive = →, negative = ←, one key per cell travelled. */
+    fun arrows(cells: Int) {
+        val key = if (cells > 0) SpecialKey.RIGHT else SpecialKey.LEFT
+        repeat(abs(cells).coerceAtMost(200)) { session.rust.sendKey(key, NONE) }
+    }
 
     fun visibleText(): String = session.rust.visibleText().joinToString("\n").trimEnd()
 

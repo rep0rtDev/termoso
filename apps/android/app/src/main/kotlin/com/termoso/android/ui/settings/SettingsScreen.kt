@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Shield
@@ -89,6 +90,7 @@ fun SettingsScreen(
     onSignIn: () -> Unit,
     onLock: () -> Unit,
     onTerminalAppearance: () -> Unit,
+    onTerminalInput: () -> Unit,
 ) {
     val settings by shell.repo.settings.collectAsStateWithLifecycle()
     val accountStatus by account.status.collectAsStateWithLifecycle()
@@ -199,6 +201,13 @@ fun SettingsScreen(
 
             SectionLabel("Terminal")
             SectionCard {
+                ChevronRow(
+                    title = "Keyboard & gestures",
+                    subtitle = "Key panel rows, volume buttons, physical keyboard, swipes",
+                    leading = { IconTile(Icons.Filled.Keyboard) },
+                    modifier = Modifier.clickable(onClick = onTerminalInput),
+                )
+                RowDivider()
                 SwitchRow(
                     title = "Detect OS",
                     subtitle = "Read the remote OS after connecting to show its icon",
@@ -231,6 +240,14 @@ fun SettingsScreen(
                     subtitle = "Vibrate on BEL",
                     checked = settings.terminalBell,
                     onCheckedChange = { v -> set { it.copy(terminalBell = v) } },
+                )
+                RowDivider()
+                SwitchRow(
+                    title = "Record sessions",
+                    subtitle = "Keep what the remote side prints in the encrypted vault (never what you type). " +
+                        "Team vaults with session logging on record regardless.",
+                    checked = settings.recordSessions,
+                    onCheckedChange = { v -> set { it.copy(recordSessions = v) } },
                 )
             }
 
@@ -359,7 +376,7 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun <T> RadioDialog(title: String, options: List<Pair<T, String>>, selected: T, onPick: (T) -> Unit, onDismiss: () -> Unit) {
+internal fun <T> RadioDialog(title: String, options: List<Pair<T, String>>, selected: T, onPick: (T) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },

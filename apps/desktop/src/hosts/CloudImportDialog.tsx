@@ -12,7 +12,6 @@ import {
   DialogTitle,
   FormControlLabel,
   IconButton,
-  InputAdornment,
   MenuItem,
   Select,
   TextField,
@@ -25,8 +24,6 @@ import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import CheckCircleOutlineRoundedIcon from "@mui/icons-material/CheckCircleOutlineRounded";
 import CloudOutlinedIcon from "@mui/icons-material/CloudOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
-import VisibilityOffOutlinedIcon from "@mui/icons-material/VisibilityOffOutlined";
-import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import FolderOpenRoundedIcon from "@mui/icons-material/FolderOpenRounded";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSnackbar } from "@/components/Snackbar";
@@ -46,8 +43,8 @@ import { HostGlyph } from "./HostAvatar";
 import { distroIcon } from "./distroIcons";
 import { TagChip } from "./TagChip";
 import { Row, VaultSelect, WarningList } from "./ImportDialog";
+import { CloudCredentialFields } from "./CloudCredentialFields";
 import {
-  AWS_REGIONS,
   CLOUD_PROVIDERS,
   PRIVACY_NOTE,
   cloudErrorMessage,
@@ -273,136 +270,14 @@ function Body({
             }}
             sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}
           >
-            {provider === "aws" && (
-              <>
-                <Field label="Region">
-                  <Autocomplete
-                    freeSolo
-                    size="small"
-                    options={AWS_REGIONS}
-                    value={draft.aws.region}
-                    onInputChange={(_, v) =>
-                      setDraft((d) => ({ ...d, aws: { ...d.aws, region: v } }))
-                    }
-                    renderInput={(params) => (
-                      <TextField {...params} placeholder="us-east-1" autoComplete="off" />
-                    )}
-                  />
-                </Field>
-                <Field label="Access Key ID">
-                  <TextField
-                    fullWidth
-                    size="small"
-                    value={draft.aws.accessKeyId}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, aws: { ...d.aws, accessKeyId: e.target.value } }))
-                    }
-                    placeholder="AKIA…"
-                    autoComplete="off"
-                    slotProps={{ input: { spellCheck: false } }}
-                  />
-                </Field>
-                <Field label="Secret Access Key">
-                  <SecretField
-                    value={draft.aws.secretAccessKey}
-                    reveal={reveal}
-                    onReveal={() => setReveal((v) => !v)}
-                    onChange={(v) =>
-                      setDraft((d) => ({ ...d, aws: { ...d.aws, secretAccessKey: v } }))
-                    }
-                  />
-                </Field>
-                <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
-                  <Field label="Service">
-                    <Select
-                      fullWidth
-                      size="small"
-                      value={draft.aws.service}
-                      onChange={(e) =>
-                        setDraft((d) => ({
-                          ...d,
-                          aws: { ...d.aws, service: e.target.value },
-                        }))
-                      }
-                    >
-                      <MenuItem value="ec2">EC2</MenuItem>
-                      <MenuItem value="lightsail">Lightsail</MenuItem>
-                    </Select>
-                  </Field>
-                  <Field label="IP address type">
-                    <Select
-                      fullWidth
-                      size="small"
-                      value={draft.aws.addressType}
-                      onChange={(e) =>
-                        setDraft((d) => ({
-                          ...d,
-                          aws: { ...d.aws, addressType: e.target.value },
-                        }))
-                      }
-                    >
-                      <MenuItem value="public">Public</MenuItem>
-                      <MenuItem value="private">Private</MenuItem>
-                    </Select>
-                  </Field>
-                </Box>
-              </>
-            )}
-            {provider === "digital_ocean" && (
-              <Field
-                label="Token"
-                hint="A personal access token with read scope is enough (API → Tokens in the DigitalOcean control panel)."
-              >
-                <SecretField
-                  value={draft.digitalOcean.token}
-                  reveal={reveal}
-                  onReveal={() => setReveal((v) => !v)}
-                  onChange={(v) => setDraft((d) => ({ ...d, digitalOcean: { token: v } }))}
-                  placeholder="dop_v1_…"
-                />
-              </Field>
-            )}
-            {provider === "azure" && (
-              <>
-                <Field label="Tenant ID">
-                  <TextField
-                    fullWidth
-                    size="small"
-                    value={draft.azure.tenantId}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, azure: { ...d.azure, tenantId: e.target.value } }))
-                    }
-                    autoComplete="off"
-                    slotProps={{ input: { spellCheck: false } }}
-                  />
-                </Field>
-                <Field label="Client ID">
-                  <TextField
-                    fullWidth
-                    size="small"
-                    value={draft.azure.clientId}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, azure: { ...d.azure, clientId: e.target.value } }))
-                    }
-                    autoComplete="off"
-                    slotProps={{ input: { spellCheck: false } }}
-                  />
-                </Field>
-                <Field
-                  label="Client Secret"
-                  hint="An app registration with the Reader role on the subscriptions you want to list."
-                >
-                  <SecretField
-                    value={draft.azure.clientSecret}
-                    reveal={reveal}
-                    onReveal={() => setReveal((v) => !v)}
-                    onChange={(v) =>
-                      setDraft((d) => ({ ...d, azure: { ...d.azure, clientSecret: v } }))
-                    }
-                  />
-                </Field>
-              </>
-            )}
+            <CloudCredentialFields
+              provider={provider}
+              draft={draft}
+              setDraft={setDraft}
+              reveal={reveal}
+              onReveal={() => setReveal((v) => !v)}
+              disabled={step.busy}
+            />
             {/* Enter submits the form. */}
             <button type="submit" hidden disabled={!config || step.busy} />
           </Box>
@@ -703,53 +578,6 @@ function Body({
   );
 }
 
-function SecretField({
-  value,
-  reveal,
-  onReveal,
-  onChange,
-  placeholder,
-}: {
-  value: string;
-  reveal: boolean;
-  onReveal: () => void;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <TextField
-      fullWidth
-      size="small"
-      type={reveal ? "text" : "password"}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      autoComplete="off"
-      slotProps={{
-        input: {
-          spellCheck: false,
-          endAdornment: (
-            <InputAdornment position="end">
-              <IconButton
-                size="small"
-                edge="end"
-                onClick={onReveal}
-                aria-label={reveal ? "Hide" : "Show"}
-              >
-                {reveal ? (
-                  <VisibilityOffOutlinedIcon fontSize="small" />
-                ) : (
-                  <VisibilityOutlinedIcon fontSize="small" />
-                )}
-              </IconButton>
-            </InputAdornment>
-          ),
-        },
-      }}
-    />
-  );
-}
-
 function InstanceRow({
   inst,
   checked,
@@ -799,7 +627,7 @@ function InstanceRow({
   );
 }
 
-function GroupSelect({
+export function GroupSelect({
   groups,
   value,
   onChange,

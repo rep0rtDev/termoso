@@ -23,6 +23,7 @@ use crate::ai::{self, AskForm};
 use crate::avatars;
 use crate::backup::{self, BackupSummary};
 use crate::cloud::{self, CloudImportReport, CloudPreview, CloudSelection};
+use crate::cloud_sync::{self, CloudSyncConfig, CloudSyncGroup, CloudSyncSecret};
 use crate::error::{DesktopError, Result};
 use crate::forwarding::{self, PfRuleCard, PfRuleForm, PfRuntime};
 use crate::import::{self, ImportPreview, ImportSelection, ImportSource};
@@ -662,6 +663,66 @@ pub async fn cloud_import(
 #[tauri::command]
 pub fn cloud_discard(preview_id: Uuid) {
     cloud::discard(preview_id)
+}
+
+// ───────────────────────────── cloud sync groups ─────────────────────────────
+
+#[tauri::command]
+pub fn cloud_sync_list(
+    state: State<'_, AppState>,
+    vault_id: Option<Uuid>,
+) -> Result<Vec<CloudSyncGroup>> {
+    cloud_sync::list(&state.store, vault_id)
+}
+
+#[tauri::command]
+pub fn cloud_sync_get(
+    state: State<'_, AppState>,
+    group_id: Uuid,
+) -> Result<Option<CloudSyncGroup>> {
+    cloud_sync::get(&state.store, group_id)
+}
+
+/// Create or update a group's cloud sync. `secret` is encrypted into local
+/// metadata and never returned; pass `None` to keep the stored one.
+#[tauri::command]
+pub fn cloud_sync_save(
+    state: State<'_, AppState>,
+    group_id: Uuid,
+    config: CloudSyncConfig,
+    secret: Option<CloudSyncSecret>,
+) -> Result<CloudSyncGroup> {
+    cloud_sync::save(&state.store, group_id, config, secret)
+}
+
+#[tauri::command]
+pub fn cloud_sync_forget(state: State<'_, AppState>, group_id: Uuid) -> Result<()> {
+    cloud_sync::forget(&state.store, group_id)
+}
+
+/// "Sync now": list machines with the stored credentials and reconcile the
+/// group's hosts. Emits the same `cloud-sync` event the scheduler does.
+#[tauri::command]
+pub async fn cloud_sync_run(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    group_id: Uuid,
+) -> Result<CloudSyncGroup> {
+    let group = cloud_sync::run(&state.store, group_id).await?;
+    let _ = app.emit(cloud_sync::EVENT, &group);
+    Ok(group)
+}
+
+// ───────────────────────────── local discovery ─────────────────────────────
+
+/// Browse the LAN for SSH servers advertised over mDNS/DNS-SD. Candidates
+/// only; nothing is stored until the user imports one.
+#[tauri::command]
+pub async fn mdns_browse(timeout_ms: Option<u64>) -> Result<Vec<termoso_core::mdns::LocalDevice>> {
+    let timeout = timeout_ms
+        .map(std::time::Duration::from_millis)
+        .unwrap_or(termoso_core::mdns::DEFAULT_TIMEOUT);
+    Ok(termoso_core::mdns::browse(timeout).await?)
 }
 
 // ───────────────────────────── export / backup ─────────────────────────────

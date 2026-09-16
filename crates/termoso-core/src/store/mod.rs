@@ -36,7 +36,7 @@ use crate::error::{CoreError, Result};
 pub use entities::EntityFilter;
 pub use entities::EntityRow;
 pub use history::{CommandHistory, ConnectionHistory, HistoryItem};
-pub use logs::{LogItem, LogMeta, LogRow};
+pub use logs::{LogItem, LogMeta, LogRow, MAX_CAPTURE_BYTES, Recorder};
 
 const SCHEMA: &str = include_str!("schema.sql");
 const ACCOUNT_AVATAR: &str = "account_avatar";
@@ -297,6 +297,15 @@ impl Store {
     pub fn set_secret_meta(&self, key: &str, value: &str) -> Result<()> {
         let ct = aead::encrypt_str(&self.master, &Aad::label(&["local", "meta", key]), value)?;
         self.set_meta(key, &ct)
+    }
+
+    /// Keys of every setting starting with `prefix`, sorted.
+    pub fn meta_keys(&self, prefix: &str) -> Result<Vec<String>> {
+        let conn = self.conn();
+        let mut st =
+            conn.prepare("SELECT key FROM meta WHERE substr(key, 1, ?2) = ?1 ORDER BY key")?;
+        let rows = st.query_map(params![prefix, prefix.len() as i64], |r| r.get(0))?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
     }
 
     /// Delete a setting.

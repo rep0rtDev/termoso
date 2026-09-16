@@ -68,6 +68,15 @@
                 <data android:pathPrefix="/invite/" />
                 <data android:pathPrefix="/join/" />
             </intent-filter>
+            <!-- Share a file or picture into the active terminal: it is copied to the
+                 remote's temp directory over the session's own SFTP channel and its path typed. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
         </activity>
 
         <service

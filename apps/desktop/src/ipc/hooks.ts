@@ -1,7 +1,16 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ipc from "./commands";
-import type { GroupForm, HostChainData, HostForm, ProxyData, Settings, Uuid } from "./types";
+import type {
+  CloudSyncConfig,
+  CloudSyncSecret,
+  GroupForm,
+  HostChainData,
+  HostForm,
+  ProxyData,
+  Settings,
+  Uuid,
+} from "./types";
 
 export const keys = {
   app: ["app"] as const,
@@ -36,6 +45,7 @@ export const keys = {
   teamInvites: (id: Uuid) => ["account", "teams", id, "invites"] as const,
   teamPendingKeys: (id: Uuid) => ["account", "teams", id, "pending-keys"] as const,
   presence: (teamId: Uuid) => ["presence", teamId] as const,
+  cloudSync: (vaultId: Uuid | null) => ["cloudSync", vaultId] as const,
   profile: ["account", "profile"] as const,
   ai: ["account", "ai"] as const,
   serialPorts: ["serialPorts"] as const,
@@ -351,9 +361,67 @@ function useInvalidateVault() {
   return (vaultId: Uuid) =>
     Promise.all(
       (
-        ["hosts", "groups", "tags", "identities", "hostForm", "groupForm", "inherited"] as const
+        [
+          "hosts",
+          "groups",
+          "tags",
+          "identities",
+          "hostForm",
+          "groupForm",
+          "inherited",
+          "cloudSync",
+        ] as const
       ).map((k) => qc.invalidateQueries({ queryKey: [k] })),
     ).then(() => qc.invalidateQueries({ queryKey: keys.hosts(vaultId) }));
+}
+
+// ───────────────────────────── cloud sync groups ─────────────────────────────
+
+export const useCloudSyncGroups = (vaultId: Uuid | null) =>
+  useQuery({ queryKey: keys.cloudSync(vaultId), queryFn: () => ipc.cloudSyncList(vaultId) });
+
+export function useSaveCloudSync() {
+  const invalidate = useInvalidateVault();
+  return useMutation({
+    mutationFn: (a: { groupId: Uuid; config: CloudSyncConfig; secret: CloudSyncSecret | null }) =>
+      ipc.cloudSyncSave(a.groupId, a.config, a.secret),
+    onSuccess: (g) => invalidate(g.vaultId),
+  });
+}
+
+export function useForgetCloudSync() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId }: { groupId: Uuid }) => ipc.cloudSyncForget(groupId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cloudSync"] }),
+  });
+}
+
+/** “Sync now”; the hosts it creates or removes show up through the `cloud-sync` event. */
+export function useRunCloudSync() {
+  const invalidate = useInvalidateVault();
+  return useMutation({
+    mutationFn: (groupId: Uuid) => ipc.cloudSyncRun(groupId),
+    onSuccess: (g) => invalidate(g.vaultId),
+  });
+}
+
+/** Keeps host lists and sync status fresh when the background scheduler runs. */
+export function useCloudSyncEvents() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    let active = true;
+    const un = ipc.onCloudSync(() => {
+      if (!active) return;
+      for (const k of ["hosts", "groups", "tags", "hostForm", "cloudSync"]) {
+        void qc.invalidateQueries({ queryKey: [k] });
+      }
+    });
+    return () => {
+      active = false;
+      void un.then((f) => f());
+    };
+  }, [qc]);
 }
 
 export function useSaveHost() {
