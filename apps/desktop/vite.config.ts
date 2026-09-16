@@ -17,6 +17,8 @@ export default defineConfig({
     port: 5174,
     strictPort: true,
     watch: { ignored: ["**/src-tauri/**"] },
+    // The autocomplete catalogue is shared with the Android client.
+    fs: { allow: [fileURLToPath(new URL("../..", import.meta.url))] },
   },
   test: {
     include: ["src/**/*.test.ts"],

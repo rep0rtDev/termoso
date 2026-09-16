@@ -1,0 +1,279 @@
+ls|-l long format;-a all incl. hidden;-h human sizes;-t sort by time;-r reverse;-S sort by size;-R recursive;-d directories themselves;-1 one per line;--color colourize
+cp|-r recursive;-a archive;-v verbose;-i prompt before overwrite;-n no clobber;-u update only;-p preserve attributes
+mv|-i prompt before overwrite;-f force;-n no clobber;-v verbose;-u update only
+rm|-r recursive;-f force;-i prompt each;-v verbose;-d remove empty dirs
+mkdir|-p make parents;-v verbose;-m set mode
+chmod|-R recursive;-v verbose;-c report changes;--reference copy mode from file
+chown|-R recursive;-v verbose;-h affect symlinks;--reference copy owner from file
+ln|-s symbolic link;-f force;-n no dereference;-v verbose;-r relative symlink
+cat|-n number lines;-A show all;-b number non-blank;-s squeeze blank;-E show line ends
+head|-n lines;-c bytes;-q no headers
+tail|-f follow;-F follow by name, retry;-n lines;-c bytes;--pid stop when PID dies
+less|-N line numbers;-S chop long lines;-R raw control chars;-i ignore case;+F follow;-X no init
+grep|-r recursive;-i ignore case;-n line numbers;-v invert match;-l files with matches;-c count;-E extended regex;-F fixed strings;-w whole words;-o only matching;-A lines after;-B lines before;-C context;--include file glob;--exclude-dir skip dirs;--color colourize
+rg|-i ignore case;-n line numbers;-l files with matches;-v invert;-w whole words;-F fixed strings;-t file type;-g glob;--hidden search hidden;-A after;-B before;-C context;-S smart case;--no-ignore ignore .gitignore
+find|-name name pattern;-iname case-insensitive name;-type f / d / l;-size size filter;-mtime modified days;-newer newer than file;-exec execute command;-delete delete matches;-maxdepth depth limit;-empty empty files;-user owner;-perm permissions
+sed|-i in-place;-e expression;-n quiet;-E extended regex;-s separate files
+awk|-F field separator;-v assign variable;-f program file
+sort|-n numeric;-r reverse;-u unique;-k key;-t separator;-h human numeric;-f ignore case;-V version sort;-o output file
+uniq|-c count;-d duplicates only;-u unique only;-i ignore case
+wc|-l lines;-w words;-c bytes;-m chars;-L longest line
+cut|-d delimiter;-f fields;-c characters;-b bytes;--complement invert
+tr|-d delete;-s squeeze;-c complement
+diff|-u unified;-r recursive;-q brief;-w ignore whitespace;-i ignore case;-y side by side;--color colourize
+du|-h human-readable;-s summarize;-a all files;-d max depth;-c grand total;--exclude skip pattern;-x one filesystem
+df|-h human-readable;-T filesystem type;-i inodes;-a all;-x exclude type
+tar|-x extract;-c create;-t list;-v verbose;-f archive file;-z gzip;-j bzip2;-J xz;-C change dir;--exclude skip pattern;-p preserve permissions;--strip-components strip path parts
+zip|-r recursive;-q quiet;-e encrypt;-9 best compression;-x exclude
+unzip|-l list;-d destination;-o overwrite;-q quiet;-t test
+gzip|-d decompress;-k keep;-9 best;-r recursive;-c stdout
+xz|-d decompress;-k keep;-9 best;-T threads;-z compress
+zstd|-d decompress;-k keep;-19 high compression;-T0 all threads;--rm remove input
+ps|aux all processes (BSD);-ef all processes (full);-u by user;-p by PID;-o output format;--sort sort by;-C by command;--forest tree
+kill|-9 SIGKILL;-15 SIGTERM;-HUP SIGHUP;-INT SIGINT;-STOP SIGSTOP;-CONT SIGCONT;-l list signals
+pkill|-f match full command line;-9 SIGKILL;-u user;-x exact match;-e echo killed
+pgrep|-f match full command line;-l list name;-a list full;-u user;-x exact;-n newest;-o oldest
+top|-u user;-p PID;-d delay;-n iterations;-b batch mode;-o sort field
+htop|-u user;-p PIDs;-d delay;-t tree view;-s sort column
+free|-h human-readable;-m megabytes;-g gigabytes;-s repeat every N sec;-t total
+ssh|-p port;-i identity file;-L local forward;-R remote forward;-D dynamic (SOCKS) forward;-N no command;-f background;-v verbose;-J jump host;-A agent forwarding;-X X11 forwarding;-t force tty;-o option;-C compression;-q quiet;-l login name;-F config file
+ssh-keygen|-t type (ed25519, rsa, ecdsa);-b bits;-f output file;-C comment;-N passphrase;-p change passphrase;-l show fingerprint;-y print public key;-R remove host from known_hosts;-a KDF rounds
+ssh-copy-id|-i identity file;-p port;-f force;-n dry run
+ssh-add|-l list fingerprints;-L list public keys;-d delete key;-D delete all;-t lifetime;-x lock;-X unlock;-c confirm
+scp|-r recursive;-P port;-i identity file;-p preserve;-C compression;-q quiet;-v verbose;-l limit bandwidth;-J jump host;-o option
+rsync|-a archive;-v verbose;-z compress;-P progress + partial;-r recursive;-n dry run;--delete delete extraneous;--exclude skip pattern;-e remote shell;-h human-readable;--progress show progress;-u update;-l links;--bwlimit bandwidth limit;-c checksum
+curl|-o output file;-O remote name;-L follow redirects;-s silent;-S show errors;-I headers only;-i include headers;-X request method;-H header;-d data;--data-binary binary data;-F form;-u user:password;-k insecure;-v verbose;-w write out;--json JSON body;-x proxy;--retry retries;-A user agent;-b cookie;-c cookie jar;--compressed accept compressed;-m max time;-# progress bar
+wget|-O output file;-P directory prefix;-c continue;-q quiet;-r recursive;-np no parent;-nd no directories;-m mirror;--no-check-certificate skip TLS check;-b background;-N timestamping;--limit-rate bandwidth;-U user agent
+ping|-c count;-i interval;-W timeout;-s packet size;-4 IPv4;-6 IPv6;-q quiet;-D timestamps
+ip|-br brief output;-c colour;-4 IPv4;-6 IPv6;-s statistics
+ss|-t TCP;-u UDP;-l listening;-n numeric;-p processes;-a all;-s summary;-4 IPv4;-6 IPv6;-r resolve;-e extended
+netstat|-t TCP;-u UDP;-l listening;-n numeric;-p programs;-a all;-r routes;-i interfaces;-s statistics
+dig|+short short answer;+trace trace delegation;-x reverse lookup;+noall no output sections;+answer answer section;-t record type;+dnssec DNSSEC
+nmap|-sS SYN scan;-sT connect scan;-sU UDP scan;-sV version detection;-O OS detection;-p ports;-A aggressive;-Pn skip host discovery;-T4 timing;-oN normal output;-oX XML output;-sn ping scan;-v verbose;--script NSE scripts
+tcpdump|-i interface;-n numeric;-nn numeric ports;-w write pcap;-r read pcap;-c count;-v verbose;-X hex+ascii;-A ascii;-s snaplen
+nc|-l listen;-p port;-v verbose;-z scan only;-u UDP;-w timeout;-k keep listening;-N shutdown on EOF;-q quit after EOF
+systemctl|--user user manager;--now start/stop as well;-a all units;--failed failed units;-t unit type;--no-pager no pager;-l full output;--state filter state
+journalctl|-u unit;-f follow;-n lines;-b this boot;-e jump to end;-r reverse;-p priority;--since since time;--until until time;-k kernel;-x explanations;--no-pager no pager;-o output format;--disk-usage disk usage;--vacuum-time remove older;-g grep pattern
+docker|-H daemon socket;--context context;-D debug
+kubectl|-n namespace;-A all namespaces;-o output (yaml, json, wide);-f file;-l label selector;--context context;-w watch;--dry-run client / server;-it interactive tty;--all all resources;--force force;-c container;--kubeconfig kubeconfig;-R recursive;-k kustomize dir;--show-labels show labels;--sort-by sort
+git|-C run in directory;-c config value;--no-pager no pager;--version version
+make|-j parallel jobs;-f makefile;-C directory;-n dry run;-B always make;-k keep going;-s silent
+apt|-y assume yes;-q quiet;--fix-broken fix dependencies;--no-install-recommends skip recommends;-t target release;--reinstall reinstall;--purge remove config too;-s simulate
+apt-get|-y assume yes;-q quiet;-f fix broken;--no-install-recommends skip recommends;-s simulate;--purge purge;-d download only
+dpkg|-i install;-r remove;-P purge;-l list;-L list files;-S search file;-s status;--configure configure;-x extract;-c list contents
+dnf|-y assume yes;-q quiet;--enablerepo enable repo;--disablerepo disable repo;--refresh refresh metadata;--best best versions;--allowerasing allow erasing
+yum|-y assume yes;-q quiet;--enablerepo enable repo;--disablerepo disable repo;--nogpgcheck skip GPG
+pacman|-S sync install;-Syu full upgrade;-Ss search;-Si package info;-R remove;-Rns remove with deps and config;-Q query installed;-Qs search installed;-Qi installed info;-Ql list files;-Qo owner of file;-Qdt orphans;-U install file;-Sc clean cache;--noconfirm no confirm;-F file database
+apk|--no-cache no cache;-U update index;-u upgrade;-v verbose;-q quiet;--virtual virtual package;-i interactive
+brew|--cask casks;--force force;--verbose verbose;--HEAD HEAD version;--dry-run dry run;--greedy upgrade auto-updating casks
+npm|-g global;--save-dev dev dependency;-D dev dependency;--legacy-peer-deps ignore peer deps;--force force;--production no dev deps;-w workspace;--dry-run dry run
+pnpm|-g global;-D dev dependency;-w workspace root;-r recursive;--filter filter packages;--frozen-lockfile frozen lockfile;--prod production
+yarn|-D dev dependency;-W workspace root;--frozen-lockfile frozen lockfile;--production production;--immutable immutable
+cargo|--release optimized build;-p package;--workspace all packages;--all-features all features;--features features;--no-default-features no default features;--target target triple;-j jobs;--offline offline;--locked locked;-q quiet;-v verbose;--bin binary;--example example;--lib library;--tests tests;--all-targets all targets
+pip|-r requirements file;-U upgrade;-e editable;--user user site;-q quiet;--no-cache-dir no cache;--index-url index
+pip3|-r requirements file;-U upgrade;-e editable;--user user site;-q quiet;--no-cache-dir no cache
+python|-m run module;-c command;-i interactive;-u unbuffered;-V version;-W warnings;-O optimize;-B no .pyc
+python3|-m run module;-c command;-i interactive;-u unbuffered;-V version;-W warnings;-B no .pyc
+node|-e eval;-p print;-v version;--inspect debugger;-r preload module;--watch watch;--env-file env file;--test run tests;--max-old-space-size heap MB
+sudo|-i login shell;-s shell;-u user;-E preserve env;-k invalidate timestamp;-l list privileges;-v validate;-n non-interactive;-b background;-H set HOME
+su|- login shell;-l login shell;-c command;-s shell;-m preserve env
+mount|-t type;-o options;-a all in fstab;-l list;-r read-only;-w read-write;--bind bind mount;-v verbose
+umount|-l lazy;-f force;-a all;-v verbose;-R recursive
+dd|if= input file;of= output file;bs= block size;count= blocks;status=progress progress;conv= conversions;skip= skip input blocks;seek= skip output blocks
+tmux|-s session name;-t target;-d detached;-f config file;-L socket name;-u UTF-8;-2 256 colours
+screen|-S session name;-r reattach;-ls list;-d detach;-x multi attach;-dmS detached named;-X send command;-wipe wipe dead
+crontab|-e edit;-l list;-r remove;-u user;-i confirm removal
+useradd|-m create home;-s shell;-G supplementary groups;-g primary group;-d home dir;-u UID;-c comment;-r system account;-e expire date
+usermod|-aG append groups;-G groups;-s shell;-d home;-l new login;-L lock;-U unlock;-e expire;-u UID;-m move home
+userdel|-r remove home;-f force
+passwd|-l lock;-u unlock;-d delete password;-e expire;-S status;-n min days;-x max days
+chsh|-s shell;-l list shells
+gpg|--gen-key generate key;--full-generate-key generate key (full);--list-keys list keys;-k list keys;--list-secret-keys secret keys;-K secret keys;--export export;-a ASCII armour;--import import;-e encrypt;-d decrypt;-r recipient;-s sign;--verify verify;-c symmetric;--edit-key edit key;--delete-key delete key;--recv-keys receive keys;--keyserver keyserver
+ffmpeg|-i input;-c:v video codec;-c:a audio codec;-c codec;-vf video filter;-af audio filter;-b:v video bitrate;-b:a audio bitrate;-r frame rate;-s size;-ss start time;-t duration;-to end time;-y overwrite;-n never overwrite;-an no audio;-vn no video;-crf quality;-preset encoding preset;-f format;-map stream map;-hide_banner hide banner;-loglevel log level
+jq|-r raw output;-c compact;-s slurp;-n null input;-e exit status;-S sort keys;--arg string arg;--argjson JSON arg;-C colour;-M monochrome;--tab tab indent;-j join output
+xargs|-0 null separated;-n max args;-I replace string;-P parallel;-t print commands;-p prompt;-r no run if empty;-d delimiter;-L max lines
+strace|-p attach to PID;-f follow forks;-e filter (trace=…);-o output file;-s string size;-c summary;-t timestamps;-T syscall time;-y print paths;-k stack trace
+lsof|-i network;-p PID;-u user;-n no DNS;-P no port names;-t PIDs only;-c command;+D directory;-a AND
+watch|-n interval;-d highlight differences;-t no title;-e exit on error;-c colour;-g exit on change;-x exec
+date|+%Y-%m-%d ISO date;+%s unix time;+%H:%M:%S time;+%F full date;+%T time;-u UTC;-d parse date;-s set;-R RFC 2822;-I ISO 8601;-r file mtime
+uname|-a all;-r kernel release;-m machine;-n node name;-s kernel name;-v kernel version;-o operating system;-p processor
+history|-c clear;-d delete entry;-w write;-r read;-a append;-n read new lines
+echo|-n no newline;-e interpret escapes;-E no escapes
+shutdown|-h halt;-r reboot;-c cancel;now immediately;+5 in 5 minutes;-P power off;-k warn only
+iptables|-L list;-A append;-I insert;-D delete;-F flush;-P policy;-t table;-n numeric;-v verbose;-p protocol;--dport destination port;--sport source port;-s source;-d destination;-j jump target;-i in interface;-o out interface;-m match;-S list rules;--line-numbers line numbers;-N new chain;-X delete chain;-Z zero counters
+firewall-cmd|--state state;--reload reload;--list-all list all;--add-port add port;--remove-port remove port;--add-service add service;--remove-service remove service;--permanent permanent;--zone zone;--get-zones zones;--get-active-zones active zones;--list-ports ports;--list-services services;--add-rich-rule rich rule;--runtime-to-permanent save runtime
+fdisk|-l list partitions;-u units;-x extra;-o output columns
+lsblk|-f filesystems;-o columns;-a all;-p full paths;-d no partitions;-J JSON;-m permissions;-t topology
+fsck|-y assume yes;-f force;-n no changes;-t type;-A all in fstab;-C progress;-p auto repair
+mkfs|-t type;-L label;-F force;-V verbose;-n dry run
+chattr|+i immutable;-i remove immutable;+a append only;-a remove append;-R recursive;-V verbose
+sysctl|-w write;-a all;-p load file;-n values only;-e ignore unknown;--system load all config
+modprobe|-r remove;-l list;-v verbose;-n dry run;-c config;--show-depends dependencies;-a all;-f force
+dmesg|-T human timestamps;-w follow;-H human output;-l level;-k kernel;-C clear;-f facility;-x decode;-e reltime;--since since
+rpm|-i install;-U upgrade;-e erase;-q query;-qa all installed;-qi info;-ql list files;-qf owner of file;-V verify;-v verbose;-h hashes;--nodeps no dependency check;--force force;-K check signature;--import import key;-qp query package file
+psql|-U user;-h host;-p port;-d database;-c command;-f file;-l list databases;-W prompt password;-t tuples only;-A unaligned;-x expanded;-q quiet;-v variable;--csv CSV output;-1 single transaction;-E echo hidden queries
+pg_dump|-U user;-h host;-p port;-d database;-F format (c, d, t, p);-f file;-t table;-n schema;-s schema only;-a data only;-c clean;-C create;-Z compression;-j jobs;--no-owner no owner;--no-privileges no privileges;-v verbose
+mysql|-u user;-p password prompt;-h host;-P port;-D database;-e execute;-N no headers;-B batch;-s silent;-v verbose;--default-character-set charset;-S socket;--ssl-mode SSL mode
+mysqldump|-u user;-p password prompt;-h host;--all-databases all databases;--databases databases;--single-transaction consistent snapshot;--routines routines;--triggers triggers;--no-data schema only;--no-create-info data only;--quick quick;-r result file
+redis-cli|-h host;-p port;-n database;--scan scan keys;--pattern pattern;-r repeat;-i interval;--stat stats;--bigkeys big keys;--latency latency;--pipe pipe mode;-u URI;--tls TLS
+sqlite3|-header headers;-column column mode;-csv CSV;-json JSON;-line line mode;-readonly read only;-cmd run command;-bail stop on error;-batch batch;-echo echo;-init init file;-table table mode;-box box mode;-markdown markdown
+nginx|-t test config;-T test and dump;-s signal (reload, stop, quit, reopen);-c config file;-p prefix;-g global directives;-v version;-V version and configure;-q quiet
+certbot|--nginx nginx plugin;--apache apache plugin;--standalone standalone;--webroot webroot;-w webroot path;-d domain;--dry-run dry run;--email email;--agree-tos agree TOS;-n non-interactive;--force-renewal force;--cert-name name;--preferred-challenges challenges;--manual manual
+docker-compose|-f compose file;-d detached;-p project name;--build build first;--force-recreate recreate;-v remove volumes
+helm|-n namespace;-f values file;--set set value;--create-namespace create namespace;--dry-run dry run;--wait wait;-i install if missing;--atomic atomic;--version chart version
+terraform|-auto-approve auto approve;-var variable;-var-file var file;-target target;-out plan file;-refresh=false no refresh;-upgrade upgrade;-reconfigure reconfigure;-lock=false no lock
+ansible|-i inventory;-m module;-a args;-b become;-u user;-k ask pass;-K ask become pass;--become-user become user;-e extra vars;-l limit;-f forks;-v verbose;--list-hosts list hosts;-C check;-D diff;--private-key key;-c connection
+ansible-playbook|-i inventory;-l limit;-t tags;--skip-tags skip tags;-e extra vars;-b become;-K ask become pass;-k ask pass;-u user;-C check;-D diff;-v verbose;--list-tasks list tasks;--list-hosts list hosts;--syntax-check syntax;--start-at-task start at;--step step;-f forks;--private-key key;--vault-password-file vault pass file;--ask-vault-pass ask vault pass
+aws|--profile profile;--region region;--output output format;--query JMESPath query;--no-cli-pager no pager;--dry-run dry run
+az|-g resource group;-n name;-o output;--query JMESPath;--subscription subscription;-l location
+gcloud|--project project;--zone zone;--region region;--format format;--filter filter;-q quiet
+podman|-it interactive tty;-d detached;--rm remove on exit;-p publish port;-v volume;--name name;-e env
+gh|-R repository;--web open in browser
+code|-r reuse window;-n new window;-g goto file:line;-d diff;-w wait;--install-extension install extension;--list-extensions list extensions;--disable-extensions disable extensions;-a add folder
+vim|-R read-only;-o horizontal splits;-O vertical splits;-p tabs;-d diff mode;-u vimrc;-c command;+ line number;-n no swap;-b binary;--clean no config;-S session
+nvim|-R read-only;-o horizontal splits;-O vertical splits;-p tabs;-d diff mode;-u init file;-c command;+ line number;--clean no config;--headless headless;-S session;--listen server
+nano|-l line numbers;-m mouse;-w no wrap;-B backup;-i auto indent;-T tab size;-E tabs to spaces;-c constant show cursor;-S smooth scroll;-v view mode;+ line number
+ncdu|-x one filesystem;-e extended info;-r read-only;-q quiet;-o export;-f import;--exclude exclude;-t threads;--color colour
+tree|-L depth;-a all files;-d directories only;-I ignore pattern;-P pattern;-h human sizes;-f full paths;-C colour;-s sizes;-D dates;-p permissions;--du dir sizes;-J JSON;--gitignore respect gitignore;--dirsfirst dirs first
+fzf|-m multi select;--preview preview command;-q query;-e exact;--height height;--reverse reverse layout;--border border;--ansi ANSI colours;-1 select only match;-0 exit on no match;--bind key bindings;--header header;--prompt prompt;-d delimiter;-n fields;--tac reverse input;-i case-insensitive
+man|-k search descriptions;-f whatis;-a all pages;-w where;-P pager;-l local file;-K full text search
+timeout|-s signal;-k kill after;--preserve-status preserve status;--foreground foreground;-v verbose
+base64|-d decode;-w wrap columns;-i ignore garbage
+sha256sum|-c check;-b binary;--quiet quiet;--status status only;--ignore-missing ignore missing;--tag BSD style
+md5sum|-c check;-b binary;--quiet quiet;--status status only
+file|-b brief;-i MIME type;-L follow symlinks;-z look inside compressed;-s read block/char devices;-k keep going
+stat|-c format;-f filesystem;-L follow symlinks;-t terse;--printf printf format
+touch|-a access time;-m modification time;-c no create;-d date string;-r reference file;-t timestamp
+env|-i empty environment;-u unset;-0 null separated;-C chdir;-S split string
+type|-a all locations;-t type only;-p path;-P force path search
+which|-a all matches;-s silent
+seq|-s separator;-w equal width;-f format
+shuf|-n count;-e args as input;-i range;-r repeat;-o output;-z null separated
+split|-l lines per file;-b bytes per file;-n number of chunks;-d numeric suffixes;-a suffix length;--additional-suffix suffix
+column|-t table;-s separator;-c width;-n no merge delimiters;-N column names;-J JSON;-o output separator
+tee|-a append;-i ignore interrupts;-p diagnose write errors
+lscpu|-e extended;-p parsable;-J JSON;-a all CPUs;-b online;-c offline
+lspci|-v verbose;-vv very verbose;-k kernel drivers;-nn IDs;-t tree;-s slot;-d device;-x hex dump
+lsusb|-v verbose;-t tree;-s bus:device;-d vendor:product
+smartctl|-a all info;-H health;-i identity;-t run test;-l log;-x extended;-d device type;-c capabilities;-A attributes
+mtr|-r report;-c count;-n no DNS;-b IPs and names;-4 IPv4;-6 IPv6;-T TCP;-u UDP;-P port;-i interval;-w wide;-z AS numbers
+traceroute|-n numeric;-I ICMP;-T TCP;-p port;-m max hops;-q queries;-w wait;-4 IPv4;-6 IPv6;-i interface
+iperf3|-s server;-c client;-p port;-t time;-u UDP;-b bandwidth;-P parallel;-R reverse;-J JSON;-i interval;-w window;-B bind;-4 IPv4;-6 IPv6;--bidir bidirectional
+socat|-d debug;-v verbose;-u unidirectional;-T timeout;TCP-LISTEN: listen TCP;TCP: connect TCP;UNIX-CONNECT: unix socket;EXEC: exec;STDIO stdio;OPENSSL: TLS;UDP: UDP;PTY pseudo tty;FILE: file
+http|-j JSON;-f form;-a auth;-v verbose;-h headers only;-b body only;-d download;-o output;--follow follow redirects;--verify verify TLS;-p print parts;--session session;--timeout timeout
+rclone|-P progress;-v verbose;--dry-run dry run;--transfers transfers;--exclude exclude;--include include;-n dry run;--bwlimit bandwidth
+age|-e encrypt;-d decrypt;-r recipient;-R recipients file;-i identity;-p passphrase;-o output;-a armour
+sops|-e encrypt;-d decrypt;-i in place;-r rotate;--age age recipients;--kms KMS arn;--pgp PGP fingerprint;--input-type input type;--output-type output type;--extract extract path;--set set
+hyperfine|-w warmup;-r runs;-m min runs;-M max runs;-N no shell;-p prepare;-c cleanup;--export-json JSON;--export-markdown markdown;-i ignore failure;-s style;-L parameter list;-P parameter scan
+entr|-c clear;-r restart;-d track dirs;-p postpone;-s shell;-z exit after;-n non-interactive
+bat|-n numbers;-p plain;-A show all;-l language;--paging paging;--style style;-d diff;-r line range;-H highlight line;--theme theme;--list-themes themes;-L languages;--color colour
+eza|-l long;-a all;-T tree;-L level;--git git status;--icons icons;-h header;-s sort;-r reverse;-d dirs;--group-directories-first dirs first;-1 one per line;-G grid;--total-size total size
+fd|-e extension;-t type;-H hidden;-I no ignore;-x exec;-X exec batch;-i ignore case;-s case sensitive;-g glob;-p full path;-d max depth;-E exclude;-a absolute;-l list details;-0 null separated;--changed-within changed within;-S size
+pwsh|-c command;-Command command;-File script file;-NoProfile no profile;-NoExit no exit;-NonInteractive non-interactive;-ExecutionPolicy execution policy;-WorkingDirectory working dir;-Version version;-Login login shell;-EncodedCommand base64 command
+powershell|-Command command;-File script file;-NoProfile no profile;-NoExit no exit;-NonInteractive non-interactive;-ExecutionPolicy execution policy;-WindowStyle window style;-EncodedCommand base64 command;-Version version
+bash|-c command;-l login;-i interactive;-x trace;-e exit on error;-u unset error;-n syntax check;--norc no rc;--noprofile no profile;-s stdin;-v verbose;--posix POSIX;-o option;--version version
+zsh|-c command;-l login;-i interactive;-x trace;-e exit on error;-u unset error;-n syntax check;-f no rc;-d no global rc;-o option;--version version;-s stdin;-v verbose
+fish|-c command;-l login;-i interactive;-P private;-N no config;--no-config no config;-d debug;-C init command;-v version;-p profile
+sh|-c command;-l login;-i interactive;-x trace;-e exit on error;-u unset error;-n syntax check;-s stdin;-v verbose
+script|-a append;-c command;-q quiet;-f flush;-t timing;-e return exit code;-T timing file;-o output limit
+at|-l list;-r remove;-d delete;-f file;-m mail;-q queue;-v show time;-c cat job;-t time
+logrotate|-d debug;-f force;-v verbose;-s state file;-m mail command
+logger|-t tag;-p priority;-s stderr too;-i PID;-f file;-n server;-P port;-d UDP;-T TCP;--journald journald;-e skip empty
+xrandr|--output output;--mode mode;--auto auto;--off off;--primary primary;--left-of left of;--right-of right of;--above above;--below below;--rotate rotate;--scale scale;--rate rate;-q query;--listmonitors monitors;--brightness brightness;--dpi DPI;--same-as mirror
+notify-send|-u urgency;-t timeout;-i icon;-a app name;-c category;-h hint;-p print id;-r replace id;-w wait;-A action;-e transient
+open|-a application;-e TextEdit;-t default text editor;-R reveal in Finder;-n new instance;-g background;-b bundle id;-W wait;-f read stdin;-u URL;--args arguments
+xclip|-selection selection;-sel selection;-o output;-i input;-l loops;-t target;-r remove newline;-f filter
+xsel|-b clipboard;-p primary;-s secondary;-o output;-i input;-c clear;-a append;-k keep;-x exchange;-d delete
+yt-dlp|-f format;-F list formats;-o output template;-x extract audio;--audio-format audio format;--audio-quality audio quality;-a batch file;-i ignore errors;--write-subs subtitles;--write-auto-subs auto subs;--sub-langs sub languages;--embed-subs embed subs;--embed-thumbnail embed thumbnail;--embed-metadata embed metadata;--playlist-items playlist items;--yes-playlist playlist;--no-playlist no playlist;-S sort formats;--merge-output-format merge format;--cookies cookies;--cookies-from-browser browser cookies;-U update;--list-subs list subs;--download-archive archive;-r rate limit;-q quiet;--progress progress;-P paths
+mpv|--no-video audio only;--fs fullscreen;--loop loop;--shuffle shuffle;--volume volume;--speed speed;--start start time;--sub-file subtitles;--ytdl-format yt-dlp format;--playlist playlist;--mute mute;--no-audio no audio;--vo video output;--ao audio output;--hwdec hw decode;--really-quiet quiet;--pause start paused;--geometry geometry;--ontop on top;--no-border no border;--keep-open keep open;--save-position-on-quit save position
+convert|-resize resize;-quality quality;-crop crop;-rotate rotate;-flip flip;-flop flop;-strip strip metadata;-background background;-gravity gravity;-extent extent;-density density;-trim trim;-format format;-colorspace colorspace;-negate negate;-blur blur;-sharpen sharpen;-append append vertically;+append append horizontally;-flatten flatten;-alpha alpha;-fuzz fuzz;-transparent transparent colour;-border border;-annotate annotate;-pointsize point size;-font font;-fill fill;-auto-orient auto orient;-thumbnail thumbnail;-delay delay;-loop loop
+exiftool|-all= strip all;-overwrite_original overwrite;-r recursive;-s short tags;-S very short;-G group;-a all duplicates;-u unknown;-j JSON;-csv CSV;-T tab;-d date format;-ext extension;-o output;-tagsFromFile copy tags;-P preserve mtime;-q quiet;-v verbose;-n numeric;-g group by;-common common tags;-time:all time tags;-AllDates all dates
+qrencode|-o output;-s size;-l level;-m margin;-t type (PNG, ANSI, UTF8, SVG);-r read file;-v version;-d DPI;-8 8-bit;-i ignore case;-k kanji;-c casesensitive;-M micro QR;--foreground foreground;--background background
+uuidgen|-r random;-t time;-m MD5;-s SHA1;-n namespace;-N name;-x hex;-C count
+pwgen|-s secure;-y symbols;-n numerals;-c capitals;-B no ambiguous;-1 one per line;-A no capitals;-0 no numerals;-v no vowels;-N count;-r remove chars;-C columns
+cd|-L logical;-P physical;- previous;~ home;.. parent
+pwd|-L logical;-P physical
+clear|-x keep scrollback;-T terminal type;-V version
+test|-e exists;-f regular file;-d directory;-r readable;-w writable;-x executable;-s non-empty;-L symlink;-z empty string;-n non-empty string;-eq equal;-ne not equal;-lt less than;-le less or equal;-gt greater than;-ge greater or equal;-nt newer than;-ot older than;-ef same file;-a and;-o or;! not
+set|-e exit on error;-u unset error;-x trace;-o pipefail pipefail;-o option;+e no exit on error;+x no trace;-v verbose;-n no exec;-f no glob;-C no clobber;-a allexport;-m monitor;-B braceexpand;-P physical;-T functrace;-E errtrace;-- end options
+ulimit|-a all;-c core size;-d data size;-f file size;-l locked memory;-m memory;-n open files;-p pipe size;-s stack size;-t CPU time;-u processes;-v virtual memory;-x file locks;-H hard;-S soft
+read|-a array;-d delimiter;-e readline;-i initial text;-n nchars;-N exactly nchars;-p prompt;-r raw;-s silent;-t timeout;-u fd
+declare|-a array;-A assoc array;-f functions;-F function names;-g global;-i integer;-l lowercase;-n nameref;-r readonly;-t trace;-u uppercase;-x export;-p print
+compgen|-c commands;-a aliases;-b builtins;-k keywords;-f files;-d directories;-u users;-g groups;-v variables;-e exported;-j jobs;-s services;-A action;-W wordlist;-F function;-C command;-X filter;-P prefix;-S suffix;-o option
+trap|-l list signals;-p print;EXIT on exit;ERR on error;INT SIGINT;TERM SIGTERM;HUP SIGHUP;DEBUG debug;RETURN return
+tput|clear clear;reset reset;cols columns;lines lines;colors colours;bold bold;sgr0 reset attributes;setaf foreground;setab background;smcup alt screen;rmcup main screen;civis hide cursor;cnorm show cursor;cup cursor position;el clear to EOL;ed clear to EOS;smso standout;rmso end standout;smul underline;rmul end underline;rev reverse;bel bell;longname long name
+stty|-a all;-g save;sane sane;raw raw;cooked cooked;echo echo;-echo no echo;icanon canonical;-icanon non-canonical;rows rows;cols columns;size size;speed speed;erase erase char;intr interrupt char;kill kill char;eof EOF char;ixon flow control;-ixon no flow control;-F device
+7z|a add;x extract with paths;e extract;l list;t test;u update;d delete;b benchmark;h hash;-o output dir;-p password;-r recursive;-t type;-m method;-mx compression level;-mhe encrypt headers;-v volume size;-x exclude;-i include;-y yes
+unrar|x extract with paths;e extract;l list;t test;p print;v verbose list;-p password;-o+ overwrite;-o- no overwrite;-y yes;-r recursive;-x exclude;-inul no messages;-kb keep broken
+cmake|-S source dir;-B build dir;-G generator;-D define variable;--build build;--install install;--preset preset;--list-presets list presets;-E command mode;-P script mode;--fresh fresh configure;--config config;--target target;-j parallel;--clean-first clean first;--verbose verbose;--prefix install prefix;--version version
+just|--list list recipes;-l list recipes;--show show recipe;-s show recipe;--summary summary;--choose choose;--dry-run dry run;-n dry run;--evaluate evaluate;--variables variables;--fmt format;--check check;--init init;--edit edit;-e edit;--dump dump;--justfile justfile;-f justfile;--working-directory working dir;-d working dir;--set set variable;--verbose verbose;-v verbose;--quiet quiet;-q quiet
+grpcurl|list list;describe describe;-plaintext plaintext;-insecure insecure;-d data;-H header;-proto proto file;-import-path import path;-protoset protoset;-authority authority;-cacert CA cert;-cert cert;-key key;-v verbose;-format format;-emit-defaults emit defaults;-max-time max time;-connect-timeout connect timeout
+pandoc|-f from format;-t to format;-o output;-s standalone;--pdf-engine PDF engine;--toc table of contents;-N number sections;-V variable;-M metadata;--template template;-c CSS;--css CSS;-H header;--highlight-style highlight style;--filter filter;-L Lua filter;--extract-media extract media;--bibliography bibliography;--csl CSL;--citeproc citeproc;--mathjax MathJax;--katex KaTeX;--wrap wrap;--columns columns;--embed-resources embed resources;--list-input-formats input formats;--list-output-formats output formats;--verbose verbose;--quiet quiet;--version version
+showmount|-e exports;-a all mounts;-d directories;--no-headers no headers
+smbclient|-L list shares;-U user;-W workgroup;-N no password;-c command;-m max protocol;-p port;-I IP;-A auth file;-k kerberos;-E stderr;-d debug;-D directory;-T tar;-g grepable;-e encrypt
+ldapsearch|-x simple auth;-H URI;-D bind DN;-W prompt password;-b base DN;-s scope;-LLL LDIF without comments;-Z StartTLS;-ZZ require StartTLS;-o option;-z size limit;-l time limit;-a deref;-A attrs only;-S sort;-Y SASL mechanism;-U SASL user;-N no reverse DNS;-n dry run;-v verbose;-d debug;-f file;-h host;-p port
+kinit|-f forwardable;-r renewable;-l lifetime;-k keytab;-t keytab file;-c cache;-R renew;-V verbose;-p proxiable;-a addresses;-A no addresses;-S service;-n anonymous;-E enterprise
+klist|-e enctypes;-f flags;-a addresses;-A all caches;-l list caches;-k keytab;-s silent;-c cache;-t timestamps;-K keys;-V version
+sensors|-f Fahrenheit;-A no adapter;-u raw;-j JSON;-s set;-c config
+nvidia-smi|-l loop;-q query;-i GPU id;--query-gpu query fields;--format format;-L list GPUs;-pm persistence mode;-pl power limit;-r reset
+sestatus|-v verbose;-b booleans
+chcon|-t type;-u user;-r role;-R recursive;-v verbose;--reference reference;-h affect symlinks
+restorecon|-R recursive;-v verbose;-n dry run;-F force;-i ignore missing;-p progress;-e exclude
+semanage|-a add;-d delete;-m modify;-l list;-t type;-p protocol
+auditctl|-l list rules;-w watch path;-p permissions;-k key;-a append rule;-A prepend rule;-d delete rule;-D delete all;-s status;-e enable;-b backlog;-f failure mode;-S syscall;-F field;-R read rules file
+getfacl|-a access ACL;-d default ACL;-c no comments;-e effective rights;-E no effective;-s skip base;-R recursive;-L logical;-P physical;-t tabular;-n numeric;-p absolute names
+setfacl|-m modify;-x remove;-b remove all;-k remove default;-d default;-R recursive;-L logical;-P physical;-n no mask;--mask recalc mask;--set set;--set-file set from file;-M modify from file;-X remove from file;--restore restore;--test test
+losetup|-a all;-d detach;-D detach all;-f find free;-j associated;-l list;-P partscan;-r read-only;-o offset;--sizelimit size limit;--show show device;-J JSON;-v verbose
+cryptsetup|-y verify passphrase;--type type;-c cipher;-s key size;--key-file key file
+mdadm|--create create;--assemble assemble;--detail detail;--examine examine;--manage manage;--add add;--remove remove;--fail fail;--stop stop;--run run;--scan scan;--monitor monitor;--grow grow;--zero-superblock zero superblock;-l level;-n raid devices;-x spare devices;-c chunk;-b bitmap;-v verbose
+lvcreate|-L size;-l extents;-n name;-s snapshot;-T thin;-V virtual size;-i stripes;-I stripe size;-m mirrors;--type type;-y yes
+lvextend|-L size;-l extents;-r resize fs;-n no fsck;-f force;-t test;-v verbose;-y yes
+tune2fs|-l list;-L label;-c max mount count;-i interval;-m reserved percent;-r reserved blocks;-o mount options;-O features;-e error behaviour;-j add journal;-U UUID;-E extended options
+resize2fs|-f force;-F flush;-M minimize;-P print minimum;-p progress
+parted|-l list;-s script;-a alignment;-m machine
+blkid|-o output format;-s tag;-t token;-p probe;-i I/O limits;-c cache file;-g garbage collect;-k list filesystems;-L label;-U UUID
+findmnt|-t type;-o output;-l list;-r raw;-J JSON;-D df style;-n no headings;-T target;-S source;-s fstab;-m mtab;-k kernel;-R submounts
+swapon|-a all;-s summary;-p priority;-d discard;-e ifexists;-o options;-L label;-U UUID;-v verbose;--show show
+swapoff|-a all;-v verbose;-L label;-U UUID
+hwclock|-r show;-s hctosys;-w systohc;--set set;--date date;-u UTC;-l localtime;--adjust adjust;-v verbose;-f RTC device
+loginctl|-a all;-p property;--value value only;--no-pager no pager;--no-legend no legend;-l full;-n lines;-o output;-s signal
+hdparm|-I identify;-t timing;-T cache timing;-i info;-y standby;-Y sleep;-B APM;-S spindown
+ethtool|-s settings;-i driver info;-S statistics;-k offload;-K set offload;-a pause;-A set pause;-c coalesce;-C set coalesce;-g ring;-G set ring;-l channels;-L set channels;-p identify;-t test;-r restart;-m module info;-P permanent address;-T timestamping
+tshark|-i interface;-r read file;-w write file;-f capture filter;-Y display filter;-T output format;-e field;-E field options;-c count;-a autostop;-b ring buffer;-D list interfaces;-V verbose;-x hex;-q quiet;-z statistics;-n no resolve;-d decode as;-o preference;-l flush;-p no promiscuous;-s snaplen;--color colour;--export-objects export objects
+ftp|-i no interactive;-n no auto-login;-v verbose;-p passive;-g no globbing;-d debug;-4 IPv4;-6 IPv6;-A active;-e no editing;-t trace;-P port
+sftp|-P port;-i identity;-b batch file;-r recursive;-p preserve;-C compression;-q quiet;-v verbose;-o option;-F config;-J jump host;-l limit;-B buffer size;-R requests;-a resume;-4 IPv4;-6 IPv6
+telnet|-l user;-a auto login;-e escape char;-8 8-bit;-E no escape;-L 8-bit output;-K no auto login;-d debug;-4 IPv4;-6 IPv6
+mosh|--ssh SSH command;-p port;--server server command;--predict prediction mode;-a always predict;-n never predict;--no-init no init;-4 IPv4;-6 IPv6
+ncat|-l listen;-p port;-v verbose;-z scan only;-u UDP;-w timeout;-k keep listening;--ssl SSL;--ssl-cert cert;--ssl-key key;--proxy proxy;--proxy-type proxy type;-e exec;-c sh exec;-m max conns;-d delay;-o output;-x hex dump;-i idle timeout;-s source;-4 IPv4;-6 IPv6;-U unix;--broker broker;--chat chat;--allow allow;--deny deny;-C CRLF;-t telnet;-n no DNS
+aria2c|-o output;-d directory;-x max connections;-s split;-j max concurrent;-c continue;-i input file;-l log;-q quiet;-V check integrity;-k min split;--max-download-limit limit;--seed-time seed time;--seed-ratio seed ratio;--enable-rpc RPC;-D daemon;--check-certificate check cert;--header header;--user-agent user agent;--all-proxy proxy;--max-tries max tries;--retry-wait retry wait;--timeout timeout;--allow-overwrite overwrite
+iftop|-i interface;-n no DNS;-N no ports;-P show ports;-B bytes;-b no bars;-F net filter;-f filter;-p promiscuous;-c config;-t text;-s seconds;-L lines;-m max bandwidth;-o sort order
+nethogs|-d delay;-v view mode;-c count;-t trace;-p promiscuous;-s sort sent;-a all devices;-C capture;-b bugs;-f filter;-P PID;-l list
+tc|-s statistics;-d details;-r raw;-p pretty;-b batch;-n netns;-j JSON;-c colour
+arp|-a all;-n numeric;-v verbose;-d delete;-s set;-i interface;-f file;-D device
+route|-n numeric;-e extended;-v verbose;-A family;-C cache;add add;del delete;-net network;-host host;gw gateway;netmask netmask;dev device;metric metric;default default
+ifconfig|-a all;-s short;-v verbose;up up;down down;netmask netmask;broadcast broadcast;mtu MTU;hw hardware address;promisc promiscuous;multicast multicast;txqueuelen TX queue length
+nslookup|-type= record type;-query= record type;-port= port;-timeout= timeout;-retry= retries;-debug debug;-vc TCP;-domain= domain
+host|-a all;-t type;-v verbose;-4 IPv4;-6 IPv6;-C SOA check;-d debug;-l list zone;-r no recursion;-T TCP;-U UDP;-W wait;-R retries;-c class;-p port
+whois|-h host;-p port;-H hide legal;-r no recursion;-a all databases;-i inverse;-T type;-K key;-x exact;-b brief;-B no filter;-G no grouping;-d reverse delegation;-q query;-v verbose template
+ip6tables|-L list;-A append;-I insert;-D delete;-F flush;-P policy;-t table;-n numeric;-v verbose;-p protocol;--dport destination port;--sport source port;-s source;-d destination;-j jump target;-i in interface;-o out interface;-m match;-S list rules;--line-numbers line numbers
+openvpn|--config config;--client client;--dev device;--proto protocol;--remote remote;--port port;--ca CA;--cert cert;--key key;--auth-user-pass user/pass;--verb verbosity;--log log;--daemon daemon;--route route;--redirect-gateway redirect gateway;--keepalive keepalive;--status status;--genkey genkey;--version version
+sshuttle|-r remote;-e ssh command;-l listen;-x exclude;-N auto nets;-H auto hosts;-D daemon;-v verbose;--dns DNS;--method method;--python python;--pidfile pid file;--disable-ipv6 no IPv6
+autossh|-M monitor port;-f background;-V version
+gunzip|-c stdout;-f force;-k keep;-l list;-q quiet;-r recursive;-t test;-v verbose
+bzip2|-d decompress;-z compress;-k keep;-f force;-t test;-c stdout;-q quiet;-v verbose;-s small;-1 fast;-9 best
+unxz|-k keep;-f force;-t test;-c stdout;-q quiet;-v verbose;-T threads;-l list
+pigz|-d decompress;-k keep;-p processes;-1 fast;-9 best;-b block size;-c stdout;-f force;-r recursive;-t test;-l list;-K zip;-z zlib;-i independent;-q quiet;-v verbose;-R rsyncable
+zgrep|-i ignore case;-n line numbers;-v invert;-l files with matches;-c count;-E extended regex;-F fixed strings;-w whole words;-o only matching;-A after;-B before;-C context;-r recursive;-h no filename;-H filename;-q quiet;--color colour
+cpio|-o create;-i extract;-p pass through;-t list;-v verbose;-d make dirs;-m preserve mtime;-u unconditional;-H format;-F file;-I input file;-O output file;-B block size;-c ASCII;-A append;-L follow symlinks;-R owner;-E pattern file;-0 null;-D directory;--quiet quiet
+aptitude|-y yes;-s simulate;-d download only;-f fix broken;-v verbose;-q quiet;-P prompt;-V show versions;-D show deps;-Z show sizes;-W show why;-r recommends;-R no recommends;-t target release;-o option;-F format;-w width;--purge-unused purge unused
+yay|-S install;-Syu full upgrade;-Ss search;-Si info;-R remove;-Rns remove with deps;-Q query;-Qs search installed;-Qi installed info;-Qu updates;-Sc clean cache;-Scc clean all cache;-Sy sync;-G get PKGBUILD;-P print;-Y yay;-U install file;--noconfirm no confirm;--needed needed;--devel devel;--aur AUR only;--repo repo only;--gendb generate db;--stats stats;--news news;--sudoloop sudo loop;--rebuild rebuild;--redownload redownload;--cleanafter clean after;--removemake remove make
+paru|-S install;-Syu full upgrade;-Ss search;-Si info;-R remove;-Rns remove with deps;-Q query;-Qs search installed;-Qi installed info;-Qu updates;-Sc clean cache;-Scc clean all cache;-Sy sync;-G get PKGBUILD;-P print;-L local repo;-B build;-C chroot;-U install file;--noconfirm no confirm;--needed needed;--devel devel;--aur AUR only;--repo repo only;--review review;--noreview no review;--gendb generate db;--stats stats;--news news;--skipreview skip review;--rebuild rebuild;--redownload redownload;--cleanafter clean after;--removemake remove make
+makepkg|-s sync deps;-i install;-c clean;-C clean build;-f force;-r remove deps;-e no extract;-o no build;-d no deps;-g gen integrity;-p PKGBUILD;-A ignore arch;-L log;-R repackage;-S source;--noconfirm no confirm;--needed needed;--asdeps as deps;--nocheck no check;--skipinteg skip integrity;--skippgpcheck skip PGP;--printsrcinfo print SRCINFO;--packagelist package list;--holdver hold version
+emerge|-a ask;-p pretend;-v verbose;-u update;-D deep;-N newuse;-U changed-use;-1 oneshot;-C unmerge;-c depclean;-s search;-S search desc;-f fetch only;-k use pkg;-K use pkg only;-b build pkg;-e emptytree;-n noreplace;-o onlydeps;-O nodeps;-q quiet;-t tree;-j jobs;-l load average;--sync sync;--info info;--resume resume;--skipfirst skip first;--keep-going keep going;--autounmask autounmask;--autounmask-write autounmask write;--backtrack backtrack;--exclude exclude
+nix-shell|-p packages;--packages packages;--run run;--command command;--pure pure;-i interpreter;--arg arg;--argstr arg string;-A attribute;-I include;-E expression;--keep keep;-j jobs;--cores cores;--option option;--show-trace show trace;-v verbose
+pkg|-y yes;-f force;-q quiet;-v verbose;-n dry run;-r repository;-g glob;-x regex;-C case sensitive;-i case insensitive;-d dependencies;-R reverse dependencies;-a all;-o origin;-e exact;-A automatic;-l local;-j jail;-c chroot;-N activated
+xbps-install|-S sync;-u update;-y yes;-f force;-n dry run;-v verbose;-d debug;-A automatic;-D download only;-i ignore config;-I ignore file conflicts;-M memory sync;-R repository;-r rootdir;-c cachedir;-C config;-U unpack only;-V version;-h help
+opkg|install install;remove remove;update update;upgrade upgrade;list list;list-installed list installed;list-upgradable list upgradable;info info;status status;files files;search search;find find;download download;configure configure;print-architecture print arch;depends depends;whatdepends whatdepends;whatprovides whatprovides;whatconflicts whatconflicts;whatreplaces whatreplaces;flag flag;compare-versions compare versions;-d dest;-o offline root;-f config;-t tmp dir;-l lists dir;--force-depends force depends;--force-reinstall force reinstall;--force-overwrite force overwrite;--force-downgrade force downgrade;--force-space force space;--force-maintainer force maintainer;--noaction no action;--download-only download only;--nodeps no deps;--autoremove autoremove;--verbosity verbosity;-V verbosity;-v version;-h help
+winget|--id id;-e exact;--all all;-s source;--silent silent;--accept-package-agreements accept agreements;--accept-source-agreements accept source;-v version;--scope scope;-l location;-i interactive;-h silent;--force force;-n name;--moniker moniker;--tag tag;--cmd command;--upgrade-available upgrade available;--include-unknown include unknown;--pinned pinned;--exact exact;--count count;--header header;--verbose-logs verbose logs;--disable-interactivity disable interactivity;--wait wait;--logs logs;--open-logs open logs;--info info;--help help
+choco|-y yes;--version version;--pre prerelease;-f force;all all;-s source;-x force dependencies;-r limit output;--params params;--ia install args;-o override args;-n not silent;--ignore-checksums ignore checksums;--allow-empty-checksums allow empty checksums;--exact exact;--id-only id only;--by-id-only by id only;--local-only local only;--include-programs include programs;--page page;--page-size page size;--order-by-popularity order by popularity;--approved-only approved only;--download-cache-only download cache only;--not-broken not broken;--detail detail;--prerelease prerelease;-d debug;-v verbose;--trace trace;--nocolor no colour;--accept-license accept license;--confirm confirm;--limit-output limit output;--timeout timeout;--cache-location cache location;--allow-unofficial allow unofficial;--fail-on-standard-error fail on stderr;--use-system-powershell use system PowerShell;--no-progress no progress;--proxy proxy;--proxy-user proxy user;--proxy-password proxy password;--proxy-bypass-list proxy bypass list;--proxy-bypass-on-local proxy bypass on local;--log-file log file;--skip-compatibility-checks skip compatibility;--ignore-detected-reboot ignore detected reboot;--exit-when-reboot-detected exit when reboot;-h help
+scoop|-g global;-k no cache;-u no update scoop;-s skip hash check;-a arch;-i independent;-p purge;-f force;-q quiet;-v verbose;-h help
