@@ -33,6 +33,7 @@
 pub mod account;
 pub mod agent;
 pub mod api;
+pub mod autocomplete;
 pub mod cloud;
 pub mod error;
 pub mod fido2;
