@@ -22,6 +22,8 @@ crates/
                    X25519 sealed boxes, BIP39-style recovery key)
   termoso-proto    API request/response types shared by server and clients
   termoso-server   the API server (axum + PostgreSQL + Redis + S3)
+  termoso-bridge   API Bridge: headless client for your infrastructure that turns a
+                   Termius-compatible REST API into encrypted vault entities
   termoso-wasm     termoso-crypto compiled to WebAssembly for the web cabinet
   termoso-core     client engine: encrypted local store, SSH/SFTP/Telnet/PTY, port
                    forwarding, SSH agent, account + sync client
@@ -29,7 +31,8 @@ apps/
   desktop/         Tauri 2 desktop app (Linux, Windows); Rust owns state, storage and
                    sessions, React + MUI is the rendering layer only
 web/               web cabinet (Vite + React + MUI); all crypto runs in the WASM module
-deploy/            Dockerfile, docker-compose for production and for local development
+deploy/            Dockerfile, Dockerfile.bridge, docker-compose for production and dev
+docs/              API Bridge, releasing, benchmarks
 ```
 
 ## Security model (short)
@@ -60,6 +63,9 @@ deploy/            Dockerfile, docker-compose for production and for local devel
   approval by e-mail.
 * Session logs (terminal recordings) are encrypted client-side and uploaded via
   pre-signed URLs to S3-compatible storage.
+* **API Bridge** automation stays zero-knowledge: the bridge container runs in
+  your infrastructure, holds the vault keys and pushes only ciphertext — see
+  [docs/API_BRIDGE.md](docs/API_BRIDGE.md).
 
 ## Running it
 
@@ -219,6 +225,7 @@ All routes live under `/api/v1`. Authenticated routes take
 | history | encrypted command / connection history |
 | logs | session-log upload via pre-signed multipart URLs, listing, deletion |
 | ws | realtime notifications (vault changed, session revoked, account updated) |
+| account/bridges | API bridges: create with sealed vault keys, list, re-seal after rotation, revoke; `bridge/me` for the bridge itself |
 | admin | users (disable, reset MFA, revoke sessions), teams, server settings, stats, e-mail test |
 
 ## License

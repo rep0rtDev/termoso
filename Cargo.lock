@@ -8876,6 +8876,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "termoso-bridge"
+version = "0.1.1"
+dependencies = [
+ "axum",
+ "chrono",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "subtle",
+ "termoso-crypto",
+ "termoso-proto",
+ "thiserror 2.0.20",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "termoso-client"
 version = "0.1.1"
 dependencies = [
@@ -9071,6 +9092,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "subtle",
+ "termoso-bridge",
  "termoso-core",
  "termoso-crypto",
  "termoso-proto",
