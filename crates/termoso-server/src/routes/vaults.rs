@@ -678,6 +678,12 @@ pub async fn rotate_key(
         .bind(new_version)
         .execute(&mut *tx)
         .await?;
+    // Same for API bridges: their owner re-seals the new key from the cabinet.
+    sqlx::query("UPDATE bridge_vaults SET sealed_key = NULL, key_version = $2 WHERE vault_id = $1")
+        .bind(id)
+        .bind(new_version)
+        .execute(&mut *tx)
+        .await?;
     for m in &req.members {
         sqlx::query("UPDATE vault_members SET sealed_key = $3, key_version = $4 WHERE vault_id = $1 AND user_id = $2")
             .bind(id)

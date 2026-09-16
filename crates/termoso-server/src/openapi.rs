@@ -68,6 +68,11 @@ impl Modify for BearerAuth {
         crate::routes::account::put_settings,
         crate::routes::account::devices,
         crate::routes::account::revoke_device,
+        crate::routes::bridges::list,
+        crate::routes::bridges::create,
+        crate::routes::bridges::set_vaults,
+        crate::routes::bridges::revoke,
+        crate::routes::bridges::me,
         crate::routes::sshid::get,
         crate::routes::sshid::create,
         crate::routes::sshid::delete,
@@ -154,6 +159,7 @@ impl Modify for BearerAuth {
         (name = "realtime", description = "WebSocket notifications"),
         (name = "live", description = "Multiplayer: end-to-end encrypted live terminal relay"),
         (name = "sshid", description = "SSH ID: public handle listing device-bound SSH public keys"),
+        (name = "bridges", description = "API bridges: headless clients that encrypt hosts/groups/credentials locally and sync them"),
         (name = "admin", description = "Server administration"),
     )
 )]

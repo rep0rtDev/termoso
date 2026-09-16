@@ -572,6 +572,18 @@ impl TestServer {
         self.forget(&format!("sess:{hash}")).await;
     }
 
+    /// Make the session look idle so the next request records a fresh
+    /// `last_used_at` (touches are throttled to once per few minutes).
+    pub async fn age_last_used(&self, token: &str) {
+        let hash = termoso_server::util::hash_token(token);
+        self.sql(
+            "UPDATE sessions SET last_used_at = now() - interval '10 minutes' WHERE token_hash = $1",
+            &hash,
+        )
+        .await;
+        self.forget(&format!("sess:{hash}")).await;
+    }
+
     /// Lift the per-address email rate limit so a long scenario can keep
     /// receiving mail.
     pub async fn reset_email_limit(&self, email: &str) {

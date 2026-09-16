@@ -20,6 +20,7 @@ use crate::error::{ApiResult, Error};
 use crate::events;
 use crate::extract::{Auth, Json as Body};
 use crate::ratelimit;
+use crate::routes::bridges;
 use crate::routes::vaults::{self, Access};
 use crate::state::AppState;
 
@@ -163,9 +164,13 @@ pub async fn push(
         .map(|c| c.vault_id)
         .collect::<HashSet<_>>()
     {
-        let a = vaults::require_write(&state, vid, auth.user_id())
-            .await
-            .ok();
+        let a = if bridges::in_scope(&state, &auth, vid).await? {
+            vaults::require_write(&state, vid, auth.user_id())
+                .await
+                .ok()
+        } else {
+            None
+        };
         access.insert(vid, a);
     }
 
@@ -266,9 +271,13 @@ pub async fn push(
         let a = match access.get(&e.vault_id) {
             Some(a) => a.clone(),
             None => {
-                let a = vaults::require_write(&state, e.vault_id, auth.user_id())
-                    .await
-                    .ok();
+                let a = if bridges::in_scope(&state, &auth, e.vault_id).await? {
+                    vaults::require_write(&state, e.vault_id, auth.user_id())
+                        .await
+                        .ok()
+                } else {
+                    None
+                };
                 access.insert(e.vault_id, a.clone());
                 a
             }
@@ -345,6 +354,9 @@ pub async fn pull(
     for (vault_id, since) in wanted {
         cursors.insert(vault_id, since);
         if has_more {
+            continue;
+        }
+        if !bridges::in_scope(&state, &auth, vault_id).await? {
             continue;
         }
         let Ok(a) = vaults::access(&state.db, vault_id, auth.user_id()).await else {

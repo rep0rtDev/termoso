@@ -107,6 +107,10 @@ pub mod payload {
             /// Sort order.
             #[serde(default)]
             pub sort_order: i32,
+            /// Id of the group in the system that created it through an API
+            /// bridge (CMDB, cloud inventory); lets the bridge find it again.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub external_id: Option<String>,
         }
     }
 
@@ -161,6 +165,10 @@ pub mod payload {
             /// Sort order.
             #[serde(default)]
             pub sort_order: i32,
+            /// Id of the host in the system that created it through an API
+            /// bridge (CMDB, cloud inventory); lets the bridge find it again.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub external_id: Option<String>,
         }
     }
 

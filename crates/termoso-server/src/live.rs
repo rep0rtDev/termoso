@@ -469,7 +469,7 @@ async fn serve(state: AppState, session_id: Uuid, mut socket: WebSocket) -> anyh
         _ => return close_with(&mut socket, "auth_required", "First frame must be auth").await,
     };
     let info = match session::validate(&state, &token).await {
-        Ok(i) if !i.disabled => i,
+        Ok(i) if !i.disabled && i.bridge_id.is_none() => i,
         _ => return close_with(&mut socket, codes::UNAUTHORIZED, "Invalid session").await,
     };
     let row = match load(&state, session_id).await {
