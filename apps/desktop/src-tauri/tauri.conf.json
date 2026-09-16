@@ -40,7 +40,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "rpm", "appimage", "nsis", "msi"],
+    "targets": ["deb", "rpm", "appimage", "nsis", "msi", "app", "dmg"],
     "category": "DeveloperTool",
     "shortDescription": "SSH, SFTP and terminal client",
     "longDescription": "Termoso is a free, open-source, self-hostable SSH/SFTP client with end-to-end encrypted sync and no telemetry.",

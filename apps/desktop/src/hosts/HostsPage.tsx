@@ -100,6 +100,7 @@ import { TeamSteps } from "@/team/TeamSteps";
 import { TagChip, tagColorMap } from "./TagChip";
 import { connectActions } from "./ConnectSplit";
 import { useHostDnd } from "./dnd";
+import { IS_MAC } from "@/lib/platform";
 import {
   hostLink,
   looksLikeTarget,
@@ -965,7 +966,7 @@ export function HostsPage() {
                 Remove
               </Button>
               <Box sx={{ flex: 1 }} />
-              <Tooltip title="Select all (Ctrl+A)">
+              <Tooltip title={`Select all (${IS_MAC ? "Cmd" : "Ctrl"}+A)`}>
                 <IconButton
                   size="small"
                   aria-label="Select all"
