@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -28,13 +29,16 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -52,6 +56,7 @@ import com.termoso.android.ui.components.UserAvatar
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.core.LiveParticipantCard
 import com.termoso.core.isLiveLink
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -193,8 +198,29 @@ private fun Participants(
                 UserAvatar(repo, userId = p.userId, tag = p.avatar, name = name)
             }
             if (onControl != null && !p.isHost) {
-                ListRow(title = name, subtitle = role, leading = avatar) {
-                    Switch(checked = p.canWrite, onCheckedChange = { onControl(p, it) })
+                key(p.userId) {
+                    // The grant round-trips through the server; show the
+                    // requested state until the participant list catches up.
+                    var pending by remember { mutableStateOf<Boolean?>(null) }
+                    LaunchedEffect(p.canWrite) { pending = null }
+                    LaunchedEffect(pending) {
+                        if (pending != null) {
+                            delay(4_000)
+                            pending = null
+                        }
+                    }
+                    ListRow(
+                        title = name,
+                        subtitle = role,
+                        leading = avatar,
+                        modifier = Modifier.toggleable(
+                            value = pending ?: p.canWrite,
+                            role = Role.Switch,
+                            onValueChange = { on -> pending = on; onControl(p, on) },
+                        ),
+                    ) {
+                        Switch(checked = pending ?: p.canWrite, onCheckedChange = null)
+                    }
                 }
             } else {
                 ListRow(title = name, subtitle = role, leading = avatar)

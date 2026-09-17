@@ -1,13 +1,17 @@
 package com.termoso.android.ui.theme
 
 import android.app.Activity
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
@@ -65,15 +69,33 @@ private val LightScheme = lightColorScheme(
     onError = Color.White,
 )
 
-/** `system` / `dark` / `light` — same values as `MobileSettings.appTheme`. */
+/** Material You is available from Android 12. */
+val supportsDynamicColor: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+/**
+ * `appTheme` is `system` / `dark` / `light` — same values as
+ * `MobileSettings.appTheme`. With [dynamicColor] the palette follows the
+ * wallpaper on Android 12+; older devices and the setting off use the fixed
+ * emerald scheme.
+ */
 @Composable
-fun TermosoTheme(appTheme: String = "system", content: @Composable () -> Unit) {
+fun TermosoTheme(
+    appTheme: String = "system",
+    dynamicColor: Boolean = true,
+    content: @Composable () -> Unit,
+) {
     val dark = when (appTheme) {
         "dark" -> true
         "light" -> false
         else -> isSystemInDarkTheme()
     }
-    val scheme = if (dark) DarkScheme else LightScheme
+    val context = LocalContext.current
+    val scheme = when {
+        dynamicColor && supportsDynamicColor ->
+            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        dark -> DarkScheme
+        else -> LightScheme
+    }
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {

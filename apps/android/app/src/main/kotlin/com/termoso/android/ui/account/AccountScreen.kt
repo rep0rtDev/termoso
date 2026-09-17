@@ -64,7 +64,6 @@ import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.aiProviderLabel
 import com.termoso.android.ui.terminal.aiRemainingToday
 import com.termoso.android.ui.theme.Danger
-import com.termoso.android.ui.theme.Emerald
 import com.termoso.android.ui.theme.Warning
 import com.termoso.core.DeviceCard
 import com.termoso.core.SyncState
@@ -468,7 +467,7 @@ fun AccountScreen(
 @Composable
 private fun SyncTile(sync: SyncStatus) {
     when (sync.state) {
-        SyncState.IDLE -> IconTile(Icons.Filled.Sync, tint = Emerald)
+        SyncState.IDLE -> IconTile(Icons.Filled.Sync, tint = MaterialTheme.colorScheme.primary)
         SyncState.SYNCING -> IconTile(Icons.Filled.Sync)
         SyncState.OFFLINE -> IconTile(Icons.Filled.CloudOff, tint = Warning)
         SyncState.ERROR -> IconTile(Icons.Filled.SyncProblem, tint = Danger)

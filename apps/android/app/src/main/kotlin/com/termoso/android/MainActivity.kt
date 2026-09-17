@@ -114,10 +114,16 @@ internal fun sharedUris(intent: Intent): List<Uri> {
 private fun App(container: AppContainer) {
     val vault by container.vault.collectAsStateWithLifecycle()
     var theme by rememberSaveable { mutableStateOf("system") }
-    val openTheme = (vault as? VaultState.Open)
-        ?.repo?.settings?.collectAsStateWithLifecycle()?.value?.appTheme
-    LaunchedEffect(openTheme) { if (openTheme != null) theme = openTheme }
-    TermosoTheme(appTheme = theme) {
+    var dynamic by rememberSaveable { mutableStateOf(true) }
+    val openSettings = (vault as? VaultState.Open)
+        ?.repo?.settings?.collectAsStateWithLifecycle()?.value
+    LaunchedEffect(openSettings?.appTheme, openSettings?.dynamicColor) {
+        if (openSettings != null) {
+            theme = openSettings.appTheme
+            dynamic = openSettings.dynamicColor
+        }
+    }
+    TermosoTheme(appTheme = theme, dynamicColor = dynamic) {
         CompositionLocalProvider(LocalFido2 provides container.fido2) {
             TermosoRoot(container = container, vault = vault)
         }
