@@ -43,18 +43,18 @@ data class SftpUiState(
     val selected: Set<String> = emptySet(),
 ) {
     val selecting: Boolean get() = selected.isNotEmpty()
-    val visible: List<SftpEntry>
-        get() {
-            val filtered = entries.filter { (showHidden || !it.hidden) && (query.isBlank() || it.name.contains(query, ignoreCase = true)) }
-            val byName = compareBy<SftpEntry> { it.name.lowercase() }
-            val cmp: Comparator<SftpEntry> = when (sort) {
-                SftpSort.Name -> byName
-                SftpSort.Date -> compareByDescending<SftpEntry> { it.modifiedMs ?: 0L }.then(byName)
-                SftpSort.Size -> compareByDescending<SftpEntry> { it.size ?: 0uL }.then(byName)
-                SftpSort.Kind -> compareBy<SftpEntry> { it.name.substringAfterLast('.', "").lowercase() }.then(byName)
-            }
-            return filtered.sortedWith(compareByDescending<SftpEntry> { it.isDir }.then(cmp))
+    /** Filtered + sorted view of [entries]; computed once per state instance. */
+    val visible: List<SftpEntry> by lazy {
+        val filtered = entries.filter { (showHidden || !it.hidden) && (query.isBlank() || it.name.contains(query, ignoreCase = true)) }
+        val byName = compareBy<SftpEntry> { it.name.lowercase() }
+        val cmp: Comparator<SftpEntry> = when (sort) {
+            SftpSort.Name -> byName
+            SftpSort.Date -> compareByDescending<SftpEntry> { it.modifiedMs ?: 0L }.then(byName)
+            SftpSort.Size -> compareByDescending<SftpEntry> { it.size ?: 0uL }.then(byName)
+            SftpSort.Kind -> compareBy<SftpEntry> { it.name.substringAfterLast('.', "").lowercase() }.then(byName)
         }
+        filtered.sortedWith(compareByDescending<SftpEntry> { it.isDir }.then(cmp))
+    }
     val selectedEntries: List<SftpEntry> get() = entries.filter { it.path in selected }
 }
 

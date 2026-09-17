@@ -59,7 +59,6 @@ import com.termoso.android.ui.keychain.SecurityKeyPicker
 import com.termoso.android.ui.keychain.TouchDialog
 import com.termoso.android.ui.keychain.copyText
 import com.termoso.android.ui.keychain.waitingHint
-import com.termoso.android.ui.theme.Emerald
 import com.termoso.core.Fido2Transport
 import com.termoso.core.MfaMethod
 
@@ -211,7 +210,7 @@ private fun ServerProbeLine(probe: ServerProbe) {
             Text("Checking server…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         is ServerProbe.Ok -> Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.Check, contentDescription = null, tint = Emerald, modifier = Modifier.size(16.dp))
+            Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text(
                 "${probe.card.name} ${probe.card.version} · " +

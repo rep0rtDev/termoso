@@ -23,25 +23,28 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -77,6 +80,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -123,6 +128,8 @@ fun TerminalScreen(
     onNewSession: () -> Unit,
     onOpenSnippets: () -> Unit,
     onOpenAccount: () -> Unit,
+    /** Opens Settings → Customize keys from the key panel. */
+    onCustomizeKeys: () -> Unit,
     /** Files shared into the app, offered to the active terminal once; `null` when none. */
     pendingShare: List<Uri>? = null,
     onShareConsumed: () -> Unit = {},
@@ -165,10 +172,16 @@ fun TerminalScreen(
 
     Scaffold(
         contentWindowInsets = WindowInsets(0),
-        snackbarHost = { SnackbarHost(snackbar, Modifier.navigationBarsPadding().imePadding()) },
-        containerColor = MaterialTheme.colorScheme.surface,
+        snackbarHost = { SnackbarHost(snackbar, Modifier.windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))) },
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).statusBarsPadding().imePadding()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .statusBarsPadding()
+                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)),
+        ) {
             SessionChips(
                 sessions = sessions,
                 active = active,
@@ -196,6 +209,7 @@ fun TerminalScreen(
                     settings = settings,
                     onOpenSnippets = onOpenSnippets,
                     onOpenAccount = onOpenAccount,
+                    onCustomizeKeys = onCustomizeKeys,
                     onNewSession = onNewSession,
                     pendingShare = pendingShare,
                     onShareConsumed = onShareConsumed,
@@ -210,6 +224,27 @@ fun TerminalScreen(
     }
 }
 
+private val ChipShape = RoundedCornerShape(12.dp)
+
+/** Square 40dp chrome button of the session header (back, sharing, new). */
+@Composable
+private fun HeaderButton(icon: ImageVector, description: String, tint: Color? = null, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(ChipShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = description, tint = tint ?: MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))
+    }
+}
+
+/**
+ * Session header: back, one pill per session (the active one tinted with the
+ * accent and carrying its close button), sharing and new-session buttons.
+ */
 @Composable
 private fun SessionChips(
     sessions: List<TerminalSession>,
@@ -222,10 +257,15 @@ private fun SessionChips(
 ) {
     val activeId = active?.id
     Row(
-        Modifier.fillMaxWidth().height(52.dp).background(MaterialTheme.colorScheme.surfaceContainer),
+        Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+        HeaderButton(Icons.AutoMirrored.Filled.ArrowBackIos, "Back", onClick = onBack)
         val listState = rememberLazyListState()
         // Bring the active chip into view when the selection changes and again
         // whenever the row is re-measured to a new width (dialogs, IME), which
@@ -245,72 +285,78 @@ private fun SessionChips(
             state = listState,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            items(sessions, key = { it.id }) { s -> SessionChip(s, s.id == activeId) { onSelect(s.id) } }
+            items(sessions, key = { it.id }) { s ->
+                SessionChip(s, s.id == activeId, onClick = { onSelect(s.id) }, onClose = { onClose(s.id) })
+            }
         }
         if (active != null) {
             val shared by active.share.collectAsStateWithLifecycle()
             val live = active.isView || shared != null
-            IconButton(onClick = onLive) {
-                Icon(
-                    Icons.Filled.Groups,
-                    contentDescription = if (active.isView) "Shared terminal" else "Terminal sharing",
-                    tint = if (live) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                )
-            }
-            IconButton(onClick = { onClose(active.id) }) { Icon(Icons.Filled.Close, contentDescription = "Close session") }
+            HeaderButton(
+                Icons.Filled.Groups,
+                if (active.isView) "Shared terminal" else "Terminal sharing",
+                tint = if (live) MaterialTheme.colorScheme.primary else null,
+                onClick = onLive,
+            )
         }
-        IconButton(onClick = onNew) { Icon(Icons.Filled.Add, contentDescription = "New session") }
+        HeaderButton(Icons.Filled.Add, "New session", tint = MaterialTheme.colorScheme.primary, onClick = onNew)
     }
 }
 
+/**
+ * One session pill: distro icon (a spinner while connecting), the name, and —
+ * on the active pill — the close button. State shows through colour: accent
+ * for the active session, error red for a failed one, muted for a closed one.
+ */
 @Composable
-private fun SessionChip(session: TerminalSession, active: Boolean, onClick: () -> Unit) {
+private fun SessionChip(session: TerminalSession, active: Boolean, onClick: () -> Unit, onClose: () -> Unit) {
     val state by session.state.collectAsStateWithLifecycle()
-    val title by session.title.collectAsStateWithLifecycle()
     val detected by session.detectedOs.collectAsStateWithLifecycle()
-    val bg = if (active) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainer
+    val accent = MaterialTheme.colorScheme.primary
+    val bg = if (active) accent.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceContainerHigh
+    val fg = when {
+        state is SessionState.Failed -> MaterialTheme.colorScheme.error
+        active -> accent
+        state is SessionState.Closed -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> MaterialTheme.colorScheme.onSurface
+    }
     Row(
         Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .height(40.dp)
+            .clip(ChipShape)
             .background(bg)
             // Not focusable: a focus grab (e.g. after a dialog closes) would
             // otherwise scroll the row back to the first chip.
             .focusProperties { canFocus = false }
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(start = 10.dp, end = if (active) 6.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (session.isView) {
-            Icon(Icons.Filled.Groups, contentDescription = null, modifier = Modifier.size(26.dp))
-        } else {
-            HostAvatar(detected ?: session.savedOsName, size = 26)
+        when {
+            state is SessionState.Connecting -> CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = fg)
+            session.isView -> Icon(Icons.Filled.Groups, contentDescription = null, tint = fg, modifier = Modifier.size(20.dp))
+            else -> HostAvatar(detected ?: session.savedOsName, size = 22)
         }
-        Column {
-            Text(
-                session.label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(120.dp),
-            )
-            val sub = when (val s = state) {
-                is SessionState.Connecting -> s.detail
-                is SessionState.Connected -> title ?: session.target
-                is SessionState.Closed -> "Closed"
-                is SessionState.Failed -> "Failed"
-            }
-            Text(
-                sub,
-                style = MaterialTheme.typography.labelSmall,
-                color = when (state) {
-                    is SessionState.Failed -> MaterialTheme.colorScheme.error
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(120.dp),
+        Text(
+            session.label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+            color = fg,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 150.dp),
+        )
+        if (active) {
+            Icon(
+                Icons.Outlined.Cancel,
+                contentDescription = "Close session",
+                tint = fg,
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable(onClick = onClose)
+                    .padding(4.dp),
             )
         }
     }
@@ -325,6 +371,7 @@ private fun ActiveSession(
     settings: MobileSettings,
     onOpenSnippets: () -> Unit,
     onOpenAccount: () -> Unit,
+    onCustomizeKeys: () -> Unit,
     onNewSession: () -> Unit,
     pendingShare: List<Uri>?,
     onShareConsumed: () -> Unit,
@@ -432,6 +479,7 @@ private fun ActiveSession(
             input.requestFocus()
             imm?.showSoftInput(input, 0)
             imeShown = true
+            panelExpanded = false
         }
     }
 
@@ -574,7 +622,10 @@ private fun ActiveSession(
                     cursorStyle = settings.cursorStyle,
                     modifier = Modifier.fillMaxSize(),
                     onFrame = { scrolled = it.frame.displayOffset > 0u },
-                    onTap = { imeShown = true },
+                    onTap = {
+                        imeShown = true
+                        panelExpanded = false
+                    },
                     onLongPress = { cell, offset -> menuAt = cell to offset },
                     onZoom = ::zoom,
                     gestures = TerminalGestures(
@@ -650,7 +701,11 @@ private fun ActiveSession(
                 expanded = panelExpanded,
                 collapsed = panelCollapsed,
                 imeShown = imeShown,
-                onToggleExpanded = { panelExpanded = !panelExpanded },
+                onToggleExpanded = {
+                    panelExpanded = !panelExpanded
+                    // The grid stands in for the keyboard, as on iOS: one or the other.
+                    if (panelExpanded && imeShown) toggleIme()
+                },
                 onToggleCollapsed = { panelForced = true },
                 onToggleIme = ::toggleIme,
                 onHiddenInput = { hiddenInput = true },
@@ -658,6 +713,7 @@ private fun ActiveSession(
                 onAskAi = { askAi = true },
                 onPanel = { panelSheet = true },
                 onPaste = ::paste,
+                onCustomize = onCustomizeKeys,
                 onKeyPressed = ::tap,
             )
         }

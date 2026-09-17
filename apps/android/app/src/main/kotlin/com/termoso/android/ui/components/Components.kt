@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -31,11 +32,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.termoso.android.ui.theme.Emerald
 
 /** Rounded surface holding a vertical stack of rows, the Termius/M3 “grouped list” look. */
 @Composable
@@ -46,6 +47,26 @@ fun SectionCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) { Column(content = content) }
+}
+
+/**
+ * One row of a [SectionCard] look emitted as its own lazy-list item: same
+ * container colour, outer corners rounded on the first/last row only. Lets long
+ * lists keep the grouped card look while each row is composed on demand.
+ */
+@Composable
+fun Modifier.groupRow(top: Boolean, bottom: Boolean): Modifier {
+    val r = 16.dp
+    val shape = RoundedCornerShape(
+        topStart = if (top) r else 0.dp,
+        topEnd = if (top) r else 0.dp,
+        bottomStart = if (bottom) r else 0.dp,
+        bottomEnd = if (bottom) r else 0.dp,
+    )
+    return this
+        .fillMaxWidth()
+        .clip(shape)
+        .background(MaterialTheme.colorScheme.surfaceContainer)
 }
 
 /** Small uppercase-ish label above a section (“Groups”, “Hosts”). */
@@ -143,8 +164,18 @@ fun SwitchRow(
     subtitle: String? = null,
     enabled: Boolean = true,
 ) {
-    ListRow(title = title, subtitle = subtitle, modifier = modifier) {
-        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+    ListRow(
+        title = title,
+        subtitle = subtitle,
+        titleColor = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.toggleable(
+            value = checked,
+            enabled = enabled,
+            role = Role.Switch,
+            onValueChange = onCheckedChange,
+        ),
+    ) {
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
 }
 
@@ -166,11 +197,11 @@ fun IconTile(
         modifier = modifier
             .size(size.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(if (selected) Emerald else container),
+            .background(if (selected) MaterialTheme.colorScheme.primary else container),
         contentAlignment = Alignment.Center,
     ) {
         if (selected) {
-            Icon(Icons.Filled.Check, contentDescription = "Selected", tint = Color.White)
+            Icon(Icons.Filled.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.onPrimary)
         } else {
             Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size((size * 0.55).dp))
         }

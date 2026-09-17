@@ -34,7 +34,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.termoso.android.ui.theme.DarkLayers
-import com.termoso.android.ui.theme.Emerald
 
 /** First-launch screen: create an account, sign in (Cloud or self-hosted), or stay offline. */
 @Composable
@@ -114,7 +113,7 @@ private fun Tile(icon: ImageVector) {
         Modifier
             .size(56.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Emerald),
+            .background(MaterialTheme.colorScheme.primary),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp))

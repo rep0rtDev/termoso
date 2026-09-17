@@ -567,6 +567,7 @@ fun MainShell(
                     onBack = { nav.popBackStack() },
                     onOpenSnippets = { nav.navigate(Routes.snippets(null)) },
                     onOpenAccount = { nav.navigate(Routes.ACCOUNT) },
+                    onCustomizeKeys = { nav.navigate(Routes.TERMINAL_INPUT) },
                     pendingShare = pendingShare,
                     onShareConsumed = { container.consumeShare() },
                     onHardwareKeyHook = { container.hardwareKeyHook = it },

@@ -21,7 +21,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.dp
-import com.termoso.android.ui.theme.Emerald
 
 private val vectorCache = HashMap<String, ImageVector>()
 
@@ -49,7 +48,7 @@ fun HostAvatar(osName: String?, modifier: Modifier = Modifier, selected: Boolean
             .clip(RoundedCornerShape(10.dp))
             .background(
                 when {
-                    selected -> Emerald
+                    selected -> MaterialTheme.colorScheme.primary
                     icon != null -> icon.color
                     else -> MaterialTheme.colorScheme.surfaceContainerHighest
                 },

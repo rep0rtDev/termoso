@@ -2,31 +2,42 @@ package com.termoso.android.ui.terminal
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardTab
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DataObject
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardHide
-import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Password
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -61,12 +72,42 @@ fun TerminalController.press(key: PanelKey) {
     }
 }
 
+private val KeyShape = RoundedCornerShape(10.dp)
+private val KeyGap = 6.dp
+private val StripKeyHeight = 40.dp
+private val GridKeyHeight = 44.dp
+private val GridMaxHeight = 232.dp
+private val BarHeight = 46.dp
+private val ChromePadding = PaddingValues(horizontal = 8.dp, vertical = 5.dp)
+
+/** Keys the compact strip always offers, scrolling sideways past the edge. */
+private val stripKeys: List<PanelKey> = listOf(
+    PanelKey.Special("esc", SpecialKey.ESCAPE),
+    PanelKey.Special("tab", SpecialKey.TAB),
+    PanelKey.Modifier("ctrl", StickyMod.CTRL),
+    PanelKey.Modifier("alt", StickyMod.ALT),
+    PanelKey.Special("←", SpecialKey.LEFT),
+    PanelKey.Special("↑", SpecialKey.UP),
+    PanelKey.Special("↓", SpecialKey.DOWN),
+    PanelKey.Special("→", SpecialKey.RIGHT),
+    PanelKey.Special("shift\ntab", SpecialKey.TAB, KeyMods(ctrl = false, alt = false, shift = true)),
+    PanelKey.Text("-"),
+    PanelKey.Text("|"),
+    PanelKey.Text("/"),
+    PanelKey.Text("~"),
+    PanelKey.Text(":"),
+)
+
 /**
- * Extra-keys bar above the soft keyboard. The first row is always there; the
- * ⋯ toggle unfolds [rows] (arrows, navigation, symbols and F-keys by default,
- * or whatever the user arranged in Settings → Customize keys). Ctrl/Alt/Shift
- * are sticky: they apply to the next key or character, then release. With
- * [collapsed] (physical keyboard attached) only the toggle strip remains.
+ * Extra-keys panel above the soft keyboard, laid out like the Termius iOS one.
+ *
+ * Compact: one strip — grid toggle, a sideways-scrolling row of the everyday
+ * keys, paste and the keyboard toggle. Expanded: Customize/Password shortcuts,
+ * a scrollable grid of [rows] (built-in groups or whatever the user arranged in
+ * Settings → Customize keys) as rounded tiles, and a bottom bar with the tool
+ * sheets (snippets, history & themes, Ask AI) and the keyboard toggle.
+ * Ctrl/Alt/Shift are sticky: they apply to the next key, then release. With
+ * [collapsed] (physical keyboard attached) only a thin handle remains.
  */
 @Composable
 fun KeyPanel(
@@ -83,6 +124,7 @@ fun KeyPanel(
     onAskAi: () -> Unit,
     onPanel: () -> Unit,
     onPaste: () -> Unit,
+    onCustomize: () -> Unit,
     onKeyPressed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -97,85 +139,165 @@ fun KeyPanel(
         StickyMod.SHIFT -> controller.shift
     }
 
-    Column(modifier.background(MaterialTheme.colorScheme.surfaceContainer)) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    val chrome = MaterialTheme.colorScheme.surfaceContainer
+    Column(modifier.background(chrome)) {
         if (collapsed) {
-            Row(Modifier.fillMaxWidth().height(28.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().height(30.dp).padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Filled.Keyboard,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(8.dp))
                 Text(
                     "Physical keyboard",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 12.dp).weight(1f),
+                    modifier = Modifier.weight(1f),
                 )
-                IconKey(Icons.Filled.KeyboardArrowUp, "Show key panel", Modifier.width(48.dp).height(28.dp), onClick = onToggleCollapsed)
+                IconKey(Icons.Filled.KeyboardArrowUp, "Show key panel", Modifier.width(44.dp).height(26.dp), onClick = onToggleCollapsed)
             }
             return@Column
         }
-        Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconKey(Icons.Filled.Password, "Hidden input", Modifier.weight(1f)) { onKeyPressed(); onHiddenInput() }
-            IconKey(Icons.Filled.DataObject, "Snippets", Modifier.weight(1f)) { onKeyPressed(); onSnippets() }
-            IconKey(Icons.Filled.AutoAwesome, "Ask AI", Modifier.weight(1f)) { onKeyPressed(); onAskAi() }
-            IconKey(Icons.Filled.History, "History and themes", Modifier.weight(1f)) { onKeyPressed(); onPanel() }
-            IconKey(Icons.Filled.ContentPaste, "Paste", Modifier.weight(1f)) { onKeyPressed(); onPaste() }
-            TextKey(
-                PanelKey.Special("shift\ntab", SpecialKey.TAB, KeyMods(ctrl = false, alt = false, shift = true)),
-                active = false,
-                modifier = Modifier.weight(1f),
-                small = true,
-            ) { press(it) }
-            TextKey(PanelKey.Modifier("Ctrl", StickyMod.CTRL), active(PanelKey.Modifier("Ctrl", StickyMod.CTRL)), Modifier.weight(1f)) { press(it) }
-            TextKey(PanelKey.Special("Esc", SpecialKey.ESCAPE), active = false, Modifier.weight(1f)) { press(it) }
-            TextKey(PanelKey.Special("Tab", SpecialKey.TAB), active = false, Modifier.weight(1f)) { press(it) }
-            Box(Modifier.width(1.dp).height(28.dp).background(MaterialTheme.colorScheme.outlineVariant))
-            IconKey(Icons.Filled.MoreHoriz, "More keys", Modifier.weight(1f), tint = if (expanded) MaterialTheme.colorScheme.primary else null, onClick = onToggleExpanded)
+        if (!expanded) {
+            Row(
+                Modifier.fillMaxWidth().height(BarHeight).padding(ChromePadding),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(KeyGap),
+            ) {
+                IconKey(Icons.Filled.GridView, "More keys", Modifier.width(44.dp), onClick = onToggleExpanded)
+                LazyRow(
+                    Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(KeyGap),
+                ) {
+                    stripKeys.forEach { key ->
+                        item(key = KeyActions.encode(key)) {
+                            TextKey(key, active(key), Modifier.widthIn(min = 44.dp), height = StripKeyHeight) { press(it) }
+                        }
+                    }
+                }
+                IconKey(Icons.Filled.ContentPaste, "Paste", Modifier.width(44.dp)) { onKeyPressed(); onPaste() }
+                IconKey(
+                    if (imeShown) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
+                    "Toggle keyboard",
+                    Modifier.width(44.dp),
+                    onClick = onToggleIme,
+                )
+            }
+            return@Column
+        }
+        Column(Modifier.fillMaxWidth().padding(top = 8.dp, start = 8.dp, end = 8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KeyGap)) {
+                WideKey(Icons.Filled.Tune, "Customize", Modifier.weight(1f)) { onKeyPressed(); onCustomize() }
+                WideKey(Icons.Filled.Password, "Password", Modifier.weight(1f)) { onKeyPressed(); onHiddenInput() }
+            }
+            Spacer(Modifier.height(KeyGap))
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = GridMaxHeight)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(KeyGap),
+            ) {
+                rows.forEach { row -> KeyRow(row, ::active, ::press) }
+                Spacer(Modifier.height(2.dp))
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().height(BarHeight + 4.dp).padding(ChromePadding),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(KeyGap),
+        ) {
+            IconKey(Icons.Filled.GridView, "Hide keys", Modifier.width(52.dp), selected = true, onClick = onToggleExpanded)
+            IconKey(Icons.Filled.DataObject, "Snippets", Modifier.width(52.dp)) { onKeyPressed(); onSnippets() }
+            IconKey(Icons.Filled.History, "History and themes", Modifier.width(52.dp)) { onKeyPressed(); onPanel() }
+            IconKey(Icons.Filled.AutoAwesome, "Ask AI", Modifier.width(52.dp)) { onKeyPressed(); onAskAi() }
+            Spacer(Modifier.weight(1f))
+            Box(Modifier.width(1.dp).height(22.dp).background(MaterialTheme.colorScheme.outlineVariant))
+            Spacer(Modifier.width(2.dp))
             IconKey(
                 if (imeShown) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
                 "Toggle keyboard",
-                Modifier.weight(1f),
+                Modifier.width(52.dp),
                 onClick = onToggleIme,
             )
         }
-        if (expanded) {
-            rows.forEach { row ->
-                Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
-                    row.forEach { key -> TextKey(key, active(key), Modifier.weight(1f)) { press(it) } }
-                }
-            }
+    }
+}
+
+/**
+ * One grid row. Eight keys split 4 | 4 with a wider gutter in the middle, the
+ * way the iOS grid reads as two hands; anything else spreads evenly.
+ */
+@Composable
+private fun KeyRow(row: List<PanelKey>, active: (PanelKey) -> Boolean, press: (PanelKey) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KeyGap)) {
+        row.forEachIndexed { i, key ->
+            if (row.size == 8 && i == 4) Spacer(Modifier.width(KeyGap * 2))
+            TextKey(key, active(key), Modifier.weight(1f), height = GridKeyHeight) { press(it) }
         }
     }
 }
+
+@Composable
+private fun keyContainer(active: Boolean): Color =
+    if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceContainerHigh
 
 @Composable
 private fun TextKey(
     key: PanelKey,
     active: Boolean,
     modifier: Modifier = Modifier,
-    small: Boolean = false,
+    height: androidx.compose.ui.unit.Dp = GridKeyHeight,
     onPress: (PanelKey) -> Unit,
 ) {
+    val twoLine = key.label.contains('\n')
+    val single = when {
+        twoLine -> 11.sp
+        key.label.length <= 3 -> 14.sp
+        key.label.length <= 4 -> 11.sp
+        else -> 10.sp
+    }
     Box(
-        modifier.fillMaxWidth().height(if (small) 44.dp else 40.dp).clickable { onPress(key) },
+        modifier
+            .height(height)
+            .clip(KeyShape)
+            .background(keyContainer(active))
+            .clickable { onPress(key) }
+            .padding(horizontal = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                key.label,
-                fontSize = if (small) 12.sp else 14.sp,
-                lineHeight = if (small) 13.sp else 16.sp,
-                textAlign = TextAlign.Center,
-                fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            )
-            if (key is PanelKey.Modifier) {
-                Box(
-                    Modifier
-                        .padding(top = 2.dp)
-                        .width(20.dp)
-                        .height(2.dp)
-                        .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
-                )
-            }
-        }
+        Text(
+            key.label,
+            fontSize = single,
+            lineHeight = if (twoLine) 12.sp else 16.sp,
+            textAlign = TextAlign.Center,
+            maxLines = if (twoLine) 2 else 1,
+            softWrap = twoLine,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun WideKey(icon: ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Row(
+        modifier
+            .height(GridKeyHeight)
+            .clip(KeyShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -184,10 +306,22 @@ private fun IconKey(
     icon: ImageVector,
     description: String,
     modifier: Modifier = Modifier,
-    tint: androidx.compose.ui.graphics.Color? = null,
+    selected: Boolean = false,
     onClick: () -> Unit,
 ) {
-    Box(modifier.height(40.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-        Icon(icon, contentDescription = description, tint = tint ?: MaterialTheme.colorScheme.onSurface)
+    Box(
+        modifier
+            .height(StripKeyHeight)
+            .clip(KeyShape)
+            .background(if (selected) keyContainer(true) else Color.Transparent)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = description,
+            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(22.dp),
+        )
     }
 }

@@ -94,6 +94,7 @@ import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
+import com.termoso.android.ui.components.groupRow
 import com.termoso.android.ui.hosts.ConfirmDialog
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.PromptDialog
@@ -446,42 +447,49 @@ private fun UploadButton(enabled: Boolean, onFiles: () -> Unit, onFolder: () -> 
     }
 }
 
+/**
+ * One lazy item per entry (keyed by path) so a directory with thousands of
+ * files only composes the rows on screen; the grouped-card look is kept by
+ * rounding the first/last row.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EntryList(state: SftpUiState, onTap: (SftpEntry) -> Unit, onLongPress: (SftpEntry) -> Unit) {
     val entries = state.visible
+    val listState = rememberLazyListState()
+    LaunchedEffect(state.path) { listState.scrollToItem(0) }
+    val dates = remember { DateFormat.getDateInstance(DateFormat.SHORT) }
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
     ) {
-        item {
-            SectionCard {
-                entries.forEachIndexed { i, e ->
-                    if (i > 0) RowDivider()
-                    val selected = e.path in state.selected
-                    ListRow(
-                        title = e.name,
-                        subtitle = listOfNotNull(e.permissions, e.owner).joinToString(" · "),
-                        leading = { IconTile(iconFor(e), selected = selected, tint = tintFor(e)) },
-                        trailing = {
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    if (e.isDir) "—" else formatSize(e.size),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.End,
-                                )
-                                Text(
-                                    formatDate(e.modifiedMs),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.End,
-                                )
-                            }
-                        },
-                        modifier = Modifier.combinedClickable(onClick = { onTap(e) }, onLongClick = { onLongPress(e) }),
-                    )
-                }
+        itemsIndexed(entries, key = { _, e -> e.path }, contentType = { _, _ -> "entry" }) { i, e ->
+            val selected = e.path in state.selected
+            Column(Modifier.groupRow(top = i == 0, bottom = i == entries.lastIndex)) {
+                if (i > 0) RowDivider()
+                ListRow(
+                    title = e.name,
+                    subtitle = listOfNotNull(e.permissions, e.owner).joinToString(" · "),
+                    leading = { IconTile(iconFor(e), selected = selected, tint = tintFor(e)) },
+                    trailing = {
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                if (e.isDir) "—" else formatSize(e.size),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.End,
+                            )
+                            Text(
+                                e.modifiedMs?.let { dates.format(Date(it)) } ?: "",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.End,
+                            )
+                        }
+                    },
+                    modifier = Modifier.combinedClickable(onClick = { onTap(e) }, onLongClick = { onLongPress(e) }),
+                )
             }
         }
     }
@@ -738,7 +746,4 @@ fun formatSize(size: ULong?): String {
     return if (i == 0) "${b.toLong()} B" else String.format(java.util.Locale.US, if (v < 10) "%.1f %s" else "%.0f %s", v, units[i])
 }
 
-fun formatDate(ms: Long?): String {
-    ms ?: return ""
-    return DateFormat.getDateInstance(DateFormat.SHORT).format(Date(ms))
-}
+

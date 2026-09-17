@@ -49,7 +49,6 @@ import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.shell.ShellViewModel
-import com.termoso.android.ui.theme.Emerald
 import com.termoso.core.SyncState
 import com.termoso.core.VaultInfo
 import com.termoso.core.VaultKind
@@ -132,7 +131,7 @@ fun VaultScreen(
                             tint = when {
                                 !signedIn -> MaterialTheme.colorScheme.onSurfaceVariant
                                 sync.state == SyncState.ERROR -> MaterialTheme.colorScheme.error
-                                else -> Emerald
+                                else -> MaterialTheme.colorScheme.primary
                             },
                         )
                     }
