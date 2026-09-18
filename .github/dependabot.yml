@@ -1,0 +1,50 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      rust-minor-patch:
+        update-types: [minor, patch]
+    labels: [area:deps, area:rust]
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      web-minor-patch:
+        update-types: [minor, patch]
+    labels: [area:deps, area:web]
+
+  - package-ecosystem: npm
+    directory: /apps/desktop
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      desktop-minor-patch:
+        update-types: [minor, patch]
+    labels: [area:deps, area:desktop]
+
+  - package-ecosystem: gradle
+    directory: /apps/android
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      android-minor-patch:
+        update-types: [minor, patch]
+    labels: [area:deps, area:android]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    groups:
+      actions:
+        patterns: ["*"]
+    labels: [area:deps, area:ci]
+
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule: { interval: weekly, day: monday }
+    labels: [area:deps, area:deploy]

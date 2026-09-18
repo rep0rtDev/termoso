@@ -15,7 +15,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.ui.components.FormField
+import com.termoso.android.ui.components.TermosoSwitch
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.core.HostItem
 import com.termoso.core.SessionState
@@ -151,7 +151,7 @@ fun RunSnippetDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Switch(checked = paste, onCheckedChange = { paste = it })
+                    TermosoSwitch(checked = paste, onCheckedChange = { paste = it })
                 }
             }
         },

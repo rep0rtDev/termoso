@@ -1,0 +1,24 @@
+# Redis: session cache, rate limits, realtime pub/sub. Snapshot once a
+# minute, never evict silently.
+[Unit]
+Description=Termoso Redis
+
+[Container]
+ContainerName=termoso-redis
+Image=docker.io/library/redis:8-alpine
+Network=termoso.network
+Volume=termoso-redis.volume:/data
+Exec=redis-server --save 60 1 --appendonly no --maxmemory-policy noeviction
+NoNewPrivileges=true
+HealthCmd=redis-cli ping
+HealthInterval=5s
+HealthTimeout=3s
+HealthRetries=20
+Notify=healthy
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

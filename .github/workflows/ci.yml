@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: termoso
           POSTGRES_PASSWORD: termoso
@@ -43,7 +43,7 @@ jobs:
           --health-cmd "pg_isready -U termoso -d termoso"
           --health-interval 5s --health-timeout 3s --health-retries 20
       redis:
-        image: redis:7-alpine
+        image: redis:8-alpine
         ports: ["6379:6379"]
         options: >-
           --health-cmd "redis-cli ping"

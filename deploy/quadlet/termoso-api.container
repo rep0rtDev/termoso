@@ -1,0 +1,37 @@
+# Termoso server: REST + WebSocket API under /api/v1 and the web cabinet on /.
+# Stateless; runs database migrations on start. Put a TLS-terminating reverse
+# proxy in front of 127.0.0.1:8080 (TERMOSO_TRUST_PROXY=true is set in
+# stack.env).
+#
+# Configuration: /etc/termoso/env (server settings, same file as the Compose
+# stack) then /etc/termoso/stack.env (in-stack addresses and credentials).
+[Unit]
+Description=Termoso server
+Requires=termoso-postgres.service termoso-redis.service termoso-minio.service
+After=termoso-postgres.service termoso-redis.service termoso-minio.service
+
+[Container]
+ContainerName=termoso-api
+Image=ghcr.io/rep0rtdev/termoso-server:latest
+# Uncomment to let `podman auto-update` pull new images and restart the unit.
+#AutoUpdate=registry
+Network=termoso.network
+EnvironmentFile=/etc/termoso/env
+EnvironmentFile=/etc/termoso/stack.env
+PublishPort=127.0.0.1:8080:8080
+ReadOnly=true
+Tmpfs=/tmp
+NoNewPrivileges=true
+HealthCmd=/usr/local/bin/termoso-server --healthcheck
+HealthInterval=15s
+HealthTimeout=5s
+HealthRetries=5
+HealthStartPeriod=30s
+Notify=healthy
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

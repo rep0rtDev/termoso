@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
@@ -30,7 +31,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
@@ -52,7 +52,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -81,6 +80,7 @@ import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
+import com.termoso.android.ui.components.TermosoSwitch
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.vault.vaultLabel
 import com.termoso.core.GroupItem
@@ -681,7 +681,7 @@ private fun CopyToVaultDialog(vaults: List<VaultInfo>, onCopy: (String, Boolean)
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Switch(checked = withCredentials, onCheckedChange = { withCredentials = it })
+                    TermosoSwitch(checked = withCredentials, onCheckedChange = { withCredentials = it })
                 }
             }
         },
