@@ -126,25 +126,23 @@ class HostsViewModel(
         }
     }
 
-    fun deleteSelected() = mutate {
-        val ids = _state.value.selected.toList()
+    fun delete(ids: List<String>) = mutate {
         repo.write { deleteHosts(ids) }
     }
 
-    fun duplicateSelected() = mutate {
-        val ids = _state.value.selected.toList()
+    fun duplicate(ids: List<String>) = mutate {
         repo.write { ids.forEach { duplicateHost(it) } }
     }
 
-    fun moveSelected(targetGroup: String?) = mutate {
-        val ids = _state.value.selected.toList()
+    fun move(ids: List<String>, targetGroup: String?) = mutate {
         repo.write { moveHosts(ids, targetGroup) }
     }
 
-    fun copySelected(vaultId: String, withCredentials: Boolean) = mutate {
-        val ids = _state.value.selected.toList()
+    fun copy(ids: List<String>, vaultId: String, withCredentials: Boolean) = mutate {
         repo.write { copyHostsToVault(ids, vaultId, withCredentials) }
     }
+
+    fun duplicateSelected() = duplicate(_state.value.selected.toList())
 
     fun createGroup(label: String) = mutate {
         val vault = currentVault ?: return@mutate
