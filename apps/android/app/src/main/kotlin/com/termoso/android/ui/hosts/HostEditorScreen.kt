@@ -19,8 +19,15 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -46,6 +53,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -64,30 +72,59 @@ import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.SwitchRow
 import com.termoso.android.ui.keychain.SshIdRows
 import com.termoso.android.ui.shell.ShellViewModel
+import com.termoso.android.ui.terminal.copyToClipboard
 import com.termoso.android.ui.vault.vaultLabel
 import com.termoso.core.HostDraft
 import com.termoso.core.IdentityItem
 import com.termoso.core.InheritedInfo
+import com.termoso.core.QuickTarget
 import com.termoso.core.TagItem
 import com.termoso.core.TelnetDraft
 import com.termoso.core.VaultInfo
 import com.termoso.core.moshDefaultServerCommand
 
-/** New / edit host form. */
+/**
+ * New / edit host form. The `⋯` menu saves pending edits before it connects,
+ * so what the terminal dials is what the form shows.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HostEditorScreen(shell: ShellViewModel, hostId: String?, groupId: String?, onClose: () -> Unit) {
+fun HostEditorScreen(
+    shell: ShellViewModel,
+    hostId: String?,
+    groupId: String?,
+    onClose: () -> Unit,
+    prefill: QuickTarget? = null,
+    onConnect: (String) -> Unit = {},
+    onSftp: (String) -> Unit = {},
+    onForward: (String) -> Unit = {},
+) {
     val initialVault by shell.selectedVaultId.collectAsStateWithLifecycle()
     val vm: HostEditorViewModel = viewModel(key = "host/${hostId ?: "new"}") {
-        HostEditorViewModel(shell.repo, hostId, initialVault, groupId)
+        HostEditorViewModel(shell.repo, hostId, initialVault, groupId, prefill)
     }
     val state by vm.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var menu by remember { mutableStateOf(false) }
+    var confirmRemove by remember { mutableStateOf(false) }
+    // What to do with the saved host once the write lands ("Connect" from the menu).
+    var afterSave by remember { mutableStateOf<((String) -> Unit)?>(null) }
 
     LaunchedEffect(state.error) {
         state.error?.let { shell.notify(it); vm.errorShown() }
     }
     LaunchedEffect(state.saved) {
-        if (state.saved) onClose()
+        if (!state.saved) return@LaunchedEffect
+        onClose()
+        val id = state.savedId
+        val next = afterSave
+        if (id != null && next != null) next(id)
+    }
+
+    fun saveThen(action: (String) -> Unit) {
+        if (!state.canSave) return
+        afterSave = action
+        vm.save()
     }
 
     Scaffold(
@@ -103,6 +140,60 @@ fun HostEditorScreen(shell: ShellViewModel, hostId: String?, groupId: String?, o
                             CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
                         } else {
                             Icon(Icons.Filled.Check, contentDescription = "Save")
+                        }
+                    }
+                    val draft = state.draft
+                    val savedId = draft?.id
+                    if (draft != null) {
+                        Box {
+                            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
+                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(if (savedId == null) "Save and connect" else "Connect") },
+                                    leadingIcon = { Icon(Icons.Filled.Terminal, null) },
+                                    enabled = state.canSave,
+                                    onClick = { menu = false; saveThen(onConnect) },
+                                )
+                                if (draft.ssh) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (savedId == null) "Save and open SFTP" else "SFTP") },
+                                        leadingIcon = { Icon(Icons.Filled.FolderOpen, null) },
+                                        enabled = state.canSave,
+                                        onClick = { menu = false; saveThen(onSftp) },
+                                    )
+                                    if (savedId != null) {
+                                        DropdownMenuItem(
+                                            text = { Text("Port forwarding…") },
+                                            leadingIcon = { Icon(Icons.Filled.SwapHoriz, null) },
+                                            onClick = { menu = false; onForward(savedId) },
+                                        )
+                                    }
+                                }
+                                DropdownMenuItem(
+                                    text = { Text("Copy link") },
+                                    leadingIcon = { Icon(Icons.Filled.Link, null) },
+                                    enabled = draft.address.isNotBlank(),
+                                    onClick = {
+                                        menu = false
+                                        copyToClipboard(context, draftLink(draft))
+                                        shell.notify("Link copied")
+                                    },
+                                )
+                                if (savedId != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Duplicate") },
+                                        leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
+                                        enabled = !state.saving,
+                                        onClick = { menu = false; vm.duplicate() },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Remove", color = MaterialTheme.colorScheme.error) },
+                                        leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                                        enabled = !state.saving,
+                                        onClick = { menu = false; confirmRemove = true },
+                                    )
+                                }
+                            }
                         }
                     }
                 },
@@ -132,6 +223,26 @@ fun HostEditorScreen(shell: ShellViewModel, hostId: String?, groupId: String?, o
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         )
+    }
+
+    if (confirmRemove) {
+        ConfirmDialog(
+            title = "Remove host?",
+            text = "The host is removed from this vault. Keys in the keychain stay.",
+            confirm = "Remove",
+            onConfirm = { confirmRemove = false; vm.delete() },
+            onDismiss = { confirmRemove = false },
+        )
+    }
+}
+
+/** `ssh://user@host[:port]` from the form as it stands (Telnet-only hosts give `telnet://`). */
+fun draftLink(d: HostDraft): String {
+    val telnet = d.telnet
+    return if (d.ssh || telnet == null) {
+        hostLink("ssh", d.username, d.address.trim(), d.port?.toInt() ?: 22)
+    } else {
+        hostLink("telnet", "", d.address.trim(), telnet.port?.toInt() ?: 23)
     }
 }
 

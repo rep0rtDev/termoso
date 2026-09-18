@@ -3,6 +3,7 @@ package com.termoso.android.ui.hosts
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -87,7 +88,7 @@ import com.termoso.core.HostItem
 import com.termoso.core.Transport
 import com.termoso.core.VaultInfo
 
-/** Host list for a vault root or a group: search, sort, long-press multi-select, FAB. */
+/** Host list for a vault root or a group: search, sort, per-host actions (long-press / ⋯), multi-select, FAB. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HostsScreen(
@@ -101,6 +102,8 @@ fun HostsScreen(
     /** Connect over an explicit transport (Mosh, the Telnet section). */
     onConnectWith: (String, Transport) -> Unit,
     onSftp: (String) -> Unit,
+    onOpenSftp: (String) -> Unit,
+    onOpenTerminal: () -> Unit,
     onForward: (String) -> Unit,
 ) {
     val vm: HostsViewModel = viewModel(key = "hosts/${groupId ?: "root"}") {
@@ -111,7 +114,8 @@ fun HostsScreen(
     val selectedVaultId by shell.selectedVaultId.collectAsStateWithLifecycle()
     val vault = vaults.firstOrNull { it.id == selectedVaultId }
     val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
-    val openByHost = sessions.mapNotNull { it.hostId }.groupingBy { it }.eachCount()
+    val sftp by shell.sftp.connections.collectAsStateWithLifecycle()
+    val openByHost = (sessions.mapNotNull { it.hostId } + sftp.mapNotNull { it.hostId }).groupingBy { it }.eachCount()
     val presence = rememberVaultPresence(shell, vault)
     val viewersByHost = remember(presence) { viewersByHost(presence) }
 
@@ -123,13 +127,14 @@ fun HostsScreen(
     var searching by remember { mutableStateOf(false) }
     var fabMenu by remember { mutableStateOf(false) }
     var dialog by remember { mutableStateOf<HostsDialog?>(null) }
+    val otherVaults = vaults.filter { it.id != selectedVaultId && !it.locked }
 
     Scaffold(
         topBar = {
             if (state.selecting) {
                 SelectionBar(
                     state = state,
-                    vaults = vaults.filter { it.id != selectedVaultId && !it.locked },
+                    vaults = otherVaults,
                     onClose = vm::clearSelection,
                     onSelectAll = vm::selectAll,
                     onEdit = { onEditHost(state.selected.first()) },
@@ -149,9 +154,9 @@ fun HostsScreen(
                         onForward(id)
                     },
                     onDuplicate = vm::duplicateSelected,
-                    onMove = { dialog = HostsDialog.Move },
-                    onCopy = { dialog = HostsDialog.Copy },
-                    onDelete = { dialog = HostsDialog.Delete },
+                    onMove = { dialog = HostsDialog.Move(state.selected.toList()) },
+                    onCopy = { dialog = HostsDialog.Copy(state.selected.toList()) },
+                    onDelete = { dialog = HostsDialog.Delete(state.selected.toList()) },
                 )
             } else {
                 TopAppBar(
@@ -230,30 +235,50 @@ fun HostsScreen(
                 onHostTap = { host ->
                     if (state.selecting) vm.toggle(host.id) else onConnect(host.id)
                 },
-                onHostLongPress = { vm.toggle(it.id) },
+                onHostLongPress = { host ->
+                    if (state.selecting) vm.toggle(host.id) else dialog = HostsDialog.HostMenu(host)
+                },
+                onHostMenu = { dialog = HostsDialog.HostMenu(it) },
             )
         }
     }
 
     when (val d = dialog) {
         null -> Unit
-        HostsDialog.Delete -> ConfirmDialog(
-            title = if (state.selected.size == 1) "Remove host?" else "Remove ${state.selected.size} hosts?",
+        is HostsDialog.HostMenu -> HostActionsSheet(
+            shell = shell,
+            host = d.host,
+            canCopyToVault = otherVaults.isNotEmpty(),
+            onConnect = { transport -> if (transport == Transport.AUTO) onConnect(d.host.id) else onConnectWith(d.host.id, transport) },
+            onSftp = { onSftp(d.host.id) },
+            onOpenSftp = onOpenSftp,
+            onOpenTerminal = onOpenTerminal,
+            onForward = { onForward(d.host.id) },
+            onEdit = { onEditHost(d.host.id) },
+            onDuplicate = { vm.duplicate(listOf(d.host.id)) },
+            onMove = { dialog = HostsDialog.Move(listOf(d.host.id)) },
+            onCopy = { dialog = HostsDialog.Copy(listOf(d.host.id)) },
+            onSelect = { vm.toggle(d.host.id) },
+            onDelete = { dialog = HostsDialog.Delete(listOf(d.host.id)) },
+            onClose = { dialog = null },
+        )
+        is HostsDialog.Delete -> ConfirmDialog(
+            title = if (d.ids.size == 1) "Remove host?" else "Remove ${d.ids.size} hosts?",
             text = "Hosts are removed from this vault. Keys in the keychain stay.",
             confirm = "Remove",
-            onConfirm = { vm.deleteSelected(); dialog = null },
+            onConfirm = { vm.delete(d.ids); dialog = null },
             onDismiss = { dialog = null },
         )
-        HostsDialog.Move -> GroupPickerDialog(
+        is HostsDialog.Move -> GroupPickerDialog(
             title = "Move to",
             groups = state.allGroups,
             current = groupId,
-            onPick = { vm.moveSelected(it); dialog = null },
+            onPick = { vm.move(d.ids, it); dialog = null },
             onDismiss = { dialog = null },
         )
-        HostsDialog.Copy -> CopyToVaultDialog(
-            vaults = vaults.filter { it.id != selectedVaultId && !it.locked },
-            onCopy = { v, creds -> vm.copySelected(v, creds); dialog = null },
+        is HostsDialog.Copy -> CopyToVaultDialog(
+            vaults = otherVaults,
+            onCopy = { v, creds -> vm.copy(d.ids, v, creds); dialog = null },
             onDismiss = { dialog = null },
         )
         HostsDialog.NewGroup -> NameDialog(
@@ -278,9 +303,10 @@ fun HostsScreen(
 }
 
 private sealed interface HostsDialog {
-    data object Delete : HostsDialog
-    data object Move : HostsDialog
-    data object Copy : HostsDialog
+    data class HostMenu(val host: HostItem) : HostsDialog
+    data class Delete(val ids: List<String>) : HostsDialog
+    data class Move(val ids: List<String>) : HostsDialog
+    data class Copy(val ids: List<String>) : HostsDialog
     data object NewGroup : HostsDialog
     data class GroupMenu(val group: GroupItem) : HostsDialog
     data class RenameGroup(val group: GroupItem) : HostsDialog
@@ -298,6 +324,7 @@ private fun HostList(
     onGroupLongPress: (GroupItem) -> Unit,
     onHostTap: (HostItem) -> Unit,
     onHostLongPress: (HostItem) -> Unit,
+    onHostMenu: (HostItem) -> Unit,
 ) {
     val groups = state.visibleGroups
     val hosts = state.visibleHosts
@@ -348,7 +375,16 @@ private fun HostList(
                                 )
                             }
                             viewersByHost[h.id]?.let { PresenceStack(repo, it) }
-                            openByHost[h.id]?.let { OpenSessionsBadge(it) }
+                            openByHost[h.id]?.let { OpenSessionsBadge(it, onClick = { onHostMenu(h) }) }
+                            if (!state.selecting) {
+                                IconButton(onClick = { onHostMenu(h) }, modifier = Modifier.size(32.dp)) {
+                                    Icon(
+                                        Icons.Filled.MoreVert,
+                                        contentDescription = "Host actions",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -359,12 +395,13 @@ private fun HostList(
 
 /** “N open” pill on a host card while it has terminal sessions, like the Active badge in Termius. */
 @Composable
-private fun OpenSessionsBadge(count: Int) {
+private fun OpenSessionsBadge(count: Int, onClick: () -> Unit) {
     Row(
         Modifier
             .padding(start = 8.dp)
             .clip(RoundedCornerShape(999.dp))
             .background(MaterialTheme.colorScheme.primaryContainer)
+            .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -384,15 +421,6 @@ private fun groupSubtitle(g: GroupItem): String? {
         if (g.groupCount > 0u) add("${g.groupCount} ${if (g.groupCount == 1u) "group" else "groups"}")
     }
     return parts.joinToString(" · ").ifEmpty { null }
-}
-
-private fun hostSubtitle(h: HostItem): String {
-    val target = if (h.username.isNotBlank()) "${h.username}@${h.address}" else h.address
-    val ssh = h.protocol.equals("ssh", true)
-    val base = if (ssh && h.port == 22.toUShort()) target else "$target · ${h.protocol.uppercase()} ${h.port}"
-    val mosh = if (ssh && h.useMosh) " · Mosh" else ""
-    val telnet = if (ssh && h.telnetPort != null) " · Telnet" else ""
-    return base + mosh + telnet
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

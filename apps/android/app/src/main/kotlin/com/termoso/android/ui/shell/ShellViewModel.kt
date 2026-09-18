@@ -16,6 +16,8 @@ import com.termoso.core.SessionState
 import com.termoso.core.SnippetRun
 import com.termoso.core.Transport
 import com.termoso.core.VaultInfo
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -78,6 +80,9 @@ class ShellViewModel(
         _notice.value = message
     }
 
+    /** Work started from a menu that dismisses itself first, so a composition scope would cancel it. */
+    fun launch(block: suspend CoroutineScope.() -> Unit): Job = viewModelScope.launch(block = block)
+
     /**
      * Open a terminal to a saved host. Returns null (after a notice) when Rust
      * refuses to even start — e.g. the host is missing; connection errors
@@ -90,6 +95,12 @@ class ShellViewModel(
 
     suspend fun connectQuick(target: QuickTarget): TerminalSession? =
         runCatching { sessions.connectQuick(target) }
+            .onFailure { notify(it.userMessage()) }
+            .getOrNull()
+
+    /** Another tab to the same target as an open session. */
+    suspend fun duplicateSession(id: String): TerminalSession? =
+        runCatching { sessions.duplicate(id) }
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
 
