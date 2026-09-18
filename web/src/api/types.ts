@@ -42,6 +42,12 @@ export interface ServerInfo {
   max_log_bytes: number;
   /** Base under which SSH ID handles are published (`<sshid_url>/<handle>`). */
   sshid_url: string;
+  /** Public URL of the web cabinet; where the landing sends people when it has its own origin. */
+  web_url: string;
+  /** `/` on this origin is the landing page (`false`: it goes to `/login`). */
+  landing: boolean;
+  /** This origin serves only the landing; the cabinet lives at `web_url`. */
+  landing_only: boolean;
 }
 
 // ── account ─────────────────────────────────────────────────────────────

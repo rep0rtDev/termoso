@@ -181,7 +181,9 @@ docker compose -f deploy/docker-compose.yml up -d --wait
 
 This starts the server on `127.0.0.1:8080`, PostgreSQL, Redis and MinIO. The
 image bundles the web cabinet: the API lives under `/api/v1` and everything
-else on the same origin serves the cabinet, so **one hostname is enough**. Put
+else on the same origin serves the cabinet, so **one hostname is enough**
+(the landing on `/` can be switched off or moved to its own domain with
+`TERMOSO_LANDING` / `TERMOSO_LANDING_URL`). Put
 a TLS-terminating reverse proxy in front of the server and — for pre-signed
 log uploads — in front of MinIO (`--profile proxy` ships a ready Caddy with
 automatic certificates), and set `TERMOSO_PUBLIC_URL` and
@@ -221,7 +223,9 @@ list; the source of truth is
 |---|---|---|
 | `TERMOSO_MASTER_KEY` | — | **required**; 32 random bytes, base64 (`openssl rand -base64 32`). Losing it makes server-side secrets unreadable |
 | `TERMOSO_PUBLIC_URL` | `http://localhost:8080` | origin of the server (API + cabinet); used in e-mails and OAuth redirects |
-| `TERMOSO_WEB_URL` | = public URL | only when the cabinet is hosted on another origin |
+| `TERMOSO_WEB_URL` | = public URL | origin of the web cabinet, when it differs from the public URL |
+| `TERMOSO_LANDING` | `true` | `false` hides the landing page: `/` goes straight to `/login` |
+| `TERMOSO_LANDING_URL` | unset | serve the landing on its own origin (`https://example.com`) while cabinet + API stay on `TERMOSO_PUBLIC_URL` (`https://app.example.com`); every non-landing path on that host redirects to the cabinet |
 | `TERMOSO_SSHID_URL` | unset | dedicated origin for SSH ID handles (`https://sshid.example.com/<handle>[/<type>]`); `<public URL>/sshid/<handle>` always works |
 | `TERMOSO_WEB_DIR` | unset (image: `/app/web`) | directory with the built cabinet to serve on `/`; unset = API only |
 | `TERMOSO_BIND` | `0.0.0.0:8080` | listen address |

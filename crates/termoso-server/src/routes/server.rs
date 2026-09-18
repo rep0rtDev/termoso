@@ -1,7 +1,7 @@
 //! Public server information and health probes.
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Extension, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
@@ -12,8 +12,12 @@ use crate::state::{AppState, VERSION};
 
 #[utoipa::path(get, path = "/api/v1/server/info", tag = "server",
     responses((status = 200, body = ServerInfo)))]
-pub async fn info(State(state): State<AppState>) -> ApiResult<Json<ServerInfo>> {
+pub async fn info(
+    State(state): State<AppState>,
+    landing_host: Option<Extension<super::web::LandingHost>>,
+) -> ApiResult<Json<ServerInfo>> {
     let settings = state.settings().await?;
+    let landing_only = landing_host.is_some();
     Ok(Json(ServerInfo {
         name: state.cfg.server_name.clone(),
         version: VERSION.to_string(),
@@ -29,6 +33,9 @@ pub async fn info(State(state): State<AppState>) -> ApiResult<Json<ServerInfo>> 
         max_entity_bytes: settings.max_entity_bytes,
         max_log_bytes: settings.max_log_bytes,
         sshid_url: super::sshid::base_url(&state.cfg),
+        web_url: state.cfg.web_url().trim_end_matches('/').to_string(),
+        landing: landing_only || state.cfg.landing_on_cabinet(),
+        landing_only,
     }))
 }
 

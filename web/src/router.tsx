@@ -27,10 +27,10 @@ import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
 import { AdminTeamsPage } from "./pages/admin/AdminTeamsPage";
 import { AdminSettingsPage } from "./pages/admin/AdminSettingsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { LandingPage } from "./pages/LandingPage";
+import { RootPage } from "./pages/RootPage";
 
 export const router = createBrowserRouter([
-  { path: "/", element: <LandingPage /> },
+  { path: "/", element: <RootPage /> },
   {
     element: <AuthLayout />,
     children: [
