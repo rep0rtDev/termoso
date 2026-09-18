@@ -1,0 +1,55 @@
+name: Feature request
+description: Something Termoso should do and does not.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Termoso stays free of telemetry and tiers, and vault data stays unreadable to the server.
+        Requests that need the server to see plaintext, or a paid flag, will be declined — say so if your idea needs a different design to fit.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      multiple: true
+      options:
+        - Desktop
+        - Android
+        - iOS
+        - Web cabinet
+        - Server / self-hosting
+        - API Bridge
+        - Sync / accounts / teams
+        - Terminal / SSH engine
+        - SFTP
+        - Port forwarding
+        - Docs
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do and what gets in the way today? A concrete workflow beats an abstract wish.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How you imagine it working. Mock-ups welcome. If Termius or another tool does this, say how — that saves a research round.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and discussions.
+          required: true
+        - label: This does not require the server to read vault contents or collect usage data.
+          required: true

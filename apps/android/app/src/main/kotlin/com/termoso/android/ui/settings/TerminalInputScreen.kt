@@ -28,7 +28,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -51,6 +50,7 @@ import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.SubScreen
 import com.termoso.android.ui.components.SwitchRow
+import com.termoso.android.ui.components.TermosoSwitch
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.HardwareKeys
 import com.termoso.android.ui.terminal.InputAction
@@ -277,7 +277,7 @@ private fun GroupRow(group: KeyGroup, first: Boolean, last: Boolean, onToggle: (
     ListRow(
         title = group.name,
         subtitle = preview.ifEmpty { "No keys — tap to add" },
-        leading = { Switch(checked = group.enabled, onCheckedChange = onToggle) },
+        leading = { TermosoSwitch(checked = group.enabled, onCheckedChange = onToggle) },
         modifier = Modifier.clickable(onClick = onEdit),
     ) {
         IconButton(onClick = { onMove(-1) }, enabled = !first) { Icon(Icons.Filled.ArrowUpward, contentDescription = "Move up") }

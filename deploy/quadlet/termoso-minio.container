@@ -1,0 +1,28 @@
+# MinIO: S3-compatible storage for encrypted session logs. Clients upload and
+# download through pre-signed URLs, so port 9000 has to be reachable through
+# your reverse proxy at TERMOSO_S3__PUBLIC_ENDPOINT.
+[Unit]
+Description=Termoso MinIO
+
+[Container]
+ContainerName=termoso-minio
+Image=quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+Network=termoso.network
+Volume=termoso-minio.volume:/data
+EnvironmentFile=/etc/termoso/stack.env
+Exec=server /data --console-address :9001
+PublishPort=127.0.0.1:9000:9000
+PublishPort=127.0.0.1:9001:9001
+NoNewPrivileges=true
+HealthCmd=mc ready local
+HealthInterval=5s
+HealthTimeout=5s
+HealthRetries=20
+Notify=healthy
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

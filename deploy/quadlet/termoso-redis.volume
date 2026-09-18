@@ -1,0 +1,5 @@
+[Unit]
+Description=Termoso redis data
+
+[Volume]
+VolumeName=termoso-redis

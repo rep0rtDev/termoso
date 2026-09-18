@@ -1,0 +1,24 @@
+# PostgreSQL: accounts, teams, ciphertext, audit log. The only state that
+# must be backed up (see docs/SELF_HOSTING.md).
+[Unit]
+Description=Termoso PostgreSQL
+
+[Container]
+ContainerName=termoso-postgres
+Image=docker.io/library/postgres:17-alpine
+Network=termoso.network
+Volume=termoso-postgres.volume:/var/lib/postgresql/data
+EnvironmentFile=/etc/termoso/stack.env
+NoNewPrivileges=true
+HealthCmd=pg_isready -U termoso -d termoso
+HealthInterval=5s
+HealthTimeout=3s
+HealthRetries=20
+Notify=healthy
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -25,7 +25,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,12 +45,13 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.getSystemService
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termoso.android.data.TerminalSession
-import com.termoso.android.data.userMessage
 import com.termoso.android.data.VaultRepository
+import com.termoso.android.data.userMessage
 import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
+import com.termoso.android.ui.components.TermosoSwitch
 import com.termoso.android.ui.components.UserAvatar
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.core.LiveParticipantCard
@@ -219,7 +219,7 @@ private fun Participants(
                             onValueChange = { on -> pending = on; onControl(p, on) },
                         ),
                     ) {
-                        Switch(checked = pending ?: p.canWrite, onCheckedChange = null)
+                        TermosoSwitch(checked = pending ?: p.canWrite, onCheckedChange = null)
                     }
                 }
             } else {

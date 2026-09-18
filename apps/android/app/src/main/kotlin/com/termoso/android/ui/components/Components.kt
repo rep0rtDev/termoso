@@ -25,6 +25,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchColors
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -175,8 +177,37 @@ fun SwitchRow(
             onValueChange = onCheckedChange,
         ),
     ) {
-        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+        TermosoSwitch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
+}
+
+/** Off-state thumb/border on `onSurfaceVariant` so the knob stays visible on every palette. */
+@Composable
+fun termosoSwitchColors(): SwitchColors {
+    val scheme = MaterialTheme.colorScheme
+    return SwitchDefaults.colors(
+        uncheckedThumbColor = scheme.onSurfaceVariant,
+        uncheckedTrackColor = scheme.surfaceContainerHighest,
+        uncheckedBorderColor = scheme.onSurfaceVariant,
+        uncheckedIconColor = scheme.surfaceContainerHighest,
+    )
+}
+
+/** [Switch] with [termosoSwitchColors]; every toggle in the app goes through here. */
+@Composable
+fun TermosoSwitch(
+    checked: Boolean,
+    onCheckedChange: ((Boolean) -> Unit)?,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        modifier = modifier,
+        enabled = enabled,
+        colors = termosoSwitchColors(),
+    )
 }
 
 /**

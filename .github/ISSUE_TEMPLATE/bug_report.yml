@@ -1,0 +1,82 @@
+name: Bug report
+description: Something does not work the way the docs or common sense say it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go to https://github.com/rep0rtDev/termoso/security/advisories/new, not here.
+        Never paste keys, passwords, recovery phrases or real host addresses into an issue.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      multiple: true
+      options:
+        - Desktop (Linux)
+        - Desktop (Windows)
+        - Desktop (macOS)
+        - Android
+        - iOS
+        - Web cabinet
+        - Server / self-hosting
+        - API Bridge
+        - Sync / accounts / teams
+        - Docs
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: App version from Settings → About, server version from `/api/v1/server/info` or the image tag, or a commit hash.
+      placeholder: "0.2.0 / ghcr.io/rep0rtdev/termoso-server:0.2.0 / abc1234"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS and version, device model for mobile, desktop environment / Wayland vs X11 on Linux, how the server is deployed (Compose, Quadlet, other).
+      placeholder: "Fedora 42 GNOME Wayland; Pixel 8 Android 15; Compose on Debian 12"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Tap …
+        3. Observe …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include error text verbatim, screenshots or a recording. Redact hostnames and usernames.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Desktop: run from a terminal with `TERMOSO_LOG=debug`. Android: `adb logcat -s termoso`. Server: `docker compose logs api` / `journalctl -u termoso-api`. Redact before pasting.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues.
+          required: true
+        - label: I removed secrets and real host addresses from everything above.
+          required: true

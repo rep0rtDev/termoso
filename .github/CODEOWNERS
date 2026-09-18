@@ -1,0 +1,21 @@
+# Reviewers requested automatically per area. Later rules win.
+*                                   @rep0rtDev
+
+/crates/termoso-crypto/             @rep0rtDev
+/crates/termoso-proto/              @rep0rtDev
+/crates/termoso-server/             @rep0rtDev
+/crates/termoso-core/               @rep0rtDev
+/crates/termoso-client/             @rep0rtDev
+/crates/termoso-mobile/             @rep0rtDev
+/crates/termoso-bridge/             @rep0rtDev
+/crates/termoso-wasm/               @rep0rtDev
+
+/apps/desktop/                      @rep0rtDev
+/apps/android/                      @rep0rtDev
+/apps/ios/                          @rep0rtDev
+/web/                               @rep0rtDev
+
+/deploy/                            @rep0rtDev
+/.github/                           @rep0rtDev
+/docs/                              @rep0rtDev
+/SECURITY.md                        @rep0rtDev
