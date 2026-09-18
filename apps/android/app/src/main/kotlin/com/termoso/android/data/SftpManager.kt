@@ -191,6 +191,18 @@ class SftpManager(private val context: Context, private val repo: VaultRepositor
         keepAlive.sftp(_connections.value.size)
     }
 
+    suspend fun closeMany(ids: Collection<String>) {
+        val wanted = ids.toSet()
+        val closing = _connections.value.filter { it.id in wanted }
+        if (closing.isEmpty()) return
+        _connections.update { list -> list.filterNot { it.id in wanted } }
+        closing.forEach { dispose(it) }
+        keepAlive.sftp(_connections.value.size)
+    }
+
+    /** Every open SFTP connection to a saved host. */
+    fun forHost(hostId: String): List<SftpConnection> = _connections.value.filter { it.hostId == hostId }
+
     suspend fun closeAll() {
         val list = _connections.value
         _connections.value = emptyList()

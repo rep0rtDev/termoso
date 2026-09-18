@@ -1,6 +1,9 @@
 package com.termoso.android.ui.connections
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,11 +18,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -51,8 +63,12 @@ import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
+import com.termoso.android.ui.components.closeHostLabel
+import com.termoso.android.ui.hosts.ConfirmDialog
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.JoinLiveDialog
+import com.termoso.android.ui.terminal.quickTargetText
+import com.termoso.android.ui.terminal.siblingsOf
 import com.termoso.core.HistoryItem
 import com.termoso.core.MobileException
 import com.termoso.core.SessionState
@@ -73,6 +89,9 @@ fun ConnectionsScreen(
     onOpenTerminal: () -> Unit,
     onNewSftp: () -> Unit,
     onOpenSftp: (String) -> Unit,
+    onSftpHost: (String) -> Unit = {},
+    onEditHost: (String) -> Unit = {},
+    onAddHostFrom: (String) -> Unit = {},
 ) {
     val revision by shell.repo.revision.collectAsStateWithLifecycle()
     val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
@@ -85,6 +104,9 @@ fun ConnectionsScreen(
     }
 
     var joinDialog by remember { mutableStateOf(false) }
+    var topMenu by remember { mutableStateOf(false) }
+    var confirmCloseAll by remember { mutableStateOf(false) }
+    val open = sessions.size + sftp.size
 
     fun join(link: String) {
         scope.launch {
@@ -115,7 +137,27 @@ fun ConnectionsScreen(
         }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Connections") }) }) { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Connections") },
+                actions = {
+                    if (open > 0) {
+                        Box {
+                            IconButton(onClick = { topMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
+                            DropdownMenu(expanded = topMenu, onDismissRequest = { topMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Close all sessions ($open)", color = MaterialTheme.colorScheme.error) },
+                                    leadingIcon = { Icon(Icons.Filled.PowerSettingsNew, null, tint = MaterialTheme.colorScheme.error) },
+                                    onClick = { topMenu = false; confirmCloseAll = true },
+                                )
+                            }
+                        }
+                    }
+                },
+            )
+        },
+    ) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -140,22 +182,64 @@ fun ConnectionsScreen(
             )
 
             if (sessions.isNotEmpty() || sftp.isNotEmpty()) {
-                SectionLabel("Active sessions")
+                SectionLabel(if (open == 1) "Active session" else "$open active sessions")
                 SectionCard {
                     sessions.forEachIndexed { i, s ->
                         if (i > 0) RowDivider()
                         ActiveSessionRow(
                             session = s,
+                            siblings = siblingsOf(s, sessions),
+                            sftpForHost = s.hostId?.let { id -> sftp.filter { it.hostId == id } } ?: emptyList(),
                             onOpen = { shell.sessions.setActive(s.id); onOpenTerminal() },
+                            onDuplicate = { scope.launch { if (shell.duplicateSession(s.id) != null) onOpenTerminal() } },
+                            onReconnect = { scope.launch { shell.sessions.reconnect(s.id) } },
+                            onSftp = {
+                                val hostId = s.hostId
+                                val quick = s.quick
+                                when {
+                                    hostId != null -> onSftpHost(hostId)
+                                    quick != null -> scope.launch { shell.openSftpQuick(quick)?.let { onOpenSftp(it.id) } }
+                                }
+                            },
+                            onEditHost = { s.hostId?.let(onEditHost) },
+                            onAddHost = { s.quick?.let { onAddHostFrom(quickTargetText(it)) } },
                             onClose = { scope.launch { shell.sessions.close(s.id) } },
+                            onCloseHost = { ids, sftpIds ->
+                                scope.launch {
+                                    shell.sessions.closeMany(ids)
+                                    shell.sftp.closeMany(sftpIds)
+                                }
+                            },
                         )
                     }
                     sftp.forEachIndexed { i, c ->
                         if (i > 0 || sessions.isNotEmpty()) RowDivider()
                         SftpRow(
                             conn = c,
+                            terminalsForHost = c.hostId?.let { id -> sessions.filter { it.hostId == id } } ?: emptyList(),
+                            sftpSiblings = c.hostId?.let { id -> sftp.filter { it.hostId == id && it.id != c.id } } ?: emptyList(),
                             onOpen = { onOpenSftp(c.id) },
+                            onTerminal = {
+                                val hostId = c.hostId
+                                val quick = c.quick
+                                scope.launch {
+                                    val opened = when {
+                                        hostId != null -> shell.connectHost(hostId)
+                                        quick != null -> shell.connectQuick(quick)
+                                        else -> null
+                                    }
+                                    if (opened != null) onOpenTerminal()
+                                }
+                            },
+                            onEditHost = { c.hostId?.let(onEditHost) },
+                            onAddHost = { c.quick?.let { onAddHostFrom(quickTargetText(it)) } },
                             onClose = { scope.launch { shell.sftp.close(c.id) } },
+                            onCloseHost = { ids, sftpIds ->
+                                scope.launch {
+                                    shell.sessions.closeMany(ids)
+                                    shell.sftp.closeMany(sftpIds)
+                                }
+                            },
                         )
                     }
                 }
@@ -223,19 +307,51 @@ fun ConnectionsScreen(
     if (joinDialog) {
         JoinLiveDialog(onDismiss = { joinDialog = false }, onJoin = ::join)
     }
+    if (confirmCloseAll) {
+        ConfirmDialog(
+            title = "Close all sessions?",
+            text = "$open open ${if (open == 1) "connection" else "connections"} — every terminal and SFTP session is disconnected.",
+            confirm = "Close all",
+            onConfirm = {
+                confirmCloseAll = false
+                scope.launch {
+                    shell.sessions.closeAll()
+                    shell.sftp.closeMany(sftp.map { it.id })
+                }
+            },
+            onDismiss = { confirmCloseAll = false },
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ActiveSessionRow(session: TerminalSession, onOpen: () -> Unit, onClose: () -> Unit) {
+private fun ActiveSessionRow(
+    session: TerminalSession,
+    siblings: List<TerminalSession>,
+    sftpForHost: List<SftpConnection>,
+    onOpen: () -> Unit,
+    onDuplicate: () -> Unit,
+    onReconnect: () -> Unit,
+    onSftp: () -> Unit,
+    onEditHost: () -> Unit,
+    onAddHost: () -> Unit,
+    onClose: () -> Unit,
+    onCloseHost: (List<String>, List<String>) -> Unit,
+) {
     val state by session.state.collectAsStateWithLifecycle()
     val detected by session.detectedOs.collectAsStateWithLifecycle()
     val title by session.title.collectAsStateWithLifecycle()
+    var menu by remember { mutableStateOf(false) }
     val subtitle = when (val s = state) {
         is SessionState.Connecting -> s.detail
         is SessionState.Connected -> title ?: session.target
         is SessionState.Closed -> "Closed" + (s.reason?.let { " · $it" } ?: "")
         is SessionState.Failed -> s.message
     }
+    val remote = !session.isView && session.local == null
+    val ssh = remote && (session.quick?.protocol?.equals("ssh", true) ?: true)
+    val hostTotal = siblings.size + 1 + sftpForHost.size
     ListRow(
         title = session.label,
         subtitle = subtitle,
@@ -243,17 +359,50 @@ private fun ActiveSessionRow(session: TerminalSession, onOpen: () -> Unit, onClo
             if (session.isView) IconTile(Icons.Filled.Groups) else HostAvatar(detected ?: session.savedOsName)
         },
         trailing = {
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Session actions") }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    @Composable
+                    fun item(icon: ImageVector, label: String, destructive: Boolean = false, action: () -> Unit) {
+                        MenuItem(icon, label, destructive) { menu = false; action() }
+                    }
+                    item(Icons.Filled.OpenInNew, "Open", action = onOpen)
+                    if (!session.isView) item(Icons.Filled.ContentCopy, "Duplicate", action = onDuplicate)
+                    if (session.reconnectable) item(Icons.Filled.Refresh, "Reconnect", action = onReconnect)
+                    if (ssh) item(Icons.Filled.FolderOpen, "Open SFTP", action = onSftp)
+                    if (session.hostId != null) item(Icons.Filled.Edit, "Edit host", action = onEditHost)
+                    else if (session.quick != null) item(Icons.Filled.Add, "Add to hosts", action = onAddHost)
+                    item(Icons.Filled.Close, "Close session", destructive = true, action = onClose)
+                    if (hostTotal > 1) {
+                        item(Icons.Filled.PowerSettingsNew, closeHostLabel(hostTotal), destructive = true) {
+                            onCloseHost(siblings.map { it.id } + session.id, sftpForHost.map { it.id })
+                        }
+                    }
+                }
+            }
             IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close session") }
         },
-        modifier = Modifier.clickable(onClick = onOpen),
+        modifier = Modifier.combinedClickable(onClick = onOpen, onLongClick = { menu = true }, onLongClickLabel = "Session actions"),
         titleColor = if (state is SessionState.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SftpRow(conn: SftpConnection, onOpen: () -> Unit, onClose: () -> Unit) {
+private fun SftpRow(
+    conn: SftpConnection,
+    terminalsForHost: List<TerminalSession>,
+    sftpSiblings: List<SftpConnection>,
+    onOpen: () -> Unit,
+    onTerminal: () -> Unit,
+    onEditHost: () -> Unit,
+    onAddHost: () -> Unit,
+    onClose: () -> Unit,
+    onCloseHost: (List<String>, List<String>) -> Unit,
+) {
     val state by conn.state.collectAsStateWithLifecycle()
     val transfers by conn.transfers.collectAsStateWithLifecycle()
+    var menu by remember { mutableStateOf(false) }
     val active = transfers.count { it.status is TransferStatus.Running || it.status is TransferStatus.Queued }
     val subtitle = when (val s = state) {
         is SessionState.Connecting -> s.detail
@@ -261,15 +410,45 @@ private fun SftpRow(conn: SftpConnection, onOpen: () -> Unit, onClose: () -> Uni
         is SessionState.Closed -> "Closed" + (s.reason?.let { " · $it" } ?: "")
         is SessionState.Failed -> s.message
     }
+    val hostTotal = terminalsForHost.size + sftpSiblings.size + 1
     ListRow(
         title = conn.label,
         subtitle = subtitle,
         leading = { IconTile(Icons.Filled.FolderOpen) },
         trailing = {
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Connection actions") }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    @Composable
+                    fun item(icon: ImageVector, label: String, destructive: Boolean = false, action: () -> Unit) {
+                        MenuItem(icon, label, destructive) { menu = false; action() }
+                    }
+                    item(Icons.Filled.OpenInNew, "Open", action = onOpen)
+                    if (conn.hostId != null || conn.quick != null) item(Icons.Filled.Terminal, "Open terminal", action = onTerminal)
+                    if (conn.hostId != null) item(Icons.Filled.Edit, "Edit host", action = onEditHost)
+                    else if (conn.quick != null) item(Icons.Filled.Add, "Add to hosts", action = onAddHost)
+                    item(Icons.Filled.Close, "Close connection", destructive = true, action = onClose)
+                    if (hostTotal > 1) {
+                        item(Icons.Filled.PowerSettingsNew, closeHostLabel(hostTotal), destructive = true) {
+                            onCloseHost(terminalsForHost.map { it.id }, sftpSiblings.map { it.id } + conn.id)
+                        }
+                    }
+                }
+            }
             IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close connection") }
         },
-        modifier = Modifier.clickable(onClick = onOpen),
+        modifier = Modifier.combinedClickable(onClick = onOpen, onLongClick = { menu = true }, onLongClickLabel = "Connection actions"),
         titleColor = if (state is SessionState.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+    )
+}
+
+@Composable
+private fun MenuItem(icon: ImageVector, label: String, destructive: Boolean, onClick: () -> Unit) {
+    val tint = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    DropdownMenuItem(
+        text = { Text(label, color = tint) },
+        leadingIcon = { Icon(icon, null, tint = tint) },
+        onClick = onClick,
     )
 }
 

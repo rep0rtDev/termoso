@@ -93,6 +93,12 @@ class ShellViewModel(
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
 
+    /** Another tab to the same target as an open session. */
+    suspend fun duplicateSession(id: String): TerminalSession? =
+        runCatching { sessions.duplicate(id) }
+            .onFailure { notify(it.userMessage()) }
+            .getOrNull()
+
     /** A shell on this device. */
     suspend fun connectLocal(): TerminalSession? =
         runCatching { sessions.connectLocal() }

@@ -14,6 +14,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +41,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TouchApp
@@ -135,6 +137,13 @@ fun TerminalScreen(
     onShareConsumed: () -> Unit = {},
     /** Installs (or, with `null`, removes) the activity-level hardware-key hook while a terminal is shown. */
     onHardwareKeyHook: (((KeyEvent) -> Boolean)?) -> Unit = {},
+    /** Session-menu targets: SFTP / port forwarding / editor for a saved host, new-host form for a quick target. */
+    onSftp: (String) -> Unit = {},
+    /** Show an SFTP connection that is already open (quick targets connect first, then navigate). */
+    onOpenSftp: (String) -> Unit = {},
+    onForward: (String) -> Unit = {},
+    onEditHost: (String) -> Unit = {},
+    onAddHost: (String) -> Unit = {},
 ) {
     val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
     val activeId by shell.sessions.activeId.collectAsStateWithLifecycle()
@@ -167,7 +176,11 @@ fun TerminalScreen(
     }
 
     var liveSheet by remember { mutableStateOf(false) }
-    // The sheet is per session: switching chips or losing the session closes it.
+    // Session whose `⋯` menu is open; it is also made active so the menu's shortcuts target it.
+    var menuFor by remember { mutableStateOf<String?>(null) }
+    // Bumped by the session menu to open the History & themes panel, which lives with the terminal.
+    var panelRequest by remember { mutableStateOf(0) }
+    // The sharing sheet is per session: switching chips or losing the session closes it.
     LaunchedEffect(active?.id) { liveSheet = false }
 
     Scaffold(
@@ -189,6 +202,7 @@ fun TerminalScreen(
                 onSelect = { shell.sessions.setActive(it) },
                 onClose = { id -> scope.launch { shell.sessions.close(id) } },
                 onLive = { liveSheet = true },
+                onMenu = { id -> shell.sessions.setActive(id); menuFor = id },
                 onNew = onNewSession,
             )
             if (active == null) {
@@ -214,6 +228,7 @@ fun TerminalScreen(
                     pendingShare = pendingShare,
                     onShareConsumed = onShareConsumed,
                     onHardwareKeyHook = onHardwareKeyHook,
+                    panelRequest = panelRequest,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
@@ -221,6 +236,24 @@ fun TerminalScreen(
     }
     if (liveSheet && active != null) {
         LiveSheet(session = active, shell = shell, onClose = { liveSheet = false })
+    }
+    val menuSession = menuFor?.let { id -> sessions.firstOrNull { it.id == id } }
+    if (menuSession != null) {
+        SessionActionsSheet(
+            shell = shell,
+            session = menuSession,
+            sessions = sessions,
+            onLive = { liveSheet = true },
+            onPanel = { panelRequest++ },
+            onCustomizeKeys = onCustomizeKeys,
+            onNewSession = onNewSession,
+            onSftp = onSftp,
+            onOpenSftp = onOpenSftp,
+            onForward = onForward,
+            onEditHost = onEditHost,
+            onAddHost = onAddHost,
+            onClose = { menuFor = null },
+        )
     }
 }
 
@@ -243,7 +276,8 @@ private fun HeaderButton(icon: ImageVector, description: String, tint: Color? = 
 
 /**
  * Session header: back, one pill per session (the active one tinted with the
- * accent and carrying its close button), sharing and new-session buttons.
+ * accent and carrying its close button; long-press opens its menu), sharing,
+ * the `⋯` session menu and the new-session button.
  */
 @Composable
 private fun SessionChips(
@@ -253,6 +287,7 @@ private fun SessionChips(
     onSelect: (String) -> Unit,
     onClose: (String) -> Unit,
     onLive: () -> Unit,
+    onMenu: (String) -> Unit,
     onNew: () -> Unit,
 ) {
     val activeId = active?.id
@@ -286,7 +321,13 @@ private fun SessionChips(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             items(sessions, key = { it.id }) { s ->
-                SessionChip(s, s.id == activeId, onClick = { onSelect(s.id) }, onClose = { onClose(s.id) })
+                SessionChip(
+                    s,
+                    s.id == activeId,
+                    onClick = { onSelect(s.id) },
+                    onLongClick = { onMenu(s.id) },
+                    onClose = { onClose(s.id) },
+                )
             }
         }
         if (active != null) {
@@ -298,6 +339,7 @@ private fun SessionChips(
                 tint = if (live) MaterialTheme.colorScheme.primary else null,
                 onClick = onLive,
             )
+            HeaderButton(Icons.Filled.MoreVert, "Session actions", onClick = { onMenu(active.id) })
         }
         HeaderButton(Icons.Filled.Add, "New session", tint = MaterialTheme.colorScheme.primary, onClick = onNew)
     }
@@ -309,7 +351,13 @@ private fun SessionChips(
  * for the active session, error red for a failed one, muted for a closed one.
  */
 @Composable
-private fun SessionChip(session: TerminalSession, active: Boolean, onClick: () -> Unit, onClose: () -> Unit) {
+private fun SessionChip(
+    session: TerminalSession,
+    active: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onClose: () -> Unit,
+) {
     val state by session.state.collectAsStateWithLifecycle()
     val detected by session.detectedOs.collectAsStateWithLifecycle()
     val accent = MaterialTheme.colorScheme.primary
@@ -328,7 +376,7 @@ private fun SessionChip(session: TerminalSession, active: Boolean, onClick: () -
             // Not focusable: a focus grab (e.g. after a dialog closes) would
             // otherwise scroll the row back to the first chip.
             .focusProperties { canFocus = false }
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = "Session actions")
             .padding(start = 10.dp, end = if (active) 6.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -376,6 +424,8 @@ private fun ActiveSession(
     pendingShare: List<Uri>?,
     onShareConsumed: () -> Unit,
     onHardwareKeyHook: (((KeyEvent) -> Boolean)?) -> Unit,
+    /** Incremented by the caller to open the History & themes sheet. */
+    panelRequest: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -404,6 +454,7 @@ private fun ActiveSession(
     var snippetPicker by remember { mutableStateOf(false) }
     var askAi by remember { mutableStateOf(false) }
     var panelSheet by remember { mutableStateOf(false) }
+    LaunchedEffect(panelRequest) { if (panelRequest > 0) panelSheet = true }
     var dropping by remember { mutableStateOf<DropProgress?>(null) }
     var confirmDrop by remember { mutableStateOf<List<Uri>?>(null) }
     var menuAt by remember { mutableStateOf<Pair<CellPoint, Offset>?>(null) }

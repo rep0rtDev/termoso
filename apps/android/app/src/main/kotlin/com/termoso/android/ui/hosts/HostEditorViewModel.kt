@@ -10,6 +10,7 @@ import com.termoso.core.HostDraft
 import com.termoso.core.IdentityItem
 import com.termoso.core.InheritedInfo
 import com.termoso.core.KeyItem
+import com.termoso.core.QuickTarget
 import com.termoso.core.SnippetItem
 import com.termoso.core.TagItem
 import com.termoso.core.TelnetDraft
@@ -19,6 +20,34 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/**
+ * A fresh draft started from a quick-connect target ("Add to hosts" on an ad-hoc
+ * terminal): address, user and port land in the matching protocol section; a
+ * Telnet target gets a Telnet section instead of the SSH one.
+ */
+fun HostDraft.prefilled(target: QuickTarget?): HostDraft {
+    if (target == null) return this
+    return if (target.protocol.equals("telnet", true)) {
+        copy(
+            address = target.host,
+            ssh = false,
+            telnet = TelnetDraft(
+                port = target.port.takeIf { it != 23.toUShort() },
+                username = target.username,
+                password = null,
+                identityId = null,
+                hasPassword = false,
+            ),
+        )
+    } else {
+        copy(
+            address = target.host,
+            username = target.username,
+            port = target.port.takeIf { it != 22.toUShort() },
+        )
+    }
+}
 
 data class HostEditorState(
     val loading: Boolean = true,
@@ -31,7 +60,10 @@ data class HostEditorState(
     val snippets: List<SnippetItem> = emptyList(),
     val inherited: InheritedInfo? = null,
     val saving: Boolean = false,
+    /** The form is finished (saved, duplicated or removed) and should close. */
     val saved: Boolean = false,
+    /** Id of the host just written by [HostEditorViewModel.save], for "save, then connect" flows. */
+    val savedId: String? = null,
     val error: String? = null,
 ) {
     val canSave: Boolean get() = draft?.address?.isNotBlank() == true && !saving
@@ -46,6 +78,8 @@ class HostEditorViewModel(
     private val hostId: String?,
     private val initialVault: String?,
     private val groupId: String?,
+    /** For a new host: the quick-connect target (`user@host:port`, `telnet://host`) to start the form from. */
+    private val prefill: QuickTarget? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(HostEditorState())
     val state: StateFlow<HostEditorState> = _state.asStateFlow()
@@ -62,7 +96,7 @@ class HostEditorViewModel(
                     hostDraft(hostId)
                 } else {
                     val vault = initialVault ?: vaults.first().id
-                    newHostDraft(vault, groupId)
+                    newHostDraft(vault, groupId).prefilled(prefill)
                 }
                 HostEditorState(
                     loading = false,
@@ -169,6 +203,22 @@ class HostEditorViewModel(
                 envVariables = draft.envVariables.filter { it.name.isNotBlank() },
             )
             runCatching { repo.write { saveHost(clean) } }
+                .onSuccess { host -> _state.update { it.copy(saving = false, saved = true, savedId = host.id) } }
+                .onFailure { e -> _state.update { it.copy(saving = false, error = e.userMessage()) } }
+        }
+    }
+
+    /** Existing hosts only: a copy next to the original, then the form closes. */
+    fun duplicate() = finishWith { id -> repo.write { duplicateHost(id) } }
+
+    /** Existing hosts only: remove the host, then the form closes. */
+    fun delete() = finishWith { id -> repo.write { deleteHosts(listOf(id)) } }
+
+    private fun finishWith(block: suspend (String) -> Unit) {
+        val id = _state.value.draft?.id ?: return
+        _state.update { it.copy(saving = true) }
+        viewModelScope.launch {
+            runCatching { block(id) }
                 .onSuccess { _state.update { it.copy(saving = false, saved = true) } }
                 .onFailure { e -> _state.update { it.copy(saving = false, error = e.userMessage()) } }
         }
