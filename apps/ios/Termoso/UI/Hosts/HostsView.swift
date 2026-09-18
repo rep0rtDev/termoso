@@ -2,12 +2,12 @@ import SwiftUI
 import TermosoCore
 
 /// Hosts and sub-groups of one group (nil = vault root) with search and a
-/// tag filter. Tapping a host opens the editor for now; connecting arrives
-/// with the terminal milestone.
+/// tag filter. Tapping a host connects; long-press (or the pencil) edits.
 struct HostsView: View {
     @Bindable var model: VaultsModel
     let groupId: String?
 
+    @Environment(SessionStore.self) private var sessions
     @State private var search = ""
     @State private var tagFilter: String?
     @State private var editor: HostEditorTarget?
@@ -19,53 +19,73 @@ struct HostsView: View {
     }
 
     var body: some View {
-        List {
-            if search.isEmpty {
-                let groups = model.groups(inGroup: groupId)
-                if !groups.isEmpty {
-                    Section("Groups") {
-                        ForEach(groups, id: \.id) { group in
-                            NavigationLink {
-                                HostsView(model: model, groupId: group.id)
-                            } label: {
-                                GroupRow(group: group)
-                            }
-                            .accessibilityIdentifier("hosts.group.\(group.label)")
-                            .swipeActions {
-                                Button("Delete", role: .destructive) { model.deleteGroup(id: group.id) }
-                            }
-                        }
-                    }
-                }
-            }
-
-            let hosts = model.hosts(inGroup: groupId, matching: search, tag: tagFilter)
-            Section {
-                if hosts.isEmpty {
-                    emptyState
-                } else {
-                    ForEach(hosts, id: \.id) { host in
+        ScrollView {
+            VStack(spacing: 16) {
+                SearchField(prompt: "Search hosts", text: $search, identifier: "hosts.search")
+                if let tagFilter {
+                    HStack {
                         Button {
-                            editor = .edit(id: host.id)
+                            self.tagFilter = nil
                         } label: {
-                            HostRow(host: host, showPath: !search.isEmpty)
+                            Label(tagFilter, systemImage: "xmark")
+                                .font(.footnote.weight(.medium))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.accentColor.opacity(0.14), in: Capsule())
                         }
                         .buttonStyle(.plain)
-                        .accessibilityIdentifier("hosts.host.\(host.label)")
-                        .swipeActions {
-                            Button("Delete", role: .destructive) { model.deleteHost(id: host.id) }
+                        Spacer()
+                    }
+                }
+                if search.isEmpty {
+                    let groups = model.groups(inGroup: groupId)
+                    if !groups.isEmpty {
+                        CardSection("Groups") {
+                            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                                if index > 0 { RowDivider() }
+                                NavigationLink {
+                                    HostsView(model: model, groupId: group.id)
+                                } label: {
+                                    GroupRow(group: group)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("hosts.group.\(group.label)")
+                                .contextMenu {
+                                    Button("Delete group", systemImage: "trash", role: .destructive) { model.deleteGroup(id: group.id) }
+                                }
+                            }
                         }
                     }
                 }
-            } header: {
-                if search.isEmpty, groupId == nil || !model.groups(inGroup: groupId).isEmpty {
-                    Text("Hosts")
+
+                let hosts = model.hosts(inGroup: groupId, matching: search, tag: tagFilter)
+                CardSection(search.isEmpty ? "Hosts" : "Results") {
+                    if hosts.isEmpty {
+                        emptyState
+                    } else {
+                        ForEach(Array(hosts.enumerated()), id: \.element.id) { index, host in
+                            if index > 0 { RowDivider() }
+                            Button {
+                                sessions.connect(host: host)
+                            } label: {
+                                HostRow(host: host, showPath: !search.isEmpty) {
+                                    editor = .edit(id: host.id)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("hosts.host.\(host.label)")
+                            .contextMenu {
+                                hostMenu(host)
+                            }
+                        }
+                    }
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
         }
-        .listStyle(.insetGrouped)
+        .pageBackground()
         .navigationTitle(title)
-        .searchable(text: $search, prompt: "Search hosts")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 tagMenu
@@ -115,8 +135,25 @@ struct HostsView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
-        .listRowBackground(Color.clear)
+        .padding(.horizontal, 16)
         .accessibilityIdentifier("hosts.empty")
+    }
+
+    @ViewBuilder
+    private func hostMenu(_ host: HostItem) -> some View {
+        Button("Connect", systemImage: "terminal") { sessions.connect(host: host) }
+            .accessibilityIdentifier("hosts.menu.connect")
+        if host.telnetPort != nil {
+            Button("Connect with Telnet", systemImage: "network") { sessions.connect(host: host, transport: .telnet) }
+        }
+        if host.useMosh {
+            Button("Connect with Mosh", systemImage: "antenna.radiowaves.left.and.right") { sessions.connect(host: host, transport: .mosh) }
+        }
+        Divider()
+        Button("Edit", systemImage: "pencil") { editor = .edit(id: host.id) }
+            .accessibilityIdentifier("hosts.menu.edit")
+        Button("Delete", systemImage: "trash", role: .destructive) { model.deleteHost(id: host.id) }
+            .accessibilityIdentifier("hosts.menu.delete")
     }
 
     private var addMenu: some View {
@@ -168,16 +205,8 @@ struct GroupRow: View {
     let group: GroupItem
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "folder.fill")
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(group.label)
-                Text(summary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+        CardRow(title: group.label, subtitle: summary, chevron: true) {
+            GroupAvatar()
         }
     }
 
@@ -193,15 +222,17 @@ struct GroupRow: View {
 struct HostRow: View {
     let host: HostItem
     var showPath = false
+    var onEdit: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 12) {
-            HostGlyph(host: host)
+            HostAvatar(host: host)
             VStack(alignment: .leading, spacing: 2) {
                 Text(host.label.isEmpty ? host.address : host.label)
                     .foregroundStyle(.primary)
+                    .lineLimit(1)
                 Text(subtitle)
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 if !host.tags.isEmpty {
@@ -211,15 +242,29 @@ struct HostRow: View {
                         .lineLimit(1)
                 }
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
             if host.useMosh {
                 Text("mosh")
                     .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(.fill.secondary, in: Capsule())
+                    .background(Theme.cardInset, in: Capsule())
+            }
+            if let onEdit {
+                Button(action: onEdit) {
+                    Image(systemName: "pencil")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .background(Theme.cardInset, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("hosts.edit.\(host.label)")
             }
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .contentShape(Rectangle())
     }
 
@@ -235,29 +280,5 @@ struct HostRow: View {
             text = host.groupPath.joined(separator: " / ") + " · " + text
         }
         return text
-    }
-}
-
-/// Distro/OS glyph placeholder: SF Symbol by OS family. The full distro
-/// icon catalog arrives with the terminal milestone.
-struct HostGlyph: View {
-    let host: HostItem
-
-    var body: some View {
-        Image(systemName: symbol)
-            .font(.title3)
-            .foregroundStyle(Color.accentColor)
-            .frame(width: 32, height: 32)
-            .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
-
-    private var symbol: String {
-        let os = (host.icon ?? host.osName ?? "").lowercased()
-        if os.contains("windows") { return "pc" }
-        if os.contains("mac") || os.contains("darwin") { return "laptopcomputer" }
-        if os.contains("bsd") { return "shield" }
-        if os.contains("router") || os.contains("cisco") || os.contains("mikrotik") { return "network" }
-        if os.isEmpty { return "server.rack" }
-        return "terminal"
     }
 }
