@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -49,6 +51,7 @@ import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.SubScreen
 import com.termoso.android.ui.components.SwitchRow
+import com.termoso.android.ui.components.groupRow
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.terminalFonts
 import com.termoso.core.MobileSettings
@@ -66,6 +69,8 @@ fun TerminalAppearanceScreen(shell: ShellViewModel, onBack: () -> Unit) {
     val settings by shell.repo.settings.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val themes = remember { terminalThemes() }
+    val darkThemes = remember(themes) { themes.filter { it.dark } }
+    val lightThemes = remember(themes) { themes.filter { !it.dark } }
     val current = remember(settings.terminalTheme) { terminalTheme(settings.terminalTheme) ?: themes.first() }
 
     fun set(transform: (MobileSettings) -> MobileSettings) {
@@ -145,38 +150,48 @@ fun TerminalAppearanceScreen(shell: ShellViewModel, onBack: () -> Unit) {
             }
 
             item { SectionLabel("Color scheme") }
-            item {
-                SectionCard {
-                    val dark = themes.filter { it.dark }
-                    val light = themes.filter { !it.dark }
-                    ThemeGroup("Dark", dark, current.id, ::pickTheme)
-                    RowDivider()
-                    ThemeGroup("Light", light, current.id, ::pickTheme)
-                }
-            }
+            themeGroup("Dark", darkThemes, current.id, top = true, bottom = false, onPick = ::pickTheme)
+            themeGroup("Light", lightThemes, current.id, top = false, bottom = true, onPick = ::pickTheme)
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
 }
 
-@Composable
-private fun ThemeGroup(title: String, items: List<TerminalTheme>, selectedId: String, onPick: (TerminalTheme) -> Unit) {
-    Text(
-        "$title · ${items.size}",
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
-    )
-    items.forEachIndexed { i, theme ->
-        if (i > 0) RowDivider()
-        ListRow(
-            title = theme.name,
-            leading = { PaletteSwatch(theme.palette) },
-            modifier = Modifier.clickable { onPick(theme) },
-            trailing = {
-                if (theme.id == selectedId) Icon(Icons.Filled.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
-            },
-        )
+/**
+ * Header + one lazy item per theme, so the gallery (dozens of swatches) is
+ * composed row by row as it scrolls into view instead of all at once.
+ */
+private fun LazyListScope.themeGroup(
+    title: String,
+    items: List<TerminalTheme>,
+    selectedId: String,
+    top: Boolean,
+    bottom: Boolean,
+    onPick: (TerminalTheme) -> Unit,
+) {
+    item(key = "theme-group-$title", contentType = "theme-header") {
+        Column(Modifier.groupRow(top = top, bottom = false)) {
+            if (!top) RowDivider()
+            Text(
+                "$title · ${items.size}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
+            )
+        }
+    }
+    itemsIndexed(items, key = { _, t -> "theme-${t.id}" }, contentType = { _, _ -> "theme" }) { i, theme ->
+        Column(Modifier.groupRow(top = false, bottom = bottom && i == items.lastIndex)) {
+            if (i > 0) RowDivider()
+            ListRow(
+                title = theme.name,
+                leading = { PaletteSwatch(theme.palette) },
+                modifier = Modifier.clickable { onPick(theme) },
+                trailing = {
+                    if (theme.id == selectedId) Icon(Icons.Filled.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
+                },
+            )
+        }
     }
 }
 

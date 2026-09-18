@@ -66,6 +66,7 @@ import com.termoso.core.PfKind
 import com.termoso.core.PfRuleItem
 import com.termoso.core.TunnelState
 import com.termoso.core.TunnelStats
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -203,6 +204,17 @@ private fun RuleCard(
     onDelete: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
+    // Starting a tunnel takes a moment before `tunnel` appears; show the
+    // requested position right away and fall back to the real one if the
+    // start never materialises.
+    var pending by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(tunnel != null, lastError) { pending = null }
+    LaunchedEffect(pending) {
+        if (pending != null) {
+            delay(4_000)
+            pending = null
+        }
+    }
     val state = if (tunnel != null) tunnel.state.collectAsStateWithLifecycle().value else null
     val stats = if (tunnel != null) tunnel.stats.collectAsStateWithLifecycle().value else null
     val busy = state is TunnelState.Connecting || state is TunnelState.Reconnecting
@@ -250,8 +262,8 @@ private fun RuleCard(
                     CircularProgressIndicator(modifier = Modifier.padding(end = 12.dp).height(22.dp), strokeWidth = 2.dp)
                 }
                 Switch(
-                    checked = tunnel != null,
-                    onCheckedChange = onToggle,
+                    checked = pending ?: (tunnel != null),
+                    onCheckedChange = { on -> pending = on; onToggle(on) },
                     enabled = !rule.hostMissing,
                 )
             }

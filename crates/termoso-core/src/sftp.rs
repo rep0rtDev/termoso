@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use futures::{StreamExt, stream};
 use russh_sftp::client::{Config as SftpConfig, SftpSession};
 use russh_sftp::protocol::{FileAttributes, FileType, OpenFlags, StatusCode};
 use serde::{Deserialize, Serialize};
@@ -167,6 +168,9 @@ fn sftp_err(e: russh_sftp::client::error::Error) -> CoreError {
     }
 }
 
+/// How many symlinks `list` resolves in flight at once.
+const SYMLINK_RESOLVE_CONCURRENCY: usize = 16;
+
 fn join(dir: &str, name: &str) -> String {
     if dir.ends_with('/') {
         format!("{dir}{name}")
@@ -211,25 +215,37 @@ impl Sftp {
         let dir = self.canonicalize(dir).await?;
         let rd = self.session.read_dir(&dir).await.map_err(sftp_err)?;
         let mut out = Vec::new();
+        let mut links = Vec::new();
         for e in rd {
             let name = e.file_name();
             if name == "." || name == ".." {
                 continue;
             }
             let path = join(&dir, &name);
-            let mut entry = RemoteEntry::from_attrs(name, path.clone(), &e.metadata());
+            let entry = RemoteEntry::from_attrs(name, path, &e.metadata());
             if entry.kind == EntryKind::Symlink {
-                if let Ok(target) = self.session.read_link(&path).await {
-                    entry.link_target = Some(target);
-                }
-                entry.target_kind = self
-                    .session
-                    .metadata(&path)
-                    .await
-                    .ok()
-                    .map(|a| a.file_type().into());
+                links.push(out.len());
             }
             out.push(entry);
+        }
+        // Symlink targets need two extra round-trips each; resolve them
+        // concurrently (bounded) so a directory full of links does not
+        // take `links * 2 * RTT` to list.
+        let resolved: Vec<(usize, Option<String>, Option<EntryKind>)> = stream::iter(links)
+            .map(|i| {
+                let path = out[i].path.clone();
+                async move {
+                    let (target, meta) =
+                        tokio::join!(self.session.read_link(&path), self.session.metadata(&path));
+                    (i, target.ok(), meta.ok().map(|a| a.file_type().into()))
+                }
+            })
+            .buffer_unordered(SYMLINK_RESOLVE_CONCURRENCY)
+            .collect()
+            .await;
+        for (i, target, kind) in resolved {
+            out[i].link_target = target;
+            out[i].target_kind = kind;
         }
         out.sort_by(|a, b| {
             let da = a.kind == EntryKind::Dir;

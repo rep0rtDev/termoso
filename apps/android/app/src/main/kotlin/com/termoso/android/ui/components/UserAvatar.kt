@@ -26,7 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.hosts.initial
-import com.termoso.android.ui.theme.Emerald
 import java.util.Collections
 
 /**
@@ -69,7 +68,7 @@ fun UserAvatar(
     modifier: Modifier = Modifier,
     size: Int = 40,
     shape: Shape = RoundedCornerShape(10.dp),
-    container: Color = Emerald,
+    container: Color = MaterialTheme.colorScheme.primary,
     textStyle: TextStyle = MaterialTheme.typography.titleMedium,
 ) {
     val picture = rememberUserAvatar(repo, userId, tag)
