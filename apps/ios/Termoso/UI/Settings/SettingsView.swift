@@ -8,6 +8,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                profileHeader
                 accountSection
                 appearanceSection
                 terminalSection
@@ -15,8 +16,34 @@ struct SettingsView: View {
                 securitySection
                 aboutSection
             }
-            .navigationTitle("Settings")
+            .scrollContentBackground(.hidden)
+            .pageBackground()
+            .navigationTitle("Profile")
             .task { model.load() }
+        }
+    }
+
+    /// Avatar + server line at the top, like the account card that heads the
+    /// profile tab on mobile SSH clients.
+    private var profileHeader: some View {
+        Section {
+            HStack(spacing: 14) {
+                Image(systemName: "person.fill")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 56, height: 56)
+                    .background(Theme.terminalKeyActive, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Not signed in")
+                        .font(.headline)
+                    Text(serverLabel)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.vertical, 4)
+            .accessibilityIdentifier("settings.profileHeader")
         }
     }
 
