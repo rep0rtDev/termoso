@@ -169,7 +169,7 @@ opening a public issue.
 
 Requirements: a Linux host with Docker Compose v2 *or* Podman (Quadlet),
 one public hostname with TLS (plus one for the storage endpoint if you enable
-session logs), and — recommended — an SMTP account. PostgreSQL 17, Redis 7
+session logs), and — recommended — an SMTP account. PostgreSQL 18, Redis 8
 and MinIO are part of the stack.
 
 ```bash

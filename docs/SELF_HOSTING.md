@@ -10,7 +10,7 @@ Two equivalent packagings ship in [`deploy/`](../deploy):
 | | Docker Compose | Podman Quadlet |
 |---|---|---|
 | File(s) | `deploy/docker-compose.yml` | `deploy/quadlet/*.container`, `.network`, `.volume` |
-| Runtime | Docker Engine + Compose v2, or `podman compose` | Podman ≥ 4.4 driven by systemd (≥ 5.0 for health-gated start-up) |
+| Runtime | Docker Engine + Compose v2, or `podman compose` | Podman 5.x or 6.x driven by systemd (4.4 is the floor; 5.0+ for health-gated start-up, 5.6+ for `podman quadlet install`) |
 | Lifecycle | `docker compose up/down/pull` | `systemctl start/stop`, `podman auto-update` |
 | Good for | any Linux host, quickest path | servers that already manage everything through systemd, rootless deployments |
 
@@ -25,9 +25,9 @@ backing services with fixed passwords for `cargo run`/`cargo test`.
 | Service | Image | State | Purpose |
 |---|---|---|---|
 | `api` | `ghcr.io/rep0rtdev/termoso-server` | none | REST + WebSocket API under `/api/v1`, web cabinet on `/`, SSH ID handles, Android asset links. Runs migrations at start. |
-| `postgres` | `postgres:17-alpine` | **volume, back it up** | accounts, devices, teams, vaults, encrypted entities, audit log, avatars |
-| `redis` | `redis:7-alpine` | volume (disposable) | login handshakes, MFA/approval codes, session cache, rate limits, cross-replica event fan-out |
-| `minio` | `quay.io/minio/minio` | volume | client-encrypted session logs, reached by clients through pre-signed URLs |
+| `postgres` | `postgres:18-alpine` | **volume, back it up** | accounts, devices, teams, vaults, encrypted entities, audit log, avatars |
+| `redis` | `redis:8-alpine` | volume (disposable) | login handshakes, MFA/approval codes, session cache, rate limits, cross-replica event fan-out |
+| `minio` | `quay.io/minio/minio:RELEASE.2025-09-07…` | volume | client-encrypted session logs, reached by clients through pre-signed URLs. MinIO stopped publishing community container images after this tag; newer releases are source-only (`make docker`). Any S3-compatible store is a drop-in replacement — see [Scaling](#scaling). |
 | `bridge` (optional) | `ghcr.io/rep0rtdev/termoso-bridge` | none | Termius-compatible REST API for automation — see [API_BRIDGE.md](API_BRIDGE.md) |
 | `caddy` (Compose `proxy` profile) | `caddy:2-alpine` | volume (certificates) | TLS termination for the API and MinIO |
 
@@ -170,6 +170,25 @@ they take a lock, so several replicas starting at once are safe. Read the
 release notes before jumping several minor versions — a release that requires
 manual steps says so.
 
+The stack pins PostgreSQL by major version (`postgres:18-alpine`). A PostgreSQL
+major upgrade is never automatic: the 18 image refuses to start on a 17 data
+directory. Dump with the old image, then restore into the new one:
+
+```bash
+docker compose -f deploy/docker-compose.yml exec postgres pg_dump -U termoso -Fc termoso > pre-upgrade.dump
+docker compose -f deploy/docker-compose.yml down
+docker volume rm termoso_postgres          # or move it aside
+# bump the image tag, then
+docker compose -f deploy/docker-compose.yml up -d --wait postgres
+docker compose -f deploy/docker-compose.yml exec -T postgres pg_restore -U termoso -d termoso --no-owner < pre-upgrade.dump
+docker compose -f deploy/docker-compose.yml up -d --wait
+```
+
+Stacks created before the move to PostgreSQL 18 mounted the volume at
+`/var/lib/postgresql/data`; the 18+ image keeps its data under
+`/var/lib/postgresql/<major>/docker`, which is why the volume is now mounted
+at `/var/lib/postgresql` (and why `pg_upgrade --link` works in place there).
+
 ### Scaling
 
 The API keeps no local state. Run more replicas behind a proxy that
@@ -209,6 +228,11 @@ yourself — the example file marks every place.
 
 ### Rootful (system services)
 
+On Podman ≥ 5.6 the unit files can be installed with
+`sudo podman quadlet install deploy/quadlet/*.{container,network,volume}`
+(`podman quadlet list` / `rm` manage them afterwards); the manual copy below
+works on every supported version.
+
 ```bash
 sudo install -d -m 0750 /etc/termoso
 sudo install -m 0600 deploy/.env                    /etc/termoso/env
@@ -247,9 +271,10 @@ loginctl enable-linger "$USER"     # keep user services running after logout
 
 Rootless containers cannot bind ports below 1024, so terminate TLS with a
 system-level proxy (or lower `net.ipv4.ip_unprivileged_port_start`) and point
-it at `127.0.0.1:8080`. Rootless networking through pasta/slirp4netns costs
-some throughput on large SFTP-log uploads; that is the only functional
-difference.
+it at `127.0.0.1:8080`. Rootless networking through pasta costs some
+throughput on large SFTP-log uploads; that is the only functional difference.
+Podman 6 dropped slirp4netns, cgroups v1, iptables and CNI; hosts that still
+rely on any of those stay on Podman 5.x (the units do not depend on either).
 
 ### Health, restarts and updates
 

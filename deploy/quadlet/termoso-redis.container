@@ -5,7 +5,7 @@ Description=Termoso Redis
 
 [Container]
 ContainerName=termoso-redis
-Image=docker.io/library/redis:7-alpine
+Image=docker.io/library/redis:8-alpine
 Network=termoso.network
 Volume=termoso-redis.volume:/data
 Exec=redis-server --save 60 1 --appendonly no --maxmemory-policy noeviction

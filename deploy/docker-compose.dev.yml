@@ -19,14 +19,14 @@ name: termoso-dev
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: termoso
       POSTGRES_PASSWORD: termoso
       POSTGRES_DB: termoso
     ports: ["127.0.0.1:5432:5432"]
     volumes:
-      - postgres:/var/lib/postgresql/data
+      - postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U termoso -d termoso"]
       interval: 2s
@@ -34,7 +34,7 @@ services:
       retries: 30
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     ports: ["127.0.0.1:6379:6379"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -58,7 +58,7 @@ services:
       retries: 30
 
   mailpit:
-    image: axllent/mailpit:v1.29
+    image: axllent/mailpit:v1.31
     ports: ["127.0.0.1:1025:1025", "127.0.0.1:8025:8025"]
     healthcheck:
       test: ["CMD", "/mailpit", "readyz"]

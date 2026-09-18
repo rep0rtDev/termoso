@@ -9,9 +9,10 @@
 # Services
 #   api       Termoso server: REST + WebSocket API under /api/v1 and the web
 #             cabinet on / (one origin). Stateless; runs migrations on start.
-#   postgres  PostgreSQL 17 — accounts, teams, ciphertext, audit log. Back it up.
-#   redis     Redis 7 — sessions cache, rate limits, realtime pub/sub. Cache only.
-#   minio     S3-compatible object storage for encrypted session logs.
+#   postgres  PostgreSQL 18 — accounts, teams, ciphertext, audit log. Back it up.
+#   redis     Redis 8 — sessions cache, rate limits, realtime pub/sub. Cache only.
+#   minio     S3-compatible object storage for encrypted session logs. Pinned to
+#             the last community image MinIO published; any S3 store can replace it.
 #   bridge    (profile `bridge`)  API Bridge with a Termius-compatible REST API.
 #   caddy     (profile `proxy`)   Reverse proxy with automatic TLS for api + minio.
 #
@@ -64,14 +65,14 @@ services:
       - no-new-privileges:true
 
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: termoso
       POSTGRES_DB: termoso
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
     volumes:
-      - postgres:/var/lib/postgresql/data
+      - postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U termoso -d termoso"]
       interval: 5s
@@ -81,7 +82,7 @@ services:
       - no-new-privileges:true
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     restart: unless-stopped
     # Snapshot at most once a minute; never evict (sessions are not a cache we
     # want to lose silently).
