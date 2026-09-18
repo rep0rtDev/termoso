@@ -39,7 +39,6 @@ import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.UserAvatar
 import com.termoso.android.ui.shell.ShellViewModel
-import com.termoso.android.ui.theme.Emerald
 import com.termoso.core.TeamPresenceCard
 import com.termoso.core.VaultInfo
 import java.time.Instant
@@ -117,7 +116,7 @@ private fun PresenceAvatar(repo: VaultRepository, v: HostViewer, size: Int, modi
             name = v.name,
             size = size - 3,
             shape = CircleShape,
-            container = if (v.me) Emerald else MaterialTheme.colorScheme.tertiary,
+            container = if (v.me) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.tertiary,
             textStyle = MaterialTheme.typography.labelSmall,
         )
     }

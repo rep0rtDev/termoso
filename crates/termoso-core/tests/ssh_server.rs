@@ -468,7 +468,19 @@ impl MemSftp {
     fn is_dir(files: &HashMap<String, Vec<u8>>, p: &str) -> bool {
         p == "/" || p == "/home" || p == "/home/tester" || files.contains_key(&format!("{p}/"))
     }
+    /// Symlinks live in the same map under `"<path>@"` with the target as value.
+    fn link_target(files: &HashMap<String, Vec<u8>>, p: &str) -> Option<String> {
+        files
+            .get(&format!("{p}@"))
+            .map(|t| String::from_utf8_lossy(t).into_owned())
+    }
     fn attrs_for(files: &HashMap<String, Vec<u8>>, p: &str) -> Option<FileAttributes> {
+        if Self::link_target(files, p).is_some() {
+            let mut a = FileAttributes::default();
+            a.set_symlink(true);
+            a.permissions = Some(0o120777);
+            return Some(a);
+        }
         if Self::is_dir(files, p) {
             let mut a = FileAttributes::default();
             a.set_dir(true);
@@ -509,6 +521,22 @@ impl russh_sftp::server::Handler for MemSftp {
     }
 
     async fn stat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
+        let mut p = Self::norm(&path);
+        let files = self.files.lock().await;
+        // Follow links (bounded, so a loop just ends up NoSuchFile).
+        for _ in 0..8 {
+            match Self::link_target(&files, &p) {
+                Some(t) => p = Self::norm(&t),
+                None => break,
+            }
+        }
+        match Self::attrs_for(&files, &p) {
+            Some(attrs) if !attrs.is_symlink() => Ok(Attrs { id, attrs }),
+            _ => Err(StatusCode::NoSuchFile),
+        }
+    }
+
+    async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         let p = Self::norm(&path);
         let files = self.files.lock().await;
         match Self::attrs_for(&files, &p) {
@@ -517,8 +545,31 @@ impl russh_sftp::server::Handler for MemSftp {
         }
     }
 
-    async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
-        self.stat(id, path).await
+    async fn readlink(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
+        let p = Self::norm(&path);
+        let files = self.files.lock().await;
+        match Self::link_target(&files, &p) {
+            Some(t) => Ok(Name {
+                id,
+                files: vec![File::dummy(&t)],
+            }),
+            None => Err(StatusCode::NoSuchFile),
+        }
+    }
+
+    async fn symlink(
+        &mut self,
+        id: u32,
+        linkpath: String,
+        targetpath: String,
+    ) -> Result<Status, Self::Error> {
+        let p = Self::norm(&linkpath);
+        let mut files = self.files.lock().await;
+        if Self::attrs_for(&files, &p).is_some() {
+            return Err(StatusCode::Failure);
+        }
+        files.insert(format!("{p}@"), targetpath.into_bytes());
+        Ok(Self::ok(id))
     }
 
     async fn fstat(&mut self, id: u32, handle: String) -> Result<Attrs, Self::Error> {
@@ -548,7 +599,8 @@ impl russh_sftp::server::Handler for MemSftp {
                 if rest.is_empty() {
                     continue;
                 }
-                names.insert(rest.split('/').next().unwrap().to_string());
+                let first = rest.split('/').next().unwrap();
+                names.insert(first.strip_suffix('@').unwrap_or(first).to_string());
             }
         }
         if p == "/" {
@@ -624,10 +676,10 @@ impl russh_sftp::server::Handler for MemSftp {
 
     async fn remove(&mut self, id: u32, path: String) -> Result<Status, Self::Error> {
         let p = Self::norm(&path);
-        self.files
-            .lock()
-            .await
+        let mut files = self.files.lock().await;
+        files
             .remove(&p)
+            .or_else(|| files.remove(&format!("{p}@")))
             .map(|_| Self::ok(id))
             .ok_or(StatusCode::NoSuchFile)
     }
@@ -1379,6 +1431,53 @@ async fn sftp_end_to_end() {
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].name, "f.txt");
     assert_eq!(list[0].path, "/home/tester/a/b/f.txt");
+
+    // A directory full of symlinks: every target is resolved (concurrently)
+    // and a dangling link still lists, just without a target kind.
+    sftp.mkdir_all("/home/tester/a/links").await.unwrap();
+    for i in 0..40 {
+        sftp.symlink(
+            &format!("/home/tester/a/links/l{i:02}"),
+            "/home/tester/a/b/f.txt",
+        )
+        .await
+        .unwrap();
+    }
+    sftp.symlink("/home/tester/a/links/dir", "/home/tester/a/b")
+        .await
+        .unwrap();
+    sftp.symlink("/home/tester/a/links/dangling", "/home/tester/a/nope")
+        .await
+        .unwrap();
+    let links = sftp.list("/home/tester/a/links").await.unwrap();
+    assert_eq!(links.len(), 42);
+    for e in &links {
+        assert_eq!(e.kind, termoso_core::sftp::EntryKind::Symlink, "{}", e.name);
+        assert_eq!(e.path, format!("/home/tester/a/links/{}", e.name));
+    }
+    let by_name = |n: &str| links.iter().find(|e| e.name == n).unwrap();
+    assert_eq!(
+        by_name("l00").link_target.as_deref(),
+        Some("/home/tester/a/b/f.txt")
+    );
+    assert_eq!(
+        by_name("l39").target_kind,
+        Some(termoso_core::sftp::EntryKind::File)
+    );
+    assert_eq!(
+        by_name("dir").target_kind,
+        Some(termoso_core::sftp::EntryKind::Dir)
+    );
+    assert_eq!(
+        by_name("dangling").link_target.as_deref(),
+        Some("/home/tester/a/nope")
+    );
+    assert_eq!(by_name("dangling").target_kind, None);
+    sftp.remove_dir_all("/home/tester/a/links", &Default::default())
+        .await
+        .unwrap();
+    assert!(!sftp.exists("a/links").await.unwrap());
+    assert!(sftp.exists("a/b/f.txt").await.unwrap());
 
     sftp.rename("/home/tester/a/b/f.txt", "/home/tester/a/g.txt")
         .await

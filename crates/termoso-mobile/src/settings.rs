@@ -85,6 +85,10 @@ pub struct MobileSettings {
     /// `system` | `dark` | `light`.
     #[serde(default = "default_app_theme")]
     pub app_theme: String,
+    /// Derive the app palette from the device wallpaper colours (Material
+    /// You, Android 12+). The terminal keeps its own theme either way.
+    #[serde(default = "default_true")]
+    pub dynamic_color: bool,
     /// `list` | `grid`.
     #[serde(default = "default_view")]
     pub hosts_view: String,
@@ -175,6 +179,7 @@ impl Default for MobileSettings {
     fn default() -> Self {
         Self {
             app_theme: default_app_theme(),
+            dynamic_color: true,
             hosts_view: default_view(),
             terminal_theme: default_theme(),
             terminal_font_size: default_font_size(),

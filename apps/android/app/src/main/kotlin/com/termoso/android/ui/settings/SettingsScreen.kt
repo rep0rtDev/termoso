@@ -57,7 +57,7 @@ import com.termoso.android.ui.security.authenticateDevice
 import com.termoso.android.ui.security.deviceAuthProblem
 import com.termoso.android.ui.security.findFragmentActivity
 import com.termoso.android.ui.shell.ShellViewModel
-import com.termoso.android.ui.theme.Emerald
+import com.termoso.android.ui.theme.supportsDynamicColor
 import com.termoso.core.MobileSettings
 import com.termoso.core.SyncState
 import com.termoso.core.coreVersion
@@ -173,7 +173,7 @@ fun SettingsScreen(
                                 },
                                 tint = when (sync.state) {
                                     SyncState.ERROR -> MaterialTheme.colorScheme.error
-                                    else -> Emerald
+                                    else -> MaterialTheme.colorScheme.primary
                                 },
                             )
                         },
@@ -189,6 +189,15 @@ fun SettingsScreen(
                     badge = themes.firstOrNull { it.first == settings.appTheme }?.second ?: settings.appTheme,
                     modifier = Modifier.clickable { themePicker = true },
                 )
+                if (supportsDynamicColor) {
+                    RowDivider()
+                    SwitchRow(
+                        title = "Dynamic colors",
+                        subtitle = "Follow the wallpaper palette (Material You)",
+                        checked = settings.dynamicColor,
+                        onCheckedChange = { on -> set { it.copy(dynamicColor = on) } },
+                    )
+                }
                 RowDivider()
                 ChevronRow(
                     title = "Terminal",
