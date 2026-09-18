@@ -1,0 +1,5 @@
+[Unit]
+Description=Termoso minio data
+
+[Volume]
+VolumeName=termoso-minio

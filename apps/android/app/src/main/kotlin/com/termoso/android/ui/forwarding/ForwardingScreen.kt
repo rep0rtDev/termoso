@@ -30,15 +30,14 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.State
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +58,7 @@ import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SubScreen
+import com.termoso.android.ui.components.TermosoSwitch
 import com.termoso.android.ui.hosts.ConfirmDialog
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.PromptDialog
@@ -261,7 +261,7 @@ private fun RuleCard(
                 if (busy) {
                     CircularProgressIndicator(modifier = Modifier.padding(end = 12.dp).height(22.dp), strokeWidth = 2.dp)
                 }
-                Switch(
+                TermosoSwitch(
                     checked = pending ?: (tunnel != null),
                     onCheckedChange = { on -> pending = on; onToggle(on) },
                     enabled = !rule.hostMissing,

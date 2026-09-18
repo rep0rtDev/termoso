@@ -1,0 +1,19 @@
+# Reverse proxy for the `proxy` profile of docker-compose.yml.
+# Certificates come from Let's Encrypt automatically; both hostnames must
+# point at this machine. Caddy sets X-Forwarded-For, which the API honours
+# because TERMOSO_TRUST_PROXY=true in the stack.
+
+{
+	email {$ACME_EMAIL}
+}
+
+# API + web cabinet + WebSocket, one origin.
+{$TERMOSO_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy api:8080
+}
+
+# Pre-signed session-log uploads/downloads (TERMOSO_S3__PUBLIC_ENDPOINT).
+{$TERMOSO_S3_DOMAIN} {
+	reverse_proxy minio:9000
+}

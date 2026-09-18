@@ -1,10 +1,24 @@
-# Termoso self-hosted stack: API + PostgreSQL + Redis + MinIO.
+# Termoso self-hosted stack.
 #
-#   cp deploy/.env.example deploy/.env   # then edit TERMOSO_MASTER_KEY etc.
-#   docker compose -f deploy/docker-compose.yml up -d
+#   cp deploy/.env.example deploy/.env      # set TERMOSO_MASTER_KEY, passwords, public URLs
+#   docker compose -f deploy/docker-compose.yml up -d --wait
 #
-# Put a TLS-terminating reverse proxy (Caddy / Traefik / nginx) in front of
-# `api` (port 8080) and `minio` (port 9000, for pre-signed log uploads).
+# Works unchanged with `podman compose`. A systemd/Quadlet variant of the same
+# stack lives in deploy/quadlet/. Full guide: docs/SELF_HOSTING.md.
+#
+# Services
+#   api       Termoso server: REST + WebSocket API under /api/v1 and the web
+#             cabinet on / (one origin). Stateless; runs migrations on start.
+#   postgres  PostgreSQL 18 — accounts, teams, ciphertext, audit log. Back it up.
+#   redis     Redis 8 — sessions cache, rate limits, realtime pub/sub. Cache only.
+#   minio     S3-compatible object storage for encrypted session logs. Pinned to
+#             the last community image MinIO published; any S3 store can replace it.
+#   bridge    (profile `bridge`)  API Bridge with a Termius-compatible REST API.
+#   caddy     (profile `proxy`)   Reverse proxy with automatic TLS for api + minio.
+#
+# Published ports bind to 127.0.0.1 by default so nothing is reachable from the
+# network until a TLS-terminating reverse proxy is in front. Set
+# TERMOSO_LISTEN=0.0.0.0 in .env if the proxy runs on another machine.
 
 name: termoso
 
@@ -15,8 +29,9 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     restart: unless-stopped
-    env_file: .env
+    env_file: ${TERMOSO_ENV_FILE:-.env}
     environment:
+      # In-stack addresses; everything else comes from .env.
       TERMOSO_BIND: 0.0.0.0:8080
       TERMOSO_DATABASE_URL: postgres://termoso:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/termoso
       TERMOSO_REDIS_URL: redis://redis:6379
@@ -25,9 +40,10 @@ services:
       TERMOSO_S3__ACCESS_KEY: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
       TERMOSO_S3__SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
       TERMOSO_S3__REGION: us-east-1
+      # The server only ever sits behind a proxy in this stack.
       TERMOSO_TRUST_PROXY: "true"
     ports:
-      - "${TERMOSO_PORT:-8080}:8080"
+      - "${TERMOSO_LISTEN:-127.0.0.1}:${TERMOSO_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -36,29 +52,40 @@ services:
       minio:
         condition: service_healthy
     healthcheck:
+      # Hits /readyz (PostgreSQL + Redis) from inside the distroless image.
       test: ["CMD", "/usr/local/bin/termoso-server", "--healthcheck"]
       interval: 15s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
 
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: termoso
       POSTGRES_DB: termoso
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
     volumes:
-      - postgres:/var/lib/postgresql/data
+      - postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U termoso -d termoso"]
       interval: 5s
       timeout: 3s
       retries: 20
+    security_opt:
+      - no-new-privileges:true
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     restart: unless-stopped
+    # Snapshot at most once a minute; never evict (sessions are not a cache we
+    # want to lose silently).
     command: ["redis-server", "--save", "60", "1", "--appendonly", "no", "--maxmemory-policy", "noeviction"]
     volumes:
       - redis:/data
@@ -67,6 +94,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    security_opt:
+      - no-new-privileges:true
 
   minio:
     image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
@@ -76,8 +105,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
     ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "${TERMOSO_LISTEN:-127.0.0.1}:${MINIO_PORT:-9000}:9000"
+      - "${TERMOSO_LISTEN:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio:/data
     healthcheck:
@@ -85,8 +114,71 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    security_opt:
+      - no-new-privileges:true
+
+  # Optional: `docker compose --profile bridge up -d`
+  # Needs the credentials file downloaded from the cabinet (Account → API Bridge)
+  # at ${TERMOSO_BRIDGE_CREDENTIALS_FILE} and TERMOSO_BRIDGE_API_KEY in .env
+  # (without the key the bridge starts but logs a loud warning: anyone who can
+  # reach the port can write to the vault).
+  # The bridge talks to the server through its public URL like any client.
+  bridge:
+    profiles: ["bridge"]
+    image: ghcr.io/rep0rtdev/termoso-bridge:${TERMOSO_VERSION:-latest}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.bridge
+    restart: unless-stopped
+    environment:
+      TERMOSO_BRIDGE_CREDENTIALS: /etc/termoso/bridge.json
+      TERMOSO_BRIDGE_LISTEN: 0.0.0.0:8080
+      TERMOSO_BRIDGE_API_KEY: ${TERMOSO_BRIDGE_API_KEY:-}
+      TERMOSO_BRIDGE_SYNC_INTERVAL: ${TERMOSO_BRIDGE_SYNC_INTERVAL:-60}
+      RUST_LOG: ${TERMOSO_BRIDGE_LOG:-info}
+    volumes:
+      - ${TERMOSO_BRIDGE_CREDENTIALS_FILE:-./bridge.json}:/etc/termoso/bridge.json:ro
+    ports:
+      - "${TERMOSO_LISTEN:-127.0.0.1}:${TERMOSO_BRIDGE_PORT:-8081}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  # Optional: `docker compose --profile proxy up -d`
+  # Caddy with automatic Let's Encrypt certificates for TERMOSO_DOMAIN (api +
+  # cabinet) and TERMOSO_S3_DOMAIN (pre-signed log uploads). Both names must
+  # resolve to this host and ports 80/443 must be reachable from the internet;
+  # Caddy refuses to start while either variable is empty.
+  caddy:
+    profiles: ["proxy"]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      TERMOSO_DOMAIN: ${TERMOSO_DOMAIN:-}
+      TERMOSO_S3_DOMAIN: ${TERMOSO_S3_DOMAIN:-}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   postgres:
   redis:
   minio:
+  caddy_data:
+  caddy_config:

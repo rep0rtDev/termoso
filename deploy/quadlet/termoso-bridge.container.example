@@ -1,0 +1,30 @@
+# Optional API Bridge (Termius-compatible REST API for automation).
+# Rename to termoso-bridge.container to enable. Needs the credentials file from
+# the cabinet (Account -> API Bridge) at /etc/termoso/bridge.json and
+# TERMOSO_BRIDGE_API_KEY in /etc/termoso/bridge.env. The bridge reaches the
+# server through its public URL like any other client.
+[Unit]
+Description=Termoso API Bridge
+Requires=termoso-api.service
+After=termoso-api.service
+
+[Container]
+ContainerName=termoso-bridge
+Image=ghcr.io/rep0rtdev/termoso-bridge:latest
+#AutoUpdate=registry
+Network=termoso.network
+Environment=TERMOSO_BRIDGE_CREDENTIALS=/etc/termoso/bridge.json
+Environment=TERMOSO_BRIDGE_LISTEN=0.0.0.0:8080
+EnvironmentFile=/etc/termoso/bridge.env
+Volume=/etc/termoso/bridge.json:/etc/termoso/bridge.json:ro,Z
+PublishPort=127.0.0.1:8081:8080
+ReadOnly=true
+Tmpfs=/tmp
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
