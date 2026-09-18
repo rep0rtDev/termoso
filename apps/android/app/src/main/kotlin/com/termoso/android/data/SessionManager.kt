@@ -342,6 +342,18 @@ class SessionManager(
         list.filter { it.isView }.forEach { close(it.id) }
     }
 
+    /** A second tab to the same target as [id]; shared views cannot be duplicated. */
+    suspend fun duplicate(id: String): TerminalSession? {
+        val old = find(id) ?: return null
+        return when {
+            old.isView -> null
+            old.hostId != null -> connectHost(old.hostId, old.transport)
+            old.quick != null -> connectQuick(old.quick)
+            old.local != null -> connectLocal(old.local)
+            else -> null
+        }
+    }
+
     /** Replace a closed/failed session with a fresh connection to the same target. */
     suspend fun reconnect(id: String): TerminalSession? {
         val old = find(id) ?: return null
@@ -392,6 +404,20 @@ class SessionManager(
         withContext(Dispatchers.IO) { runCatching { session.rust.disconnect() } }
         keepAlive.terminals(_sessions.value.size)
     }
+
+    /** Disconnect and drop several tabs at once; unknown ids are skipped. */
+    suspend fun closeMany(ids: Collection<String>) {
+        val wanted = ids.toSet()
+        val closing = _sessions.value.filter { it.id in wanted }
+        if (closing.isEmpty()) return
+        _sessions.update { list -> list.filterNot { it.id in wanted } }
+        if (_activeId.value in wanted) _activeId.value = _sessions.value.lastOrNull()?.id
+        withContext(Dispatchers.IO) { closing.forEach { runCatching { it.rust.disconnect() } } }
+        keepAlive.terminals(_sessions.value.size)
+    }
+
+    /** Every open tab to a saved host. */
+    fun forHost(hostId: String): List<TerminalSession> = _sessions.value.filter { it.hostId == hostId }
 
     suspend fun closeAll() {
         val list = _sessions.value

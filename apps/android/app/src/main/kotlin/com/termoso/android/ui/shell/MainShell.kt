@@ -1,5 +1,6 @@
 package com.termoso.android.ui.shell
 
+import android.net.Uri
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -83,6 +84,7 @@ import com.termoso.android.ui.vault.VaultScreen
 import com.termoso.core.KeyMods
 import com.termoso.core.PfKind
 import com.termoso.core.Transport
+import com.termoso.core.parseTarget
 import kotlinx.coroutines.launch
 
 object Routes {
@@ -90,7 +92,7 @@ object Routes {
     const val CONNECTIONS = "connections"
     const val SETTINGS = "settings"
     const val HOSTS = "hosts?group={group}"
-    const val HOST_NEW = "hostNew?group={group}"
+    const val HOST_NEW = "hostNew?group={group}&target={target}"
     const val HOST_EDIT = "hostEdit/{id}"
     const val KEYCHAIN = "keychain"
     const val KEY_GENERATE = "keyGenerate"
@@ -128,6 +130,9 @@ object Routes {
 
     fun hosts(group: String?) = if (group == null) "hosts" else "hosts?group=$group"
     fun hostNew(group: String?) = if (group == null) "hostNew" else "hostNew?group=$group"
+
+    /** New-host form prefilled from a quick-connect target (`user@host:port`, `telnet://host`). */
+    fun hostNewFrom(target: String) = "hostNew?target=${Uri.encode(target)}"
     fun hostEdit(id: String) = "hostEdit/$id"
     fun key(id: String) = "key/$id"
     fun identity(id: String) = "identity/$id"
@@ -290,6 +295,7 @@ fun MainShell(
         },
     ) { padding ->
         val groupArg = navArgument("group") { type = NavType.StringType; nullable = true; defaultValue = null }
+        val targetArg = navArgument("target") { type = NavType.StringType; nullable = true; defaultValue = null }
         val idArg = navArgument("id") { type = NavType.StringType }
         NavHost(
             navController = nav,
@@ -319,6 +325,9 @@ fun MainShell(
                     onOpenTerminal = ::openTerminal,
                     onNewSftp = { nav.navigate(Routes.SFTP_PICK) },
                     onOpenSftp = ::openSftp,
+                    onSftpHost = ::sftpHost,
+                    onEditHost = { nav.navigate(Routes.hostEdit(it)) },
+                    onAddHostFrom = { nav.navigate(Routes.hostNewFrom(it)) },
                 )
             }
             composable(Routes.SETTINGS) {
@@ -409,15 +418,23 @@ fun MainShell(
                     onConnect = { connectHost(it) },
                     onConnectWith = ::connectHost,
                     onSftp = ::sftpHost,
+                    onOpenSftp = ::openSftp,
+                    onOpenTerminal = ::openTerminal,
                     onForward = { nav.navigate(Routes.pfNew(PfKind.LOCAL, null, it)) },
                 )
             }
-            composable(Routes.HOST_NEW, arguments = listOf(groupArg)) { entry ->
+            composable(Routes.HOST_NEW, arguments = listOf(groupArg, targetArg)) { entry ->
+                val target = entry.arguments?.getString("target")
+                val prefill = remember(target) { target?.let { runCatching { parseTarget(it) }.getOrNull() } }
                 HostEditorScreen(
                     shell = shell,
                     hostId = null,
                     groupId = entry.arguments?.getString("group"),
                     onClose = { nav.popBackStack() },
+                    prefill = prefill,
+                    onConnect = { connectHost(it) },
+                    onSftp = ::sftpHost,
+                    onForward = { nav.navigate(Routes.pfNew(PfKind.LOCAL, null, it)) },
                 )
             }
             composable(Routes.HOST_EDIT, arguments = listOf(navArgument("id") { type = NavType.StringType })) { entry ->
@@ -426,6 +443,9 @@ fun MainShell(
                     hostId = entry.arguments?.getString("id"),
                     groupId = null,
                     onClose = { nav.popBackStack() },
+                    onConnect = { connectHost(it) },
+                    onSftp = ::sftpHost,
+                    onForward = { nav.navigate(Routes.pfNew(PfKind.LOCAL, null, it)) },
                 )
             }
             composable(Routes.KEYCHAIN) {
@@ -571,6 +591,11 @@ fun MainShell(
                     pendingShare = pendingShare,
                     onShareConsumed = { container.consumeShare() },
                     onHardwareKeyHook = { container.hardwareKeyHook = it },
+                    onSftp = ::sftpHost,
+                    onOpenSftp = ::openSftp,
+                    onForward = { nav.navigate(Routes.pfNew(PfKind.LOCAL, null, it)) },
+                    onEditHost = { nav.navigate(Routes.hostEdit(it)) },
+                    onAddHost = { nav.navigate(Routes.hostNewFrom(it)) },
                     onNewSession = {
                         // Leave the terminal first so it is not part of the
                         // saved tab state that restoreState would bring back.
