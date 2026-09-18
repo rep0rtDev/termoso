@@ -26,7 +26,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -44,7 +43,6 @@ import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.copyToClipboard
 import com.termoso.core.HostItem
 import com.termoso.core.Transport
-import kotlinx.coroutines.launch
 
 /** `user@address` plus protocol/port when they are not the SSH defaults, with Mosh/Telnet flags. */
 fun hostSubtitle(h: HostItem): String {
@@ -97,7 +95,6 @@ fun HostActionsSheet(
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val allSessions by shell.sessions.sessions.collectAsStateWithLifecycle()
     val allSftp by shell.sftp.connections.collectAsStateWithLifecycle()
     val sessions = allSessions.filter { it.hostId == host.id }
@@ -143,7 +140,7 @@ fun HostActionsSheet(
                         OpenTerminalRow(
                             session = s,
                             onOpen = then { shell.sessions.setActive(s.id); onOpenTerminal() },
-                            onClose = { scope.launch { shell.sessions.close(s.id) } },
+                            onClose = { shell.launch { shell.sessions.close(s.id) } },
                         )
                     }
                     sftp.forEachIndexed { i, c ->
@@ -151,7 +148,7 @@ fun HostActionsSheet(
                         OpenSftpRow(
                             conn = c,
                             onOpen = then { onOpenSftp(c.id) },
-                            onClose = { scope.launch { shell.sftp.close(c.id) } },
+                            onClose = { shell.launch { shell.sftp.close(c.id) } },
                         )
                     }
                     RowDivider()
@@ -160,7 +157,7 @@ fun HostActionsSheet(
                         closeConnectionsLabel(open),
                         tint = MaterialTheme.colorScheme.error,
                         onClick = then {
-                            scope.launch {
+                            shell.launch {
                                 shell.sessions.closeMany(sessions.map { it.id })
                                 shell.sftp.closeMany(sftp.map { it.id })
                             }

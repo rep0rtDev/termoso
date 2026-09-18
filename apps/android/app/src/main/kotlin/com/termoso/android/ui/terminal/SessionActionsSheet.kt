@@ -26,7 +26,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -45,7 +44,6 @@ import com.termoso.android.ui.components.transportLabel
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.core.QuickTarget
 import com.termoso.core.SessionState
-import kotlinx.coroutines.launch
 
 /** `user@host[:port]` / `telnet://host[:port]` — what quick connect accepts back. */
 fun quickTargetText(q: QuickTarget): String {
@@ -84,7 +82,6 @@ fun SessionActionsSheet(
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val state by session.state.collectAsStateWithLifecycle()
     val title by session.title.collectAsStateWithLifecycle()
     val detected by session.detectedOs.collectAsStateWithLifecycle()
@@ -129,7 +126,7 @@ fun SessionActionsSheet(
                     ActionRow(
                         Icons.Filled.ContentCopy,
                         "Duplicate",
-                        onClick = then { scope.launch { shell.duplicateSession(session.id) } },
+                        onClick = then { shell.launch { shell.duplicateSession(session.id) } },
                     )
                     RowDivider()
                 }
@@ -137,7 +134,7 @@ fun SessionActionsSheet(
                     ActionRow(
                         Icons.Filled.Refresh,
                         "Reconnect",
-                        onClick = then { scope.launch { shell.sessions.reconnect(session.id) } },
+                        onClick = then { shell.launch { shell.sessions.reconnect(session.id) } },
                     )
                     RowDivider()
                 }
@@ -147,7 +144,7 @@ fun SessionActionsSheet(
                         "Open SFTP",
                         onClick = then {
                             if (hostId != null) onSftp(hostId)
-                            else if (quick != null) scope.launch { shell.openSftpQuick(quick)?.let { onOpenSftp(it.id) } }
+                            else if (quick != null) shell.launch { shell.openSftpQuick(quick)?.let { onOpenSftp(it.id) } }
                         },
                     )
                     RowDivider()
@@ -204,7 +201,7 @@ fun SessionActionsSheet(
                     Icons.Filled.Close,
                     "Close session",
                     tint = MaterialTheme.colorScheme.error,
-                    onClick = then { scope.launch { shell.sessions.close(session.id) } },
+                    onClick = then { shell.launch { shell.sessions.close(session.id) } },
                 )
                 if (siblings.isNotEmpty()) {
                     RowDivider()
@@ -212,7 +209,7 @@ fun SessionActionsSheet(
                         Icons.Filled.PowerSettingsNew,
                         closeHostLabel(siblings.size + 1),
                         tint = MaterialTheme.colorScheme.error,
-                        onClick = then { scope.launch { shell.sessions.closeMany(siblings.map { it.id } + session.id) } },
+                        onClick = then { shell.launch { shell.sessions.closeMany(siblings.map { it.id } + session.id) } },
                     )
                 }
                 if (sessions.size > 1) {
@@ -221,7 +218,7 @@ fun SessionActionsSheet(
                         Icons.Filled.PowerSettingsNew,
                         "Close all sessions (${sessions.size})",
                         tint = MaterialTheme.colorScheme.error,
-                        onClick = then { scope.launch { shell.sessions.closeAll() } },
+                        onClick = then { shell.launch { shell.sessions.closeAll() } },
                     )
                 }
             }
