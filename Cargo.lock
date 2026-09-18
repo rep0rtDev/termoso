@@ -8971,7 +8971,7 @@ dependencies = [
  "keyring",
  "mdns-sd",
  "ocb3",
- "p256 0.13.2",
+ "p256 0.14.0",
  "portable-pty",
  "quick-xml 0.41.0",
  "rand 0.10.2",
