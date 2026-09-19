@@ -20,8 +20,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.termoso.android.R
 import com.termoso.android.data.Fido2Manager
+import com.termoso.android.str
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
@@ -51,12 +54,12 @@ fun SecurityKeyListening(fido2: Fido2Manager = LocalFido2.current) {
 
 /** Hint that matches the hardware the phone actually has. */
 fun Fido2Manager.waitingHint(): String = when {
-    usbHost && nfcHardware && nfcEnabled -> "Plug a security key into the USB port or hold it to the back of the phone."
-    usbHost && nfcHardware -> "Plug a security key into the USB port, or turn on NFC and hold the key to the phone."
-    usbHost -> "Plug a security key into the USB port."
-    nfcHardware && nfcEnabled -> "Hold the security key to the back of the phone."
-    nfcHardware -> "Turn on NFC and hold the security key to the back of the phone."
-    else -> "This phone has neither USB host nor NFC, so it cannot talk to a security key."
+    usbHost && nfcHardware && nfcEnabled -> str(R.string.plug_a_security_key_into_the_usb_port)
+    usbHost && nfcHardware -> str(R.string.plug_a_security_key_into_the_usb_port_2)
+    usbHost -> str(R.string.plug_a_security_key_into_the_usb_port_3)
+    nfcHardware && nfcEnabled -> str(R.string.hold_the_security_key_to_the_back_of)
+    nfcHardware -> str(R.string.turn_on_nfc_and_hold_the_security_key)
+    else -> str(R.string.this_phone_has_neither_usb_host_nor_nfc)
 }
 
 /**
@@ -82,9 +85,9 @@ fun SecurityKeyPicker(
             ) {
                 CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                 Column(Modifier.weight(1f)) {
-                    Text("Waiting for a security key…", style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.waiting_for_a_security_key), style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        if (pending > 0) "Allow Termoso to use the USB device in the system dialog." else hint,
+                        if (pending > 0) stringResource(R.string.allow_termoso_to_use_the_usb_device_in) else hint,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -95,7 +98,7 @@ fun SecurityKeyPicker(
             if (i > 0) RowDivider()
             val chosen = selected == d.id || (selected == null && devices.size == 1)
             ListRow(
-                title = d.product.ifBlank { if (d.transport == Fido2Transport.NFC) "NFC security key" else "USB security key" },
+                title = d.product.ifBlank { if (d.transport == Fido2Transport.NFC) stringResource(R.string.nfc_security_key) else stringResource(R.string.usb_security_key) },
                 subtitle = deviceSubtitle(d),
                 leading = { IconTile(if (d.transport == Fido2Transport.NFC) Icons.Filled.Nfc else Icons.Filled.Usb, selected = chosen) },
                 modifier = Modifier.clickable(enabled = devices.size > 1) { onSelect(if (selected == d.id) null else d.id) },
@@ -103,18 +106,18 @@ fun SecurityKeyPicker(
         }
         RowDivider()
         Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-            TextButton(onClick = onRefresh) { Text("Rescan USB") }
+            TextButton(onClick = onRefresh) { Text(stringResource(R.string.rescan_usb)) }
         }
     }
 }
 
 fun deviceSubtitle(d: Fido2DeviceCard): String = listOfNotNull(
     when (d.pinSet) {
-        true -> "PIN set"
-        false -> "no PIN"
+        true -> str(R.string.pin_set)
+        false -> str(R.string.no_pin)
         null -> null
     },
-    if (d.residentKeys) "resident keys" else null,
-    if (d.ed25519) "Ed25519" else "ECDSA only",
+    if (d.residentKeys) str(R.string.resident_keys) else null,
+    if (d.ed25519) "Ed25519" else str(R.string.ecdsa_only),
     d.versions.firstOrNull { it.startsWith("FIDO_2") }?.replace("FIDO_2_", "CTAP 2.")?.replace("FIDO_2", "CTAP 2"),
 ).joinToString(" · ")

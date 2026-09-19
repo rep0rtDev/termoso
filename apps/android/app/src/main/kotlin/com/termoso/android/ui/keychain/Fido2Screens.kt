@@ -20,9 +20,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
+import com.termoso.android.str
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SecretField
@@ -51,10 +54,10 @@ fun Fido2GenerateScreen(shell: ShellViewModel, onClose: () -> Unit, onSaved: (St
     LaunchedEffect(s.error) { s.error?.let { shell.notify(it); vm.errorShown() } }
     LaunchedEffect(s.savedId) { s.savedId?.let(onSaved) }
 
-    EditorScaffold("New FIDO2 key", s.working, s.canSave(devices), onClose, vm::generate) {
+    EditorScaffold(stringResource(R.string.new_fido2_key), s.working, s.canSave(devices), onClose, vm::generate) {
         VaultPicker(s.vaults, s.vaultId) { id -> vm.update { it.copy(vaultId = id) } }
 
-        SectionLabel("Security key")
+        SectionLabel(stringResource(R.string.security_key))
         SecurityKeyPicker(
             devices = devices,
             selected = s.deviceId,
@@ -66,12 +69,12 @@ fun Fido2GenerateScreen(shell: ShellViewModel, onClose: () -> Unit, onSaved: (St
 
         SectionCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                FormField(s.label, { v -> vm.update { it.copy(label = v) } }, "Label", placeholder = "YubiKey 5")
-                FormField(s.comment, { v -> vm.update { it.copy(comment = v) } }, "Comment", placeholder = "user@host")
+                FormField(s.label, { v -> vm.update { it.copy(label = v) } }, stringResource(R.string.label), placeholder = stringResource(R.string.yubikey_5))
+                FormField(s.comment, { v -> vm.update { it.copy(comment = v) } }, stringResource(R.string.comment), placeholder = "user@host")
             }
         }
 
-        SectionLabel("Algorithm")
+        SectionLabel(stringResource(R.string.algorithm))
         SectionCard {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SkKind.entries.forEach { kind ->
@@ -84,34 +87,34 @@ fun Fido2GenerateScreen(shell: ShellViewModel, onClose: () -> Unit, onSaved: (St
                 }
             }
             Text(
-                if (s.kind == SkKind.ED25519 && device?.ed25519 == false) "This security key cannot do Ed25519 — pick ECDSA P-256." else s.kind.hint,
+                if (s.kind == SkKind.ED25519 && device?.ed25519 == false) stringResource(R.string.this_security_key_cannot_do_ed25519_pick_ecdsa) else stringResource(s.kind.hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = if (s.kind == SkKind.ED25519 && device?.ed25519 == false) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
             )
         }
 
-        SectionLabel("Options")
+        SectionLabel(stringResource(R.string.options))
         SectionCard {
             SwitchRow(
-                title = "Require touch",
-                subtitle = "Every signature needs a tap on the key (recommended)",
+                title = stringResource(R.string.require_touch),
+                subtitle = stringResource(R.string.every_signature_needs_a_tap_on_the_key),
                 checked = s.userPresence,
                 onCheckedChange = { v -> vm.update { it.copy(userPresence = v) } },
             )
             RowDivider()
             SwitchRow(
-                title = "Require PIN on every use",
-                subtitle = "User verification: the PIN is asked on every connection",
+                title = stringResource(R.string.require_pin_on_every_use),
+                subtitle = stringResource(R.string.user_verification_the_pin_is_asked_on_every),
                 checked = s.userVerification,
                 onCheckedChange = { v -> vm.update { it.copy(userVerification = v) } },
             )
             RowDivider()
             SwitchRow(
-                title = "Resident key",
+                title = stringResource(R.string.resident_key),
                 subtitle = when {
-                    device?.residentKeys == false -> "This security key cannot store resident keys"
-                    else -> "Stored on the key itself, can be loaded on another device with the PIN"
+                    device?.residentKeys == false -> stringResource(R.string.this_security_key_cannot_store_resident_keys)
+                    else -> stringResource(R.string.stored_on_the_key_itself_can_be_loaded)
                 },
                 checked = s.resident && device?.residentKeys != false,
                 onCheckedChange = { v -> vm.update { it.copy(resident = v) } },
@@ -119,41 +122,40 @@ fun Fido2GenerateScreen(shell: ShellViewModel, onClose: () -> Unit, onSaved: (St
             )
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (s.resident) {
-                    FormField(s.user, { v -> vm.update { it.copy(user = v) } }, "User name on the key", placeholder = "termoso")
+                    FormField(s.user, { v -> vm.update { it.copy(user = v) } }, stringResource(R.string.user_name_on_the_key), placeholder = "termoso")
                 }
-                FormField(s.application, { v -> vm.update { it.copy(application = v) } }, "Application", placeholder = "ssh:")
+                FormField(s.application, { v -> vm.update { it.copy(application = v) } }, stringResource(R.string.application), placeholder = "ssh:")
                 SecretField(
                     s.pin,
                     { v -> vm.update { it.copy(pin = v) } },
-                    if (device?.pinSet == true || s.resident || s.userVerification) "Security key PIN" else "Security key PIN (if set)",
+                    if (device?.pinSet == true || s.resident || s.userVerification) stringResource(R.string.security_key_pin) else stringResource(R.string.security_key_pin_if_set),
                 )
             }
         }
 
-        SectionLabel("Handle passphrase")
+        SectionLabel(stringResource(R.string.handle_passphrase))
         SectionCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SecretField(s.passphrase, { v -> vm.update { it.copy(passphrase = v) } }, "Passphrase (optional)")
+                SecretField(s.passphrase, { v -> vm.update { it.copy(passphrase = v) } }, stringResource(R.string.passphrase_optional))
                 if (s.passphrase.isNotEmpty()) {
-                    SecretField(s.confirm, { v -> vm.update { it.copy(confirm = v) } }, "Confirm passphrase")
+                    SecretField(s.confirm, { v -> vm.update { it.copy(confirm = v) } }, stringResource(R.string.confirm_passphrase))
                     if (s.passphraseMismatch) {
-                        Text("Passphrases do not match", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.passphrases_do_not_match), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
             if (s.passphrase.isNotEmpty()) {
                 RowDivider()
                 SwitchRow(
-                    title = "Remember passphrase",
-                    subtitle = "Stored encrypted in the vault so connections do not prompt",
+                    title = stringResource(R.string.remember_passphrase),
+                    subtitle = stringResource(R.string.stored_encrypted_in_the_vault_so_connections_do),
                     checked = s.remember,
                     onCheckedChange = { v -> vm.update { it.copy(remember = v) } },
                 )
             }
         }
         Text(
-            "The private key is created inside the security key and cannot be copied out. " +
-                "The vault keeps the public key and a handle; the passphrase only protects that handle.",
+            stringResource(R.string.the_private_key_is_created_inside_the_security),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp),
@@ -178,14 +180,14 @@ fun Fido2LoadScreen(shell: ShellViewModel, onClose: () -> Unit, onLoaded: (List<
     LaunchedEffect(s.error) { s.error?.let { shell.notify(it); vm.errorShown() } }
     LaunchedEffect(s.loaded) {
         val ids = s.loaded ?: return@LaunchedEffect
-        if (ids.isEmpty()) shell.notify("No new SSH keys on this security key.")
+        if (ids.isEmpty()) shell.notify(str(R.string.no_new_ssh_keys_on_this_security_key))
         onLoaded(ids)
     }
 
-    EditorScaffold("Load from security key", s.working, s.canSave(devices), onClose, vm::load) {
+    EditorScaffold(stringResource(R.string.load_from_security_key), s.working, s.canSave(devices), onClose, vm::load) {
         VaultPicker(s.vaults, s.vaultId) { id -> vm.update { it.copy(vaultId = id) } }
 
-        SectionLabel("Security key")
+        SectionLabel(stringResource(R.string.security_key))
         SecurityKeyPicker(
             devices = devices,
             selected = s.deviceId,
@@ -196,7 +198,7 @@ fun Fido2LoadScreen(shell: ShellViewModel, onClose: () -> Unit, onLoaded: (List<
         )
         if (device != null && !device.residentKeys) {
             Text(
-                "This security key cannot store resident keys, so there is nothing to load.",
+                stringResource(R.string.this_security_key_cannot_store_resident_keys_so),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(horizontal = 4.dp),
@@ -206,33 +208,33 @@ fun Fido2LoadScreen(shell: ShellViewModel, onClose: () -> Unit, onLoaded: (List<
         SectionLabel("PIN")
         SectionCard {
             Column(Modifier.padding(16.dp)) {
-                SecretField(s.pin, { v -> vm.update { it.copy(pin = v) } }, "Security key PIN")
+                SecretField(s.pin, { v -> vm.update { it.copy(pin = v) } }, stringResource(R.string.security_key_pin))
             }
         }
 
-        SectionLabel("Handle passphrase")
+        SectionLabel(stringResource(R.string.handle_passphrase))
         SectionCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SecretField(s.passphrase, { v -> vm.update { it.copy(passphrase = v) } }, "Passphrase (optional)")
+                SecretField(s.passphrase, { v -> vm.update { it.copy(passphrase = v) } }, stringResource(R.string.passphrase_optional))
                 if (s.passphrase.isNotEmpty()) {
-                    SecretField(s.confirm, { v -> vm.update { it.copy(confirm = v) } }, "Confirm passphrase")
+                    SecretField(s.confirm, { v -> vm.update { it.copy(confirm = v) } }, stringResource(R.string.confirm_passphrase))
                     if (s.passphraseMismatch) {
-                        Text("Passphrases do not match", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.passphrases_do_not_match), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
             if (s.passphrase.isNotEmpty()) {
                 RowDivider()
                 SwitchRow(
-                    title = "Remember passphrase",
-                    subtitle = "Stored encrypted in the vault so connections do not prompt",
+                    title = stringResource(R.string.remember_passphrase),
+                    subtitle = stringResource(R.string.stored_encrypted_in_the_vault_so_connections_do),
                     checked = s.remember,
                     onCheckedChange = { v -> vm.update { it.copy(remember = v) } },
                 )
             }
         }
         Text(
-            "Lists the resident SSH credentials on the key (PIN required) and adds the ones this vault does not have yet.",
+            stringResource(R.string.lists_the_resident_ssh_credentials_on_the_key),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp),
@@ -248,7 +250,7 @@ fun TouchDialog(touch: Boolean, transportNfc: Boolean, onCancel: (() -> Unit)? =
     AlertDialog(
         onDismissRequest = {},
         confirmButton = {
-            if (onCancel != null) TextButton(onClick = onCancel) { Text("Cancel") }
+            if (onCancel != null) TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
         },
         icon = {
             if (touch) {
@@ -257,15 +259,15 @@ fun TouchDialog(touch: Boolean, transportNfc: Boolean, onCancel: (() -> Unit)? =
                 CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
             }
         },
-        title = { Text(if (touch) "Touch your security key" else "Talking to the security key…") },
+        title = { Text(if (touch) stringResource(R.string.touch_your_security_key) else stringResource(R.string.talking_to_the_security_key)) },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text(
                     when {
-                        touch && transportNfc -> "Keep the key against the back of the phone until it is done."
-                        touch -> "Tap the button or sensor on the key to confirm."
-                        transportNfc -> "Hold the key still against the back of the phone."
-                        else -> "Do not unplug the key."
+                        touch && transportNfc -> stringResource(R.string.keep_the_key_against_the_back_of_the)
+                        touch -> stringResource(R.string.tap_the_button_or_sensor_on_the_key)
+                        transportNfc -> stringResource(R.string.hold_the_key_still_against_the_back_of)
+                        else -> stringResource(R.string.do_not_unplug_the_key)
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

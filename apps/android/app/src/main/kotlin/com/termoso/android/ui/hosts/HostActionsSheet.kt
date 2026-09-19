@@ -29,9 +29,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
+import com.termoso.android.str
 import com.termoso.android.ui.components.ActionRow
 import com.termoso.android.ui.components.HostAvatar
 import com.termoso.android.ui.components.OpenSftpRow
@@ -67,7 +70,7 @@ fun hostLink(protocol: String, username: String, address: String, port: Int): St
 }
 
 /** Termius wording: one connection closes as such, several as "Close all". */
-fun closeConnectionsLabel(count: Int): String = if (count <= 1) "Close connection" else "Close all ($count)"
+fun closeConnectionsLabel(count: Int): String = if (count <= 1) str(R.string.close_connection) else str(R.string.close_all_2, count)
 
 /**
  * Everything one can do with a host, reached by long-pressing it or tapping its
@@ -133,7 +136,7 @@ fun HostActionsSheet(
             }
 
             if (open > 0) {
-                SectionLabel(if (open == 1) "Active connection" else "$open active connections")
+                SectionLabel(if (open == 1) stringResource(R.string.active_connection) else stringResource(R.string.active_connections, open))
                 SectionCard {
                     sessions.forEachIndexed { i, s ->
                         if (i > 0) RowDivider()
@@ -166,47 +169,47 @@ fun HostActionsSheet(
                 }
             }
 
-            SectionLabel("Connect")
+            SectionLabel(stringResource(R.string.connect))
             SectionCard {
-                ActionRow(Icons.Filled.Terminal, if (ssh) "Connect" else "Connect with Telnet", onClick = then { onConnect(Transport.AUTO) })
+                ActionRow(Icons.Filled.Terminal, if (ssh) stringResource(R.string.connect) else stringResource(R.string.connect_with_telnet), onClick = then { onConnect(Transport.AUTO) })
                 if (ssh) {
                     RowDivider()
-                    ActionRow(Icons.Filled.Bolt, "Connect with Mosh", onClick = then { onConnect(Transport.MOSH) })
+                    ActionRow(Icons.Filled.Bolt, stringResource(R.string.connect_with_mosh), onClick = then { onConnect(Transport.MOSH) })
                     if (telnet) {
                         RowDivider()
-                        ActionRow(Icons.Filled.Terminal, "Connect with Telnet", onClick = then { onConnect(Transport.TELNET) })
+                        ActionRow(Icons.Filled.Terminal, stringResource(R.string.connect_with_telnet), onClick = then { onConnect(Transport.TELNET) })
                     }
                     RowDivider()
                     ActionRow(Icons.Filled.FolderOpen, "SFTP", onClick = then(onSftp))
                     RowDivider()
-                    ActionRow(Icons.Filled.SwapHoriz, "Port forwarding…", onClick = then(onForward))
+                    ActionRow(Icons.Filled.SwapHoriz, stringResource(R.string.port_forwarding_2), onClick = then(onForward))
                 }
             }
 
-            SectionLabel("Host")
+            SectionLabel(stringResource(R.string.host))
             SectionCard {
-                ActionRow(Icons.Filled.Edit, "Edit", onClick = then(onEdit))
+                ActionRow(Icons.Filled.Edit, stringResource(R.string.edit), onClick = then(onEdit))
                 RowDivider()
-                ActionRow(Icons.Filled.ContentCopy, "Duplicate", onClick = then(onDuplicate))
+                ActionRow(Icons.Filled.ContentCopy, stringResource(R.string.duplicate), onClick = then(onDuplicate))
                 RowDivider()
-                ActionRow(Icons.AutoMirrored.Filled.DriveFileMove, "Move to group…", onClick = then(onMove))
+                ActionRow(Icons.AutoMirrored.Filled.DriveFileMove, stringResource(R.string.move_to_group), onClick = then(onMove))
                 if (canCopyToVault) {
                     RowDivider()
-                    ActionRow(Icons.Filled.ContentCopy, "Copy to vault…", onClick = then(onCopy))
+                    ActionRow(Icons.Filled.ContentCopy, stringResource(R.string.copy_to_vault), onClick = then(onCopy))
                 }
                 RowDivider()
                 ActionRow(
                     Icons.Filled.Link,
-                    "Copy link",
+                    stringResource(R.string.copy_link),
                     onClick = then {
                         copyToClipboard(context, hostLink(host))
-                        shell.notify("Link copied")
+                        shell.notify(str(R.string.link_copied))
                     },
                 )
                 RowDivider()
-                ActionRow(Icons.Filled.CheckCircle, "Select", onClick = then(onSelect))
+                ActionRow(Icons.Filled.CheckCircle, stringResource(R.string.select), onClick = then(onSelect))
                 RowDivider()
-                ActionRow(Icons.Filled.Delete, "Remove", tint = MaterialTheme.colorScheme.error, onClick = then(onDelete))
+                ActionRow(Icons.Filled.Delete, stringResource(R.string.remove_2), tint = MaterialTheme.colorScheme.error, onClick = then(onDelete))
             }
         }
     }

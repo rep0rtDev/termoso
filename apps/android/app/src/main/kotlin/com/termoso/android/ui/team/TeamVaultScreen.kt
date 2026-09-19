@@ -36,10 +36,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
@@ -97,17 +100,17 @@ fun TeamVaultScreen(
     }
 
     SubScreen(
-        title = vault?.name ?: "Vault",
+        title = vault?.name ?: stringResource(R.string.vault),
         onBack = onBack,
         actions = {
             if (canManage) {
                 Box {
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text("Rename vault") }, onClick = { menu = false; renaming = true })
-                        DropdownMenuItem(text = { Text("Rotate key") }, onClick = { menu = false; rotating = true })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.rename_vault)) }, onClick = { menu = false; renaming = true })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.rotate_key)) }, onClick = { menu = false; rotating = true })
                         DropdownMenuItem(
-                            text = { Text("Delete vault", color = MaterialTheme.colorScheme.error) },
+                            text = { Text(stringResource(R.string.delete_vault), color = MaterialTheme.colorScheme.error) },
                             onClick = { menu = false; deleting = true },
                         )
                     }
@@ -125,19 +128,19 @@ fun TeamVaultScreen(
             Spacer(Modifier.height(8.dp))
             if (vault == null) {
                 Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                    Text("This vault is no longer on this device.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.this_vault_is_no_longer_on_this_device), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 return@SubScreen
             }
             SectionCard {
                 ListRow(
                     title = vault.name,
-                    subtitle = if (vault.locked) "Key not received yet — ask a manager to grant it" else "You ${vault.access.label()}",
+                    subtitle = if (vault.locked) stringResource(R.string.key_not_received_yet_ask_a_manager_to) else stringResource(R.string.you_5, vault.access.label()),
                     leading = { IconTile(if (vault.locked) Icons.Filled.Lock else Icons.Filled.LockOpen) },
                 )
             }
 
-            SectionLabel("Access")
+            SectionLabel(stringResource(R.string.access))
             SectionCard {
                 val list = members
                 when {
@@ -147,19 +150,19 @@ fun TeamVaultScreen(
                     else -> list.forEachIndexed { i, m ->
                         if (i > 0) RowDivider()
                         ListRow(
-                            title = (m.displayName ?: m.email) + if (m.me) " (you)" else "",
-                            subtitle = m.access.label() + if (m.pending) " · waiting for key" else "",
+                            title = (m.displayName ?: m.email) + if (m.me) stringResource(R.string.you_3) else "",
+                            subtitle = m.access.label() + if (m.pending) stringResource(R.string.sep_waiting_for_key) else "",
                             leading = { UserAvatar(shell.repo, m.userId, m.avatar, m.displayName ?: m.email) },
                             trailing = when {
                                 m.pending && canManage -> {
                                     {
                                         TextButton(onClick = { mutate { shell.repo.read { setTeamVaultAccess(vaultId, m.userId, m.access) } } }) {
-                                            Text("Grant")
+                                            Text(stringResource(R.string.grant))
                                         }
                                     }
                                 }
                                 canManage && !m.me -> {
-                                    { IconButton(onClick = { memberMenu = m }) { Icon(Icons.Filled.MoreVert, contentDescription = "Manage") } }
+                                    { IconButton(onClick = { memberMenu = m }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.manage)) } }
                                 }
                                 else -> null
                             },
@@ -169,7 +172,7 @@ fun TeamVaultScreen(
                 if (canManage) {
                     RowDivider()
                     ListRow(
-                        title = "Add member",
+                        title = stringResource(R.string.add_member),
                         titleColor = MaterialTheme.colorScheme.primary,
                         leading = { IconTile(Icons.Filled.PersonAdd, tint = MaterialTheme.colorScheme.primary) },
                         modifier = Modifier.clickable { adding = true },
@@ -178,8 +181,7 @@ fun TeamVaultScreen(
             }
             if (canManage) {
                 Text(
-                    "Granting seals the vault key to the member's account key on this phone. Revoking rotates the key " +
-                        "and re-seals it for everyone who stays; the server only ever stores ciphertext.",
+                    stringResource(R.string.granting_seals_the_vault_key_to_the_members),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -191,8 +193,8 @@ fun TeamVaultScreen(
 
     if (renaming && vault != null) {
         NameDialog(
-            title = "Rename vault",
-            label = "Vault name",
+            title = stringResource(R.string.rename_vault),
+            label = stringResource(R.string.vault_name),
             initial = vault.name,
             onDismiss = { renaming = false },
             onConfirm = { renaming = false; mutate { shell.repo.write { renameTeamVault(vaultId, it) } } },
@@ -200,24 +202,23 @@ fun TeamVaultScreen(
     }
     if (rotating) {
         ConfirmDialog(
-            title = "Rotate the vault key?",
-            text = "A new key is generated on this phone, everything in the vault is re-encrypted and the key is " +
-                "re-sealed for every current member. Use it if you suspect a copy leaked.",
-            confirm = "Rotate",
-            onConfirm = { rotating = false; mutate("Vault key rotated") { shell.repo.write { rotateTeamVaultKey(vaultId) } } },
+            title = stringResource(R.string.rotate_the_vault_key),
+            text = stringResource(R.string.a_new_key_is_generated_on_this_phone),
+            confirm = stringResource(R.string.rotate),
+            onConfirm = { rotating = false; mutate(str(R.string.vault_key_rotated)) { shell.repo.write { rotateTeamVaultKey(vaultId) } } },
             onDismiss = { rotating = false },
         )
     }
     if (deleting && vault != null) {
         ConfirmDialog(
-            title = "Delete \"${vault.name}\"?",
-            text = "Its hosts, keys and snippets are deleted for every member. This cannot be undone.",
-            confirm = "Delete",
+            title = stringResource(R.string.delete_3, vault.name),
+            text = stringResource(R.string.its_hosts_keys_and_snippets_are_deleted_for),
+            confirm = stringResource(R.string.delete),
             onConfirm = {
                 deleting = false
                 scope.launch {
                     runCatching { shell.repo.write { deleteTeamVault(vaultId) } }
-                        .onSuccess { shell.notify("Vault deleted"); onBack() }
+                        .onSuccess { shell.notify(str(R.string.vault_deleted)); onBack() }
                         .onFailure { shell.notify(it.userMessage()) }
                 }
             },
@@ -241,7 +242,7 @@ fun TeamVaultScreen(
                     listOf(VaultAccess.VIEW, VaultAccess.EDIT, VaultAccess.MANAGE).forEach { a ->
                         val current = m.access == a
                         ListRow(
-                            title = a.label() + if (current) " · current" else "",
+                            title = a.label() + if (current) stringResource(R.string.sep_current) else "",
                             subtitle = a.hint(),
                             titleColor = if (current) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.clickable(enabled = !current) {
@@ -251,21 +252,21 @@ fun TeamVaultScreen(
                         )
                     }
                     ListRow(
-                        title = "Revoke access",
+                        title = stringResource(R.string.revoke_access),
                         titleColor = MaterialTheme.colorScheme.error,
                         modifier = Modifier.clickable { memberMenu = null; revoking = m },
                     )
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { memberMenu = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { memberMenu = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
     revoking?.let { m ->
         ConfirmDialog(
-            title = "Revoke access for ${m.displayName ?: m.email}?",
-            text = "The vault key is rotated on this phone and re-sealed for the remaining members.",
-            confirm = "Revoke",
+            title = stringResource(R.string.revoke_access_for, m.displayName ?: m.email),
+            text = stringResource(R.string.the_vault_key_is_rotated_on_this_phone),
+            confirm = stringResource(R.string.revoke),
             onConfirm = { revoking = null; mutate { shell.repo.write { removeTeamVaultAccess(vaultId, m.userId) } } },
             onDismiss = { revoking = null },
         )
@@ -282,12 +283,12 @@ private fun AddVaultMemberDialog(
     var access by remember { mutableStateOf(VaultAccess.VIEW) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add member") },
+        title = { Text(stringResource(R.string.add_member)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 if (candidates.isEmpty()) {
                     Text(
-                        "Everyone in the team already has access. Invite more people from the team screen.",
+                        stringResource(R.string.everyone_in_the_team_already_has_access_invite),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -303,7 +304,7 @@ private fun AddVaultMemberDialog(
                 if (candidates.isNotEmpty()) {
                     Spacer(Modifier.height(8.dp))
                     AccessMenu(current = access, allowNone = false, onPick = { it?.let { a -> access = a } }) { open ->
-                        ListRow(title = "Access", subtitle = access.hint(), modifier = Modifier.clickable(onClick = open)) {
+                        ListRow(title = stringResource(R.string.access), subtitle = access.hint(), modifier = Modifier.clickable(onClick = open)) {
                             Text(access.label(), color = MaterialTheme.colorScheme.primary)
                         }
                     }
@@ -311,8 +312,8 @@ private fun AddVaultMemberDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { picked?.let { onAdd(it.userId, access) } }, enabled = picked != null) { Text("Add") }
+            TextButton(onClick = { picked?.let { onAdd(it.userId, access) } }, enabled = picked != null) { Text(stringResource(R.string.add)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }

@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.IBinder
 import com.termoso.android.MainActivity
 import com.termoso.android.R
+import com.termoso.android.str
 
 /**
  * Foreground service that runs only while at least one terminal is open. It
@@ -45,10 +46,10 @@ class SessionService : Service() {
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val text = if (count == 1) "1 active session" else "$count active sessions"
+        val text = if (count == 1) str(R.string.s_1_active_session) else str(R.string.active_sessions, count)
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Termoso")
+            .setContentTitle(getString(R.string.app_name))
             .setContentText(text)
             .setContentIntent(open)
             .setOngoing(true)
@@ -61,8 +62,8 @@ class SessionService : Service() {
     private fun ensureChannel() {
         val manager = getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL_ID) != null) return
-        val channel = NotificationChannel(CHANNEL_ID, "Active sessions", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Shown while a terminal is connected so the connection survives in the background."
+        val channel = NotificationChannel(CHANNEL_ID, str(R.string.active_sessions_2), NotificationManager.IMPORTANCE_LOW).apply {
+            description = str(R.string.shown_while_a_terminal_is_connected_so_the)
             setShowBadge(false)
         }
         manager.createNotificationChannel(channel)

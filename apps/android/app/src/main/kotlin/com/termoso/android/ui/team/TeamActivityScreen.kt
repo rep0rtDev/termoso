@@ -23,7 +23,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.termoso.android.R
 import com.termoso.android.data.userMessage
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.SubScreen
@@ -53,14 +55,14 @@ fun TeamActivityScreen(shell: ShellViewModel, teamId: String, onBack: () -> Unit
     }
     LaunchedEffect(teamId) { load(null) }
 
-    SubScreen(title = "Activity log", onBack = onBack) { padding ->
+    SubScreen(title = stringResource(R.string.activity_log), onBack = onBack) { padding ->
         val list = events
         when {
             list == null -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
             }
             list.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding)) {
-                EmptyState(title = "Nothing yet", hint = "Joins, invitations, access changes and key rotations show up here.")
+                EmptyState(title = stringResource(R.string.nothing_yet), hint = stringResource(R.string.joins_invitations_access_changes_and_key_rotations_show))
             }
             else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = padding.calculateTopPadding(), bottom = 24.dp)) {
                 items(list, key = { it.id }) { e ->
@@ -73,7 +75,7 @@ fun TeamActivityScreen(shell: ShellViewModel, teamId: String, onBack: () -> Unit
                             if (loading) {
                                 CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                             } else {
-                                TextButton(onClick = { scope.launch { load(nextBefore) } }) { Text("Load more") }
+                                TextButton(onClick = { scope.launch { load(nextBefore) } }) { Text(stringResource(R.string.load_more)) }
                             }
                         }
                     }

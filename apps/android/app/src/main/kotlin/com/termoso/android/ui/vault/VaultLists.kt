@@ -30,8 +30,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.userMessage
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.IconTile
@@ -62,12 +64,12 @@ fun KnownHostsScreen(shell: ShellViewModel, onBack: () -> Unit) {
             .onFailure { shell.notify(it.userMessage()) }
     }
 
-    SubScreen("Known hosts", onBack) { padding ->
+    SubScreen(stringResource(R.string.known_hosts), onBack) { padding ->
         if (items.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 EmptyState(
-                    title = "No known hosts",
-                    hint = "Server keys you accept when connecting are remembered here.",
+                    title = stringResource(R.string.no_known_hosts),
+                    hint = stringResource(R.string.server_keys_you_accept_when_connecting_are_remembered),
                     icon = Icons.Filled.Fingerprint,
                 )
             }
@@ -84,7 +86,7 @@ fun KnownHostsScreen(shell: ShellViewModel, onBack: () -> Unit) {
                             leading = { IconTile(Icons.Filled.Fingerprint) },
                         ) {
                             IconButton(onClick = { confirm = k }) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Forget", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.forget), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -94,9 +96,9 @@ fun KnownHostsScreen(shell: ShellViewModel, onBack: () -> Unit) {
     }
     confirm?.let { k ->
         ConfirmDialog(
-            title = "Forget ${k.hostname}?",
-            text = "You will be asked to confirm its key fingerprint on the next connection.",
-            confirm = "Forget",
+            title = stringResource(R.string.forget_2, k.hostname),
+            text = stringResource(R.string.you_will_be_asked_to_confirm_its_key),
+            confirm = stringResource(R.string.forget),
             onConfirm = {
                 confirm = null
                 scope.launch {
@@ -127,19 +129,19 @@ fun HistoryScreen(shell: ShellViewModel, onBack: () -> Unit, onOpenHost: (String
     }
 
     SubScreen(
-        if (vault != null) "History · ${vault.name}" else "History",
+        if (vault != null) stringResource(R.string.history_2, vault.name) else stringResource(R.string.history),
         onBack,
         actions = {
             if (items.isNotEmpty()) {
-                IconButton(onClick = { confirmClear = true }) { Icon(Icons.Filled.Delete, contentDescription = "Clear history") }
+                IconButton(onClick = { confirmClear = true }) { Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.clear_history)) }
             }
         },
     ) { padding ->
         if (items.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 EmptyState(
-                    title = "No connections yet",
-                    hint = "Sessions you open show up here with their duration.",
+                    title = stringResource(R.string.no_connections_yet),
+                    hint = stringResource(R.string.sessions_you_open_show_up_here_with_their),
                     icon = Icons.Filled.History,
                 )
             }
@@ -165,9 +167,9 @@ fun HistoryScreen(shell: ShellViewModel, onBack: () -> Unit, onOpenHost: (String
     }
     if (confirmClear) {
         ConfirmDialog(
-            title = "Clear history?",
-            text = "Removes all ${items.size} entries of this vault from this device.",
-            confirm = "Clear",
+            title = stringResource(R.string.clear_history_2),
+            text = stringResource(R.string.removes_all_entries_of_this_vault_from_this, items.size),
+            confirm = stringResource(R.string.clear),
             onConfirm = {
                 confirmClear = false
                 val id = vault?.id ?: return@ConfirmDialog

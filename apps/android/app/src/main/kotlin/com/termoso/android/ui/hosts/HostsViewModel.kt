@@ -1,9 +1,11 @@
 package com.termoso.android.ui.hosts
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.termoso.android.data.userMessage
+import com.termoso.android.R
 import com.termoso.android.data.VaultRepository
+import com.termoso.android.data.userMessage
 import com.termoso.core.GroupItem
 import com.termoso.core.HostItem
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,10 +15,10 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class HostSort(val label: String) {
-    NAME("Name"),
-    LAST_CONNECTED("Last connected"),
-    UPDATED("Recently updated"),
+enum class HostSort(@StringRes val label: Int) {
+    NAME(R.string.name),
+    LAST_CONNECTED(R.string.last_connected),
+    UPDATED(R.string.recently_updated),
 }
 
 data class HostsUiState(

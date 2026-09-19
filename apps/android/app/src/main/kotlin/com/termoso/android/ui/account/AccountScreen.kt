@@ -45,21 +45,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.ReauthCancelled
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.IconTile
-import com.termoso.android.ui.components.UserAvatar
 import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.SubScreen
 import com.termoso.android.ui.components.SwitchRow
+import com.termoso.android.ui.components.UserAvatar
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.aiProviderLabel
 import com.termoso.android.ui.terminal.aiRemainingToday
@@ -114,10 +117,10 @@ fun AccountScreen(
     }
 
     val card = status.account
-    SubScreen(title = "Account", onBack = onBack) { padding ->
+    SubScreen(title = stringResource(R.string.account), onBack = onBack) { padding ->
         if (card == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("Not signed in.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.not_signed_in), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             return@SubScreen
         }
@@ -151,7 +154,7 @@ fun AccountScreen(
                             Text(card.email, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text(
-                            serverLabel(card.serverUrl) + if (card.isAdmin) " · admin" else "",
+                            serverLabel(card.serverUrl) + if (card.isAdmin) stringResource(R.string.sep_admin) else "",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -159,7 +162,7 @@ fun AccountScreen(
                 }
             }
 
-            SectionLabel("Sync")
+            SectionLabel(stringResource(R.string.sync))
             SectionCard {
                 val sync = status.sync
                 ListRow(
@@ -175,8 +178,8 @@ fun AccountScreen(
                                 try {
                                     val r = account.syncNow()
                                     shell.notify(
-                                        r.lastError?.let { "Sync finished with errors: $it" }
-                                            ?: "Synced · ${r.pushed} pushed, ${r.pulled} pulled",
+                                        r.lastError?.let { str(R.string.sync_finished_with_errors, it) }
+                                            ?: str(R.string.synced_pushed_pulled, r.pushed, r.pulled),
                                     )
                                 } catch (e: Exception) {
                                     shell.notify(e.userMessage())
@@ -190,29 +193,29 @@ fun AccountScreen(
                         if (syncing || sync.state == SyncState.SYNCING) {
                             CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                         } else {
-                            Text("Sync now")
+                            Text(stringResource(R.string.sync_now))
                         }
                     }
                 }
                 sync.lastError?.let {
                     RowDivider()
-                    ListRow(title = "Last error", subtitle = it, titleColor = MaterialTheme.colorScheme.error)
+                    ListRow(title = stringResource(R.string.last_error), subtitle = it, titleColor = MaterialTheme.colorScheme.error)
                 }
                 RowDivider()
                 ListRow(
-                    title = "End-to-end encrypted",
-                    subtitle = "The server stores only ciphertext; keys stay on your devices",
+                    title = stringResource(R.string.end_to_end_encrypted),
+                    subtitle = stringResource(R.string.the_server_stores_only_ciphertext_keys_stay_on),
                     leading = { IconTile(Icons.Filled.Lock) },
                 )
                 RowDivider()
                 SwitchRow(
-                    title = "Sync keys and identities",
+                    title = stringResource(R.string.sync_keys_and_identities),
                     subtitle = if (settings.syncCredentials) {
-                        "Identities, keys and certificates of your Personal vault sync encrypted like everything else"
+                        stringResource(R.string.identities_keys_and_certificates_of_your_personal_vault)
                     } else {
-                        "Keys of your Personal vault stay on this phone" +
-                            (if (status.localCredentials > 0u) " (${status.localCredentials} here)" else "") +
-                            "; hosts and snippets still sync. They are deleted when you sign out"
+                        stringResource(R.string.keys_of_your_personal_vault_stay_on_this) +
+                            (if (status.localCredentials > 0u) stringResource(R.string.here, status.localCredentials) else "") +
+                            stringResource(R.string.hosts_and_snippets_still_sync_they_are_deleted)
                     },
                     checked = settings.syncCredentials,
                     enabled = !credentialsBusy,
@@ -220,40 +223,40 @@ fun AccountScreen(
                 )
             }
 
-            SectionLabel("Teams")
+            SectionLabel(stringResource(R.string.teams))
             SectionCard {
                 val teamVaults = status.vaults.count { it.kind == VaultKind.TEAM }
                 ChevronRow(
-                    title = "Teams",
+                    title = stringResource(R.string.teams),
                     subtitle = when (teamVaults) {
-                        0 -> "Share vaults with colleagues — create a team or join by invitation"
-                        1 -> "1 team vault on this device"
-                        else -> "$teamVaults team vaults on this device"
+                        0 -> stringResource(R.string.share_vaults_with_colleagues_create_a_team_or)
+                        1 -> stringResource(R.string.s_1_team_vault_on_this_device)
+                        else -> stringResource(R.string.team_vaults_on_this_device, teamVaults)
                     },
                     leading = { IconTile(Icons.Filled.Group) },
                     modifier = Modifier.clickable(onClick = onTeams),
                 )
             }
 
-            SectionLabel("Security")
+            SectionLabel(stringResource(R.string.security))
             SectionCard {
                 ChevronRow(
-                    title = "SSH ID",
-                    subtitle = "Publish this phone's public keys under a handle; allow it on a server with one command",
+                    title = stringResource(R.string.ssh_id),
+                    subtitle = stringResource(R.string.publish_this_phones_public_keys_under_a_handle),
                     leading = { IconTile(Icons.Filled.Fingerprint) },
                     modifier = Modifier.clickable(onClick = onSshId),
                 )
                 RowDivider()
                 ChevronRow(
-                    title = "Security keys",
-                    subtitle = "FIDO2 keys over USB or NFC as the second factor for signing in",
+                    title = stringResource(R.string.security_keys),
+                    subtitle = stringResource(R.string.fido2_keys_over_usb_or_nfc_as_the),
                     leading = { IconTile(Icons.Filled.Security) },
                     modifier = Modifier.clickable(onClick = onSecurityKeys),
                 )
                 RowDivider()
                 SwitchRow(
-                    title = "Show me as connected",
-                    subtitle = "Teammates see which team-vault host you are on — host and protocol only",
+                    title = stringResource(R.string.show_me_as_connected),
+                    subtitle = stringResource(R.string.teammates_see_which_team_vault_host_you_are),
                     checked = hidden == false,
                     enabled = hidden != null,
                     onCheckedChange = { on ->
@@ -264,21 +267,21 @@ fun AccountScreen(
                 )
             }
 
-            SectionLabel("AI command suggestions")
+            SectionLabel(stringResource(R.string.ai_command_suggestions))
             SectionCard {
                 val s = ai
                 when {
-                    s == null -> ListRow(title = "Checking the server…")
+                    s == null -> ListRow(title = stringResource(R.string.checking_the_server))
                     !s.available -> ListRow(
-                        title = "Not offered by this server",
-                        subtitle = "The operator can point TERMOSO_AI__* at a Chutes key or any OpenAI-compatible endpoint",
+                        title = stringResource(R.string.not_offered_by_this_server),
+                        subtitle = stringResource(R.string.the_operator_can_point_termoso_ai_at_a),
                     )
                     else -> {
                         SwitchRow(
-                            title = "Suggest commands from a description",
-                            subtitle = "${aiRemainingToday(s)} of ${s.dailyQuota} left today · " +
+                            title = stringResource(R.string.suggest_commands_from_a_description),
+                            subtitle = stringResource(R.string.of_left_today, aiRemainingToday(s), s.dailyQuota) +
                                 aiProviderLabel(s) +
-                                (if (s.confidential) " · confidential compute" else ""),
+                                (if (s.confidential) stringResource(R.string.sep_confidential_compute) else ""),
                             checked = s.enabled,
                             onCheckedChange = { on ->
                                 scope.launch {
@@ -288,10 +291,8 @@ fun AccountScreen(
                         )
                         RowDivider()
                         Text(
-                            "Sends only your request text and an OS/shell label — never terminal output, history, " +
-                                "host addresses, credentials or vault contents. The command is shown for you to run; " +
-                                "it is never executed on its own." +
-                                if (s.confidential) " Confidential compute means the operator cannot read requests, but the model does; this is not end-to-end encryption." else "",
+                            stringResource(R.string.sends_only_your_request_text_and_an_os) +
+                                if (s.confidential) stringResource(R.string.confidential_compute_means_the_operator_cannot_read_requests) else "",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
@@ -300,7 +301,7 @@ fun AccountScreen(
                 }
             }
 
-            SectionLabel("Vaults on this device")
+            SectionLabel(stringResource(R.string.vaults_on_this_device))
             SectionCard {
                 status.vaults.forEachIndexed { i, v ->
                     if (i > 0) RowDivider()
@@ -308,16 +309,16 @@ fun AccountScreen(
                         title = v.name,
                         subtitle = listOfNotNull(
                             when (v.kind) {
-                                VaultKind.LOCAL -> "Local only"
-                                VaultKind.PERSONAL -> "Personal · synced"
-                                VaultKind.TEAM -> "Team"
+                                VaultKind.LOCAL -> stringResource(R.string.local_only)
+                                VaultKind.PERSONAL -> stringResource(R.string.personal_synced)
+                                VaultKind.TEAM -> stringResource(R.string.team)
                             },
                             when (v.access) {
                                 VaultAccess.MANAGE -> null
-                                VaultAccess.EDIT -> "can edit"
-                                VaultAccess.VIEW -> "view only"
+                                VaultAccess.EDIT -> stringResource(R.string.can_edit)
+                                VaultAccess.VIEW -> stringResource(R.string.view_only)
                             },
-                            if (v.locked) "key pending" else null,
+                            if (v.locked) stringResource(R.string.key_pending) else null,
                         ).joinToString(" · "),
                         leading = {
                             IconTile(
@@ -332,29 +333,29 @@ fun AccountScreen(
                 }
             }
 
-            SectionLabel("Devices")
+            SectionLabel(stringResource(R.string.devices))
             SectionCard {
                 when {
                     devices == null && devicesError == null -> Box(Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                     }
                     devicesError != null -> ListRow(
-                        title = "Could not load devices",
+                        title = stringResource(R.string.could_not_load_devices),
                         subtitle = devicesError,
                         titleColor = MaterialTheme.colorScheme.error,
                     ) {
-                        TextButton(onClick = { devices = null; devicesError = null; scope.launch { loadDevices() } }) { Text("Retry") }
+                        TextButton(onClick = { devices = null; devicesError = null; scope.launch { loadDevices() } }) { Text(stringResource(R.string.retry)) }
                     }
                     else -> devices.orEmpty().forEachIndexed { i, d ->
                         if (i > 0) RowDivider()
                         ListRow(
-                            title = d.name + if (d.current) " (this device)" else "",
-                            subtitle = "${d.platform} · ${d.appVersion} · last seen ${relative(d.lastSeenAt)}",
+                            title = d.name + if (d.current) stringResource(R.string.this_device) else "",
+                            subtitle = stringResource(R.string.last_seen, d.platform, d.appVersion, relative(d.lastSeenAt)),
                             leading = { IconTile(platformIcon(d.platform)) },
                         ) {
                             if (!d.current) {
                                 IconButton(onClick = { revoking = d }) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "Sign out this device", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.sign_out_this_device), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
@@ -365,8 +366,8 @@ fun AccountScreen(
             Spacer(Modifier.height(16.dp))
             SectionCard {
                 ListRow(
-                    title = "Sign out",
-                    subtitle = "Synced vaults are removed from this device; local vault stays",
+                    title = stringResource(R.string.sign_out),
+                    subtitle = stringResource(R.string.synced_vaults_are_removed_from_this_device_local),
                     titleColor = Danger,
                     leading = { IconTile(Icons.Filled.Logout, tint = Danger) },
                     modifier = Modifier.clickable { confirmSignOut = true },
@@ -379,18 +380,16 @@ fun AccountScreen(
     if (confirmSignOut) {
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
-            title = { Text("Sign out?") },
+            title = { Text(stringResource(R.string.sign_out_2)) },
             text = {
                 Column {
                     Text(
-                        "This device is removed from your account and the synced vaults are deleted from this phone. " +
-                            "Your local vault and its hosts stay. You can sign in again any time.",
+                        stringResource(R.string.this_device_is_removed_from_your_account_and),
                     )
                     if (status.localCredentials > 0u) {
                         Spacer(Modifier.height(12.dp))
                         Text(
-                            "Sync of keys and identities is off: ${status.localCredentials} of them exist only on this phone " +
-                                "and will be deleted with the account. Export them or turn the sync on first to keep them.",
+                            stringResource(R.string.sync_of_keys_and_identities_is_off_of, status.localCredentials),
                             color = Warning,
                             style = MaterialTheme.typography.bodyMedium,
                         )
@@ -402,27 +401,24 @@ fun AccountScreen(
                     confirmSignOut = false
                     scope.launch {
                         runCatching { account.signOut() }
-                            .onSuccess { shell.notify("Signed out"); onSignedOut() }
+                            .onSuccess { shell.notify(str(R.string.signed_out)); onSignedOut() }
                             .onFailure { shell.notify(it.userMessage()) }
                     }
-                }) { Text("Sign out", color = Danger) }
+                }) { Text(stringResource(R.string.sign_out), color = Danger) }
             },
-            dismissButton = { TextButton(onClick = { confirmSignOut = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmSignOut = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
     confirmCredentials?.let { on ->
         AlertDialog(
             onDismissRequest = { confirmCredentials = null },
-            title = { Text(if (on) "Sync keys and identities?" else "Keep keys and identities on this phone?") },
+            title = { Text(if (on) stringResource(R.string.sync_keys_and_identities_2) else stringResource(R.string.keep_keys_and_identities_on_this_phone)) },
             text = {
                 Text(
                     if (on) {
-                        "Identities, keys and certificates of your Personal vault are uploaded encrypted with your vault key " +
-                            "and pulled from your other devices. The server never sees them in the clear."
+                        stringResource(R.string.identities_keys_and_certificates_of_your_personal_vault_2)
                     } else {
-                        "Identities, keys and certificates of your Personal vault are deleted from the server and your other " +
-                            "devices; the copies on this phone stay and keep working. Hosts, groups, snippets and settings " +
-                            "continue to sync. Keys added later stay here too, and everything local is deleted when you sign out."
+                        stringResource(R.string.identities_keys_and_certificates_of_your_personal_vault_3)
                     },
                 )
             },
@@ -433,33 +429,33 @@ fun AccountScreen(
                     scope.launch {
                         runCatching { account.setCredentialSync(on) }
                             .onSuccess {
-                                shell.notify(if (on) "Keys and identities are synced again" else "Keys and identities now stay on this phone")
+                                shell.notify(if (on) str(R.string.keys_and_identities_are_synced_again) else str(R.string.keys_and_identities_now_stay_on_this_phone))
                             }
                             .onFailure { shell.notify(it.userMessage()) }
                         credentialsBusy = false
                     }
-                }) { Text(if (on) "Sync" else "Keep local", color = if (on) MaterialTheme.colorScheme.primary else Danger) }
+                }) { Text(if (on) stringResource(R.string.sync) else stringResource(R.string.keep_local), color = if (on) MaterialTheme.colorScheme.primary else Danger) }
             },
-            dismissButton = { TextButton(onClick = { confirmCredentials = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmCredentials = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 
     revoking?.let { d ->
         AlertDialog(
             onDismissRequest = { revoking = null },
-            title = { Text("Sign out ${d.name}?") },
-            text = { Text("That device loses access to your account immediately and has to sign in again.") },
+            title = { Text(stringResource(R.string.sign_out_3, d.name)) },
+            text = { Text(stringResource(R.string.that_device_loses_access_to_your_account_immediately)) },
             confirmButton = {
                 TextButton(onClick = {
                     revoking = null
                     scope.launch {
                         runCatching { account.revokeDevice(d.id) }
-                            .onSuccess { shell.notify("${d.name} signed out"); loadDevices() }
+                            .onSuccess { shell.notify(str(R.string.signed_out_2, d.name)); loadDevices() }
                             .onFailure { if (it !is ReauthCancelled) shell.notify(it.userMessage()) }
                     }
-                }) { Text("Sign out", color = Danger) }
+                }) { Text(stringResource(R.string.sign_out), color = Danger) }
             },
-            dismissButton = { TextButton(onClick = { revoking = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { revoking = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }
@@ -475,16 +471,16 @@ private fun SyncTile(sync: SyncStatus) {
 }
 
 private fun syncTitle(s: SyncStatus): String = when (s.state) {
-    SyncState.IDLE -> if (s.realtime) "Up to date · live" else "Up to date"
-    SyncState.SYNCING -> "Syncing…"
-    SyncState.OFFLINE -> "Offline"
-    SyncState.ERROR -> "Sync failed"
+    SyncState.IDLE -> if (s.realtime) str(R.string.up_to_date_live) else str(R.string.up_to_date)
+    SyncState.SYNCING -> str(R.string.syncing)
+    SyncState.OFFLINE -> str(R.string.offline)
+    SyncState.ERROR -> str(R.string.sync_failed)
 }
 
 private fun syncSubtitle(s: SyncStatus): String {
-    val last = s.lastSyncAt?.let { "Last sync ${relative(it)}" } ?: "Not synced yet"
+    val last = s.lastSyncAt?.let { str(R.string.last_sync, relative(it)) } ?: str(R.string.not_synced_yet)
     val counts = if (s.pushed > 0u || s.pulled > 0u || s.conflicts > 0u) {
-        " · ↑${s.pushed} ↓${s.pulled}" + if (s.conflicts > 0u) " · ${s.conflicts} conflicts" else ""
+        " · ↑${s.pushed} ↓${s.pulled}" + if (s.conflicts > 0u) str(R.string.sep_conflicts, s.conflicts.toLong()) else ""
     } else {
         ""
     }
@@ -508,9 +504,9 @@ fun relative(iso: String): String {
     }
     val secs = Instant.now().epochSecond - at.epochSecond
     return when {
-        secs < 45 -> "just now"
-        secs < 3600 -> "${secs / 60} min ago"
-        secs < 86_400 -> "${secs / 3600} h ago"
-        else -> "${secs / 86_400} d ago"
+        secs < 45 -> str(R.string.just_now)
+        secs < 3600 -> str(R.string.min_ago, secs / 60)
+        secs < 86_400 -> str(R.string.h_ago, secs / 3600)
+        else -> str(R.string.d_ago, secs / 86_400)
     }
 }

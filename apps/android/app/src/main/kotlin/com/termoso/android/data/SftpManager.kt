@@ -1,5 +1,7 @@
 package com.termoso.android.data
 
+import com.termoso.android.str
+import com.termoso.android.R
 import android.content.Context
 import com.termoso.android.service.SessionService
 import com.termoso.core.HostItem
@@ -49,7 +51,7 @@ class KeepAlive(private val context: Context) {
 
 /** Rust SFTP callbacks republished as flows for the UI. */
 class SftpBridge : SftpListener {
-    private val _state = MutableStateFlow<SessionState>(SessionState.Connecting("Connecting…"))
+    private val _state = MutableStateFlow<SessionState>(SessionState.Connecting(str(R.string.connecting_ellipsis)))
     val state: StateFlow<SessionState> = _state.asStateFlow()
 
     private val _prompt = MutableStateFlow<PendingPrompt?>(null)

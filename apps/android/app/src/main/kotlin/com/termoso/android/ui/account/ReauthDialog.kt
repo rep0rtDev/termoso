@@ -4,10 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.AlertDialog
@@ -26,12 +26,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.ReauthRequest
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.SecretField
 import com.termoso.android.ui.keychain.LocalFido2
@@ -132,9 +135,9 @@ private fun ReauthDialog(account: AccountManager, request: ReauthRequest) {
         title = {
             Text(
                 when (s) {
-                    ReauthStage.Password -> "Confirm it's you"
-                    is ReauthStage.Mfa -> "Two-factor authentication"
-                    is ReauthStage.EmailCode -> "Check your email"
+                    ReauthStage.Password -> stringResource(R.string.confirm_its_you)
+                    is ReauthStage.Mfa -> stringResource(R.string.two_factor_authentication)
+                    is ReauthStage.EmailCode -> stringResource(R.string.check_your_email)
                 },
             )
         },
@@ -143,10 +146,10 @@ private fun ReauthDialog(account: AccountManager, request: ReauthRequest) {
                 when (s) {
                     ReauthStage.Password -> {
                         Text(
-                            "This change affects the security of your account. Enter your master password to continue.",
+                            stringResource(R.string.this_change_affects_the_security_of_your_account),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        SecretField(password, { password = it }, "Master password", enabled = !busy)
+                        SecretField(password, { password = it }, stringResource(R.string.master_password), enabled = !busy)
                     }
                     is ReauthStage.Mfa -> {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -161,8 +164,8 @@ private fun ReauthDialog(account: AccountManager, request: ReauthRequest) {
                         }
                         when (method) {
                             null -> {}
-                            MfaMethod.TOTP -> FormField(code, { code = it }, "6-digit code", keyboard = KeyboardType.Number, enabled = !busy)
-                            MfaMethod.BACKUP_CODE -> FormField(code, { code = it }, "Backup code", keyboard = KeyboardType.Ascii, enabled = !busy)
+                            MfaMethod.TOTP -> FormField(code, { code = it }, stringResource(R.string.s_6_digit_code), keyboard = KeyboardType.Number, enabled = !busy)
+                            MfaMethod.BACKUP_CODE -> FormField(code, { code = it }, stringResource(R.string.backup_code), keyboard = KeyboardType.Ascii, enabled = !busy)
                             MfaMethod.EMAIL -> {
                                 if (!emailSent) {
                                     OutlinedButton(
@@ -174,9 +177,9 @@ private fun ReauthDialog(account: AccountManager, request: ReauthRequest) {
                                                     .onFailure { error = it.userMessage() }
                                             }
                                         },
-                                    ) { Text("Send code by email") }
+                                    ) { Text(stringResource(R.string.send_code_by_email)) }
                                 } else {
-                                    FormField(code, { code = it }, "Email code", keyboard = KeyboardType.Number, enabled = !busy)
+                                    FormField(code, { code = it }, stringResource(R.string.email_code), keyboard = KeyboardType.Number, enabled = !busy)
                                 }
                             }
                             MfaMethod.WEBAUTHN -> {
@@ -195,7 +198,7 @@ private fun ReauthDialog(account: AccountManager, request: ReauthRequest) {
                                 SecretField(
                                     skPin,
                                     { skPin = it },
-                                    if (device?.pinSet == false) "Security key PIN (none set)" else "Security key PIN",
+                                    if (device?.pinSet == false) stringResource(R.string.security_key_pin_none_set) else stringResource(R.string.security_key_pin),
                                     enabled = !busy,
                                 )
                                 OutlinedButton(
@@ -209,17 +212,17 @@ private fun ReauthDialog(account: AccountManager, request: ReauthRequest) {
                                         }
                                         run { account.reauthSecurityKey(skDeviceId, skPin.takeIf { it.isNotEmpty() }, listener) }
                                     },
-                                ) { Text("Use security key") }
+                                ) { Text(stringResource(R.string.use_security_key)) }
                                 if (busy) TouchDialog(touch = skTouch, transportNfc = device?.transport == Fido2Transport.NFC)
                             }
                         }
                     }
                     is ReauthStage.EmailCode -> {
                         Text(
-                            "Your account has no password, so we sent a confirmation code to ${s.emailHint}.",
+                            stringResource(R.string.your_account_has_no_password_so_we_sent, s.emailHint),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        FormField(code, { code = it }, "Code from the email", keyboard = KeyboardType.Number, enabled = !busy)
+                        FormField(code, { code = it }, stringResource(R.string.code_from_the_email), keyboard = KeyboardType.Number, enabled = !busy)
                     }
                 }
                 error?.let {
@@ -242,18 +245,18 @@ private fun ReauthDialog(account: AccountManager, request: ReauthRequest) {
                     if (busy) {
                         CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                     } else {
-                        Text(if (s is ReauthStage.Password) "Continue" else "Verify")
+                        Text(if (s is ReauthStage.Password) stringResource(R.string.continue_) else stringResource(R.string.verify))
                     }
                 }
             }
         },
-        dismissButton = { TextButton(onClick = ::cancel, enabled = !busy) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = ::cancel, enabled = !busy) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
 private fun MfaMethod.reauthLabel(): String = when (this) {
-    MfaMethod.TOTP -> "Authenticator app"
-    MfaMethod.BACKUP_CODE -> "Backup code"
-    MfaMethod.EMAIL -> "Email code"
-    MfaMethod.WEBAUTHN -> "Security key"
+    MfaMethod.TOTP -> str(R.string.authenticator_app)
+    MfaMethod.BACKUP_CODE -> str(R.string.backup_code)
+    MfaMethod.EMAIL -> str(R.string.email_code)
+    MfaMethod.WEBAUTHN -> str(R.string.security_key)
 }

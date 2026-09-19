@@ -36,11 +36,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
+import com.termoso.android.str
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.PickerRow
 import com.termoso.android.ui.components.RowDivider
@@ -68,13 +71,13 @@ internal fun EditorScaffold(
         topBar = {
             TopAppBar(
                 title = { Text(title) },
-                navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close") } },
+                navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.close)) } },
                 actions = {
                     IconButton(onClick = onSave, enabled = canSave) {
                         if (working) {
                             CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.Filled.Check, contentDescription = "Save")
+                            Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.save))
                         }
                     }
                 },
@@ -97,7 +100,7 @@ internal fun EditorScaffold(
 internal fun VaultPicker(vaults: List<VaultInfo>, selected: String?, onPick: (String) -> Unit) {
     if (vaults.size < 2) return
     PickerRow(
-        label = "Vault",
+        label = stringResource(R.string.vault),
         value = vaults.firstOrNull { it.id == selected }?.let(::vaultLabel) ?: "",
         options = vaults.map { it.id to vaultLabel(it) },
         selected = selected,
@@ -116,16 +119,16 @@ fun GenerateKeyScreen(shell: ShellViewModel, onClose: () -> Unit, onSaved: (Stri
     LaunchedEffect(s.error) { s.error?.let { shell.notify(it); vm.errorShown() } }
     LaunchedEffect(s.savedId) { s.savedId?.let(onSaved) }
 
-    EditorScaffold("Generate key", s.working, s.canSave, onClose, vm::generate) {
+    EditorScaffold(stringResource(R.string.generate_key), s.working, s.canSave, onClose, vm::generate) {
         VaultPicker(s.vaults, s.vaultId) { id -> vm.update { it.copy(vaultId = id) } }
         SectionCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                FormField(s.label, { v -> vm.update { it.copy(label = v) } }, "Label", placeholder = "My laptop")
-                FormField(s.comment, { v -> vm.update { it.copy(comment = v) } }, "Comment", placeholder = "user@host")
+                FormField(s.label, { v -> vm.update { it.copy(label = v) } }, stringResource(R.string.label), placeholder = stringResource(R.string.my_laptop))
+                FormField(s.comment, { v -> vm.update { it.copy(comment = v) } }, stringResource(R.string.comment), placeholder = "user@host")
             }
         }
 
-        SectionLabel("Algorithm")
+        SectionLabel(stringResource(R.string.algorithm))
         SectionCard {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 KeyKind.entries.forEach { kind ->
@@ -137,7 +140,7 @@ fun GenerateKeyScreen(shell: ShellViewModel, onClose: () -> Unit, onSaved: (Stri
                 }
             }
             Text(
-                s.kind.hint,
+                stringResource(s.kind.hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
@@ -149,29 +152,29 @@ fun GenerateKeyScreen(shell: ShellViewModel, onClose: () -> Unit, onSaved: (Stri
             }
         }
 
-        SectionLabel("Passphrase")
+        SectionLabel(stringResource(R.string.passphrase_2))
         SectionCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SecretField(s.passphrase, { v -> vm.update { it.copy(passphrase = v) } }, "Passphrase (optional)")
+                SecretField(s.passphrase, { v -> vm.update { it.copy(passphrase = v) } }, stringResource(R.string.passphrase_optional))
                 if (s.passphrase.isNotEmpty()) {
-                    SecretField(s.confirm, { v -> vm.update { it.copy(confirm = v) } }, "Confirm passphrase")
+                    SecretField(s.confirm, { v -> vm.update { it.copy(confirm = v) } }, stringResource(R.string.confirm_passphrase))
                     if (s.passphraseMismatch) {
-                        Text("Passphrases do not match", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.passphrases_do_not_match), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
             if (s.passphrase.isNotEmpty()) {
                 RowDivider()
                 SwitchRow(
-                    title = "Remember passphrase",
-                    subtitle = "Stored encrypted in the vault so connections do not prompt",
+                    title = stringResource(R.string.remember_passphrase),
+                    subtitle = stringResource(R.string.stored_encrypted_in_the_vault_so_connections_do),
                     checked = s.remember,
                     onCheckedChange = { v -> vm.update { it.copy(remember = v) } },
                 )
             }
         }
         Text(
-            "The private key is generated on this device and never leaves the encrypted vault unless you export it.",
+            stringResource(R.string.the_private_key_is_generated_on_this_device),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp),
@@ -206,7 +209,7 @@ fun ImportKeyScreen(shell: ShellViewModel, onClose: () -> Unit, onSaved: (String
         scope.launch {
             runCatching { readTextFile(context, uri) }
                 .onSuccess(vm::setPrivateKey)
-                .onFailure { shell.notify(it.message ?: "Could not read the file.") }
+                .onFailure { shell.notify(it.message ?: str(R.string.could_not_read_the_file)) }
         }
     }
     val pickCert = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -214,34 +217,34 @@ fun ImportKeyScreen(shell: ShellViewModel, onClose: () -> Unit, onSaved: (String
         scope.launch {
             runCatching { readTextFile(context, uri) }
                 .onSuccess { text -> vm.update { it.copy(certificate = text) } }
-                .onFailure { shell.notify(it.message ?: "Could not read the file.") }
+                .onFailure { shell.notify(it.message ?: str(R.string.could_not_read_the_file)) }
         }
     }
 
-    EditorScaffold("Import key", s.working, s.canSave, onClose, vm::import) {
+    EditorScaffold(stringResource(R.string.import_key), s.working, s.canSave, onClose, vm::import) {
         VaultPicker(s.vaults, s.vaultId) { id -> vm.update { it.copy(vaultId = id) } }
         SectionCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                FormField(s.label, { v -> vm.update { it.copy(label = v) } }, "Label", placeholder = s.preview?.comment?.ifBlank { null } ?: "Imported key")
+                FormField(s.label, { v -> vm.update { it.copy(label = v) } }, stringResource(R.string.label), placeholder = s.preview?.comment?.ifBlank { null } ?: stringResource(R.string.imported_key))
             }
         }
 
-        SectionLabel("Private key")
+        SectionLabel(stringResource(R.string.private_key))
         SectionCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 KeyTextArea(
                     value = s.privateKey,
                     onChange = vm::setPrivateKey,
-                    placeholder = "-----BEGIN OPENSSH PRIVATE KEY-----\nOpenSSH, PEM, PKCS#8 or PuTTY .ppk",
+                    placeholder = stringResource(R.string.begin_openssh_private_key_openssh_pem_pkcs_8),
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { pasteText(context)?.let(vm::setPrivateKey) ?: shell.notify("Clipboard is empty") }) {
+                    TextButton(onClick = { pasteText(context)?.let(vm::setPrivateKey) ?: shell.notify(str(R.string.clipboard_is_empty)) }) {
                         Icon(Icons.Filled.ContentPaste, contentDescription = null, Modifier.height(18.dp))
-                        Text("  Paste")
+                        Text(stringResource(R.string.paste))
                     }
                     TextButton(onClick = { pickKey.launch(arrayOf("*/*")) }) {
                         Icon(Icons.Filled.FolderOpen, contentDescription = null, Modifier.height(18.dp))
-                        Text("  Open file")
+                        Text(stringResource(R.string.open_file))
                     }
                 }
             }
@@ -254,22 +257,22 @@ fun ImportKeyScreen(shell: ShellViewModel, onClose: () -> Unit, onSaved: (String
         }
 
         if (s.preview?.encrypted == true) {
-            SectionLabel("Passphrase")
+            SectionLabel(stringResource(R.string.passphrase_2))
             SectionCard {
                 Column(Modifier.padding(16.dp)) {
-                    SecretField(s.passphrase, { v -> vm.update { it.copy(passphrase = v) } }, "Key passphrase")
+                    SecretField(s.passphrase, { v -> vm.update { it.copy(passphrase = v) } }, stringResource(R.string.key_passphrase))
                 }
                 RowDivider()
                 SwitchRow(
-                    title = "Remember passphrase",
-                    subtitle = "Stored encrypted in the vault so connections do not prompt",
+                    title = stringResource(R.string.remember_passphrase),
+                    subtitle = stringResource(R.string.stored_encrypted_in_the_vault_so_connections_do),
                     checked = s.remember,
                     onCheckedChange = { v -> vm.update { it.copy(remember = v) } },
                 )
             }
         }
 
-        SectionLabel("Certificate (optional)")
+        SectionLabel(stringResource(R.string.certificate_optional))
         SectionCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 KeyTextArea(
@@ -279,13 +282,13 @@ fun ImportKeyScreen(shell: ShellViewModel, onClose: () -> Unit, onSaved: (String
                     minLines = 2,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { pasteText(context)?.let { t -> vm.update { it.copy(certificate = t) } } ?: shell.notify("Clipboard is empty") }) {
+                    TextButton(onClick = { pasteText(context)?.let { t -> vm.update { it.copy(certificate = t) } } ?: shell.notify(str(R.string.clipboard_is_empty)) }) {
                         Icon(Icons.Filled.ContentPaste, contentDescription = null, Modifier.height(18.dp))
-                        Text("  Paste")
+                        Text(stringResource(R.string.paste))
                     }
                     TextButton(onClick = { pickCert.launch(arrayOf("*/*")) }) {
                         Icon(Icons.Filled.FolderOpen, contentDescription = null, Modifier.height(18.dp))
-                        Text("  Open file")
+                        Text(stringResource(R.string.open_file))
                     }
                 }
             }
@@ -317,8 +320,8 @@ private fun PreviewBlock(preview: KeyPreview?, error: String?) {
         Text(
             listOfNotNull(
                 keyTypeLabel(preview.keyType, preview.bits),
-                if (preview.putty) "PuTTY .ppk" else null,
-                if (preview.encrypted) "encrypted" else "no passphrase",
+                if (preview.putty) stringResource(R.string.putty_ppk) else null,
+                if (preview.encrypted) stringResource(R.string.encrypted) else stringResource(R.string.no_passphrase),
             ).joinToString(" · "),
             style = MaterialTheme.typography.bodyMedium,
         )
@@ -330,7 +333,7 @@ private fun PreviewBlock(preview: KeyPreview?, error: String?) {
         }
         if (preview.encrypted && preview.fingerprint.isBlank()) {
             Text(
-                "Enter the passphrase below to import; the public key is read after decryption.",
+                stringResource(R.string.enter_the_passphrase_below_to_import_the_public),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

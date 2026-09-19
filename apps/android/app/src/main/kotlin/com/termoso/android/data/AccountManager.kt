@@ -1,5 +1,7 @@
 package com.termoso.android.data
 
+import com.termoso.android.str
+import com.termoso.android.R
 import android.os.Build
 import com.termoso.core.AccountStatus
 import com.termoso.core.DeviceCard
@@ -40,7 +42,7 @@ const val CLOUD_URL = "https://app.termoso.com"
 enum class ServerChoice { Cloud, SelfHosted }
 
 /** The user dismissed the re-authentication prompt; the guarded action did not run. */
-class ReauthCancelled : Exception("Cancelled.")
+class ReauthCancelled : Exception(str(R.string.cancelled))
 
 /**
  * A sensitive action is waiting for the user to prove the password again.
@@ -96,7 +98,7 @@ class AccountManager(
             try {
                 refresh()
                 runCatching { repo.app.accountResume() }
-                    .onFailure { _notices.tryEmit("Could not restore the account session: ${it.userMessage()}") }
+                    .onFailure { _notices.tryEmit(str(R.string.could_not_restore_the_account_session, it.userMessage())) }
                 refresh()
             } finally {
                 _restoring.value = false

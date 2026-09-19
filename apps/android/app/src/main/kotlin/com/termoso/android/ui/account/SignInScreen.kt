@@ -40,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -47,9 +48,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.CLOUD_URL
 import com.termoso.android.data.ServerChoice
+import com.termoso.android.str
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.SecretField
 import com.termoso.android.ui.components.SubScreen
@@ -75,10 +78,10 @@ fun SignInScreen(account: AccountManager, mode: AuthMode, onBack: () -> Unit, on
     LaunchedEffect(mode) { if (vm.step == AuthStep.Form) vm.switchMode(mode) }
 
     val title = when (val step = vm.step) {
-        AuthStep.Form -> if (vm.mode == AuthMode.SignIn) "Sign in" else "Create account"
-        is AuthStep.Mfa -> "Two-factor authentication"
-        is AuthStep.DeviceApproval -> "Approve this device"
-        is AuthStep.Recovery -> "Recovery phrase"
+        AuthStep.Form -> if (vm.mode == AuthMode.SignIn) stringResource(R.string.sign_in) else stringResource(R.string.create_account)
+        is AuthStep.Mfa -> stringResource(R.string.two_factor_authentication)
+        is AuthStep.DeviceApproval -> stringResource(R.string.approve_this_device)
+        is AuthStep.Recovery -> stringResource(R.string.recovery_phrase)
     }
     val back: () -> Unit = when (vm.step) {
         is AuthStep.Mfa, is AuthStep.DeviceApproval -> ({ vm.cancelPending() })
@@ -99,7 +102,7 @@ fun SignInScreen(account: AccountManager, mode: AuthMode, onBack: () -> Unit, on
                 AuthStep.Form -> {
                     if (status.account != null) {
                         Text(
-                            "Already signed in as ${status.account?.email}. Sign out from Settings → Account first.",
+                            stringResource(R.string.already_signed_in_as_sign_out_from_settings, status.account?.email.orEmpty()),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else {
@@ -118,7 +121,7 @@ fun SignInScreen(account: AccountManager, mode: AuthMode, onBack: () -> Unit, on
 
 @Composable
 private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
-    val modes = listOf(AuthMode.SignIn to "Sign in", AuthMode.Register to "Create account")
+    val modes = listOf(AuthMode.SignIn to stringResource(R.string.sign_in), AuthMode.Register to stringResource(R.string.create_account))
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
         modes.forEachIndexed { i, (m, label) ->
             SegmentedButton(
@@ -130,8 +133,8 @@ private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
         }
     }
 
-    Text("Server", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    val servers = listOf(ServerChoice.Cloud to "Termoso Cloud", ServerChoice.SelfHosted to "Self-hosted")
+    Text(stringResource(R.string.server), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val servers = listOf(ServerChoice.Cloud to "Termoso Cloud", ServerChoice.SelfHosted to stringResource(R.string.self_hosted))
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
         servers.forEachIndexed { i, (s, label) ->
             SegmentedButton(
@@ -144,7 +147,7 @@ private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
     }
     when (vm.server) {
         ServerChoice.Cloud -> Text(
-            "${CLOUD_URL.removePrefix("https://")} · free forever, no limits, no plans. Everything is end-to-end encrypted — the server never sees your hosts, keys or passwords.",
+            stringResource(R.string.cloud_server_blurb, CLOUD_URL.removePrefix("https://")),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -152,7 +155,7 @@ private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
             FormField(
                 value = vm.serverUrl,
                 onChange = vm::editServerUrl,
-                label = "Server address",
+                label = stringResource(R.string.server_address),
                 placeholder = "https://termoso.example.com",
                 keyboard = KeyboardType.Uri,
                 enabled = !vm.busy,
@@ -161,20 +164,20 @@ private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
         }
     }
 
-    Text("Account", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    FormField(value = vm.email, onChange = { vm.email = it }, label = "Email", keyboard = KeyboardType.Email, enabled = !vm.busy)
+    Text(stringResource(R.string.account), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    FormField(value = vm.email, onChange = { vm.email = it }, label = stringResource(R.string.email), keyboard = KeyboardType.Email, enabled = !vm.busy)
     SecretField(
         value = vm.password,
         onChange = { vm.password = it },
-        label = if (vm.mode == AuthMode.Register) "Master password" else "Password",
+        label = if (vm.mode == AuthMode.Register) stringResource(R.string.master_password) else stringResource(R.string.password),
         enabled = !vm.busy,
     )
     if (vm.mode == AuthMode.Register) {
-        SecretField(value = vm.confirm, onChange = { vm.confirm = it }, label = "Confirm password", enabled = !vm.busy)
+        SecretField(value = vm.confirm, onChange = { vm.confirm = it }, label = stringResource(R.string.confirm_password), enabled = !vm.busy)
         OutlinedTextField(
             value = vm.displayName,
             onValueChange = { vm.displayName = it },
-            label = { Text("Display name (optional)") },
+            label = { Text(stringResource(R.string.display_name_optional)) },
             singleLine = true,
             enabled = !vm.busy,
             modifier = Modifier.fillMaxWidth(),
@@ -182,11 +185,10 @@ private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
         )
         val registrationClosed = vm.server == ServerChoice.SelfHosted && vm.serverCard?.registrationOpen == false
         if (registrationClosed || vm.invite.isNotEmpty()) {
-            FormField(value = vm.invite, onChange = { vm.invite = it }, label = "Invitation token", enabled = !vm.busy)
+            FormField(value = vm.invite, onChange = { vm.invite = it }, label = stringResource(R.string.invitation_token), enabled = !vm.busy)
         }
         Text(
-            "Your master password protects your encryption keys and is never sent to the server (OPAQUE). " +
-                "It cannot be reset — you will get a recovery phrase on the next step.",
+            stringResource(R.string.your_master_password_protects_your_encryption_keys_and),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -194,7 +196,7 @@ private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
 
     Spacer(Modifier.height(4.dp))
     BusyButton(
-        text = if (vm.mode == AuthMode.SignIn) "Sign in" else "Create account",
+        text = if (vm.mode == AuthMode.SignIn) stringResource(R.string.sign_in) else stringResource(R.string.create_account),
         busy = vm.busy,
         onClick = { vm.submit(onDone) },
     )
@@ -207,15 +209,15 @@ private fun ServerProbeLine(probe: ServerProbe) {
         ServerProbe.Checking -> Row(verticalAlignment = Alignment.CenterVertically) {
             CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
             Spacer(Modifier.width(8.dp))
-            Text("Checking server…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.checking_server), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         is ServerProbe.Ok -> Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
             Text(
                 "${probe.card.name} ${probe.card.version} · " +
-                    (if (probe.card.registrationOpen) "registration open" else "invite only") +
-                    (if (probe.card.email) "" else " · no email"),
+                    (if (probe.card.registrationOpen) stringResource(R.string.registration_open) else stringResource(R.string.invite_only)) +
+                    (if (probe.card.email) "" else stringResource(R.string.sep_no_email)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -229,16 +231,16 @@ private fun ServerProbeLine(probe: ServerProbe) {
 }
 
 private fun MfaMethod.label(): String = when (this) {
-    MfaMethod.TOTP -> "Authenticator app"
-    MfaMethod.BACKUP_CODE -> "Backup code"
-    MfaMethod.EMAIL -> "Email code"
-    MfaMethod.WEBAUTHN -> "Security key"
+    MfaMethod.TOTP -> str(R.string.authenticator_app)
+    MfaMethod.BACKUP_CODE -> str(R.string.backup_code)
+    MfaMethod.EMAIL -> str(R.string.email_code)
+    MfaMethod.WEBAUTHN -> str(R.string.security_key)
 }
 
 @Composable
 private fun MfaForm(vm: SignInViewModel, step: AuthStep.Mfa, onDone: () -> Unit) {
     Text(
-        "Your account has two-factor authentication turned on. Choose how to confirm it's you.",
+        stringResource(R.string.your_account_has_two_factor_authentication_turned_on),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -256,22 +258,22 @@ private fun MfaForm(vm: SignInViewModel, step: AuthStep.Mfa, onDone: () -> Unit)
         MfaMethod.WEBAUTHN -> SecurityKeyMfa(vm, onDone)
         MfaMethod.EMAIL -> {
             if (!vm.emailCodeSent) {
-                OutlinedButton(onClick = vm::sendEmailCode, enabled = !vm.busy) { Text("Send code by email") }
+                OutlinedButton(onClick = vm::sendEmailCode, enabled = !vm.busy) { Text(stringResource(R.string.send_code_by_email)) }
             } else {
-                Text("We emailed you a code.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                CodeField(vm, "Email code", KeyboardType.Number)
-                TextButton(onClick = vm::sendEmailCode, enabled = !vm.busy) { Text("Send again") }
+                Text(stringResource(R.string.we_emailed_you_a_code), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                CodeField(vm, stringResource(R.string.email_code), KeyboardType.Number)
+                TextButton(onClick = vm::sendEmailCode, enabled = !vm.busy) { Text(stringResource(R.string.send_again)) }
             }
         }
-        MfaMethod.TOTP -> CodeField(vm, "6-digit code", KeyboardType.Number)
-        MfaMethod.BACKUP_CODE -> CodeField(vm, "Backup code", KeyboardType.Ascii)
+        MfaMethod.TOTP -> CodeField(vm, stringResource(R.string.s_6_digit_code), KeyboardType.Number)
+        MfaMethod.BACKUP_CODE -> CodeField(vm, stringResource(R.string.backup_code), KeyboardType.Ascii)
     }
     val canVerify = vm.mfaMethod != null && vm.mfaMethod != MfaMethod.WEBAUTHN &&
         (vm.mfaMethod != MfaMethod.EMAIL || vm.emailCodeSent)
     if (canVerify) {
-        BusyButton(text = "Verify", busy = vm.busy, onClick = { vm.submitMfa(onDone) })
+        BusyButton(text = stringResource(R.string.verify), busy = vm.busy, onClick = { vm.submitMfa(onDone) })
     }
-    TextButton(onClick = vm::cancelPending, enabled = !vm.busy) { Text("Cancel") }
+    TextButton(onClick = vm::cancelPending, enabled = !vm.busy) { Text(stringResource(R.string.cancel)) }
 }
 
 /**
@@ -298,16 +300,16 @@ private fun SecurityKeyMfa(vm: SignInViewModel, onDone: () -> Unit) {
     SecretField(
         vm.skPin,
         { vm.skPin = it },
-        if (device?.pinSet == false) "Security key PIN (none set)" else "Security key PIN",
+        if (device?.pinSet == false) stringResource(R.string.security_key_pin_none_set) else stringResource(R.string.security_key_pin),
         enabled = !vm.busy,
     )
     Text(
-        "The key signs a one-time challenge from the server; the PIN is only ever sent to the key itself.",
+        stringResource(R.string.the_key_signs_a_one_time_challenge_from),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     BusyButton(
-        text = "Use security key",
+        text = stringResource(R.string.use_security_key),
         busy = vm.busy,
         enabled = devices.isNotEmpty(),
         onClick = { vm.submitSecurityKey(onDone) },
@@ -318,15 +320,15 @@ private fun SecurityKeyMfa(vm: SignInViewModel, onDone: () -> Unit) {
 @Composable
 private fun ApprovalForm(vm: SignInViewModel, step: AuthStep.DeviceApproval, onDone: () -> Unit) {
     Text(
-        "This is a new device for your account. We sent a confirmation code to ${step.emailHint}.",
+        stringResource(R.string.this_is_a_new_device_for_your_account, step.emailHint),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    CodeField(vm, "Code from the email", KeyboardType.Number)
-    BusyButton(text = "Approve device", busy = vm.busy, onClick = { vm.submitApproval(onDone) })
+    CodeField(vm, stringResource(R.string.code_from_the_email), KeyboardType.Number)
+    BusyButton(text = stringResource(R.string.approve_device), busy = vm.busy, onClick = { vm.submitApproval(onDone) })
     Row {
-        TextButton(onClick = vm::resendApproval, enabled = !vm.busy) { Text("Send again") }
+        TextButton(onClick = vm::resendApproval, enabled = !vm.busy) { Text(stringResource(R.string.send_again)) }
         Spacer(Modifier.weight(1f))
-        TextButton(onClick = vm::cancelPending, enabled = !vm.busy) { Text("Cancel") }
+        TextButton(onClick = vm::cancelPending, enabled = !vm.busy) { Text(stringResource(R.string.cancel)) }
     }
 }
 
@@ -334,8 +336,7 @@ private fun ApprovalForm(vm: SignInViewModel, step: AuthStep.DeviceApproval, onD
 private fun RecoveryPhrase(vm: SignInViewModel, step: AuthStep.Recovery, onDone: () -> Unit) {
     val context = LocalContext.current
     Text(
-        "Write these words down and keep them somewhere safe. They are the only way to regain access " +
-            "if you forget your master password — Termoso cannot reset it for you. This phrase is shown once.",
+        stringResource(R.string.write_these_words_down_and_keep_them_somewhere),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     val words = step.phrase.trim().split(Regex("\\s+"))
@@ -360,21 +361,21 @@ private fun RecoveryPhrase(vm: SignInViewModel, step: AuthStep.Recovery, onDone:
             }
         }
     }
-    OutlinedButton(onClick = { copyText(context, "Termoso recovery phrase", step.phrase, sensitive = true) }) {
+    OutlinedButton(onClick = { copyText(context, str(R.string.termoso_recovery_phrase), step.phrase, sensitive = true) }) {
         Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
-        Text("Copy")
+        Text(stringResource(R.string.copy))
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked = vm.recoverySaved, onCheckedChange = { vm.recoverySaved = it })
-        Text("I have saved my recovery phrase", modifier = Modifier.weight(1f))
+        Text(stringResource(R.string.i_have_saved_my_recovery_phrase), modifier = Modifier.weight(1f))
     }
     Button(
         onClick = onDone,
         enabled = vm.recoverySaved,
         modifier = Modifier.fillMaxWidth().height(48.dp),
         shape = RoundedCornerShape(12.dp),
-    ) { Text("Continue") }
+    ) { Text(stringResource(R.string.continue_)) }
 }
 
 @Composable

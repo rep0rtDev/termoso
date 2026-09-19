@@ -39,12 +39,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
+import com.termoso.android.str
 import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
@@ -61,7 +64,7 @@ import com.termoso.core.terminalTheme
 import com.termoso.core.terminalThemes
 import kotlinx.coroutines.launch
 
-private val cursorStyles = listOf("block" to "Block", "underline" to "Underline", "beam" to "Bar")
+private val cursorStyles = listOf("block" to R.string.block, "underline" to R.string.underline, "beam" to R.string.bar)
 
 /** Colour scheme, font family/size and cursor for the terminal; changes apply to open sessions at once. */
 @Composable
@@ -83,19 +86,19 @@ fun TerminalAppearanceScreen(shell: ShellViewModel, onBack: () -> Unit) {
         }
     }
 
-    SubScreen("Terminal appearance", onBack) { padding ->
+    SubScreen(stringResource(R.string.terminal_appearance), onBack) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
             item {
                 TerminalPreview(current.palette, settings.terminalFontFamily, settings.terminalFontSize.toInt(), settings.cursorStyle)
             }
 
-            item { SectionLabel("Font") }
+            item { SectionLabel(stringResource(R.string.font)) }
             item {
                 SectionCard {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Size", Modifier.width(56.dp))
+                        Text(stringResource(R.string.size), Modifier.width(56.dp))
                         IconButton(onClick = { set { it.copy(terminalFontSize = (it.terminalFontSize - 1u).coerceAtLeast(6u)) } }) {
-                            Icon(Icons.Filled.Remove, contentDescription = "Smaller")
+                            Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.smaller))
                         }
                         Slider(
                             value = settings.terminalFontSize.toFloat(),
@@ -105,7 +108,7 @@ fun TerminalAppearanceScreen(shell: ShellViewModel, onBack: () -> Unit) {
                             modifier = Modifier.weight(1f),
                         )
                         IconButton(onClick = { set { it.copy(terminalFontSize = (it.terminalFontSize + 1u).coerceAtMost(40u)) } }) {
-                            Icon(Icons.Filled.Add, contentDescription = "Larger")
+                            Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.larger))
                         }
                         Text("${settings.terminalFontSize}", Modifier.width(28.dp), style = MaterialTheme.typography.bodyMedium)
                     }
@@ -132,7 +135,7 @@ fun TerminalAppearanceScreen(shell: ShellViewModel, onBack: () -> Unit) {
                 }
             }
 
-            item { SectionLabel("Cursor") }
+            item { SectionLabel(stringResource(R.string.cursor)) }
             item {
                 SectionCard {
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -141,17 +144,17 @@ fun TerminalAppearanceScreen(shell: ShellViewModel, onBack: () -> Unit) {
                                 selected = settings.cursorStyle == id,
                                 onClick = { set { it.copy(cursorStyle = id) } },
                                 shape = SegmentedButtonDefaults.itemShape(i, cursorStyles.size),
-                            ) { Text(label) }
+                            ) { Text(stringResource(label)) }
                         }
                     }
                     RowDivider()
-                    SwitchRow(title = "Blink", checked = settings.cursorBlink, onCheckedChange = { v -> set { it.copy(cursorBlink = v) } })
+                    SwitchRow(title = stringResource(R.string.blink), checked = settings.cursorBlink, onCheckedChange = { v -> set { it.copy(cursorBlink = v) } })
                 }
             }
 
-            item { SectionLabel("Color scheme") }
-            themeGroup("Dark", darkThemes, current.id, top = true, bottom = false, onPick = ::pickTheme)
-            themeGroup("Light", lightThemes, current.id, top = false, bottom = true, onPick = ::pickTheme)
+            item { SectionLabel(stringResource(R.string.color_scheme)) }
+            themeGroup(str(R.string.dark), darkThemes, current.id, top = true, bottom = false, onPick = ::pickTheme)
+            themeGroup(str(R.string.light), lightThemes, current.id, top = false, bottom = true, onPick = ::pickTheme)
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
@@ -188,7 +191,7 @@ private fun LazyListScope.themeGroup(
                 leading = { PaletteSwatch(theme.palette) },
                 modifier = Modifier.clickable { onPick(theme) },
                 trailing = {
-                    if (theme.id == selectedId) Icon(Icons.Filled.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
+                    if (theme.id == selectedId) Icon(Icons.Filled.Check, contentDescription = str(R.string.selected), tint = MaterialTheme.colorScheme.primary)
                 },
             )
         }
@@ -223,7 +226,7 @@ private fun TerminalPreview(p: TerminalPalette, family: String, sizeSp: Int, cur
             Text("user", color = rgb(p.ansi[2]), fontFamily = font, fontSize = sz, fontWeight = FontWeight.Bold)
             Text("@", color = fg, fontFamily = font, fontSize = sz)
             Text("termoso", color = rgb(p.ansi[4]), fontFamily = font, fontSize = sz, fontWeight = FontWeight.Bold)
-            Text(":~$ ls -la", color = fg, fontFamily = font, fontSize = sz)
+            Text(stringResource(R.string.ls_la), color = fg, fontFamily = font, fontSize = sz)
         }
         Row {
             Text("drwxr-xr-x ", color = rgb(p.ansi[4]), fontFamily = font, fontSize = sz)

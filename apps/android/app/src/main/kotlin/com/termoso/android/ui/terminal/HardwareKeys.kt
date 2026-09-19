@@ -1,14 +1,16 @@
 package com.termoso.android.ui.terminal
 
+import com.termoso.android.R
+import androidx.annotation.StringRes
 import android.view.KeyEvent
 
 /** App-level shortcut on a physical keyboard, resolved from a key press. */
-enum class Hotkey(val toast: String?) {
+enum class Hotkey(@StringRes val toast: Int?) {
     PREV_SESSION(null),
     NEXT_SESSION(null),
-    CLOSE_SESSION("Session closed"),
+    CLOSE_SESSION(R.string.session_closed),
     NEW_SESSION(null),
-    CLONE_SESSION("Cloning connection"),
+    CLONE_SESSION(R.string.cloning_connection),
     FONT_UP(null),
     FONT_DOWN(null),
     FONT_RESET(null),
@@ -76,8 +78,8 @@ object HardwareKeys {
     }
 
     val hotkeyModes = listOf(
-        "disabled" to "Disabled",
-        "ctrl" to "Ctrl",
-        "ctrl_shift" to "Ctrl+Shift",
+        "disabled" to R.string.disabled,
+        "ctrl" to R.string.ctrl,
+        "ctrl_shift" to R.string.ctrl_shift,
     )
 }

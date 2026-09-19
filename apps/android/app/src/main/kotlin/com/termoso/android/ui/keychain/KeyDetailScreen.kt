@@ -1,5 +1,6 @@
 package com.termoso.android.ui.keychain
 
+import androidx.compose.ui.res.pluralStringResource
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -38,10 +39,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
+import com.termoso.android.str
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.IconTile
@@ -74,11 +78,11 @@ fun KeyDetailScreen(shell: ShellViewModel, keyId: String, onBack: () -> Unit) {
 
     val key = s.key
     SubScreen(
-        key?.label ?: "Key",
+        key?.label ?: stringResource(R.string.key),
         onBack,
         actions = {
             if (key != null) {
-                IconButton(onClick = { sheet = Sheet.RENAME }) { Icon(Icons.Filled.Edit, contentDescription = "Rename") }
+                IconButton(onClick = { sheet = Sheet.RENAME }) { Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.rename)) }
             }
         },
     ) { padding ->
@@ -94,31 +98,31 @@ fun KeyDetailScreen(shell: ShellViewModel, keyId: String, onBack: () -> Unit) {
             SectionCard {
                 ListRow(
                     title = key.label,
-                    subtitle = keyTypeLabel(key.keyType, key.bits) + if (key.usedBy > 0u) " · used by ${key.usedBy} host${if (key.usedBy == 1u) "" else "s"}" else "",
+                    subtitle = keyTypeLabel(key.keyType, key.bits) + if (key.usedBy > 0u) pluralStringResource(R.plurals.sep_used_by_hosts, key.usedBy.toInt(), key.usedBy.toInt()) else "",
                     leading = { IconTile(if (s.securityKey != null) Icons.Filled.Security else Icons.Filled.Key, selected = true) },
                 )
                 if (key.fingerprint.isNotBlank()) {
                     RowDivider()
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Fingerprint", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.fingerprint), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(key.fingerprint, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
                     }
                 }
                 if (key.comment.isNotBlank()) {
                     RowDivider()
-                    ListRow(title = "Comment", subtitle = key.comment)
+                    ListRow(title = stringResource(R.string.comment), subtitle = key.comment)
                 }
                 if (key.unreadable) {
                     RowDivider()
                     ListRow(
-                        title = "Cannot read this key",
-                        subtitle = "The stored material is not a supported private key. Delete it and import again.",
+                        title = stringResource(R.string.cannot_read_this_key),
+                        subtitle = stringResource(R.string.the_stored_material_is_not_a_supported_private),
                         titleColor = MaterialTheme.colorScheme.error,
                     )
                 }
             }
 
-            SectionLabel("Public key")
+            SectionLabel(stringResource(R.string.public_key_2))
             SectionCard {
                 Text(
                     s.publicKey.ifBlank { "—" },
@@ -130,72 +134,72 @@ fun KeyDetailScreen(shell: ShellViewModel, keyId: String, onBack: () -> Unit) {
                 Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
                     TextButton(
                         enabled = s.publicKey.isNotBlank(),
-                        onClick = { copyText(context, "Public key", s.publicKey); shell.notify("Public key copied") },
+                        onClick = { copyText(context, str(R.string.public_key_2), s.publicKey); shell.notify(str(R.string.public_key_copied)) },
                     ) {
                         Icon(Icons.Filled.ContentCopy, contentDescription = null, Modifier.height(18.dp))
-                        Text("  Copy public key")
+                        Text(stringResource(R.string.copy_public_key_2))
                     }
                 }
             }
 
             s.securityKey?.let { sk ->
-                SectionLabel("Security key")
+                SectionLabel(stringResource(R.string.security_key))
                 SectionCard {
                     ListRow(
-                        title = "Private key lives on the security key",
-                        subtitle = "Only the public key and a handle are stored here; the token must be plugged in or held to the phone to connect.",
+                        title = stringResource(R.string.private_key_lives_on_the_security_key),
+                        subtitle = stringResource(R.string.only_the_public_key_and_a_handle_are),
                     )
                     RowDivider()
-                    ListRow(title = "Application", subtitle = sk.application)
+                    ListRow(title = stringResource(R.string.application), subtitle = sk.application)
                     RowDivider()
                     ListRow(
-                        title = "On connect",
+                        title = stringResource(R.string.on_connect),
                         subtitle = listOfNotNull(
-                            when (sk.userPresence) { true -> "touch required"; false -> "no touch"; null -> null },
-                            when (sk.userVerification) { true -> "PIN required"; false -> null; null -> null },
-                        ).joinToString(", ").ifBlank { "Unknown" },
+                            when (sk.userPresence) { true -> stringResource(R.string.touch_required); false -> stringResource(R.string.no_touch); null -> null },
+                            when (sk.userVerification) { true -> stringResource(R.string.pin_required); false -> null; null -> null },
+                        ).joinToString(", ").ifBlank { stringResource(R.string.unknown) },
                     )
                     RowDivider()
                     ListRow(
-                        title = "Resident key",
+                        title = stringResource(R.string.resident_key),
                         subtitle = when (sk.resident) {
-                            true -> "Stored on the token, can be loaded elsewhere with the PIN"
-                            false -> "Not stored on the token — only this handle unlocks it"
-                            null -> "Unknown"
+                            true -> stringResource(R.string.stored_on_the_token_can_be_loaded_elsewhere)
+                            false -> stringResource(R.string.not_stored_on_the_token_only_this_handle)
+                            null -> stringResource(R.string.unknown)
                         },
                     )
                     sk.credentialId?.let { cred ->
                         RowDivider()
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text("Credential ID", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.credential_id), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(cred, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
                         }
                     }
                 }
             }
 
-            SectionLabel("Security")
+            SectionLabel(stringResource(R.string.security))
             SectionCard {
                 ChevronRow(
-                    title = if (key.encrypted) "Change passphrase" else "Set passphrase",
+                    title = if (key.encrypted) stringResource(R.string.change_passphrase) else stringResource(R.string.set_passphrase),
                     subtitle = when {
-                        !key.encrypted && s.securityKey != null -> "Key handle is stored without a passphrase"
-                        !key.encrypted -> "Private key is stored without a passphrase"
-                        key.hasPassphrase -> "Passphrase remembered in the vault"
-                        else -> "Prompted on every connection"
+                        !key.encrypted && s.securityKey != null -> stringResource(R.string.key_handle_is_stored_without_a_passphrase)
+                        !key.encrypted -> stringResource(R.string.private_key_is_stored_without_a_passphrase)
+                        key.hasPassphrase -> stringResource(R.string.passphrase_remembered_in_the_vault)
+                        else -> stringResource(R.string.prompted_on_every_connection)
                     },
                     modifier = Modifier.clickable(enabled = !key.unreadable) { sheet = Sheet.PASSPHRASE },
                 )
                 RowDivider()
                 ChevronRow(
-                    title = if (key.hasCertificate) "Certificate" else "Attach certificate",
-                    subtitle = if (key.hasCertificate) "OpenSSH certificate attached" else "Optional signed public key from your CA",
+                    title = if (key.hasCertificate) stringResource(R.string.certificate) else stringResource(R.string.attach_certificate),
+                    subtitle = if (key.hasCertificate) stringResource(R.string.openssh_certificate_attached) else stringResource(R.string.optional_signed_public_key_from_your_ca),
                     modifier = Modifier.clickable(enabled = !key.unreadable) { sheet = Sheet.CERTIFICATE },
                 )
                 RowDivider()
                 ChevronRow(
-                    title = if (s.securityKey != null) "Export key handle" else "Export private key",
-                    subtitle = if (s.securityKey != null) "Useless without the security key — confirmation required" else "Reveals the secret — confirmation required",
+                    title = if (s.securityKey != null) stringResource(R.string.export_key_handle) else stringResource(R.string.export_private_key),
+                    subtitle = if (s.securityKey != null) stringResource(R.string.useless_without_the_security_key_confirmation_required) else stringResource(R.string.reveals_the_secret_confirmation_required),
                     modifier = Modifier.clickable(enabled = !key.unreadable) { sheet = Sheet.EXPORT },
                 )
             }
@@ -203,8 +207,8 @@ fun KeyDetailScreen(shell: ShellViewModel, keyId: String, onBack: () -> Unit) {
             SectionLabel(" ")
             SectionCard {
                 ListRow(
-                    title = "Delete key",
-                    subtitle = if (key.usedBy > 0u) "Hosts using it will fall back to password or prompt" else null,
+                    title = stringResource(R.string.delete_key),
+                    subtitle = if (key.usedBy > 0u) stringResource(R.string.hosts_using_it_will_fall_back_to_password) else null,
                     titleColor = MaterialTheme.colorScheme.error,
                     modifier = Modifier.clickable { sheet = Sheet.DELETE },
                 )
@@ -230,10 +234,10 @@ fun KeyDetailScreen(shell: ShellViewModel, keyId: String, onBack: () -> Unit) {
             ExportDialog(k, vm, onNotify = shell::notify, onDismiss = { sheet = null })
         }
         Sheet.DELETE -> ConfirmDialog(
-            title = "Delete key?",
-            text = "\"${key?.label}\" will be removed from the vault." +
-                if ((key?.usedBy ?: 0u) > 0u) " ${key?.usedBy} host(s) reference it." else "",
-            confirm = "Delete",
+            title = stringResource(R.string.delete_key_2),
+            text = stringResource(R.string.will_be_removed_from_the_vault, key?.label.orEmpty()) +
+                if ((key?.usedBy ?: 0u) > 0u) stringResource(R.string.host_s_reference_it, (key?.usedBy ?: 0u).toInt()) else "",
+            confirm = stringResource(R.string.delete),
             onConfirm = { sheet = null; vm.delete() },
             onDismiss = { sheet = null },
         )
@@ -246,10 +250,10 @@ private fun RenameDialog(current: String, onDismiss: () -> Unit, onSave: (String
     var label by remember { mutableStateOf(current) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rename key") },
-        text = { FormField(label, { label = it }, "Label") },
-        confirmButton = { TextButton(enabled = label.isNotBlank(), onClick = { onSave(label) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text(stringResource(R.string.rename_key)) },
+        text = { FormField(label, { label = it }, stringResource(R.string.label)) },
+        confirmButton = { TextButton(enabled = label.isNotBlank(), onClick = { onSave(label) }) { Text(stringResource(R.string.save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -265,27 +269,27 @@ private fun PassphraseDialog(key: KeyItem, onDismiss: () -> Unit, onSave: (Strin
     val valid = (!needCurrent || current.isNotEmpty()) && (removing || (next.isNotEmpty() && next == confirm))
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (key.encrypted) "Change passphrase" else "Set passphrase") },
+        title = { Text(if (key.encrypted) stringResource(R.string.change_passphrase) else stringResource(R.string.set_passphrase)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (needCurrent) SecretField(current, { current = it }, "Current passphrase")
+                if (needCurrent) SecretField(current, { current = it }, stringResource(R.string.current_passphrase))
                 if (key.encrypted) {
-                    SwitchRow(title = "Remove passphrase", checked = removing, onCheckedChange = { removing = it })
+                    SwitchRow(title = stringResource(R.string.remove_passphrase), checked = removing, onCheckedChange = { removing = it })
                 }
                 if (!removing) {
-                    SecretField(next, { next = it }, "New passphrase")
-                    SecretField(confirm, { confirm = it }, "Confirm passphrase")
-                    if (mismatch) Text("Passphrases do not match", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    SwitchRow(title = "Remember passphrase", checked = remember, onCheckedChange = { remember = it })
+                    SecretField(next, { next = it }, stringResource(R.string.new_passphrase))
+                    SecretField(confirm, { confirm = it }, stringResource(R.string.confirm_passphrase))
+                    if (mismatch) Text(stringResource(R.string.passphrases_do_not_match), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    SwitchRow(title = stringResource(R.string.remember_passphrase), checked = remember, onCheckedChange = { remember = it })
                 }
             }
         },
         confirmButton = {
             TextButton(enabled = valid, onClick = {
                 onSave(current.takeIf { needCurrent }, if (removing) null else next, remember && !removing)
-            }) { Text(if (removing) "Remove" else "Save") }
+            }) { Text(if (removing) stringResource(R.string.remove_2) else stringResource(R.string.save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -299,39 +303,39 @@ private fun CertificateDialog(key: KeyItem, onNotify: (String) -> Unit, onDismis
         scope.launch {
             runCatching { readTextFile(context, uri) }
                 .onSuccess { text = it }
-                .onFailure { onNotify(it.message ?: "Could not read the file.") }
+                .onFailure { onNotify(it.message ?: str(R.string.could_not_read_the_file)) }
         }
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (key.hasCertificate) "Replace certificate" else "Attach certificate") },
+        title = { Text(if (key.hasCertificate) stringResource(R.string.replace_certificate) else stringResource(R.string.attach_certificate)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Paste the OpenSSH certificate issued for this key (usually `<key>-cert.pub`). Rust checks that it matches before saving.",
+                    stringResource(R.string.paste_the_openssh_certificate_issued_for_this_key),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 KeyTextArea(text, { text = it }, placeholder = "ssh-ed25519-cert-v01@openssh.com AAAA…", minLines = 3)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { pasteText(context)?.let { text = it } ?: onNotify("Clipboard is empty") }) {
+                    TextButton(onClick = { pasteText(context)?.let { text = it } ?: onNotify(str(R.string.clipboard_is_empty)) }) {
                         Icon(Icons.Filled.ContentPaste, contentDescription = null, Modifier.height(18.dp))
-                        Text("  Paste")
+                        Text(stringResource(R.string.paste))
                     }
                     TextButton(onClick = { pick.launch(arrayOf("*/*")) }) {
                         Icon(Icons.Filled.FolderOpen, contentDescription = null, Modifier.height(18.dp))
-                        Text("  Open file")
+                        Text(stringResource(R.string.open_file))
                     }
                 }
             }
         },
-        confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = { onSave(text) }) { Text("Save") } },
+        confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = { onSave(text) }) { Text(stringResource(R.string.save)) } },
         dismissButton = {
             Row {
                 if (key.hasCertificate) {
-                    TextButton(onClick = { onSave(null) }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = { onSave(null) }) { Text(stringResource(R.string.remove_2), color = MaterialTheme.colorScheme.error) }
                 }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
             }
         },
     )
@@ -368,37 +372,36 @@ private fun ExportDialog(key: KeyItem, vm: KeyDetailViewModel, onNotify: (String
             val text = export() ?: return@launch
             runCatching {
                 withContext(Dispatchers.IO) {
-                    context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray()) } ?: error("Could not write the file.")
+                    context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray()) } ?: error(str(R.string.could_not_write_the_file))
                 }
-            }.onSuccess { onNotify("Private key saved"); onDismiss() }
-                .onFailure { onNotify(it.message ?: "Could not write the file.") }
+            }.onSuccess { onNotify(str(R.string.private_key_saved)); onDismiss() }
+                .onFailure { onNotify(it.message ?: str(R.string.could_not_write_the_file)) }
         }
     }
 
     if (!confirmed) {
         AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text("Export private key?") },
+            title = { Text(stringResource(R.string.export_private_key_2)) },
             text = {
                 Text(
-                    "Anyone with the private key can log in as you on every host that trusts it. " +
-                        "Export only to a device you control, and prefer setting an export passphrase.",
+                    stringResource(R.string.anyone_with_the_private_key_can_log_in),
                 )
             },
-            confirmButton = { TextButton(onClick = { confirmed = true }) { Text("I understand", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { confirmed = true }) { Text(stringResource(R.string.i_understand), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
         )
         return
     }
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("Export \"${key.label}\"") },
+        title = { Text(stringResource(R.string.export, key.label)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (needPassphrase) SecretField(passphrase, { passphrase = it }, "Key passphrase")
-                SecretField(exportPassphrase, { exportPassphrase = it }, "Export passphrase (optional)")
+                if (needPassphrase) SecretField(passphrase, { passphrase = it }, stringResource(R.string.key_passphrase))
+                SecretField(exportPassphrase, { exportPassphrase = it }, stringResource(R.string.export_passphrase_optional))
                 Text(
-                    if (exportPassphrase.isEmpty()) "The exported file will be unencrypted OpenSSH text." else "The export is re-encrypted with this passphrase.",
+                    if (exportPassphrase.isEmpty()) stringResource(R.string.the_exported_file_will_be_unencrypted_openssh_text) else stringResource(R.string.the_export_is_re_encrypted_with_this_passphrase),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -410,21 +413,21 @@ private fun ExportDialog(key: KeyItem, vm: KeyDetailViewModel, onNotify: (String
                     saveFile.launch(key.label.replace(Regex("[^A-Za-z0-9._-]+"), "_").ifBlank { "id_key" })
                 }) {
                     Icon(Icons.Filled.Save, contentDescription = null, Modifier.height(18.dp))
-                    Text("  File")
+                    Text(stringResource(R.string.file_))
                 }
                 TextButton(enabled = !busy && (!needPassphrase || passphrase.isNotEmpty()), onClick = {
                     scope.launch {
                         val text = export() ?: return@launch
-                        copyText(context, "Private key", text, sensitive = true)
-                        onNotify("Private key copied — clear the clipboard when done")
+                        copyText(context, str(R.string.private_key), text, sensitive = true)
+                        onNotify(str(R.string.private_key_copied_clear_the_clipboard_when_done))
                         onDismiss()
                     }
                 }) {
                     Icon(Icons.Filled.ContentCopy, contentDescription = null, Modifier.height(18.dp))
-                    Text("  Copy")
+                    Text(stringResource(R.string.copy_2))
                 }
             }
         },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }

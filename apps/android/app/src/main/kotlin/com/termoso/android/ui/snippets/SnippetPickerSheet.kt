@@ -24,7 +24,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.termoso.android.R
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.IconTile
@@ -67,20 +69,20 @@ fun SnippetPickerSheet(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Snippets", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = { onClose(); onOpenSnippets() }) { Text("Manage") }
+                Text(stringResource(R.string.snippets), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                TextButton(onClick = { onClose(); onOpenSnippets() }) { Text(stringResource(R.string.manage)) }
             }
             if (snippets.orEmpty().size > 5) {
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                    FormField(query, { query = it }, "Search")
+                    FormField(query, { query = it }, stringResource(R.string.search))
                 }
             }
             when {
                 snippets == null -> Spacer(Modifier.height(120.dp))
                 shown.isEmpty() -> {
                     EmptyState(
-                        title = if (query.isBlank()) "No snippets yet" else "Nothing matches",
-                        hint = if (query.isBlank()) "Create one under Vaults → Snippets." else "Try another name or command.",
+                        title = if (query.isBlank()) stringResource(R.string.no_snippets_yet) else stringResource(R.string.nothing_matches),
+                        hint = if (query.isBlank()) stringResource(R.string.create_one_under_vaults_snippets) else stringResource(R.string.try_another_name_or_command),
                         modifier = Modifier.padding(16.dp),
                     )
                     Spacer(Modifier.height(24.dp))

@@ -1,5 +1,7 @@
 package com.termoso.android.ui.sftp
 
+import com.termoso.android.str
+import com.termoso.android.R
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -38,7 +40,7 @@ object LocalFiles {
         target.parentFile?.mkdirs()
         resolver.openInputStream(uri)?.use { input ->
             target.outputStream().use { output -> input.copyTo(output) }
-        } ?: throw IllegalStateException("Cannot read ${uri.lastPathSegment}")
+        } ?: throw IllegalStateException(str(R.string.cannot_read_file, uri.lastPathSegment.orEmpty()))
     }
 
     /** One file or folder inside a picked SAF tree. */
@@ -113,10 +115,10 @@ object LocalFiles {
             runCatching { DocumentsContract.deleteDocument(resolver, it.uri) }
         }
         val doc = DocumentsContract.createDocument(resolver, parent, mimeOf(file.name), file.name)
-            ?: throw IllegalStateException("Could not create ${file.name} in the download folder")
+            ?: throw IllegalStateException(str(R.string.could_not_create_in_the_download_folder, file.name))
         resolver.openOutputStream(doc, "wt")?.use { output ->
             file.inputStream().use { input -> input.copyTo(output) }
-        } ?: throw IllegalStateException("Could not write ${file.name}")
+        } ?: throw IllegalStateException(str(R.string.could_not_write, file.name))
         return doc
     }
 

@@ -34,11 +34,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.termoso.android.R
 
 /** Rounded surface holding a vertical stack of rows, the Termius/M3 “grouped list” look. */
 @Composable
@@ -232,7 +234,7 @@ fun IconTile(
         contentAlignment = Alignment.Center,
     ) {
         if (selected) {
-            Icon(Icons.Filled.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.onPrimary)
+            Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.selected), tint = MaterialTheme.colorScheme.onPrimary)
         } else {
             Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size((size * 0.55).dp))
         }

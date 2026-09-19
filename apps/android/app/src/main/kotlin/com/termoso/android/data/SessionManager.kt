@@ -1,5 +1,7 @@
 package com.termoso.android.data
 
+import com.termoso.android.R
+import com.termoso.android.str
 import com.termoso.core.HostItem
 import com.termoso.core.LiveEndReason
 import com.termoso.core.LiveListener
@@ -16,6 +18,7 @@ import com.termoso.core.TerminalOptions
 import com.termoso.core.TerminalPalette
 import com.termoso.core.TerminalTheme
 import com.termoso.core.Transport
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,7 +28,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /** A prompt the user has to answer before the connection can continue. */
 data class PendingPrompt(val id: ULong, val request: PromptRequest)
@@ -44,7 +46,7 @@ sealed interface SessionEvent {
  * frame per tick it observes, no matter how many arrived in between.
  */
 class SessionBridge : SessionListener {
-    private val _state = MutableStateFlow<SessionState>(SessionState.Connecting("Connecting…"))
+    private val _state = MutableStateFlow<SessionState>(SessionState.Connecting(str(R.string.connecting_ellipsis)))
     val state: StateFlow<SessionState> = _state.asStateFlow()
 
     private val _frameTick = MutableStateFlow(0L)
@@ -277,8 +279,8 @@ class SessionManager(
         return register(
             TerminalSession(
                 id = rust.id(),
-                label = "Local",
-                target = "$program on this device",
+                label = str(R.string.local),
+                target = str(R.string.on_this_device, program),
                 hostId = null,
                 quick = null,
                 transport = Transport.SSH,
@@ -301,8 +303,8 @@ class SessionManager(
         return register(
             TerminalSession(
                 id = rust.id(),
-                label = "Shared terminal",
-                target = "Multiplayer",
+                label = str(R.string.shared_terminal),
+                target = str(R.string.multiplayer),
                 hostId = null,
                 quick = null,
                 transport = Transport.SSH,

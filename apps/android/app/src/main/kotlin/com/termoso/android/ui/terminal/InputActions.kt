@@ -1,5 +1,8 @@
 package com.termoso.android.ui.terminal
 
+import androidx.annotation.StringRes
+import com.termoso.android.R
+import com.termoso.android.str
 import com.termoso.core.KeyGroup
 import com.termoso.core.KeyMods
 import com.termoso.core.PanelKeyDef
@@ -93,8 +96,8 @@ object KeyActions {
 
     fun defaultLabel(text: String, mods: KeyMods = NONE): String {
         val body = when (text) {
-            " " -> "Space"
-            "\n" -> "Enter"
+            " " -> str(R.string.space)
+            "\n" -> str(R.string.enter)
             else -> if (mods.ctrl) text.uppercase() else text
         }
         return modLabel(mods) + body
@@ -102,7 +105,7 @@ object KeyActions {
 
     /** Human description for pickers ("Ctrl+C", "Shift+Tab", "Type |"). */
     fun describe(key: PanelKey): String = when (key) {
-        is PanelKey.Modifier -> "Sticky ${key.label}"
+        is PanelKey.Modifier -> str(R.string.sticky, key.label)
         is PanelKey.Special -> words(key.mods) + when (key.key) {
             SpecialKey.LEFT -> "Left"
             SpecialKey.UP -> "Up"
@@ -113,8 +116,8 @@ object KeyActions {
         }
         is PanelKey.Text -> when {
             key.mods.ctrl || key.mods.alt -> words(key.mods) + key.text.uppercase()
-            key.text == " " -> "Space"
-            else -> "Type ${key.text}"
+            key.text == " " -> str(R.string.space)
+            else -> str(R.string.type, key.text)
         }
     }
 
@@ -123,15 +126,15 @@ object KeyActions {
 }
 
 /** Something a volume key can do besides sending a key. */
-enum class UiAction(val id: String, val title: String) {
-    FONT_UP("font_up", "Increase text size"),
-    FONT_DOWN("font_down", "Decrease text size"),
-    SCROLL_UP("scroll_up", "Scroll up"),
-    SCROLL_DOWN("scroll_down", "Scroll down"),
-    NEXT_SESSION("next_session", "Next session"),
-    PREV_SESSION("prev_session", "Previous session"),
-    TOGGLE_KEYBOARD("toggle_keyboard", "Show / hide keyboard"),
-    CLOSE_SESSION("close_session", "Close session"),
+enum class UiAction(val id: String, @StringRes val title: Int) {
+    FONT_UP("font_up", R.string.increase_text_size),
+    FONT_DOWN("font_down", R.string.decrease_text_size),
+    SCROLL_UP("scroll_up", R.string.scroll_up),
+    SCROLL_DOWN("scroll_down", R.string.scroll_down),
+    NEXT_SESSION("next_session", R.string.next_session),
+    PREV_SESSION("prev_session", R.string.previous_session),
+    TOGGLE_KEYBOARD("toggle_keyboard", R.string.show_hide_keyboard),
+    CLOSE_SESSION("close_session", R.string.close_session),
 }
 
 /** A volume-key binding: nothing, an app action, or a key to send. */
@@ -155,8 +158,8 @@ sealed interface InputAction {
         }
 
         fun title(action: InputAction): String = when (action) {
-            Disabled -> "Disabled"
-            is Ui -> action.action.title
+            Disabled -> str(R.string.disabled)
+            is Ui -> str(action.action.title)
             is Key -> KeyActions.describe(action.key)
         }
 
@@ -188,38 +191,39 @@ object KeyGroups {
 
     private fun text(vararg t: String): List<PanelKey> = t.map { PanelKey.Text(KeyActions.defaultLabel(it), it) }
 
-    val defaults: List<KeyGroup> by lazy {
-        fun group(id: String, name: String, keys: List<PanelKey>) =
-            KeyGroup(id = id, name = name, keys = keys.map(KeyActions::toDef), enabled = true)
-        listOf(
-            group(
-                "arrows", "Arrows & editing",
-                listOf(
-                    special(SpecialKey.LEFT), special(SpecialKey.UP), special(SpecialKey.DOWN), special(SpecialKey.RIGHT),
-                    PanelKey.Modifier("Alt", StickyMod.ALT), special(SpecialKey.TAB),
-                    special(SpecialKey.INSERT), special(SpecialKey.DELETE),
+    val defaults: List<KeyGroup>
+        get() {
+            fun group(id: String, @StringRes name: Int, keys: List<PanelKey>) =
+                KeyGroup(id = id, name = str(name), keys = keys.map(KeyActions::toDef), enabled = true)
+            return listOf(
+                group(
+                    "arrows", R.string.arrows_editing,
+                    listOf(
+                        special(SpecialKey.LEFT), special(SpecialKey.UP), special(SpecialKey.DOWN), special(SpecialKey.RIGHT),
+                        PanelKey.Modifier("Alt", StickyMod.ALT), special(SpecialKey.TAB),
+                        special(SpecialKey.INSERT), special(SpecialKey.DELETE),
+                    ),
                 ),
-            ),
-            group(
-                "nav", "Navigation",
-                listOf(special(SpecialKey.HOME), special(SpecialKey.PAGE_UP), special(SpecialKey.PAGE_DOWN), special(SpecialKey.END)) +
-                    text("|", "\\", "?", "-"),
-            ),
-            group("symbols1", "Symbols", text("/", ":", ";", "!", "~", "@", "$", "*")),
-            group("symbols2", "More symbols", text("^", "%", "=", "`", "<", ">", "(", ")")),
-            group(
-                "brackets", "Brackets & F1–F4",
-                text("{", "}", "[", "]") + listOf(SpecialKey.F1, SpecialKey.F2, SpecialKey.F3, SpecialKey.F4).map { special(it) },
-            ),
-            group(
-                "fkeys", "F5–F12",
-                listOf(
-                    SpecialKey.F5, SpecialKey.F6, SpecialKey.F7, SpecialKey.F8,
-                    SpecialKey.F9, SpecialKey.F10, SpecialKey.F11, SpecialKey.F12,
-                ).map { special(it) },
-            ),
-        )
-    }
+                group(
+                    "nav", R.string.navigation,
+                    listOf(special(SpecialKey.HOME), special(SpecialKey.PAGE_UP), special(SpecialKey.PAGE_DOWN), special(SpecialKey.END)) +
+                        text("|", "\\", "?", "-"),
+                ),
+                group("symbols1", R.string.symbols, text("/", ":", ";", "!", "~", "@", "$", "*")),
+                group("symbols2", R.string.more_symbols, text("^", "%", "=", "`", "<", ">", "(", ")")),
+                group(
+                    "brackets", R.string.brackets_f1_f4,
+                    text("{", "}", "[", "]") + listOf(SpecialKey.F1, SpecialKey.F2, SpecialKey.F3, SpecialKey.F4).map { special(it) },
+                ),
+                group(
+                    "fkeys", R.string.f5_f12,
+                    listOf(
+                        SpecialKey.F5, SpecialKey.F6, SpecialKey.F7, SpecialKey.F8,
+                        SpecialKey.F9, SpecialKey.F10, SpecialKey.F11, SpecialKey.F12,
+                    ).map { special(it) },
+                ),
+            )
+        }
 
     /** Groups to edit: the stored layout, or the built-ins when nothing is stored. */
     fun editable(stored: List<KeyGroup>): List<KeyGroup> = stored.ifEmpty { defaults }

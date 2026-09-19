@@ -1,11 +1,12 @@
 package com.termoso.android.ui.sftp
 
+import com.termoso.android.ResourceTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class FilePreviewTest {
+class FilePreviewTest : ResourceTest() {
     @Test
     fun extensionsPickTheViewer() {
         assertEquals(PreviewKind.Text, FilePreview.classify("nginx.conf", 1024))

@@ -1,5 +1,7 @@
 package com.termoso.android.ui.keychain
 
+import com.termoso.android.str
+import com.termoso.android.R
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
@@ -37,8 +39,8 @@ private const val MAX_KEY_FILE_BYTES = 256 * 1024
 suspend fun readTextFile(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
     val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
         val buf = input.readNBytes(MAX_KEY_FILE_BYTES + 1)
-        require(buf.size <= MAX_KEY_FILE_BYTES) { "File is too large to be a key (limit 256 KB)." }
+        require(buf.size <= MAX_KEY_FILE_BYTES) { str(R.string.file_is_too_large_to_be_a_key) }
         buf
-    } ?: error("Could not open the file.")
+    } ?: error(str(R.string.could_not_open_the_file))
     bytes.toString(Charsets.UTF_8)
 }

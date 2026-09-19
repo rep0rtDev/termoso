@@ -39,12 +39,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.AppLanguage
 import com.termoso.android.BuildConfig
+import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.AppContainer
+import com.termoso.android.str
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.ListRow
@@ -66,15 +70,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val themes = listOf("system" to "System", "dark" to "Dark", "light" to "Light")
+private val themes = listOf("system" to R.string.system, "dark" to R.string.dark, "light" to R.string.light)
 
 private val lockDelays = listOf(
-    0u to "Immediately",
-    30u to "After 30 seconds",
-    60u to "After 1 minute",
-    300u to "After 5 minutes",
-    900u to "After 15 minutes",
-    3600u to "After 1 hour",
+    0u to R.string.immediately,
+    30u to R.string.after_30_seconds,
+    60u to R.string.after_1_minute,
+    300u to R.string.after_5_minutes,
+    900u to R.string.after_15_minutes,
+    3600u to R.string.after_1_hour,
+)
+
+private val languages = listOf(
+    AppLanguage.SYSTEM to R.string.system_default,
+    "en" to R.string.language_english,
+    "ru" to R.string.language_russian,
 )
 
 private const val SOURCE_URL = "https://github.com/rep0rtDev/termoso"
@@ -100,6 +110,8 @@ fun SettingsScreen(
         scope.launch { shell.repo.updateSettings(transform) }
     }
     var themePicker by remember { mutableStateOf(false) }
+    var languagePicker by remember { mutableStateOf(false) }
+    val language = remember { AppLanguage.current(context) }
     var delayPicker by remember { mutableStateOf(false) }
     var privacy by remember { mutableStateOf(false) }
     var licenses by remember { mutableStateOf(false) }
@@ -119,12 +131,12 @@ fun SettingsScreen(
         lockBusy = true
         scope.launch {
             try {
-                val title = if (enable) "Turn on app lock" else "Turn off app lock"
-                when (val r = authenticateDevice(activity, title, "Confirm it's you")) {
+                val title = if (enable) str(R.string.turn_on_app_lock) else str(R.string.turn_off_app_lock)
+                when (val r = authenticateDevice(activity, title, str(R.string.confirm_its_you))) {
                     AuthResult.Success -> {
                         runCatching { withContext(Dispatchers.IO) { container.setAppLock(enable) } }
-                            .onSuccess { shell.notify(if (enable) "App lock is on" else "App lock is off") }
-                            .onFailure { shell.notify(it.message ?: "Could not change app lock") }
+                            .onSuccess { shell.notify(if (enable) str(R.string.app_lock_is_on) else str(R.string.app_lock_is_off)) }
+                            .onFailure { shell.notify(it.message ?: str(R.string.could_not_change_app_lock)) }
                     }
                     AuthResult.Cancelled -> {}
                     is AuthResult.Failed -> shell.notify(r.message)
@@ -135,7 +147,7 @@ fun SettingsScreen(
         }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.settings)) }) }) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -149,7 +161,7 @@ fun SettingsScreen(
                 if (card == null) {
                     ChevronRow(
                         title = "Termoso Cloud",
-                        subtitle = "Free forever · E2E-encrypted sync · or your own server",
+                        subtitle = stringResource(R.string.free_forever_e2e_encrypted_sync_or_your_own),
                         leading = { IconTile(Icons.Filled.Cloud) },
                         modifier = Modifier.clickable(onClick = onSignIn),
                     )
@@ -159,10 +171,10 @@ fun SettingsScreen(
                         title = card.displayName ?: card.email,
                         subtitle = card.serverUrl.removePrefix("https://").removePrefix("http://") + " · " +
                             when (sync.state) {
-                                SyncState.IDLE -> if (sync.realtime) "synced · live" else "synced"
-                                SyncState.SYNCING -> "syncing…"
-                                SyncState.OFFLINE -> "offline"
-                                SyncState.ERROR -> "sync failed"
+                                SyncState.IDLE -> if (sync.realtime) stringResource(R.string.synced_live) else stringResource(R.string.synced)
+                                SyncState.SYNCING -> stringResource(R.string.syncing_2)
+                                SyncState.OFFLINE -> stringResource(R.string.offline_2)
+                                SyncState.ERROR -> stringResource(R.string.sync_failed_2)
                             },
                         leading = {
                             IconTile(
@@ -182,25 +194,31 @@ fun SettingsScreen(
                 }
             }
 
-            SectionLabel("Appearance")
+            SectionLabel(stringResource(R.string.appearance))
             SectionCard {
                 ChevronRow(
-                    title = "App theme",
-                    badge = themes.firstOrNull { it.first == settings.appTheme }?.second ?: settings.appTheme,
+                    title = stringResource(R.string.app_theme),
+                    badge = themes.firstOrNull { it.first == settings.appTheme }?.let { stringResource(it.second) } ?: settings.appTheme,
                     modifier = Modifier.clickable { themePicker = true },
+                )
+                RowDivider()
+                ChevronRow(
+                    title = stringResource(R.string.language),
+                    badge = stringResource((languages.firstOrNull { it.first == language } ?: languages.first()).second),
+                    modifier = Modifier.clickable { languagePicker = true },
                 )
                 if (supportsDynamicColor) {
                     RowDivider()
                     SwitchRow(
-                        title = "Dynamic colors",
-                        subtitle = "Follow the wallpaper palette (Material You)",
+                        title = stringResource(R.string.dynamic_colors),
+                        subtitle = stringResource(R.string.follow_the_wallpaper_palette_material_you),
                         checked = settings.dynamicColor,
                         onCheckedChange = { on -> set { it.copy(dynamicColor = on) } },
                     )
                 }
                 RowDivider()
                 ChevronRow(
-                    title = "Terminal",
+                    title = stringResource(R.string.terminal),
                     subtitle = "${terminalTheme(settings.terminalTheme)?.name ?: settings.terminalTheme} · " +
                         "${settings.terminalFontFamily} ${settings.terminalFontSize}",
                     leading = { IconTile(Icons.Filled.Palette) },
@@ -208,66 +226,65 @@ fun SettingsScreen(
                 )
             }
 
-            SectionLabel("Terminal")
+            SectionLabel(stringResource(R.string.terminal))
             SectionCard {
                 ChevronRow(
-                    title = "Keyboard & gestures",
-                    subtitle = "Key panel rows, volume buttons, physical keyboard, swipes",
+                    title = stringResource(R.string.keyboard_gestures),
+                    subtitle = stringResource(R.string.key_panel_rows_volume_buttons_physical_keyboard_swipes),
                     leading = { IconTile(Icons.Filled.Keyboard) },
                     modifier = Modifier.clickable(onClick = onTerminalInput),
                 )
                 RowDivider()
                 SwitchRow(
-                    title = "Detect OS",
-                    subtitle = "Read the remote OS after connecting to show its icon",
+                    title = stringResource(R.string.detect_os),
+                    subtitle = stringResource(R.string.read_the_remote_os_after_connecting_to_show),
                     checked = settings.detectOs,
                     onCheckedChange = { v -> set { it.copy(detectOs = v) } },
                 )
                 RowDivider()
                 SwitchRow(
-                    title = "Post-quantum key exchange",
-                    subtitle = "Prefer ML-KEM hybrid KEX when the server supports it",
+                    title = stringResource(R.string.post_quantum_key_exchange),
+                    subtitle = stringResource(R.string.prefer_ml_kem_hybrid_kex_when_the_server),
                     checked = settings.postQuantumKex,
                     onCheckedChange = { v -> set { it.copy(postQuantumKex = v) } },
                 )
                 RowDivider()
                 SwitchRow(
-                    title = "Keep screen on",
-                    subtitle = "While a terminal is in the foreground",
+                    title = stringResource(R.string.keep_screen_on),
+                    subtitle = stringResource(R.string.while_a_terminal_is_in_the_foreground),
                     checked = settings.keepScreenOn,
                     onCheckedChange = { v -> set { it.copy(keepScreenOn = v) } },
                 )
                 RowDivider()
                 SwitchRow(
-                    title = "Haptic feedback",
+                    title = stringResource(R.string.haptic_feedback),
                     checked = settings.hapticFeedback,
                     onCheckedChange = { v -> set { it.copy(hapticFeedback = v) } },
                 )
                 RowDivider()
                 SwitchRow(
-                    title = "Terminal bell",
-                    subtitle = "Vibrate on BEL",
+                    title = stringResource(R.string.terminal_bell),
+                    subtitle = stringResource(R.string.vibrate_on_bel),
                     checked = settings.terminalBell,
                     onCheckedChange = { v -> set { it.copy(terminalBell = v) } },
                 )
                 RowDivider()
                 SwitchRow(
-                    title = "Record sessions",
-                    subtitle = "Keep what the remote side prints in the encrypted vault (never what you type). " +
-                        "Team vaults with session logging on record regardless.",
+                    title = stringResource(R.string.record_sessions),
+                    subtitle = stringResource(R.string.keep_what_the_remote_side_prints_in_the),
                     checked = settings.recordSessions,
                     onCheckedChange = { v -> set { it.copy(recordSessions = v) } },
                 )
             }
 
-            SectionLabel("Security")
+            SectionLabel(stringResource(R.string.security))
             SectionCard {
                 SwitchRow(
-                    title = "App lock",
+                    title = stringResource(R.string.app_lock),
                     subtitle = if (appLock) {
-                        "Fingerprint or screen lock required to open the vault"
+                        stringResource(R.string.fingerprint_or_screen_lock_required_to_open_the)
                     } else {
-                        "Protect the vault with your fingerprint or screen lock"
+                        stringResource(R.string.protect_the_vault_with_your_fingerprint_or_screen)
                     },
                     checked = appLock,
                     enabled = !lockBusy,
@@ -275,54 +292,54 @@ fun SettingsScreen(
                 )
                 RowDivider()
                 SwitchRow(
-                    title = "Lock when in background",
-                    subtitle = "Ask again after leaving the app; sessions keep running",
+                    title = stringResource(R.string.lock_when_in_background),
+                    subtitle = stringResource(R.string.ask_again_after_leaving_the_app_sessions_keep),
                     checked = settings.lockOnBackground,
                     enabled = appLock,
                     onCheckedChange = { v -> set { it.copy(lockOnBackground = v) } },
                 )
                 RowDivider()
                 ChevronRow(
-                    title = "Lock after",
-                    badge = lockDelays.firstOrNull { it.first == settings.lockAfterSeconds }?.second ?: "${settings.lockAfterSeconds} s",
+                    title = stringResource(R.string.lock_after),
+                    badge = lockDelays.firstOrNull { it.first == settings.lockAfterSeconds }?.let { stringResource(it.second) } ?: stringResource(R.string.n_seconds_short, settings.lockAfterSeconds.toLong()),
                     modifier = Modifier.clickable(enabled = appLock && settings.lockOnBackground) { delayPicker = true },
                 )
                 RowDivider()
                 if (appLock) {
                     ChevronRow(
-                        title = "Lock now",
-                        subtitle = "Cover the app until you authenticate; sessions stay connected",
+                        title = stringResource(R.string.lock_now),
+                        subtitle = stringResource(R.string.cover_the_app_until_you_authenticate_sessions_stay),
                         leading = { IconTile(Icons.Filled.Fingerprint) },
                         modifier = Modifier.clickable(onClick = container::gate),
                     )
                     RowDivider()
                 }
                 ChevronRow(
-                    title = "Lock vault now",
-                    subtitle = "Disconnects every session and closes the encrypted database",
+                    title = stringResource(R.string.lock_vault_now),
+                    subtitle = stringResource(R.string.disconnects_every_session_and_closes_the_encrypted_database),
                     leading = { IconTile(Icons.Filled.Lock) },
                     modifier = Modifier.clickable(onClick = onLock),
                 )
             }
 
-            SectionLabel("About")
+            SectionLabel(stringResource(R.string.about))
             SectionCard {
                 ListRow(
-                    title = "Termoso for Android",
-                    subtitle = "${BuildConfig.VERSION_NAME} · core ${coreVersion()}",
+                    title = stringResource(R.string.termoso_for_android),
+                    subtitle = stringResource(R.string.core, BuildConfig.VERSION_NAME, coreVersion()),
                     leading = { IconTile(Icons.Filled.Info) },
                 )
                 RowDivider()
                 ChevronRow(
-                    title = "Privacy",
-                    subtitle = "No telemetry, no analytics, no accounts required",
+                    title = stringResource(R.string.privacy),
+                    subtitle = stringResource(R.string.no_telemetry_no_analytics_no_accounts_required),
                     leading = { IconTile(Icons.Filled.Shield) },
                     modifier = Modifier.clickable { privacy = true },
                 )
                 RowDivider()
                 ChevronRow(
-                    title = "Source code",
-                    subtitle = "AGPL-licensed, on GitHub",
+                    title = stringResource(R.string.source_code),
+                    subtitle = stringResource(R.string.agpl_licensed_on_github),
                     leading = { IconTile(Icons.Filled.Code) },
                     modifier = Modifier.clickable {
                         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, SOURCE_URL.toUri())) }
@@ -330,56 +347,52 @@ fun SettingsScreen(
                     },
                 )
                 RowDivider()
-                ChevronRow(title = "Open-source licenses", modifier = Modifier.clickable { licenses = true })
+                ChevronRow(title = stringResource(R.string.open_source_licenses), modifier = Modifier.clickable { licenses = true })
             }
             Spacer(Modifier.height(24.dp))
         }
     }
 
     if (themePicker) {
-        RadioDialog("App theme", themes, settings.appTheme, onPick = { set { s -> s.copy(appTheme = it) } }) { themePicker = false }
+        RadioDialog(stringResource(R.string.app_theme), themes.map { it.first to stringResource(it.second) }, settings.appTheme, onPick = { set { s -> s.copy(appTheme = it) } }) { themePicker = false }
+    }
+    if (languagePicker) {
+        RadioDialog(
+            stringResource(R.string.language),
+            languages.map { it.first to stringResource(it.second) },
+            language,
+            onPick = { tag ->
+                if (tag != language && AppLanguage.set(context, tag)) context.findFragmentActivity()?.recreate()
+            },
+        ) { languagePicker = false }
     }
     if (delayPicker) {
-        RadioDialog("Lock after", lockDelays, settings.lockAfterSeconds, onPick = { set { s -> s.copy(lockAfterSeconds = it) } }) { delayPicker = false }
+        RadioDialog(stringResource(R.string.lock_after), lockDelays.map { it.first to stringResource(it.second) }, settings.lockAfterSeconds, onPick = { set { s -> s.copy(lockAfterSeconds = it) } }) { delayPicker = false }
     }
     if (privacy) {
         AlertDialog(
             onDismissRequest = { privacy = false },
-            title = { Text("Privacy") },
+            title = { Text(stringResource(R.string.privacy)) },
             text = {
                 Text(
-                    "Termoso reports to you, not on you.\n\n" +
-                        "• No telemetry, crash reporting or analytics SDKs — the app contains none.\n" +
-                        "• Hosts, keys, passwords and settings live in an encrypted database on this device; " +
-                        "the key is wrapped by Android Keystore and never written in plain text.\n" +
-                        "• Private keys leave the device only when you export them yourself.\n" +
-                        "• When you sign in to a Termoso server (Termoso Cloud or your own), only end-to-end " +
-                        "encrypted data is synced — the server cannot read your vault.\n" +
-                        "• No ads, no plans, no upsells. Free software, forever.",
+                    stringResource(R.string.termoso_reports_to_you_not_on_you_no),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             },
-            confirmButton = { TextButton(onClick = { privacy = false }) { Text("Close") } },
+            confirmButton = { TextButton(onClick = { privacy = false }) { Text(stringResource(R.string.close)) } },
         )
     }
     if (licenses) {
         AlertDialog(
             onDismissRequest = { licenses = false },
-            title = { Text("Open-source licenses") },
+            title = { Text(stringResource(R.string.open_source_licenses)) },
             text = {
                 Text(
-                    "Termoso — AGPL-3.0.\n\n" +
-                        "Bundled terminal fonts:\n" +
-                        "• JetBrains Mono — SIL Open Font License 1.1\n" +
-                        "• Fira Code — SIL Open Font License 1.1\n" +
-                        "• Source Code Pro — SIL Open Font License 1.1\n" +
-                        "• Ubuntu Mono — Ubuntu Font Licence 1.0\n\n" +
-                        "Full texts ship in apps/android/licenses in the source tree. Rust and Android library " +
-                        "notices are listed in the repository.",
+                    stringResource(R.string.termoso_agpl_3_0_bundled_terminal_fonts_jetbrains),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             },
-            confirmButton = { TextButton(onClick = { licenses = false }) { Text("Close") } },
+            confirmButton = { TextButton(onClick = { licenses = false }) { Text(stringResource(R.string.close)) } },
         )
     }
 }
@@ -405,6 +418,6 @@ internal fun <T> RadioDialog(title: String, options: List<Pair<T, String>>, sele
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
     )
 }

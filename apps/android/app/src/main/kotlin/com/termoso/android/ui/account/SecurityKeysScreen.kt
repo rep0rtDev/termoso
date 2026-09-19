@@ -34,15 +34,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.Fido2Manager
 import com.termoso.android.data.ReauthCancelled
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.ListRow
@@ -117,7 +120,7 @@ class SecurityKeysViewModel(private val account: AccountManager, private val fid
         val s = _state.value
         val device = s.device(fido2.devices.value) ?: return
         if (!s.canRegister(fido2.devices.value)) return
-        val name = s.name.trim().ifBlank { device.product.ifBlank { "Security key" } }
+        val name = s.name.trim().ifBlank { device.product.ifBlank { str(R.string.security_key) } }
         _state.update { it.copy(working = true, ceremony = true, touch = false, error = null) }
         val listener = object : Fido2Listener {
             override fun onTouch() = _state.update { it.copy(touch = true) }
@@ -181,7 +184,7 @@ fun SecurityKeysScreen(shell: ShellViewModel, account: AccountManager, onBack: (
     LaunchedEffect(Unit) { vm.reload() }
     LaunchedEffect(s.error) { s.error?.let { shell.notify(it); vm.errorShown() } }
 
-    SubScreen(title = "Security keys", onBack = onBack) { padding ->
+    SubScreen(title = stringResource(R.string.security_keys), onBack = onBack) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
@@ -190,61 +193,61 @@ fun SecurityKeysScreen(shell: ShellViewModel, account: AccountManager, onBack: (
                 .padding(horizontal = 16.dp),
         ) {
             val card = s.card
-            SectionLabel("Registered keys")
+            SectionLabel(stringResource(R.string.registered_keys))
             SectionCard {
                 when {
                     s.loading -> Box(Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                     }
                     card == null -> ListRow(
-                        title = "Could not load two-factor settings",
+                        title = stringResource(R.string.could_not_load_two_factor_settings),
                         subtitle = s.loadError,
                         titleColor = MaterialTheme.colorScheme.error,
                     ) {
-                        TextButton(onClick = vm::reload) { Text("Retry") }
+                        TextButton(onClick = vm::reload) { Text(stringResource(R.string.retry)) }
                     }
                     card.securityKeys.isEmpty() -> ListRow(
-                        title = "No security keys yet",
-                        subtitle = "Register a FIDO2 key below and sign-ins can be confirmed with a touch instead of a code.",
+                        title = stringResource(R.string.no_security_keys_yet),
+                        subtitle = stringResource(R.string.register_a_fido2_key_below_and_sign_ins),
                         leading = { IconTile(Icons.Filled.Security) },
                     )
                     else -> card.securityKeys.forEachIndexed { i, k ->
                         if (i > 0) RowDivider()
                         ListRow(
                             title = k.name,
-                            subtitle = "Added ${relative(k.createdAt)} · " +
-                                (k.lastUsedAt?.let { "last used ${relative(it)}" } ?: "never used"),
+                            subtitle = stringResource(R.string.added, relative(k.createdAt)) +
+                                (k.lastUsedAt?.let { stringResource(R.string.last_used, relative(it)) } ?: stringResource(R.string.never_used)),
                             leading = { IconTile(Icons.Filled.Security) },
                         ) {
                             IconButton(onClick = { removing = k }, enabled = !s.working) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Remove security key", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.remove_security_key), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
                 }
             }
             if (card != null) {
-                SectionLabel("Other factors")
+                SectionLabel(stringResource(R.string.other_factors))
                 SectionCard {
                     ListRow(
-                        title = "Authenticator app",
-                        subtitle = if (card.totpEnabled) "On" else "Off — set it up in the web cabinet",
+                        title = stringResource(R.string.authenticator_app),
+                        subtitle = if (card.totpEnabled) stringResource(R.string.on) else stringResource(R.string.off_set_it_up_in_the_web_cabinet),
                         leading = { IconTile(Icons.Filled.Smartphone, selected = card.totpEnabled) },
                     )
                     RowDivider()
                     ListRow(
-                        title = "Backup codes",
+                        title = stringResource(R.string.backup_codes),
                         subtitle = when {
-                            card.backupCodesRemaining == 0u && card.securityKeys.isEmpty() && !card.totpEnabled -> "Issued once a second factor is on"
-                            card.backupCodesRemaining == 0u -> "None left — regenerate them in the web cabinet"
-                            else -> "${card.backupCodesRemaining} unused"
+                            card.backupCodesRemaining == 0u && card.securityKeys.isEmpty() && !card.totpEnabled -> stringResource(R.string.issued_once_a_second_factor_is_on)
+                            card.backupCodesRemaining == 0u -> stringResource(R.string.none_left_regenerate_them_in_the_web_cabinet)
+                            else -> stringResource(R.string.unused, card.backupCodesRemaining)
                         },
                         leading = { IconTile(Icons.Filled.Pin) },
                     )
                 }
             }
 
-            SectionLabel("Add a security key")
+            SectionLabel(stringResource(R.string.add_a_security_key))
             SecurityKeyPicker(
                 devices = devices,
                 selected = s.deviceId,
@@ -259,14 +262,14 @@ fun SecurityKeysScreen(shell: ShellViewModel, account: AccountManager, onBack: (
                     FormField(
                         s.name,
                         { v -> vm.update { it.copy(name = v) } },
-                        "Name",
-                        placeholder = device?.product?.ifBlank { null } ?: "YubiKey 5 NFC",
+                        stringResource(R.string.name),
+                        placeholder = device?.product?.ifBlank { null } ?: stringResource(R.string.yubikey_5_nfc),
                         enabled = !s.working,
                     )
                     SecretField(
                         s.pin,
                         { v -> vm.update { it.copy(pin = v) } },
-                        if (device?.pinSet == false) "Security key PIN (none set)" else "Security key PIN",
+                        if (device?.pinSet == false) stringResource(R.string.security_key_pin_none_set) else stringResource(R.string.security_key_pin),
                         enabled = !s.working,
                     )
                     Button(
@@ -278,15 +281,13 @@ fun SecurityKeysScreen(shell: ShellViewModel, account: AccountManager, onBack: (
                         if (s.working) {
                             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                         } else {
-                            Text("Register this key")
+                            Text(stringResource(R.string.register_this_key))
                         }
                     }
                 }
             }
             Text(
-                "The key creates a credential for this server and proves it with a touch on every sign-in. " +
-                    "The server stores only the public key; the PIN is sent to the key itself, never to the server. " +
-                    "Registering the first factor issues backup codes — get them from the web cabinet.",
+                stringResource(R.string.the_key_creates_a_credential_for_this_server),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp),
@@ -301,23 +302,23 @@ fun SecurityKeysScreen(shell: ShellViewModel, account: AccountManager, onBack: (
         val last = s.card?.let { it.securityKeys.size == 1 && !it.totpEnabled } == true
         AlertDialog(
             onDismissRequest = { removing = null },
-            title = { Text("Remove ${k.name}?") },
+            title = { Text(stringResource(R.string.remove, k.name)) },
             text = {
                 Text(
                     if (last) {
-                        "This is your only second factor. Removing it turns two-factor authentication off and discards the backup codes."
+                        stringResource(R.string.this_is_your_only_second_factor_removing_it)
                     } else {
-                        "This key can no longer confirm sign-ins. Other factors stay as they are."
+                        stringResource(R.string.this_key_can_no_longer_confirm_sign_ins)
                     },
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     removing = null
-                    scope.launch { if (vm.remove(k.id)) shell.notify("${k.name} removed") }
-                }) { Text("Remove", color = Danger) }
+                    scope.launch { if (vm.remove(k.id)) shell.notify(str(R.string.removed, k.name)) }
+                }) { Text(stringResource(R.string.remove_2), color = Danger) }
             },
-            dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }

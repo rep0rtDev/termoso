@@ -39,10 +39,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.termoso.android.R
 import com.termoso.core.KeyMods
 import com.termoso.core.SpecialKey
 
@@ -154,12 +156,12 @@ fun KeyPanel(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    "Physical keyboard",
+                    stringResource(R.string.physical_keyboard),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
-                IconKey(Icons.Filled.KeyboardArrowUp, "Show key panel", Modifier.width(44.dp).height(26.dp), onClick = onToggleCollapsed)
+                IconKey(Icons.Filled.KeyboardArrowUp, stringResource(R.string.show_key_panel), Modifier.width(44.dp).height(26.dp), onClick = onToggleCollapsed)
             }
             return@Column
         }
@@ -169,7 +171,7 @@ fun KeyPanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(KeyGap),
             ) {
-                IconKey(Icons.Filled.GridView, "More keys", Modifier.width(44.dp), onClick = onToggleExpanded)
+                IconKey(Icons.Filled.GridView, stringResource(R.string.more_keys), Modifier.width(44.dp), onClick = onToggleExpanded)
                 LazyRow(
                     Modifier.weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(KeyGap),
@@ -180,10 +182,10 @@ fun KeyPanel(
                         }
                     }
                 }
-                IconKey(Icons.Filled.ContentPaste, "Paste", Modifier.width(44.dp)) { onKeyPressed(); onPaste() }
+                IconKey(Icons.Filled.ContentPaste, stringResource(R.string.paste_2), Modifier.width(44.dp)) { onKeyPressed(); onPaste() }
                 IconKey(
                     if (imeShown) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
-                    "Toggle keyboard",
+                    stringResource(R.string.toggle_keyboard),
                     Modifier.width(44.dp),
                     onClick = onToggleIme,
                 )
@@ -192,8 +194,8 @@ fun KeyPanel(
         }
         Column(Modifier.fillMaxWidth().padding(top = 8.dp, start = 8.dp, end = 8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KeyGap)) {
-                WideKey(Icons.Filled.Tune, "Customize", Modifier.weight(1f)) { onKeyPressed(); onCustomize() }
-                WideKey(Icons.Filled.Password, "Password", Modifier.weight(1f)) { onKeyPressed(); onHiddenInput() }
+                WideKey(Icons.Filled.Tune, stringResource(R.string.customize), Modifier.weight(1f)) { onKeyPressed(); onCustomize() }
+                WideKey(Icons.Filled.Password, stringResource(R.string.password), Modifier.weight(1f)) { onKeyPressed(); onHiddenInput() }
             }
             Spacer(Modifier.height(KeyGap))
             Column(
@@ -212,16 +214,16 @@ fun KeyPanel(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(KeyGap),
         ) {
-            IconKey(Icons.Filled.GridView, "Hide keys", Modifier.width(52.dp), selected = true, onClick = onToggleExpanded)
-            IconKey(Icons.Filled.DataObject, "Snippets", Modifier.width(52.dp)) { onKeyPressed(); onSnippets() }
-            IconKey(Icons.Filled.History, "History and themes", Modifier.width(52.dp)) { onKeyPressed(); onPanel() }
-            IconKey(Icons.Filled.AutoAwesome, "Ask AI", Modifier.width(52.dp)) { onKeyPressed(); onAskAi() }
+            IconKey(Icons.Filled.GridView, stringResource(R.string.hide_keys), Modifier.width(52.dp), selected = true, onClick = onToggleExpanded)
+            IconKey(Icons.Filled.DataObject, stringResource(R.string.snippets), Modifier.width(52.dp)) { onKeyPressed(); onSnippets() }
+            IconKey(Icons.Filled.History, stringResource(R.string.history_and_themes), Modifier.width(52.dp)) { onKeyPressed(); onPanel() }
+            IconKey(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai), Modifier.width(52.dp)) { onKeyPressed(); onAskAi() }
             Spacer(Modifier.weight(1f))
             Box(Modifier.width(1.dp).height(22.dp).background(MaterialTheme.colorScheme.outlineVariant))
             Spacer(Modifier.width(2.dp))
             IconKey(
                 if (imeShown) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
-                "Toggle keyboard",
+                stringResource(R.string.toggle_keyboard),
                 Modifier.width(52.dp),
                 onClick = onToggleIme,
             )

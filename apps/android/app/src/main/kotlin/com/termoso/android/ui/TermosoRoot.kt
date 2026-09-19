@@ -28,15 +28,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import com.termoso.android.R
 import com.termoso.android.data.AppContainer
 import com.termoso.android.data.VaultState
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.account.AuthMode
 import com.termoso.android.ui.account.SignInScreen
 import com.termoso.android.ui.components.IconTile
@@ -68,7 +71,7 @@ fun TermosoRoot(container: AppContainer, vault: VaultState) {
 
     suspend fun prompt(): Boolean {
         val activity = context.findFragmentActivity() ?: return false
-        return when (val r = authenticateDevice(activity, "Unlock Termoso", "Use your fingerprint or screen lock")) {
+        return when (val r = authenticateDevice(activity, str(R.string.unlock_termoso), str(R.string.use_your_fingerprint_or_screen_lock))) {
             AuthResult.Success -> true
             AuthResult.Cancelled -> false
             is AuthResult.Failed -> {
@@ -177,26 +180,26 @@ private fun LockedScreen(error: String?, manual: Boolean, authRequired: Boolean,
                 manual -> {
                     IconTile(Icons.Filled.Lock, size = 64, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(16.dp))
-                    Text("Termoso is locked", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.termoso_is_locked), style = MaterialTheme.typography.titleMedium)
                     Text(
                         error ?: if (authRequired) {
-                            "Unlock with your fingerprint or screen lock to continue."
+                            stringResource(R.string.unlock_with_your_fingerprint_or_screen_lock_to)
                         } else {
-                            "The encrypted vault is closed. Unlock to continue."
+                            stringResource(R.string.the_encrypted_vault_is_closed_unlock_to_continue)
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                     )
                     Spacer(Modifier.height(16.dp))
-                    Button(onClick = onRetry) { Text("Unlock") }
+                    Button(onClick = onRetry) { Text(stringResource(R.string.unlock)) }
                 }
                 error == null -> CircularProgressIndicator()
                 else -> {
-                    Text("Could not open the vault", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.could_not_open_the_vault), style = MaterialTheme.typography.titleMedium)
                     Text(error, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                     Spacer(Modifier.height(16.dp))
-                    Button(onClick = onRetry) { Text("Retry") }
+                    Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                 }
             }
         }

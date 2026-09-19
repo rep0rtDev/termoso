@@ -1,6 +1,7 @@
 package com.termoso.android
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -28,6 +29,10 @@ import kotlinx.coroutines.launch
 
 /** [FragmentActivity] rather than ComponentActivity because BiometricPrompt hosts a fragment. */
 class MainActivity : FragmentActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLanguage.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)

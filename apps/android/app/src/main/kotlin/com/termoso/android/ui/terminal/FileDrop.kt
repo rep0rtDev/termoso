@@ -3,7 +3,9 @@ package com.termoso.android.ui.terminal
 import android.content.Context
 import android.net.Uri
 import android.webkit.MimeTypeMap
+import com.termoso.android.R
 import com.termoso.android.data.TerminalSession
+import com.termoso.android.str
 import com.termoso.android.ui.sftp.LocalFiles
 import com.termoso.core.FileDropListener
 import com.termoso.core.Transport
@@ -26,13 +28,13 @@ data class DropProgress(val name: String, val index: Int, val count: Int, val do
 object FileDrop {
     /** Why a terminal cannot take files; `null` when it can. */
     fun blocker(session: TerminalSession?): String? = when {
-        session == null -> "Open an SSH terminal first"
-        session.isView -> "A shared terminal you are viewing cannot receive files"
-        session.local != null -> "The local shell has the file already; share it to a remote terminal"
+        session == null -> str(R.string.open_an_ssh_terminal_first)
+        session.isView -> str(R.string.a_shared_terminal_you_are_viewing_cannot_receive)
+        session.local != null -> str(R.string.the_local_shell_has_the_file_already_share)
         !session.rust.canSendFiles() -> when (session.transport) {
-            Transport.MOSH -> "Files can't be sent over Mosh; reconnect with SSH"
-            Transport.TELNET -> "Files can't be sent over Telnet"
-            else -> "This terminal has no SSH connection to send files over"
+            Transport.MOSH -> str(R.string.files_cant_be_sent_over_mosh_reconnect_with)
+            Transport.TELNET -> str(R.string.files_cant_be_sent_over_telnet)
+            else -> str(R.string.this_terminal_has_no_ssh_connection_to_send)
         }
         else -> null
     }

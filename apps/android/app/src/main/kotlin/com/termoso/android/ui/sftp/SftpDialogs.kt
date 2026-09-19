@@ -38,9 +38,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.termoso.android.R
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.IconTile
 import com.termoso.core.SftpEntry
@@ -61,18 +63,18 @@ fun PermissionsDialog(entry: SftpEntry, onConfirm: (UInt) -> Unit, onDismiss: ()
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Permissions") },
+        title = { Text(stringResource(R.string.permissions)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(entry.name, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(72.dp))
-                    listOf("Read", "Write", "Exec").forEach {
+                    listOf(stringResource(R.string.read), stringResource(R.string.write), stringResource(R.string.exec)).forEach {
                         Text(it, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                listOf("Owner" to 6, "Group" to 3, "Others" to 0).forEach { (label, shift) ->
+                listOf(stringResource(R.string.owner) to 6, stringResource(R.string.group) to 3, stringResource(R.string.others) to 0).forEach { (label, shift) ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(label, Modifier.width(72.dp), style = MaterialTheme.typography.bodyMedium)
                         listOf(4u, 2u, 1u).forEach { bit ->
@@ -91,15 +93,15 @@ fun PermissionsDialog(entry: SftpEntry, onConfirm: (UInt) -> Unit, onDismiss: ()
                         octal = v.filter { it in '0'..'7' }.take(4)
                         octal.toUIntOrNull(8)?.let { mode = it and 0x1FFu }
                     },
-                    label = { Text("Octal") },
+                    label = { Text(stringResource(R.string.octal)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 )
             }
         },
-        confirmButton = { Button(onClick = { onConfirm(mode) }) { Text("Apply") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { Button(onClick = { onConfirm(mode) }) { Text(stringResource(R.string.apply)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -120,13 +122,13 @@ fun TransfersSheet(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Transfers", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.transfers), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             if (transfers.any { it.status.isFinished }) {
-                TextButton(onClick = onClearFinished) { Text("Clear finished") }
+                TextButton(onClick = onClearFinished) { Text(stringResource(R.string.clear_finished)) }
             }
         }
         if (transfers.isEmpty()) {
-            EmptyState(title = "No transfers", hint = "Downloads and uploads from this connection show up here.", modifier = Modifier.padding(16.dp))
+            EmptyState(title = stringResource(R.string.no_transfers), hint = stringResource(R.string.downloads_and_uploads_from_this_connection_show_up), modifier = Modifier.padding(16.dp))
             Spacer(Modifier.height(24.dp))
         } else {
             LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 32.dp)) {
@@ -179,11 +181,11 @@ private fun TransferRow(
         Spacer(Modifier.width(8.dp))
         t.status.actions.forEach { action ->
             when (action) {
-                TransferAction.Pause -> IconButton(onClick = { onPause(t.id) }) { Icon(Icons.Filled.Pause, contentDescription = "Pause") }
-                TransferAction.Resume -> IconButton(onClick = { onResume(t.id) }) { Icon(Icons.Filled.PlayArrow, contentDescription = "Resume") }
-                TransferAction.Retry -> IconButton(onClick = { onResume(t.id) }) { Icon(Icons.Filled.Refresh, contentDescription = "Retry") }
-                TransferAction.Cancel -> IconButton(onClick = { onCancel(t.id) }) { Icon(Icons.Filled.Cancel, contentDescription = "Cancel") }
-                TransferAction.Dismiss -> IconButton(onClick = { onDismiss(t.id) }) { Icon(Icons.Filled.Close, contentDescription = "Dismiss") }
+                TransferAction.Pause -> IconButton(onClick = { onPause(t.id) }) { Icon(Icons.Filled.Pause, contentDescription = stringResource(R.string.pause)) }
+                TransferAction.Resume -> IconButton(onClick = { onResume(t.id) }) { Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.resume)) }
+                TransferAction.Retry -> IconButton(onClick = { onResume(t.id) }) { Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.retry)) }
+                TransferAction.Cancel -> IconButton(onClick = { onCancel(t.id) }) { Icon(Icons.Filled.Cancel, contentDescription = stringResource(R.string.cancel)) }
+                TransferAction.Dismiss -> IconButton(onClick = { onDismiss(t.id) }) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.dismiss)) }
             }
         }
     }

@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.PendingPrompt
 import com.termoso.android.ui.keychain.LocalFido2
 import com.termoso.android.ui.keychain.SecurityKeyListening
@@ -56,31 +58,29 @@ import com.termoso.core.PromptRequest
 fun PromptDialog(pending: PendingPrompt, onAnswer: (PromptAnswer) -> Unit) {
     when (val req = pending.request) {
         is PromptRequest.HostKeyUnknown -> HostKeyDialog(
-            title = "Unknown host",
+            title = stringResource(R.string.unknown_host),
             host = req.host,
             keyType = req.keyType,
-            fingerprints = listOf("Fingerprint" to req.fingerprint),
+            fingerprints = listOf(stringResource(R.string.fingerprint) to req.fingerprint),
             warning = null,
             onAnswer = onAnswer,
         )
         is PromptRequest.HostKeyChanged -> HostKeyDialog(
-            title = "Host key changed",
+            title = stringResource(R.string.host_key_changed),
             host = req.host,
             keyType = req.keyType,
-            fingerprints = listOf("Saved" to req.oldFingerprint, "Received" to req.newFingerprint),
-            warning = "The key this server presents differs from the one saved earlier. " +
-                "This can mean a reinstalled server — or someone intercepting the connection. " +
-                "Continue only if you know why it changed.",
+            fingerprints = listOf(stringResource(R.string.saved_3) to req.oldFingerprint, stringResource(R.string.received) to req.newFingerprint),
+            warning = stringResource(R.string.the_key_this_server_presents_differs_from_the),
             onAnswer = onAnswer,
         )
         is PromptRequest.Password -> SecretDialog(
-            title = "Password",
-            subtitle = "for ${req.username}",
+            title = stringResource(R.string.password),
+            subtitle = stringResource(R.string.for_, req.username),
             retry = req.retry,
             onAnswer = onAnswer,
         )
         is PromptRequest.Passphrase -> SecretDialog(
-            title = "Key passphrase",
+            title = stringResource(R.string.key_passphrase),
             subtitle = req.keyLabel,
             retry = req.retry,
             onAnswer = onAnswer,
@@ -126,14 +126,14 @@ private fun HostKeyDialog(
         },
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = { onAnswer(PromptAnswer.HostKey(HostKeyChoice.ACCEPT_ONCE)) }) { Text("Once") }
+                TextButton(onClick = { onAnswer(PromptAnswer.HostKey(HostKeyChoice.ACCEPT_ONCE)) }) { Text(stringResource(R.string.once)) }
                 Button(onClick = { onAnswer(PromptAnswer.HostKey(HostKeyChoice.ACCEPT_AND_SAVE)) }) {
-                    Text(if (danger) "Replace & continue" else "Trust & save")
+                    Text(if (danger) stringResource(R.string.replace_continue) else stringResource(R.string.trust_save))
                 }
             }
         },
         dismissButton = {
-            TextButton(onClick = { onAnswer(PromptAnswer.HostKey(HostKeyChoice.REJECT)) }) { Text("Reject") }
+            TextButton(onClick = { onAnswer(PromptAnswer.HostKey(HostKeyChoice.REJECT)) }) { Text(stringResource(R.string.reject)) }
         },
     )
 }
@@ -154,7 +154,7 @@ private fun SecretDialog(title: String, subtitle: String, retry: Boolean, onAnsw
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (retry) {
-                    Text("That didn't work — try again.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.that_didnt_work_try_again), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
                 OutlinedTextField(
                     value = value,
@@ -173,19 +173,19 @@ private fun SecretDialog(title: String, subtitle: String, retry: Boolean, onAnsw
                         IconButton(onClick = { shown = !shown }) {
                             Icon(
                                 if (shown) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                contentDescription = if (shown) "Hide" else "Show",
+                                contentDescription = if (shown) stringResource(R.string.hide) else stringResource(R.string.show),
                             )
                         }
                     },
                 )
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Checkbox(checked = remember, onCheckedChange = { remember = it })
-                    Text("Save in vault", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.save_in_vault), style = MaterialTheme.typography.bodyMedium)
                 }
             }
         },
-        confirmButton = { Button(onClick = submit) { Text("Continue") } },
-        dismissButton = { TextButton(onClick = { onAnswer(PromptAnswer.Cancel) }) { Text("Cancel") } },
+        confirmButton = { Button(onClick = submit) { Text(stringResource(R.string.continue_)) } },
+        dismissButton = { TextButton(onClick = { onAnswer(PromptAnswer.Cancel) }) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -200,11 +200,11 @@ private fun SecurityKeyPinDialog(req: PromptRequest.SecurityKeyPin, onAnswer: (P
 
     AlertDialog(
         onDismissRequest = { onAnswer(PromptAnswer.Cancel) },
-        title = { Text("Security key PIN") },
+        title = { Text(stringResource(R.string.security_key_pin)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "${req.keyLabel} needs the PIN of the security key to sign in.",
+                    stringResource(R.string.needs_the_pin_of_the_security_key_to, req.keyLabel),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -212,9 +212,9 @@ private fun SecurityKeyPinDialog(req: PromptRequest.SecurityKeyPin, onAnswer: (P
                     val left = req.retries
                     Text(
                         when {
-                            left == null -> "Wrong PIN — try again."
-                            left <= 1 -> "Wrong PIN — last attempt before the key locks."
-                            else -> "Wrong PIN — $left attempts left."
+                            left == null -> stringResource(R.string.wrong_pin_try_again)
+                            left <= 1 -> stringResource(R.string.wrong_pin_last_attempt_before_the_key_locks)
+                            else -> stringResource(R.string.wrong_pin_attempts_left, left)
                         },
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
@@ -238,20 +238,20 @@ private fun SecurityKeyPinDialog(req: PromptRequest.SecurityKeyPin, onAnswer: (P
                         IconButton(onClick = { shown = !shown }) {
                             Icon(
                                 if (shown) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                contentDescription = if (shown) "Hide" else "Show",
+                                contentDescription = if (shown) stringResource(R.string.hide) else stringResource(R.string.show),
                             )
                         }
                     },
                 )
                 Text(
-                    "After the PIN, touch the key when it blinks.",
+                    stringResource(R.string.after_the_pin_touch_the_key_when_it),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },
-        confirmButton = { Button(onClick = submit, enabled = value.isNotEmpty()) { Text("Continue") } },
-        dismissButton = { TextButton(onClick = { onAnswer(PromptAnswer.Cancel) }) { Text("Cancel") } },
+        confirmButton = { Button(onClick = submit, enabled = value.isNotEmpty()) { Text(stringResource(R.string.continue_)) } },
+        dismissButton = { TextButton(onClick = { onAnswer(PromptAnswer.Cancel) }) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -269,14 +269,14 @@ private fun SecurityKeyInsertDialog(req: PromptRequest.SecurityKeyInsert, onAnsw
     AlertDialog(
         onDismissRequest = { onAnswer(PromptAnswer.Cancel) },
         icon = { Icon(Icons.Filled.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-        title = { Text(if (req.wrongDevice) "Wrong security key" else "Insert your security key") },
+        title = { Text(if (req.wrongDevice) stringResource(R.string.wrong_security_key) else stringResource(R.string.insert_your_security_key)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     if (req.wrongDevice) {
-                        "The attached security key does not hold the credential for ${req.keyLabel}. Attach the key it was created on."
+                        stringResource(R.string.the_attached_security_key_does_not_hold_the, req.keyLabel)
                     } else {
-                        "${req.keyLabel} lives on a FIDO2 security key. ${fido2.waitingHint()}"
+                        stringResource(R.string.lives_on_a_fido2_security_key, req.keyLabel, fido2.waitingHint())
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -292,9 +292,9 @@ private fun SecurityKeyInsertDialog(req: PromptRequest.SecurityKeyInsert, onAnsw
             }
         },
         confirmButton = {
-            Button(onClick = { onAnswer(PromptAnswer.Retry) }, enabled = devices.isNotEmpty()) { Text("Retry") }
+            Button(onClick = { onAnswer(PromptAnswer.Retry) }, enabled = devices.isNotEmpty()) { Text(stringResource(R.string.retry)) }
         },
-        dismissButton = { TextButton(onClick = { onAnswer(PromptAnswer.Cancel) }) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = { onAnswer(PromptAnswer.Cancel) }) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -304,14 +304,14 @@ private fun InteractiveDialog(req: PromptRequest.KeyboardInteractive, onAnswer: 
     val submit = { onAnswer(PromptAnswer.Answers(values = answers.value)) }
     AlertDialog(
         onDismissRequest = { onAnswer(PromptAnswer.Cancel) },
-        title = { Text(req.name.ifBlank { "Authentication" }) },
+        title = { Text(req.name.ifBlank { stringResource(R.string.authentication) }) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (req.instructions.isNotBlank()) {
                     Text(req.instructions, style = MaterialTheme.typography.bodySmall)
                 }
                 if (req.questions.isEmpty()) {
-                    Text("The server only asks you to confirm.", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.the_server_only_asks_you_to_confirm), style = MaterialTheme.typography.bodySmall)
                 }
                 req.questions.forEachIndexed { i, q ->
                     OutlinedTextField(
@@ -333,8 +333,8 @@ private fun InteractiveDialog(req: PromptRequest.KeyboardInteractive, onAnswer: 
                 Spacer(Modifier.height(4.dp))
             }
         },
-        confirmButton = { Button(onClick = submit) { Text("Continue") } },
-        dismissButton = { TextButton(onClick = { onAnswer(PromptAnswer.Cancel) }) { Text("Cancel") } },
+        confirmButton = { Button(onClick = submit) { Text(stringResource(R.string.continue_)) } },
+        dismissButton = { TextButton(onClick = { onAnswer(PromptAnswer.Cancel) }) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -347,11 +347,11 @@ fun HiddenInputDialog(onSend: (String, Boolean) -> Unit, onDismiss: () -> Unit) 
     LaunchedEffect(Unit) { focus.requestFocus() }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Hidden input") },
+        title = { Text(stringResource(R.string.hidden_input)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Type a password or other secret; it is sent to the session as-is and not kept anywhere.",
+                    stringResource(R.string.type_a_password_or_other_secret_it_is),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -371,11 +371,11 @@ fun HiddenInputDialog(onSend: (String, Boolean) -> Unit, onDismiss: () -> Unit) 
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = withEnter, onCheckedChange = { withEnter = it })
-                    Text("Press Enter after", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.press_enter_after), style = MaterialTheme.typography.bodyMedium)
                 }
             }
         },
-        confirmButton = { Button(onClick = { onSend(value, withEnter) }) { Text("Send") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { Button(onClick = { onSend(value, withEnter) }) { Text(stringResource(R.string.send)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }

@@ -1,5 +1,6 @@
 package com.termoso.android.ui.hosts
 
+import com.termoso.android.plural
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -67,11 +68,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.HostAvatar
@@ -164,18 +167,18 @@ fun HostsScreen(
                         if (searching) {
                             SearchField(state.query, vm::setQuery)
                         } else {
-                            Text(state.group?.label ?: "Hosts")
+                            Text(state.group?.label ?: stringResource(R.string.hosts))
                         }
                     },
                     navigationIcon = {
                         IconButton(onClick = { if (searching) { searching = false; vm.setQuery("") } else onBack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
                     },
                     actions = {
                         if (!searching) {
                             IconButton(onClick = { searching = true }) {
-                                Icon(Icons.Filled.Search, contentDescription = "Search")
+                                Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.search))
                             }
                         }
                         SortMenu(state.sort, vm::setSort)
@@ -187,12 +190,12 @@ fun HostsScreen(
             if (!state.selecting) {
                 Box {
                     FloatingActionButton(onClick = { fabMenu = true }) {
-                        Icon(Icons.Filled.Add, contentDescription = "Add")
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.add))
                     }
                     DropdownMenu(expanded = fabMenu, onDismissRequest = { fabMenu = false }) {
-                        DropdownMenuItem(text = { Text("New host") }, onClick = { fabMenu = false; onNewHost() })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.new_host)) }, onClick = { fabMenu = false; onNewHost() })
                         DropdownMenuItem(
-                            text = { Text("New group") },
+                            text = { Text(stringResource(R.string.new_group)) },
                             onClick = { fabMenu = false; dialog = HostsDialog.NewGroup },
                         )
                     }
@@ -210,16 +213,15 @@ fun HostsScreen(
             ) {
                 if (state.query.isBlank()) {
                     EmptyState(
-                        title = if (state.group == null) "No hosts yet" else "Empty group",
-                        hint = "Save a server with its credentials to connect in one tap. " +
-                            "Everything stays in the encrypted vault.",
+                        title = if (state.group == null) stringResource(R.string.no_hosts_yet) else stringResource(R.string.empty_group),
+                        hint = stringResource(R.string.save_a_server_with_its_credentials_to_connect),
                         icon = Icons.Filled.Dns,
-                        action = { Button(onClick = onNewHost) { Text("Add host") } },
+                        action = { Button(onClick = onNewHost) { Text(stringResource(R.string.add_host)) } },
                     )
                 } else {
                     EmptyState(
-                        title = "Nothing found",
-                        hint = "Try another name, address, user or tag.",
+                        title = stringResource(R.string.nothing_found),
+                        hint = stringResource(R.string.try_another_name_address_user_or_tag),
                         icon = Icons.Filled.Search,
                     )
                 }
@@ -263,14 +265,14 @@ fun HostsScreen(
             onClose = { dialog = null },
         )
         is HostsDialog.Delete -> ConfirmDialog(
-            title = if (d.ids.size == 1) "Remove host?" else "Remove ${d.ids.size} hosts?",
-            text = "Hosts are removed from this vault. Keys in the keychain stay.",
-            confirm = "Remove",
+            title = if (d.ids.size == 1) stringResource(R.string.remove_host) else stringResource(R.string.remove_hosts, d.ids.size),
+            text = stringResource(R.string.hosts_are_removed_from_this_vault_keys_in),
+            confirm = stringResource(R.string.remove_2),
             onConfirm = { vm.delete(d.ids); dialog = null },
             onDismiss = { dialog = null },
         )
         is HostsDialog.Move -> GroupPickerDialog(
-            title = "Move to",
+            title = stringResource(R.string.move_to),
             groups = state.allGroups,
             current = groupId,
             onPick = { vm.move(d.ids, it); dialog = null },
@@ -282,7 +284,7 @@ fun HostsScreen(
             onDismiss = { dialog = null },
         )
         HostsDialog.NewGroup -> NameDialog(
-            title = "New group",
+            title = stringResource(R.string.new_group),
             initial = "",
             onConfirm = { vm.createGroup(it); dialog = null },
             onDismiss = { dialog = null },
@@ -294,7 +296,7 @@ fun HostsScreen(
             onDismiss = { dialog = null },
         )
         is HostsDialog.RenameGroup -> NameDialog(
-            title = "Rename group",
+            title = stringResource(R.string.rename_group),
             initial = d.group.label,
             onConfirm = { vm.renameGroup(d.group, it); dialog = null },
             onDismiss = { dialog = null },
@@ -333,7 +335,7 @@ private fun HostList(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
     ) {
         if (groups.isNotEmpty()) {
-            item { SectionLabel("Groups") }
+            item { SectionLabel(stringResource(R.string.groups)) }
             item {
                 SectionCard {
                     groups.forEachIndexed { i, g ->
@@ -352,7 +354,7 @@ private fun HostList(
             }
         }
         if (hosts.isNotEmpty()) {
-            item { SectionLabel("Hosts") }
+            item { SectionLabel(stringResource(R.string.hosts)) }
             item {
                 SectionCard {
                     hosts.forEachIndexed { i, h ->
@@ -380,7 +382,7 @@ private fun HostList(
                                 IconButton(onClick = { onHostMenu(h) }, modifier = Modifier.size(32.dp)) {
                                     Icon(
                                         Icons.Filled.MoreVert,
-                                        contentDescription = "Host actions",
+                                        contentDescription = stringResource(R.string.host_actions),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
@@ -408,7 +410,7 @@ private fun OpenSessionsBadge(count: Int, onClick: () -> Unit) {
     ) {
         Box(Modifier.size(6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
         Text(
-            if (count == 1) "Active" else "$count active",
+            if (count == 1) stringResource(R.string.active) else stringResource(R.string.active_2, count),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onPrimaryContainer,
         )
@@ -417,8 +419,8 @@ private fun OpenSessionsBadge(count: Int, onClick: () -> Unit) {
 
 private fun groupSubtitle(g: GroupItem): String? {
     val parts = buildList {
-        if (g.hostCount > 0u) add("${g.hostCount} ${if (g.hostCount == 1u) "host" else "hosts"}")
-        if (g.groupCount > 0u) add("${g.groupCount} ${if (g.groupCount == 1u) "group" else "groups"}")
+        if (g.hostCount > 0u) add(plural(R.plurals.n_hosts, g.hostCount.toInt(), g.hostCount.toInt()))
+        if (g.groupCount > 0u) add(plural(R.plurals.n_groups, g.groupCount.toInt(), g.groupCount.toInt()))
     }
     return parts.joinToString(" · ").ifEmpty { null }
 }
@@ -444,58 +446,58 @@ private fun SelectionBar(
     val singleSsh = single?.protocol.equals("ssh", ignoreCase = true)
     val singleTelnet = singleSsh && single?.telnetPort != null
     TopAppBar(
-        title = { Text("${state.selected.size} selected") },
+        title = { Text(stringResource(R.string.selected_2, state.selected.size)) },
         navigationIcon = {
-            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Cancel selection") }
+            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.cancel_selection)) }
         },
         actions = {
             if (state.selected.size == 1) {
-                IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, contentDescription = "Edit") }
+                IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.edit)) }
                 if (singleSsh) {
                     IconButton(onClick = onSftp) { Icon(Icons.Filled.FolderOpen, contentDescription = "SFTP") }
                 }
             }
-            IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, contentDescription = "Remove") }
+            IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.remove_2)) }
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(
-                        text = { Text("Select all") },
+                        text = { Text(stringResource(R.string.select_all)) },
                         leadingIcon = { Icon(Icons.Filled.Check, null) },
                         onClick = { menu = false; onSelectAll() },
                     )
                     DropdownMenuItem(
-                        text = { Text("Duplicate") },
+                        text = { Text(stringResource(R.string.duplicate)) },
                         leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
                         onClick = { menu = false; onDuplicate() },
                     )
                     if (singleSsh) {
                         DropdownMenuItem(
-                            text = { Text("Connect with Mosh") },
+                            text = { Text(stringResource(R.string.connect_with_mosh)) },
                             leadingIcon = { Icon(Icons.Filled.Bolt, null) },
                             onClick = { menu = false; onConnectWith(Transport.MOSH) },
                         )
                         if (singleTelnet) {
                             DropdownMenuItem(
-                                text = { Text("Connect with Telnet") },
+                                text = { Text(stringResource(R.string.connect_with_telnet)) },
                                 leadingIcon = { Icon(Icons.Filled.Terminal, null) },
                                 onClick = { menu = false; onConnectWith(Transport.TELNET) },
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text("Port forwarding…") },
+                            text = { Text(stringResource(R.string.port_forwarding_2)) },
                             leadingIcon = { Icon(Icons.Filled.SwapHoriz, null) },
                             onClick = { menu = false; onForward() },
                         )
                     }
                     DropdownMenuItem(
-                        text = { Text("Move to group…") },
+                        text = { Text(stringResource(R.string.move_to_group)) },
                         leadingIcon = { Icon(Icons.AutoMirrored.Filled.DriveFileMove, null) },
                         onClick = { menu = false; onMove() },
                     )
                     if (vaults.isNotEmpty()) {
                         DropdownMenuItem(
-                            text = { Text("Copy to vault…") },
+                            text = { Text(stringResource(R.string.copy_to_vault)) },
                             leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
                             onClick = { menu = false; onCopy() },
                         )
@@ -514,7 +516,7 @@ private fun SearchField(query: String, onChange: (String) -> Unit) {
     OutlinedTextField(
         value = query,
         onValueChange = onChange,
-        placeholder = { Text("Search hosts") },
+        placeholder = { Text(stringResource(R.string.search_hosts)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth().focusRequester(focus),
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
@@ -525,11 +527,11 @@ private fun SearchField(query: String, onChange: (String) -> Unit) {
 private fun SortMenu(sort: HostSort, onSort: (HostSort) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }) { Icon(Icons.Filled.SortByAlpha, contentDescription = "Sort") }
+        IconButton(onClick = { open = true }) { Icon(Icons.Filled.SortByAlpha, contentDescription = stringResource(R.string.sort)) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             HostSort.entries.forEach { s ->
                 DropdownMenuItem(
-                    text = { Text(s.label) },
+                    text = { Text(stringResource(s.label)) },
                     trailingIcon = if (s == sort) {
                         { Icon(Icons.Filled.Check, contentDescription = null) }
                     } else {
@@ -551,7 +553,7 @@ fun ConfirmDialog(title: String, text: String, confirm: String, onConfirm: () ->
         confirmButton = {
             TextButton(onClick = onConfirm) { Text(confirm, color = MaterialTheme.colorScheme.error) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -565,15 +567,15 @@ private fun NameDialog(title: String, initial: String, onConfirm: (String) -> Un
             OutlinedTextField(
                 value = value,
                 onValueChange = { value = it },
-                label = { Text("Name") },
+                label = { Text(stringResource(R.string.name)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(value) }, enabled = value.isNotBlank()) { Text("Save") }
+            TextButton(onClick = { onConfirm(value) }, enabled = value.isNotBlank()) { Text(stringResource(R.string.save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -585,7 +587,7 @@ private fun GroupMenuDialog(group: GroupItem, onRename: () -> Unit, onDelete: ()
         text = {
             Column {
                 Text(
-                    "Deleting a group moves its hosts and sub-groups one level up.",
+                    stringResource(R.string.deleting_a_group_moves_its_hosts_and_sub),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -593,11 +595,11 @@ private fun GroupMenuDialog(group: GroupItem, onRename: () -> Unit, onDelete: ()
         },
         confirmButton = {
             Row {
-                TextButton(onClick = onRename) { Text("Rename") }
-                TextButton(onClick = onDelete) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = onRename) { Text(stringResource(R.string.rename)) }
+                TextButton(onClick = onDelete) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -617,7 +619,7 @@ fun GroupPickerDialog(
         text = {
             LazyColumn(modifier = Modifier.fillMaxWidth().height(320.dp)) {
                 item {
-                    PickRow("No group", selected = current == null, onClick = { onPick(null) })
+                    PickRow(stringResource(R.string.no_group), selected = current == null, onClick = { onPick(null) })
                 }
                 items(groups.sortedBy { paths[it.id] }, key = { it.id }) { g ->
                     PickRow(paths[g.id] ?: g.label, selected = g.id == current, onClick = { onPick(g.id) })
@@ -625,7 +627,7 @@ fun GroupPickerDialog(
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -655,7 +657,7 @@ private fun CopyToVaultDialog(vaults: List<VaultInfo>, onCopy: (String, Boolean)
     var withCredentials by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Copy to vault") },
+        title = { Text(stringResource(R.string.copy_to_vault_2)) },
         text = {
             Column {
                 vaults.forEach { v ->
@@ -670,12 +672,12 @@ private fun CopyToVaultDialog(vaults: List<VaultInfo>, onCopy: (String, Boolean)
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Include credentials", fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.include_credentials), fontWeight = FontWeight.Medium)
                         Text(
                             if (withCredentials) {
-                                "Passwords and keys are copied into the target vault."
+                                stringResource(R.string.passwords_and_keys_are_copied_into_the_target)
                             } else {
-                                "Only host details are copied; members use their own credentials."
+                                stringResource(R.string.only_host_details_are_copied_members_use_their)
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -686,8 +688,8 @@ private fun CopyToVaultDialog(vaults: List<VaultInfo>, onCopy: (String, Boolean)
             }
         },
         confirmButton = {
-            TextButton(onClick = { target?.let { onCopy(it, withCredentials) } }, enabled = target != null) { Text("Copy") }
+            TextButton(onClick = { target?.let { onCopy(it, withCredentials) } }, enabled = target != null) { Text(stringResource(R.string.copy)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
