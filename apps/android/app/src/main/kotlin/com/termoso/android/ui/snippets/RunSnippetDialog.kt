@@ -26,10 +26,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.TermosoSwitch
@@ -113,7 +115,7 @@ fun RunSnippetDialog(
                     )
                 }
                 if (live.isNotEmpty()) {
-                    Text("Open terminals", style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.open_terminals), style = MaterialTheme.typography.labelLarge)
                     live.forEach { s ->
                         CheckRow(
                             title = s.label,
@@ -125,7 +127,7 @@ fun RunSnippetDialog(
                 }
                 val connectable = hosts.filter { h -> live.none { it.hostId == h.id } }
                 if (connectable.isNotEmpty()) {
-                    Text("Connect and run", style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.connect_and_run), style = MaterialTheme.typography.labelLarge)
                     connectable.forEach { h ->
                         CheckRow(
                             title = h.label.ifBlank { h.address },
@@ -137,16 +139,16 @@ fun RunSnippetDialog(
                 }
                 if (live.isEmpty() && connectable.isEmpty()) {
                     Text(
-                        "No open terminals. Connect to a host first, or add target hosts to the snippet.",
+                        stringResource(R.string.no_open_terminals_connect_to_a_host_first),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Paste only", style = MaterialTheme.typography.bodyLarge)
+                        Text(stringResource(R.string.paste_only), style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "Type the script without pressing Enter",
+                            stringResource(R.string.type_the_script_without_pressing_enter),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -176,11 +178,11 @@ fun RunSnippetDialog(
                 if (working) {
                     CircularProgressIndicator(Modifier.width(18.dp).heightIn(max = 18.dp), strokeWidth = 2.dp)
                 } else {
-                    Text(if (paste) "Paste" else "Run")
+                    Text(if (paste) stringResource(R.string.paste_2) else stringResource(R.string.run))
                 }
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 

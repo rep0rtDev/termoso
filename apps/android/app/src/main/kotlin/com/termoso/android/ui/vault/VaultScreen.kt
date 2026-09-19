@@ -1,5 +1,6 @@
 package com.termoso.android.ui.vault
 
+import com.termoso.android.plural
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,10 +41,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.AccountManager
+import com.termoso.android.str
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.RowDivider
@@ -122,11 +126,11 @@ fun VaultScreen(
                                 else -> Icons.Filled.Cloud
                             },
                             contentDescription = when {
-                                !signedIn -> "Sign in to sync"
-                                sync.state == SyncState.SYNCING -> "Syncing"
-                                sync.state == SyncState.OFFLINE -> "Offline"
-                                sync.state == SyncState.ERROR -> "Sync failed"
-                                else -> "Synced"
+                                !signedIn -> stringResource(R.string.sign_in_to_sync)
+                                sync.state == SyncState.SYNCING -> stringResource(R.string.syncing_3)
+                                sync.state == SyncState.OFFLINE -> stringResource(R.string.offline)
+                                sync.state == SyncState.ERROR -> stringResource(R.string.sync_failed)
+                                else -> stringResource(R.string.synced_2)
                             },
                             tint = when {
                                 !signedIn -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -148,49 +152,49 @@ fun VaultScreen(
         ) {
             SectionCard {
                 ChevronRow(
-                    title = "Hosts",
+                    title = stringResource(R.string.hosts),
                     badge = counts.hosts.toString(),
                     leading = { IconTile(Icons.Filled.Dns) },
                     modifier = Modifier.clickable(onClick = onOpenHosts),
                 )
                 RowDivider()
                 ChevronRow(
-                    title = "Keychain",
+                    title = stringResource(R.string.keychain),
                     subtitle = keychainSubtitle(counts.keys, counts.identities),
                     leading = { IconTile(Icons.Filled.Key) },
                     modifier = Modifier.clickable(onClick = onOpenKeychain),
                 )
                 RowDivider()
                 ChevronRow(
-                    title = "Port forwarding",
+                    title = stringResource(R.string.port_forwarding_3),
                     badge = counts.forwards.toString(),
                     leading = { IconTile(Icons.Filled.SwapHoriz) },
                     modifier = Modifier.clickable(onClick = onOpenForwarding),
                 )
                 RowDivider()
                 ChevronRow(
-                    title = "Snippets",
+                    title = stringResource(R.string.snippets),
                     badge = counts.snippets.toString(),
                     leading = { IconTile(Icons.Filled.Code) },
                     modifier = Modifier.clickable(onClick = onOpenSnippets),
                 )
                 RowDivider()
                 ChevronRow(
-                    title = "Known hosts",
+                    title = stringResource(R.string.known_hosts),
                     badge = counts.known.toString(),
                     leading = { IconTile(Icons.Filled.Fingerprint) },
                     modifier = Modifier.clickable(onClick = onOpenKnownHosts),
                 )
                 RowDivider()
                 ChevronRow(
-                    title = "History",
+                    title = stringResource(R.string.history),
                     badge = counts.history.toString(),
                     leading = { IconTile(Icons.Filled.History) },
                     modifier = Modifier.clickable(onClick = onOpenHistory),
                 )
                 RowDivider()
                 ChevronRow(
-                    title = "Recordings",
+                    title = stringResource(R.string.recordings_2),
                     badge = counts.logs.toString(),
                     leading = { IconTile(Icons.Filled.Videocam) },
                     modifier = Modifier.clickable(onClick = onOpenLogs),
@@ -211,16 +215,16 @@ fun VaultScreen(
 private fun keychainSubtitle(keys: Int, identities: Int): String? {
     if (keys == 0 && identities == 0) return null
     val parts = buildList {
-        if (keys > 0) add("$keys ${if (keys == 1) "key" else "keys"}")
-        if (identities > 0) add("$identities ${if (identities == 1) "identity" else "identities"}")
+        if (keys > 0) add(plural(R.plurals.n_keys, keys, keys))
+        if (identities > 0) add(plural(R.plurals.n_identities, identities, identities))
     }
     return parts.joinToString(" · ")
 }
 
 private fun vaultHint(vault: VaultInfo?): String = when (vault?.kind) {
-    VaultKind.TEAM -> "Team vault — shared with your team, end-to-end encrypted."
-    VaultKind.PERSONAL -> "Personal vault — synced to your devices, end-to-end encrypted."
-    else -> "Local vault — stored only on this device, encrypted with a key that never leaves it."
+    VaultKind.TEAM -> str(R.string.team_vault_shared_with_your_team_end_to)
+    VaultKind.PERSONAL -> str(R.string.personal_vault_synced_to_your_devices_end_to)
+    else -> str(R.string.local_vault_stored_only_on_this_device_encrypted)
 }
 
 @Composable
@@ -230,9 +234,9 @@ private fun VaultPicker(vaults: List<VaultInfo>, selected: VaultInfo?, onSelect:
         Modifier.clickable(enabled = vaults.size > 1) { open = true },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(selected?.let { vaultLabel(it) } ?: "Vault", fontWeight = FontWeight.SemiBold)
+        Text(selected?.let { vaultLabel(it) } ?: stringResource(R.string.vault), fontWeight = FontWeight.SemiBold)
         if (vaults.size > 1) {
-            Icon(Icons.Filled.ArrowDropDown, contentDescription = "Choose vault")
+            Icon(Icons.Filled.ArrowDropDown, contentDescription = stringResource(R.string.choose_vault))
         }
     }
     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -251,7 +255,7 @@ private fun VaultPicker(vaults: List<VaultInfo>, selected: VaultInfo?, onSelect:
 }
 
 fun vaultLabel(v: VaultInfo): String = when (v.kind) {
-    VaultKind.LOCAL -> "Local vault"
-    VaultKind.PERSONAL -> "Personal vault"
+    VaultKind.LOCAL -> str(R.string.local_vault)
+    VaultKind.PERSONAL -> str(R.string.personal_vault)
     VaultKind.TEAM -> v.name
 }

@@ -35,13 +35,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.core.AiSuggestionCard
@@ -98,11 +101,11 @@ fun AskAiSheet(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                Text("Ask AI for a command", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.ask_ai_for_a_command), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 status?.let { s ->
                     if (s.available && s.enabled) {
                         Text(
-                            "${aiRemainingToday(s)} left today",
+                            stringResource(R.string.left_today, aiRemainingToday(s)),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -113,24 +116,23 @@ fun AskAiSheet(
             val s = status
             when {
                 !shell.ai.signedIn -> EmptyState(
-                    title = "Sign in to use AI suggestions",
-                    hint = "Suggestions come from your Termoso server, so they need an account.",
-                    action = { Button(onClick = { onClose(); onOpenAccount() }) { Text("Account") } },
+                    title = stringResource(R.string.sign_in_to_use_ai_suggestions),
+                    hint = stringResource(R.string.suggestions_come_from_your_termoso_server_so_they),
+                    action = { Button(onClick = { onClose(); onOpenAccount() }) { Text(stringResource(R.string.account)) } },
                 )
                 s == null && !loaded -> Spacer(Modifier.height(80.dp))
                 s == null -> EmptyState(
-                    title = "Could not reach the server",
-                    hint = "Check your connection and try again.",
-                    action = { OutlinedButton(onClick = { scope.launch { shell.ai.refresh() } }) { Text("Retry") } },
+                    title = stringResource(R.string.could_not_reach_the_server),
+                    hint = stringResource(R.string.check_your_connection_and_try_again),
+                    action = { OutlinedButton(onClick = { scope.launch { shell.ai.refresh() } }) { Text(stringResource(R.string.retry)) } },
                 )
                 !s.available -> EmptyState(
-                    title = "No AI provider on this server",
-                    hint = "The server operator can set TERMOSO_AI__* to a Chutes key or any OpenAI-compatible endpoint.",
+                    title = stringResource(R.string.no_ai_provider_on_this_server),
+                    hint = stringResource(R.string.the_server_operator_can_set_termoso_ai_to),
                 )
                 !s.enabled -> {
                     Text(
-                        "Describe what you want in plain words and get one shell command back. " +
-                            "You read it and press Enter yourself — nothing runs on its own.",
+                        stringResource(R.string.describe_what_you_want_in_plain_words_and),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Disclosure(providerLabel = aiProviderLabel(s), confidential = s.confidential, context = aiContextLabel(target))
@@ -141,15 +143,15 @@ fun AskAiSheet(
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Turn on for my account") }
+                    ) { Text(stringResource(R.string.turn_on_for_my_account)) }
                 }
                 else -> {
                     OutlinedTextField(
                         value = prompt,
                         onValueChange = { if (it.length <= AI_MAX_PROMPT_CHARS) prompt = it },
-                        label = { Text("What should the command do?") },
-                        placeholder = { Text("find files over 100 MB changed this week") },
-                        supportingText = { Text("${prompt.length}/$AI_MAX_PROMPT_CHARS · sends: ${aiContextLabel(target)}") },
+                        label = { Text(stringResource(R.string.what_should_the_command_do)) },
+                        placeholder = { Text(stringResource(R.string.find_files_over_100_mb_changed_this_week)) },
+                        supportingText = { Text(stringResource(R.string.sends, prompt.length, AI_MAX_PROMPT_CHARS, aiContextLabel(target))) },
                         minLines = 2,
                         maxLines = 4,
                         enabled = !busy,
@@ -162,7 +164,7 @@ fun AskAiSheet(
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            aiProviderLabel(s) + if (s.confidential) " · confidential compute" else "",
+                            aiProviderLabel(s) + if (s.confidential) stringResource(R.string.sep_confidential_compute) else "",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.weight(1f),
@@ -170,19 +172,19 @@ fun AskAiSheet(
                         if (busy) {
                             CircularProgressIndicator(Modifier.height(20.dp), strokeWidth = 2.dp)
                         } else {
-                            Button(onClick = ::ask, enabled = prompt.isNotBlank()) { Text("Suggest") }
+                            Button(onClick = ::ask, enabled = prompt.isNotBlank()) { Text(stringResource(R.string.suggest)) }
                         }
                     }
 
                     failure?.let { f ->
                         Text(f.text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-                        if (f.retry) TextButton(onClick = ::ask, enabled = prompt.isNotBlank()) { Text("Try again") }
+                        if (f.retry) TextButton(onClick = ::ask, enabled = prompt.isNotBlank()) { Text(stringResource(R.string.try_again)) }
                     }
 
                     answer?.let { a ->
                         if (a.command.isBlank()) {
                             Text(
-                                a.explanation ?: "The model had no command for that.",
+                                a.explanation ?: stringResource(R.string.the_model_had_no_command_for_that),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -205,17 +207,17 @@ fun AskAiSheet(
                                     onClick = { onInsert(a.command); onClose() },
                                     enabled = connected,
                                     modifier = Modifier.weight(1f),
-                                ) { Text("Insert") }
+                                ) { Text(stringResource(R.string.insert)) }
                                 OutlinedButton(
                                     onClick = {
                                         copyToClipboard(context, a.command)
-                                        shell.notify("Command copied")
+                                        shell.notify(str(R.string.command_copied))
                                     },
                                     modifier = Modifier.weight(1f),
-                                ) { Text("Copy") }
+                                ) { Text(stringResource(R.string.copy)) }
                             }
                             Text(
-                                "Insert puts the command at the prompt without running it.",
+                                stringResource(R.string.insert_puts_the_command_at_the_prompt_without),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -238,17 +240,16 @@ private fun Disclosure(providerLabel: String, confidential: Boolean, context: St
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text("What leaves this phone", style = MaterialTheme.typography.labelLarge)
+        Text(stringResource(R.string.what_leaves_this_phone), style = MaterialTheme.typography.labelLarge)
         Text(
-            "Only your request text plus a label for the OS family (from the saved host, not the terminal) — " +
-                "currently: $context. Never the terminal output, command history, host address, credentials or vault contents.",
+            stringResource(R.string.only_your_request_text_plus_a_label_for, context),
             style = MaterialTheme.typography.bodySmall,
         )
         Text(
-            "Provider: $providerLabel." + if (confidential) {
-                " Runs in confidential compute: the operator cannot read your request, but the model does — this is not end-to-end encryption."
+            stringResource(R.string.provider, providerLabel) + if (confidential) {
+                stringResource(R.string.runs_in_confidential_compute_the_operator_cannot_read)
             } else {
-                " The provider sees the request text."
+                stringResource(R.string.the_provider_sees_the_request_text)
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

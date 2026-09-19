@@ -46,16 +46,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.ReauthCancelled
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.ListRow
@@ -74,13 +77,13 @@ import com.termoso.core.TermosoApp
 import com.termoso.core.sshidHandleValid
 import com.termoso.core.sshidProvisionCommand
 import com.termoso.core.sshidTypeLabel
+import java.text.DateFormat
+import java.util.Date
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.text.DateFormat
-import java.util.Date
 
 fun SshIdKeyKind.label(): String = sshidTypeLabel(this)
 
@@ -170,28 +173,28 @@ fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Un
     val handle = view?.handle
 
     SubScreen(
-        title = "SSH ID",
+        title = stringResource(R.string.ssh_id),
         onBack = onBack,
         actions = {
             if (handle != null) {
                 IconButton(
-                    onClick = { scope.launch { if (vm.publish()) shell.notify("Keys are up to date") } },
+                    onClick = { scope.launch { if (vm.publish()) shell.notify(str(R.string.keys_are_up_to_date)) } },
                     enabled = !state.working,
                 ) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "Refresh and re-publish")
+                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.refresh_and_re_publish))
                 }
                 Box {
                     IconButton(onClick = { menu = true }, enabled = !state.working) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more))
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(
-                            text = { Text("Rotate this device's keys") },
+                            text = { Text(stringResource(R.string.rotate_this_devices_keys)) },
                             leadingIcon = { Icon(Icons.Filled.Autorenew, contentDescription = null) },
                             onClick = { menu = false; confirmRotate = true },
                         )
                         DropdownMenuItem(
-                            text = { Text("Delete SSH ID", color = MaterialTheme.colorScheme.error) },
+                            text = { Text(stringResource(R.string.delete_ssh_id), color = MaterialTheme.colorScheme.error) },
                             leadingIcon = {
                                 Icon(Icons.Filled.DeleteOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                             },
@@ -214,21 +217,21 @@ fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Un
                     CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                 }
                 view == null || !view.signedIn -> EmptyState(
-                    title = "Sign in to use SSH ID",
-                    hint = "SSH ID publishes this phone's public keys under a handle so servers can trust them with one command.",
+                    title = stringResource(R.string.sign_in_to_use_ssh_id),
+                    hint = stringResource(R.string.ssh_id_publishes_this_phones_public_keys_under),
                 )
                 handle == null -> SetupSection(
                     working = state.working,
                     onCreate = { h ->
-                        scope.launch { if (vm.create(h)) shell.notify("SSH ID @${h.trimStart('@').lowercase()} is ready") }
+                        scope.launch { if (vm.create(h)) shell.notify(str(R.string.ssh_id_is_ready, h.trimStart('@').lowercase())) }
                     },
                 )
                 else -> HandleSections(
                     view = view,
                     working = state.working,
-                    onCopy = { label, text -> copyText(context, label, text); shell.notify("$label copied") },
+                    onCopy = { label, text -> copyText(context, label, text); shell.notify(str(R.string.copied, label)) },
                     onRemoveKey = { removeKey = it },
-                    onPublish = { scope.launch { if (vm.publish()) shell.notify("Keys published") } },
+                    onPublish = { scope.launch { if (vm.publish()) shell.notify(str(R.string.keys_published)) } },
                     onAddSecurityKey = onAddSecurityKey,
                     onAttachSecurityKey = vm::loadAttachable,
                 )
@@ -240,39 +243,38 @@ fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Un
     if (confirmRotate) {
         AlertDialog(
             onDismissRequest = { confirmRotate = false },
-            title = { Text("Rotate keys?") },
+            title = { Text(stringResource(R.string.rotate_keys)) },
             text = {
                 Text(
-                    "New Ed25519, ECDSA and RSA passkeys are generated on this phone and published in place of the current ones. " +
-                        "Servers that fetched the old keys need to run the provision command again.",
+                    stringResource(R.string.new_ed25519_ecdsa_and_rsa_passkeys_are_generated),
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     confirmRotate = false
-                    scope.launch { if (vm.rotate()) shell.notify("Keys rotated and published") }
-                }) { Text("Rotate") }
+                    scope.launch { if (vm.rotate()) shell.notify(str(R.string.keys_rotated_and_published)) }
+                }) { Text(stringResource(R.string.rotate)) }
             },
-            dismissButton = { TextButton(onClick = { confirmRotate = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmRotate = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete SSH ID?") },
+            title = { Text(stringResource(R.string.delete_ssh_id_2)) },
             text = {
                 Text(
-                    "@$handle and every key published under it are removed from the server; the passkeys on this phone are wiped. " +
-                        "Identities that log in with SSH ID fall back to their other credentials.",
+                    stringResource(R.string.ssh_id_delete_text, handle.orEmpty()) + " " +
+                        stringResource(R.string.identities_that_log_in_with_ssh_id_fall),
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
-                    scope.launch { if (vm.delete()) shell.notify("SSH ID deleted") }
-                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                    scope.launch { if (vm.delete()) shell.notify(str(R.string.ssh_id_deleted)) }
+                }) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
     state.attachable?.let { keys ->
@@ -280,7 +282,7 @@ fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Un
             keys = keys,
             onPick = { k ->
                 vm.attachableShown()
-                scope.launch { if (vm.attach(k.id)) shell.notify("“${k.label}” published under @$handle") }
+                scope.launch { if (vm.attach(k.id)) shell.notify(str(R.string.published_under, k.label, handle.orEmpty())) }
             },
             onDismiss = vm::attachableShown,
         )
@@ -288,14 +290,13 @@ fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Un
     removeKey?.let { k ->
         AlertDialog(
             onDismissRequest = { removeKey = null },
-            title = { Text("Remove key?") },
+            title = { Text(stringResource(R.string.remove_key)) },
             text = {
                 Text(
                     if (k.hardware) {
-                        "The ${k.keyType.label()} security-key entry “${k.label}” is removed from @$handle."
+                        stringResource(R.string.the_security_key_entry_is_removed_from, k.keyType.label(), k.label, handle.orEmpty())
                     } else {
-                        "The ${k.keyType.label()} key of “${k.label}” is removed from @$handle. " +
-                            "It comes back the next time that device syncs — revoke the device instead to keep it out."
+                        stringResource(R.string.the_key_of_is_removed_from_it_comes, k.keyType.label(), k.label, handle.orEmpty())
                     },
                 )
             },
@@ -303,10 +304,10 @@ fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Un
                 TextButton(onClick = {
                     val id = k.id
                     removeKey = null
-                    scope.launch { if (vm.removeKey(id)) shell.notify("Key removed") }
-                }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+                    scope.launch { if (vm.removeKey(id)) shell.notify(str(R.string.key_removed)) }
+                }) { Text(stringResource(R.string.remove_2), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { removeKey = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { removeKey = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }
@@ -316,11 +317,10 @@ private fun SetupSection(working: Boolean, onCreate: (String) -> Unit) {
     var handle by remember { mutableStateOf("") }
     val valid = sshidHandleValid(handle)
     Spacer(Modifier.height(16.dp))
-    Text("Choose your handle", style = MaterialTheme.typography.titleMedium)
+    Text(stringResource(R.string.choose_your_handle), style = MaterialTheme.typography.titleMedium)
     Spacer(Modifier.height(4.dp))
     Text(
-        "Your public keys become available at a stable address; on a server run one command to allow this phone in. " +
-            "Private keys never leave the phone.",
+        stringResource(R.string.your_public_keys_become_available_at_a_stable),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -328,21 +328,21 @@ private fun SetupSection(working: Boolean, onCreate: (String) -> Unit) {
     OutlinedTextField(
         value = handle,
         onValueChange = { handle = it.trim() },
-        label = { Text("Handle") },
+        label = { Text(stringResource(R.string.handle)) },
         prefix = { Text("@") },
         singleLine = true,
         enabled = !working,
         isError = handle.isNotEmpty() && !valid,
-        supportingText = { Text("3–32 characters: lowercase letters, digits, - or _") },
+        supportingText = { Text(stringResource(R.string.s_3_32_characters_lowercase_letters_digits_or)) },
         modifier = Modifier.fillMaxWidth(),
     )
     Spacer(Modifier.height(12.dp))
     Button(onClick = { onCreate(handle) }, enabled = valid && !working, modifier = Modifier.fillMaxWidth()) {
-        if (working) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Text("Create SSH ID")
+        if (working) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Text(stringResource(R.string.create_ssh_id))
     }
     Spacer(Modifier.height(8.dp))
     Text(
-        "Three passkeys (Ed25519, ECDSA, RSA) are generated in the encrypted vault on this phone and only their public halves are published.",
+        stringResource(R.string.three_passkeys_ed25519_ecdsa_rsa_are_generated_in),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -369,14 +369,14 @@ private fun HandleSections(
             subtitle = url,
             leading = { IconTile(Icons.Filled.Fingerprint) },
             trailing = {
-                IconButton(onClick = { onCopy("SSH ID URL", url) }) {
-                    Icon(Icons.Filled.ContentCopy, contentDescription = "Copy URL")
+                IconButton(onClick = { onCopy(str(R.string.ssh_id_url), url) }) {
+                    Icon(Icons.Filled.ContentCopy, contentDescription = stringResource(R.string.copy_url))
                 }
             },
         )
     }
 
-    SectionLabel("Allow this phone on a server")
+    SectionLabel(stringResource(R.string.allow_this_phone_on_a_server))
     SectionCard {
         Column(Modifier.padding(16.dp)) {
             Text(
@@ -386,74 +386,72 @@ private fun HandleSections(
             )
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { onCopy("Provision command", command) }) {
+                TextButton(onClick = { onCopy(str(R.string.provision_command), command) }) {
                     Icon(Icons.Filled.Terminal, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.size(6.dp))
-                    Text("Copy command")
+                    Text(stringResource(R.string.copy_command))
                 }
             }
             Text(
-                "Appends the published Ed25519 keys to authorized_keys of the user you run it as. " +
-                    "Add /all to the URL for every key type, or /ECDSA, /RSA for one.",
+                stringResource(R.string.appends_the_published_ed25519_keys_to_authorized_keys),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 
-    SectionLabel("This phone")
+    SectionLabel(stringResource(R.string.this_phone))
     SectionCard {
         if (view.deviceKeys.isEmpty()) {
-            ListRow(title = "No passkeys yet", subtitle = "Tap refresh to generate and publish them")
+            ListRow(title = stringResource(R.string.no_passkeys_yet), subtitle = stringResource(R.string.tap_refresh_to_generate_and_publish_them))
         }
         view.deviceKeys.forEachIndexed { i, k ->
             if (i > 0) RowDivider()
-            DeviceKeyRow(k, onCopy = { onCopy("${k.keyType.label()} public key", k.publicKey) })
+            DeviceKeyRow(k, onCopy = { onCopy(str(R.string.public_key, k.keyType.label()), k.publicKey) })
         }
         if (view.deviceKeys.isEmpty() || view.deviceKeys.any { !it.published }) {
             RowDivider()
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Text(
-                    "Publishing keys is a security-sensitive change: the server asks you to confirm your password first.",
+                    stringResource(R.string.publishing_keys_is_a_security_sensitive_change_the),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(8.dp))
-                Button(onClick = onPublish, enabled = !working) { Text("Publish keys") }
+                Button(onClick = onPublish, enabled = !working) { Text(stringResource(R.string.publish_keys)) }
             }
         }
     }
 
     val others = view.keys.filter { !it.currentDevice }
     if (others.isNotEmpty()) {
-        SectionLabel("Other devices and security keys")
+        SectionLabel(stringResource(R.string.other_devices_and_security_keys))
         SectionCard {
             others.forEachIndexed { i, k ->
                 if (i > 0) RowDivider()
-                PublishedKeyRow(k, enabled = !working, onCopy = { onCopy("${k.keyType.label()} public key", k.publicKey) }, onRemove = { onRemoveKey(k) })
+                PublishedKeyRow(k, enabled = !working, onCopy = { onCopy(str(R.string.public_key, k.keyType.label()), k.publicKey) }, onRemove = { onRemoveKey(k) })
             }
         }
     }
 
-    SectionLabel("Security keys")
+    SectionLabel(stringResource(R.string.security_keys))
     SectionCard {
         ListRow(
-            title = "New security key",
-            subtitle = "Create a credential on a FIDO2 token (USB or NFC) and publish it",
+            title = stringResource(R.string.new_security_key),
+            subtitle = stringResource(R.string.create_a_credential_on_a_fido2_token_usb),
             leading = { IconTile(Icons.Filled.Usb) },
             modifier = Modifier.clickable(enabled = !working, onClick = onAddSecurityKey),
         )
         RowDivider()
         ListRow(
-            title = "Publish a key from the keychain",
-            subtitle = "An sk-* key already in a vault on this phone",
+            title = stringResource(R.string.publish_a_key_from_the_keychain),
+            subtitle = stringResource(R.string.an_sk_key_already_in_a_vault_on),
             leading = { IconTile(Icons.Filled.VpnKey) },
             modifier = Modifier.clickable(enabled = !working, onClick = onAttachSecurityKey),
         )
     }
     Text(
-        "Only the public key and its type go to the server; the credential stays on the token. " +
-            "Provision servers with /all or the SK type to accept it.",
+        stringResource(R.string.only_the_public_key_and_its_type_go),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
@@ -470,12 +468,11 @@ private fun HandleSections(
 private fun AttachKeyDialog(keys: List<KeyItem>, onPick: (KeyItem) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Publish a security key") },
+        title = { Text(stringResource(R.string.publish_a_security_key)) },
         text = {
             if (keys.isEmpty()) {
                 Text(
-                    "No security key to publish: every sk-* key in the unlocked vaults is already under this handle, " +
-                        "or its handle is passphrase-protected without the passphrase remembered.",
+                    stringResource(R.string.no_security_key_to_publish_every_sk_key),
                 )
             } else {
                 Column {
@@ -491,7 +488,7 @@ private fun AttachKeyDialog(keys: List<KeyItem>, onPick: (KeyItem) -> Unit, onDi
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(if (keys.isEmpty()) "OK" else "Cancel") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(if (keys.isEmpty()) "OK" else stringResource(R.string.cancel)) } },
     )
 }
 
@@ -504,7 +501,7 @@ private fun DeviceKeyRow(k: DeviceKeyCard, onCopy: () -> Unit) {
         modifier = Modifier.clickable(onClick = onCopy),
         trailing = {
             Text(
-                if (k.published) "Published" else "Not published",
+                if (k.published) stringResource(R.string.published) else stringResource(R.string.not_published),
                 style = MaterialTheme.typography.bodySmall,
                 color = if (k.published) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
             )
@@ -523,16 +520,16 @@ private fun PublishedKeyRow(k: SshIdKeyCard, enabled: Boolean, onCopy: () -> Uni
         trailing = {
             Box {
                 IconButton(onClick = { menu = true }, enabled = enabled) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "Key actions")
+                    Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.key_actions))
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(
-                        text = { Text("Copy public key") },
+                        text = { Text(stringResource(R.string.copy_public_key)) },
                         leadingIcon = { Icon(Icons.Filled.ContentCopy, contentDescription = null) },
                         onClick = { menu = false; onCopy() },
                     )
                     DropdownMenuItem(
-                        text = { Text("Remove", color = MaterialTheme.colorScheme.error) },
+                        text = { Text(stringResource(R.string.remove_2), color = MaterialTheme.colorScheme.error) },
                         leadingIcon = {
                             Icon(Icons.Filled.DeleteOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                         },

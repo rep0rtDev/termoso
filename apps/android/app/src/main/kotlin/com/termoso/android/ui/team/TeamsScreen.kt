@@ -40,10 +40,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.IconTile
@@ -83,19 +86,19 @@ fun TeamsScreen(
     LaunchedEffect(state.error) { state.error?.let { shell.notify(it) } }
 
     SubScreen(
-        title = "Teams",
+        title = stringResource(R.string.teams),
         onBack = onBack,
         actions = {
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.Add, contentDescription = "Create or join") }
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.create_or_join)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(
-                        text = { Text("Create team") },
+                        text = { Text(stringResource(R.string.create_team)) },
                         leadingIcon = { Icon(Icons.Filled.GroupAdd, contentDescription = null) },
                         onClick = { menu = false; creating = true },
                     )
                     DropdownMenuItem(
-                        text = { Text("Join with invitation link") },
+                        text = { Text(stringResource(R.string.join_with_invitation_link)) },
                         leadingIcon = { Icon(Icons.Filled.Link, contentDescription = null) },
                         onClick = { menu = false; joining = true },
                     )
@@ -117,15 +120,14 @@ fun TeamsScreen(
                 }
                 state.teams.isEmpty() -> {
                     EmptyState(
-                        title = "No team yet",
-                        hint = "Share hosts, keys and snippets through end-to-end encrypted team vaults. " +
-                            "The server only ever stores ciphertext.",
+                        title = stringResource(R.string.no_team_yet),
+                        hint = stringResource(R.string.share_hosts_keys_and_snippets_through_end_to),
                         icon = Icons.Filled.Group,
                         action = {
                             Row(horizontalArrangement = Arrangement.Center) {
-                                Button(onClick = { creating = true }) { Text("Create team") }
+                                Button(onClick = { creating = true }) { Text(stringResource(R.string.create_team)) }
                                 Spacer(Modifier.size(12.dp))
-                                OutlinedButton(onClick = { joining = true }) { Text("Join with link") }
+                                OutlinedButton(onClick = { joining = true }) { Text(stringResource(R.string.join_with_link)) }
                             }
                         },
                     )
@@ -146,7 +148,7 @@ fun TeamsScreen(
             onDismiss = { creating = false },
             onCreate = { name ->
                 runCatching { vm.create(name) }
-                    .onSuccess { shell.notify("Team \"${it.name}\" created"); onOpenTeam(it.id) }
+                    .onSuccess { shell.notify(str(R.string.team_created, it.name)); onOpenTeam(it.id) }
                     .onFailure { shell.notify(it.userMessage()) }
                     .isSuccess
             },
@@ -158,7 +160,7 @@ fun TeamsScreen(
             onDismiss = { joining = false; prefill = "" },
             onJoin = { link ->
                 runCatching { vm.join(link) }
-                    .onSuccess { shell.notify("Joined \"${it.name}\""); onOpenTeam(it.id) }
+                    .onSuccess { shell.notify(str(R.string.joined, it.name)); onOpenTeam(it.id) }
                     .onFailure { shell.notify(it.userMessage()) }
                     .isSuccess
             },
@@ -176,7 +178,7 @@ fun TeamRow(t: TeamCard, modifier: Modifier = Modifier) {
     )
 }
 
-fun members(n: UInt): String = if (n == 1u) "1 member" else "$n members"
+fun members(n: UInt): String = if (n == 1u) str(R.string.s_1_member) else str(R.string.members_2, n)
 
 @Composable
 private fun CreateTeamDialog(onDismiss: () -> Unit, onCreate: suspend (String) -> Boolean) {
@@ -185,21 +187,20 @@ private fun CreateTeamDialog(onDismiss: () -> Unit, onCreate: suspend (String) -
     var busy by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("Create team") },
+        title = { Text(stringResource(R.string.create_team)) },
         text = {
             Column {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Team name") },
+                    label = { Text(stringResource(R.string.team_name)) },
                     singleLine = true,
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "You become the owner. A first team vault named after the team is created with you as manager; " +
-                        "its key is generated on this phone and sealed to each member you grant access to.",
+                    stringResource(R.string.you_become_the_owner_a_first_team_vault),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -217,10 +218,10 @@ private fun CreateTeamDialog(onDismiss: () -> Unit, onCreate: suspend (String) -
                 },
                 enabled = name.isNotBlank() && !busy,
             ) {
-                if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Text("Create")
+                if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Text(stringResource(R.string.create))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -232,23 +233,23 @@ private fun JoinTeamDialog(initial: String, onDismiss: () -> Unit, onJoin: suspe
     var busy by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("Join a team") },
+        title = { Text(stringResource(R.string.join_a_team)) },
         text = {
             Column {
                 OutlinedTextField(
                     value = link,
                     onValueChange = { link = it },
-                    label = { Text("Invitation link or token") },
+                    label = { Text(stringResource(R.string.invitation_link_or_token)) },
                     singleLine = true,
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
                     trailingIcon = {
-                        TextButton(onClick = { pasteText(context)?.let { link = it.trim() } }, enabled = !busy) { Text("Paste") }
+                        TextButton(onClick = { pasteText(context)?.let { link = it.trim() } }, enabled = !busy) { Text(stringResource(R.string.paste_2)) }
                     },
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Paste the link from the invitation email or message. It must be for the account you are signed in with.",
+                    stringResource(R.string.paste_the_link_from_the_invitation_email_or),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -266,9 +267,9 @@ private fun JoinTeamDialog(initial: String, onDismiss: () -> Unit, onJoin: suspe
                 },
                 enabled = link.isNotBlank() && !busy,
             ) {
-                if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Text("Join")
+                if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Text(stringResource(R.string.join))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.cancel)) } },
     )
 }

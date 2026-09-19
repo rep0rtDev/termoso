@@ -54,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -61,11 +62,13 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
 import com.termoso.android.data.VaultRepository
+import com.termoso.android.str
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.FormField
-import com.termoso.android.ui.components.PickerRow
 import com.termoso.android.ui.components.ListRow
+import com.termoso.android.ui.components.PickerRow
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
@@ -130,64 +133,64 @@ fun HostEditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (hostId == null) "New host" else state.draft?.label?.ifBlank { null } ?: "Edit host") },
+                title = { Text(if (hostId == null) stringResource(R.string.new_host) else state.draft?.label?.ifBlank { null } ?: stringResource(R.string.edit_host)) },
                 navigationIcon = {
-                    IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close") }
+                    IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.close)) }
                 },
                 actions = {
                     IconButton(onClick = vm::save, enabled = state.canSave) {
                         if (state.saving) {
                             CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.Filled.Check, contentDescription = "Save")
+                            Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.save))
                         }
                     }
                     val draft = state.draft
                     val savedId = draft?.id
                     if (draft != null) {
                         Box {
-                            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
+                            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(
-                                    text = { Text(if (savedId == null) "Save and connect" else "Connect") },
+                                    text = { Text(if (savedId == null) stringResource(R.string.save_and_connect) else stringResource(R.string.connect)) },
                                     leadingIcon = { Icon(Icons.Filled.Terminal, null) },
                                     enabled = state.canSave,
                                     onClick = { menu = false; saveThen(onConnect) },
                                 )
                                 if (draft.ssh) {
                                     DropdownMenuItem(
-                                        text = { Text(if (savedId == null) "Save and open SFTP" else "SFTP") },
+                                        text = { Text(if (savedId == null) stringResource(R.string.save_and_open_sftp) else "SFTP") },
                                         leadingIcon = { Icon(Icons.Filled.FolderOpen, null) },
                                         enabled = state.canSave,
                                         onClick = { menu = false; saveThen(onSftp) },
                                     )
                                     if (savedId != null) {
                                         DropdownMenuItem(
-                                            text = { Text("Port forwarding…") },
+                                            text = { Text(stringResource(R.string.port_forwarding_2)) },
                                             leadingIcon = { Icon(Icons.Filled.SwapHoriz, null) },
                                             onClick = { menu = false; onForward(savedId) },
                                         )
                                     }
                                 }
                                 DropdownMenuItem(
-                                    text = { Text("Copy link") },
+                                    text = { Text(stringResource(R.string.copy_link)) },
                                     leadingIcon = { Icon(Icons.Filled.Link, null) },
                                     enabled = draft.address.isNotBlank(),
                                     onClick = {
                                         menu = false
                                         copyToClipboard(context, draftLink(draft))
-                                        shell.notify("Link copied")
+                                        shell.notify(str(R.string.link_copied))
                                     },
                                 )
                                 if (savedId != null) {
                                     DropdownMenuItem(
-                                        text = { Text("Duplicate") },
+                                        text = { Text(stringResource(R.string.duplicate)) },
                                         leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
                                         enabled = !state.saving,
                                         onClick = { menu = false; vm.duplicate() },
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("Remove", color = MaterialTheme.colorScheme.error) },
+                                        text = { Text(stringResource(R.string.remove_2), color = MaterialTheme.colorScheme.error) },
                                         leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
                                         enabled = !state.saving,
                                         onClick = { menu = false; confirmRemove = true },
@@ -227,9 +230,9 @@ fun HostEditorScreen(
 
     if (confirmRemove) {
         ConfirmDialog(
-            title = "Remove host?",
-            text = "The host is removed from this vault. Keys in the keychain stay.",
-            confirm = "Remove",
+            title = stringResource(R.string.remove_host),
+            text = stringResource(R.string.the_host_is_removed_from_this_vault_keys),
+            confirm = stringResource(R.string.remove_2),
             onConfirm = { confirmRemove = false; vm.delete() },
             onDismiss = { confirmRemove = false },
         )
@@ -276,23 +279,23 @@ private fun HostForm(
 
         SectionCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                FormField(draft.label, { v -> vm.update { it.copy(label = v) } }, "Alias")
+                FormField(draft.label, { v -> vm.update { it.copy(label = v) } }, stringResource(R.string.alias))
                 FormField(
                     draft.address,
                     { v -> vm.update { it.copy(address = v) } },
-                    "Hostname or IP address",
+                    stringResource(R.string.hostname_or_ip_address),
                     keyboard = KeyboardType.Uri,
                 )
             }
             RowDivider()
             ChevronRow(
-                title = "Group",
-                badge = draft.groupId?.let { groupPaths[it] } ?: "None",
+                title = stringResource(R.string.group),
+                badge = draft.groupId?.let { groupPaths[it] } ?: stringResource(R.string.none),
                 modifier = Modifier.clickable { groupPicker = true },
             )
             RowDivider()
             ChevronRow(
-                title = "Tags",
+                title = stringResource(R.string.tags),
                 badge = tagSummary(draft, state.tags),
                 modifier = Modifier.clickable { tagPicker = true },
             )
@@ -311,11 +314,11 @@ private fun HostForm(
                     FormField(
                         telnet.port?.toString() ?: "",
                         { v -> vm.updateTelnet { it.copy(port = v.filter(Char::isDigit).take(5).toUIntOrNull()?.takeIf { p -> p in 1u..65535u }?.toUShort()) } },
-                        "Port",
+                        stringResource(R.string.port),
                         placeholder = "23",
                         keyboard = KeyboardType.Number,
                     )
-                    FormField(telnet.username, { v -> vm.updateTelnet { it.copy(username = v) } }, "Username")
+                    FormField(telnet.username, { v -> vm.updateTelnet { it.copy(username = v) } }, stringResource(R.string.username))
                     PasswordField(
                         password = telnet.password,
                         hasPassword = telnet.hasPassword,
@@ -323,7 +326,7 @@ private fun HostForm(
                         onChange = { v -> vm.updateTelnet { it.copy(password = v) } },
                     )
                     Text(
-                        "Telnet is not encrypted: anything typed, including the password, crosses the network in the clear.",
+                        stringResource(R.string.telnet_is_not_encrypted_anything_typed_including_the),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -336,13 +339,13 @@ private fun HostForm(
                 if (!draft.ssh) {
                     TextButton(onClick = { vm.update { it.copy(ssh = true) } }) {
                         Icon(Icons.Filled.Add, contentDescription = null)
-                        Text("Add SSH")
+                        Text(stringResource(R.string.add_ssh))
                     }
                 }
                 if (telnet == null) {
                     TextButton(onClick = { vm.update { it.copy(telnet = TelnetDraft(port = null, username = "", password = null, identityId = null, hasPassword = false)) } }) {
                         Icon(Icons.Filled.Add, contentDescription = null)
-                        Text("Add Telnet")
+                        Text(stringResource(R.string.add_telnet))
                     }
                 }
             }
@@ -355,7 +358,7 @@ private fun HostForm(
                 .padding(vertical = 16.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(if (more) "Hide advanced" else "Show advanced", color = MaterialTheme.colorScheme.primary)
+            Text(if (more) stringResource(R.string.hide_advanced) else stringResource(R.string.show_advanced), color = MaterialTheme.colorScheme.primary)
             Icon(
                 if (more) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                 contentDescription = null,
@@ -370,27 +373,27 @@ private fun HostForm(
                     FormField(
                         draft.keepAliveInterval?.toString() ?: "",
                         { v -> vm.update { it.copy(keepAliveInterval = v.filter(Char::isDigit).take(5).toUIntOrNull()) } },
-                        "Keep-alive interval, seconds",
-                        placeholder = "App default",
+                        stringResource(R.string.keep_alive_interval_seconds),
+                        placeholder = stringResource(R.string.app_default),
                         keyboard = KeyboardType.Number,
                     )
                     FormField(
                         draft.timeout?.toString() ?: "",
                         { v -> vm.update { it.copy(timeout = v.filter(Char::isDigit).take(4).toUIntOrNull()) } },
-                        "Connection timeout, seconds",
-                        placeholder = "App default",
+                        stringResource(R.string.connection_timeout_seconds),
+                        placeholder = stringResource(R.string.app_default),
                         keyboard = KeyboardType.Number,
                     )
                 }
                 RowDivider()
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Environment variables", style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.environment_variables), style = MaterialTheme.typography.labelLarge)
                     draft.envVariables.forEachIndexed { i, env ->
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
                                 value = env.name,
                                 onValueChange = { vm.setEnv(i, it, env.value) },
-                                label = { Text("Name") },
+                                label = { Text(stringResource(R.string.name)) },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f),
                                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false),
@@ -398,17 +401,17 @@ private fun HostForm(
                             OutlinedTextField(
                                 value = env.value,
                                 onValueChange = { vm.setEnv(i, env.name, it) },
-                                label = { Text("Value") },
+                                label = { Text(stringResource(R.string.value_)) },
                                 singleLine = true,
                                 modifier = Modifier.weight(1f),
                                 keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
                             )
-                            IconButton(onClick = { vm.removeEnv(i) }) { Icon(Icons.Filled.Close, contentDescription = "Remove") }
+                            IconButton(onClick = { vm.removeEnv(i) }) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.remove_2)) }
                         }
                     }
                     TextButton(onClick = vm::addEnv) {
                         Icon(Icons.Filled.Add, contentDescription = null)
-                        Text("Add variable")
+                        Text(stringResource(R.string.add_variable))
                     }
                 }
                 RowDivider()
@@ -416,7 +419,7 @@ private fun HostForm(
                     OutlinedTextField(
                         value = draft.notes,
                         onValueChange = { v -> vm.update { it.copy(notes = v) } },
-                        label = { Text("Notes") },
+                        label = { Text(stringResource(R.string.notes)) },
                         minLines = 3,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -428,7 +431,7 @@ private fun HostForm(
 
     if (groupPicker) {
         GroupPickerDialog(
-            title = "Group",
+            title = stringResource(R.string.group),
             groups = state.groups,
             current = draft.groupId,
             onPick = { vm.setGroup(it); groupPicker = false },
@@ -459,7 +462,7 @@ private fun SshSection(
             FormField(
                 draft.port?.toString() ?: "",
                 { v -> vm.update { it.copy(port = v.filter(Char::isDigit).take(5).toUIntOrNull()?.takeIf { p -> p in 1u..65535u }?.toUShort()) } },
-                "Port",
+                stringResource(R.string.port),
                 placeholder = inherited?.port?.toString() ?: "22",
                 keyboard = KeyboardType.Number,
             )
@@ -468,8 +471,8 @@ private fun SshSection(
                 FormField(
                     draft.username,
                     { v -> vm.update { it.copy(username = v) } },
-                    "Username",
-                    placeholder = inherited?.username ?: if (draft.sshId || inherited?.sshId == true) "SSH ID handle" else "root",
+                    stringResource(R.string.username),
+                    placeholder = inherited?.username ?: if (draft.sshId || inherited?.sshId == true) stringResource(R.string.ssh_id_handle) else "root",
                 )
                 PasswordField(
                     password = draft.password,
@@ -488,9 +491,9 @@ private fun SshSection(
             } else {
                 Text(
                     if (identity.sshId) {
-                        "Username, password, key and SSH ID come from the identity “${identity.label}”."
+                        stringResource(R.string.username_password_key_and_ssh_id_come_from, identity.label)
                     } else {
-                        "Username, password and key come from the identity “${identity.label}”."
+                        stringResource(R.string.username_password_and_key_come_from_the_identity, identity.label)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -499,14 +502,14 @@ private fun SshSection(
         }
         RowDivider()
         SwitchRow(
-            title = "Agent forwarding",
+            title = stringResource(R.string.agent_forwarding),
             checked = draft.agentForwarding,
             onCheckedChange = { v -> vm.update { it.copy(agentForwarding = v) } },
         )
         RowDivider()
         SwitchRow(
             title = "Mosh",
-            subtitle = "Roaming UDP session; SSH only starts mosh-server on the host",
+            subtitle = stringResource(R.string.roaming_udp_session_ssh_only_starts_mosh_server),
             checked = draft.useMosh,
             onCheckedChange = { v -> vm.update { it.copy(useMosh = v) } },
         )
@@ -515,7 +518,7 @@ private fun SshSection(
                 FormField(
                     draft.moshServerCommand ?: "",
                     { v -> vm.update { it.copy(moshServerCommand = v.takeIf { c -> c.isNotBlank() }) } },
-                    "mosh-server command",
+                    stringResource(R.string.mosh_server_command),
                     placeholder = remember { moshDefaultServerCommand() },
                 )
             }
@@ -533,9 +536,9 @@ private fun SshSection(
 private fun StartupSnippetRow(state: HostEditorState, draft: HostDraft, onPick: (String?) -> Unit) {
     val snippet = state.snippets.firstOrNull { it.id == draft.startupSnippetId }
     PickerRow(
-        label = "Startup snippet",
-        value = snippet?.label ?: if (draft.startupSnippetId != null) "Unknown snippet" else "None",
-        options = listOf<Pair<String?, String>>(null to "None") + state.snippets.map { it.id to it.label },
+        label = stringResource(R.string.startup_snippet),
+        value = snippet?.label ?: if (draft.startupSnippetId != null) stringResource(R.string.unknown_snippet) else stringResource(R.string.none),
+        options = listOf<Pair<String?, String>>(null to stringResource(R.string.none)) + state.snippets.map { it.id to it.label },
         selected = draft.startupSnippetId,
         onPick = onPick,
         empty = null,
@@ -548,7 +551,7 @@ private fun hasAdvanced(d: HostDraft) =
 private fun tagSummary(draft: HostDraft, tags: List<TagItem>): String {
     val labels = draft.tagIds.mapNotNull { id -> tags.firstOrNull { it.id == id }?.label }
     return when {
-        labels.isEmpty() -> "None"
+        labels.isEmpty() -> str(R.string.none)
         labels.size <= 2 -> labels.joinToString(", ")
         else -> "${labels.take(2).joinToString(", ")} +${labels.size - 2}"
     }
@@ -560,7 +563,7 @@ private fun ProtocolHeader(title: String, removable: Boolean, onRemove: () -> Un
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.weight(1f)) { SectionLabel(title) }
         if (removable) {
-            TextButton(onClick = onRemove) { Text("Remove") }
+            TextButton(onClick = onRemove) { Text(stringResource(R.string.remove_2)) }
         }
     }
 }
@@ -576,10 +579,10 @@ private fun PasswordField(password: String?, hasPassword: Boolean, inheritedHint
     FormField(
         value = password ?: "",
         onChange = { onChange(it) },
-        label = if (stored) "Password · saved" else "Password",
+        label = if (stored) stringResource(R.string.password_saved) else stringResource(R.string.password),
         placeholder = when {
             stored -> "••••••••"
-            inheritedHint -> "Inherited from group"
+            inheritedHint -> stringResource(R.string.inherited_from_group)
             else -> null
         },
         keyboard = KeyboardType.Password,
@@ -588,13 +591,13 @@ private fun PasswordField(password: String?, hasPassword: Boolean, inheritedHint
             Row {
                 if (hasPassword) {
                     TextButton(onClick = { onChange(if (stored) "" else null) }) {
-                        Text(if (stored) "Clear" else "Keep saved")
+                        Text(if (stored) stringResource(R.string.clear) else stringResource(R.string.keep_saved))
                     }
                 }
                 IconButton(onClick = { visible = !visible }) {
                     Icon(
                         if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                        contentDescription = if (visible) "Hide password" else "Show password",
+                        contentDescription = if (visible) stringResource(R.string.hide_password) else stringResource(R.string.show_password),
                     )
                 }
             }
@@ -606,12 +609,12 @@ private fun PasswordField(password: String?, hasPassword: Boolean, inheritedHint
 private fun KeyRow(state: HostEditorState, draft: HostDraft, onPick: (String?) -> Unit) {
     val key = state.keys.firstOrNull { it.id == draft.sshKeyId }
     PickerRow(
-        label = "Key",
-        value = key?.label ?: state.inherited?.sshKeyLabel?.let { "$it (inherited)" } ?: "None",
-        options = listOf<Pair<String?, String>>(null to "None") + state.keys.map { it.id to "${it.label} · ${it.keyType}" },
+        label = stringResource(R.string.key),
+        value = key?.label ?: state.inherited?.sshKeyLabel?.let { stringResource(R.string.inherited, it) } ?: stringResource(R.string.none),
+        options = listOf<Pair<String?, String>>(null to stringResource(R.string.none)) + state.keys.map { it.id to "${it.label} · ${it.keyType}" },
         selected = draft.sshKeyId,
         onPick = onPick,
-        empty = "No keys in this vault yet — add one in Keychain.",
+        empty = stringResource(R.string.no_keys_in_this_vault_yet_add_one),
     )
 }
 
@@ -620,9 +623,9 @@ private fun IdentityRow(state: HostEditorState, draft: HostDraft, onPick: (Strin
     if (state.identities.isEmpty() && draft.identityId == null) return
     val identity = state.identities.firstOrNull { it.id == draft.identityId }
     PickerRow(
-        label = "Identity",
-        value = identity?.label ?: state.inherited?.identityLabel?.let { "$it (inherited)" } ?: "None",
-        options = listOf<Pair<String?, String>>(null to "None") + state.identities.map { it.id to "${it.label} · ${it.username}" },
+        label = stringResource(R.string.identity),
+        value = identity?.label ?: state.inherited?.identityLabel?.let { stringResource(R.string.inherited, it) } ?: stringResource(R.string.none),
+        options = listOf<Pair<String?, String>>(null to stringResource(R.string.none)) + state.identities.map { it.id to "${it.label} · ${it.username}" },
         selected = draft.identityId,
         onPick = onPick,
         empty = null,
@@ -631,9 +634,9 @@ private fun IdentityRow(state: HostEditorState, draft: HostDraft, onPick: (Strin
 
 @Composable
 private fun IpVersionRow(value: String, onPick: (String) -> Unit) {
-    val options = listOf("auto" to "Auto", "ipv4" to "IPv4 only", "ipv6" to "IPv6 only")
+    val options = listOf("auto" to stringResource(R.string.auto), "ipv4" to stringResource(R.string.ipv4_only), "ipv6" to stringResource(R.string.ipv6_only))
     PickerRow(
-        label = "IP version",
+        label = stringResource(R.string.ip_version),
         value = options.firstOrNull { it.first == value }?.second ?: value,
         options = options.map { it.first to it.second },
         selected = value,
@@ -647,10 +650,10 @@ private fun VaultRow(vaults: List<VaultInfo>, selected: String, onSelect: (Strin
     var open by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth()) {
         ListRow(
-            title = vaults.firstOrNull { it.id == selected }?.let { vaultLabel(it) } ?: "Vault",
-            subtitle = "Vault",
+            title = vaults.firstOrNull { it.id == selected }?.let { vaultLabel(it) } ?: stringResource(R.string.vault),
+            subtitle = stringResource(R.string.vault),
             modifier = Modifier.clickable { open = true },
-        ) { Icon(Icons.Filled.ArrowDropDown, contentDescription = "Choose vault") }
+        ) { Icon(Icons.Filled.ArrowDropDown, contentDescription = stringResource(R.string.choose_vault)) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             vaults.forEach { v ->
                 DropdownMenuItem(text = { Text(vaultLabel(v)) }, onClick = { onSelect(v.id); open = false })
@@ -670,11 +673,11 @@ private fun TagPickerDialog(
     var newTag by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Tags") },
+        title = { Text(stringResource(R.string.tags)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (tags.isEmpty()) {
-                    Text("No tags yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.no_tags_yet), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 tags.sortedBy { it.label.lowercase() }.forEach { tag ->
                     Row(
@@ -690,18 +693,18 @@ private fun TagPickerDialog(
                 OutlinedTextField(
                     value = newTag,
                     onValueChange = { newTag = it },
-                    label = { Text("New tag") },
+                    label = { Text(stringResource(R.string.new_tag)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     trailingIcon = {
                         IconButton(
                             onClick = { onCreate(newTag); newTag = "" },
                             enabled = newTag.isNotBlank(),
-                        ) { Icon(Icons.Filled.Add, contentDescription = "Add tag") }
+                        ) { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.add_tag)) }
                     },
                 )
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.done)) } },
     )
 }

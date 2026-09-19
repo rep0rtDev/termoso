@@ -1,5 +1,6 @@
 package com.termoso.android.ui.snippets
 
+import com.termoso.android.plural
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,9 +44,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
+import com.termoso.android.str
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.FormField
@@ -98,12 +102,12 @@ fun SnippetsScreen(
     val destinations = vaultId?.let { vaultDestinations(vaults, it) } ?: emptyList()
 
     SubScreen(
-        title = here?.label ?: "Snippets",
+        title = here?.label ?: stringResource(R.string.snippets),
         onBack = onBack,
         floating = {
             if (vaultId != null && (packages.isNotEmpty() || snippets.isNotEmpty())) {
                 Box {
-                    FloatingActionButton(onClick = { fabMenu = true }) { Icon(Icons.Filled.Add, contentDescription = "New") }
+                    FloatingActionButton(onClick = { fabMenu = true }) { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.new_item)) }
                     NewMenu(
                         expanded = fabMenu,
                         onDismiss = { fabMenu = false },
@@ -118,15 +122,15 @@ fun SnippetsScreen(
             state.loading -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             packages.isEmpty() && snippets.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 EmptyState(
-                    title = if (here == null) "No snippets yet" else "Empty package",
-                    hint = "Save commands you type often and run them into one or many terminals, with {{variables}} filled in on the way.",
+                    title = if (here == null) stringResource(R.string.no_snippets_yet) else stringResource(R.string.empty_package),
+                    hint = stringResource(R.string.save_commands_you_type_often_and_run_them),
                     icon = Icons.Filled.Code,
                     action = if (vaultId == null) {
                         null
                     } else {
                         {
                             Box {
-                                Button(onClick = { fabMenu = true }) { Text("Create") }
+                                Button(onClick = { fabMenu = true }) { Text(stringResource(R.string.create)) }
                                 NewMenu(
                                     expanded = fabMenu,
                                     onDismiss = { fabMenu = false },
@@ -143,7 +147,7 @@ fun SnippetsScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             ) {
                 if (packages.isNotEmpty()) {
-                    item { SectionLabel("Packages") }
+                    item { SectionLabel(stringResource(R.string.packages)) }
                     item {
                         SectionCard {
                             packages.forEachIndexed { i, p ->
@@ -161,7 +165,7 @@ fun SnippetsScreen(
                     item { Spacer(Modifier.height(16.dp)) }
                 }
                 if (snippets.isNotEmpty()) {
-                    item { SectionLabel("Snippets") }
+                    item { SectionLabel(stringResource(R.string.snippets)) }
                     item {
                         SectionCard {
                             snippets.forEachIndexed { i, s ->
@@ -199,18 +203,18 @@ fun SnippetsScreen(
     }
     confirmDelete?.let { s ->
         ConfirmDialog(
-            title = "Delete snippet?",
-            text = "\"${s.label}\" will be removed from this vault.",
-            confirm = "Delete",
+            title = stringResource(R.string.delete_snippet),
+            text = stringResource(R.string.will_be_removed_from_this_vault, s.label),
+            confirm = stringResource(R.string.delete),
             onConfirm = { vm.delete(s.id); confirmDelete = null },
             onDismiss = { confirmDelete = null },
         )
     }
     confirmDeletePackage?.let { p ->
         ConfirmDialog(
-            title = "Delete package?",
-            text = "\"${p.label}\" will be removed. Snippets and packages inside it move up one level.",
-            confirm = "Delete",
+            title = stringResource(R.string.delete_package),
+            text = stringResource(R.string.package_will_be_removed, p.label),
+            confirm = stringResource(R.string.delete),
             onConfirm = { vm.deletePackage(p.id); confirmDeletePackage = null },
             onDismiss = { confirmDeletePackage = null },
         )
@@ -247,12 +251,12 @@ fun SnippetsScreen(
 private fun NewMenu(expanded: Boolean, onDismiss: () -> Unit, onSnippet: () -> Unit, onPackage: () -> Unit) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         DropdownMenuItem(
-            text = { Text("New snippet") },
+            text = { Text(stringResource(R.string.new_snippet)) },
             leadingIcon = { Icon(Icons.Filled.Code, null) },
             onClick = { onDismiss(); onSnippet() },
         )
         DropdownMenuItem(
-            text = { Text("New package") },
+            text = { Text(stringResource(R.string.new_package)) },
             leadingIcon = { Icon(Icons.Filled.CreateNewFolder, null) },
             onClick = { onDismiss(); onPackage() },
         )
@@ -272,12 +276,12 @@ private sealed interface VaultTransfer {
 private fun TransferMenuItems(onTransfer: ((move: Boolean) -> Unit)?, onPicked: () -> Unit) {
     if (onTransfer == null) return
     DropdownMenuItem(
-        text = { Text("Copy to vault…") },
+        text = { Text(stringResource(R.string.copy_to_vault)) },
         leadingIcon = { Icon(Icons.Filled.LibraryAdd, null) },
         onClick = { onPicked(); onTransfer(false) },
     )
     DropdownMenuItem(
-        text = { Text("Move to vault…") },
+        text = { Text(stringResource(R.string.move_to_vault)) },
         leadingIcon = { Icon(Icons.Filled.DriveFileMove, null) },
         onClick = { onPicked(); onTransfer(true) },
     )
@@ -300,10 +304,10 @@ private fun PackageRow(
             modifier = Modifier.combinedClickable(onClick = onOpen, onLongClick = { menu = true }),
         )
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onRename() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onRename() })
             TransferMenuItems(onTransfer) { menu = false }
             DropdownMenuItem(
-                text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
                 leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
                 onClick = { menu = false; onDelete() },
             )
@@ -328,19 +332,19 @@ private fun SnippetRow(
             leading = { IconTile(Icons.Filled.Code) },
             modifier = Modifier.combinedClickable(onClick = onEdit, onLongClick = { menu = true }),
         ) {
-            IconButton(onClick = onRun) { Icon(Icons.Filled.PlayArrow, contentDescription = "Run", tint = MaterialTheme.colorScheme.primary) }
+            IconButton(onClick = onRun) { Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.run), tint = MaterialTheme.colorScheme.primary) }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(text = { Text("Run") }, leadingIcon = { Icon(Icons.Filled.PlayArrow, null) }, onClick = { menu = false; onRun() })
-            DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onEdit() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.run)) }, leadingIcon = { Icon(Icons.Filled.PlayArrow, null) }, onClick = { menu = false; onRun() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.edit)) }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onEdit() })
             DropdownMenuItem(
-                text = { Text("Duplicate") },
+                text = { Text(stringResource(R.string.duplicate)) },
                 leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
                 onClick = { menu = false; onDuplicate() },
             )
             TransferMenuItems(onTransfer) { menu = false }
             DropdownMenuItem(
-                text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
                 leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
                 onClick = { menu = false; onDelete() },
             )
@@ -352,9 +356,9 @@ private fun SnippetRow(
 fun snippetSubtitle(snippet: SnippetItem): String {
     val first = snippet.script.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: ""
     val extras = buildList {
-        if (snippet.variables.isNotEmpty()) add("${snippet.variables.size} var" + if (snippet.variables.size == 1) "" else "s")
-        if (snippet.targetHostIds.isNotEmpty()) add("${snippet.targetHostIds.size} target" + if (snippet.targetHostIds.size == 1) "" else "s")
-        if (snippet.closeAfterRun) add("closes session")
+        if (snippet.variables.isNotEmpty()) add(plural(R.plurals.n_vars, snippet.variables.size, snippet.variables.size))
+        if (snippet.targetHostIds.isNotEmpty()) add(plural(R.plurals.n_targets, snippet.targetHostIds.size, snippet.targetHostIds.size))
+        if (snippet.closeAfterRun) add(str(R.string.closes_session))
     }
     return if (extras.isEmpty()) first else "$first · ${extras.joinToString(" · ")}"
 }
@@ -371,10 +375,10 @@ private fun VaultTransferDialog(
         is VaultTransfer.Snippet -> TransferSubject.Snippet to transfer.snippet.label
         is VaultTransfer.Package -> TransferSubject.Package to transfer.pkg.label
     }
-    val verb = if (transfer.move) "Move" else "Copy"
+    val verb = if (transfer.move) stringResource(R.string.move) else stringResource(R.string.copy)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("$verb to vault") },
+        title = { Text(stringResource(R.string.to_vault, verb)) },
         text = {
             Column {
                 vaults.forEach { v ->
@@ -402,7 +406,7 @@ private fun VaultTransferDialog(
                 Text(verb, color = if (transfer.move) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -411,11 +415,11 @@ private fun PackageDialog(existing: SnippetPackageItem?, onSave: (String) -> Uni
     var label by remember { mutableStateOf(existing?.label ?: "") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (existing == null) "New package" else "Rename package") },
-        text = { FormField(label, { label = it }, "Name") },
+        title = { Text(if (existing == null) stringResource(R.string.new_package) else stringResource(R.string.rename_package)) },
+        text = { FormField(label, { label = it }, stringResource(R.string.name)) },
         confirmButton = {
-            TextButton(onClick = { onSave(label) }, enabled = label.isNotBlank()) { Text(if (existing == null) "Create" else "Save") }
+            TextButton(onClick = { onSave(label) }, enabled = label.isNotBlank()) { Text(if (existing == null) stringResource(R.string.create) else stringResource(R.string.save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }

@@ -8,8 +8,10 @@ import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
-import kotlinx.coroutines.suspendCancellableCoroutine
+import com.termoso.android.R
+import com.termoso.android.str
 import kotlin.coroutines.resume
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 /** Outcome of a device-authentication prompt (biometric or screen-lock credential). */
 sealed interface AuthResult {
@@ -25,12 +27,12 @@ fun deviceAuthProblem(context: Context): String? =
     when (BiometricManager.from(context).canAuthenticate(AUTHENTICATORS)) {
         BiometricManager.BIOMETRIC_SUCCESS -> null
         BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED ->
-            "Set up a screen lock (PIN, pattern or password) in Android Settings first."
+            str(R.string.set_up_a_screen_lock_pin_pattern_or)
         BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE,
         BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE,
-        -> "This device cannot authenticate you."
-        BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED -> "A security update is required for device authentication."
-        else -> "Device authentication is unavailable."
+        -> str(R.string.this_device_cannot_authenticate_you)
+        BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED -> str(R.string.a_security_update_is_required_for_device_authentication)
+        else -> str(R.string.device_authentication_is_unavailable)
     }
 
 /**

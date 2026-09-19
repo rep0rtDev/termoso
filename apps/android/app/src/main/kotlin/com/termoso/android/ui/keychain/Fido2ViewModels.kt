@@ -1,10 +1,13 @@
 package com.termoso.android.ui.keychain
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.termoso.android.R
 import com.termoso.android.data.Fido2Manager
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.core.Fido2DeviceCard
 import com.termoso.core.Fido2GenerateDraft
 import com.termoso.core.Fido2Listener
@@ -19,9 +22,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** Security-key algorithms, in display order. */
-enum class SkKind(val label: String, val hint: String, val algorithm: SkKeyAlgorithm) {
-    ED25519("Ed25519", "sk-ssh-ed25519 — needs a FIDO2 key with Ed25519 support", SkKeyAlgorithm.ED25519),
-    ECDSA("ECDSA P-256", "sk-ecdsa-sha2-nistp256 — every FIDO2 key supports it", SkKeyAlgorithm.ECDSA_P256),
+enum class SkKind(val label: String, @StringRes val hint: Int, val algorithm: SkKeyAlgorithm) {
+    ED25519("Ed25519", R.string.sk_kind_ed25519_hint, SkKeyAlgorithm.ED25519),
+    ECDSA("ECDSA P-256", R.string.sk_kind_ecdsa_hint, SkKeyAlgorithm.ECDSA_P256),
 }
 
 data class Fido2GenerateState(
@@ -103,7 +106,7 @@ class Fido2GenerateViewModel(
                         Fido2GenerateDraft(
                             vaultId = vault,
                             deviceId = device.id,
-                            label = s.label.trim().ifBlank { "${s.kind.label} security key" },
+                            label = s.label.trim().ifBlank { str(R.string.security_key_2, s.kind.label) },
                             algorithm = s.kind.algorithm,
                             application = s.application.trim(),
                             resident = s.resident,

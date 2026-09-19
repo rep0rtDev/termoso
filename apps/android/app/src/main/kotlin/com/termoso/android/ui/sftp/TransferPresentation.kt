@@ -1,5 +1,7 @@
 package com.termoso.android.ui.sftp
 
+import com.termoso.android.R
+import com.termoso.android.str
 import com.termoso.core.TransferCard
 import com.termoso.core.TransferStatus
 
@@ -31,14 +33,14 @@ fun TransferCard.statusLabel(): String {
         if (total != null) append(" / ").append(formatSize(total))
     }
     return when (val s = status) {
-        is TransferStatus.Queued -> if (done > 0uL) "Queued · $progress" else "Queued"
+        is TransferStatus.Queued -> if (done > 0uL) str(R.string.queued, progress) else str(R.string.queued_2)
         is TransferStatus.Running -> buildString {
             append(progress)
             if (bytesPerSec > 0uL) append(" · ").append(formatSize(bytesPerSec)).append("/s")
         }
-        is TransferStatus.Paused -> "Paused · $progress"
-        is TransferStatus.Done -> "Done · ${formatSize(done)}"
+        is TransferStatus.Paused -> str(R.string.paused, progress)
+        is TransferStatus.Done -> str(R.string.done_2, formatSize(done))
         is TransferStatus.Failed -> if (done > 0uL) "${s.message} · $progress" else s.message
-        is TransferStatus.Cancelled -> "Cancelled"
+        is TransferStatus.Cancelled -> str(R.string.cancelled_2)
     }
 }

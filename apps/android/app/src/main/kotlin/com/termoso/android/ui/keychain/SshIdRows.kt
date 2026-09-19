@@ -9,7 +9,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.termoso.android.R
 import com.termoso.android.ui.account.label
 import com.termoso.android.ui.components.PickerRow
 import com.termoso.android.ui.components.TermosoSwitch
@@ -34,13 +36,13 @@ fun SshIdRows(
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("SSH ID", style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.ssh_id), style = MaterialTheme.typography.bodyLarge)
                 Text(
                     if (sshId) {
-                        "Signs in with this phone's SSH ID passkeys" +
-                            if (usernameHint) "; username defaults to your handle" else ""
+                        stringResource(R.string.signs_in_with_this_phones_ssh_id_passkeys) +
+                            if (usernameHint) stringResource(R.string.username_defaults_to_your_handle) else ""
                     } else {
-                        "Use the passkeys published under your SSH ID handle"
+                        stringResource(R.string.use_the_passkeys_published_under_your_ssh_id)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -50,15 +52,15 @@ fun SshIdRows(
         }
         if (sshId) {
             PickerRow(
-                label = "Preferred key",
-                value = keyType?.label() ?: "Any",
-                options = listOf<Pair<String?, String>>(null to "Any") + softwareKinds.map { it.name to it.label() },
+                label = stringResource(R.string.preferred_key),
+                value = keyType?.label() ?: stringResource(R.string.any),
+                options = listOf<Pair<String?, String>>(null to stringResource(R.string.any)) + softwareKinds.map { it.name to it.label() },
                 selected = keyType?.name,
                 onPick = { name -> onKeyType(name?.let(SshIdKeyKind::valueOf)) },
                 empty = null,
             )
             Text(
-                "Set up the handle in Settings → Account → SSH ID. Password and key below stay as fallbacks.",
+                stringResource(R.string.set_up_the_handle_in_settings_account_ssh),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),

@@ -37,11 +37,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.termoso.android.R
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.keychain.copyText
 import com.termoso.core.InviteSent
 import com.termoso.core.TeamMemberCard
@@ -76,15 +79,15 @@ fun InviteDialog(
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text(if (results == null) "Invite people" else "Invitations sent") },
+        title = { Text(if (results == null) stringResource(R.string.invite_people) else stringResource(R.string.invitations_sent)) },
         text = {
             val sent = results
             if (sent != null) {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    sent.forEach { r -> InviteResultRow(r, onCopy = { copyText(context, "Invitation link", it) }) }
+                    sent.forEach { r -> InviteResultRow(r, onCopy = { copyText(context, str(R.string.invitation_link), it) }) }
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Share each link with its recipient. It expires in 14 days and can be revoked from the team screen.",
+                        stringResource(R.string.share_each_link_with_its_recipient_it_expires),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -95,14 +98,14 @@ fun InviteDialog(
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
-                    label = { Text("Email addresses") },
-                    placeholder = { Text("one per line, or comma-separated") },
+                    label = { Text(stringResource(R.string.email_addresses)) },
+                    placeholder = { Text(stringResource(R.string.one_per_line_or_comma_separated)) },
                     minLines = 2,
                     maxLines = 5,
                     enabled = !busy,
                     isError = bad.isNotEmpty(),
                     supportingText = if (bad.isNotEmpty()) {
-                        { Text("Not an address: ${bad.first()}") }
+                        { Text(stringResource(R.string.not_an_address, bad.first())) }
                     } else {
                         null
                     },
@@ -114,7 +117,7 @@ fun InviteDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
-                Text("Role", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.role), style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(TeamRole.MEMBER, TeamRole.ADMIN).forEach { r ->
                         FilterChip(
@@ -133,7 +136,7 @@ fun InviteDialog(
                 Text(role.hint(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (vaults.isNotEmpty()) {
                     Spacer(Modifier.height(12.dp))
-                    Text("Give access to", style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.give_access_to), style = MaterialTheme.typography.labelLarge)
                     vaults.forEach { v ->
                         val on = picked[v.id] == true
                         Row(
@@ -149,7 +152,7 @@ fun InviteDialog(
                                 Text(v.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 if (v.access != VaultAccess.MANAGE) {
                                     Text(
-                                        "only managers of this vault can grant access",
+                                        stringResource(R.string.only_managers_of_this_vault_can_grant_access),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -158,7 +161,7 @@ fun InviteDialog(
                         }
                     }
                     Text(
-                        "They can view the chosen vaults once they join and you grant the key.",
+                        stringResource(R.string.they_can_view_the_chosen_vaults_once_they),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -171,7 +174,7 @@ fun InviteDialog(
         },
         confirmButton = {
             if (results != null) {
-                TextButton(onClick = onDismiss) { Text("Done") }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.done)) }
             } else {
                 TextButton(
                     onClick = {
@@ -189,13 +192,13 @@ fun InviteDialog(
                     if (busy) {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                     } else {
-                        Text(if (emails.size > 1) "Send ${emails.size} invitations" else "Send invitation")
+                        Text(if (emails.size > 1) stringResource(R.string.send_invitations, emails.size) else stringResource(R.string.send_invitation))
                     }
                 }
             }
         },
         dismissButton = {
-            if (results == null) TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") }
+            if (results == null) TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.cancel)) }
         },
     )
 }
@@ -216,7 +219,7 @@ private fun InviteResultRow(r: InviteSent, onCopy: (String) -> Unit) {
         Column(Modifier.weight(1f)) {
             Text(r.email, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                r.error ?: "link ready",
+                r.error ?: stringResource(R.string.link_ready),
                 style = MaterialTheme.typography.bodySmall,
                 color = if (r.error == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                 maxLines = 2,
@@ -224,7 +227,7 @@ private fun InviteResultRow(r: InviteSent, onCopy: (String) -> Unit) {
             )
         }
         r.url?.let { url ->
-            IconButton(onClick = { onCopy(url) }) { Icon(Icons.Filled.ContentCopy, contentDescription = "Copy link") }
+            IconButton(onClick = { onCopy(url) }) { Icon(Icons.Filled.ContentCopy, contentDescription = stringResource(R.string.copy_link)) }
         }
     }
 }
@@ -244,20 +247,20 @@ fun NewTeamVaultDialog(
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        title = { Text("New team vault") },
+        title = { Text(stringResource(R.string.new_team_vault)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Vault name") },
+                    label = { Text(stringResource(R.string.vault_name)) },
                     singleLine = true,
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (others.isNotEmpty()) {
                     Spacer(Modifier.height(12.dp))
-                    Text("Members", style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.members), style = MaterialTheme.typography.labelLarge)
                     others.forEach { m ->
                         Row(Modifier.fillMaxWidth().heightIn(min = 44.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
@@ -282,8 +285,7 @@ fun NewTeamVaultDialog(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "The vault key is generated on this phone and sealed to each chosen member's account key. " +
-                        "The server stores only ciphertext.",
+                    stringResource(R.string.the_vault_key_is_generated_on_this_phone),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -301,9 +303,9 @@ fun NewTeamVaultDialog(
                 },
                 enabled = name.isNotBlank() && !busy,
             ) {
-                if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Text("Create")
+                if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Text(stringResource(R.string.create))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(stringResource(R.string.cancel)) } },
     )
 }

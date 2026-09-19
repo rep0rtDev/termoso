@@ -1,9 +1,12 @@
 package com.termoso.android.ui.keychain
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.termoso.android.R
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.core.KeyAlgorithm
 import com.termoso.core.KeyGenerateDraft
 import com.termoso.core.KeyImportDraft
@@ -18,10 +21,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** Algorithm choices offered by the generator, in display order. */
-enum class KeyKind(val label: String, val hint: String) {
-    ED25519("Ed25519", "Modern, fast, small — recommended"),
-    RSA("RSA", "Widest compatibility with old servers"),
-    ECDSA("ECDSA", "NIST curves, common in corporate CAs"),
+enum class KeyKind(val label: String, @StringRes val hint: Int) {
+    ED25519("Ed25519", R.string.key_kind_ed25519_hint),
+    RSA("RSA", R.string.key_kind_rsa_hint),
+    ECDSA("ECDSA", R.string.key_kind_ecdsa_hint),
 }
 
 data class GenerateKeyState(
@@ -90,9 +93,9 @@ class GenerateKeyViewModel(private val repo: VaultRepository, initialVault: Stri
     }
 
     private fun defaultLabel(s: GenerateKeyState) = when (s.kind) {
-        KeyKind.ED25519 -> "Ed25519 key"
-        KeyKind.RSA -> "RSA ${s.rsaBits} key"
-        KeyKind.ECDSA -> "ECDSA P-${s.ecdsaBits} key"
+        KeyKind.ED25519 -> str(R.string.ed25519_key)
+        KeyKind.RSA -> str(R.string.rsa_key, s.rsaBits)
+        KeyKind.ECDSA -> str(R.string.ecdsa_p_key, s.ecdsaBits)
     }
 }
 
@@ -165,7 +168,7 @@ class ImportKeyViewModel(private val repo: VaultRepository, initialVault: String
                     importKey(
                         KeyImportDraft(
                             vaultId = vault,
-                            label = s.label.trim().ifBlank { s.preview?.let { keyTypeLabel(it.keyType, it.bits) + " key" } ?: "Imported key" },
+                            label = s.label.trim().ifBlank { s.preview?.let { str(R.string.type_key, keyTypeLabel(it.keyType, it.bits)) } ?: str(R.string.imported_key) },
                             privateKey = s.privateKey,
                             passphrase = s.passphrase.takeIf { it.isNotEmpty() },
                             rememberPassphrase = s.passphrase.isNotEmpty() && s.remember,

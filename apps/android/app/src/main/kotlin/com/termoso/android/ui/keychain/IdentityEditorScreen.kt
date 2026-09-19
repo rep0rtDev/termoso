@@ -30,13 +30,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.PickerRow
@@ -94,7 +97,7 @@ class IdentityEditorViewModel(
         runCatching {
             repo.read {
                 val vaults = vaults().filter { !it.locked }
-                val existing = identityId?.let { id -> identities(null).firstOrNull { it.id == id } ?: error("Identity not found") }
+                val existing = identityId?.let { id -> identities(null).firstOrNull { it.id == id } ?: error(str(R.string.identity_not_found)) }
                 val vault = existing?.vaultId ?: initialVault ?: vaults.first().id
                 IdentityEditorState(
                     loading = false,
@@ -136,7 +139,7 @@ class IdentityEditorViewModel(
                         IdentityDraft(
                             id = s.existing?.id,
                             vaultId = vault,
-                            label = s.label.trim().ifBlank { s.username.trim() }.ifBlank { "SSH ID" },
+                            label = s.label.trim().ifBlank { s.username.trim() }.ifBlank { str(R.string.ssh_id) },
                             username = s.username.trim(),
                             password = s.password,
                             sshKeyId = s.sshKeyId,
@@ -178,14 +181,14 @@ fun IdentityEditorScreen(shell: ShellViewModel, identityId: String?, onClose: ()
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (identityId == null) "New identity" else s.label.ifBlank { "Edit identity" }) },
-                navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close") } },
+                title = { Text(if (identityId == null) stringResource(R.string.new_identity) else s.label.ifBlank { stringResource(R.string.edit_identity) }) },
+                navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.close)) } },
                 actions = {
                     IconButton(onClick = vm::save, enabled = s.canSave) {
                         if (s.working) {
                             CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.Filled.Check, contentDescription = "Save")
+                            Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.save))
                         }
                     }
                 },
@@ -202,7 +205,7 @@ fun IdentityEditorScreen(shell: ShellViewModel, identityId: String?, onClose: ()
         ) {
             if (s.existing == null && s.vaults.size > 1) {
                 PickerRow(
-                    label = "Vault",
+                    label = stringResource(R.string.vault),
                     value = s.vaults.firstOrNull { it.id == s.vaultId }?.let(::vaultLabel) ?: "",
                     options = s.vaults.map { it.id to vaultLabel(it) },
                     selected = s.vaultId,
@@ -212,12 +215,12 @@ fun IdentityEditorScreen(shell: ShellViewModel, identityId: String?, onClose: ()
             }
             SectionCard {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FormField(s.label, { v -> vm.update { it.copy(label = v) } }, "Label", placeholder = s.username.ifBlank { "Work account" })
-                    FormField(s.username, { v -> vm.update { it.copy(username = v) } }, "Username")
+                    FormField(s.label, { v -> vm.update { it.copy(label = v) } }, stringResource(R.string.label), placeholder = s.username.ifBlank { stringResource(R.string.work_account) })
+                    FormField(s.username, { v -> vm.update { it.copy(username = v) } }, stringResource(R.string.username))
                 }
             }
 
-            SectionLabel("Credentials")
+            SectionLabel(stringResource(R.string.credentials))
             SectionCard {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     SshIdRows(
@@ -231,27 +234,27 @@ fun IdentityEditorScreen(shell: ShellViewModel, identityId: String?, onClose: ()
                     SecretField(
                         value = s.password ?: "",
                         onChange = { v -> vm.update { it.copy(password = v) } },
-                        label = "Password",
-                        placeholder = if (keepStored) "•••••••• (saved)" else null,
+                        label = stringResource(R.string.password),
+                        placeholder = if (keepStored) stringResource(R.string.saved) else null,
                         leadingActions = if (keepStored) {
-                            { TextButton(onClick = { vm.update { it.copy(password = "") } }) { Text("Clear") } }
+                            { TextButton(onClick = { vm.update { it.copy(password = "") } }) { Text(stringResource(R.string.clear)) } }
                         } else {
                             null
                         },
                     )
-                    val keyLabel = s.keys.firstOrNull { it.id == s.sshKeyId }?.label ?: "None"
+                    val keyLabel = s.keys.firstOrNull { it.id == s.sshKeyId }?.label ?: stringResource(R.string.none)
                     PickerRow(
-                        label = "SSH key",
+                        label = stringResource(R.string.ssh_key),
                         value = keyLabel,
-                        options = listOf<Pair<String?, String>>(null to "None") + s.keys.map { it.id to it.label },
+                        options = listOf<Pair<String?, String>>(null to stringResource(R.string.none)) + s.keys.map { it.id to it.label },
                         selected = s.sshKeyId,
                         onPick = { id -> vm.update { it.copy(sshKeyId = id) } },
-                        empty = "No keys in this vault yet",
+                        empty = stringResource(R.string.no_keys_in_this_vault_yet),
                     )
                 }
                 if (s.existing?.hasCertificate == true) {
                     RowDivider()
-                    ListRow(title = "Certificate", subtitle = "Attached on desktop; kept as is")
+                    ListRow(title = stringResource(R.string.certificate), subtitle = stringResource(R.string.attached_on_desktop_kept_as_is))
                 }
             }
 
@@ -259,7 +262,7 @@ fun IdentityEditorScreen(shell: ShellViewModel, identityId: String?, onClose: ()
                 SectionLabel(" ")
                 SectionCard {
                     ListRow(
-                        title = "Delete identity",
+                        title = stringResource(R.string.delete_identity),
                         titleColor = MaterialTheme.colorScheme.error,
                         modifier = Modifier.clickable { confirmDelete = true },
                     )
@@ -270,9 +273,9 @@ fun IdentityEditorScreen(shell: ShellViewModel, identityId: String?, onClose: ()
 
     if (confirmDelete) {
         ConfirmDialog(
-            title = "Delete identity?",
-            text = "Hosts using \"${s.label}\" will lose these credentials.",
-            confirm = "Delete",
+            title = stringResource(R.string.delete_identity_2),
+            text = stringResource(R.string.hosts_using_will_lose_these_credentials, s.label),
+            confirm = stringResource(R.string.delete),
             onConfirm = { confirmDelete = false; vm.delete() },
             onDismiss = { confirmDelete = false },
         )

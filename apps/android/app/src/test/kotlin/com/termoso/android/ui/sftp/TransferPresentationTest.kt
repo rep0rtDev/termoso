@@ -1,5 +1,6 @@
 package com.termoso.android.ui.sftp
 
+import com.termoso.android.ResourceTest
 import com.termoso.core.TransferCard
 import com.termoso.core.TransferDirection
 import com.termoso.core.TransferStatus
@@ -8,7 +9,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class TransferPresentationTest {
+class TransferPresentationTest : ResourceTest() {
     private fun card(status: TransferStatus, done: ULong = 0uL, total: ULong? = 2048uL, rate: ULong = 0uL) = TransferCard(
         id = 1uL,
         direction = TransferDirection.DOWNLOAD,

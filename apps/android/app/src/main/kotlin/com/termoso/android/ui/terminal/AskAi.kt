@@ -1,7 +1,9 @@
 package com.termoso.android.ui.terminal
 
+import com.termoso.android.R
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.core.AiStatusCard
 import com.termoso.core.AiTarget
 import com.termoso.core.MobileException
@@ -16,18 +18,18 @@ data class AiFailure(val text: String, val retry: Boolean)
 fun aiFailure(e: Throwable): AiFailure {
     val kind = (e as? MobileException.Other)?.kind
     return when (kind) {
-        "ai_not_enabled" -> AiFailure("AI suggestions are turned off for this account.", retry = false)
-        "ai_quota_exceeded" -> AiFailure("Today's quota is used up. It resets at midnight UTC.", retry = false)
-        "ai_busy" -> AiFailure("The AI provider is busy. Try again in a moment.", retry = true)
-        "ai_unavailable" -> AiFailure("The AI provider did not answer. Nothing was inserted.", retry = true)
-        "unauthorized" -> AiFailure("Sign in again to use AI suggestions.", retry = false)
+        "ai_not_enabled" -> AiFailure(str(R.string.ai_suggestions_are_turned_off_for_this_account), retry = false)
+        "ai_quota_exceeded" -> AiFailure(str(R.string.todays_quota_is_used_up_it_resets_at), retry = false)
+        "ai_busy" -> AiFailure(str(R.string.the_ai_provider_is_busy_try_again_in), retry = true)
+        "ai_unavailable" -> AiFailure(str(R.string.the_ai_provider_did_not_answer_nothing_was), retry = true)
+        "unauthorized" -> AiFailure(str(R.string.sign_in_again_to_use_ai_suggestions), retry = false)
         else -> AiFailure(e.userMessage(), retry = true)
     }
 }
 
 /** `Chutes · GLM-4.7-Flash`; falls back to a neutral label when the server names nothing. */
 fun aiProviderLabel(s: AiStatusCard): String =
-    listOfNotNull(s.provider, s.model).joinToString(" · ").ifEmpty { "AI provider" }
+    listOfNotNull(s.provider, s.model).joinToString(" · ").ifEmpty { str(R.string.ai_provider) }
 
 /** Today's remaining requests, never negative. */
 fun aiRemainingToday(s: AiStatusCard): Int =
@@ -47,7 +49,7 @@ fun aiTargetFor(session: TerminalSession): AiTarget = when {
 
 /** What the disclosure line says leaves the phone for this target. */
 fun aiContextLabel(target: AiTarget): String = when (target) {
-    is AiTarget.Host -> "request · host OS"
-    AiTarget.Local -> "request · this phone's OS"
-    AiTarget.Unknown -> "request only"
+    is AiTarget.Host -> str(R.string.request_host_os)
+    AiTarget.Local -> str(R.string.request_this_phones_os)
+    AiTarget.Unknown -> str(R.string.request_only)
 }

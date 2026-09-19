@@ -38,9 +38,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
+import com.termoso.android.str
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.IconTile
@@ -113,9 +116,9 @@ fun TerminalInputScreen(shell: ShellViewModel, onBack: () -> Unit) {
     var hotkeyPick by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
 
-    SubScreen("Keyboard & gestures", onBack) { padding ->
+    SubScreen(stringResource(R.string.keyboard_gestures), onBack) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
-            item { SectionLabel("Key panel rows") }
+            item { SectionLabel(stringResource(R.string.key_panel_rows)) }
             item {
                 SectionCard {
                     groups.forEachIndexed { i, g ->
@@ -131,38 +134,38 @@ fun TerminalInputScreen(shell: ShellViewModel, onBack: () -> Unit) {
                     }
                     RowDivider()
                     ListRow(
-                        title = "Add row",
+                        title = stringResource(R.string.add_row),
                         leading = { IconTile(Icons.Filled.Add) },
-                        subtitle = if (groups.size >= MAX_GROUPS) "Up to $MAX_GROUPS rows" else null,
+                        subtitle = if (groups.size >= MAX_GROUPS) stringResource(R.string.up_to_rows, MAX_GROUPS) else null,
                         modifier = Modifier.clickable(enabled = groups.size < MAX_GROUPS) {
-                            editing = KeyGroup(id = KeyGroups.newGroupId(groups), name = "Custom", keys = emptyList(), enabled = true)
+                            editing = KeyGroup(id = KeyGroups.newGroupId(groups), name = str(R.string.custom), keys = emptyList(), enabled = true)
                         },
                     )
                     RowDivider()
                     ListRow(
-                        title = "Reset to defaults",
+                        title = stringResource(R.string.reset_to_defaults),
                         leading = { IconTile(Icons.Filled.RestartAlt) },
                         modifier = Modifier.clickable { confirmReset = true },
                     )
                 }
             }
 
-            item { SectionLabel("Volume buttons") }
+            item { SectionLabel(stringResource(R.string.volume_buttons)) }
             item {
                 SectionCard {
                     ChevronRow(
-                        title = "Volume up",
+                        title = stringResource(R.string.volume_up),
                         badge = InputAction.title(InputAction.parse(settings.volumeUpAction)),
                         modifier = Modifier.clickable { volumePick = true },
                     )
                     RowDivider()
                     ChevronRow(
-                        title = "Volume down",
+                        title = stringResource(R.string.volume_down),
                         badge = InputAction.title(InputAction.parse(settings.volumeDownAction)),
                         modifier = Modifier.clickable { volumePick = false },
                     )
                     Text(
-                        "Bound buttons act only while a terminal is on screen; elsewhere they change the volume as usual.",
+                        stringResource(R.string.bound_buttons_act_only_while_a_terminal_is),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -170,13 +173,13 @@ fun TerminalInputScreen(shell: ShellViewModel, onBack: () -> Unit) {
                 }
             }
 
-            item { SectionLabel("Physical keyboard") }
+            item { SectionLabel(stringResource(R.string.physical_keyboard)) }
             item {
                 SectionCard {
                     ChevronRow(
-                        title = "App shortcuts",
-                        subtitle = "Modifier for tabs, text size, paste and the key panel",
-                        badge = HardwareKeys.hotkeyModes.firstOrNull { it.first == settings.hardwareHotkeys }?.second ?: settings.hardwareHotkeys,
+                        title = stringResource(R.string.app_shortcuts),
+                        subtitle = stringResource(R.string.modifier_for_tabs_text_size_paste_and_the),
+                        badge = HardwareKeys.hotkeyModes.firstOrNull { it.first == settings.hardwareHotkeys }?.let { stringResource(it.second) } ?: settings.hardwareHotkeys,
                         modifier = Modifier.clickable { hotkeyPick = true },
                     )
                     Text(
@@ -187,40 +190,39 @@ fun TerminalInputScreen(shell: ShellViewModel, onBack: () -> Unit) {
                     )
                     RowDivider()
                     SwitchRow(
-                        title = "Hide key panel with a keyboard",
-                        subtitle = "Collapse the panel to one line when a physical keyboard is attached",
+                        title = stringResource(R.string.hide_key_panel_with_a_keyboard),
+                        subtitle = stringResource(R.string.collapse_the_panel_to_one_line_when_a),
                         checked = settings.hidePanelWithKeyboard,
                         onCheckedChange = { v -> set { it.copy(hidePanelWithKeyboard = v) } },
                     )
                     RowDivider()
                     SwitchRow(
-                        title = "Autocomplete",
-                        subtitle = "Suggest commands, options, paths, history and snippets above the key panel while you type. " +
-                            "A tap inserts; nothing runs until you press Enter.",
+                        title = stringResource(R.string.autocomplete),
+                        subtitle = stringResource(R.string.suggest_commands_options_paths_history_and_snippets_above),
                         checked = settings.autocomplete,
                         onCheckedChange = { v -> set { it.copy(autocomplete = v) } },
                     )
                 }
             }
 
-            item { SectionLabel("Gestures") }
+            item { SectionLabel(stringResource(R.string.gestures)) }
             item {
                 SectionCard {
                     SwitchRow(
-                        title = "Pinch to change text size",
+                        title = stringResource(R.string.pinch_to_change_text_size),
                         checked = settings.pinchZoom,
                         onCheckedChange = { v -> set { it.copy(pinchZoom = v) } },
                     )
                     RowDivider()
                     SwitchRow(
-                        title = "Swipe for ← →",
-                        subtitle = "A horizontal one-finger swipe moves the cursor",
+                        title = stringResource(R.string.swipe_for),
+                        subtitle = stringResource(R.string.a_horizontal_one_finger_swipe_moves_the_cursor),
                         checked = settings.swipeArrows,
                         onCheckedChange = { v -> set { it.copy(swipeArrows = v) } },
                     )
                     RowDivider()
                     SwitchRow(
-                        title = "Two-finger swipe switches sessions",
+                        title = stringResource(R.string.two_finger_swipe_switches_sessions),
                         checked = settings.swipeSessions,
                         onCheckedChange = { v -> set { it.copy(swipeSessions = v) } },
                     )
@@ -233,7 +235,7 @@ fun TerminalInputScreen(shell: ShellViewModel, onBack: () -> Unit) {
     volumePick?.let { up ->
         val current = InputAction.parse(if (up) settings.volumeUpAction else settings.volumeDownAction)
         RadioDialog(
-            title = if (up) "Volume up" else "Volume down",
+            title = if (up) stringResource(R.string.volume_up) else stringResource(R.string.volume_down),
             options = InputAction.choices.map { it to InputAction.title(it) },
             selected = current,
             onPick = { a ->
@@ -244,19 +246,19 @@ fun TerminalInputScreen(shell: ShellViewModel, onBack: () -> Unit) {
         )
     }
     if (hotkeyPick) {
-        RadioDialog("App shortcuts", HardwareKeys.hotkeyModes, settings.hardwareHotkeys, onPick = { set { s -> s.copy(hardwareHotkeys = it) } }) {
+        RadioDialog(stringResource(R.string.app_shortcuts), HardwareKeys.hotkeyModes.map { it.first to stringResource(it.second) }, settings.hardwareHotkeys, onPick = { set { s -> s.copy(hardwareHotkeys = it) } }) {
             hotkeyPick = false
         }
     }
     if (confirmReset) {
         AlertDialog(
             onDismissRequest = { confirmReset = false },
-            title = { Text("Reset key panel?") },
-            text = { Text("Your custom rows are replaced by the built-in layout.") },
+            title = { Text(stringResource(R.string.reset_key_panel)) },
+            text = { Text(stringResource(R.string.your_custom_rows_are_replaced_by_the_built)) },
             confirmButton = {
-                TextButton(onClick = { confirmReset = false; saveGroups(emptyList()) }) { Text("Reset") }
+                TextButton(onClick = { confirmReset = false; saveGroups(emptyList()) }) { Text(stringResource(R.string.reset)) }
             },
-            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }
@@ -265,10 +267,9 @@ private fun shortcutHelp(mode: String): String {
     val m = when (mode) {
         "ctrl" -> "Ctrl"
         "ctrl_shift" -> "Ctrl+Shift"
-        else -> return "Every key combination goes to the shell."
+        else -> return str(R.string.every_key_combination_goes_to_the_shell)
     }
-    return "$m+← / → switch session · $m+T new · $m+N clone · $m+W close · " +
-        "$m+= / − / 0 text size · Ctrl+Shift+V paste · Ctrl+Shift+K key panel"
+    return str(R.string.switch_session_t_new_n_clone_w_close, m, m, m, m, m)
 }
 
 @Composable
@@ -276,12 +277,12 @@ private fun GroupRow(group: KeyGroup, first: Boolean, last: Boolean, onToggle: (
     val preview = group.keys.mapNotNull(KeyActions::parse).joinToString("  ") { it.label }
     ListRow(
         title = group.name,
-        subtitle = preview.ifEmpty { "No keys — tap to add" },
+        subtitle = preview.ifEmpty { stringResource(R.string.no_keys_tap_to_add) },
         leading = { TermosoSwitch(checked = group.enabled, onCheckedChange = onToggle) },
         modifier = Modifier.clickable(onClick = onEdit),
     ) {
-        IconButton(onClick = { onMove(-1) }, enabled = !first) { Icon(Icons.Filled.ArrowUpward, contentDescription = "Move up") }
-        IconButton(onClick = { onMove(1) }, enabled = !last) { Icon(Icons.Filled.ArrowDownward, contentDescription = "Move down") }
+        IconButton(onClick = { onMove(-1) }, enabled = !first) { Icon(Icons.Filled.ArrowUpward, contentDescription = stringResource(R.string.move_up)) }
+        IconButton(onClick = { onMove(1) }, enabled = !last) { Icon(Icons.Filled.ArrowDownward, contentDescription = stringResource(R.string.move_down)) }
     }
 }
 
@@ -301,10 +302,10 @@ private fun KeyGroupEditor(group: KeyGroup, onChange: (KeyGroup) -> Unit, onDele
     val keys = group.keys
 
     SubScreen(
-        title = "Edit row",
+        title = stringResource(R.string.edit_row),
         onBack = ::leave,
         actions = {
-            IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Filled.Delete, contentDescription = "Delete row") }
+            IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.delete_row)) }
         },
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
@@ -312,16 +313,16 @@ private fun KeyGroupEditor(group: KeyGroup, onChange: (KeyGroup) -> Unit, onDele
                 FormField(
                     value = name,
                     onChange = { name = it.take(MAX_NAME) },
-                    label = "Name",
+                    label = stringResource(R.string.name),
                 )
                 Spacer(Modifier.height(8.dp))
             }
-            item { SectionLabel("Keys · ${keys.size} / $MAX_KEYS") }
+            item { SectionLabel(stringResource(R.string.keys_2, keys.size, MAX_KEYS)) }
             item {
                 SectionCard {
                     if (keys.isEmpty()) {
                         Text(
-                            "Empty rows are hidden in the terminal.",
+                            stringResource(R.string.empty_rows_are_hidden_in_the_terminal),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(16.dp),
@@ -332,25 +333,25 @@ private fun KeyGroupEditor(group: KeyGroup, onChange: (KeyGroup) -> Unit, onDele
                         val parsed = KeyActions.parse(def)
                         ListRow(
                             title = def.label.ifBlank { parsed?.label ?: def.action },
-                            subtitle = parsed?.let(KeyActions::describe) ?: "Unknown action (${def.action}) — skipped",
+                            subtitle = parsed?.let(KeyActions::describe) ?: stringResource(R.string.unknown_action_skipped, def.action),
                             modifier = Modifier.clickable(enabled = parsed != null) { relabel = i },
                         ) {
                             IconButton(onClick = { onChange(group.copy(keys = keys.moved(i, i - 1))) }, enabled = i > 0) {
-                                Icon(Icons.Filled.ArrowUpward, contentDescription = "Move left")
+                                Icon(Icons.Filled.ArrowUpward, contentDescription = stringResource(R.string.move_left))
                             }
                             IconButton(onClick = { onChange(group.copy(keys = keys.moved(i, i + 1))) }, enabled = i < keys.lastIndex) {
-                                Icon(Icons.Filled.ArrowDownward, contentDescription = "Move right")
+                                Icon(Icons.Filled.ArrowDownward, contentDescription = stringResource(R.string.move_right))
                             }
                             IconButton(onClick = { onChange(group.copy(keys = keys.filterIndexed { j, _ -> j != i })) }) {
-                                Icon(Icons.Filled.Close, contentDescription = "Remove")
+                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.remove_2))
                             }
                         }
                     }
                     RowDivider()
                     ListRow(
-                        title = "Add key",
+                        title = stringResource(R.string.add_key),
                         leading = { IconTile(Icons.Filled.Keyboard) },
-                        subtitle = if (keys.size >= MAX_KEYS) "Up to $MAX_KEYS keys per row" else null,
+                        subtitle = if (keys.size >= MAX_KEYS) stringResource(R.string.up_to_keys_per_row, MAX_KEYS) else null,
                         modifier = Modifier.clickable(enabled = keys.size < MAX_KEYS) { palette = true },
                     )
                 }
@@ -362,7 +363,7 @@ private fun KeyGroupEditor(group: KeyGroup, onChange: (KeyGroup) -> Unit, onDele
     if (palette) {
         AlertDialog(
             onDismissRequest = { palette = false },
-            title = { Text("Add key") },
+            title = { Text(stringResource(R.string.add_key)) },
             text = {
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(72.dp),
@@ -392,7 +393,7 @@ private fun KeyGroupEditor(group: KeyGroup, onChange: (KeyGroup) -> Unit, onDele
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { palette = false }) { Text("Close") } },
+            confirmButton = { TextButton(onClick = { palette = false }) { Text(stringResource(R.string.close)) } },
         )
     }
     relabel?.let { index ->
@@ -400,12 +401,12 @@ private fun KeyGroupEditor(group: KeyGroup, onChange: (KeyGroup) -> Unit, onDele
         var label by remember(index) { mutableStateOf(def.label) }
         AlertDialog(
             onDismissRequest = { relabel = null },
-            title = { Text("Key label") },
+            title = { Text(stringResource(R.string.key_label)) },
             text = {
                 Column {
                     Text(KeyActions.parse(def)?.let(KeyActions::describe) ?: def.action, style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(12.dp))
-                    FormField(value = label, onChange = { label = it.take(MAX_LABEL) }, label = "Shown on the key")
+                    FormField(value = label, onChange = { label = it.take(MAX_LABEL) }, label = stringResource(R.string.shown_on_the_key))
                 }
             },
             confirmButton = {
@@ -415,18 +416,18 @@ private fun KeyGroupEditor(group: KeyGroup, onChange: (KeyGroup) -> Unit, onDele
                         onChange(group.copy(keys = keys.mapIndexed { j, k -> if (j == index) PanelKeyDef(shown, k.action) else k }))
                         relabel = null
                     },
-                ) { Text("Save") }
+                ) { Text(stringResource(R.string.save)) }
             },
-            dismissButton = { TextButton(onClick = { relabel = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { relabel = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete “${group.name}”?") },
-            text = { Text("The row and its keys are removed from the panel.") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete() }) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            title = { Text(stringResource(R.string.delete_2, group.name)) },
+            text = { Text(stringResource(R.string.the_row_and_its_keys_are_removed_from)) },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete() }) { Text(stringResource(R.string.delete)) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }

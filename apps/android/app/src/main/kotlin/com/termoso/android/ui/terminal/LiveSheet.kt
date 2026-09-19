@@ -37,6 +37,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -44,9 +45,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.getSystemService
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
@@ -96,14 +99,14 @@ fun LiveSheet(session: TerminalSession, shell: ShellViewModel, onClose: () -> Un
     ModalBottomSheet(onDismissRequest = onClose) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
             Text(
-                if (session.isView) "Shared terminal" else "Terminal sharing",
+                if (session.isView) stringResource(R.string.shared_terminal) else stringResource(R.string.terminal_sharing),
                 style = MaterialTheme.typography.titleMedium,
             )
             Spacer(Modifier.height(4.dp))
             when {
                 session.isView -> {
                     Text(
-                        if (canWrite) "The host let you type into this terminal." else "View only. Ask the host for control to type.",
+                        if (canWrite) stringResource(R.string.the_host_let_you_type_into_this_terminal) else stringResource(R.string.view_only_ask_the_host_for_control_to),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -112,24 +115,22 @@ fun LiveSheet(session: TerminalSession, shell: ShellViewModel, onClose: () -> Un
                     OutlinedButton(
                         onClick = { scope.launch { shell.sessions.close(session.id) }; onClose() },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Leave") }
+                    ) { Text(stringResource(R.string.leave_2)) }
                 }
                 share == null -> {
                     Text(
-                        "Let others watch this terminal live through Termoso, end-to-end encrypted. " +
-                            "You choose who may type; stop any time.",
+                        stringResource(R.string.let_others_watch_this_terminal_live_through_termoso),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(16.dp))
                     Button(onClick = ::start, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (busy) "Starting…" else "Start sharing")
+                        Text(if (busy) stringResource(R.string.starting) else stringResource(R.string.start_sharing))
                     }
                 }
                 else -> {
                     Text(
-                        "Anyone with the link and a Termoso account can watch. " +
-                            "It contains the session key, so share it only with people you trust.",
+                        stringResource(R.string.anyone_with_the_link_and_a_termoso_account),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -139,19 +140,19 @@ fun LiveSheet(session: TerminalSession, shell: ShellViewModel, onClose: () -> Un
                         OutlinedButton(
                             onClick = {
                                 context.getSystemService<ClipboardManager>()
-                                    ?.setPrimaryClip(ClipData.newPlainText("Termoso link", link))
-                                shell.notify("Link copied")
+                                    ?.setPrimaryClip(ClipData.newPlainText(str(R.string.termoso_link), link))
+                                shell.notify(str(R.string.link_copied))
                             },
                             modifier = Modifier.weight(1f),
                         ) {
                             Icon(Icons.Filled.ContentCopy, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
-                            Text("Copy link")
+                            Text(stringResource(R.string.copy_link))
                         }
                         Button(onClick = { shareLink(context, link) }, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Filled.Share, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
-                            Text("Share")
+                            Text(stringResource(R.string.share))
                         }
                     }
                     Participants(shell.repo, participants) { p, enabled ->
@@ -162,7 +163,7 @@ fun LiveSheet(session: TerminalSession, shell: ShellViewModel, onClose: () -> Un
                     }
                     Spacer(Modifier.height(12.dp))
                     OutlinedButton(onClick = ::stop, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                        Text("Stop sharing")
+                        Text(stringResource(R.string.stop_sharing))
                     }
                 }
             }
@@ -176,10 +177,10 @@ private fun Participants(
     participants: List<LiveParticipantCard>,
     onControl: ((LiveParticipantCard, Boolean) -> Unit)?,
 ) {
-    SectionLabel(if (participants.isEmpty()) "Participants" else "Participants · ${participants.size}")
+    SectionLabel(if (participants.isEmpty()) stringResource(R.string.participants) else stringResource(R.string.participants_2, participants.size))
     if (participants.isEmpty()) {
         Text(
-            "Nobody has joined yet.",
+            stringResource(R.string.nobody_has_joined_yet),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -190,9 +191,9 @@ private fun Participants(
             if (i > 0) RowDivider()
             val name = p.displayName?.takeIf { it.isNotBlank() } ?: p.email
             val role = buildList {
-                if (p.isHost) add("Host")
+                if (p.isHost) add(stringResource(R.string.host))
                 if (p.me) add("you")
-                if (!p.isHost) add(if (p.canWrite) "can type" else "view only")
+                if (!p.isHost) add(if (p.canWrite) stringResource(R.string.can_type) else stringResource(R.string.view_only))
             }.joinToString(" · ")
             val avatar: @Composable () -> Unit = {
                 UserAvatar(repo, userId = p.userId, tag = p.avatar, name = name)
@@ -232,10 +233,10 @@ private fun Participants(
 private fun shareLink(context: Context, link: String) {
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
-        putExtra(Intent.EXTRA_SUBJECT, "Join my terminal in Termoso")
+        putExtra(Intent.EXTRA_SUBJECT, str(R.string.join_my_terminal_in_termoso))
         putExtra(Intent.EXTRA_TEXT, link)
     }
-    context.startActivity(Intent.createChooser(send, "Share link"))
+    context.startActivity(Intent.createChooser(send, str(R.string.share_link)))
 }
 
 /** Paste or type a join link (`https://…/join/…` or `termoso://join/…`); Rust validates it on Join. */
@@ -250,17 +251,17 @@ fun JoinLiveDialog(onDismiss: () -> Unit, onJoin: (String) -> Unit) {
     val valid = isLiveLink(link.trim())
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Join shared terminal") },
+        title = { Text(stringResource(R.string.join_shared_terminal)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Paste the join link the host sent you. You will watch their terminal; typing needs their permission.",
+                    stringResource(R.string.paste_the_join_link_the_host_sent_you),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 OutlinedTextField(
                     value = link,
                     onValueChange = { link = it },
-                    label = { Text("Link") },
+                    label = { Text(stringResource(R.string.link)) },
                     singleLine = true,
                     isError = link.isNotBlank() && !valid,
                     modifier = Modifier.fillMaxWidth(),
@@ -273,7 +274,7 @@ fun JoinLiveDialog(onDismiss: () -> Unit, onJoin: (String) -> Unit) {
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { onJoin(link.trim()) }, enabled = valid) { Text("Join") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { onJoin(link.trim()) }, enabled = valid) { Text(stringResource(R.string.join)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }

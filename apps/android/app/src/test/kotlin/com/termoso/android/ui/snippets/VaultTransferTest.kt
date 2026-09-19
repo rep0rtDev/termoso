@@ -1,5 +1,6 @@
 package com.termoso.android.ui.snippets
 
+import com.termoso.android.ResourceTest
 import com.termoso.core.VaultAccess
 import com.termoso.core.VaultInfo
 import com.termoso.core.VaultKind
@@ -7,7 +8,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class VaultTransferTest {
+class VaultTransferTest : ResourceTest() {
     private fun vault(
         id: String,
         kind: VaultKind = VaultKind.TEAM,

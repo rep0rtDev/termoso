@@ -1,5 +1,6 @@
 package com.termoso.android.ui.connections
 
+import com.termoso.android.str
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -48,11 +49,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.SftpConnection
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.userMessage
@@ -75,9 +79,9 @@ import com.termoso.core.SessionState
 import com.termoso.core.TransferStatus
 import com.termoso.core.isLiveLink
 import com.termoso.core.parseTarget
-import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.launch
 
 /** Connections tab: quick connect, active terminals, ways to connect, recent sessions. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -140,14 +144,14 @@ fun ConnectionsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Connections") },
+                title = { Text(stringResource(R.string.connections)) },
                 actions = {
                     if (open > 0) {
                         Box {
-                            IconButton(onClick = { topMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
+                            IconButton(onClick = { topMenu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
                             DropdownMenu(expanded = topMenu, onDismissRequest = { topMenu = false }) {
                                 DropdownMenuItem(
-                                    text = { Text("Close all sessions ($open)", color = MaterialTheme.colorScheme.error) },
+                                    text = { Text(stringResource(R.string.close_all_sessions, open), color = MaterialTheme.colorScheme.error) },
                                     leadingIcon = { Icon(Icons.Filled.PowerSettingsNew, null, tint = MaterialTheme.colorScheme.error) },
                                     onClick = { topMenu = false; confirmCloseAll = true },
                                 )
@@ -168,21 +172,21 @@ fun ConnectionsScreen(
             OutlinedTextField(
                 value = target,
                 onValueChange = { target = it },
-                placeholder = { Text("user@host:port, telnet://host or join link") },
-                label = { Text("Quick connect") },
+                placeholder = { Text(stringResource(R.string.quick_connect_placeholder)) },
+                label = { Text(stringResource(R.string.quick_connect)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, capitalization = KeyboardCapitalization.None, imeAction = ImeAction.Go, autoCorrectEnabled = false),
                 keyboardActions = KeyboardActions(onGo = { connect() }),
                 trailingIcon = {
                     IconButton(onClick = ::connect, enabled = target.isNotBlank()) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Connect")
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = stringResource(R.string.connect))
                     }
                 },
             )
 
             if (sessions.isNotEmpty() || sftp.isNotEmpty()) {
-                SectionLabel(if (open == 1) "Active session" else "$open active sessions")
+                SectionLabel(if (open == 1) stringResource(R.string.active_session) else stringResource(R.string.active_sessions, open))
                 SectionCard {
                     sessions.forEachIndexed { i, s ->
                         if (i > 0) RowDivider()
@@ -245,18 +249,18 @@ fun ConnectionsScreen(
                 }
             }
 
-            SectionLabel("Ways to connect")
+            SectionLabel(stringResource(R.string.ways_to_connect))
             SectionCard {
                 ChevronRow(
-                    title = "Add host",
-                    subtitle = "Save a server with its credentials",
+                    title = stringResource(R.string.add_host),
+                    subtitle = stringResource(R.string.save_a_server_with_its_credentials),
                     leading = { IconTile(Icons.Filled.Add) },
                     modifier = Modifier.clickable(onClick = onAddHost),
                 )
                 RowDivider()
                 ChevronRow(
-                    title = "Local terminal",
-                    subtitle = "A shell on this device",
+                    title = stringResource(R.string.local_terminal),
+                    subtitle = stringResource(R.string.a_shell_on_this_device),
                     leading = { IconTile(Icons.Filled.PhoneAndroid) },
                     modifier = Modifier.clickable {
                         scope.launch { if (shell.connectLocal() != null) onOpenTerminal() }
@@ -265,27 +269,27 @@ fun ConnectionsScreen(
                 RowDivider()
                 ChevronRow(
                     title = "SFTP",
-                    subtitle = "Browse and transfer files on a host",
+                    subtitle = stringResource(R.string.browse_and_transfer_files_on_a_host),
                     leading = { IconTile(Icons.Filled.FolderOpen) },
                     modifier = Modifier.clickable(onClick = onNewSftp),
                 )
                 RowDivider()
                 ChevronRow(
-                    title = "Join shared terminal",
-                    subtitle = "Open a join link somebody sent you",
+                    title = stringResource(R.string.join_shared_terminal),
+                    subtitle = stringResource(R.string.open_a_join_link_somebody_sent_you),
                     leading = { IconTile(Icons.Filled.Groups) },
                     modifier = Modifier.clickable { joinDialog = true },
                 )
                 RowDivider()
                 ListRow(
-                    title = "Quick connect",
-                    subtitle = "Type user@host or telnet://host above and press Go",
+                    title = stringResource(R.string.quick_connect),
+                    subtitle = stringResource(R.string.quick_connect_hint),
                     leading = { IconTile(Icons.Filled.Terminal) },
                 )
             }
 
             if (recent.isNotEmpty()) {
-                SectionLabel("Recent")
+                SectionLabel(stringResource(R.string.recent))
                 SectionCard {
                     recent.forEachIndexed { i, h ->
                         if (i > 0) RowDivider()
@@ -309,9 +313,9 @@ fun ConnectionsScreen(
     }
     if (confirmCloseAll) {
         ConfirmDialog(
-            title = "Close all sessions?",
-            text = "$open open ${if (open == 1) "connection" else "connections"} — every terminal and SFTP session is disconnected.",
-            confirm = "Close all",
+            title = stringResource(R.string.close_all_sessions_2),
+            text = pluralStringResource(R.plurals.close_all_sessions_text, open, open),
+            confirm = stringResource(R.string.close_all),
             onConfirm = {
                 confirmCloseAll = false
                 scope.launch {
@@ -346,7 +350,7 @@ private fun ActiveSessionRow(
     val subtitle = when (val s = state) {
         is SessionState.Connecting -> s.detail
         is SessionState.Connected -> title ?: session.target
-        is SessionState.Closed -> "Closed" + (s.reason?.let { " · $it" } ?: "")
+        is SessionState.Closed -> stringResource(R.string.closed) + (s.reason?.let { " · $it" } ?: "")
         is SessionState.Failed -> s.message
     }
     val remote = !session.isView && session.local == null
@@ -360,19 +364,19 @@ private fun ActiveSessionRow(
         },
         trailing = {
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Session actions") }
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.session_actions)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     @Composable
                     fun item(icon: ImageVector, label: String, destructive: Boolean = false, action: () -> Unit) {
                         MenuItem(icon, label, destructive) { menu = false; action() }
                     }
-                    item(Icons.Filled.OpenInNew, "Open", action = onOpen)
-                    if (!session.isView) item(Icons.Filled.ContentCopy, "Duplicate", action = onDuplicate)
-                    if (session.reconnectable) item(Icons.Filled.Refresh, "Reconnect", action = onReconnect)
-                    if (ssh) item(Icons.Filled.FolderOpen, "Open SFTP", action = onSftp)
-                    if (session.hostId != null) item(Icons.Filled.Edit, "Edit host", action = onEditHost)
-                    else if (session.quick != null) item(Icons.Filled.Add, "Add to hosts", action = onAddHost)
-                    item(Icons.Filled.Close, "Close session", destructive = true, action = onClose)
+                    item(Icons.Filled.OpenInNew, stringResource(R.string.open_), action = onOpen)
+                    if (!session.isView) item(Icons.Filled.ContentCopy, stringResource(R.string.duplicate), action = onDuplicate)
+                    if (session.reconnectable) item(Icons.Filled.Refresh, stringResource(R.string.reconnect), action = onReconnect)
+                    if (ssh) item(Icons.Filled.FolderOpen, stringResource(R.string.open_sftp), action = onSftp)
+                    if (session.hostId != null) item(Icons.Filled.Edit, stringResource(R.string.edit_host), action = onEditHost)
+                    else if (session.quick != null) item(Icons.Filled.Add, stringResource(R.string.add_to_hosts), action = onAddHost)
+                    item(Icons.Filled.Close, stringResource(R.string.close_session), destructive = true, action = onClose)
                     if (hostTotal > 1) {
                         item(Icons.Filled.PowerSettingsNew, closeHostLabel(hostTotal), destructive = true) {
                             onCloseHost(siblings.map { it.id } + session.id, sftpForHost.map { it.id })
@@ -380,9 +384,9 @@ private fun ActiveSessionRow(
                     }
                 }
             }
-            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close session") }
+            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.close_session)) }
         },
-        modifier = Modifier.combinedClickable(onClick = onOpen, onLongClick = { menu = true }, onLongClickLabel = "Session actions"),
+        modifier = Modifier.combinedClickable(onClick = onOpen, onLongClick = { menu = true }, onLongClickLabel = stringResource(R.string.session_actions)),
         titleColor = if (state is SessionState.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
     )
 }
@@ -406,8 +410,8 @@ private fun SftpRow(
     val active = transfers.count { it.status is TransferStatus.Running || it.status is TransferStatus.Queued }
     val subtitle = when (val s = state) {
         is SessionState.Connecting -> s.detail
-        is SessionState.Connected -> "SFTP · ${conn.target}" + if (active > 0) " · $active transferring" else ""
-        is SessionState.Closed -> "Closed" + (s.reason?.let { " · $it" } ?: "")
+        is SessionState.Connected -> stringResource(R.string.sftp, conn.target) + if (active > 0) stringResource(R.string.sep_transferring, active) else ""
+        is SessionState.Closed -> stringResource(R.string.closed) + (s.reason?.let { " · $it" } ?: "")
         is SessionState.Failed -> s.message
     }
     val hostTotal = terminalsForHost.size + sftpSiblings.size + 1
@@ -417,17 +421,17 @@ private fun SftpRow(
         leading = { IconTile(Icons.Filled.FolderOpen) },
         trailing = {
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Connection actions") }
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.connection_actions)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     @Composable
                     fun item(icon: ImageVector, label: String, destructive: Boolean = false, action: () -> Unit) {
                         MenuItem(icon, label, destructive) { menu = false; action() }
                     }
-                    item(Icons.Filled.OpenInNew, "Open", action = onOpen)
-                    if (conn.hostId != null || conn.quick != null) item(Icons.Filled.Terminal, "Open terminal", action = onTerminal)
-                    if (conn.hostId != null) item(Icons.Filled.Edit, "Edit host", action = onEditHost)
-                    else if (conn.quick != null) item(Icons.Filled.Add, "Add to hosts", action = onAddHost)
-                    item(Icons.Filled.Close, "Close connection", destructive = true, action = onClose)
+                    item(Icons.Filled.OpenInNew, stringResource(R.string.open_), action = onOpen)
+                    if (conn.hostId != null || conn.quick != null) item(Icons.Filled.Terminal, stringResource(R.string.open_terminal), action = onTerminal)
+                    if (conn.hostId != null) item(Icons.Filled.Edit, stringResource(R.string.edit_host), action = onEditHost)
+                    else if (conn.quick != null) item(Icons.Filled.Add, stringResource(R.string.add_to_hosts), action = onAddHost)
+                    item(Icons.Filled.Close, stringResource(R.string.close_connection), destructive = true, action = onClose)
                     if (hostTotal > 1) {
                         item(Icons.Filled.PowerSettingsNew, closeHostLabel(hostTotal), destructive = true) {
                             onCloseHost(terminalsForHost.map { it.id }, sftpSiblings.map { it.id } + conn.id)
@@ -435,9 +439,9 @@ private fun SftpRow(
                     }
                 }
             }
-            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close connection") }
+            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.close_connection)) }
         },
-        modifier = Modifier.combinedClickable(onClick = onOpen, onLongClick = { menu = true }, onLongClickLabel = "Connection actions"),
+        modifier = Modifier.combinedClickable(onClick = onOpen, onLongClick = { menu = true }, onLongClickLabel = stringResource(R.string.connection_actions)),
         titleColor = if (state is SessionState.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
     )
 }
@@ -456,9 +460,9 @@ fun historySubtitle(h: HistoryItem): String {
     val time = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(h.startedAt))
     val duration = h.durationSecs?.let { s ->
         when {
-            s < 60u -> "${s}s"
-            s < 3600u -> "${s / 60u}m"
-            else -> "${s / 3600u}h ${(s % 3600u) / 60u}m"
+            s < 60u -> str(R.string.duration_s, s.toLong())
+            s < 3600u -> str(R.string.duration_m, (s / 60u).toLong())
+            else -> str(R.string.duration_h_m, (s / 3600u).toLong(), ((s % 3600u) / 60u).toLong())
         }
     }
     return listOfNotNull(h.target, time, duration, h.error).joinToString(" · ")

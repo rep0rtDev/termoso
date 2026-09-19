@@ -42,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,11 +50,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
 import com.termoso.android.data.ForwardManager
 import com.termoso.android.data.PendingPrompt
 import com.termoso.android.data.Tunnel
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.SectionCard
@@ -143,11 +146,11 @@ fun ForwardingScreen(
     LaunchedEffect(state.error) { state.error?.let { shell.notify(it); vm.errorShown() } }
 
     SubScreen(
-        title = "Port Forwarding",
+        title = stringResource(R.string.port_forwarding),
         onBack = onBack,
         floating = {
             if (state.rules.isNotEmpty()) {
-                FloatingActionButton(onClick = onNewRule) { Icon(Icons.Filled.Add, contentDescription = "New rule") }
+                FloatingActionButton(onClick = onNewRule) { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.new_rule)) }
             }
         },
     ) { padding ->
@@ -155,10 +158,10 @@ fun ForwardingScreen(
             state.loading -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             state.rules.isEmpty() -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 EmptyState(
-                    title = "No port forwarding rules",
-                    hint = "Reach a database behind a host, expose a local service on a server, or open a SOCKS proxy through it.",
+                    title = stringResource(R.string.no_port_forwarding_rules),
+                    hint = stringResource(R.string.reach_a_database_behind_a_host_expose_a),
                     icon = Icons.Filled.SwapHoriz,
-                    action = { Button(onClick = onNewRule) { Text("Create a rule") } },
+                    action = { Button(onClick = onNewRule) { Text(stringResource(R.string.create_a_rule)) } },
                 )
             }
             else -> LazyColumn(
@@ -184,9 +187,9 @@ fun ForwardingScreen(
 
     confirmDelete?.let { rule ->
         ConfirmDialog(
-            title = "Delete rule?",
-            text = "\"${rule.label.ifBlank { rule.route }}\" will be removed" + if (tunnels.containsKey(rule.id)) " and its tunnel stopped." else ".",
-            confirm = "Delete",
+            title = stringResource(R.string.delete_rule_2),
+            text = if (tunnels.containsKey(rule.id)) stringResource(R.string.will_be_removed_and_its_tunnel_stopped, rule.label.ifBlank { rule.route }) else stringResource(R.string.will_be_removed, rule.label.ifBlank { rule.route }),
+            confirm = stringResource(R.string.delete),
             onConfirm = { vm.delete(rule.id); confirmDelete = null },
             onDismiss = { confirmDelete = null },
         )
@@ -269,14 +272,14 @@ private fun RuleCard(
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onEdit() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.edit)) }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onEdit() })
             DropdownMenuItem(
-                text = { Text("Duplicate") },
+                text = { Text(stringResource(R.string.duplicate)) },
                 leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
                 onClick = { menu = false; onDuplicate() },
             )
             DropdownMenuItem(
-                text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                text = { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) },
                 leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
                 onClick = { menu = false; onDelete() },
             )
@@ -300,29 +303,29 @@ fun TunnelPromptHost(forwards: ForwardManager) {
 }
 
 private fun statusLine(rule: PfRuleItem, state: TunnelState?, stats: TunnelStats?, lastError: String?): String {
-    val host = if (rule.hostMissing) "host deleted" else rule.hostLabel
+    val host = if (rule.hostMissing) str(R.string.host_deleted) else rule.hostLabel
     return when (state) {
-        null -> lastError?.let { "Stopped · $it" } ?: "$host · stopped"
+        null -> lastError?.let { str(R.string.stopped, it) } ?: str(R.string.host_stopped, host)
         is TunnelState.Connecting -> "$host · ${state.detail}"
         is TunnelState.Running -> buildString {
-            append("Running on ${state.bound}")
+            append(str(R.string.running_on, state.bound))
             if (stats != null) {
-                append(" · ${stats.active} active / ${stats.connections} total")
+                append(str(R.string.sep_active_total, stats.active.toLong(), stats.connections.toLong()))
                 if (stats.bytesIn > 0u || stats.bytesOut > 0u) {
                     append(" · ↓${bytes(stats.bytesIn)} ↑${bytes(stats.bytesOut)}")
                 }
             }
         }
-        is TunnelState.Reconnecting -> "Reconnecting (${state.attempt}) in ${state.retryInSecs}s · ${state.reason}"
-        is TunnelState.Failed -> "Failed · ${state.message}"
-        is TunnelState.Stopped -> "$host · stopped"
+        is TunnelState.Reconnecting -> str(R.string.reconnecting_in_s, state.attempt, state.retryInSecs, state.reason)
+        is TunnelState.Failed -> str(R.string.failed, state.message)
+        is TunnelState.Stopped -> str(R.string.host_stopped, host)
     }
 }
 
 fun kindTitle(kind: PfKind): String = when (kind) {
-    PfKind.LOCAL -> "Local forwarding"
-    PfKind.REMOTE -> "Remote forwarding"
-    PfKind.DYNAMIC -> "Dynamic (SOCKS5)"
+    PfKind.LOCAL -> str(R.string.local_forwarding)
+    PfKind.REMOTE -> str(R.string.remote_forwarding)
+    PfKind.DYNAMIC -> str(R.string.dynamic_socks5)
 }
 
 fun kindIcon(kind: PfKind): ImageVector = when (kind) {
@@ -334,9 +337,9 @@ fun kindIcon(kind: PfKind): ImageVector = when (kind) {
 fun bytes(n: ULong): String {
     val v = n.toDouble()
     return when {
-        v < 1024 -> "$n B"
-        v < 1024 * 1024 -> "%.1f KB".format(v / 1024)
-        v < 1024.0 * 1024 * 1024 -> "%.1f MB".format(v / 1024 / 1024)
-        else -> "%.2f GB".format(v / 1024 / 1024 / 1024)
+        v < 1024 -> str(R.string.size_b, n.toLong())
+        v < 1024 * 1024 -> str(R.string.size_kb, v / 1024)
+        v < 1024.0 * 1024 * 1024 -> str(R.string.size_mb, v / 1024 / 1024)
+        else -> str(R.string.size_gb, v / 1024 / 1024 / 1024)
     }
 }

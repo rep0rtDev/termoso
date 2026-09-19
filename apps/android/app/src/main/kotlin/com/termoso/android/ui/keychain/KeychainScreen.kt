@@ -31,9 +31,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.ListRow
@@ -70,34 +73,34 @@ fun KeychainScreen(
     }
 
     SubScreen(
-        "Keychain",
+        stringResource(R.string.keychain),
         onBack,
         floating = {
             Box {
-                FloatingActionButton(onClick = { menu = true }) { Icon(Icons.Filled.Add, contentDescription = "Add") }
+                FloatingActionButton(onClick = { menu = true }) { Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.add)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(
-                        text = { Text("Generate key") },
+                        text = { Text(stringResource(R.string.generate_key)) },
                         leadingIcon = { Icon(Icons.Filled.VpnKey, contentDescription = null) },
                         onClick = { menu = false; onGenerate() },
                     )
                     DropdownMenuItem(
-                        text = { Text("Paste or import key") },
+                        text = { Text(stringResource(R.string.paste_or_import_key)) },
                         leadingIcon = { Icon(Icons.Filled.ContentPaste, contentDescription = null) },
                         onClick = { menu = false; onImport() },
                     )
                     DropdownMenuItem(
-                        text = { Text("New FIDO2 key") },
+                        text = { Text(stringResource(R.string.new_fido2_key)) },
                         leadingIcon = { Icon(Icons.Filled.Security, contentDescription = null) },
                         onClick = { menu = false; onFido2() },
                     )
                     DropdownMenuItem(
-                        text = { Text("Load from security key") },
+                        text = { Text(stringResource(R.string.load_from_security_key)) },
                         leadingIcon = { Icon(Icons.Filled.Usb, contentDescription = null) },
                         onClick = { menu = false; onFido2Load() },
                     )
                     DropdownMenuItem(
-                        text = { Text("New identity") },
+                        text = { Text(stringResource(R.string.new_identity)) },
                         leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null) },
                         onClick = { menu = false; onNewIdentity() },
                     )
@@ -108,14 +111,13 @@ fun KeychainScreen(
         if (keys.isEmpty() && identities.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 EmptyState(
-                    title = "Add credentials",
-                    hint = "Generate an SSH key or paste one from another machine, then reuse it across hosts. " +
-                        "Identities bundle a username with a password or key.",
+                    title = stringResource(R.string.add_credentials),
+                    hint = stringResource(R.string.generate_an_ssh_key_or_paste_one_from),
                     icon = Icons.Filled.Key,
                     action = {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Button(onClick = onGenerate) { Text("Generate key") }
-                            TextButton(onClick = onImport) { Text("Paste or import key") }
+                            Button(onClick = onGenerate) { Text(stringResource(R.string.generate_key)) }
+                            TextButton(onClick = onImport) { Text(stringResource(R.string.paste_or_import_key)) }
                         }
                     },
                 )
@@ -124,7 +126,7 @@ fun KeychainScreen(
         }
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp)) {
             if (keys.isNotEmpty()) {
-                item { SectionLabel("Keys") }
+                item { SectionLabel(stringResource(R.string.keys)) }
                 item {
                     SectionCard {
                         keys.forEachIndexed { i, k ->
@@ -141,7 +143,7 @@ fun KeychainScreen(
                 }
             }
             if (identities.isNotEmpty()) {
-                item { SectionLabel("Identities") }
+                item { SectionLabel(stringResource(R.string.identities)) }
                 item {
                     SectionCard {
                         identities.forEachIndexed { i, id ->
@@ -164,31 +166,31 @@ fun keySubtitle(k: KeyItem): String = listOfNotNull(
     keyTypeLabel(k.keyType, k.bits),
     k.fingerprint.takeIf { it.isNotBlank() }?.removePrefix("SHA256:")?.take(12),
     when {
-        k.unreadable -> "unreadable"
-        k.encrypted && k.hasPassphrase -> "passphrase saved"
-        k.encrypted -> "passphrase"
+        k.unreadable -> str(R.string.unreadable)
+        k.encrypted && k.hasPassphrase -> str(R.string.passphrase_saved)
+        k.encrypted -> str(R.string.passphrase)
         else -> null
     },
-    if (k.hasCertificate) "certificate" else null,
-    if (k.usedBy > 0u) "used by ${k.usedBy}" else null,
+    if (k.hasCertificate) str(R.string.certificate_2) else null,
+    if (k.usedBy > 0u) str(R.string.used_by, k.usedBy) else null,
 ).joinToString(" · ")
 
 fun identitySubtitle(id: IdentityItem): String = listOfNotNull(
     id.username.takeIf { it.isNotBlank() },
-    if (id.hasPassword) "password" else null,
+    if (id.hasPassword) str(R.string.password_2) else null,
     id.sshKeyLabel,
-    if (id.hasCertificate) "certificate" else null,
-).joinToString(" · ").ifBlank { "No credentials" }
+    if (id.hasCertificate) str(R.string.certificate_2) else null,
+).joinToString(" · ").ifBlank { str(R.string.no_credentials) }
 
 fun keyTypeLabel(keyType: String, bits: UInt): String {
     val t = keyType.lowercase()
     val base = when {
         t.contains("ed25519") -> "Ed25519"
-        t.contains("rsa") -> "RSA $bits"
-        t.contains("ecdsa") || t.contains("nistp") -> "ECDSA $bits"
-        t.contains("dsa") -> "DSA $bits"
-        t.isBlank() -> "Unknown"
+        t.contains("rsa") -> str(R.string.rsa, bits)
+        t.contains("ecdsa") || t.contains("nistp") -> str(R.string.ecdsa, bits)
+        t.contains("dsa") -> str(R.string.dsa, bits)
+        t.isBlank() -> str(R.string.unknown)
         else -> "${keyType.uppercase()} $bits".trim()
     }
-    return if (t.startsWith("sk-")) "FIDO2 $base" else base
+    return if (t.startsWith("sk-")) str(R.string.fido2, base) else base
 }
