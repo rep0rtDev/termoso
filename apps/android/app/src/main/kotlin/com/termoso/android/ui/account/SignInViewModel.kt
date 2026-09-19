@@ -5,10 +5,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.CLOUD_URL
 import com.termoso.android.data.ServerChoice
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.core.Fido2Listener
 import com.termoso.core.LoginOutcome
 import com.termoso.core.MfaMethod
@@ -124,11 +126,11 @@ class SignInViewModel(private val account: AccountManager, initialMode: AuthMode
         val url = effectiveUrl
         val mail = email.trim()
         error = when {
-            server == ServerChoice.SelfHosted && url.substringAfter("://", "").isBlank() -> "Enter your server address."
-            mail.isEmpty() || !mail.contains('@') -> "Enter a valid email address."
-            password.isEmpty() -> "Enter your password."
-            mode == AuthMode.Register && password.length < 12 -> "Use at least 12 characters for the master password."
-            mode == AuthMode.Register && password != confirm -> "Passwords do not match."
+            server == ServerChoice.SelfHosted && url.substringAfter("://", "").isBlank() -> str(R.string.enter_your_server_address)
+            mail.isEmpty() || !mail.contains('@') -> str(R.string.enter_a_valid_email_address)
+            password.isEmpty() -> str(R.string.enter_your_password)
+            mode == AuthMode.Register && password.length < 12 -> str(R.string.use_at_least_12_characters_for_the_master)
+            mode == AuthMode.Register && password != confirm -> str(R.string.passwords_do_not_match)
             else -> null
         }
         if (error != null) return
@@ -155,7 +157,7 @@ class SignInViewModel(private val account: AccountManager, initialMode: AuthMode
         val method = mfaMethod ?: return
         val value = code.trim()
         if (value.isEmpty()) {
-            error = "Enter the code."
+            error = str(R.string.enter_the_code)
             return
         }
         run { handle(account.mfa(method, value), onDone) }
@@ -198,7 +200,7 @@ class SignInViewModel(private val account: AccountManager, initialMode: AuthMode
     fun submitApproval(onDone: () -> Unit) {
         val value = code.trim()
         if (value.isEmpty()) {
-            error = "Enter the code from the email."
+            error = str(R.string.enter_the_code_from_the_email)
             return
         }
         run { handle(account.approveDevice(value), onDone) }

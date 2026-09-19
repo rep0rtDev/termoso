@@ -2,6 +2,8 @@ package com.termoso.android.ui.sftp
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import com.termoso.android.R
+import com.termoso.android.str
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
@@ -59,17 +61,17 @@ object FilePreview {
         val ext = lower.substringAfterLast('.', "")
         return when {
             ext in imageExt -> if (size != null && size > IMAGE_LIMIT) {
-                PreviewKind.Unsupported("Image is larger than ${mib(IMAGE_LIMIT)}; open it with another app")
+                PreviewKind.Unsupported(str(R.string.image_is_larger_than_open_it_with_another, mib(IMAGE_LIMIT)))
             } else {
                 PreviewKind.Image
             }
             ext in textExt || lower.trimStart('.') in textNames -> if (size != null && size > TEXT_LIMIT) {
-                PreviewKind.Unsupported("File is larger than ${mib(TEXT_LIMIT)}; use Edit in terminal or Download")
+                PreviewKind.Unsupported(str(R.string.file_is_larger_than_use_edit_in_terminal, mib(TEXT_LIMIT)))
             } else {
                 PreviewKind.Text
             }
-            ext in binaryExt -> PreviewKind.Unsupported("Not a text or image file")
-            size != null && size > TEXT_LIMIT -> PreviewKind.Unsupported("File is larger than ${mib(TEXT_LIMIT)}")
+            ext in binaryExt -> PreviewKind.Unsupported(str(R.string.not_a_text_or_image_file))
+            size != null && size > TEXT_LIMIT -> PreviewKind.Unsupported(str(R.string.file_is_larger_than, mib(TEXT_LIMIT)))
             else -> PreviewKind.Sniff
         }
     }

@@ -1,5 +1,6 @@
 package com.termoso.android.ui.team
 
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -45,12 +46,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.ListRow
@@ -109,25 +113,25 @@ fun TeamScreen(
 
     val team = state.team
     SubScreen(
-        title = team?.name ?: "Team",
+        title = team?.name ?: stringResource(R.string.team),
         onBack = onBack,
         actions = {
             if (team != null) {
                 Box {
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         if (state.isAdmin) {
-                            DropdownMenuItem(text = { Text("Rename team") }, onClick = { menu = false; renaming = true })
-                            DropdownMenuItem(text = { Text("Activity log") }, onClick = { menu = false; onActivity() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.rename_team)) }, onClick = { menu = false; renaming = true })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.activity_log)) }, onClick = { menu = false; onActivity() })
                         }
                         if (state.isOwner) {
                             DropdownMenuItem(
-                                text = { Text("Delete team", color = MaterialTheme.colorScheme.error) },
+                                text = { Text(stringResource(R.string.delete_team), color = MaterialTheme.colorScheme.error) },
                                 onClick = { menu = false; deleting = true },
                             )
                         } else {
                             DropdownMenuItem(
-                                text = { Text("Leave team", color = MaterialTheme.colorScheme.error) },
+                                text = { Text(stringResource(R.string.leave_team), color = MaterialTheme.colorScheme.error) },
                                 onClick = { menu = false; leaving = true },
                             )
                         }
@@ -154,10 +158,10 @@ fun TeamScreen(
             SectionCard {
                 ListRow(
                     title = team.name,
-                    subtitle = "You are ${team.myRole.label().lowercase()} · ${members(team.memberCount)}",
+                    subtitle = stringResource(R.string.you_are, team.myRole.label().lowercase(), members(team.memberCount)),
                     leading = { IconTile(Icons.Filled.Group) },
                     trailing = if (state.isAdmin) {
-                        { IconButton(onClick = { renaming = true }) { Icon(Icons.Filled.Edit, contentDescription = "Rename") } }
+                        { IconButton(onClick = { renaming = true }) { Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.rename)) } }
                     } else {
                         null
                     },
@@ -165,15 +169,14 @@ fun TeamScreen(
             }
 
             if (state.pendingKeys.isNotEmpty()) {
-                SectionLabel("Waiting for a key")
+                SectionLabel(stringResource(R.string.waiting_for_a_key))
                 SectionCard {
                     state.pendingKeys.forEachIndexed { i, p ->
                         if (i > 0) RowDivider()
                         PendingKeyRow(p, onGrant = { vm.grantKey(p) })
                     }
                     Text(
-                        "These members joined after being given access. Granting seals the vault key to their " +
-                            "account key on this phone — the server never sees it.",
+                        stringResource(R.string.these_members_joined_after_being_given_access_granting),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -181,7 +184,7 @@ fun TeamScreen(
                 }
             }
 
-            SectionLabel("Members")
+            SectionLabel(stringResource(R.string.members))
             SectionCard {
                 state.members.forEachIndexed { i, m ->
                     if (i > 0) RowDivider()
@@ -196,7 +199,7 @@ fun TeamScreen(
                 if (state.isAdmin) {
                     RowDivider()
                     ListRow(
-                        title = "Invite people",
+                        title = stringResource(R.string.invite_people),
                         titleColor = MaterialTheme.colorScheme.primary,
                         leading = { IconTile(Icons.Filled.Person, tint = MaterialTheme.colorScheme.primary) },
                         modifier = Modifier.clickable { inviting = true },
@@ -205,22 +208,22 @@ fun TeamScreen(
             }
 
             if (state.isAdmin && state.invites.isNotEmpty()) {
-                SectionLabel("Pending invitations")
+                SectionLabel(stringResource(R.string.pending_invitations))
                 SectionCard {
                     state.invites.forEachIndexed { i, inv ->
                         if (i > 0) RowDivider()
                         ListRow(
                             title = inv.email,
-                            subtitle = "${inv.role.label()} · expires ${inv.expiresAt.take(10)}",
+                            subtitle = stringResource(R.string.expires, inv.role.label(), inv.expiresAt.take(10)),
                             trailing = {
-                                IconButton(onClick = { revoking = inv }) { Icon(Icons.Filled.Close, contentDescription = "Revoke") }
+                                IconButton(onClick = { revoking = inv }) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.revoke)) }
                             },
                         )
                     }
                 }
             }
 
-            SectionLabel("Vaults")
+            SectionLabel(stringResource(R.string.vaults))
             SectionCard {
                 state.vaults.forEachIndexed { i, v ->
                     if (i > 0) RowDivider()
@@ -228,7 +231,7 @@ fun TeamScreen(
                 }
                 if (state.vaults.isEmpty()) {
                     Text(
-                        if (state.isAdmin) "No team vault yet." else "You have not been given access to any vault of this team.",
+                        if (state.isAdmin) stringResource(R.string.no_team_vault_yet) else stringResource(R.string.you_have_not_been_given_access_to_any),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(16.dp),
@@ -237,7 +240,7 @@ fun TeamScreen(
                 if (state.isAdmin) {
                     RowDivider()
                     ListRow(
-                        title = "New team vault",
+                        title = stringResource(R.string.new_team_vault),
                         titleColor = MaterialTheme.colorScheme.primary,
                         leading = { IconTile(Icons.Filled.Lock, tint = MaterialTheme.colorScheme.primary) },
                         modifier = Modifier.clickable { newVault = true },
@@ -246,38 +249,37 @@ fun TeamScreen(
             }
 
             if (state.isAdmin) {
-                SectionLabel("Security")
+                SectionLabel(stringResource(R.string.security))
                 SectionCard {
                     SwitchRow(
-                        title = "Terminal sharing",
-                        subtitle = "Members may share a live terminal with each other (end-to-end encrypted)",
+                        title = stringResource(R.string.terminal_sharing),
+                        subtitle = stringResource(R.string.members_may_share_a_live_terminal_with_each),
                         checked = team.multiplayerEnabled,
                         onCheckedChange = { vm.setMultiplayer(it) },
                     )
                     RowDivider()
                     val noMfa = state.members.count { it.mfaEnabled == false }
                     SwitchRow(
-                        title = "Require two-factor authentication",
-                        subtitle = "Members without 2FA cannot open team vaults" +
+                        title = stringResource(R.string.require_two_factor_authentication),
+                        subtitle = stringResource(R.string.members_without_2fa_cannot_open_team_vaults) +
                             when (noMfa) {
                                 0 -> ""
-                                1 -> " · 1 member has no 2FA yet"
-                                else -> " · $noMfa members have no 2FA yet"
+                                else -> pluralStringResource(R.plurals.sep_members_no_2fa, noMfa, noMfa)
                             },
                         checked = team.requireMfa,
                         onCheckedChange = { vm.setRequireMfa(it) },
                     )
                     RowDivider()
                     SwitchRow(
-                        title = "Show who is connected",
-                        subtitle = "Members see who is on which team-vault host right now (only the host and protocol; each member can hide themselves)",
+                        title = stringResource(R.string.show_who_is_connected),
+                        subtitle = stringResource(R.string.members_see_who_is_on_which_team_vault),
                         checked = team.presenceEnabled,
                         onCheckedChange = { vm.setPresence(it) },
                     )
                     RowDivider()
                     ChevronRow(
-                        title = "Activity log",
-                        subtitle = "Who joined, invited, granted access, rotated keys",
+                        title = stringResource(R.string.activity_log),
+                        subtitle = stringResource(R.string.who_joined_invited_granted_access_rotated_keys),
                         leading = { IconTile(Icons.Filled.History) },
                         modifier = Modifier.clickable(onClick = onActivity),
                     )
@@ -289,8 +291,8 @@ fun TeamScreen(
 
     if (renaming && team != null) {
         NameDialog(
-            title = "Rename team",
-            label = "Team name",
+            title = stringResource(R.string.rename_team),
+            label = stringResource(R.string.team_name),
             initial = team.name,
             onDismiss = { renaming = false },
             onConfirm = { renaming = false; vm.rename(it) },
@@ -310,7 +312,7 @@ fun TeamScreen(
             onDismiss = { newVault = false },
             onCreate = { name, access ->
                 runCatching { vm.createVault(name, access) }
-                    .onSuccess { shell.notify("Vault \"$name\" created") }
+                    .onSuccess { shell.notify(str(R.string.vault_created, name)) }
                     .onFailure { shell.notify(it.userMessage()) }
                     .isSuccess
             },
@@ -328,42 +330,41 @@ fun TeamScreen(
     }
     removing?.let { m ->
         ConfirmDialog(
-            title = "Remove ${m.displayName ?: m.email}?",
-            text = "They lose access to every vault of this team. Keys of the vaults they could open are rotated " +
-                "on this phone and re-sealed for the remaining members.",
-            confirm = "Remove",
+            title = stringResource(R.string.remove, m.displayName ?: m.email),
+            text = stringResource(R.string.they_lose_access_to_every_vault_of_this),
+            confirm = stringResource(R.string.remove_2),
             onConfirm = { removing = null; vm.removeMember(m.userId) },
             onDismiss = { removing = null },
         )
     }
     transferring?.let { m ->
         ConfirmDialog(
-            title = "Make ${m.displayName ?: m.email} the owner?",
-            text = "You become an admin. Only the owner can delete the team or transfer ownership again.",
-            confirm = "Transfer",
+            title = stringResource(R.string.make_the_owner, m.displayName ?: m.email),
+            text = stringResource(R.string.you_become_an_admin_only_the_owner_can),
+            confirm = stringResource(R.string.transfer),
             onConfirm = { transferring = null; vm.setRole(m.userId, TeamRole.OWNER) },
             onDismiss = { transferring = null },
         )
     }
     revoking?.let { inv ->
         ConfirmDialog(
-            title = "Revoke invitation?",
-            text = "The link sent to ${inv.email} stops working.",
-            confirm = "Revoke",
+            title = stringResource(R.string.revoke_invitation),
+            text = stringResource(R.string.the_link_sent_to_stops_working, inv.email),
+            confirm = stringResource(R.string.revoke),
             onConfirm = { revoking = null; vm.revokeInvite(inv.id) },
             onDismiss = { revoking = null },
         )
     }
     if (leaving && team != null) {
         ConfirmDialog(
-            title = "Leave \"${team.name}\"?",
-            text = "Its vaults disappear from this device. An admin can invite you again.",
-            confirm = "Leave",
+            title = stringResource(R.string.leave, team.name),
+            text = stringResource(R.string.its_vaults_disappear_from_this_device_an_admin),
+            confirm = stringResource(R.string.leave_2),
             onConfirm = {
                 leaving = false
                 scope.launch {
                     runCatching { vm.leave() }
-                        .onSuccess { shell.notify("Left \"${team.name}\""); onBack() }
+                        .onSuccess { shell.notify(str(R.string.left, team.name)); onBack() }
                         .onFailure { shell.notify(it.userMessage()) }
                 }
             },
@@ -372,14 +373,14 @@ fun TeamScreen(
     }
     if (deleting && team != null) {
         ConfirmDialog(
-            title = "Delete \"${team.name}\"?",
-            text = "All team vaults and their hosts, keys and snippets are deleted for every member. This cannot be undone.",
-            confirm = "Delete",
+            title = stringResource(R.string.delete_3, team.name),
+            text = stringResource(R.string.all_team_vaults_and_their_hosts_keys_and),
+            confirm = stringResource(R.string.delete),
             onConfirm = {
                 deleting = false
                 scope.launch {
                     runCatching { vm.delete() }
-                        .onSuccess { shell.notify("Team deleted"); onBack() }
+                        .onSuccess { shell.notify(str(R.string.team_deleted)); onBack() }
                         .onFailure { shell.notify(it.userMessage()) }
                 }
             },
@@ -391,14 +392,14 @@ fun TeamScreen(
 @Composable
 private fun MemberRow(repo: VaultRepository, m: TeamMemberCard, mfaRequired: Boolean, canManage: Boolean, onMenu: () -> Unit) {
     ListRow(
-        title = (m.displayName ?: m.email) + if (m.me) " (you)" else "",
+        title = (m.displayName ?: m.email) + if (m.me) stringResource(R.string.you_3) else "",
         subtitle = if (m.displayName != null) "${m.email} · ${m.role.label()}" else m.role.label(),
         leading = { UserAvatar(repo, m.userId, m.avatar, m.displayName ?: m.email) },
         trailing = if (canManage || m.mfaEnabled != null) {
             {
                 MfaBadge(m.mfaEnabled, mfaRequired)
                 if (canManage) {
-                    IconButton(onClick = onMenu) { Icon(Icons.Filled.MoreVert, contentDescription = "Manage") }
+                    IconButton(onClick = onMenu) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.manage)) }
                 }
             }
         } else {
@@ -416,7 +417,7 @@ fun MfaBadge(enabled: Boolean?, required: Boolean) {
     when (enabled) {
         true -> Icon(
             Icons.Filled.VerifiedUser,
-            contentDescription = "Two-factor authentication enabled",
+            contentDescription = stringResource(R.string.two_factor_authentication_enabled),
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(18.dp),
         )
@@ -431,7 +432,7 @@ fun MfaBadge(enabled: Boolean?, required: Boolean) {
                 Icon(Icons.Filled.GppMaybe, contentDescription = null, tint = tint, modifier = Modifier.size(12.dp))
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    "No 2FA",
+                    stringResource(R.string.no_2fa),
                     color = tint,
                     style = MaterialTheme.typography.labelSmall,
                 )
@@ -447,7 +448,7 @@ private fun PendingKeyRow(p: PendingKeyCard, onGrant: () -> Unit) {
         title = p.displayName ?: p.email,
         subtitle = "${p.vaultName} · ${p.access.label()}",
         leading = { IconTile(Icons.Filled.LockOpen) },
-        trailing = { TextButton(onClick = onGrant) { Text("Grant") } },
+        trailing = { TextButton(onClick = onGrant) { Text(stringResource(R.string.grant)) } },
     )
 }
 
@@ -455,7 +456,7 @@ private fun PendingKeyRow(p: PendingKeyCard, onGrant: () -> Unit) {
 fun VaultRow(v: VaultInfo, modifier: Modifier = Modifier) {
     ChevronRow(
         title = v.name,
-        subtitle = if (v.locked) "key not received yet" else "you ${v.access.label()}",
+        subtitle = if (v.locked) stringResource(R.string.key_not_received_yet) else stringResource(R.string.you_4, v.access.label()),
         leading = { IconTile(if (v.locked) Icons.Filled.Lock else Icons.Filled.LockOpen) },
         modifier = modifier,
     )
@@ -482,24 +483,24 @@ private fun MemberMenuDialog(
                 listOf(TeamRole.MEMBER, TeamRole.ADMIN).forEach { role ->
                     val current = member.role == role
                     ListRow(
-                        title = role.label() + if (current) " · current" else "",
+                        title = role.label() + if (current) stringResource(R.string.sep_current) else "",
                         subtitle = role.hint(),
                         titleColor = if (current) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.clickable(enabled = !current) { onRole(role) },
                     )
                 }
                 if (isOwner) {
-                    ListRow(title = "Make owner", subtitle = TeamRole.OWNER.hint(), modifier = Modifier.clickable(onClick = onTransfer))
+                    ListRow(title = stringResource(R.string.make_owner), subtitle = TeamRole.OWNER.hint(), modifier = Modifier.clickable(onClick = onTransfer))
                 }
                 ListRow(
-                    title = "Remove from team",
+                    title = stringResource(R.string.remove_from_team),
                     titleColor = MaterialTheme.colorScheme.error,
                     modifier = Modifier.clickable(onClick = onRemove),
                 )
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -525,9 +526,9 @@ internal fun NameDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(value.trim()) }, enabled = value.isNotBlank() && value.trim() != initial) { Text("Save") }
+            TextButton(onClick = { onConfirm(value.trim()) }, enabled = value.isNotBlank() && value.trim() != initial) { Text(stringResource(R.string.save)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -545,7 +546,7 @@ internal fun AccessMenu(
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             if (allowNone) {
                 DropdownMenuItem(
-                    text = { Text("no access") },
+                    text = { Text(stringResource(R.string.no_access)) },
                     onClick = { open = false; onPick(null) },
                     enabled = current != null,
                 )
@@ -568,5 +569,5 @@ internal fun AccessMenu(
 
 @Composable
 internal fun AccessChip(current: VaultAccess?, onClick: () -> Unit) {
-    TextButton(onClick = onClick) { Text(current?.label() ?: "no access") }
+    TextButton(onClick = onClick) { Text(current?.label() ?: stringResource(R.string.no_access)) }
 }

@@ -28,10 +28,10 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -41,8 +41,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowDown
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Visibility
@@ -88,6 +88,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
@@ -95,10 +96,12 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.LiveEvent
 import com.termoso.android.data.SessionEvent
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.HostAvatar
 import com.termoso.android.ui.shell.ShellViewModel
@@ -208,10 +211,10 @@ fun TerminalScreen(
             if (active == null) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     EmptyState(
-                        title = "No sessions",
-                        hint = "Connect to a host to open a terminal.",
+                        title = stringResource(R.string.no_sessions),
+                        hint = stringResource(R.string.connect_to_a_host_to_open_a_terminal),
                         icon = Icons.Filled.Terminal,
-                        action = { Button(onClick = onNewSession) { Text("New connection") } },
+                        action = { Button(onClick = onNewSession) { Text(stringResource(R.string.new_connection)) } },
                     )
                 }
             } else {
@@ -300,7 +303,7 @@ private fun SessionChips(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        HeaderButton(Icons.AutoMirrored.Filled.ArrowBackIos, "Back", onClick = onBack)
+        HeaderButton(Icons.AutoMirrored.Filled.ArrowBackIos, stringResource(R.string.back), onClick = onBack)
         val listState = rememberLazyListState()
         // Bring the active chip into view when the selection changes and again
         // whenever the row is re-measured to a new width (dialogs, IME), which
@@ -335,13 +338,13 @@ private fun SessionChips(
             val live = active.isView || shared != null
             HeaderButton(
                 Icons.Filled.Groups,
-                if (active.isView) "Shared terminal" else "Terminal sharing",
+                if (active.isView) stringResource(R.string.shared_terminal) else stringResource(R.string.terminal_sharing),
                 tint = if (live) MaterialTheme.colorScheme.primary else null,
                 onClick = onLive,
             )
-            HeaderButton(Icons.Filled.MoreVert, "Session actions", onClick = { onMenu(active.id) })
+            HeaderButton(Icons.Filled.MoreVert, stringResource(R.string.session_actions), onClick = { onMenu(active.id) })
         }
-        HeaderButton(Icons.Filled.Add, "New session", tint = MaterialTheme.colorScheme.primary, onClick = onNew)
+        HeaderButton(Icons.Filled.Add, stringResource(R.string.new_session), tint = MaterialTheme.colorScheme.primary, onClick = onNew)
     }
 }
 
@@ -376,7 +379,7 @@ private fun SessionChip(
             // Not focusable: a focus grab (e.g. after a dialog closes) would
             // otherwise scroll the row back to the first chip.
             .focusProperties { canFocus = false }
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = "Session actions")
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = stringResource(R.string.session_actions))
             .padding(start = 10.dp, end = if (active) 6.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -398,7 +401,7 @@ private fun SessionChip(
         if (active) {
             Icon(
                 Icons.Outlined.Cancel,
-                contentDescription = "Close session",
+                contentDescription = stringResource(R.string.close_session),
                 tint = fg,
                 modifier = Modifier
                     .size(28.dp)
@@ -487,8 +490,8 @@ private fun ActiveSession(
                 }
                 is SessionEvent.Clipboard -> {
                     val result = snackbar.showSnackbar(
-                        message = "The remote wants to put text on your clipboard",
-                        actionLabel = "Copy",
+                        message = str(R.string.the_remote_wants_to_put_text_on_your),
+                        actionLabel = str(R.string.copy),
                         duration = SnackbarDuration.Long,
                     )
                     if (result == SnackbarResult.ActionPerformed) copyToClipboard(context, ev.text)
@@ -500,12 +503,12 @@ private fun ActiveSession(
         session.liveEvents.collect { ev ->
             val text = when (ev) {
                 is LiveEvent.Control ->
-                    if (ev.canWrite) "The host let you type" else "The host took back control; view only"
+                    if (ev.canWrite) str(R.string.the_host_let_you_type) else str(R.string.the_host_took_back_control_view_only)
                 is LiveEvent.Ended -> when {
-                    session.isView && ev.reason == LiveEndReason.STOPPED -> "The host stopped sharing"
-                    session.isView -> "Shared terminal ended: ${ev.message}"
+                    session.isView && ev.reason == LiveEndReason.STOPPED -> str(R.string.the_host_stopped_sharing)
+                    session.isView -> str(R.string.shared_terminal_ended, ev.message)
                     ev.reason == LiveEndReason.STOPPED -> null
-                    else -> "Sharing ended: ${ev.message}"
+                    else -> str(R.string.sharing_ended, ev.message)
                 }
             } ?: return@collect
             snackbar.showSnackbar(text)
@@ -550,9 +553,9 @@ private fun ActiveSession(
             dropping = DropProgress("", 0, uris.size, 0, null)
             runCatching { FileDrop.send(context, session, uris) { dropping = it } }
                 .onSuccess { paths ->
-                    snackbar.showSnackbar(if (paths.size == 1) "Uploaded to ${paths.single()}" else "Uploaded ${paths.size} files to /tmp")
+                    snackbar.showSnackbar(if (paths.size == 1) str(R.string.uploaded_to, paths.single()) else str(R.string.uploaded_files_to_tmp, paths.size))
                 }
-                .onFailure { snackbar.showSnackbar("Upload failed: ${it.userMessage()}") }
+                .onFailure { snackbar.showSnackbar(str(R.string.upload_failed, it.userMessage())) }
             dropping = null
         }
     }
@@ -585,7 +588,7 @@ private fun ActiveSession(
             !text.isNullOrEmpty() && (uri == null || text != uri.toString()) -> controller.paste(text)
             // An image or file on the clipboard (gallery "copy", keyboard sticker): upload it instead.
             uri != null -> dropFiles(listOf(uri))
-            else -> scope.launch { snackbar.showSnackbar("Clipboard is empty") }
+            else -> scope.launch { snackbar.showSnackbar(str(R.string.clipboard_is_empty)) }
         }
     }
 
@@ -620,7 +623,7 @@ private fun ActiveSession(
                     session.hostId != null -> shell.connectHost(session.hostId, session.transport)
                     session.quick != null -> shell.connectQuick(session.quick)
                     session.local != null -> shell.connectLocal()
-                    else -> snackbar.showSnackbar("This session cannot be cloned")
+                    else -> snackbar.showSnackbar(str(R.string.this_session_cannot_be_cloned))
                 }
             }
             Hotkey.FONT_UP -> zoom(1)
@@ -629,7 +632,7 @@ private fun ActiveSession(
             Hotkey.PASTE -> paste()
             Hotkey.TOGGLE_PANEL -> if (panelCollapsed) panelForced = true else panelExpanded = !panelExpanded
         }
-        hotkey.toast?.let { scope.launch { snackbar.showSnackbar(it) } }
+        hotkey.toast?.let { scope.launch { snackbar.showSnackbar(str(it)) } }
     }
 
     // Activity-level hook: volume bindings and Ctrl(+Shift) hotkeys never reach the
@@ -691,39 +694,39 @@ private fun ActiveSession(
                         onClick = { controller.scrollToBottom() },
                         modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
                     ) {
-                        Icon(Icons.Filled.KeyboardDoubleArrowDown, contentDescription = "Scroll to bottom")
+                        Icon(Icons.Filled.KeyboardDoubleArrowDown, contentDescription = stringResource(R.string.scroll_to_bottom))
                     }
                 }
                 menuAt?.let { (cell, offset) ->
                     val at = with(density) { DpOffset(offset.x.toDp(), offset.y.toDp()) }
                     DropdownMenu(expanded = true, onDismissRequest = { menuAt = null }, offset = at) {
-                        DropdownMenuItem(text = { Text("Paste") }, onClick = { menuAt = null; paste() })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.paste_2)) }, onClick = { menuAt = null; paste() })
                         DropdownMenuItem(
-                            text = { Text("Copy line") },
+                            text = { Text(stringResource(R.string.copy_line)) },
                             onClick = {
                                 menuAt = null
                                 val line = CellGrid(session.rust.frame()).let { g ->
                                     if (cell.row in 0 until g.rows) g.lineText(cell.row) else ""
                                 }
                                 copyToClipboard(context, line)
-                                scope.launch { snackbar.showSnackbar("Line copied") }
+                                scope.launch { snackbar.showSnackbar(str(R.string.line_copied)) }
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("Copy screen") },
+                            text = { Text(stringResource(R.string.copy_screen)) },
                             onClick = {
                                 menuAt = null
                                 copyToClipboard(context, controller.visibleText())
-                                scope.launch { snackbar.showSnackbar("Screen copied") }
+                                scope.launch { snackbar.showSnackbar(str(R.string.screen_copied)) }
                             },
                         )
                         if (FileDrop.blocker(session) == null) {
                             DropdownMenuItem(
-                                text = { Text("Send file…") },
+                                text = { Text(stringResource(R.string.send_file)) },
                                 onClick = { menuAt = null; pickFiles.launch(arrayOf("*/*")) },
                             )
                         }
-                        DropdownMenuItem(text = { Text("History & themes") }, onClick = { menuAt = null; panelSheet = true })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.history_themes)) }, onClick = { menuAt = null; panelSheet = true })
                     }
                 }
                 StateOverlay(
@@ -802,16 +805,16 @@ private fun ActiveSession(
         }
         AlertDialog(
             onDismissRequest = { answer(false) },
-            title = { Text(if (uris.size == 1) "Send file to ${session.label}?" else "Send ${uris.size} files to ${session.label}?") },
-            text = { Text("Copied to /tmp on the remote over this session's SSH connection; the path is typed at the prompt.") },
-            confirmButton = { TextButton(onClick = { answer(true) }) { Text("Send") } },
-            dismissButton = { TextButton(onClick = { answer(false) }) { Text("Cancel") } },
+            title = { Text(if (uris.size == 1) stringResource(R.string.send_file_to, session.label) else stringResource(R.string.send_files_to, uris.size, session.label)) },
+            text = { Text(stringResource(R.string.copied_to_tmp_on_the_remote_over_this)) },
+            confirmButton = { TextButton(onClick = { answer(true) }) { Text(stringResource(R.string.send)) } },
+            dismissButton = { TextButton(onClick = { answer(false) }) { Text(stringResource(R.string.cancel)) } },
         )
     }
     dropping?.let { p ->
         AlertDialog(
             onDismissRequest = {},
-            title = { Text(if (p.count > 1) "Sending ${p.index + 1} of ${p.count}" else "Sending file") },
+            title = { Text(if (p.count > 1) stringResource(R.string.sending_of, p.index + 1, p.count) else stringResource(R.string.sending_file)) },
             text = {
                 Column {
                     Text(p.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -846,7 +849,7 @@ private fun ViewBanner(canWrite: Boolean) {
     ) {
         Icon(Icons.Filled.Visibility, contentDescription = null, tint = fg, modifier = Modifier.size(16.dp))
         Text(
-            if (canWrite) "Shared terminal · you can type" else "Shared terminal · view only",
+            if (canWrite) stringResource(R.string.shared_terminal_you_can_type) else stringResource(R.string.shared_terminal_view_only),
             style = MaterialTheme.typography.labelMedium,
             color = fg,
         )
@@ -871,12 +874,12 @@ private fun StateOverlay(state: SessionState, target: String, onRetry: (() -> Un
             }
         }
         is SessionState.Closed -> OverlayCard {
-            Text("Session closed", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.session_closed), style = MaterialTheme.typography.titleSmall)
             s.reason?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onClose) { Text("Close") }
-                if (onRetry != null) Button(onClick = onRetry) { Text("Reconnect") }
+                OutlinedButton(onClick = onClose) { Text(stringResource(R.string.close)) }
+                if (onRetry != null) Button(onClick = onRetry) { Text(stringResource(R.string.reconnect)) }
             }
         }
         is SessionState.Failed -> OverlayCard {
@@ -886,21 +889,21 @@ private fun StateOverlay(state: SessionState, target: String, onRetry: (() -> Un
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onClose) { Text("Close") }
-                if (onRetry != null) Button(onClick = onRetry) { Text("Retry") }
+                TextButton(onClick = onClose) { Text(stringResource(R.string.close)) }
+                if (onRetry != null) Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
             }
         }
     }
 }
 
 private fun failureTitle(kind: String): String = when (kind) {
-    "auth_failed" -> "Authentication failed"
-    "host_key_rejected" -> "Host key rejected"
-    "io", "network" -> "Could not connect"
-    "ssh" -> "SSH error"
-    "cancelled" -> "Cancelled"
-    "not_found" -> "Not found"
-    else -> "Connection failed"
+    "auth_failed" -> str(R.string.authentication_failed_2)
+    "host_key_rejected" -> str(R.string.host_key_rejected)
+    "io", "network" -> str(R.string.could_not_connect)
+    "ssh" -> str(R.string.ssh_error)
+    "cancelled" -> str(R.string.cancelled_2)
+    "not_found" -> str(R.string.not_found)
+    else -> str(R.string.connection_failed)
 }
 
 @Composable

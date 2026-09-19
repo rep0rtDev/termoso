@@ -30,9 +30,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.termoso.android.R
 import com.termoso.android.ui.theme.DarkLayers
 
 /** First-launch screen: create an account, sign in (Cloud or self-hosted), or stay offline. */
@@ -62,14 +64,14 @@ fun WelcomeScreen(onCreateAccount: () -> Unit, onSignIn: () -> Unit, onContinueO
             }
             Spacer(Modifier.height(36.dp))
             Text(
-                "Welcome to Termoso",
+                stringResource(R.string.welcome_to_termoso),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = DarkLayers.text,
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Free, open-source SSH client. End-to-end encrypted sync, teams and live sharing — no telemetry.",
+                stringResource(R.string.free_open_source_ssh_client_end_to_end),
                 style = MaterialTheme.typography.bodyMedium,
                 color = DarkLayers.secondary,
                 textAlign = TextAlign.Center,
@@ -79,27 +81,26 @@ fun WelcomeScreen(onCreateAccount: () -> Unit, onSignIn: () -> Unit, onContinueO
                 onClick = onCreateAccount,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(12.dp),
-            ) { Text("Create a free account") }
+            ) { Text(stringResource(R.string.create_a_free_account)) }
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = onSignIn,
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(12.dp),
-            ) { Text("Sign in", color = DarkLayers.text) }
+            ) { Text(stringResource(R.string.sign_in), color = DarkLayers.text) }
             Spacer(Modifier.height(12.dp))
             Text(
-                "Termoso Cloud is completely free for everyone — no limits, no plans, no strings attached. " +
-                    "Or sign in to your own self-hosted server.",
+                stringResource(R.string.termoso_cloud_is_completely_free_for_everyone_no),
                 style = MaterialTheme.typography.bodySmall,
                 color = DarkLayers.secondary,
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.weight(1f))
             TextButton(onClick = onContinueOffline) {
-                Text("Continue without sync", color = DarkLayers.text)
+                Text(stringResource(R.string.continue_without_sync), color = DarkLayers.text)
             }
             Text(
-                "Free forever · Open source · No telemetry",
+                stringResource(R.string.free_forever_open_source_no_telemetry),
                 style = MaterialTheme.typography.labelMedium,
                 color = DarkLayers.secondary,
             )

@@ -43,11 +43,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.IconTile
@@ -82,8 +85,8 @@ fun TerminalPanelSheet(
     var tab by rememberSaveable { mutableIntStateOf(0) }
     ModalBottomSheet(onDismissRequest = onClose) {
         TabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("History") })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Themes") })
+            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.history)) })
+            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.themes)) })
         }
         when (tab) {
             0 -> HistoryTab(shell, session, controller, onClose)
@@ -121,23 +124,23 @@ private fun HistoryTab(shell: ShellViewModel, session: TerminalSession, controll
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (session.hostId != null) {
-                FilterChip(selected = thisHost, onClick = { thisHost = true }, label = { Text("This host") })
+                FilterChip(selected = thisHost, onClick = { thisHost = true }, label = { Text(stringResource(R.string.this_host)) })
                 Spacer(Modifier.width(8.dp))
-                FilterChip(selected = !thisHost, onClick = { thisHost = false }, label = { Text("All hosts") })
+                FilterChip(selected = !thisHost, onClick = { thisHost = false }, label = { Text(stringResource(R.string.all_hosts)) })
             } else {
-                SectionLabel("Commands typed in your terminals")
+                SectionLabel(stringResource(R.string.commands_typed_in_your_terminals))
             }
             Spacer(Modifier.weight(1f))
-            if (!items.isNullOrEmpty()) TextButton(onClick = { confirmClear = true }) { Text("Clear") }
+            if (!items.isNullOrEmpty()) TextButton(onClick = { confirmClear = true }) { Text(stringResource(R.string.clear)) }
         }
-        if (items.orEmpty().size > 8) FormField(query, { query = it }, "Search")
+        if (items.orEmpty().size > 8) FormField(query, { query = it }, stringResource(R.string.search))
     }
     when {
         items == null -> Spacer(Modifier.height(120.dp))
         shown.isEmpty() -> {
             EmptyState(
-                title = if (query.isBlank()) "No commands yet" else "Nothing matches",
-                hint = if (query.isBlank()) "Commands you run are saved here, encrypted with the vault. Passwords and secrets are skipped." else "Try another part of the command.",
+                title = if (query.isBlank()) stringResource(R.string.no_commands_yet) else stringResource(R.string.nothing_matches),
+                hint = if (query.isBlank()) stringResource(R.string.commands_you_run_are_saved_here_encrypted_with) else stringResource(R.string.try_another_part_of_the_command),
                 icon = Icons.Filled.Terminal,
                 modifier = Modifier.padding(16.dp),
             )
@@ -152,7 +155,7 @@ private fun HistoryTab(shell: ShellViewModel, session: TerminalSession, controll
                     modifier = Modifier.combinedClickable(
                         onClick = {
                             if (!canType) {
-                                shell.notify("You can only watch this terminal")
+                                shell.notify(str(R.string.you_can_only_watch_this_terminal))
                                 return@combinedClickable
                             }
                             controller.runCommand(h.command)
@@ -161,20 +164,20 @@ private fun HistoryTab(shell: ShellViewModel, session: TerminalSession, controll
                         onLongClick = { menuFor = h },
                     ),
                     trailing = {
-                        IconButton(onClick = { menuFor = h }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
+                        IconButton(onClick = { menuFor = h }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
                         DropdownMenu(expanded = menuFor?.id == h.id, onDismissRequest = { menuFor = null }) {
                             DropdownMenuItem(
-                                text = { Text("Paste without running") },
+                                text = { Text(stringResource(R.string.paste_without_running)) },
                                 enabled = canType,
                                 onClick = { menuFor = null; controller.paste(h.command); onClose() },
                             )
                             DropdownMenuItem(
-                                text = { Text("Copy") },
-                                onClick = { menuFor = null; copyToClipboard(context, h.command); shell.notify("Copied") },
+                                text = { Text(stringResource(R.string.copy)) },
+                                onClick = { menuFor = null; copyToClipboard(context, h.command); shell.notify(str(R.string.copied_2)) },
                             )
-                            DropdownMenuItem(text = { Text("Save as snippet") }, onClick = { menuFor = null; saveAs = h })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.save_as_snippet)) }, onClick = { menuFor = null; saveAs = h })
                             DropdownMenuItem(
-                                text = { Text("Delete") },
+                                text = { Text(stringResource(R.string.delete)) },
                                 onClick = {
                                     menuFor = null
                                     scope.launch {
@@ -197,8 +200,8 @@ private fun HistoryTab(shell: ShellViewModel, session: TerminalSession, controll
     if (confirmClear) {
         AlertDialog(
             onDismissRequest = { confirmClear = false },
-            title = { Text("Clear command history?") },
-            text = { Text("Removes every recorded command of this vault from this device (and, once synced, from your other devices).") },
+            title = { Text(stringResource(R.string.clear_command_history)) },
+            text = { Text(stringResource(R.string.removes_every_recorded_command_of_this_vault_from)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -208,9 +211,9 @@ private fun HistoryTab(shell: ShellViewModel, session: TerminalSession, controll
                                 .onFailure { shell.notify(it.userMessage()) }
                         }
                     },
-                ) { Text("Clear", color = MaterialTheme.colorScheme.error) }
+                ) { Text(stringResource(R.string.clear), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }
@@ -229,15 +232,15 @@ private fun SaveSnippetDialog(shell: ShellViewModel, command: String, hostId: St
 
     AlertDialog(
         onDismissRequest = onDone,
-        title = { Text("Save as snippet") },
+        title = { Text(stringResource(R.string.save_as_snippet)) },
         text = {
             Column {
-                FormField(label, { label = it }, "Name")
+                FormField(label, { label = it }, stringResource(R.string.name))
                 Spacer(Modifier.height(8.dp))
                 Text(command, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, maxLines = 4)
                 if (writable.size > 1) {
                     Spacer(Modifier.height(12.dp))
-                    SectionLabel("Vault")
+                    SectionLabel(stringResource(R.string.vault))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         writable.forEach { v ->
                             FilterChip(selected = vaultId == v.id, onClick = { vaultId = v.id }, label = { Text(v.name) })
@@ -249,7 +252,7 @@ private fun SaveSnippetDialog(shell: ShellViewModel, command: String, hostId: St
                     FilterChip(
                         selected = onlyThisHost,
                         onClick = { onlyThisHost = !onlyThisHost },
-                        label = { Text("Only for this host") },
+                        label = { Text(stringResource(R.string.only_for_this_host)) },
                         leadingIcon = if (onlyThisHost) ({ Icon(Icons.Filled.Check, contentDescription = null) }) else null,
                     )
                 }
@@ -276,14 +279,14 @@ private fun SaveSnippetDialog(shell: ShellViewModel, command: String, hostId: St
                                     ),
                                 )
                             }
-                        }.onSuccess { shell.notify("Snippet saved") }
+                        }.onSuccess { shell.notify(str(R.string.snippet_saved)) }
                             .onFailure { shell.notify(it.userMessage()) }
                         onDone()
                     }
                 },
-            ) { Text("Save") }
+            ) { Text(stringResource(R.string.save)) }
         },
-        dismissButton = { TextButton(onClick = onDone) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDone) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -302,25 +305,25 @@ private fun ThemesTab(shell: ShellViewModel, session: TerminalSession) {
     LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
             ListRow(
-                title = "Follow app setting",
-                subtitle = "${global.name} · change it under Settings → Terminal",
+                title = stringResource(R.string.follow_app_setting),
+                subtitle = stringResource(R.string.change_it_under_settings_terminal, global.name),
                 leading = { PaletteSwatch(global.palette) },
                 modifier = Modifier.clickable { pick(null) },
                 trailing = {
-                    if (override == null) Icon(Icons.Filled.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
+                    if (override == null) Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.selected), tint = MaterialTheme.colorScheme.primary)
                 },
             )
-            SectionLabel("Only this terminal", Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp))
+            SectionLabel(stringResource(R.string.only_this_terminal), Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp))
         }
         items(themes, key = { it.id }) { theme ->
             RowDivider()
             ListRow(
                 title = theme.name,
-                subtitle = if (theme.dark) "Dark" else "Light",
+                subtitle = if (theme.dark) stringResource(R.string.dark) else stringResource(R.string.light),
                 leading = { PaletteSwatch(theme.palette) },
                 modifier = Modifier.clickable { pick(theme) },
                 trailing = {
-                    if (override == theme.id) Icon(Icons.Filled.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
+                    if (override == theme.id) Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.selected), tint = MaterialTheme.colorScheme.primary)
                 },
             )
         }

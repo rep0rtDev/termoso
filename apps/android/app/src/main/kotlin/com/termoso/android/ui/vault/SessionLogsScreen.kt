@@ -30,12 +30,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.ListRow
@@ -46,9 +49,9 @@ import com.termoso.android.ui.hosts.ConfirmDialog
 import com.termoso.android.ui.sftp.formatSize
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.core.SessionLogCard
-import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.launch
 
 /** Terminal recordings of the selected vault, newest first. */
 @Composable
@@ -67,13 +70,12 @@ fun SessionLogsScreen(shell: ShellViewModel, onBack: () -> Unit, onOpen: (String
             .onFailure { shell.notify(it.userMessage()) }
     }
 
-    SubScreen(if (vault != null) "Recordings · ${vault.name}" else "Recordings", onBack) { padding ->
+    SubScreen(if (vault != null) stringResource(R.string.recordings, vault.name) else stringResource(R.string.recordings_2), onBack) { padding ->
         if (items.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 EmptyState(
-                    title = "No recordings",
-                    hint = "Turn on Settings → Terminal → Record sessions, or enable session logging on a team vault. " +
-                        "Only what the remote side prints is kept — never what you type.",
+                    title = stringResource(R.string.no_recordings),
+                    hint = stringResource(R.string.turn_on_settings_terminal_record_sessions_or_enable),
                     icon = Icons.Filled.Videocam,
                 )
             }
@@ -92,7 +94,7 @@ fun SessionLogsScreen(shell: ShellViewModel, onBack: () -> Unit, onOpen: (String
                         ) {
                             if (l.mine) {
                                 IconButton(onClick = { confirm = l }) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.delete), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
@@ -103,9 +105,9 @@ fun SessionLogsScreen(shell: ShellViewModel, onBack: () -> Unit, onOpen: (String
     }
     confirm?.let { l ->
         ConfirmDialog(
-            title = "Delete recording?",
-            text = "Removes it from this device and from every device it was synced to.",
-            confirm = "Delete",
+            title = stringResource(R.string.delete_recording),
+            text = stringResource(R.string.removes_it_from_this_device_and_from_every),
+            confirm = stringResource(R.string.delete),
             onConfirm = {
                 confirm = null
                 scope.launch {
@@ -122,17 +124,17 @@ fun logSubtitle(l: SessionLogCard): String {
     val time = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(l.startedAt))
     val duration = l.endedAt?.let { end -> formatDuration((end - l.startedAt) / 1000) }
     val who = when {
-        !l.mine -> l.author ?: "teammate"
+        !l.mine -> l.author ?: str(R.string.teammate)
         else -> null
     }
-    val state = if (l.completed) null else "recording…"
+    val state = if (l.completed) null else str(R.string.recording)
     return listOfNotNull(l.protocol.uppercase(), time, duration, formatSize(l.bytes), who, state).joinToString(" · ")
 }
 
 fun formatDuration(secs: Long): String = when {
-    secs < 60 -> "${secs}s"
-    secs < 3600 -> "${secs / 60}m"
-    else -> "${secs / 3600}h ${(secs % 3600) / 60}m"
+    secs < 60 -> str(R.string.duration_s, secs)
+    secs < 3600 -> str(R.string.duration_m, secs / 60)
+    else -> str(R.string.duration_h_m, secs / 3600, (secs % 3600) / 60)
 }
 
 /** One recording as plain text: escape sequences stripped, remote output only. */
@@ -154,19 +156,19 @@ fun SessionLogScreen(shell: ShellViewModel, logId: String, onBack: () -> Unit) {
     }
 
     SubScreen(
-        card?.let { it.label.ifBlank { it.target } } ?: "Recording",
+        card?.let { it.label.ifBlank { it.target } } ?: stringResource(R.string.recording_2),
         onBack,
         actions = {
             text?.let { t ->
-                IconButton(onClick = { clipboard.setText(AnnotatedString(t)); shell.notify("Copied") }) {
-                    Icon(Icons.Filled.ContentCopy, contentDescription = "Copy")
+                IconButton(onClick = { clipboard.setText(AnnotatedString(t)); shell.notify(str(R.string.copied_2)) }) {
+                    Icon(Icons.Filled.ContentCopy, contentDescription = stringResource(R.string.copy))
                 }
             }
         },
     ) { padding ->
         when {
             error != null -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                EmptyState(title = "Could not open recording", hint = error ?: "", icon = Icons.Filled.Videocam)
+                EmptyState(title = stringResource(R.string.could_not_open_recording), hint = error ?: "", icon = Icons.Filled.Videocam)
             }
             text == null -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()

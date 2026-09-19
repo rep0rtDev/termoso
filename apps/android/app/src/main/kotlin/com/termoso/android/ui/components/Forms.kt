@@ -28,10 +28,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import com.termoso.android.R
 
 /** Scaffold with a back arrow, used by every pushed sub-screen. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,7 +50,7 @@ fun SubScreen(
             TopAppBar(
                 title = { Text(title) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back)) }
                 },
                 actions = { actions() },
             )
@@ -113,7 +115,7 @@ fun SecretField(
                 IconButton(onClick = { visible = !visible }) {
                     Icon(
                         if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                        contentDescription = if (visible) "Hide" else "Show",
+                        contentDescription = if (visible) stringResource(R.string.hide) else stringResource(R.string.show),
                     )
                 }
             }

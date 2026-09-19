@@ -1,5 +1,6 @@
 package com.termoso.android.ui.hosts
 
+import com.termoso.android.ResourceTest
 import com.termoso.android.ui.components.closeHostLabel
 import com.termoso.android.ui.terminal.quickTargetText
 import com.termoso.core.HostDraft
@@ -10,7 +11,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class HostActionsTest {
+class HostActionsTest : ResourceTest() {
     private fun draft() = HostDraft(
         id = null,
         vaultId = "v",

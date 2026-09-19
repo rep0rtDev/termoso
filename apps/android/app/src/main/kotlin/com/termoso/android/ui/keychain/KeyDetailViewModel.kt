@@ -2,8 +2,10 @@ package com.termoso.android.ui.keychain
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.termoso.android.R
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.core.KeyItem
 import com.termoso.core.SecurityKeyCard
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +38,7 @@ class KeyDetailViewModel(private val repo: VaultRepository, private val id: Stri
         if (deleting) return
         runCatching {
             repo.read {
-                val key = keys(null).firstOrNull { it.id == id } ?: error("Key not found")
+                val key = keys(null).firstOrNull { it.id == id } ?: error(str(R.string.key_not_found))
                 Triple(
                     key,
                     runCatching { publicKey(id) }.getOrDefault(key.publicKey),
@@ -61,12 +63,12 @@ class KeyDetailViewModel(private val repo: VaultRepository, private val id: Stri
     fun rename(label: String) = mutate(null) { repo.write { renameKey(id, label.trim()) } }
 
     fun changePassphrase(current: String?, next: String?, remember: Boolean) =
-        mutate(if (next == null) "Passphrase removed" else "Passphrase changed") {
+        mutate(if (next == null) str(R.string.passphrase_removed) else str(R.string.passphrase_changed)) {
             repo.write { changeKeyPassphrase(id, current, next, remember) }
         }
 
     fun setCertificate(text: String?) =
-        mutate(if (text == null) "Certificate removed" else "Certificate attached") {
+        mutate(if (text == null) str(R.string.certificate_removed) else str(R.string.certificate_attached)) {
             repo.write { setKeyCertificate(id, text?.trim()?.takeIf { it.isNotEmpty() }) }
         }
 

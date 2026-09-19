@@ -28,12 +28,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.VaultRepository
+import com.termoso.android.str
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
@@ -83,7 +86,7 @@ fun PresenceStack(repo: VaultRepository, viewers: List<HostViewer>, modifier: Mo
     Row(
         modifier
             .padding(start = 8.dp)
-            .semantics { contentDescription = "Connected now: ${viewersSummary(viewers)}" },
+            .semantics { contentDescription = str(R.string.connected_now, viewersSummary(viewers)) },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         shown.forEachIndexed { i, v ->
@@ -130,7 +133,7 @@ private fun PresenceAvatar(repo: VaultRepository, v: HostViewer, size: Int, modi
 fun ConnectedNowSection(repo: VaultRepository, viewers: List<HostViewer>) {
     if (viewers.isEmpty()) return
     val now = rememberMinuteNow()
-    SectionLabel("Connected now")
+    SectionLabel(stringResource(R.string.connected_now_2))
     SectionCard {
         viewers.forEachIndexed { i, v ->
             if (i > 0) RowDivider()
@@ -144,7 +147,7 @@ fun ConnectedNowSection(repo: VaultRepository, viewers: List<HostViewer>) {
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        if (v.me) "${v.name} (you)" else v.name,
+                        if (v.me) stringResource(R.string.you_2, v.name) else v.name,
                         style = MaterialTheme.typography.bodyLarge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

@@ -1,5 +1,6 @@
 package com.termoso.android.ui.sftp
 
+import androidx.compose.ui.res.pluralStringResource
 import android.content.ActivityNotFoundException
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -81,6 +82,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -88,7 +90,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
 import com.termoso.android.data.SftpConnection
+import com.termoso.android.str
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.ListRow
@@ -102,9 +106,9 @@ import com.termoso.core.EntryKind
 import com.termoso.core.SessionState
 import com.termoso.core.SftpEntry
 import com.termoso.core.TransferStatus
-import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.launch
 
 /**
  * Remote file browser for one SFTP connection: breadcrumbs, upload, long-press
@@ -163,13 +167,13 @@ fun SftpScreen(
                 is SftpUiEvent.Notice -> scope.launch { snackbar.showSnackbar(ev.text) }
                 is SftpUiEvent.NeedDownloadFolder -> {
                     pendingDownload = ev.pending
-                    scope.launch { snackbar.showSnackbar("Choose a folder for downloads") }
+                    scope.launch { snackbar.showSnackbar(str(R.string.choose_a_folder_for_downloads)) }
                     pickDownloadFolder.launch(null)
                 }
                 is SftpUiEvent.OpenFile -> try {
                     context.startActivity(LocalFiles.openWithIntent(context, ev.file))
                 } catch (_: ActivityNotFoundException) {
-                    scope.launch { snackbar.showSnackbar("No app can open ${ev.file.name}. Use Download to save it.") }
+                    scope.launch { snackbar.showSnackbar(str(R.string.no_app_can_open_use_download_to_save, ev.file.name)) }
                 }
             }
         }
@@ -196,7 +200,7 @@ fun SftpScreen(
 
     fun copyPath(paths: List<String>) {
         clipboard.setText(AnnotatedString(paths.joinToString("\n")))
-        scope.launch { snackbar.showSnackbar(if (paths.size == 1) "Path copied" else "${paths.size} paths copied") }
+        scope.launch { snackbar.showSnackbar(if (paths.size == 1) str(R.string.path_copied) else str(R.string.paths_copied, paths.size)) }
         vm.clearSelection()
     }
 
@@ -237,16 +241,16 @@ fun SftpScreen(
                     },
                     navigationIcon = {
                         IconButton(onClick = { if (searching) { searching = false; vm.setQuery("") } else leave() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                         }
                     },
                     actions = {
                         if (!searching) {
-                            IconButton(onClick = { searching = true }) { Icon(Icons.Filled.Search, contentDescription = "Search") }
+                            IconButton(onClick = { searching = true }) { Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.search)) }
                         }
                         IconButton(onClick = { showTransfers = true }) {
                             BadgedBox(badge = { if (active > 0) Badge { Text("$active") } }) {
-                                Icon(Icons.Filled.SwapVert, contentDescription = "Transfers")
+                                Icon(Icons.Filled.SwapVert, contentDescription = stringResource(R.string.transfers))
                             }
                         }
                         OverflowMenu(
@@ -279,7 +283,7 @@ fun SftpScreen(
                     )
                     Spacer(Modifier.weight(1f))
                     Text(
-                        "${state.visible.size} ${if (state.visible.size == 1) "item" else "items"}",
+                        pluralStringResource(R.plurals.n_items, state.visible.size, state.visible.size),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -290,8 +294,8 @@ fun SftpScreen(
                     }
                     state.visible.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         EmptyState(
-                            title = if (state.query.isBlank()) "Empty folder" else "Nothing found",
-                            hint = if (state.query.isBlank()) "Upload files here or create a folder from the menu." else "Try another name.",
+                            title = if (state.query.isBlank()) stringResource(R.string.empty_folder) else stringResource(R.string.nothing_found),
+                            hint = if (state.query.isBlank()) stringResource(R.string.upload_files_here_or_create_a_folder_from) else stringResource(R.string.try_another_name),
                             icon = if (state.query.isBlank()) Icons.Filled.FolderOpen else Icons.Filled.Search,
                         )
                     }
@@ -328,49 +332,49 @@ fun SftpScreen(
     conflict?.let { c ->
         AlertDialog(
             onDismissRequest = { vm.resolveConflict(ConflictChoice.Skip) },
-            title = { Text(if (c.conflicting.size == 1) "File already exists" else "${c.conflicting.size} files already exist") },
+            title = { Text(if (c.conflicting.size == 1) stringResource(R.string.file_already_exists) else stringResource(R.string.files_already_exist, c.conflicting.size)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     c.conflicting.take(5).forEach { Text(it.name, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
-                    if (c.conflicting.size > 5) Text("…and ${c.conflicting.size - 5} more", style = MaterialTheme.typography.bodySmall)
+                    if (c.conflicting.size > 5) Text(stringResource(R.string.and_more, c.conflicting.size - 5), style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.height(4.dp))
-                    Text("Replace the remote copy, keep both (new name), or skip these.", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.replace_the_remote_copy_keep_both_new_name), style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = { vm.resolveConflict(ConflictChoice.KeepBoth) }) { Text("Keep both") }
-                    Button(onClick = { vm.resolveConflict(ConflictChoice.Replace) }) { Text("Replace") }
+                    TextButton(onClick = { vm.resolveConflict(ConflictChoice.KeepBoth) }) { Text(stringResource(R.string.keep_both)) }
+                    Button(onClick = { vm.resolveConflict(ConflictChoice.Replace) }) { Text(stringResource(R.string.replace)) }
                 }
             },
-            dismissButton = { TextButton(onClick = { vm.resolveConflict(ConflictChoice.Skip) }) { Text("Skip") } },
+            dismissButton = { TextButton(onClick = { vm.resolveConflict(ConflictChoice.Skip) }) { Text(stringResource(R.string.skip)) } },
         )
     }
 
     when (val d = dialog) {
         null -> Unit
         SftpDialog.NewFolder -> NameDialog(
-            title = "New folder",
+            title = stringResource(R.string.new_folder),
             initial = "",
-            confirm = "Create",
+            confirm = stringResource(R.string.create),
             onConfirm = { vm.mkdir(it); dialog = null },
             onDismiss = { dialog = null },
         )
         is SftpDialog.Rename -> NameDialog(
-            title = "Rename",
+            title = stringResource(R.string.rename),
             initial = d.entry.name,
-            confirm = "Rename",
+            confirm = stringResource(R.string.rename),
             onConfirm = { vm.rename(d.entry, it); vm.clearSelection(); dialog = null },
             onDismiss = { dialog = null },
         )
         is SftpDialog.Remove -> ConfirmDialog(
-            title = if (d.entries.size == 1) "Remove ${d.entries.first().name}?" else "Remove ${d.entries.size} items?",
+            title = if (d.entries.size == 1) stringResource(R.string.remove, d.entries.first().name) else stringResource(R.string.remove_items, d.entries.size),
             text = if (d.entries.any { it.isDir }) {
-                "Folders are removed with everything inside. This cannot be undone."
+                stringResource(R.string.folders_are_removed_with_everything_inside_this_cannot)
             } else {
-                "This cannot be undone."
+                stringResource(R.string.this_cannot_be_undone)
             },
-            confirm = "Remove",
+            confirm = stringResource(R.string.remove_2),
             onConfirm = { vm.remove(d.entries); vm.clearSelection(); dialog = null },
             onDismiss = { dialog = null },
         )
@@ -430,16 +434,16 @@ private fun UploadButton(enabled: Boolean, onFiles: () -> Unit, onFolder: () -> 
         FilledTonalButton(onClick = { open = true }, enabled = enabled) {
             Icon(Icons.Filled.Upload, contentDescription = null, Modifier.width(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Upload")
+            Text(stringResource(R.string.upload))
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(
-                text = { Text("Upload files") },
+                text = { Text(stringResource(R.string.upload_files)) },
                 leadingIcon = { Icon(Icons.Filled.InsertDriveFile, null) },
                 onClick = { open = false; onFiles() },
             )
             DropdownMenuItem(
-                text = { Text("Upload folder") },
+                text = { Text(stringResource(R.string.upload_folder)) },
                 leadingIcon = { Icon(Icons.Filled.Folder, null) },
                 onClick = { open = false; onFolder() },
             )
@@ -524,47 +528,47 @@ private fun SelectionBar(
     val one = state.selected.size == 1
     val single = state.selectedEntries.singleOrNull()
     TopAppBar(
-        title = { Text("${state.selected.size} selected") },
-        navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Cancel selection") } },
+        title = { Text(stringResource(R.string.selected_2, state.selected.size)) },
+        navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.cancel_selection)) } },
         actions = {
             if (state.selectedEntries.any { !it.isDir }) {
-                IconButton(onClick = onDownload) { Icon(Icons.Filled.Download, contentDescription = "Download") }
+                IconButton(onClick = onDownload) { Icon(Icons.Filled.Download, contentDescription = stringResource(R.string.download)) }
             }
-            IconButton(onClick = onRemove) { Icon(Icons.Filled.Delete, contentDescription = "Remove") }
+            IconButton(onClick = onRemove) { Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.remove_2)) }
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     if (one) {
                         DropdownMenuItem(
-                            text = { Text("Rename") },
+                            text = { Text(stringResource(R.string.rename)) },
                             leadingIcon = { Icon(Icons.Filled.DriveFileRenameOutline, null) },
                             onClick = { menu = false; onRename() },
                         )
                         if (single != null && !single.isDir) {
                             DropdownMenuItem(
-                                text = { Text("Edit in terminal") },
+                                text = { Text(stringResource(R.string.edit_in_terminal)) },
                                 leadingIcon = { Icon(Icons.Filled.Edit, null) },
                                 onClick = { menu = false; onEdit() },
                             )
                             DropdownMenuItem(
-                                text = { Text("Open with…") },
+                                text = { Text(stringResource(R.string.open_with_2)) },
                                 leadingIcon = { Icon(Icons.Filled.OpenInNew, null) },
                                 onClick = { menu = false; onOpenWith() },
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text("Change permissions") },
+                            text = { Text(stringResource(R.string.change_permissions)) },
                             leadingIcon = { Icon(Icons.Filled.Lock, null) },
                             onClick = { menu = false; onPermissions() },
                         )
                     }
                     DropdownMenuItem(
-                        text = { Text("Copy path") },
+                        text = { Text(stringResource(R.string.copy_path)) },
                         leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
                         onClick = { menu = false; onCopyPath() },
                     )
                     DropdownMenuItem(
-                        text = { Text("Select all") },
+                        text = { Text(stringResource(R.string.select_all)) },
                         leadingIcon = { Icon(Icons.Filled.Check, null) },
                         onClick = { menu = false; onSelectAll() },
                     )
@@ -590,34 +594,34 @@ private fun OverflowMenu(
     var open by remember { mutableStateOf(false) }
     var sortOpen by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
+        IconButton(onClick = { open = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(
-                text = { Text("New folder") },
+                text = { Text(stringResource(R.string.new_folder)) },
                 leadingIcon = { Icon(Icons.Filled.CreateNewFolder, null) },
                 onClick = { open = false; onNewFolder() },
             )
             DropdownMenuItem(
-                text = { Text("Sort by · ${state.sort.label}") },
+                text = { Text(stringResource(R.string.sort_by, stringResource(state.sort.label))) },
                 leadingIcon = { Icon(Icons.Filled.SwapVert, null) },
                 onClick = { open = false; sortOpen = true },
             )
             DropdownMenuItem(
-                text = { Text(if (state.showHidden) "Hide hidden files" else "Show hidden files") },
+                text = { Text(if (state.showHidden) stringResource(R.string.hide_hidden_files) else stringResource(R.string.show_hidden_files)) },
                 leadingIcon = { Icon(if (state.showHidden) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, null) },
                 onClick = { open = false; onToggleHidden() },
             )
             DropdownMenuItem(
-                text = { Text("Refresh") },
+                text = { Text(stringResource(R.string.refresh)) },
                 leadingIcon = { Icon(Icons.Filled.Refresh, null) },
                 onClick = { open = false; onRefresh() },
             )
             DropdownMenuItem(
                 text = {
                     Column {
-                        Text("Download folder")
+                        Text(stringResource(R.string.download_folder))
                         Text(
-                            downloadFolder ?: "Not chosen",
+                            downloadFolder ?: stringResource(R.string.not_chosen),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -627,12 +631,12 @@ private fun OverflowMenu(
                 onClick = { open = false; onDownloadFolder() },
             )
             DropdownMenuItem(
-                text = { Text("Copy path") },
+                text = { Text(stringResource(R.string.copy_path)) },
                 leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
                 onClick = { open = false; onCopyPath() },
             )
             DropdownMenuItem(
-                text = { Text("Disconnect") },
+                text = { Text(stringResource(R.string.disconnect)) },
                 leadingIcon = { Icon(Icons.Filled.OpenInNew, null) },
                 onClick = { open = false; onDisconnect() },
             )
@@ -640,7 +644,7 @@ private fun OverflowMenu(
         DropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
             SftpSort.entries.forEach { s ->
                 DropdownMenuItem(
-                    text = { Text(s.label) },
+                    text = { Text(stringResource(s.label)) },
                     trailingIcon = if (s == state.sort) {
                         { Icon(Icons.Filled.Check, contentDescription = null) }
                     } else {
@@ -660,7 +664,7 @@ private fun SearchField(query: String, onChange: (String) -> Unit) {
     OutlinedTextField(
         value = query,
         onValueChange = onChange,
-        placeholder = { Text("Search in folder") },
+        placeholder = { Text(stringResource(R.string.search_in_folder)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth().focusRequester(focus),
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
@@ -680,7 +684,7 @@ private fun NameDialog(title: String, initial: String, confirm: String, onConfir
             OutlinedTextField(
                 value = value,
                 onValueChange = { value = it },
-                label = { Text("Name") },
+                label = { Text(stringResource(R.string.name)) },
                 singleLine = true,
                 isError = value.isNotEmpty() && !valid,
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
@@ -688,7 +692,7 @@ private fun NameDialog(title: String, initial: String, confirm: String, onConfir
             )
         },
         confirmButton = { TextButton(onClick = { onConfirm(value.trim()) }, enabled = valid) { Text(confirm) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -709,23 +713,23 @@ private fun StateOverlay(state: SessionState, target: String, onRetry: () -> Uni
         }
         is SessionState.Closed -> {
             {
-                Text("Connection closed", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.connection_closed_2), style = MaterialTheme.typography.titleSmall)
                 s.reason?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onClose) { Text("Close") }
-                    Button(onClick = onRetry) { Text("Reconnect") }
+                    TextButton(onClick = onClose) { Text(stringResource(R.string.close)) }
+                    Button(onClick = onRetry) { Text(stringResource(R.string.reconnect)) }
                 }
             }
         }
         is SessionState.Failed -> {
             {
-                Text("Connection failed", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.connection_failed), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
                 Text(s.message, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onClose) { Text("Close") }
-                    Button(onClick = onRetry) { Text("Retry") }
+                    TextButton(onClick = onClose) { Text(stringResource(R.string.close)) }
+                    Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                 }
             }
         }

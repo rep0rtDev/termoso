@@ -3,16 +3,20 @@ package com.termoso.android.ui.sftp
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.termoso.android.R
 import com.termoso.android.data.SftpConnection
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.core.MobileException
 import com.termoso.core.SessionState
 import com.termoso.core.SftpEntry
 import com.termoso.core.TransferCard
 import com.termoso.core.TransferDirection
 import com.termoso.core.TransferStatus
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,13 +27,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
-enum class SftpSort(val label: String) {
-    Name("Name"),
-    Date("Date"),
-    Size("Size"),
-    Kind("Kind"),
+enum class SftpSort(@StringRes val label: Int) {
+    Name(R.string.name),
+    Date(R.string.date),
+    Size(R.string.size),
+    Kind(R.string.kind),
 }
 
 data class SftpUiState(
@@ -168,7 +171,7 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
             loaded.onSuccess { state ->
                 if (state == null) {
                     _preview.value = null
-                    notice("Not a text or image file")
+                    notice(str(R.string.not_a_text_or_image_file))
                     openWith(entry)
                 } else {
                     _preview.value = state
@@ -206,7 +209,7 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
                     _preview.update { cur ->
                         if (cur?.entry?.path == p.entry.path) cur.copy(text = draft, draft = null, saving = false) else cur
                     }
-                    notice("Saved ${p.entry.name}")
+                    notice(str(R.string.saved_2, p.entry.name))
                     if (p.entry.path.substringBeforeLast('/', "/").ifBlank { "/" } == _state.value.path) refresh()
                 }
                 .onFailure { e -> _preview.update { it?.copy(saving = false, error = e.userMessage()) } }
@@ -233,18 +236,18 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
 
     // ───────────────────────────── mutations ─────────────────────────────
 
-    fun mkdir(name: String) = mutate("Folder created") { mkdir(join(_state.value.path, name.trim())) }
+    fun mkdir(name: String) = mutate(str(R.string.folder_created)) { mkdir(join(_state.value.path, name.trim())) }
 
     fun rename(entry: SftpEntry, newName: String) = mutate(null) {
         val parent = entry.path.substringBeforeLast('/', "")
         rename(entry.path, join(parent.ifBlank { "/" }, newName.trim()))
     }
 
-    fun remove(entries: List<SftpEntry>) = mutate(if (entries.size == 1) "Removed" else "Removed ${entries.size} items") {
+    fun remove(entries: List<SftpEntry>) = mutate(if (entries.size == 1) str(R.string.removed_2) else str(R.string.removed_items, entries.size)) {
         entries.forEach { remove(it.path) }
     }
 
-    fun chmod(entry: SftpEntry, mode: UInt) = mutate("Permissions changed") { chmod(entry.path, mode) }
+    fun chmod(entry: SftpEntry, mode: UInt) = mutate(str(R.string.permissions_changed)) { chmod(entry.path, mode) }
 
     private fun mutate(done: String?, block: com.termoso.core.SftpSession.() -> Unit) {
         viewModelScope.launch {
@@ -259,7 +262,7 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
     /** Download into the chosen folder; asks for one first if none is set. */
     fun download(entries: List<SftpEntry>) {
         val files = entries.filter { !it.isDir }
-        if (files.size < entries.size) notice("Folders are skipped; download files inside them.")
+        if (files.size < entries.size) notice(str(R.string.folders_are_skipped_download_files_inside_them))
         if (files.isEmpty()) return
         val tree = LocalFiles.downloadTree(appContext)
         if (tree == null) {
@@ -360,7 +363,7 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
                 walk(DocumentsContract.getTreeDocumentId(tree), target)
                 count
             }
-            result.onSuccess { n -> notice(if (n == 0) "Folder created (no files inside)" else "Uploading $n files…"); refresh() }
+            result.onSuccess { n -> notice(if (n == 0) str(R.string.folder_created_no_files_inside) else str(R.string.uploading_files, n)); refresh() }
                 .onFailure { notice(it.userMessage()) }
         }
     }
@@ -380,7 +383,7 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
             withContext(Dispatchers.IO) { LocalFiles.copyIn(appContext.contentResolver, doc.uri, scratch) }
         }
         if (copied.isFailure) {
-            notice("Cannot read ${doc.name}: ${copied.exceptionOrNull()?.userMessage()}")
+            notice(str(R.string.cannot_read, doc.name, copied.exceptionOrNull()?.userMessage()))
             return
         }
         val id = conn.io { upload(scratch.absolutePath, remote) }
@@ -448,7 +451,7 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
                 is TransferStatus.Done -> when (sink) {
                     is Sink.SaveToTree -> if (scratch != null) {
                         runCatching { withContext(Dispatchers.IO) { LocalFiles.saveToTree(appContext, sink.tree, scratch) } }
-                            .onSuccess { notice("${card.name} saved to ${LocalFiles.downloadTreeLabel(appContext) ?: "download folder"}") }
+                            .onSuccess { notice(str(R.string.saved_to, card.name, LocalFiles.downloadTreeLabel(appContext) ?: str(R.string.download_folder))) }
                             .onFailure { notice(it.userMessage()) }
                         withContext(Dispatchers.IO) { scratch.delete() }
                     }

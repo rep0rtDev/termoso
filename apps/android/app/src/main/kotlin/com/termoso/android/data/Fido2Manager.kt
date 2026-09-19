@@ -20,6 +20,8 @@ import android.nfc.tech.IsoDep
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import com.termoso.android.R
+import com.termoso.android.str
 import com.termoso.core.Fido2DeviceCard
 import com.termoso.core.Fido2Devices
 import com.termoso.core.Fido2NfcLink
@@ -209,7 +211,7 @@ class Fido2Manager(context: Context) {
         runCatching {
             registry.attachUsb(
                 id,
-                device.productName ?: "USB security key",
+                device.productName ?: str(R.string.usb_security_key),
                 device.vendorId.toUShort(),
                 device.productId.toUShort(),
                 link,
@@ -335,7 +337,7 @@ private class UsbHidLink(private val conn: UsbDeviceConnection, private val ifac
         runCatching { conn.close() }
     }
 
-    private fun gone() = MobileException.Other(kind = "io", detail = "USB security key disconnected")
+    private fun gone() = MobileException.Other(kind = "io", detail = str(R.string.usb_security_key_disconnected))
 }
 
 /** One ISO-DEP tag: command APDU in, response APDU (with SW) out. */
@@ -343,9 +345,9 @@ private class NfcIsoDepLink(private val iso: IsoDep) : Fido2NfcLink, AutoCloseab
     override fun transceive(apdu: ByteArray): ByteArray = try {
         iso.transceive(apdu)
     } catch (e: TagLostException) {
-        throw MobileException.Other(kind = "io", detail = "Security key moved away from the NFC reader")
+        throw MobileException.Other(kind = "io", detail = str(R.string.security_key_moved_away_from_the_nfc_reader))
     } catch (e: IOException) {
-        throw MobileException.Other(kind = "io", detail = e.message ?: "NFC transfer failed")
+        throw MobileException.Other(kind = "io", detail = e.message ?: str(R.string.nfc_transfer_failed))
     }
 
     override fun extendedLength(): Boolean = iso.isExtendedLengthApduSupported

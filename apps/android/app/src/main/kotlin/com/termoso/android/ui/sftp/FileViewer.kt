@@ -48,10 +48,12 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.termoso.android.R
 import com.termoso.android.ui.components.EmptyState
 
 /**
@@ -84,9 +86,9 @@ fun FileViewer(
                         Text(preview.entry.name, maxLines = 1)
                         Text(
                             when {
-                                preview.saving -> "Saving…"
-                                preview.dirty -> "Unsaved changes"
-                                preview.editing -> "Editing"
+                                preview.saving -> stringResource(R.string.saving)
+                                preview.dirty -> stringResource(R.string.unsaved_changes)
+                                preview.editing -> stringResource(R.string.editing)
                                 else -> preview.entry.path
                             },
                             style = MaterialTheme.typography.bodySmall,
@@ -96,23 +98,23 @@ fun FileViewer(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = close) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                    IconButton(onClick = close) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back)) }
                 },
                 actions = {
                     when {
                         preview.editing -> {
                             IconButton(onClick = onDiscard, enabled = !preview.saving) {
-                                Icon(Icons.Filled.Close, contentDescription = "Discard changes")
+                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.discard_changes))
                             }
                             IconButton(onClick = onSave, enabled = preview.dirty && !preview.saving) {
-                                Icon(Icons.Filled.Save, contentDescription = "Save")
+                                Icon(Icons.Filled.Save, contentDescription = stringResource(R.string.save))
                             }
                         }
                         preview.text != null -> IconButton(onClick = onEdit) {
-                            Icon(Icons.Filled.Edit, contentDescription = "Edit")
+                            Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.edit))
                         }
                     }
-                    IconButton(onClick = onOpenWith) { Icon(Icons.Filled.OpenInNew, contentDescription = "Open with") }
+                    IconButton(onClick = onOpenWith) { Icon(Icons.Filled.OpenInNew, contentDescription = stringResource(R.string.open_with)) }
                 },
             )
         },
@@ -124,7 +126,7 @@ fun FileViewer(
                     Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    EmptyState(title = "Could not open file", hint = preview.error, icon = Icons.Filled.Close)
+                    EmptyState(title = stringResource(R.string.could_not_open_file), hint = preview.error, icon = Icons.Filled.Close)
                 }
                 preview.image != null -> ZoomableImage(preview.image)
                 preview.draft != null -> TextEditor(preview.draft, onDraft, enabled = !preview.saving)
@@ -148,13 +150,13 @@ fun FileViewer(
     if (confirmClose) {
         AlertDialog(
             onDismissRequest = { confirmClose = false },
-            title = { Text("Discard changes?") },
-            text = { Text("${preview.entry.name} has unsaved edits.") },
+            title = { Text(stringResource(R.string.discard_changes_2)) },
+            text = { Text(stringResource(R.string.has_unsaved_edits, preview.entry.name)) },
             confirmButton = {
-                Button(onClick = { confirmClose = false; onSave() }) { Text("Save") }
+                Button(onClick = { confirmClose = false; onSave() }) { Text(stringResource(R.string.save)) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmClose = false; onClose() }) { Text("Discard") }
+                TextButton(onClick = { confirmClose = false; onClose() }) { Text(stringResource(R.string.discard)) }
             },
         )
     }

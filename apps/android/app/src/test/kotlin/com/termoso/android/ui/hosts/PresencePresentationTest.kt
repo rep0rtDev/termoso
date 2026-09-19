@@ -1,5 +1,6 @@
 package com.termoso.android.ui.hosts
 
+import com.termoso.android.ResourceTest
 import com.termoso.core.PresenceEntryCard
 import com.termoso.core.PresenceSessionCard
 import com.termoso.core.TeamPresenceCard
@@ -8,7 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class PresencePresentationTest {
+class PresencePresentationTest : ResourceTest() {
     private fun session(host: String, protocol: String, since: String) =
         PresenceSessionCard(vaultId = "v", hostId = host, protocol = protocol, since = since)
 

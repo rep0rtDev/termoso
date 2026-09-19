@@ -11,6 +11,7 @@ class TermosoApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         initLogging(verbose = BuildConfig.DEBUG)
+        Strings.init(this)
         container = AppContainer(this)
     }
 }

@@ -1,12 +1,13 @@
 package com.termoso.android.ui.vault
 
+import com.termoso.android.ResourceTest
 import com.termoso.core.SessionLogCard
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class SessionLogPresentationTest {
+class SessionLogPresentationTest : ResourceTest() {
     private fun card(
         mine: Boolean = true,
         author: String? = null,

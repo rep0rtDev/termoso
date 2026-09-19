@@ -1,5 +1,7 @@
 package com.termoso.android.ui.snippets
 
+import com.termoso.android.R
+import com.termoso.android.str
 import com.termoso.android.ui.vault.vaultLabel
 import com.termoso.core.VaultAccess
 import com.termoso.core.VaultInfo
@@ -18,16 +20,16 @@ fun vaultDestinations(vaults: List<VaultInfo>, sourceVaultId: String): List<Vaul
 fun transferExplanation(subject: TransferSubject, label: String, move: Boolean): String {
     val what = when (subject) {
         TransferSubject.Snippet -> "\"$label\""
-        TransferSubject.Package -> "\"$label\" with its sub-packages and snippets"
+        TransferSubject.Package -> str(R.string.with_its_sub_packages_and_snippets, label)
     }
-    val placement = "at the top level of the chosen vault"
+    val placement = str(R.string.at_the_top_level_of_the_chosen_vault)
     return if (move) {
-        "$what is removed from this vault and placed $placement. Host targets and startup links to it stay behind."
+        str(R.string.is_removed_from_this_vault_and_placed_host, what, placement)
     } else {
-        "A copy of $what is placed $placement. Host targets are not copied."
+        str(R.string.a_copy_of_is_placed_host_targets_are, what, placement)
     }
 }
 
 /** Snackbar after a successful copy or move. */
 fun transferNotice(label: String, destination: VaultInfo, move: Boolean): String =
-    "\"$label\" ${if (move) "moved" else "copied"} to ${vaultLabel(destination)}"
+    if (move) str(R.string.moved_to, label, vaultLabel(destination)) else str(R.string.copied_to, label, vaultLabel(destination))

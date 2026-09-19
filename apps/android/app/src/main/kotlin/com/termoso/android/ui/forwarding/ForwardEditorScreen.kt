@@ -33,12 +33,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
 import com.termoso.android.data.ForwardManager
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
@@ -198,14 +200,14 @@ fun ForwardEditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (ruleId == null) "New rule" else s.label.ifBlank { "Edit rule" }) },
-                navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close") } },
+                title = { Text(if (ruleId == null) stringResource(R.string.new_rule) else s.label.ifBlank { stringResource(R.string.edit_rule) }) },
+                navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.close)) } },
                 actions = {
                     IconButton(onClick = vm::save, enabled = s.canSave) {
                         if (s.working) {
                             CircularProgressIndicator(modifier = Modifier.height(20.dp), strokeWidth = 2.dp)
                         } else {
-                            Icon(Icons.Filled.Check, contentDescription = "Save")
+                            Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.save))
                         }
                     }
                 },
@@ -232,16 +234,16 @@ fun ForwardEditorScreen(
 
             SectionCard {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FormField(s.label, { v -> vm.update { it.copy(label = v) } }, "Label", placeholder = "Optional")
+                    FormField(s.label, { v -> vm.update { it.copy(label = v) } }, stringResource(R.string.label), placeholder = stringResource(R.string.optional))
                     if (s.hosts.isEmpty()) {
                         Text(
-                            "No SSH hosts in this vault yet — add one first.",
+                            stringResource(R.string.no_ssh_hosts_in_this_vault_yet_add),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.error,
                         )
                     } else {
                         PickerRow(
-                            label = "Host",
+                            label = stringResource(R.string.host),
                             value = s.hosts.firstOrNull { it.id == s.hostId }?.let { it.label.ifBlank { it.address } } ?: "",
                             options = s.hosts.map { it.id to it.label.ifBlank { it.address } },
                             selected = s.hostId,
@@ -254,9 +256,9 @@ fun ForwardEditorScreen(
 
             SectionLabel(
                 when (s.kind) {
-                    PfKind.LOCAL -> "Listen on this device"
-                    PfKind.REMOTE -> "Listen on the server"
-                    PfKind.DYNAMIC -> "SOCKS5 proxy on this device"
+                    PfKind.LOCAL -> stringResource(R.string.listen_on_this_device)
+                    PfKind.REMOTE -> stringResource(R.string.listen_on_the_server)
+                    PfKind.DYNAMIC -> stringResource(R.string.socks5_proxy_on_this_device)
                 },
             )
             SectionCard {
@@ -264,43 +266,43 @@ fun ForwardEditorScreen(
                     FormField(
                         s.bind,
                         { v -> vm.update { it.copy(bind = v) } },
-                        "Bind address",
-                        placeholder = if (s.kind == PfKind.REMOTE) "localhost (server side)" else "127.0.0.1",
+                        stringResource(R.string.bind_address),
+                        placeholder = if (s.kind == PfKind.REMOTE) stringResource(R.string.localhost_server_side) else "127.0.0.1",
                         keyboard = KeyboardType.Uri,
                     )
                     if (s.kind == PfKind.REMOTE) {
-                        FormField(s.remotePort, { v -> vm.update { it.copy(remotePort = v.filter(Char::isDigit)) } }, "Port on server", keyboard = KeyboardType.Number)
+                        FormField(s.remotePort, { v -> vm.update { it.copy(remotePort = v.filter(Char::isDigit)) } }, stringResource(R.string.port_on_server), keyboard = KeyboardType.Number)
                     } else {
-                        FormField(s.localPort, { v -> vm.update { it.copy(localPort = v.filter(Char::isDigit)) } }, "Local port", keyboard = KeyboardType.Number)
+                        FormField(s.localPort, { v -> vm.update { it.copy(localPort = v.filter(Char::isDigit)) } }, stringResource(R.string.local_port), keyboard = KeyboardType.Number)
                     }
                 }
             }
 
             if (s.kind != PfKind.DYNAMIC) {
-                SectionLabel(if (s.kind == PfKind.LOCAL) "Forward to (reachable from the host)" else "Forward to (reachable from this device)")
+                SectionLabel(if (s.kind == PfKind.LOCAL) stringResource(R.string.forward_to_reachable_from_the_host) else stringResource(R.string.forward_to_reachable_from_this_device))
                 SectionCard {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         FormField(
                             s.remoteHost,
                             { v -> vm.update { it.copy(remoteHost = v) } },
-                            "Destination host",
+                            stringResource(R.string.destination_host),
                             placeholder = if (s.kind == PfKind.REMOTE) "127.0.0.1" else "db.internal",
                             keyboard = KeyboardType.Uri,
                         )
                         if (s.kind == PfKind.LOCAL) {
-                            FormField(s.remotePort, { v -> vm.update { it.copy(remotePort = v.filter(Char::isDigit)) } }, "Destination port", keyboard = KeyboardType.Number)
+                            FormField(s.remotePort, { v -> vm.update { it.copy(remotePort = v.filter(Char::isDigit)) } }, stringResource(R.string.destination_port), keyboard = KeyboardType.Number)
                         } else {
-                            FormField(s.localPort, { v -> vm.update { it.copy(localPort = v.filter(Char::isDigit)) } }, "Destination port", keyboard = KeyboardType.Number)
+                            FormField(s.localPort, { v -> vm.update { it.copy(localPort = v.filter(Char::isDigit)) } }, stringResource(R.string.destination_port), keyboard = KeyboardType.Number)
                         }
                     }
                 }
             }
 
-            SectionLabel("Options")
+            SectionLabel(stringResource(R.string.options))
             SectionCard {
                 SwitchRow(
-                    title = "Auto-start",
-                    subtitle = "Start when the vault unlocks (also honoured by the desktop app)",
+                    title = stringResource(R.string.auto_start),
+                    subtitle = stringResource(R.string.start_when_the_vault_unlocks_also_honoured_by),
                     checked = s.autoStart,
                     onCheckedChange = { v -> vm.update { it.copy(autoStart = v) } },
                 )
@@ -310,7 +312,7 @@ fun ForwardEditorScreen(
                 SectionLabel(" ")
                 SectionCard {
                     ListRow(
-                        title = "Delete rule",
+                        title = stringResource(R.string.delete_rule),
                         titleColor = MaterialTheme.colorScheme.error,
                         modifier = Modifier.clickable { confirmDelete = true },
                     )
@@ -321,9 +323,9 @@ fun ForwardEditorScreen(
 
     if (confirmDelete) {
         ConfirmDialog(
-            title = "Delete rule?",
-            text = "\"${s.label.ifBlank { s.existing?.route ?: "" }}\" will be removed and its tunnel stopped.",
-            confirm = "Delete",
+            title = stringResource(R.string.delete_rule_2),
+            text = stringResource(R.string.will_be_removed_and_its_tunnel_stopped, s.label.ifBlank { s.existing?.route ?: "" }),
+            confirm = stringResource(R.string.delete),
             onConfirm = { confirmDelete = false; vm.delete() },
             onDismiss = { confirmDelete = false },
         )

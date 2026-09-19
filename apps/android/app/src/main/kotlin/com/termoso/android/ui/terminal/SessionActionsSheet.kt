@@ -29,10 +29,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
 import com.termoso.android.data.TerminalSession
+import com.termoso.android.str
 import com.termoso.android.ui.components.ActionRow
 import com.termoso.android.ui.components.HostAvatar
 import com.termoso.android.ui.components.RowDivider
@@ -120,12 +123,12 @@ fun SessionActionsSheet(
                 }
             }
 
-            SectionLabel("Session")
+            SectionLabel(stringResource(R.string.session))
             SectionCard {
                 if (!session.isView) {
                     ActionRow(
                         Icons.Filled.ContentCopy,
-                        "Duplicate",
+                        stringResource(R.string.duplicate),
                         onClick = then { shell.launch { shell.duplicateSession(session.id) } },
                     )
                     RowDivider()
@@ -133,7 +136,7 @@ fun SessionActionsSheet(
                 if (session.reconnectable) {
                     ActionRow(
                         Icons.Filled.Refresh,
-                        "Reconnect",
+                        stringResource(R.string.reconnect),
                         onClick = then { shell.launch { shell.sessions.reconnect(session.id) } },
                     )
                     RowDivider()
@@ -141,7 +144,7 @@ fun SessionActionsSheet(
                 if (ssh) {
                     ActionRow(
                         Icons.Filled.FolderOpen,
-                        "Open SFTP",
+                        stringResource(R.string.open_sftp),
                         onClick = then {
                             if (hostId != null) onSftp(hostId)
                             else if (quick != null) shell.launch { shell.openSftpQuick(quick)?.let { onOpenSftp(it.id) } }
@@ -149,16 +152,16 @@ fun SessionActionsSheet(
                     )
                     RowDivider()
                     if (hostId != null) {
-                        ActionRow(Icons.Filled.SwapHoriz, "Port forwarding…", onClick = then { onForward(hostId) })
+                        ActionRow(Icons.Filled.SwapHoriz, stringResource(R.string.port_forwarding_2), onClick = then { onForward(hostId) })
                         RowDivider()
                     }
                 }
                 ActionRow(
                     Icons.Filled.Groups,
                     when {
-                        session.isView -> "Shared terminal"
-                        shared != null -> "Terminal sharing · live"
-                        else -> "Terminal sharing"
+                        session.isView -> stringResource(R.string.shared_terminal)
+                        shared != null -> stringResource(R.string.terminal_sharing_live)
+                        else -> stringResource(R.string.terminal_sharing)
                     },
                     onClick = then(onLive),
                 )
@@ -166,40 +169,40 @@ fun SessionActionsSheet(
                     RowDivider()
                     ActionRow(
                         Icons.Filled.Link,
-                        "Copy address",
+                        stringResource(R.string.copy_address),
                         onClick = then {
                             copyToClipboard(context, session.target)
-                            shell.notify("Address copied")
+                            shell.notify(str(R.string.address_copied))
                         },
                     )
                 }
             }
 
             if (hostId != null || quick != null) {
-                SectionLabel("Host")
+                SectionLabel(stringResource(R.string.host))
                 SectionCard {
                     if (hostId != null) {
-                        ActionRow(Icons.Filled.Edit, "Edit host", onClick = then { onEditHost(hostId) })
+                        ActionRow(Icons.Filled.Edit, stringResource(R.string.edit_host), onClick = then { onEditHost(hostId) })
                     } else if (quick != null) {
-                        ActionRow(Icons.Filled.Add, "Add to hosts", onClick = then { onAddHost(quickTargetText(quick)) })
+                        ActionRow(Icons.Filled.Add, stringResource(R.string.add_to_hosts), onClick = then { onAddHost(quickTargetText(quick)) })
                     }
                 }
             }
 
-            SectionLabel("Terminal")
+            SectionLabel(stringResource(R.string.terminal))
             SectionCard {
-                ActionRow(Icons.Filled.History, "History & themes", onClick = then(onPanel))
+                ActionRow(Icons.Filled.History, stringResource(R.string.history_themes), onClick = then(onPanel))
                 RowDivider()
-                ActionRow(Icons.Filled.Keyboard, "Customize keys", onClick = then(onCustomizeKeys))
+                ActionRow(Icons.Filled.Keyboard, stringResource(R.string.customize_keys), onClick = then(onCustomizeKeys))
                 RowDivider()
-                ActionRow(Icons.Filled.Add, "New session", onClick = then(onNewSession))
+                ActionRow(Icons.Filled.Add, stringResource(R.string.new_session), onClick = then(onNewSession))
             }
 
-            SectionLabel("Close")
+            SectionLabel(stringResource(R.string.close))
             SectionCard {
                 ActionRow(
                     Icons.Filled.Close,
-                    "Close session",
+                    stringResource(R.string.close_session),
                     tint = MaterialTheme.colorScheme.error,
                     onClick = then { shell.launch { shell.sessions.close(session.id) } },
                 )
@@ -216,7 +219,7 @@ fun SessionActionsSheet(
                     RowDivider()
                     ActionRow(
                         Icons.Filled.PowerSettingsNew,
-                        "Close all sessions (${sessions.size})",
+                        stringResource(R.string.close_all_sessions, sessions.size),
                         tint = MaterialTheme.colorScheme.error,
                         onClick = then { shell.launch { shell.sessions.closeAll() } },
                     )

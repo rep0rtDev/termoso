@@ -1,26 +1,29 @@
 package com.termoso.android.data
 
+import com.termoso.android.R
+import com.termoso.android.plural
+import com.termoso.android.str
 import com.termoso.core.MobileException
 
 /** Human-readable text for any failure coming out of the core (or elsewhere). */
 fun Throwable.userMessage(): String = when (this) {
     is MobileException.Invalid -> detail
     is MobileException.NotFound -> detail
-    is MobileException.Locked -> "The vault is locked."
+    is MobileException.Locked -> str(R.string.the_vault_is_locked)
     is MobileException.Ssh -> detail
-    is MobileException.AuthFailed -> "Authentication failed ($remaining)."
+    is MobileException.AuthFailed -> str(R.string.authentication_failed, remaining)
     is MobileException.HostKeyRejected -> detail
     is MobileException.Key -> detail
-    is MobileException.Cancelled -> "Cancelled."
-    is MobileException.Closed -> "Connection closed."
-    is MobileException.ReauthRequired -> "Confirm your password to make this change."
+    is MobileException.Cancelled -> str(R.string.cancelled)
+    is MobileException.Closed -> str(R.string.connection_closed)
+    is MobileException.ReauthRequired -> str(R.string.confirm_your_password_to_make_this_change)
     is MobileException.SecurityKey -> securityKeyMessage(kind, detail, retries)
     is MobileException.Other -> when (kind) {
         "api" -> apiMessage(detail)
-        "network" -> "Could not reach the server. Check the address and your connection."
-        "websocket" -> "Realtime connection failed."
-        "vault_read_only" -> "This vault is view-only for you."
-        "not_signed_in" -> "Not signed in."
+        "network" -> str(R.string.could_not_reach_the_server_check_the_address)
+        "websocket" -> str(R.string.realtime_connection_failed)
+        "vault_read_only" -> str(R.string.this_vault_is_view_only_for_you)
+        "not_signed_in" -> str(R.string.not_signed_in)
         else -> detail
     }
     else -> message ?: toString()
@@ -28,15 +31,15 @@ fun Throwable.userMessage(): String = when (this) {
 
 /** Typed FIDO2 failures (`Fido2Error::kind`) in the words the user needs to act on them. */
 private fun securityKeyMessage(kind: String, detail: String, retries: Int?): String = when (kind) {
-    "fido2_no_device" -> "No security key found. Plug one in over USB or hold it to the back of the phone."
-    "fido2_device_gone" -> "The security key was disconnected."
-    "fido2_pin_required" -> "This security key needs its PIN."
-    "fido2_pin_invalid" -> "Wrong PIN." + (retries?.let { " $it attempt${if (it == 1) "" else "s"} left." } ?: "")
-    "fido2_pin_blocked" -> "The PIN is blocked. Remove and reinsert the key, or reset it."
-    "fido2_pin_not_set" -> "This security key has no PIN yet; set one with another tool first."
-    "fido2_timeout" -> "The security key was not touched in time."
-    "fido2_denied" -> "The security key refused the request."
-    "fido2_wrong_device" -> "This key does not belong to that security key."
+    "fido2_no_device" -> str(R.string.no_security_key_found_plug_one_in_over)
+    "fido2_device_gone" -> str(R.string.the_security_key_was_disconnected)
+    "fido2_pin_required" -> str(R.string.this_security_key_needs_its_pin)
+    "fido2_pin_invalid" -> str(R.string.wrong_pin) + (retries?.let { " " + plural(R.plurals.attempts_left, it, it) } ?: "")
+    "fido2_pin_blocked" -> str(R.string.the_pin_is_blocked_remove_and_reinsert_the)
+    "fido2_pin_not_set" -> str(R.string.this_security_key_has_no_pin_yet_set)
+    "fido2_timeout" -> str(R.string.the_security_key_was_not_touched_in_time)
+    "fido2_denied" -> str(R.string.the_security_key_refused_the_request)
+    "fido2_wrong_device" -> str(R.string.this_key_does_not_belong_to_that_security)
     else -> detail
 }
 

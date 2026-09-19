@@ -1,5 +1,6 @@
 package com.termoso.android.ui.terminal
 
+import com.termoso.android.ResourceTest
 import com.termoso.android.data.usedAfter
 import com.termoso.core.AiStatusCard
 import com.termoso.core.AiTarget
@@ -9,7 +10,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class AskAiPresentationTest {
+class AskAiPresentationTest : ResourceTest() {
     private fun status(
         provider: String? = "Chutes",
         model: String? = "GLM-4.7-Flash",

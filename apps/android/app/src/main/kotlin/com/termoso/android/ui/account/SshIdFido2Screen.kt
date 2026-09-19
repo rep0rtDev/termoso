@@ -11,16 +11,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.Fido2Manager
 import com.termoso.android.data.ReauthCancelled
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SecretField
@@ -107,7 +110,7 @@ class SshIdFido2ViewModel(
                             Fido2GenerateDraft(
                                 vaultId = "",
                                 deviceId = device.id,
-                                label = s.label.trim().ifBlank { "${s.kind.label} security key" },
+                                label = s.label.trim().ifBlank { str(R.string.security_key_2, s.kind.label) },
                                 algorithm = s.kind.algorithm,
                                 application = "ssh:",
                                 resident = s.resident,
@@ -150,19 +153,17 @@ fun SshIdFido2Screen(shell: ShellViewModel, account: AccountManager, onClose: ()
 
     SecurityKeyListening(fido2)
     LaunchedEffect(s.error) { s.error?.let { shell.notify(it); vm.errorShown() } }
-    LaunchedEffect(s.done) { if (s.done) { shell.notify("Security key published under your SSH ID"); onDone() } }
+    LaunchedEffect(s.done) { if (s.done) { shell.notify(str(R.string.security_key_published_under_your_ssh_id)); onDone() } }
 
-    EditorScaffold("Security key for SSH ID", s.working, s.canSave(devices), onClose, vm::generate) {
+    EditorScaffold(stringResource(R.string.security_key_for_ssh_id), s.working, s.canSave(devices), onClose, vm::generate) {
         Text(
-            "A new credential is created inside the security key and only its public key is published under your handle. " +
-                "Servers provisioned with /all or /${sshidUrlName(s.kind)} then accept this key; " +
-                "the token must be present to sign in.",
+            stringResource(R.string.a_new_credential_is_created_inside_the_security, sshidUrlName(s.kind)),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp),
         )
 
-        SectionLabel("Security key")
+        SectionLabel(stringResource(R.string.security_key))
         SecurityKeyPicker(
             devices = devices,
             selected = s.deviceId,
@@ -174,11 +175,11 @@ fun SshIdFido2Screen(shell: ShellViewModel, account: AccountManager, onClose: ()
 
         SectionCard {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                FormField(s.label, { v -> vm.update { it.copy(label = v) } }, "Label", placeholder = "YubiKey 5")
+                FormField(s.label, { v -> vm.update { it.copy(label = v) } }, stringResource(R.string.label), placeholder = stringResource(R.string.yubikey_5))
             }
         }
 
-        SectionLabel("Algorithm")
+        SectionLabel(stringResource(R.string.algorithm))
         SectionCard {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SkKind.entries.forEach { kind ->
@@ -191,34 +192,34 @@ fun SshIdFido2Screen(shell: ShellViewModel, account: AccountManager, onClose: ()
                 }
             }
             Text(
-                if (s.kind == SkKind.ED25519 && device?.ed25519 == false) "This security key cannot do Ed25519 — pick ECDSA P-256." else s.kind.hint,
+                if (s.kind == SkKind.ED25519 && device?.ed25519 == false) stringResource(R.string.this_security_key_cannot_do_ed25519_pick_ecdsa) else stringResource(s.kind.hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = if (s.kind == SkKind.ED25519 && device?.ed25519 == false) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
             )
         }
 
-        SectionLabel("Options")
+        SectionLabel(stringResource(R.string.options))
         SectionCard {
             SwitchRow(
-                title = "Require touch",
-                subtitle = "Every signature needs a tap on the key (recommended)",
+                title = stringResource(R.string.require_touch),
+                subtitle = stringResource(R.string.every_signature_needs_a_tap_on_the_key),
                 checked = s.userPresence,
                 onCheckedChange = { v -> vm.update { it.copy(userPresence = v) } },
             )
             RowDivider()
             SwitchRow(
-                title = "Require PIN on every use",
-                subtitle = "User verification: the PIN is asked on every connection",
+                title = stringResource(R.string.require_pin_on_every_use),
+                subtitle = stringResource(R.string.user_verification_the_pin_is_asked_on_every),
                 checked = s.userVerification,
                 onCheckedChange = { v -> vm.update { it.copy(userVerification = v) } },
             )
             RowDivider()
             SwitchRow(
-                title = "Resident key",
+                title = stringResource(R.string.resident_key),
                 subtitle = when {
-                    device?.residentKeys == false -> "This security key cannot store resident keys"
-                    else -> "Stored on the key itself, can be loaded on another device with the PIN"
+                    device?.residentKeys == false -> stringResource(R.string.this_security_key_cannot_store_resident_keys)
+                    else -> stringResource(R.string.stored_on_the_key_itself_can_be_loaded)
                 },
                 checked = s.resident && device?.residentKeys != false,
                 onCheckedChange = { v -> vm.update { it.copy(resident = v) } },
@@ -228,13 +229,12 @@ fun SshIdFido2Screen(shell: ShellViewModel, account: AccountManager, onClose: ()
                 SecretField(
                     s.pin,
                     { v -> vm.update { it.copy(pin = v) } },
-                    if (device?.pinSet == true || s.resident || s.userVerification) "Security key PIN" else "Security key PIN (if set)",
+                    if (device?.pinSet == true || s.resident || s.userVerification) stringResource(R.string.security_key_pin) else stringResource(R.string.security_key_pin_if_set),
                 )
             }
         }
         Text(
-            "The handle is kept in your personal vault without a passphrase so SSH ID can offer it on every device you sign in to. " +
-                "Publishing is a security-sensitive change: the server may ask for your password first.",
+            stringResource(R.string.the_handle_is_kept_in_your_personal_vault),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp),

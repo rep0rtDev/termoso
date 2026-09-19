@@ -1,5 +1,8 @@
 package com.termoso.android.ui.hosts
 
+import com.termoso.android.R
+import com.termoso.android.plural
+import com.termoso.android.str
 import com.termoso.core.PresenceEntryCard
 import com.termoso.core.PresenceSessionCard
 import com.termoso.core.TeamPresenceCard
@@ -67,13 +70,13 @@ fun connectedFor(sinceIso: String, now: Instant = Instant.now()): String {
         return ""
     }
     val s = (now.epochSecond - at.epochSecond).coerceAtLeast(0)
-    if (s < 60) return "just now"
+    if (s < 60) return str(R.string.just_now)
     val m = s / 60
-    if (m < 60) return "$m min"
+    if (m < 60) return str(R.string.min, m)
     val h = m / 60
-    if (h < 24) return "$h h ${(m % 60).toString().padStart(2, '0')} min"
+    if (h < 24) return str(R.string.h_min, h, (m % 60).toString().padStart(2, '0'))
     val d = h / 24
-    return "$d d ${h % 24} h"
+    return str(R.string.d_h, d, h % 24)
 }
 
 fun protocolLabel(p: String): String = when (p) {
@@ -81,7 +84,7 @@ fun protocolLabel(p: String): String = when (p) {
     "mosh" -> "Mosh"
     "telnet" -> "Telnet"
     "sftp" -> "SFTP"
-    "forward" -> "Port forwarding"
+    "forward" -> str(R.string.port_forwarding_3)
     "serial" -> "Serial"
     else -> p.uppercase()
 }
@@ -99,14 +102,14 @@ fun platformLabel(p: String): String = when (p) {
 
 /** `Alice`, `Alice and Bob`, `Alice, Bob and 2 others` — for the card badge. */
 fun viewersSummary(viewers: List<HostViewer>): String {
-    val names = distinctPeople(viewers).map { if (it.me) "You" else it.name }
+    val names = distinctPeople(viewers).map { if (it.me) str(R.string.you) else it.name }
     return when (names.size) {
         0 -> ""
         1 -> names[0]
-        2 -> "${names[0]} and ${names[1]}"
+        2 -> str(R.string.viewers_two, names[0], names[1])
         else -> {
             val rest = names.size - 2
-            "${names[0]}, ${names[1]} and $rest other${if (rest == 1) "" else "s"}"
+            plural(R.plurals.viewers_and_others, rest, names[0], names[1], rest)
         }
     }
 }

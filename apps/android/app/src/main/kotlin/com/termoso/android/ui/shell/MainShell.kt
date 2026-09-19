@@ -1,6 +1,7 @@
 package com.termoso.android.ui.shell
 
 import android.net.Uri
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -24,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -34,6 +36,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.AiManager
 import com.termoso.android.data.AppContainer
@@ -43,6 +46,7 @@ import com.termoso.android.data.SessionManager
 import com.termoso.android.data.SftpConnection
 import com.termoso.android.data.SftpManager
 import com.termoso.android.data.VaultRepository
+import com.termoso.android.str
 import com.termoso.android.ui.account.AccountScreen
 import com.termoso.android.ui.account.AuthMode
 import com.termoso.android.ui.account.ReauthHost
@@ -65,12 +69,12 @@ import com.termoso.android.ui.keychain.ImportKeyScreen
 import com.termoso.android.ui.keychain.KeyDetailScreen
 import com.termoso.android.ui.keychain.KeychainScreen
 import com.termoso.android.ui.settings.SettingsScreen
+import com.termoso.android.ui.settings.TerminalAppearanceScreen
+import com.termoso.android.ui.settings.TerminalInputScreen
 import com.termoso.android.ui.sftp.SftpPickScreen
 import com.termoso.android.ui.sftp.SftpScreen
 import com.termoso.android.ui.snippets.SnippetEditorScreen
 import com.termoso.android.ui.snippets.SnippetsScreen
-import com.termoso.android.ui.settings.TerminalAppearanceScreen
-import com.termoso.android.ui.settings.TerminalInputScreen
 import com.termoso.android.ui.team.TeamActivityScreen
 import com.termoso.android.ui.team.TeamScreen
 import com.termoso.android.ui.team.TeamVaultScreen
@@ -150,12 +154,12 @@ object Routes {
     fun snippetEdit(id: String) = "snippetEdit/$id"
 }
 
-private class Tab(val route: String, val label: String, val icon: ImageVector, val selectedIcon: ImageVector)
+private class Tab(val route: String, @StringRes val label: Int, val icon: ImageVector, val selectedIcon: ImageVector)
 
 private val tabs = listOf(
-    Tab(Routes.VAULT, "Vaults", Icons.Outlined.Lock, Icons.Filled.Lock),
-    Tab(Routes.CONNECTIONS, "Connections", Icons.Outlined.Cable, Icons.Filled.Cable),
-    Tab(Routes.SETTINGS, "Settings", Icons.Outlined.Settings, Icons.Filled.Settings),
+    Tab(Routes.VAULT, R.string.vaults, Icons.Outlined.Lock, Icons.Filled.Lock),
+    Tab(Routes.CONNECTIONS, R.string.connections, Icons.Outlined.Cable, Icons.Filled.Cable),
+    Tab(Routes.SETTINGS, R.string.settings, Icons.Outlined.Settings, Icons.Filled.Settings),
 )
 
 /** Bottom-navigation shell: Vaults · Connections · Settings, with nested host screens. */
@@ -197,7 +201,7 @@ fun MainShell(
     LaunchedEffect(pendingInvite, accountStatus.account?.userId) {
         if (pendingInvite == null) return@LaunchedEffect
         if (accountStatus.account == null) {
-            shell.notify("Sign in to accept the team invitation")
+            shell.notify(str(R.string.sign_in_to_accept_the_team_invitation))
             nav.navigate(Routes.signIn(AuthMode.SignIn)) { launchSingleTop = true }
         } else if (nav.currentDestination?.route != Routes.TEAMS) {
             // Re-navigating onto the visible Teams screen would recreate it and
@@ -217,7 +221,7 @@ fun MainShell(
         val link = pendingJoin ?: return@LaunchedEffect
         if (restoring) return@LaunchedEffect
         if (accountStatus.account == null) {
-            shell.notify("Sign in to join the shared terminal")
+            shell.notify(str(R.string.sign_in_to_join_the_shared_terminal))
             nav.navigate(Routes.signIn(AuthMode.SignIn)) { launchSingleTop = true }
             return@LaunchedEffect
         }
@@ -232,7 +236,7 @@ fun MainShell(
     LaunchedEffect(pendingShare, openSessions.isEmpty()) {
         if (pendingShare == null) return@LaunchedEffect
         if (openSessions.isEmpty()) {
-            shell.notify("Connect to a host; the shared files will be sent to that terminal")
+            shell.notify(str(R.string.connect_to_a_host_the_shared_files_will))
             nav.navigate(Routes.CONNECTIONS) {
                 popUpTo(nav.graph.findStartDestination().id) { saveState = true }
                 launchSingleTop = true
@@ -286,8 +290,8 @@ fun MainShell(
                                     restoreState = true
                                 }
                             },
-                            icon = { Icon(if (selected) tab.selectedIcon else tab.icon, contentDescription = tab.label) },
-                            label = { Text(tab.label) },
+                            icon = { Icon(if (selected) tab.selectedIcon else tab.icon, contentDescription = stringResource(tab.label)) },
+                            label = { Text(stringResource(tab.label)) },
                         )
                     }
                 }

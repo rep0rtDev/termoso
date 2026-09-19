@@ -1,6 +1,7 @@
 package com.termoso.android.ui.terminal
 
 import android.view.KeyEvent
+import com.termoso.android.ResourceTest
 import com.termoso.core.KeyGroup
 import com.termoso.core.PanelKeyDef
 import com.termoso.core.SpecialKey
@@ -10,7 +11,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class InputActionsTest {
+class InputActionsTest : ResourceTest() {
     @Test
     fun parsesSpecialKeysWithModifiers() {
         val k = KeyActions.parse("ctrl+shift+key:tab") as PanelKey.Special

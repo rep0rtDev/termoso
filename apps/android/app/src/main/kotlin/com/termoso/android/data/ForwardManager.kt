@@ -1,5 +1,7 @@
 package com.termoso.android.data
 
+import com.termoso.android.str
+import com.termoso.android.R
 import com.termoso.core.PfTunnel
 import com.termoso.core.PromptAnswer
 import com.termoso.core.PromptRequest
@@ -22,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 /** Rust tunnel callbacks republished as flows for the UI. */
 class TunnelBridge : TunnelListener {
-    private val _state = MutableStateFlow<TunnelState>(TunnelState.Connecting("Connecting…"))
+    private val _state = MutableStateFlow<TunnelState>(TunnelState.Connecting(str(R.string.connecting_ellipsis)))
     val state: StateFlow<TunnelState> = _state.asStateFlow()
 
     private val _prompt = MutableStateFlow<PendingPrompt?>(null)

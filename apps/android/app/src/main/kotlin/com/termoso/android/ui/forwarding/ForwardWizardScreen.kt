@@ -23,10 +23,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
+import com.termoso.android.str
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.PickerRow
 import com.termoso.android.ui.components.SubScreen
@@ -47,7 +50,7 @@ fun ForwardWizardScreen(shell: ShellViewModel, onBack: () -> Unit, onContinue: (
     var vaultId by rememberSaveable { mutableStateOf(selectedVault ?: open.firstOrNull()?.id) }
     val vault = vaultId?.takeIf { id -> open.any { it.id == id } } ?: open.firstOrNull()?.id
 
-    SubScreen(title = "Port Forwarding", onBack = onBack) { padding ->
+    SubScreen(title = stringResource(R.string.port_forwarding), onBack = onBack) { padding ->
         Column(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -64,7 +67,7 @@ fun ForwardWizardScreen(shell: ShellViewModel, onBack: () -> Unit, onContinue: (
             if (open.size > 1) {
                 Spacer(Modifier.height(16.dp))
                 PickerRow(
-                    label = "Vault",
+                    label = stringResource(R.string.vault),
                     value = open.firstOrNull { it.id == vault }?.let(::vaultLabel) ?: "",
                     options = open.map { it.id to vaultLabel(it) },
                     selected = vault,
@@ -87,10 +90,10 @@ fun ForwardWizardScreen(shell: ShellViewModel, onBack: () -> Unit, onContinue: (
             Spacer(Modifier.height(40.dp))
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Button(onClick = { vault?.let { onContinue(kind, it) } }, enabled = vault != null, modifier = Modifier.fillMaxWidth()) {
-                    Text("Continue")
+                    Text(stringResource(R.string.continue_))
                 }
                 TextButton(onClick = { vault?.let { onContinue(PfKind.LOCAL, it) } }, enabled = vault != null, modifier = Modifier.fillMaxWidth()) {
-                    Text("Skip wizard")
+                    Text(stringResource(R.string.skip_wizard))
                 }
             }
             Spacer(Modifier.height(24.dp))
@@ -99,19 +102,16 @@ fun ForwardWizardScreen(shell: ShellViewModel, onBack: () -> Unit, onContinue: (
 }
 
 private fun shortTitle(kind: PfKind): String = when (kind) {
-    PfKind.LOCAL -> "Local"
-    PfKind.REMOTE -> "Remote"
-    PfKind.DYNAMIC -> "Dynamic"
+    PfKind.LOCAL -> str(R.string.local)
+    PfKind.REMOTE -> str(R.string.remote)
+    PfKind.DYNAMIC -> str(R.string.dynamic_)
 }
 
 private fun explanation(kind: PfKind): String = when (kind) {
     PfKind.LOCAL ->
-        "Opens a port on this device and sends everything that connects to it through the SSH host to a " +
-            "destination the host can reach — a database or web console on a private network, for example."
+        str(R.string.opens_a_port_on_this_device_and_sends)
     PfKind.REMOTE ->
-        "Opens a port on the SSH server and sends everything that connects to it back to this device — " +
-            "or another address reachable from here — so a local service becomes reachable from the server side."
+        str(R.string.opens_a_port_on_the_ssh_server_and)
     PfKind.DYNAMIC ->
-        "Opens a SOCKS5 proxy on this device. Apps pointed at it reach any address through the SSH host, " +
-            "the destination is chosen per connection."
+        str(R.string.opens_a_socks5_proxy_on_this_device_apps)
 }

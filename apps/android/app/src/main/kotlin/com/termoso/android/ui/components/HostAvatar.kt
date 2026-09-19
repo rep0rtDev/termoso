@@ -20,7 +20,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.termoso.android.R
 
 private val vectorCache = HashMap<String, ImageVector>()
 
@@ -56,7 +58,7 @@ fun HostAvatar(osName: String?, modifier: Modifier = Modifier, selected: Boolean
         contentAlignment = Alignment.Center,
     ) {
         when {
-            selected -> Icon(Icons.Filled.Check, contentDescription = "Selected", tint = Color.White)
+            selected -> Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.selected), tint = Color.White)
             icon != null -> Image(
                 painter = rememberVectorPainter(distroVector(icon)),
                 contentDescription = icon.title,

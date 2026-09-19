@@ -2,9 +2,11 @@ package com.termoso.android.ui.team
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.core.InviteCard
 import com.termoso.core.InviteSent
 import com.termoso.core.PendingKeyCard
@@ -23,27 +25,27 @@ import kotlinx.coroutines.launch
 val TeamRole.isAdmin: Boolean get() = this == TeamRole.ADMIN || this == TeamRole.OWNER
 
 fun TeamRole.label(): String = when (this) {
-    TeamRole.MEMBER -> "Member"
-    TeamRole.ADMIN -> "Admin"
-    TeamRole.OWNER -> "Owner"
+    TeamRole.MEMBER -> str(R.string.member)
+    TeamRole.ADMIN -> str(R.string.admin)
+    TeamRole.OWNER -> str(R.string.owner)
 }
 
 fun TeamRole.hint(): String = when (this) {
-    TeamRole.MEMBER -> "Uses the vaults they were given access to"
-    TeamRole.ADMIN -> "Also invites, removes members and creates vaults"
-    TeamRole.OWNER -> "Everything, including deleting the team"
+    TeamRole.MEMBER -> str(R.string.uses_the_vaults_they_were_given_access_to)
+    TeamRole.ADMIN -> str(R.string.also_invites_removes_members_and_creates_vaults)
+    TeamRole.OWNER -> str(R.string.everything_including_deleting_the_team)
 }
 
 fun VaultAccess.label(): String = when (this) {
-    VaultAccess.VIEW -> "can view"
-    VaultAccess.EDIT -> "can edit"
-    VaultAccess.MANAGE -> "can manage"
+    VaultAccess.VIEW -> str(R.string.can_view)
+    VaultAccess.EDIT -> str(R.string.can_edit)
+    VaultAccess.MANAGE -> str(R.string.can_manage)
 }
 
 fun VaultAccess.hint(): String = when (this) {
-    VaultAccess.VIEW -> "Connects and reads hosts, keys and snippets"
-    VaultAccess.EDIT -> "Also adds, changes and removes items"
-    VaultAccess.MANAGE -> "Also decides who has access and rotates the key"
+    VaultAccess.VIEW -> str(R.string.connects_and_reads_hosts_keys_and_snippets)
+    VaultAccess.EDIT -> str(R.string.also_adds_changes_and_removes_items)
+    VaultAccess.MANAGE -> str(R.string.also_decides_who_has_access_and_rotates_the)
 }
 
 /** Splits a pasted list of addresses (commas, semicolons, spaces, new lines), lower-cased, de-duplicated. */
@@ -120,7 +122,7 @@ class TeamViewModel(
                     return@launch
                 }
             if (team == null) {
-                _state.update { it.copy(loading = false, team = null, error = "You are no longer in this team") }
+                _state.update { it.copy(loading = false, team = null, error = str(R.string.you_are_no_longer_in_this_team)) }
                 return@launch
             }
             val admin = team.myRole.isAdmin
