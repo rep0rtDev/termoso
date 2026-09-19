@@ -63,6 +63,10 @@ pub const SSO_CORP_DOMAIN: &str = "corp.test";
 /// Dedicated SSH ID origin (`TERMOSO_SSHID_URL`) and its `Host` value.
 pub const SSHID_URL: &str = "http://sshid.test:8443";
 pub const SSHID_HOST: &str = "sshid.test:8443";
+/// Dedicated landing origin (`TERMOSO_LANDING_URL`) and its `Host` value; the
+/// cabinet itself stays on `public_url`, so `/` there goes to `/login`.
+pub const LANDING_URL: &str = "http://landing.test";
+pub const LANDING_HOST: &str = "landing.test";
 
 pub struct TestServer {
     pub addr: SocketAddr,
@@ -263,6 +267,7 @@ async fn boot() -> Option<TestServer> {
         bind: addr,
         public_url: format!("http://{addr}"),
         sshid_url: Some(format!("{SSHID_URL}/")),
+        landing_url: Some(format!("{LANDING_URL}/")),
         web_dir: Some(fake_web_dir(&db_name)),
         database_url: database_url.clone(),
         redis_url: redis_url(),
@@ -394,6 +399,15 @@ impl TestServer {
     pub fn http(&self) -> Client {
         Client::builder()
             .pool_max_idle_per_host(0)
+            .build()
+            .expect("client")
+    }
+
+    /// Like [`Self::http`], but returns redirects instead of following them.
+    pub fn http_no_redirect(&self) -> Client {
+        Client::builder()
+            .pool_max_idle_per_host(0)
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("client")
     }

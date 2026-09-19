@@ -5,6 +5,7 @@ import {
   AccordionSummary,
   Box,
   Button,
+  type ButtonProps,
   Container,
   Link,
   Stack,
@@ -798,6 +799,22 @@ function Stat({ value, label }: { value: string; label: string }) {
 
 // ───────────────────────────── page ─────────────────────────────
 
+/**
+ * Button into the cabinet. Same-origin deployments route client-side; when the
+ * landing has its own origin (`landing_only`) the cabinet lives at `web_url`,
+ * so the button becomes a plain cross-origin link.
+ */
+function CabinetButton({
+  to,
+  ...props
+}: Pick<ButtonProps, "variant" | "size" | "sx" | "endIcon" | "children"> & { to: string }) {
+  const info = useServerInfo().data;
+  if (info?.landing_only && info.web_url) {
+    return <Button {...props} href={`${info.web_url.replace(/\/+$/, "")}${to}`} />;
+  }
+  return <Button {...props} component={RouterLink} to={to} />;
+}
+
 export function LandingPage() {
   const { session } = useAuthState();
   const info = useServerInfo();
@@ -805,35 +822,32 @@ export function LandingPage() {
   const [open, setOpen] = useState<number | null>(0);
 
   const primaryCta = session ? (
-    <Button
-      component={RouterLink}
+    <CabinetButton
       to="/account"
       variant="contained"
       size="large"
       endIcon={<ArrowForwardRoundedIcon />}
     >
       Open cabinet
-    </Button>
+    </CabinetButton>
   ) : registrationOpen ? (
-    <Button
-      component={RouterLink}
+    <CabinetButton
       to="/signup"
       variant="contained"
       size="large"
       endIcon={<ArrowForwardRoundedIcon />}
     >
       Create a free account
-    </Button>
+    </CabinetButton>
   ) : (
-    <Button
-      component={RouterLink}
+    <CabinetButton
       to="/login"
       variant="contained"
       size="large"
       endIcon={<ArrowForwardRoundedIcon />}
     >
       Sign in
-    </Button>
+    </CabinetButton>
   );
 
   return (
@@ -880,18 +894,18 @@ export function LandingPage() {
           <Box sx={{ flex: 1 }} />
           <ThemeToggle />
           {session ? (
-            <Button component={RouterLink} to="/account" variant="contained" sx={{ ml: 1 }}>
+            <CabinetButton to="/account" variant="contained" sx={{ ml: 1 }}>
               Open cabinet
-            </Button>
+            </CabinetButton>
           ) : (
             <>
-              <Button component={RouterLink} to="/login" variant="text" sx={{ ml: 1 }}>
+              <CabinetButton to="/login" variant="text" sx={{ ml: 1 }}>
                 Log in
-              </Button>
+              </CabinetButton>
               {registrationOpen && (
-                <Button component={RouterLink} to="/signup" variant="contained">
+                <CabinetButton to="/signup" variant="contained">
                   Sign up
-                </Button>
+                </CabinetButton>
               )}
             </>
           )}

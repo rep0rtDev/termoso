@@ -65,6 +65,12 @@ async fn health_and_server_info() {
     assert!(info.registration_open);
     assert_eq!(info.version, termoso_server::VERSION);
     assert_eq!(info.sshid_url, SSHID_URL);
+    assert_eq!(info.web_url, format!("http://{}", s.addr));
+    assert!(
+        !info.landing,
+        "landing has its own origin, so / here is the cabinet"
+    );
+    assert!(!info.landing_only);
 
     let r = s
         .http()
@@ -82,7 +88,19 @@ async fn web_cabinet_is_served_with_spa_fallback() {
     let s = server!();
     let get = |path: &str| s.http().get(format!("http://{}{path}", s.addr)).send();
 
-    let r = get("/").await.unwrap();
+    // The landing lives on its own origin (TERMOSO_LANDING_URL), so the
+    // cabinet root goes straight to sign-in.
+    let r = s
+        .http_no_redirect()
+        .get(format!("http://{}/", s.addr))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(r.headers()["location"], "/login");
+    assert_eq!(r.headers()["cache-control"], "no-cache");
+
+    let r = get("/login").await.unwrap();
     assert_eq!(r.status(), StatusCode::OK);
     assert!(
         r.headers()["content-type"]
@@ -148,19 +166,91 @@ async fn web_cabinet_is_served_with_spa_fallback() {
     );
     let r = get("/.well-known/other.json").await.unwrap();
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
+}
 
-    // The API keeps JSON 404s and is never shadowed by the SPA.
-    let r = get("/api/v1/no-such-route").await.unwrap();
-    assert_eq!(r.status(), StatusCode::NOT_FOUND);
-    let body: serde_json::Value = r.json().await.unwrap();
-    assert_eq!(body["code"], "not_found");
+#[tokio::test]
+async fn landing_origin_serves_only_the_landing() {
+    let s = server!();
+    let get = |path: &str| {
+        s.http_no_redirect()
+            .get(format!("http://{}{path}", s.addr))
+            .header("Host", LANDING_HOST)
+            .send()
+    };
+
+    // `/` is the landing page (same SPA bundle, different root behaviour).
+    let r = get("/").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert!(
+        r.headers()["content-type"]
+            .to_str()
+            .unwrap()
+            .starts_with("text/html")
+    );
+    assert_eq!(r.headers()["x-frame-options"], "DENY");
+    assert!(r.text().await.unwrap().contains("<div id=root>"));
+
+    // Static files and health probes are served as usual.
+    let r = get("/assets/app-abc123.js").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let r = get("/favicon.svg").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let r = get("/healthz").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+
+    // The SPA learns where it is from /server/info.
+    let r = get("/api/v1/server/info").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let info: ServerInfo = r.json().await.unwrap();
+    assert!(info.landing);
+    assert!(info.landing_only);
+    assert_eq!(info.web_url, format!("http://{}", s.addr));
+
+    // Every cabinet route and API call is sent to the cabinet origin, path
+    // and query intact, so invite / join / SSO links keep working.
+    for (path, expect) in [
+        ("/login", "/login"),
+        ("/signup?plan=team", "/signup?plan=team"),
+        ("/invite/abc", "/invite/abc"),
+        (
+            "/join/00000000-0000-0000-0000-000000000000",
+            "/join/00000000-0000-0000-0000-000000000000",
+        ),
+        ("/account", "/account"),
+        ("/api/v1/auth/session", "/api/v1/auth/session"),
+        ("/sshid/alice", "/sshid/alice"),
+    ] {
+        let r = get(path).await.unwrap();
+        assert_eq!(r.status(), StatusCode::TEMPORARY_REDIRECT, "{path}");
+        assert_eq!(
+            r.headers()["location"],
+            format!("http://{}{expect}", s.addr).as_str(),
+            "{path}"
+        );
+    }
     let r = s
-        .http()
-        .post(format!("http://{}/team", s.addr))
+        .http_no_redirect()
+        .post(format!("http://{}/api/v1/auth/login/start", s.addr))
+        .header("Host", LANDING_HOST)
         .send()
         .await
         .unwrap();
+    assert_eq!(r.status(), StatusCode::TEMPORARY_REDIRECT);
+
+    // Unknown files are plain 404s, not redirects.
+    let r = get("/robots.txt").await.unwrap();
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
+
+    // Unknown routes are the cabinet's business too (it answers with its
+    // own 404 page / JSON error); the landing origin never guesses.
+    let r = get("/api/v1/no-such-route").await.unwrap();
+    assert_eq!(r.status(), StatusCode::TEMPORARY_REDIRECT);
+    let r = get("/no-such-page").await.unwrap();
+    assert_eq!(r.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(
+        r.headers()["location"],
+        format!("http://{}/no-such-page", s.addr).as_str()
+    );
 }
 
 #[tokio::test]

@@ -170,7 +170,24 @@ schema! {
         /// `<sshid_url>/<handle>` (dedicated origin or `<server>/sshid`).
         #[serde(default)]
         pub sshid_url: String,
+        /// Public URL of the web cabinet (`TERMOSO_WEB_URL`, defaults to the
+        /// API origin). The landing links here when it has its own origin.
+        #[serde(default)]
+        pub web_url: String,
+        /// Whether `/` on this origin is the marketing landing page. `false`
+        /// on the cabinet origin means `/` goes to `/login`.
+        #[serde(default = "default_true")]
+        pub landing: bool,
+        /// This response came from the dedicated landing origin
+        /// (`TERMOSO_LANDING_URL`): only the landing is served here, the
+        /// cabinet lives at `web_url`.
+        #[serde(default)]
+        pub landing_only: bool,
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 schema! {
