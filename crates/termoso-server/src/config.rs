@@ -29,6 +29,15 @@ pub struct Config {
     /// Directory with the built web cabinet (`web/dist`). When set, the server
     /// serves it on `/` with an `index.html` fallback for client-side routes.
     pub web_dir: Option<String>,
+    /// Show the marketing landing page on `/` of the cabinet. `false` sends
+    /// `/` straight to `/login` (signed-in browsers continue to the cabinet).
+    pub landing: bool,
+    /// Dedicated origin for the landing page (e.g. `https://example.com`) when
+    /// the cabinet and API live on a subdomain (`https://app.example.com`).
+    /// Requests whose `Host` matches get the landing on `/` and its assets;
+    /// every other path redirects to the same path under `web_url`. `/` on
+    /// the cabinet origin then behaves as if `landing = false`.
+    pub landing_url: Option<String>,
     /// Human name shown in emails / server info.
     pub server_name: String,
     /// Android apps allowed to open this server's `https://…/invite/…` and
@@ -239,6 +248,8 @@ impl Default for Config {
             web_url: None,
             sshid_url: None,
             web_dir: None,
+            landing: true,
+            landing_url: None,
             server_name: "Termoso".into(),
             android_app_links: String::new(),
             database_url: "postgres://termoso:termoso@localhost:5432/termoso".into(),
@@ -292,6 +303,27 @@ impl Config {
         }
         if let Some(dir) = self.web_dir() {
             crate::routes::web::validate_dir(&dir)?;
+        }
+        if let Some(u) = self.landing_url() {
+            let parsed = url::Url::parse(u).context("TERMOSO_LANDING_URL must be a URL")?;
+            anyhow::ensure!(
+                parsed.host_str().is_some() && parsed.path().trim_end_matches('/').is_empty(),
+                "TERMOSO_LANDING_URL must be an origin without a path (e.g. https://example.com)"
+            );
+            anyhow::ensure!(
+                self.landing,
+                "TERMOSO_LANDING_URL needs TERMOSO_LANDING=true (unset one of them)"
+            );
+            anyhow::ensure!(
+                self.web_dir().is_some(),
+                "TERMOSO_LANDING_URL needs TERMOSO_WEB_DIR (the landing is part of the web cabinet)"
+            );
+            let landing_host = host_header(u);
+            anyhow::ensure!(
+                landing_host != host_header(&self.public_url)
+                    && landing_host != host_header(self.web_url()),
+                "TERMOSO_LANDING_URL must differ from TERMOSO_PUBLIC_URL / TERMOSO_WEB_URL (use TERMOSO_LANDING=false to hide the landing on the cabinet origin)"
+            );
         }
         self.android_app_links()?;
         if let Some(ai) = &self.ai {
@@ -349,12 +381,24 @@ impl Config {
 
     /// `host[:port]` of `sshid_url`, as it appears in the `Host` header.
     pub fn sshid_host(&self) -> Option<String> {
-        let u = url::Url::parse(self.sshid_url()?).ok()?;
-        let host = u.host_str()?.to_ascii_lowercase();
-        Some(match u.port() {
-            Some(p) => format!("{host}:{p}"),
-            None => host,
-        })
+        host_header(self.sshid_url()?)
+    }
+
+    pub fn landing_url(&self) -> Option<&str> {
+        self.landing_url
+            .as_deref()
+            .map(|u| u.trim().trim_end_matches('/'))
+            .filter(|u| !u.is_empty())
+    }
+
+    /// `host[:port]` of `landing_url`, as it appears in the `Host` header.
+    pub fn landing_host(&self) -> Option<String> {
+        host_header(self.landing_url()?)
+    }
+
+    /// Whether `/` on the cabinet origin renders the landing page.
+    pub fn landing_on_cabinet(&self) -> bool {
+        self.landing && self.landing_url().is_none()
     }
 
     pub fn admin_emails(&self) -> Vec<String> {
@@ -418,6 +462,16 @@ impl AndroidAppLink {
             sha256_fingerprint,
         })
     }
+}
+
+/// `host[:port]` of an origin URL, lowercase, as browsers send it in `Host`.
+fn host_header(origin: &str) -> Option<String> {
+    let u = url::Url::parse(origin).ok()?;
+    let host = u.host_str()?.to_ascii_lowercase();
+    Some(match u.port() {
+        Some(p) => format!("{host}:{p}"),
+        None => host,
+    })
 }
 
 pub fn split_csv(s: &str) -> Vec<String> {
@@ -520,6 +574,105 @@ mod tests {
                 ..base()
             };
             assert!(cfg.validate().is_err(), "{bad}");
+        }
+    }
+
+    fn web_dir_for_tests() -> String {
+        let dir = std::env::temp_dir().join(format!("termoso-cfg-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("index.html"), "<!doctype html>").unwrap();
+        dir.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn landing_defaults_to_cabinet_root() {
+        let cfg = base();
+        cfg.validate().unwrap();
+        assert!(cfg.landing_on_cabinet());
+        assert_eq!(cfg.landing_host(), None);
+
+        let cfg = Config {
+            landing: false,
+            ..base()
+        };
+        cfg.validate().unwrap();
+        assert!(!cfg.landing_on_cabinet());
+    }
+
+    #[test]
+    fn landing_url_moves_the_landing_to_its_own_origin() {
+        let cfg = Config {
+            public_url: "https://app.example.com".into(),
+            landing_url: Some(" https://Example.com/ ".into()),
+            web_dir: Some(web_dir_for_tests()),
+            ..base()
+        };
+        cfg.validate().unwrap();
+        assert_eq!(cfg.landing_url(), Some("https://Example.com"));
+        assert_eq!(cfg.landing_host().as_deref(), Some("example.com"));
+        assert!(!cfg.landing_on_cabinet());
+
+        let cfg = Config {
+            landing_url: Some("".into()),
+            ..base()
+        };
+        cfg.validate().unwrap();
+        assert_eq!(cfg.landing_url(), None);
+        assert!(cfg.landing_on_cabinet());
+    }
+
+    #[test]
+    fn landing_url_rejects_inconsistent_setups() {
+        let web_dir = web_dir_for_tests();
+        for (name, cfg) in [
+            (
+                "path",
+                Config {
+                    public_url: "https://app.example.com".into(),
+                    landing_url: Some("https://example.com/landing".into()),
+                    web_dir: Some(web_dir.clone()),
+                    ..base()
+                },
+            ),
+            (
+                "landing disabled",
+                Config {
+                    public_url: "https://app.example.com".into(),
+                    landing_url: Some("https://example.com".into()),
+                    landing: false,
+                    web_dir: Some(web_dir.clone()),
+                    ..base()
+                },
+            ),
+            (
+                "no web dir",
+                Config {
+                    public_url: "https://app.example.com".into(),
+                    landing_url: Some("https://example.com".into()),
+                    ..base()
+                },
+            ),
+            (
+                "same as public url",
+                Config {
+                    public_url: "https://example.com".into(),
+                    landing_url: Some("https://EXAMPLE.com/".into()),
+                    web_dir: Some(web_dir.clone()),
+                    ..base()
+                },
+            ),
+            (
+                "same as web url",
+                Config {
+                    public_url: "https://api.example.com".into(),
+                    web_url: Some("https://example.com".into()),
+                    landing_url: Some("https://example.com".into()),
+                    web_dir: Some(web_dir.clone()),
+                    ..base()
+                },
+            ),
+        ] {
+            assert!(cfg.validate().is_err(), "{name}");
         }
     }
 }

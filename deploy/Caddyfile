@@ -7,7 +7,10 @@
 	email {$ACME_EMAIL}
 }
 
-# API + web cabinet + WebSocket, one origin.
+# API + web cabinet + WebSocket, one origin. With the landing on its own
+# domain (TERMOSO_LANDING_URL) list both, comma-separated:
+#   TERMOSO_DOMAIN=app.example.com, example.com
+# The server routes by Host; the same goes for TERMOSO_SSHID_URL.
 {$TERMOSO_DOMAIN} {
 	encode zstd gzip
 	reverse_proxy api:8080

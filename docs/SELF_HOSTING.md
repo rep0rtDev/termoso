@@ -115,6 +115,32 @@ root of a dedicated origin (`https://sshid.example.com/<handle>`), convenient
 for `curl … | tee -a ~/.ssh/authorized_keys`. Point another proxy block at
 `api:8080` with that hostname.
 
+### Landing page: on, off, or on its own domain
+
+`/` of the cabinet origin is a public landing page by default. Two knobs
+change that; both are plain environment variables, there is no admin switch.
+
+| Layout | `.env` | Result |
+|---|---|---|
+| One origin (default) | `TERMOSO_PUBLIC_URL=https://termoso.example.com` | `/` is the landing, `/login`, `/account`, … the cabinet, `/api/v1` the API |
+| No landing | `TERMOSO_LANDING=false` | `/` redirects to `/login` (a signed-in browser continues to the cabinet); nothing else changes |
+| Landing on the apex, cabinet + API on a subdomain | `TERMOSO_PUBLIC_URL=https://app.example.com`<br>`TERMOSO_WEB_URL=https://app.example.com`<br>`TERMOSO_LANDING_URL=https://example.com` | `https://example.com/` is the landing, `https://app.example.com/` goes to `/login` |
+
+In the split layout both hostnames point at the same server (one proxy block
+with two addresses is enough — with the Compose `proxy` profile set
+`TERMOSO_DOMAIN=app.example.com, example.com`); the server tells them apart
+by `Host`. On the landing host only `/`, the static files, the health probes
+and `/api/v1/server/info` are answered; every other path — `/login`,
+`/signup`, `/invite/…`, `/join/…`, the SSO callback, the whole API — is a
+`307` to the same path and query on `TERMOSO_WEB_URL`, so links in e-mails,
+invitations, multiplayer links and Android App Links keep working whichever
+hostname they were typed on. The landing's own buttons already point at the
+cabinet origin. `TERMOSO_LANDING_URL` must be a bare origin, must differ
+from `TERMOSO_PUBLIC_URL`/`TERMOSO_WEB_URL`, and needs `TERMOSO_WEB_DIR`
+(the landing is part of the cabinet bundle) — the server refuses to start
+otherwise. Everything else (`TERMOSO_WEBAUTHN__RP_ID`, OAuth redirect URIs,
+`assetlinks.json`) stays tied to `TERMOSO_PUBLIC_URL`, i.e. the cabinet.
+
 ### WebAuthn, App Links, SSO
 
 * `TERMOSO_WEBAUTHN__RP_ID` must be the registrable domain of

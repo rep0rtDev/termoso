@@ -240,13 +240,15 @@ pub fn router(state: AppState) -> Router {
         app = app.merge(crate::openapi::swagger());
     }
     if let Some(dir) = state.cfg.web_dir() {
-        app = app.merge(web::router(dir));
+        app = app.merge(web::router(dir, state.cfg.landing_on_cabinet()));
     }
 
     let cors = cors_layer(&state);
-    // Host-based rewrite for the dedicated SSH ID origin has to run before
-    // routing, so it wraps the finished router instead of being a route layer.
+    // Host-based rewrites for the dedicated SSH ID / landing origins have to
+    // run before routing, so they wrap the finished router instead of being
+    // route layers.
     let sshid_host = axum::middleware::from_fn_with_state(state.clone(), sshid::host_layer);
+    let landing_host = axum::middleware::from_fn_with_state(state.clone(), web::landing_host_layer);
 
     let app = app
         .layer(RequestBodyLimitLayer::new(BODY_LIMIT))
@@ -270,7 +272,23 @@ pub fn router(state: AppState) -> Router {
         )
         .with_state(state);
 
+    let app = tower::Layer::layer(&landing_host, app);
     Router::new().fallback_service(tower::Layer::layer(&sshid_host, app))
+}
+
+/// `host[:port]` the request was addressed to, lowercase.
+pub(crate) fn request_host(req: &axum::extract::Request) -> String {
+    req.uri()
+        .authority()
+        .map(|a| a.as_str().to_string())
+        .or_else(|| {
+            req.headers()
+                .get(header::HOST)
+                .and_then(|h| h.to_str().ok())
+                .map(str::to_string)
+        })
+        .unwrap_or_default()
+        .to_ascii_lowercase()
 }
 
 fn cors_layer(state: &AppState) -> CorsLayer {

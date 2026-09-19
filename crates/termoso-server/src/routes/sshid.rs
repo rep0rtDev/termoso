@@ -84,19 +84,7 @@ pub async fn host_layer(
     let Some(want) = state.sshid_host.as_deref() else {
         return next.run(req).await;
     };
-    let host = req
-        .uri()
-        .authority()
-        .map(|a| a.as_str().to_string())
-        .or_else(|| {
-            req.headers()
-                .get(header::HOST)
-                .and_then(|h| h.to_str().ok())
-                .map(str::to_string)
-        })
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    if host != want {
+    if super::request_host(&req) != want {
         return next.run(req).await;
     }
     let path = req.uri().path().to_string();
