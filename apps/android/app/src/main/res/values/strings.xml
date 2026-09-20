@@ -1242,4 +1242,21 @@
     <string name="more_symbols">More symbols</string>
     <string name="brackets_f1_f4">Brackets &amp; F1–F4</string>
     <string name="f5_f12" translatable="false">F5–F12</string>
+
+    <!-- Files integration (storage access framework) -->
+    <string name="files_integration">Files integration</string>
+    <string name="files_show_sftp_hosts_in_files">Show SFTP hosts in Files</string>
+    <string name="files_show_sftp_hosts_in_files_summary">Browse, open and save files on your SSH hosts from the system Files app and any app that opens documents. Hosts that need a password or a new host key must be connected from Termoso first.</string>
+    <string name="files_locked_root_summary">Unlock Termoso to browse SFTP hosts</string>
+    <string name="files_unlock_termoso_first">Unlock Termoso first</string>
+    <string name="files_host_no_longer_exists">This host no longer exists in Termoso</string>
+    <string name="files_connection_timed_out">Connection timed out</string>
+    <string name="files_host_key_needs_confirmation">Connect to %1$s from Termoso once to confirm its host key</string>
+    <string name="files_host_needs_credentials">%1$s asks for a password. Connect from Termoso and choose to remember it</string>
+    <string name="files_host_needs_security_key">%1$s needs a security key. Connect from Termoso instead</string>
+    <string name="files_invalid_name">That name cannot be used</string>
+    <string name="files_name_taken">%1$s already exists here</string>
+    <string name="files_cannot_remove_root">The host root cannot be changed</string>
+    <string name="files_move_between_hosts">Moving between hosts is not supported; copy instead</string>
+    <string name="files_move_into_itself">A folder cannot be moved into itself</string>
 </resources>

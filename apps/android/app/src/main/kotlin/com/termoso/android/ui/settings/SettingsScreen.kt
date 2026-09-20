@@ -117,6 +117,7 @@ fun SettingsScreen(
     var licenses by remember { mutableStateOf(false) }
     val appLock by container.appLock.collectAsStateWithLifecycle()
     var lockBusy by remember { mutableStateOf(false) }
+    val filesEnabled by container.files.enabled.collectAsStateWithLifecycle()
 
     /**
      * Toggle the Keystore-gated master key. Both directions require passing the
@@ -319,6 +320,16 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.disconnects_every_session_and_closes_the_encrypted_database),
                     leading = { IconTile(Icons.Filled.Lock) },
                     modifier = Modifier.clickable(onClick = onLock),
+                )
+            }
+
+            SectionLabel(stringResource(R.string.files_integration))
+            SectionCard {
+                SwitchRow(
+                    title = stringResource(R.string.files_show_sftp_hosts_in_files),
+                    subtitle = stringResource(R.string.files_show_sftp_hosts_in_files_summary),
+                    checked = filesEnabled,
+                    onCheckedChange = container.files::setEnabled,
                 )
             }
 

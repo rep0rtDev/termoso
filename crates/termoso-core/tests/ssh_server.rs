@@ -19,7 +19,7 @@ use termoso_core::forward::{Forward, ForwardSpec};
 use termoso_core::hostkey::{
     self, FixedPrompt, HostKeyDecision, HostKeyPrompt, HostKeyVerdict, KnownHosts, StrictPrompt,
 };
-use termoso_core::sftp::{Sftp, TransferOptions};
+use termoso_core::sftp::{OpenMode, Sftp, TransferOptions};
 use termoso_core::ssh::{AuthMethod, ConnectOptions, PasswordResponder, SshClient, SshTarget};
 use termoso_core::store::Store;
 use termoso_core::terminal::{TermEvent, TermSize, TerminalSession};
@@ -702,6 +702,26 @@ impl russh_sftp::server::Handler for MemSftp {
         _path: String,
         _attrs: FileAttributes,
     ) -> Result<Status, Self::Error> {
+        Ok(Self::ok(id))
+    }
+
+    async fn fsetstat(
+        &mut self,
+        id: u32,
+        handle: String,
+        attrs: FileAttributes,
+    ) -> Result<Status, Self::Error> {
+        let path = self
+            .handles
+            .get(&handle)
+            .ok_or(StatusCode::BadMessage)?
+            .path
+            .clone();
+        if let Some(size) = attrs.size {
+            let mut files = self.files.lock().await;
+            let buf = files.get_mut(&path).ok_or(StatusCode::NoSuchFile)?;
+            buf.resize(size as usize, 0);
+        }
         Ok(Self::ok(id))
     }
 
@@ -1527,6 +1547,99 @@ async fn disconnect_closes_transport() {
         .await
         .unwrap();
     assert!(c.is_closed());
+}
+
+#[tokio::test]
+async fn sftp_open_file_positional() {
+    let h = start().await;
+    let c = h.connect_password().await;
+    let sftp = Sftp::open(&c).await.unwrap();
+    sftp.mkdir_all("/home/tester/d").await.unwrap();
+
+    // Write mode creates; writes land at their offsets and grow the file.
+    let f = sftp
+        .open_file("/home/tester/d/new.bin", OpenMode::Write)
+        .await
+        .unwrap();
+    f.write_at(0, b"hello").await.unwrap();
+    f.write_at(5, b" world").await.unwrap();
+    f.sync().await.unwrap();
+    assert_eq!(f.size().await.unwrap(), 11);
+    f.close().await.unwrap();
+    assert_eq!(
+        h.files.lock().await.get("/home/tester/d/new.bin").unwrap(),
+        b"hello world"
+    );
+
+    // Read mode: ranged reads over a file larger than one SFTP chunk,
+    // short at the end, empty past it, never read whole.
+    let payload: Vec<u8> = (0..(600 * 1024)).map(|i| (i % 253) as u8).collect();
+    h.files
+        .lock()
+        .await
+        .insert("/home/tester/d/big.bin".into(), payload.clone());
+    let f = sftp
+        .open_file("/home/tester/d/big.bin", OpenMode::Read)
+        .await
+        .unwrap();
+    assert_eq!(f.size().await.unwrap(), payload.len() as u64);
+    assert_eq!(f.read_at(0, 10).await.unwrap(), &payload[..10]);
+    // Sequential chunks continue the stream; a backwards jump reseeks.
+    let mut seq = Vec::new();
+    while seq.len() < 200 * 1024 {
+        seq.extend(f.read_at(10 + seq.len() as u64, 128 * 1024).await.unwrap());
+    }
+    assert_eq!(seq, &payload[10..10 + seq.len()]);
+    assert_eq!(f.read_at(3, 20).await.unwrap(), &payload[3..23]);
+    let mid = 300 * 1024 - 7;
+    assert_eq!(
+        f.read_at(mid as u64, 64 * 1024).await.unwrap(),
+        &payload[mid..mid + 64 * 1024]
+    );
+    let tail = payload.len() - 100;
+    assert_eq!(
+        f.read_at(tail as u64, 4096).await.unwrap(),
+        &payload[tail..]
+    );
+    assert!(
+        f.read_at(payload.len() as u64 + 10, 16)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(f.write_at(0, b"x").await.is_err());
+    f.close().await.unwrap();
+
+    // ReadWrite keeps contents, edits in place, truncates.
+    let f = sftp
+        .open_file("/home/tester/d/new.bin", OpenMode::ReadWrite)
+        .await
+        .unwrap();
+    assert_eq!(f.read_at(6, 5).await.unwrap(), b"world");
+    f.write_at(6, b"there").await.unwrap();
+    f.truncate(5).await.unwrap();
+    assert_eq!(f.size().await.unwrap(), 5);
+    f.close().await.unwrap();
+    assert_eq!(
+        h.files.lock().await.get("/home/tester/d/new.bin").unwrap(),
+        b"hello"
+    );
+
+    // Directories and missing files are refused up front.
+    assert!(
+        sftp.open_file("/home/tester/d", OpenMode::Read)
+            .await
+            .is_err()
+    );
+    assert!(
+        sftp.open_file("/home/tester/d", OpenMode::ReadWrite)
+            .await
+            .is_err()
+    );
+    assert!(matches!(
+        sftp.open_file("/home/tester/d/nope", OpenMode::Read).await,
+        Err(CoreError::NotFound(_))
+    ));
 }
 
 #[tokio::test]

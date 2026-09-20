@@ -7,6 +7,7 @@ import android.view.KeyEvent
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.termoso.android.saf.FilesIntegration
 import com.termoso.core.TermosoApp
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -116,6 +117,9 @@ class AppContainer(context: Context) {
     @Volatile
     var hardwareKeyHook: ((KeyEvent) -> Boolean)? = null
 
+    /** SFTP hosts as a storage root for the system Files UI and other apps. */
+    val files = FilesIntegration(appContext)
+
     init {
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
@@ -124,14 +128,26 @@ class AppContainer(context: Context) {
                 }
 
                 override fun onStart(owner: LifecycleOwner) {
-                    val open = _vault.value as? VaultState.Open ?: return
-                    val settings = open.repo.settings.value
-                    if (!settings.lockOnBackground || !masterKeys.authRequired() || backgroundedAt == 0L) return
-                    val away = (SystemClock.elapsedRealtime() - backgroundedAt) / 1000
-                    if (away >= settings.lockAfterSeconds.toLong()) _gated.value = true
+                    if (backgroundLockDue()) _gated.value = true
+                    backgroundedAt = 0L
                 }
             },
         )
+        files.watch(this)
+    }
+
+    /**
+     * Whether the in-use app lock would cover the UI right now: the vault is
+     * open, "lock when in background" is on and the app has been away longer
+     * than the configured delay. Raised as [gated] when the UI returns; other
+     * entry points (the documents provider) consult it directly.
+     */
+    fun backgroundLockDue(): Boolean {
+        val open = _vault.value as? VaultState.Open ?: return false
+        val settings = open.repo.settings.value
+        if (!settings.lockOnBackground || !masterKeys.authRequired() || backgroundedAt == 0L) return false
+        val away = (SystemClock.elapsedRealtime() - backgroundedAt) / 1000
+        return away >= settings.lockAfterSeconds.toLong()
     }
 
     fun gate() {
@@ -179,6 +195,17 @@ class AppContainer(context: Context) {
                 ai = AiManager(it, account),
             )
         }
+    }
+
+    /**
+     * Open the vault only if that needs no one present: a profile exists and
+     * its master key is not bound to device authentication. `null` otherwise —
+     * never creates a profile and never bypasses the app lock.
+     */
+    suspend fun unlockSilently(): VaultRepository? {
+        (_vault.value as? VaultState.Open)?.let { return it.repo }
+        if (!hasProfile() || masterKeys.authRequired()) return null
+        return unlock()
     }
 
     /** Disconnect every terminal, close the store and drop the handle. */

@@ -12,7 +12,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use termoso_core::model::ResolvedHost;
-use termoso_core::sftp::{self, Progress, ProgressFn, RemoteEntry, Sftp, TransferOptions};
+use termoso_core::sftp::{
+    self, OpenMode, Progress, ProgressFn, RemoteEntry, RemoteFile, Sftp, TransferOptions,
+};
 use termoso_core::ssh::{SshClient, SshTarget};
 use termoso_core::store::{ConnectionHistory, Store};
 use tokio_util::sync::CancellationToken;
@@ -67,6 +69,106 @@ pub struct SftpEntry {
     pub modified_ms: Option<i64>,
     pub link_target: Option<String>,
     pub hidden: bool,
+}
+
+/// How [`SftpSession::open_file`] opens a remote file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FileMode {
+    /// Existing file, reads only.
+    Read,
+    /// Create or truncate, writes only.
+    Write,
+    /// Create if missing, keep contents, reads and writes at any offset.
+    ReadWrite,
+}
+
+impl From<FileMode> for OpenMode {
+    fn from(m: FileMode) -> Self {
+        match m {
+            FileMode::Read => Self::Read,
+            FileMode::Write => Self::Write,
+            FileMode::ReadWrite => Self::ReadWrite,
+        }
+    }
+}
+
+/// A remote file held open for positional reads and writes, so Kotlin can
+/// serve it piecewise (a proxy file descriptor handed to another app)
+/// without ever holding the whole file. Calls block; run them off the main
+/// thread. Dropping the object closes the handle.
+#[derive(uniffi::Object)]
+pub struct SftpFile {
+    file: Mutex<Option<RemoteFile>>,
+    _live: Arc<Live>,
+    runtime: tokio::runtime::Handle,
+}
+
+impl SftpFile {
+    fn with<T>(&self, f: impl FnOnce(&RemoteFile) -> Result<T>) -> Result<T> {
+        let guard = self.file.lock().expect("file poisoned");
+        match guard.as_ref() {
+            Some(file) => f(file),
+            None => Err(MobileError::Closed),
+        }
+    }
+}
+
+#[uniffi::export]
+impl SftpFile {
+    /// Current size in bytes.
+    pub fn size(&self) -> Result<u64> {
+        self.with(|file| self.runtime.block_on(async { Ok(file.size().await?) }))
+    }
+
+    /// Up to `len` bytes at `offset`; shorter only at end of file.
+    pub fn read_at(&self, offset: u64, len: u32) -> Result<Vec<u8>> {
+        self.with(|file| {
+            self.runtime
+                .block_on(async { Ok(file.read_at(offset, len as usize).await?) })
+        })
+    }
+
+    /// Write `data` at `offset`, growing the file as needed.
+    pub fn write_at(&self, offset: u64, data: Vec<u8>) -> Result<()> {
+        self.with(|file| {
+            self.runtime
+                .block_on(async { Ok(file.write_at(offset, &data).await?) })
+        })
+    }
+
+    /// Set the file's length.
+    pub fn truncate(&self, size: u64) -> Result<()> {
+        self.with(|file| {
+            self.runtime
+                .block_on(async { Ok(file.truncate(size).await?) })
+        })
+    }
+
+    /// Flush pending writes to the server (and to disk where it supports that).
+    pub fn sync(&self) -> Result<()> {
+        self.with(|file| self.runtime.block_on(async { Ok(file.sync().await?) }))
+    }
+
+    /// Flush and release the server handle; later calls fail with `Closed`.
+    /// (`release`, not `close`: the generated Kotlin object already has
+    /// `AutoCloseable.close()` for the native handle.)
+    pub fn release(&self) -> Result<()> {
+        let file = self.file.lock().expect("file poisoned").take();
+        match file {
+            Some(file) => self.runtime.block_on(async { Ok(file.close().await?) }),
+            None => Ok(()),
+        }
+    }
+}
+
+impl Drop for SftpFile {
+    fn drop(&mut self) {
+        if let Some(file) = self.file.lock().expect("file poisoned").take() {
+            self.runtime.spawn(async move {
+                let _ = file.close().await;
+            });
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -631,6 +733,20 @@ impl SftpSession {
         let live = self.live()?;
         self.runtime
             .block_on(async move { Ok(live.sftp.write(&path, &data).await?) })
+    }
+
+    /// Open `path` for positional access (see [`SftpFile`]); directories
+    /// are refused.
+    pub fn open_file(&self, path: String, mode: FileMode) -> Result<Arc<SftpFile>> {
+        let live = self.live()?;
+        let file = self
+            .runtime
+            .block_on(async { live.sftp.open_file(&path, mode.into()).await })?;
+        Ok(Arc::new(SftpFile {
+            file: Mutex::new(Some(file)),
+            _live: live,
+            runtime: self.runtime.clone(),
+        }))
     }
 
     /// Queue a download of `remote` into the local file `local_path`

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use futures::{StreamExt, stream};
+use russh_sftp::client::fs::File;
 use russh_sftp::client::{Config as SftpConfig, SftpSession};
 use russh_sftp::protocol::{FileAttributes, FileType, OpenFlags, StatusCode};
 use serde::{Deserialize, Serialize};
@@ -144,6 +145,141 @@ impl TransferOptions {
         if let Some(p) = &self.progress {
             p(Progress { done, total });
         }
+    }
+}
+
+/// How [`Sftp::open_file`] opens a remote file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenMode {
+    /// Existing file, reads only.
+    Read,
+    /// Create or truncate, writes only.
+    Write,
+    /// Create if missing, keep contents, reads and writes at any offset.
+    ReadWrite,
+}
+
+impl OpenMode {
+    fn flags(self) -> OpenFlags {
+        match self {
+            Self::Read => OpenFlags::READ,
+            Self::Write => OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+            Self::ReadWrite => OpenFlags::READ | OpenFlags::WRITE | OpenFlags::CREATE,
+        }
+    }
+}
+
+/// An open remote file with positional reads and writes, for callers that
+/// serve an arbitrary-size file piecewise (a proxy file descriptor, a media
+/// player seeking around) instead of transferring it whole.
+pub struct RemoteFile {
+    file: tokio::sync::Mutex<Positioned>,
+}
+
+/// The handle plus the offset its stream is known to sit at. Seeking resets
+/// the crate's read-ahead pipeline, so sequential callers must not seek: a
+/// `None` position forces one before the next access.
+struct Positioned {
+    file: File,
+    pos: Option<u64>,
+}
+
+impl Positioned {
+    async fn seek_to(&mut self, offset: u64) -> Result<()> {
+        if self.pos != Some(offset) {
+            self.file.seek(std::io::SeekFrom::Start(offset)).await?;
+            self.pos = Some(offset);
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Debug for RemoteFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RemoteFile").finish_non_exhaustive()
+    }
+}
+
+impl RemoteFile {
+    /// Current size in bytes as the server reports it.
+    pub async fn size(&self) -> Result<u64> {
+        let file = self.file.lock().await;
+        let meta = file.file.metadata().await.map_err(sftp_err)?;
+        meta.size
+            .ok_or_else(|| CoreError::Sftp("server did not report the file size".into()))
+    }
+
+    /// Up to `len` bytes starting at `offset`; shorter only at end of file.
+    pub async fn read_at(&self, offset: u64, len: usize) -> Result<Vec<u8>> {
+        let mut f = self.file.lock().await;
+        f.seek_to(offset).await?;
+        let mut out = vec![0u8; len];
+        let mut filled = 0;
+        while filled < len {
+            let n = match f.file.read(&mut out[filled..]).await {
+                Ok(n) => n,
+                Err(e) => {
+                    f.pos = None;
+                    return Err(e.into());
+                }
+            };
+            if n == 0 {
+                break;
+            }
+            filled += n;
+        }
+        f.pos = if filled == len {
+            Some(offset + filled as u64)
+        } else {
+            None
+        };
+        out.truncate(filled);
+        Ok(out)
+    }
+
+    /// Write all of `data` at `offset`, growing the file as needed.
+    pub async fn write_at(&self, offset: u64, data: &[u8]) -> Result<()> {
+        let mut f = self.file.lock().await;
+        f.seek_to(offset).await?;
+        f.pos = None;
+        f.file.write_all(data).await?;
+        f.file.flush().await?;
+        f.pos = Some(offset + data.len() as u64);
+        Ok(())
+    }
+
+    /// Set the file's length (`SSH_FXP_FSETSTAT` with size).
+    pub async fn truncate(&self, size: u64) -> Result<()> {
+        let mut f = self.file.lock().await;
+        let mut a = FileAttributes::empty();
+        a.size = Some(size);
+        f.file.set_metadata(a).await.map_err(sftp_err)?;
+        f.pos = None;
+        Ok(())
+    }
+
+    /// Push pending writes and ask the server to sync them to disk when it
+    /// supports `fsync@openssh.com`; servers without it just acknowledge.
+    pub async fn sync(&self) -> Result<()> {
+        let mut f = self.file.lock().await;
+        f.file.flush().await?;
+        match f.file.sync_all().await {
+            Ok(()) => Ok(()),
+            Err(russh_sftp::client::error::Error::Status(s))
+                if s.status_code == StatusCode::OpUnsupported =>
+            {
+                Ok(())
+            }
+            Err(e) => Err(sftp_err(e)),
+        }
+    }
+
+    /// Flush and release the server handle.
+    pub async fn close(self) -> Result<()> {
+        let mut file = self.file.into_inner().file;
+        file.flush().await?;
+        file.close().await?;
+        Ok(())
     }
 }
 
@@ -377,6 +513,24 @@ impl Sftp {
         f.write_all(data).await?;
         f.close().await?;
         Ok(())
+    }
+
+    /// Open `path` for positional access; directories are refused.
+    pub async fn open_file(&self, path: &str, mode: OpenMode) -> Result<RemoteFile> {
+        if mode == OpenMode::Read || self.exists(path).await? {
+            let attrs = self.session.metadata(path).await.map_err(sftp_err)?;
+            if attrs.is_dir() {
+                return Err(CoreError::Sftp(format!("{path} is a directory")));
+            }
+        }
+        let file = self
+            .session
+            .open_with_flags(path, mode.flags())
+            .await
+            .map_err(sftp_err)?;
+        Ok(RemoteFile {
+            file: tokio::sync::Mutex::new(Positioned { file, pos: Some(0) }),
+        })
     }
 
     /// Download `remote` to `local`. Returns the number of bytes transferred by
