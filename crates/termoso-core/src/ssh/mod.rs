@@ -120,6 +120,10 @@ pub struct ConnectOptions {
     pub env: Vec<(String, String)>,
     /// Request agent forwarding on shells.
     pub agent_forwarding: bool,
+    /// SSH agent to talk to for [`AuthMethod::Agent`] / [`AuthMethod::AgentKey`]
+    /// and forwarding: a socket (named pipe on Windows) path, or `None` for
+    /// the platform default (`SSH_AUTH_SOCK`, OpenSSH agent pipe, Pageant).
+    pub agent_socket: Option<std::path::PathBuf>,
     /// Offer the hybrid post-quantum key exchange (`mlkem768x25519-sha256`)
     /// first. Servers without it fall back to classical algorithms either
     /// way; turning this off only matters for the rare peer whose KEXINIT
@@ -197,6 +201,7 @@ impl ConnectOptions {
             proxy: None,
             env: Vec::new(),
             agent_forwarding: false,
+            agent_socket: None,
             post_quantum_kex: true,
             progress: None,
             ip_version: IpVersion::Auto,

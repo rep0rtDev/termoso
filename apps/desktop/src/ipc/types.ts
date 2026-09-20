@@ -656,6 +656,8 @@ export interface KeyCard {
   encrypted: boolean;
   hasPassphrase: boolean;
   unreadable: boolean;
+  /** Public half only: the system SSH agent holds the private key and signs. */
+  agentBacked: boolean;
   usedBy: number;
   certificate: CertificateCard | null;
   certificateUnreadable: boolean;
@@ -748,6 +750,27 @@ export interface AgentKey {
   fingerprint: string;
   publicKey: string;
   comment: string;
+  /** The agent holds a certificate for this key rather than the bare key. */
+  certificate: boolean;
+}
+
+/** Public-only key whose private half lives in the SSH agent (KeePassXC, 1Password, ssh-add…). */
+export interface AgentImportForm {
+  vaultId: Uuid;
+  /** Empty: the key's comment, else its fingerprint. */
+  label: string;
+  /** `type base64 [comment]` line. */
+  publicKey: string;
+  /** OpenSSH certificate for this key (`*-cert.pub`), verified before saving. */
+  certificate: string | null;
+}
+
+/** Like `AgentImportForm`, but the `.pub` (and certificate) are read from disk inside Rust. */
+export interface AgentImportFileForm {
+  vaultId: Uuid;
+  label: string;
+  path: string;
+  certificatePath: string | null;
 }
 
 export interface AgentKeys {
@@ -1038,6 +1061,8 @@ export interface ImportedKey {
   fingerprint: string;
   encrypted: boolean;
   publicKey: string;
+  /** A lone `.pub`: stored as an agent-backed key, no private material. */
+  agentBacked: boolean;
 }
 
 export interface ImportedKnownHost {

@@ -28,8 +28,8 @@ use crate::error::{DesktopError, Result};
 use crate::forwarding::{self, PfRuleCard, PfRuleForm, PfRuntime};
 use crate::import::{self, ImportPreview, ImportSelection, ImportSource};
 use crate::keychain::{
-    self, CertificateCard, ExportOutcome, Fido2GenerateForm, Fido2LoadForm, GenerateForm,
-    IdentityCard, IdentityForm, ImportForm, KeyCard, KeyPreview,
+    self, AgentImportForm, CertificateCard, ExportOutcome, Fido2GenerateForm, Fido2LoadForm,
+    GenerateForm, IdentityCard, IdentityForm, ImportForm, KeyCard, KeyPreview,
 };
 use crate::logs::{self, BookmarkCard, LogBody, LogCard};
 use crate::multiplayer::{self, ShareInfo};
@@ -132,6 +132,54 @@ pub async fn key_import_file(state: State<'_, AppState>, form: ImportFileForm) -
             private_key,
             passphrase: form.passphrase,
             remember_passphrase: form.remember_passphrase,
+            certificate,
+        },
+    )
+}
+
+/// Store a public-only key that the system SSH agent signs with (pasted
+/// `.pub` line or an entry picked from `agent_keys`).
+#[tauri::command]
+pub async fn key_import_agent(
+    state: State<'_, AppState>,
+    form: AgentImportForm,
+) -> Result<KeyCard> {
+    keychain::import_agent(&state.store, &form)
+}
+
+/// `.pub` file variant of `key_import_agent`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentImportFileForm {
+    pub vault_id: Uuid,
+    #[serde(default)]
+    pub label: String,
+    pub path: String,
+    #[serde(default)]
+    pub certificate_path: Option<String>,
+}
+
+#[tauri::command]
+pub async fn key_import_agent_file(
+    state: State<'_, AppState>,
+    form: AgentImportFileForm,
+) -> Result<KeyCard> {
+    let public_key = std::fs::read_to_string(&form.path)?;
+    if public_key.contains("PRIVATE KEY-----") {
+        return Err(DesktopError::invalid(
+            "this is a private key file; pick the .pub file (or use Import key to store the private key)",
+        ));
+    }
+    let certificate = match form.certificate_path {
+        Some(p) => Some(std::fs::read_to_string(&p)?),
+        None => None,
+    };
+    keychain::import_agent(
+        &state.store,
+        &AgentImportForm {
+            vault_id: form.vault_id,
+            label: form.label,
+            public_key,
             certificate,
         },
     )

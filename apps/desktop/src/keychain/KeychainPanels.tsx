@@ -36,6 +36,9 @@ import FolderOpenOutlinedIcon from "@mui/icons-material/FolderOpenOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import NoteAddOutlinedIcon from "@mui/icons-material/NoteAddOutlined";
+import VpnKeyOutlinedIcon from "@mui/icons-material/VpnKeyOutlined";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import * as ipc from "@/ipc/commands";
@@ -44,6 +47,9 @@ import {
   SSH_ID_KEY_TYPES,
   errorMessage,
   sshIdTypeLabel,
+  type AgentImportFileForm,
+  type AgentImportForm,
+  type AgentKey,
   type CertificateCard,
   type Fido2Device,
   type Fido2GenerateForm,
@@ -85,7 +91,13 @@ import {
 export function KeyTile({ card, size = sizes.tile }: { card?: KeyCard; size?: number }) {
   return (
     <IconTile size={size} tone={card?.unreadable ? "warning" : "info"}>
-      {card?.securityKey ? <UsbRoundedIcon /> : <KeyRoundedIcon />}
+      {card?.securityKey ? (
+        <UsbRoundedIcon />
+      ) : card?.agentBacked ? (
+        <VpnKeyOutlinedIcon />
+      ) : (
+        <KeyRoundedIcon />
+      )}
     </IconTile>
   );
 }
@@ -361,7 +373,9 @@ export function NewKeyPanel({
           takeCertFile(p);
           break;
         case "public":
-          setDropNote("That is a public key (.pub); drop the private key file instead.");
+          setDropNote(
+            "That is a public key (.pub); drop the private key file instead, or add it under New key → From SSH agent.",
+          );
           break;
         case "private":
           takePrivateFile(p);
@@ -638,6 +652,294 @@ export function NewKeyPanel({
   );
 }
 
+/* ----------------------------------------------------------- from agent */
+
+/** "From SSH agent": keep only the public half of a key whose private half lives in
+ *  the system agent (KeePassXC, 1Password, ssh-add…). Pick one from the agent's list,
+ *  paste a public key line, or pick a `.pub` file (read in Rust). The agent signs
+ *  on connect; Termoso never sees or stores the private key. */
+export function AgentKeyPanel({
+  vaultId,
+  vaultName,
+  existing,
+  busy,
+  error,
+  onImport,
+  onImportFile,
+  onClose,
+}: {
+  vaultId: Uuid;
+  vaultName: string;
+  /** Keys already in this vault; agent entries with the same fingerprint show as added. */
+  existing: KeyCard[];
+  busy: boolean;
+  error: string | null;
+  onImport: (form: AgentImportForm) => void;
+  onImportFile: (form: AgentImportFileForm) => void;
+  onClose: () => void;
+}) {
+  const agent = useQuery({ queryKey: ["agentKeys"], queryFn: ipc.agentKeys, staleTime: 10_000 });
+  const [label, setLabel] = useState("");
+  const [text, setText] = useState("");
+  const [path, setPath] = useState<string | null>(null);
+  const [cert, setCert] = useState("");
+  const [certPath, setCertPath] = useState<string | null>(null);
+  const [dropNote, setDropNote] = useState<string | null>(null);
+
+  const inVault = useMemo(() => new Set(existing.map((k) => k.fingerprint)), [existing]);
+
+  const takePublicFile = (p: string) => {
+    setPath(p);
+    setText("");
+    setDropNote(null);
+    if (label.trim().length === 0) setLabel(labelFromPath(p).replace(/\.pub$/i, ""));
+  };
+  // A certificate file rides along only with a public key file (both are read in Rust);
+  // with pasted text the certificate is pasted too.
+  const takeCertFile = (p: string) => {
+    if (path === null) {
+      setDropNote(
+        "Pick the .pub file first to attach a certificate file, or paste the certificate.",
+      );
+      return;
+    }
+    setCertPath(p);
+    setCert("");
+  };
+  const takePaths = (paths: string[]) => {
+    for (const p of paths) {
+      switch (droppedKind(p)) {
+        case "certificate":
+          takeCertFile(p);
+          break;
+        case "public":
+          takePublicFile(p);
+          break;
+        case "private":
+          setDropNote("That looks like a private key; only the public half (.pub) is stored here.");
+          break;
+      }
+    }
+  };
+  useFileDrop(takePaths);
+
+  const pickPublic = async () => {
+    const picked = await openFile({
+      multiple: false,
+      directory: false,
+      title: "Public key (*.pub)",
+    });
+    if (typeof picked === "string") takePaths([picked]);
+  };
+  const pickCert = async () => {
+    const picked = await openFile({
+      multiple: false,
+      directory: false,
+      title: "Certificate (*-cert.pub)",
+    });
+    if (typeof picked === "string") takeCertFile(picked);
+  };
+
+  const valid = path !== null || text.trim().length > 0;
+
+  const submit = () => {
+    const certText = cert.trim().length > 0 ? cert : null;
+    if (path !== null) {
+      onImportFile({ vaultId, label: label.trim(), path, certificatePath: certPath });
+    } else {
+      onImport({ vaultId, label: label.trim(), publicKey: text, certificate: certText });
+    }
+  };
+  const addFromAgent = (k: AgentKey) => {
+    onImport({ vaultId, label: k.comment.trim(), publicKey: k.publicKey, certificate: null });
+  };
+
+  const a = agent.data;
+  const agentStatus = agent.isPending
+    ? "Looking for an agent…"
+    : a?.available
+      ? a.keys.length === 0
+        ? "Agent reachable, no keys loaded (ssh-add or unlock your key manager)."
+        : `Agent reachable · ${a.keys.length} key${a.keys.length === 1 ? "" : "s"}`
+      : `No agent: ${a?.error ?? errorMessage(agent.error)}`;
+
+  return (
+    <SidePanel
+      title="From SSH agent"
+      subtitle={vaultName}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="text" color="inherit" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={submit} disabled={!valid || busy}>
+            {busy ? "Saving…" : "Save"}
+          </Button>
+        </>
+      }
+    >
+      <SectionCard
+        title="Keys in the agent"
+        action={
+          <ToolIconButton
+            title="Refresh"
+            onClick={() => void agent.refetch()}
+            disabled={agent.isFetching}
+          >
+            <RefreshRoundedIcon fontSize="small" />
+          </ToolIconButton>
+        }
+      >
+        <Typography variant="caption" color="text.secondary">
+          {agentStatus}
+        </Typography>
+        {a?.keys.map((k) => {
+          const added = inVault.has(k.fingerprint);
+          return (
+            <Box
+              key={k.fingerprint}
+              sx={{ display: "flex", alignItems: "center", gap: 1.5, minWidth: 0 }}
+            >
+              <VpnKeyOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography variant="body2" noWrap>
+                  {k.comment.trim() || k.fingerprint}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  noWrap
+                  sx={{ display: "block" }}
+                >
+                  {k.keyType}
+                  {k.certificate ? " · certificate" : ""} · <Mono>{k.fingerprint}</Mono>
+                </Typography>
+              </Box>
+              {added ? (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  color="success"
+                  icon={<CheckRoundedIcon />}
+                  label="In vault"
+                />
+              ) : (
+                <Button
+                  size="small"
+                  variant="tonal"
+                  onClick={() => addFromAgent(k)}
+                  disabled={busy}
+                  aria-label={`Add ${k.comment.trim() || k.fingerprint}`}
+                >
+                  Add
+                </Button>
+              )}
+            </Box>
+          );
+        })}
+        <Typography variant="caption" color="text.disabled">
+          Only the public key is saved. On connect the agent signs with the matching private key; if
+          it is not loaded there, the connection fails instead of falling back to other keys.
+        </Typography>
+      </SectionCard>
+
+      <SectionCard title="Public key file">
+        <TextField
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="Label (defaults to the key comment)"
+          slotProps={{ htmlInput: { "aria-label": "Label" } }}
+        />
+        {path === null ? (
+          <TextField
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            multiline
+            minRows={3}
+            maxRows={6}
+            placeholder="Public key (ssh-ed25519 AAAA… comment)"
+            helperText="Paste the contents of id_*.pub, or pick the file below."
+            slotProps={{ htmlInput: { ...mono, "aria-label": "Public key" } }}
+          />
+        ) : (
+          <TextField
+            value={path}
+            disabled
+            slotProps={{
+              htmlInput: { "aria-label": "Public key file" },
+              input: {
+                startAdornment: adornment(<VpnKeyOutlinedIcon fontSize="small" />),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      aria-label="Remove file"
+                      onClick={() => {
+                        setPath(null);
+                        setCertPath(null);
+                      }}
+                    >
+                      <CloseRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+        )}
+        {path !== null && certPath === null ? (
+          <Button variant="text" color="inherit" onClick={() => void pickCert()} disabled={busy}>
+            Attach certificate file (*-cert.pub)…
+          </Button>
+        ) : path === null ? (
+          <CertificateField
+            value={cert}
+            onChange={setCert}
+            onPickFile={() => void pickCert()}
+            keyFingerprint={null}
+          />
+        ) : (
+          <TextField
+            value={certPath}
+            disabled
+            slotProps={{
+              htmlInput: { "aria-label": "Certificate file" },
+              input: {
+                startAdornment: adornment(<WorkspacePremiumOutlinedIcon fontSize="small" />),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      aria-label="Remove certificate file"
+                      onClick={() => setCertPath(null)}
+                    >
+                      <CloseRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+        )}
+        {dropNote && (
+          <Typography variant="caption" color="warning.main">
+            {dropNote}
+          </Typography>
+        )}
+        {error && (
+          <Alert severity="error" variant="outlined">
+            {error}
+          </Alert>
+        )}
+        <Button variant="tonal" fullWidth onClick={() => void pickPublic()} disabled={busy}>
+          Pick a .pub file
+        </Button>
+      </SectionCard>
+    </SidePanel>
+  );
+}
+
 /* ------------------------------------------------------------ edit key */
 
 /** Certificate textarea for a stored key; remounted (via `key`) whenever the
@@ -796,24 +1098,32 @@ export function EditKeyPanel({
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <LockOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
+            {card.agentBacked ? (
+              <VpnKeyOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
+            ) : (
+              <LockOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
+            )}
             <Typography variant="body2" noWrap sx={{ flex: 1, minWidth: 0 }}>
               Private key
             </Typography>
-            <ToolIconButton
-              title="Change passphrase"
-              onClick={onChangePassphrase}
-              disabled={card.unreadable || readOnly}
-            >
-              <PasswordRoundedIcon fontSize="small" />
-            </ToolIconButton>
-            <ToolIconButton
-              title="Export private key…"
-              onClick={onExportPrivate}
-              disabled={card.unreadable}
-            >
-              <FileDownloadOutlinedIcon fontSize="small" />
-            </ToolIconButton>
+            {!card.agentBacked && (
+              <>
+                <ToolIconButton
+                  title="Change passphrase"
+                  onClick={onChangePassphrase}
+                  disabled={card.unreadable || readOnly}
+                >
+                  <PasswordRoundedIcon fontSize="small" />
+                </ToolIconButton>
+                <ToolIconButton
+                  title="Export private key…"
+                  onClick={onExportPrivate}
+                  disabled={card.unreadable}
+                >
+                  <FileDownloadOutlinedIcon fontSize="small" />
+                </ToolIconButton>
+              </>
+            )}
           </Box>
           <Typography
             variant="caption"
@@ -823,19 +1133,21 @@ export function EditKeyPanel({
           >
             {card.unreadable
               ? "Stored, but could not be parsed"
-              : card.securityKey
-                ? `${keyTypeLabel(card)} · private key stays on the security key${
-                    card.securityKey.flags?.resident ? " · resident" : ""
-                  }${card.securityKey.flags?.userPresence ? " · touch" : ""}${
-                    card.securityKey.flags?.userVerification ? " · PIN" : ""
-                  }${card.encrypted && !card.hasPassphrase ? " · asks for passphrase" : ""}`
-                : `${keyTypeLabel(card)} · stored encrypted in the vault${
-                    card.encrypted
-                      ? card.hasPassphrase
-                        ? " · passphrase remembered"
-                        : " · asks for passphrase"
-                      : ""
-                  }`}
+              : card.agentBacked
+                ? `${keyTypeLabel(card)} · in the system SSH agent · not stored in the vault`
+                : card.securityKey
+                  ? `${keyTypeLabel(card)} · private key stays on the security key${
+                      card.securityKey.flags?.resident ? " · resident" : ""
+                    }${card.securityKey.flags?.userPresence ? " · touch" : ""}${
+                      card.securityKey.flags?.userVerification ? " · PIN" : ""
+                    }${card.encrypted && !card.hasPassphrase ? " · asks for passphrase" : ""}`
+                  : `${keyTypeLabel(card)} · stored encrypted in the vault${
+                      card.encrypted
+                        ? card.hasPassphrase
+                          ? " · passphrase remembered"
+                          : " · asks for passphrase"
+                        : ""
+                    }`}
           </Typography>
         </Box>
         <TextField

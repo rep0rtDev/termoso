@@ -485,6 +485,14 @@ async fn ssh_connect(
             let certificate = resolved
                 .and_then(|r| r.certificate.as_ref())
                 .map(|c| c.data.certificate.clone());
+            if key.data.is_agent_backed() {
+                return Err(MobileError::Key {
+                    detail: format!(
+                        "key \"{}\" is signed by a desktop SSH agent; import its private key to use it here",
+                        key.data.label
+                    ),
+                });
+            }
             if fido2::is_sk_type(&key.data.key_type) {
                 auth.push(AuthMethod::SecurityKey {
                     private_key: Zeroizing::new(key.data.private_key.clone()),
@@ -528,6 +536,7 @@ async fn ssh_connect(
             proxy: proxy.clone(),
             env: ssh_cfg.env_variables.clone(),
             agent_forwarding: ssh_cfg.agent_forwarding,
+            agent_socket: None,
             post_quantum_kex: settings.post_quantum_kex,
             progress: Some(Arc::new(Progress {
                 conn: conn.clone(),

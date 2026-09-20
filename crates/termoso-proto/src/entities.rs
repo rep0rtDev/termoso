@@ -54,6 +54,18 @@ pub fn is_credential_kind(kind: &str) -> bool {
     CREDENTIAL_KINDS.contains(&kind)
 }
 
+/// `SshKey::key_type` of a key whose private half is held by an SSH agent
+/// (OpenSSH `IdentityFile key.pub` + `IdentitiesOnly`); the vault stores
+/// only the public line.
+pub const AGENT_KEY_TYPE: &str = "agent";
+
+impl payload::SshKey {
+    /// The private half is not in the vault; an SSH agent signs.
+    pub fn is_agent_backed(&self) -> bool {
+        self.key_type == AGENT_KEY_TYPE
+    }
+}
+
 schema! {
     /// Entity as stored and returned by the server.
     pub struct SyncEntity {
@@ -304,12 +316,15 @@ pub mod payload {
     }
 
     schema! {
-        /// SSH private key.
+        /// SSH key. Normally the private half lives here; for
+        /// [`AGENT_KEY_TYPE`] keys only `public_key` is set and an SSH agent
+        /// on the connecting device does the signing.
         #[derive(Default)]
         pub struct SshKey {
             /// Label.
             pub label: String,
-            /// PEM / OpenSSH private key.
+            /// PEM / OpenSSH private key (empty for agent-backed keys).
+            #[serde(default)]
             pub private_key: String,
             /// Public key line.
             #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -317,7 +332,7 @@ pub mod payload {
             /// Passphrase.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub passphrase: Option<String>,
-            /// Key type (`ed25519`, `rsa`, `ecdsa`, `fido2`…).
+            /// Key type (`ed25519`, `rsa`, `ecdsa`, `fido2`, `agent`…).
             #[serde(default)]
             pub key_type: String,
             /// For FIDO2 resident keys: the credential id.

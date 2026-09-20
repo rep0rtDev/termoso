@@ -83,6 +83,7 @@ export function filterKeys(keys: KeyCard[], query: string): KeyCard[] {
       norm(k.comment).includes(q) ||
       norm(k.fingerprint).includes(q) ||
       norm(k.keyType).includes(q) ||
+      (k.agentBacked && "ssh agent".includes(q)) ||
       (k.certificate !== null &&
         (norm(k.certificate.keyId).includes(q) ||
           k.certificate.principals.some((p) => norm(p).includes(q)))),

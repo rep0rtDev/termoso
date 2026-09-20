@@ -29,6 +29,7 @@ import DriveFileMoveOutlinedIcon from "@mui/icons-material/DriveFileMoveOutlined
 import LibraryAddOutlinedIcon from "@mui/icons-material/LibraryAddOutlined";
 import GroupAddRoundedIcon from "@mui/icons-material/GroupAddRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
+import VpnKeyOutlinedIcon from "@mui/icons-material/VpnKeyOutlined";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { save as saveFile } from "@tauri-apps/plugin-dialog";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -68,6 +69,7 @@ import {
 import { sizes } from "@/theme/theme";
 import { ExportKeyDialog, ExportToHostDialog, PassphraseDialog } from "./KeyDialogs";
 import {
+  AgentKeyPanel,
   EditKeyPanel,
   Fido2Panel,
   GenerateKeyPanel,
@@ -90,7 +92,8 @@ type Panel =
   | { kind: "generate" }
   | { kind: "editKey"; id: string }
   | { kind: "identity"; id: string | null }
-  | { kind: "fido2" };
+  | { kind: "fido2" }
+  | { kind: "agent" };
 
 type Dialog =
   | { kind: "none" }
@@ -269,20 +272,25 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       icon: <DnsRoundedIcon fontSize="small" />,
       disabled: card.unreadable,
       onClick: () => setDialog({ kind: "exportToHost", card }),
+      divider: card.agentBacked,
     },
-    {
-      label: "Export private key…",
-      icon: <FileDownloadRoundedIcon fontSize="small" />,
-      disabled: card.unreadable,
-      onClick: () => setDialog({ kind: "export", card }),
-    },
-    {
-      label: "Change passphrase…",
-      icon: <LockResetRoundedIcon fontSize="small" />,
-      disabled: card.unreadable || readOnly,
-      onClick: () => setDialog({ kind: "passphrase", card }),
-      divider: true,
-    },
+    ...(card.agentBacked
+      ? []
+      : [
+          {
+            label: "Export private key…",
+            icon: <FileDownloadRoundedIcon fontSize="small" />,
+            disabled: card.unreadable,
+            onClick: () => setDialog({ kind: "export", card }),
+          },
+          {
+            label: "Change passphrase…",
+            icon: <LockResetRoundedIcon fontSize="small" />,
+            disabled: card.unreadable || readOnly,
+            onClick: () => setDialog({ kind: "passphrase", card }),
+            divider: true,
+          },
+        ]),
     {
       label: "Collaborate",
       icon: <GroupAddRoundedIcon fontSize="small" />,
@@ -404,6 +412,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       subtitle={
         <>
           {keyTypeLabel(k)}
+          {k.agentBacked && " · SSH agent"}
           {k.comment && view === "list" && (
             <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
               {k.comment}
@@ -461,6 +470,11 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       label: "Generate key",
       icon: <AutoFixHighRoundedIcon fontSize="small" />,
       onClick: () => openPanel({ kind: "generate" }),
+    },
+    {
+      label: "From SSH agent",
+      icon: <VpnKeyOutlinedIcon fontSize="small" />,
+      onClick: () => openPanel({ kind: "agent" }),
     },
     {
       label: "New identity",
@@ -641,6 +655,28 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
             runPanel(async () => {
               const k = await ipc.keyImportFile(args);
               return { msg: `Imported ${k.label}`, next: { kind: "editKey", id: k.id } };
+            })
+          }
+        />
+      )}
+      {vaultId && panel.kind === "agent" && (
+        <AgentKeyPanel
+          vaultId={vaultId}
+          vaultName={vaultName}
+          existing={keyList}
+          busy={panelOp.isPending}
+          error={panelError}
+          onClose={closePanel}
+          onImport={(form) =>
+            runPanel(async () => {
+              const k = await ipc.keyImportAgent(form);
+              return { msg: `Added ${k.label}`, next: { kind: "editKey", id: k.id } };
+            })
+          }
+          onImportFile={(form) =>
+            runPanel(async () => {
+              const k = await ipc.keyImportAgentFile(form);
+              return { msg: `Added ${k.label}`, next: { kind: "editKey", id: k.id } };
             })
           }
         />

@@ -41,6 +41,7 @@ struct Observed {
     kbd_rounds: AtomicU32,
     forward_requests: Mutex<Vec<(String, u32)>>,
     cancelled_forwards: AtomicBool,
+    offered: std::sync::Mutex<Vec<PublicKey>>,
 }
 
 #[derive(Clone)]
@@ -107,6 +108,7 @@ impl russh::server::Handler for TestHandler {
         _user: &str,
         key: &PublicKey,
     ) -> Result<Auth, Self::Error> {
+        self.srv.observed.offered.lock().unwrap().push(key.clone());
         Ok(if self.srv.is_authorized(key) {
             Auth::Accept
         } else {
@@ -1113,6 +1115,131 @@ async fn encrypted_key_needs_passphrase() {
         certificate: None,
     });
     SshClient::connect(o).await.unwrap();
+}
+
+/// Only the selected agent key is offered; the agent's other keys are not
+/// tried, and a key the agent does not hold is an error, not a fallback.
+#[cfg(unix)]
+#[tokio::test]
+async fn agent_key_offers_only_the_selected_key() {
+    use termoso_core::agent::LocalAgent;
+
+    let h = start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let agent = LocalAgent::start(dir.path().join("agent.sock"))
+        .await
+        .unwrap();
+    let other = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap();
+    let chosen = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap();
+    agent.add_key(other.clone(), None).await.unwrap();
+    agent.add_key(chosen.clone(), None).await.unwrap();
+    h.authorize(&chosen.public_key().to_openssh().unwrap());
+    let line = |k: &PrivateKey| k.public_key().to_openssh().unwrap();
+    let offered = |h: &Harness| -> Vec<PublicKey> {
+        std::mem::take(&mut *h.observed.offered.lock().unwrap())
+    };
+
+    let mut o = h.trusted();
+    o.agent_socket = Some(agent.socket_path().to_path_buf());
+    o.auth.push(AuthMethod::AgentKey {
+        public_key: line(&chosen),
+        certificate: None,
+    });
+    SshClient::connect(o).await.unwrap();
+    assert_eq!(offered(&h), vec![chosen.public_key().clone()]);
+
+    // Selected key is held but not authorized: fail without trying `other`
+    // (which is not authorized either) or anything else.
+    let mut o = h.trusted();
+    o.agent_socket = Some(agent.socket_path().to_path_buf());
+    o.auth.push(AuthMethod::AgentKey {
+        public_key: line(&other),
+        certificate: None,
+    });
+    assert!(matches!(
+        SshClient::connect(o).await,
+        Err(CoreError::AuthFailed { .. })
+    ));
+    assert_eq!(offered(&h), vec![other.public_key().clone()]);
+
+    // Generic agent auth, by contrast, walks the agent's keys in the order
+    // the agent lists them, stopping at the first one the server accepts.
+    let mut o = h.trusted();
+    o.agent_socket = Some(agent.socket_path().to_path_buf());
+    o.auth.push(AuthMethod::Agent);
+    SshClient::connect(o).await.unwrap();
+    let tried = offered(&h);
+    let mut ac = termoso_core::agent::connect_agent_at(agent.socket_path())
+        .await
+        .unwrap();
+    let listed: Vec<PublicKey> = termoso_core::agent::list_keys(&mut ac)
+        .await
+        .unwrap()
+        .iter()
+        .map(|k| PublicKey::from_openssh(&k.public_key).unwrap())
+        .collect();
+    assert_eq!(listed.len(), 2);
+    let pos = listed
+        .iter()
+        .position(|k| k.key_data() == chosen.public_key().key_data())
+        .unwrap();
+    assert_eq!(tried, listed[..=pos].to_vec());
+
+    // Key the agent does not hold.
+    let absent = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap();
+    h.authorize(&line(&absent));
+    let mut o = h.trusted();
+    o.agent_socket = Some(agent.socket_path().to_path_buf());
+    o.auth.push(AuthMethod::AgentKey {
+        public_key: line(&absent),
+        certificate: None,
+    });
+    match SshClient::connect(o).await {
+        Err(CoreError::Key(msg)) => assert!(msg.contains("does not hold"), "{msg}"),
+        r => panic!("{r:?}"),
+    }
+    assert!(offered(&h).is_empty());
+
+    // Agent unreachable.
+    let mut o = h.trusted();
+    o.agent_socket = Some(dir.path().join("missing.sock"));
+    o.auth.push(AuthMethod::AgentKey {
+        public_key: line(&chosen),
+        certificate: None,
+    });
+    assert!(matches!(
+        SshClient::connect(o).await,
+        Err(CoreError::Ssh(_))
+    ));
+
+    // A certificate for a different key than the selected one is rejected
+    // before anything reaches the server.
+    let cert = {
+        use russh::keys::ssh_key::certificate::{Builder, CertType};
+        let ca = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap();
+        let mut b = Builder::new(
+            [0u8; 16],
+            chosen.public_key().key_data().clone(),
+            0,
+            u64::MAX,
+        )
+        .unwrap();
+        b.cert_type(CertType::User).unwrap();
+        b.all_principals_valid().unwrap();
+        b.key_id("test").unwrap();
+        b.sign(&ca).unwrap().to_openssh().unwrap()
+    };
+    let mut o = h.trusted();
+    o.agent_socket = Some(agent.socket_path().to_path_buf());
+    o.auth.push(AuthMethod::AgentKey {
+        public_key: line(&other),
+        certificate: Some(cert),
+    });
+    match SshClient::connect(o).await {
+        Err(CoreError::Key(msg)) => assert!(msg.contains("different key"), "{msg}"),
+        r => panic!("{r:?}"),
+    }
+    assert!(offered(&h).is_empty());
 }
 
 /// Records the phases the connector reports.

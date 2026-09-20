@@ -1379,11 +1379,24 @@ async fn ssh_connect<R: Runtime>(
             let preferred = identity.as_ref().and_then(|i| i.data.ssh_id_key_type);
             auth.extend(sshid::auth_methods(&state.store, preferred, pin.clone())?);
         }
+        let mut agent_key_selected = false;
         if let Some(key) = resolved.and_then(|r| r.key.as_ref()) {
             let certificate = resolved
                 .and_then(|r| r.certificate.as_ref())
                 .map(|c| c.data.certificate.clone());
-            if fido2::is_sk_type(&key.data.key_type) {
+            if key.data.is_agent_backed() {
+                let public_key = key.data.public_key.clone().ok_or_else(|| {
+                    DesktopError::invalid(format!(
+                        "agent key \"{}\" has no public key",
+                        key.data.label
+                    ))
+                })?;
+                agent_key_selected = true;
+                auth.push(AuthMethod::AgentKey {
+                    public_key,
+                    certificate,
+                });
+            } else if fido2::is_sk_type(&key.data.key_type) {
                 auth.push(AuthMethod::SecurityKey {
                     private_key: Zeroizing::new(key.data.private_key.clone()),
                     passphrase: passphrase.clone(),
@@ -1399,7 +1412,7 @@ async fn ssh_connect<R: Runtime>(
                 });
             }
         }
-        if state.settings().map(|s| s.use_ssh_agent).unwrap_or(true) {
+        if !agent_key_selected && state.settings().map(|s| s.use_ssh_agent).unwrap_or(true) {
             auth.push(AuthMethod::Agent);
         }
         if let Some(pw) = &password {
@@ -1430,6 +1443,7 @@ async fn ssh_connect<R: Runtime>(
             proxy: proxy.clone(),
             env: ssh_cfg.env_variables.clone(),
             agent_forwarding: ssh_cfg.agent_forwarding,
+            agent_socket: None,
             post_quantum_kex: state.settings().map(|s| s.post_quantum_kex).unwrap_or(true),
             progress: Some(Arc::new(UiProgress {
                 app: app.clone(),

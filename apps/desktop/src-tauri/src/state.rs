@@ -62,6 +62,25 @@ impl AppState {
         })
     }
 
+    /// Throwaway state over an in-memory store for unit tests.
+    #[cfg(test)]
+    pub fn in_memory(profile_dir: PathBuf) -> Self {
+        use termoso_core::termoso_crypto::keys::SymmetricKey;
+        std::fs::create_dir_all(profile_dir.join(LOGS_DIR)).expect("profile dir");
+        Self {
+            profile_dir,
+            master_source: std::sync::Mutex::new(MasterKeySource::File),
+            store: Arc::new(Store::open_in_memory(SymmetricKey::generate()).expect("store")),
+            sessions: Sessions::default(),
+            sftp: SftpSessions::default(),
+            edits: Edits::default(),
+            forwards: Forwards::default(),
+            prompts: PromptBroker::default(),
+            account: AccountRuntime::default(),
+            multiplayer: Multiplayer::default(),
+        }
+    }
+
     pub fn master_source(&self) -> MasterKeySource {
         *self.master_source.lock().expect("master source poisoned")
     }

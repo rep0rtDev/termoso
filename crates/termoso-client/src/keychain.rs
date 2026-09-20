@@ -14,6 +14,7 @@ use termoso_core::fido2::{Fido2Device, GenerateOptions, SecurityKeyInfo};
 use termoso_core::keys::{self, CertificateInfo, KeyAlgorithm, KeyInfo};
 use termoso_core::model::{Entity, Identity, SshCertificate, SshConfig, SshKey, TelnetConfig};
 use termoso_core::store::Store;
+use termoso_proto::entities::AGENT_KEY_TYPE;
 use termoso_proto::sshid::SshIdKeyType;
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -83,6 +84,9 @@ pub struct KeyCard {
     /// The material is not parseable (foreign/broken import); only public
     /// data is shown and the key cannot be exported or re-encrypted.
     pub unreadable: bool,
+    /// Only the public half is stored; the system SSH agent signs with
+    /// exactly this key (no other agent keys are tried).
+    pub agent_backed: bool,
     /// Identities (visible and inline) that reference this key.
     pub used_by: usize,
     /// Certificate attached to this key, if any.
@@ -152,6 +156,22 @@ pub struct ImportForm {
     pub passphrase: Option<String>,
     #[serde(default)]
     pub remember_passphrase: bool,
+    /// OpenSSH certificate issued for this key; validated and attached.
+    #[serde(default)]
+    pub certificate: Option<String>,
+}
+
+/// Public-only key whose private half lives in the SSH agent (KeePassXC,
+/// ssh-add, a hardware token…): OpenSSH's `IdentityFile key.pub`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentImportForm {
+    pub vault_id: Uuid,
+    /// Empty → the key's comment, then its fingerprint.
+    #[serde(default)]
+    pub label: String,
+    /// `<type> <base64> [comment]` line (`.pub` file contents).
+    pub public_key: String,
     /// OpenSSH certificate issued for this key; validated and attached.
     #[serde(default)]
     pub certificate: Option<String>,
@@ -302,7 +322,8 @@ fn card(
         comment,
         encrypted,
         has_passphrase: k.passphrase.as_deref().is_some_and(|p| !p.is_empty()),
-        unreadable: info.is_none(),
+        unreadable: info.is_none() && !k.is_agent_backed(),
+        agent_backed: k.is_agent_backed(),
         used_by,
         certificate: cert_info.and_then(|c| c.ok()),
         certificate_unreadable,
@@ -505,6 +526,93 @@ pub fn import(store: &Store, form: &ImportForm) -> Result<KeyCard> {
     key_card(store, id)
 }
 
+/// Public-key line an agent-backed record must carry.
+pub fn agent_key(label: &str, public_key: &str) -> Result<SshKey> {
+    let info = keys::parse_public(public_key.trim())?;
+    let label = match label.trim() {
+        "" if !info.comment.trim().is_empty() => info.comment.trim().to_string(),
+        "" => info.fingerprint.clone(),
+        l => label_of(l, "key")?,
+    };
+    Ok(SshKey {
+        label,
+        private_key: String::new(),
+        public_key: Some(info.public_key),
+        passphrase: None,
+        key_type: AGENT_KEY_TYPE.to_string(),
+        fido2_credential_id: None,
+        ssh_id: false,
+    })
+}
+
+/// Store a public-only, agent-signed key. Keys with the same public half
+/// already in the vault (private or agent-backed) are reused, not doubled.
+pub fn import_agent(store: &Store, form: &AgentImportForm) -> Result<KeyCard> {
+    let key = agent_key(&form.label, &form.public_key)?;
+    let public_line = key.public_key.clone().unwrap_or_default();
+    let certificate = match form.certificate.as_deref().map(str::trim) {
+        Some(c) if !c.is_empty() => {
+            keys::inspect_certificate(c)?;
+            if !keys::certificate_matches(c, &public_line)? {
+                return Err(certificate_mismatch(c));
+            }
+            Some(c.to_string())
+        }
+        _ => None,
+    };
+    let wanted = key_blob(&public_line);
+    if let Some(existing) = store
+        .list::<SshKey>(Some(form.vault_id))?
+        .into_iter()
+        .filter(|k| !k.data.ssh_id)
+        .find(|k| public_line_of(&k.data).is_some_and(|l| key_blob(&l) == wanted))
+    {
+        if let Some(c) = certificate {
+            set_certificate(store, existing.id, Some(c))?;
+        }
+        return key_card(store, existing.id);
+    }
+    let label = key.label.clone();
+    let id = store.insert(form.vault_id, &key)?;
+    if let Some(c) = certificate {
+        store.insert(
+            form.vault_id,
+            &SshCertificate {
+                label,
+                certificate: c,
+                ssh_key_id: Some(id),
+            },
+        )?;
+    }
+    key_card(store, id)
+}
+
+/// `<type> <base64>` of a public-key line: what identifies a key
+/// regardless of comment.
+fn key_blob(line: &str) -> String {
+    line.split_whitespace()
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn public_line_of(k: &SshKey) -> Option<String> {
+    keys::inspect(&k.private_key)
+        .ok()
+        .map(|i| i.public_key)
+        .or_else(|| k.public_key.clone())
+        .filter(|l| !l.is_empty())
+}
+
+fn needs_private(k: &SshKey) -> Result<()> {
+    if k.is_agent_backed() {
+        return Err(ClientError::invalid(
+            "this key is signed by the SSH agent; its private half is not in the vault",
+        ));
+    }
+    Ok(())
+}
+
 fn certificate_mismatch(cert: &str) -> ClientError {
     let fp = keys::inspect_certificate(cert)
         .map(|i| i.fingerprint)
@@ -626,11 +734,18 @@ pub fn copy_to_vault(store: &Store, id: Uuid, vault_id: Uuid, mv: bool) -> Resul
     }
     // The very same key already there (e.g. brought along by a shared host):
     // point at it instead of storing a second copy.
-    if let Some(existing) = store
-        .list::<SshKey>(Some(vault_id))?
-        .into_iter()
-        .find(|k| k.data.private_key == e.data.private_key)
-    {
+    let same = |k: &Entity<SshKey>| {
+        if e.data.is_agent_backed() {
+            k.data.is_agent_backed()
+                && match (public_line_of(&k.data), public_line_of(&e.data)) {
+                    (Some(a), Some(b)) => key_blob(&a) == key_blob(&b),
+                    _ => false,
+                }
+        } else {
+            k.data.private_key == e.data.private_key
+        }
+    };
+    if let Some(existing) = store.list::<SshKey>(Some(vault_id))?.into_iter().find(same) {
         if mv {
             delete(store, id)?;
         }
@@ -674,6 +789,7 @@ pub fn change_passphrase(
     remember: bool,
 ) -> Result<KeyCard> {
     let mut e = store.require::<SshKey>(id)?;
+    needs_private(&e.data)?;
     let current = non_empty(current).or_else(|| non_empty(e.data.passphrase.clone()));
     let next = non_empty(next);
     let material =
@@ -688,6 +804,7 @@ pub fn change_passphrase(
 /// Forget (or set) the stored passphrase without touching the key material.
 pub fn remember_passphrase(store: &Store, id: Uuid, passphrase: Option<String>) -> Result<KeyCard> {
     let mut e = store.require::<SshKey>(id)?;
+    needs_private(&e.data)?;
     let passphrase = non_empty(passphrase);
     if let Some(p) = &passphrase {
         // Verify before storing so a typo does not get persisted.
@@ -719,6 +836,7 @@ pub fn export(
     export_passphrase: Option<String>,
 ) -> Result<Zeroizing<String>> {
     let e = store.require::<SshKey>(id)?;
+    needs_private(&e.data)?;
     let passphrase = non_empty(passphrase).or_else(|| non_empty(e.data.passphrase.clone()));
     Ok(keys::export_openssh(
         &e.data.private_key,
@@ -1692,5 +1810,109 @@ mod tests {
         );
         assert_eq!(delete(&store, shared).unwrap_err().kind, "vault_read_only");
         assert_eq!(keys_list(&store, Some(viewer)).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn agent_backed_keys_store_only_the_public_half() {
+        const PUB: &str = include_str!("../../termoso-core/testdata/keys/ed25519_openssh.pub");
+        let store = store();
+        let vault = store.local_vault().unwrap().id;
+
+        let card = import_agent(
+            &store,
+            &AgentImportForm {
+                vault_id: vault,
+                label: String::new(),
+                public_key: PUB.into(),
+                certificate: None,
+            },
+        )
+        .unwrap();
+        assert!(card.agent_backed && !card.unreadable);
+        assert_eq!(card.label, "user@c5", "label falls back to the comment");
+        assert_eq!(card.key_type, "ssh-ed25519");
+        let raw = store.require::<SshKey>(card.id).unwrap().data;
+        assert!(raw.private_key.is_empty() && raw.is_agent_backed());
+        assert_eq!(public_key(&store, card.id).unwrap(), PUB.trim());
+
+        // Private-key operations are refused rather than failing on an
+        // empty string.
+        for err in [
+            export(&store, card.id, None, None)
+                .err()
+                .map(|e| e.to_string()),
+            change_passphrase(&store, card.id, None, Some("x".into()), false)
+                .err()
+                .map(|e| e.to_string()),
+            remember_passphrase(&store, card.id, Some("x".into()))
+                .err()
+                .map(|e| e.to_string()),
+        ] {
+            assert!(err.unwrap().contains("SSH agent"));
+        }
+
+        // Same key again (with a certificate this time): reused + cert attached.
+        let again = import_agent(
+            &store,
+            &AgentImportForm {
+                vault_id: vault,
+                label: "other".into(),
+                public_key: PUB.into(),
+                certificate: Some(CERT.into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(again.id, card.id);
+        assert_eq!(
+            again.certificate.as_ref().map(|c| c.key_id.as_str()),
+            Some("user-cert")
+        );
+        assert_eq!(keys_list(&store, Some(vault)).unwrap().len(), 1);
+
+        // Certificate for a different key is rejected.
+        let err = import_agent(
+            &store,
+            &AgentImportForm {
+                vault_id: vault,
+                label: String::new(),
+                public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl x".into(),
+                certificate: Some(CERT.into()),
+            },
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("different key"), "{err}");
+        assert!(
+            import_agent(
+                &store,
+                &AgentImportForm {
+                    vault_id: vault,
+                    label: String::new(),
+                    public_key: OPENSSH_KEY.into(),
+                    certificate: None,
+                },
+            )
+            .is_err()
+        );
+
+        // Copying to another vault dedups by public blob.
+        let other = Uuid::new_v4();
+        store
+            .upsert_vault(
+                other,
+                LocalVaultKind::Personal,
+                "other",
+                None,
+                VaultRole::Manager,
+                Some(&SymmetricKey::generate()),
+                1,
+            )
+            .unwrap();
+        let copied = copy_to_vault(&store, card.id, other, false).unwrap();
+        assert!(copied.agent_backed && copied.certificate.is_some());
+        let twice = copy_to_vault(&store, card.id, other, false).unwrap();
+        assert_eq!(twice.id, copied.id);
+        let json = serde_json::to_string(&keys_list(&store, None).unwrap()).unwrap();
+        assert!(json.contains("\"agentBacked\":true"));
     }
 }

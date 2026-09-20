@@ -174,6 +174,8 @@ pub fn run() {
             commands_tools::fido2_generate,
             commands_tools::fido2_load_resident,
             commands_tools::key_import_file,
+            commands_tools::key_import_agent,
+            commands_tools::key_import_agent_file,
             commands_tools::key_inspect,
             commands_tools::key_inspect_file,
             commands_tools::certificate_inspect,

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use russh::MethodKind;
 use russh::client::AuthResult;
 use russh::client::{Handle, KeyboardInteractiveAuthResponse};
+use russh::keys::agent::AgentIdentity;
 use russh::keys::ssh_key::Certificate;
 use russh::keys::{HashAlg, PrivateKey, PrivateKeyWithHashAlg};
 use zeroize::Zeroizing;
@@ -48,8 +49,18 @@ pub enum AuthMethod {
         /// Certificate text, when the sk key is certified.
         certificate: Option<String>,
     },
-    /// Keys held by the system SSH agent (`SSH_AUTH_SOCK` / Pageant).
+    /// Every key the SSH agent holds, tried in the agent's order.
     Agent,
+    /// One specific key the SSH agent holds: only its public half is known
+    /// to us (`IdentityFile key.pub` + `IdentitiesOnly` in OpenSSH terms);
+    /// the agent signs. Fails, rather than trying other agent keys, when the
+    /// agent is unreachable or does not hold the key.
+    AgentKey {
+        /// `<type> <base64> [comment]` line.
+        public_key: String,
+        /// Certificate text to present instead of the bare key.
+        certificate: Option<String>,
+    },
     /// Keyboard-interactive (PAM, OTP). Answers come from
     /// [`ConnectOptions::interactive`], or the password method's secret when
     /// that is not set.
@@ -64,6 +75,7 @@ impl std::fmt::Debug for AuthMethod {
             AuthMethod::Key { .. } => "publickey",
             AuthMethod::SecurityKey { .. } => "publickey (security key)",
             AuthMethod::Agent => "agent",
+            AuthMethod::AgentKey { .. } => "publickey (agent)",
             AuthMethod::KeyboardInteractive => "keyboard-interactive",
         })
     }
@@ -184,9 +196,10 @@ pub(super) async fn authenticate(
         let kind = match method {
             AuthMethod::None => continue,
             AuthMethod::Password(_) => MethodKind::Password,
-            AuthMethod::Key { .. } | AuthMethod::Agent | AuthMethod::SecurityKey { .. } => {
-                MethodKind::PublicKey
-            }
+            AuthMethod::Key { .. }
+            | AuthMethod::Agent
+            | AuthMethod::AgentKey { .. }
+            | AuthMethod::SecurityKey { .. } => MethodKind::PublicKey,
             AuthMethod::KeyboardInteractive => MethodKind::KeyboardInteractive,
         };
         if let Some(a) = &allowed
@@ -197,7 +210,7 @@ pub(super) async fn authenticate(
         }
         opts.report(ConnectPhase::Auth {
             method: match method {
-                AuthMethod::Agent => "ssh-agent".into(),
+                AuthMethod::Agent | AuthMethod::AgentKey { .. } => "ssh-agent".into(),
                 _ => method_name(&kind),
             },
         });
@@ -293,14 +306,29 @@ pub(super) async fn authenticate(
                 )
                 .await?
             }
-            AuthMethod::Agent => match agent_auth(handle, &user).await {
-                Ok(Some(r)) => r,
-                Ok(None) => continue,
-                Err(e) => {
-                    tracing::debug!(error = %e, "agent auth unavailable");
-                    continue;
+            AuthMethod::Agent => {
+                match agent_auth(handle, &user, opts.agent_socket.as_deref()).await {
+                    Ok(Some(r)) => r,
+                    Ok(None) => continue,
+                    Err(e) => {
+                        tracing::debug!(error = %e, "agent auth unavailable");
+                        continue;
+                    }
                 }
-            },
+            }
+            AuthMethod::AgentKey {
+                public_key,
+                certificate,
+            } => {
+                agent_key_auth(
+                    handle,
+                    &user,
+                    opts.agent_socket.as_deref(),
+                    public_key,
+                    certificate.as_deref(),
+                )
+                .await?
+            }
             AuthMethod::KeyboardInteractive => {
                 let responder: Arc<dyn InteractivePrompt> =
                     match (&opts.interactive, &password_fallback) {
@@ -435,10 +463,14 @@ async fn sk_auth(
     }
 }
 
-/// Try every identity the system agent holds. `Ok(None)` when the agent is
-/// not reachable or has no keys.
-async fn agent_auth(handle: &mut Handle<ClientHandler>, user: &str) -> Result<Option<AuthResult>> {
-    let mut agent = crate::agent::connect_system_agent().await?;
+/// Try every identity the agent holds. `Ok(None)` when the agent is not
+/// reachable or has no keys.
+async fn agent_auth(
+    handle: &mut Handle<ClientHandler>,
+    user: &str,
+    socket: Option<&std::path::Path>,
+) -> Result<Option<AuthResult>> {
+    let mut agent = crate::agent::connect_agent(socket).await?;
     let identities = agent
         .request_identities()
         .await
@@ -448,20 +480,8 @@ async fn agent_auth(handle: &mut Handle<ClientHandler>, user: &str) -> Result<Op
     }
     let mut last = None;
     for id in identities {
-        let key = match &id {
-            russh::keys::agent::AgentIdentity::PublicKey { key, .. } => key.clone(),
-            russh::keys::agent::AgentIdentity::Certificate { certificate, .. } => {
-                russh::keys::PublicKey::from(certificate.public_key().clone())
-            }
-        };
-        let hash = if key.algorithm().is_rsa() {
-            handle
-                .best_supported_rsa_hash()
-                .await?
-                .unwrap_or(Some(HashAlg::Sha512))
-        } else {
-            None
-        };
+        let key = identity_key(&id);
+        let hash = rsa_hash(handle, &key).await?;
         let r = handle
             .authenticate_publickey_with(user, key, hash, &mut agent)
             .await
@@ -472,4 +492,110 @@ async fn agent_auth(handle: &mut Handle<ClientHandler>, user: &str) -> Result<Op
         last = Some(r);
     }
     Ok(last)
+}
+
+/// Public key an agent identity is about (the certified key for certificates).
+fn identity_key(id: &AgentIdentity) -> russh::keys::PublicKey {
+    match id {
+        AgentIdentity::PublicKey { key, .. } => key.clone(),
+        AgentIdentity::Certificate { certificate, .. } => {
+            russh::keys::PublicKey::from(certificate.public_key().clone())
+        }
+    }
+}
+
+async fn rsa_hash(
+    handle: &mut Handle<ClientHandler>,
+    key: &russh::keys::PublicKey,
+) -> Result<Option<HashAlg>> {
+    if key.algorithm().is_rsa() {
+        Ok(handle
+            .best_supported_rsa_hash()
+            .await?
+            .unwrap_or(Some(HashAlg::Sha512)))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Signs with one fixed agent key. Certificate sign requests are rewritten to
+/// the bare key (as OpenSSH does), so an agent that holds only the private
+/// key, not the certificate, still works.
+struct AgentKeySigner {
+    agent: crate::agent::DynAgentClient,
+    key: russh::keys::PublicKey,
+}
+
+impl russh::Signer for AgentKeySigner {
+    type Error = CoreError;
+
+    fn auth_sign(
+        &mut self,
+        _key: &AgentIdentity,
+        hash_alg: Option<HashAlg>,
+        to_sign: Vec<u8>,
+    ) -> impl Future<Output = Result<Vec<u8>>> + Send {
+        let id = AgentIdentity::PublicKey {
+            key: self.key.clone(),
+            comment: String::new(),
+        };
+        async move {
+            self.agent
+                .sign_request(&id, hash_alg, to_sign)
+                .await
+                .map_err(|e| CoreError::Ssh(format!("agent refused to sign: {e}")))
+        }
+    }
+}
+
+/// Authenticate with exactly one agent-held key, selected by its public half.
+async fn agent_key_auth(
+    handle: &mut Handle<ClientHandler>,
+    user: &str,
+    socket: Option<&std::path::Path>,
+    public_key: &str,
+    certificate: Option<&str>,
+) -> Result<AuthResult> {
+    let wanted = crate::hostkey::parse_public_key(public_key)?;
+    let fp = wanted.fingerprint(Default::default()).to_string();
+    let mut agent = crate::agent::connect_agent(socket)
+        .await
+        .map_err(|e| CoreError::Ssh(format!("{e} (needed for agent key {fp})")))?;
+    let identities = agent
+        .request_identities()
+        .await
+        .map_err(|e| CoreError::Ssh(format!("agent: {e}")))?;
+    if !identities
+        .iter()
+        .any(|id| identity_key(id).key_data() == wanted.key_data())
+    {
+        return Err(CoreError::Key(format!(
+            "the SSH agent does not hold key {fp}; add it (ssh-add / KeePassXC) and retry"
+        )));
+    }
+    let hash = rsa_hash(handle, &wanted).await?;
+    let mut signer = AgentKeySigner {
+        agent,
+        key: wanted.clone(),
+    };
+    let r = match certificate {
+        Some(text) => {
+            let cert = Certificate::from_openssh(text.trim())
+                .map_err(|e| CoreError::Key(format!("certificate: {e}")))?;
+            if cert.public_key() != wanted.key_data() {
+                return Err(CoreError::Key(
+                    "certificate was issued for a different key than the agent key".into(),
+                ));
+            }
+            handle
+                .authenticate_certificate_with(user, cert, hash, &mut signer)
+                .await?
+        }
+        None => {
+            handle
+                .authenticate_publickey_with(user, wanted, hash, &mut signer)
+                .await?
+        }
+    };
+    Ok(r)
 }

@@ -438,9 +438,11 @@ export function CredentialsFields({
                     : allKeys.filter(isHardwareKey).length === 0
                       ? "No FIDO2 key in this vault yet — generate one in Keychain → FIDO2."
                       : undefined
-                  : value.sshKeyId === null && inheritedKey && from
-                    ? `Without a key here “${inheritedKey}” from ${from} is used.`
-                    : undefined
+                  : selectedKey?.agentBacked
+                    ? "Signed by the system SSH agent; it must hold this key when you connect."
+                    : value.sshKeyId === null && inheritedKey && from
+                      ? `Without a key here “${inheritedKey}” from ${from} is used.`
+                      : undefined
               }
               slotProps={{
                 htmlInput: { "aria-label": shownKeyRow === "fido2" ? "FIDO2 key" : "SSH key" },
@@ -483,6 +485,7 @@ export function CredentialsFields({
                       sx={{ ml: 1 }}
                     >
                       {k.keyType}
+                      {k.agentBacked && " · SSH agent"}
                     </Typography>
                   </MenuItem>
                 ))}

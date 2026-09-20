@@ -40,6 +40,7 @@ const key = (over: Partial<KeyCard> = {}): KeyCard => ({
   encrypted: false,
   hasPassphrase: false,
   unreadable: false,
+  agentBacked: false,
   usedBy: 0,
   certificate: null,
   certificateUnreadable: false,
@@ -138,9 +139,18 @@ describe("search", () => {
       fingerprint: "SHA256:def",
       certificate: cert({ principals: ["builder"] }),
     }),
+    key({
+      id: "k3",
+      label: "keepass",
+      comment: "me@vault",
+      fingerprint: "SHA256:ghi",
+      agentBacked: true,
+    }),
   ];
   it("matches keys by label, comment, fingerprint and certificate", () => {
-    expect(filterKeys(keys, "")).toHaveLength(2);
+    expect(filterKeys(keys, "")).toHaveLength(3);
+    expect(filterKeys(keys, "me@vault").map((k) => k.id)).toEqual(["k3"]);
+    expect(filterKeys(keys, "agent").map((k) => k.id)).toEqual(["k3"]);
     expect(filterKeys(keys, "LAPTOP").map((k) => k.id)).toEqual(["k1"]);
     expect(filterKeys(keys, "sha256:abc").map((k) => k.id)).toEqual(["k1"]);
     expect(filterKeys(keys, "builder").map((k) => k.id)).toEqual(["k2"]);

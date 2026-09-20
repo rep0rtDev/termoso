@@ -4,6 +4,8 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AccountStatus,
+  AgentImportFileForm,
+  AgentImportForm,
   AgentKeys,
   AiCommandResponse,
   AiStatus,
@@ -327,6 +329,11 @@ export const fido2LoadResident = (form: Fido2LoadForm) =>
 /** Private material is read from `path` inside Rust and never crosses IPC. */
 export const keyImportFile = (form: ImportKeyFileForm) =>
   invoke<KeyCard>("key_import_file", { form });
+/** Public-only key signed by the system SSH agent; no private material is ever stored. */
+export const keyImportAgent = (form: AgentImportForm) =>
+  invoke<KeyCard>("key_import_agent", { form });
+export const keyImportAgentFile = (form: AgentImportFileForm) =>
+  invoke<KeyCard>("key_import_agent_file", { form });
 /** Public half of pasted private key text; nothing is stored. */
 export const keyInspect = (text: string) => invoke<KeyPreview>("key_inspect", { text });
 export const keyInspectFile = (path: string) => invoke<KeyPreview>("key_inspect_file", { path });

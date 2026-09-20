@@ -43,6 +43,14 @@ pub async fn connect_system_agent() -> Result<DynAgentClient> {
     }
 }
 
+/// Connect to the agent at `path`, or the platform default when `None`.
+pub async fn connect_agent(path: Option<&Path>) -> Result<DynAgentClient> {
+    match path {
+        Some(p) => connect_agent_at(p).await,
+        None => connect_system_agent().await,
+    }
+}
+
 /// Connect to an agent at an explicit socket/pipe path.
 pub async fn connect_agent_at(path: &Path) -> Result<DynAgentClient> {
     #[cfg(unix)]

@@ -24,6 +24,7 @@ use uuid::Uuid;
 use crate::error::{DesktopError, Result};
 use crate::forwarding::{self, PfKind, PfRuleForm};
 use crate::hosts::{self, HostForm, TelnetForm};
+use crate::keychain;
 use crate::state::AppState;
 use crate::trust;
 
@@ -92,6 +93,9 @@ pub struct ImportedKey {
     pub encrypted: bool,
     /// `authorized_keys` line, used to skip keys already in the vault.
     pub public_key: String,
+    /// A `.pub` without its private half: stored public-only, the SSH
+    /// agent signs (OpenSSH `IdentityFile key.pub`).
+    pub agent_backed: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -343,7 +347,70 @@ fn inspect_key_file(path: &Path) -> Result<Option<ImportedKey>> {
         fingerprint: info.fingerprint,
         encrypted: info.encrypted,
         public_key: info.public_key,
+        agent_backed: false,
     }))
+}
+
+/// Inspect a `.pub` file. `None` when it is not a public key line.
+fn inspect_public_file(path: &Path) -> Result<Option<ImportedKey>> {
+    let meta = std::fs::metadata(path)?;
+    if !meta.is_file() || meta.len() > MAX_KEY_FILE {
+        return Ok(None);
+    }
+    let text = std::fs::read_to_string(path)?;
+    let line = text.trim();
+    if line.is_empty() || line.contains("PRIVATE KEY-----") || line.contains("-cert-v01@") {
+        return Ok(None);
+    }
+    let info = keys::parse_public(line)?;
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Ok(Some(ImportedKey {
+        path: display(path),
+        name,
+        key_type: info.key_type,
+        bits: info.bits,
+        fingerprint: info.fingerprint,
+        encrypted: false,
+        public_key: info.public_key,
+        agent_backed: true,
+    }))
+}
+
+fn add_public_key_file(preview: &mut ImportPreview, path: &Path) {
+    let shown = display(path);
+    if preview.keys.iter().any(|k| k.path == shown) {
+        return;
+    }
+    match inspect_public_file(path) {
+        Ok(Some(k)) => preview.keys.push(k),
+        Ok(None) => {}
+        Err(e) => preview
+            .warnings
+            .push(format!("Key {shown} skipped: {}", e.message)),
+    }
+}
+
+/// The private key next to `key.pub`, when it exists (then ssh uses it
+/// rather than the agent).
+fn private_sibling(pub_path: &Path) -> Option<PathBuf> {
+    let stem = PathBuf::from(pub_path.to_str()?.strip_suffix(".pub")?);
+    let text = std::fs::read_to_string(&stem).ok()?;
+    text.contains("PRIVATE KEY-----").then_some(stem)
+}
+
+/// `IdentityFile` target: a private key, or a `.pub` whose private half is
+/// either next to it or only in the agent.
+fn add_identity_file(preview: &mut ImportPreview, path: &Path) {
+    if !path.extension().is_some_and(|e| e == "pub") {
+        add_key_file(preview, path);
+    } else if let Some(private) = private_sibling(path) {
+        add_key_file(preview, &private);
+    } else {
+        add_public_key_file(preview, path);
+    }
 }
 
 /// Add `path` to the preview's keys (once), recording unreadable files as
@@ -464,8 +531,16 @@ pub fn scan_ssh_dir(dir: Option<&str>) -> Result<ImportPreview> {
         if name == "config"
             || name.starts_with("known_hosts")
             || name.starts_with("authorized_keys")
-            || name.ends_with(".pub")
+            || name.ends_with("-cert.pub")
         {
+            continue;
+        }
+        if name.ends_with(".pub") {
+            // Public halves of private keys found here are implied; a lone
+            // `.pub` is an agent-held key (KeePassXC, hardware tokens…).
+            if private_sibling(&p).is_none() {
+                add_public_key_file(&mut preview, &p);
+            }
             continue;
         }
         add_key_file(&mut preview, &p);
@@ -479,8 +554,8 @@ pub fn scan_ssh_dir(dir: Option<&str>) -> Result<ImportPreview> {
     Ok(preview)
 }
 
-/// Pull in private keys referenced by hosts but living outside the scanned
-/// directory, so they can be selected too.
+/// Pull in keys referenced by hosts but living outside the scanned
+/// directory (or `.pub`-only identities), so they can be selected too.
 fn referenced_keys(preview: &mut ImportPreview) {
     let paths: Vec<PathBuf> = preview
         .hosts
@@ -490,7 +565,7 @@ fn referenced_keys(preview: &mut ImportPreview) {
         .collect();
     for p in paths {
         if p.is_file() {
-            add_key_file(preview, &p);
+            add_identity_file(preview, &p);
         }
     }
 }
@@ -941,12 +1016,17 @@ fn import_key(
         return Err(DesktopError::invalid("file is too large"));
     }
     let text = std::fs::read_to_string(&path)?;
-    let info = keys::inspect(&text)?;
     let label = if k.name.trim().is_empty() {
         "imported key".to_string()
     } else {
         k.name.trim().to_string()
     };
+    if k.agent_backed {
+        let key = keychain::agent_key(&label, &text)?;
+        let id = store.insert(vault_id, &key)?;
+        return Ok((id, true));
+    }
+    let info = keys::inspect(&text)?;
     let key = if info.encrypted {
         // Cannot normalise without the passphrase; store as-is, the
         // connection prompts for it.
@@ -1292,5 +1372,113 @@ broken line
         let again = remember(cached);
         discard(again.id);
         assert!(take(again.id).is_err());
+    }
+
+    #[test]
+    fn pub_only_identity_files_become_agent_backed_keys() {
+        const PRIVATE: &str =
+            include_str!("../../../../../crates/termoso-core/testdata/keys/ed25519_openssh");
+        const PUBLIC: &str =
+            include_str!("../../../../../crates/termoso-core/testdata/keys/ed25519_openssh.pub");
+        const OTHER_PUBLIC: &str =
+            include_str!("../../../../../crates/termoso-core/testdata/keys/rsa_openssh.pub");
+        const CERT: &str =
+            include_str!("../../../../../crates/termoso-core/testdata/keys/ed25519-cert.pub");
+
+        let dir = tempfile::tempdir().unwrap();
+        let ssh = dir.path().join(".ssh");
+        std::fs::create_dir(&ssh).unwrap();
+        std::fs::write(ssh.join("id_ed25519"), PRIVATE).unwrap();
+        std::fs::write(ssh.join("id_ed25519.pub"), PUBLIC).unwrap();
+        std::fs::write(ssh.join("keepass.pub"), OTHER_PUBLIC).unwrap();
+        std::fs::write(ssh.join("id_ed25519-cert.pub"), CERT).unwrap();
+        let config = format!(
+            "Host disk\n  HostName disk.example.com\n  IdentityFile {d}/id_ed25519.pub\n\
+             Host agent\n  HostName agent.example.com\n  IdentityFile {d}/keepass.pub\n\
+             Host bare\n  HostName bare.example.com\n",
+            d = display(&ssh)
+        );
+        std::fs::write(ssh.join("config"), config).unwrap();
+
+        let preview = scan_ssh_dir(Some(&display(&ssh))).unwrap();
+        assert_eq!(preview.warnings, Vec::<String>::new());
+        let mut names: Vec<(String, bool)> = preview
+            .keys
+            .iter()
+            .map(|k| (k.name.clone(), k.agent_backed))
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            vec![
+                ("id_ed25519".to_string(), false),
+                ("keepass.pub".to_string(), true)
+            ],
+            "the .pub next to a private key is implied; the lone one is agent-held"
+        );
+        let json = serde_json::to_string(&preview).unwrap();
+        assert!(json.contains("\"agentBacked\":true") && !json.contains("PRIVATE KEY"));
+
+        // A single referenced `.pub` file works the same way.
+        let mut single = ImportPreview::new(ImportSource::SshConfig, "cfg");
+        single.hosts.push(ImportedHost {
+            label: "x".into(),
+            address: "x".into(),
+            protocol: "ssh".into(),
+            key_path: Some(display(&ssh.join("keepass.pub"))),
+            ..ImportedHost::default()
+        });
+        referenced_keys(&mut single);
+        assert_eq!(single.keys.len(), 1);
+        assert!(single.keys[0].agent_backed);
+
+        let state = AppState::in_memory(dir.path().join("profile"));
+        let store = &state.store;
+        let vault = store.local_vault().unwrap().id;
+        let report = apply(
+            &state,
+            vault,
+            &preview,
+            &ImportSelection {
+                hosts: (0..preview.hosts.len()).collect(),
+                keys: (0..preview.keys.len()).collect(),
+                ..ImportSelection::default()
+            },
+        )
+        .unwrap();
+        assert_eq!((report.hosts, report.keys), (3, 2));
+
+        let key_of = |label: &str| {
+            let host = store
+                .list::<termoso_core::model::Host>(Some(vault))
+                .unwrap()
+                .into_iter()
+                .find(|h| h.data.label == label)
+                .unwrap();
+            store.resolve_host(host.id).unwrap().key
+        };
+        let disk = key_of("disk").expect("disk host has a key");
+        assert!(!disk.data.is_agent_backed());
+        assert_eq!(disk.data.label, "id_ed25519");
+        assert!(disk.data.private_key.contains("PRIVATE KEY"));
+        let agent = key_of("agent").expect("agent host has a key");
+        assert!(agent.data.is_agent_backed());
+        assert!(agent.data.private_key.is_empty());
+        assert_eq!(agent.data.public_key.as_deref(), Some(OTHER_PUBLIC.trim()));
+        assert!(key_of("bare").is_none());
+
+        // Re-import: everything already there, nothing duplicated.
+        let again = apply(
+            &state,
+            vault,
+            &preview,
+            &ImportSelection {
+                keys: (0..preview.keys.len()).collect(),
+                ..ImportSelection::default()
+            },
+        )
+        .unwrap();
+        assert_eq!((again.keys, again.skipped_keys), (0, 2));
+        assert_eq!(store.list::<SshKey>(Some(vault)).unwrap().len(), 2);
     }
 }
