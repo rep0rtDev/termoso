@@ -11,7 +11,8 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
-use termoso_core::sftp::{EntryKind, Sftp, TransferOptions};
+use termoso_core::remote::RemoteFs;
+use termoso_core::sftp::{EntryKind, TransferOptions};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -256,7 +257,7 @@ async fn signature(path: &Path) -> Option<Signature> {
 async fn watch<R: Runtime>(
     app: AppHandle<R>,
     live: Arc<Live>,
-    sftp: Arc<Sftp>,
+    sftp: Arc<dyn RemoteFs>,
     local: PathBuf,
     remote: String,
 ) {

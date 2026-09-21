@@ -33,7 +33,7 @@ use crate::session::{
     Launch, LaunchTarget, SessionListener, SshSession, TerminalOptions, Transport, ViewerLaunch,
 };
 use crate::settings::MobileSettings;
-use crate::sftp::{SftpLaunch, SftpListener, SftpSession};
+use crate::sftp::{Backend as FileBackend, SftpLaunch, SftpListener, SftpSession};
 use crate::snippets::{self, SnippetDraft, SnippetItem, SnippetPackageItem, SnippetRun};
 use crate::sshid::SshIdView;
 use crate::team::{
@@ -1343,8 +1343,38 @@ impl TermosoApp {
             RUNTIME.handle().clone(),
             SftpLaunch {
                 store: self.store.clone(),
-                target,
-                resolved: Some(resolved),
+                backend: FileBackend::Sftp {
+                    target,
+                    resolved: Some(resolved),
+                },
+                settings: MobileSettings::load(&self.store)?,
+                listener,
+                presence,
+            },
+        ))
+    }
+
+    /// Open the WebDAV share of a saved host (its WebDAV section). Same
+    /// session type as SFTP; `capabilities()` tells the UI what to hide.
+    /// Write-mode files spool under the profile directory before the PUT.
+    pub fn webdav_host(
+        &self,
+        host_id: String,
+        listener: Arc<dyn SftpListener>,
+    ) -> Result<Arc<SftpSession>> {
+        let resolved = self.store.resolve_host(parse_id(&host_id)?)?;
+        if resolved.webdav.is_none() {
+            return Err(MobileError::invalid("this host has no WebDAV section"));
+        }
+        let presence = Some(self.presence.slot(resolved.host.id, "webdav"));
+        Ok(SftpSession::launch(
+            RUNTIME.handle().clone(),
+            SftpLaunch {
+                store: self.store.clone(),
+                backend: FileBackend::WebDav {
+                    resolved,
+                    spool_dir: self.profile_dir.join("webdav-spool"),
+                },
                 settings: MobileSettings::load(&self.store)?,
                 listener,
                 presence,
@@ -1362,8 +1392,10 @@ impl TermosoApp {
             RUNTIME.handle().clone(),
             SftpLaunch {
                 store: self.store.clone(),
-                target: quick_target(&target)?,
-                resolved: None,
+                backend: FileBackend::Sftp {
+                    target: quick_target(&target)?,
+                    resolved: None,
+                },
                 settings: MobileSettings::load(&self.store)?,
                 listener,
                 presence: None,

@@ -36,6 +36,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termoso.android.R
+import com.termoso.android.data.SftpManager
 import com.termoso.android.data.userMessage
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.HostAvatar
@@ -44,25 +45,35 @@ import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.shell.ShellViewModel
+import com.termoso.core.FileProtocol
 import com.termoso.core.HostItem
 import com.termoso.core.MobileException
 import com.termoso.core.parseTarget
 import kotlinx.coroutines.launch
 
-/** "New SFTP connection": pick a saved SSH host or type a target. */
+/** One row of the saved-hosts list: a host over one of its file protocols. */
+private data class FileTarget(val host: HostItem, val protocol: FileProtocol)
+
+/** "New SFTP connection": pick a saved host (SFTP for SSH ones, WebDAV for shares) or type a target. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SftpPickScreen(shell: ShellViewModel, onBack: () -> Unit, onOpened: (String) -> Unit) {
     val revision by shell.repo.revision.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    var hosts by remember { mutableStateOf<List<HostItem>>(emptyList()) }
+    var hosts by remember { mutableStateOf<List<FileTarget>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
     var target by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
     LaunchedEffect(revision) {
         hosts = runCatching { shell.repo.read { hosts(null) } }.getOrDefault(emptyList())
-            .filter { it.protocol.equals("ssh", ignoreCase = true) }
+            .filter { SftpManager.hasFiles(it) }
             .sortedBy { it.label.ifBlank { it.address }.lowercase() }
+            .flatMap { h ->
+                buildList {
+                    if (h.protocol.equals("ssh", ignoreCase = true)) add(FileTarget(h, FileProtocol.SFTP))
+                    if (h.webdavUrl != null) add(FileTarget(h, FileProtocol.WEBDAV))
+                }
+            }
         loaded = true
     }
 
@@ -124,7 +135,7 @@ fun SftpPickScreen(shell: ShellViewModel, onBack: () -> Unit, onOpened: (String)
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
                 )
             }
-            val shown = hosts.filter { h ->
+            val shown = hosts.filter { (h, _) ->
                 query.isBlank() || h.label.contains(query, true) || h.address.contains(query, true) || h.username.contains(query, true)
             }
             if (loaded && shown.isEmpty()) {
@@ -134,14 +145,18 @@ fun SftpPickScreen(shell: ShellViewModel, onBack: () -> Unit, onOpened: (String)
                 )
             } else {
                 SectionCard {
-                    shown.forEachIndexed { i, h ->
+                    shown.forEachIndexed { i, (h, protocol) ->
                         if (i > 0) RowDivider()
                         ListRow(
                             title = h.label.ifBlank { h.address },
-                            subtitle = listOf(h.username, h.address).filter { it.isNotBlank() }.joinToString("@"),
+                            subtitle = if (protocol == FileProtocol.WEBDAV) {
+                                stringResource(R.string.webdav_target, h.webdavUrl ?: h.address)
+                            } else {
+                                listOf(h.username, h.address).filter { it.isNotBlank() }.joinToString("@")
+                            },
                             leading = { HostAvatar(h.osName) },
                             modifier = Modifier.clickable {
-                                scope.launch { shell.openSftpHost(h.id)?.let { onOpened(it.id) } }
+                                scope.launch { shell.openSftpHost(h.id, protocol)?.let { onOpened(it.id) } }
                             },
                         )
                     }

@@ -53,8 +53,8 @@ import AppsRoundedIcon from "@mui/icons-material/AppsRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ipc from "@/ipc/commands";
-import type { FsEntry, Listing, Uuid } from "@/ipc/types";
-import { errorMessage } from "@/ipc/types";
+import type { FsEntry, Listing, RemoteCapabilities, Uuid } from "@/ipc/types";
+import { SFTP_CAPABILITIES, errorMessage } from "@/ipc/types";
 import { useSnackbar } from "@/components/Snackbar";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ToolIconButton } from "@/components/ui";
@@ -91,6 +91,8 @@ interface Props {
   title: string;
   /** Remote connection; `null` for the local side. */
   sftpId: Uuid | null;
+  /** What the remote side supports; unsupported actions are not offered. */
+  capabilities?: RemoteCapabilities;
   /** Directory to start in; `null` = home. */
   initialPath: string | null;
   /** Current directory of the opposite pane (transfer destination). */
@@ -119,14 +121,14 @@ interface FsApi {
   chmod: ((path: string, mode: number) => Promise<null>) | null;
 }
 
-function apiFor(side: Side, sftpId: Uuid | null): FsApi {
+function apiFor(side: Side, sftpId: Uuid | null, caps: RemoteCapabilities): FsApi {
   if (side === "remote" && sftpId) {
     return {
       list: (p) => ipc.sftpList(sftpId, p),
       mkdir: (p) => ipc.sftpMkdir(sftpId, p),
       rename: (a, b) => ipc.sftpRename(sftpId, a, b),
       remove: (p, r) => ipc.sftpRemove(sftpId, p, r),
-      chmod: (p, m) => ipc.sftpChmod(sftpId, p, m),
+      chmod: caps.permissions ? (p, m) => ipc.sftpChmod(sftpId, p, m) : null,
     };
   }
   return {
@@ -183,6 +185,7 @@ export function FilePane(props: Props) {
     side,
     title,
     sftpId,
+    capabilities = SFTP_CAPABILITIES,
     initialPath,
     oppositePath,
     onPathChange,
@@ -194,7 +197,7 @@ export function FilePane(props: Props) {
     onClose,
     disabled = false,
   } = props;
-  const api = useMemo(() => apiFor(side, sftpId), [side, sftpId]);
+  const api = useMemo(() => apiFor(side, sftpId, capabilities), [side, sftpId, capabilities]);
   const [path, setPath] = useState<string | null>(initialPath);
   /** Text of the path field while it is being edited; `null` = breadcrumbs. */
   const [pathDraft, setPathDraft] = useState<string | null>(null);

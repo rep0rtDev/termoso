@@ -22,8 +22,8 @@ import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import * as ipc from "@/ipc/commands";
-import type { Conflict, Direction, FsEntry, Uuid } from "@/ipc/types";
-import { errorMessage } from "@/ipc/types";
+import type { Conflict, Direction, FsEntry, HostCard, Uuid } from "@/ipc/types";
+import { errorMessage, hasSsh, hasWebDav } from "@/ipc/types";
 import { useHosts, useSettings } from "@/ipc/hooks";
 import { useSnackbar } from "@/components/Snackbar";
 import { IconTile, Toolbar } from "@/components/ui";
@@ -37,12 +37,15 @@ import { dropTargetAt, stageDrop, statPaths } from "./drop";
 import { joinPath } from "./format";
 import {
   closeSftp,
+  connCapabilities,
   editingPaths,
   openEdit,
   openSftpForHost,
   openSftpForSession,
+  openWebDavForHost,
   reconnectSftp,
   setActiveSftp,
+  sftpStore,
   startTransfer,
   useSftp,
 } from "./store";
@@ -120,6 +123,7 @@ export function SftpPage() {
         incoming: c.entry,
         existing: c.existing,
         dest,
+        resumeUpload: connCapabilities(sftpStore.get().conns[sftpId]).resumeUpload,
         remaining: conflicts.length - i - 1,
       });
       if (!d) return false;
@@ -271,6 +275,7 @@ export function SftpPage() {
               side="remote"
               title={active.title}
               sftpId={active.id}
+              capabilities={connCapabilities(active)}
               initialPath={active.info?.home ?? null}
               oppositePath={localPath}
               onPathChange={onRemotePath}
@@ -284,6 +289,7 @@ export function SftpPage() {
           ) : (
             <RemotePlaceholder
               status={active?.status ?? null}
+              webdav={active?.target.kind === "webdav"}
               message={active?.message ?? null}
               onConnect={() => setPicker(true)}
               onRetry={active ? () => reconnectSftp(active.id) : undefined}
@@ -328,11 +334,13 @@ function PaneFrame({ title, children }: { title?: string; children: React.ReactN
 
 function RemotePlaceholder({
   status,
+  webdav,
   message,
   onConnect,
   onRetry,
 }: {
   status: "connecting" | "open" | "error" | "closed" | null;
+  webdav?: boolean;
   message: string | null;
   onConnect: () => void;
   onRetry?: () => void;
@@ -346,7 +354,7 @@ function RemotePlaceholder({
         <>
           <CircularProgress size={24} />
           <Typography variant="body2" color="text.secondary">
-            Opening SFTP channel…
+            {webdav ? "Connecting to the WebDAV share…" : "Opening SFTP channel…"}
           </Typography>
         </>
       ) : (
@@ -359,7 +367,7 @@ function RemotePlaceholder({
             color={status === "error" ? "error" : "text.secondary"}
             align="center"
           >
-            {message ?? "Pick a host or an open SSH session to browse its files."}
+            {message ?? "Pick a host, a WebDAV share or an open SSH session to browse its files."}
           </Typography>
           <Stack direction="row" spacing={1}>
             {onRetry && (status === "error" || status === "closed") && (
@@ -382,22 +390,31 @@ function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }
   const panes = useTerminal((s) => s.panes);
   const [filter, setFilter] = useState("");
   const q = filter.trim().toLowerCase();
-  const sshHosts = (hosts.data ?? []).filter(
-    (h) =>
-      h.protocol === "ssh" &&
-      (!q || h.label.toLowerCase().includes(q) || h.address.toLowerCase().includes(q)),
-  );
+  const matches = (h: HostCard) =>
+    !q ||
+    h.label.toLowerCase().includes(q) ||
+    h.address.toLowerCase().includes(q) ||
+    (h.webdavUrl ?? "").toLowerCase().includes(q);
+  const all = hosts.data ?? [];
+  const sshHosts = all.filter((h) => hasSsh(h) && matches(h));
+  const davHosts = all.filter((h) => hasWebDav(h) && matches(h));
   const sessions = Object.values(panes).filter(
     (p) => p.protocol === "ssh" && p.status === "connected",
   );
-  const pick = (id: Uuid, kind: "host" | "session", title: string, hostId: Uuid | null) => {
+  const pick = (
+    id: Uuid,
+    kind: "host" | "session" | "webdav",
+    title: string,
+    hostId: Uuid | null,
+  ) => {
     if (kind === "host") openSftpForHost(id, title);
+    else if (kind === "webdav") openWebDavForHost(id, title);
     else openSftpForSession(id, title, hostId);
     onClose();
   };
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Open SFTP</DialogTitle>
+      <DialogTitle>Open files</DialogTitle>
       <DialogContent sx={{ p: 0 }}>
         <Box sx={{ px: 3, pb: 1 }}>
           <TextField
@@ -427,7 +444,7 @@ function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }
               ))}
             </>
           )}
-          <ListSubheader disableSticky>Hosts</ListSubheader>
+          {sshHosts.length > 0 && <ListSubheader disableSticky>SFTP</ListSubheader>}
           {sshHosts.map((h) => (
             <ListItemButton key={h.id} onClick={() => pick(h.id, "host", h.label, h.id)}>
               <Box sx={{ mr: 1.5 }}>
@@ -436,9 +453,18 @@ function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }
               <ListItemText primary={h.label} secondary={`${h.username}@${h.address}:${h.port}`} />
             </ListItemButton>
           ))}
-          {sshHosts.length === 0 && (
+          {davHosts.length > 0 && <ListSubheader disableSticky>WebDAV</ListSubheader>}
+          {davHosts.map((h) => (
+            <ListItemButton key={`dav-${h.id}`} onClick={() => pick(h.id, "webdav", h.label, h.id)}>
+              <Box sx={{ mr: 1.5 }}>
+                <HostAvatar host={h} size={28} />
+              </Box>
+              <ListItemText primary={h.label} secondary={h.webdavUrl ?? h.address} />
+            </ListItemButton>
+          ))}
+          {sshHosts.length === 0 && davHosts.length === 0 && (
             <Typography variant="body2" color="text.disabled" sx={{ px: 3, py: 2 }}>
-              No SSH hosts saved yet.
+              No SSH or WebDAV hosts saved yet.
             </Typography>
           )}
         </List>

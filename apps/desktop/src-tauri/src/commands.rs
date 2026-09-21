@@ -178,6 +178,7 @@ fn validate_payload(kind: &str, data: &serde_json::Value) -> Result<()> {
         "host" => m::Host,
         "ssh_config" => m::SshConfig,
         "telnet_config" => m::TelnetConfig,
+        "webdav_config" => m::WebDavConfig,
         "identity" => m::Identity,
         "ssh_key" => m::SshKey,
         "ssh_certificate" => m::SshCertificate,
@@ -554,6 +555,16 @@ pub async fn sftp_chmod(
     mode: u32,
 ) -> Result<()> {
     sftp::remote_chmod(&state, id, path, mode).await
+}
+
+#[tauri::command]
+pub async fn sftp_copy(
+    state: State<'_, AppState>,
+    id: Uuid,
+    from: String,
+    to: String,
+) -> Result<()> {
+    sftp::remote_copy(&state, id, from, to).await
 }
 
 #[tauri::command]

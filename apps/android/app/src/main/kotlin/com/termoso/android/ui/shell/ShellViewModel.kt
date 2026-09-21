@@ -11,6 +11,7 @@ import com.termoso.android.data.SftpManager
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
+import com.termoso.core.FileProtocol
 import com.termoso.core.QuickTarget
 import com.termoso.core.SessionState
 import com.termoso.core.SnippetRun
@@ -116,10 +117,17 @@ class ShellViewModel(
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
 
-    suspend fun openSftpHost(hostId: String): SftpConnection? =
-        runCatching { sftp.openHost(hostId) }
+    /** Files browser for a saved host; `protocol` picks SFTP or WebDAV, `null` = the host's primary one. */
+    suspend fun openSftpHost(hostId: String, protocol: FileProtocol? = null): SftpConnection? =
+        runCatching { sftp.openHost(hostId, protocol) }
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
+
+    /** Whether "Connect" on this host means a terminal (false for WebDAV-only hosts, which open Files). */
+    suspend fun hasTerminal(hostId: String): Boolean =
+        runCatching { repo.read { host(hostId) } }
+            .map { !it.protocol.equals("webdav", true) }
+            .getOrDefault(true)
 
     suspend fun openSftpQuick(target: QuickTarget): SftpConnection? =
         runCatching { sftp.openQuick(target) }

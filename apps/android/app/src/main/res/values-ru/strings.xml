@@ -1277,4 +1277,20 @@
     <string name="files_cannot_remove_root">Корень хоста изменить нельзя</string>
     <string name="files_move_between_hosts">Перемещение между хостами не поддерживается; скопируйте файл</string>
     <string name="files_move_into_itself">Папку нельзя переместить в саму себя</string>
+    <string name="files_host_certificate_needs_confirmation">Подключитесь к %1$s из Termoso один раз, чтобы принять его сертификат</string>
+    <string name="files_copy_unsupported">Этот хост не умеет копировать файлы на сервере</string>
+
+    <!-- WebDAV -->
+    <string name="webdav_files">Файлы WebDAV</string>
+    <string name="webdav_target">WebDAV · %1$s</string>
+    <string name="save_and_open_webdav">Сохранить и открыть WebDAV</string>
+    <string name="add_webdav">Добавить WebDAV</string>
+    <string name="webdav_url">URL WebDAV</string>
+    <string name="certificate_fingerprint_sha_256">Отпечаток сертификата (SHA-256)</string>
+    <string name="system_trust_roots">Системные корневые сертификаты</string>
+    <string name="webdav_credentials_hint">Учётные данные хранятся в хранилище. Оставьте отпечаток пустым, чтобы доверять системному хранилищу сертификатов, или закрепите самоподписанный сертификат по его SHA-256.</string>
+    <string name="taken_from_the_webdav_url">Берётся из URL WebDAV</string>
+    <string name="untrusted_certificate">Недоверенный сертификат</string>
+    <string name="tls_certificate_sha_256">Сертификат TLS (SHA-256)</string>
+    <string name="copied_as">Скопировано как %1$s</string>
 </resources>

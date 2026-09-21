@@ -1,3 +1,4 @@
+import CloudRoundedIcon from "@mui/icons-material/CloudRounded";
 import DnsRoundedIcon from "@mui/icons-material/DnsRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import UsbRoundedIcon from "@mui/icons-material/UsbRounded";
@@ -25,7 +26,7 @@ export function hostIcon(
 }
 
 /** Protocols a glyph can stand for: saved-host sections plus the session-only ones. */
-export type GlyphProtocol = SessionInfo["protocol"];
+export type GlyphProtocol = SessionInfo["protocol"] | "webdav";
 
 /** Glyph for a host's icon (chosen or detected), or the protocol fallback while unknown. */
 export function HostGlyph({
@@ -47,6 +48,7 @@ export function HostGlyph({
 export function ProtocolGlyph({ protocol, ...props }: { protocol: GlyphProtocol } & SvgIconProps) {
   if (protocol === "telnet" || protocol === "local") return <TerminalRoundedIcon {...props} />;
   if (protocol === "serial") return <UsbRoundedIcon {...props} />;
+  if (protocol === "webdav") return <CloudRoundedIcon {...props} />;
   return <DnsRoundedIcon {...props} />;
 }
 

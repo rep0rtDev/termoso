@@ -1,6 +1,8 @@
-//! SFTP sessions and the local file system for the two-pane file browser.
-//! Rust owns the transport, walks directories and moves bytes; the webview
-//! only renders listings and transfer progress.
+//! Remote file sessions (SFTP over SSH, WebDAV) and the local file system
+//! for the two-pane file browser. Rust owns the transport, walks directories
+//! and moves bytes; the webview only renders listings and transfer progress.
+//! Every session is driven through [`RemoteFs`], so the browser, transfer
+//! queue and edit-in-place code do not know which protocol is underneath.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -11,6 +13,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use termoso_core::error::CoreError;
+use termoso_core::remote::{RemoteCapabilities, RemoteFs, RemoteProtocol};
 use termoso_core::sftp::{EntryKind, Progress, RemoteEntry, Sftp, TransferOptions};
 use termoso_core::ssh::SshClient;
 use tokio::sync::Semaphore;
@@ -35,6 +38,8 @@ pub enum SftpTarget {
     Host { host_id: Uuid },
     /// Reuse the transport of a live terminal session.
     Session { session_id: Uuid },
+    /// Open the WebDAV section of a saved host.
+    Webdav { host_id: Uuid },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -44,6 +49,8 @@ pub struct SftpInfo {
     pub title: String,
     pub target: String,
     pub host_id: Option<Uuid>,
+    pub protocol: RemoteProtocol,
+    pub capabilities: RemoteCapabilities,
     pub home: String,
     pub started_at: DateTime<Utc>,
 }
@@ -142,12 +149,11 @@ pub enum TransferEvent {
 
 struct Live {
     info: SftpInfo,
-    sftp: Arc<Sftp>,
-    /// Keeps the transport (and any jump hosts) alive while we browse.
+    fs: Arc<dyn RemoteFs>,
+    /// Keeps the SSH transport (and any jump hosts) alive while we browse;
+    /// empty for protocols that carry their own connection.
     #[allow(dead_code)]
-    client: Arc<SshClient>,
-    #[allow(dead_code)]
-    jumps: Vec<Arc<SshClient>>,
+    keepalive: Vec<Arc<SshClient>>,
 }
 
 /// A transfer known to the queue: waiting, moving bytes, paused or failed.
@@ -217,8 +223,8 @@ impl SftpSessions {
             .ok_or_else(|| DesktopError::not_found(format!("sftp session {id}")))
     }
 
-    pub(crate) fn sftp(&self, id: Uuid) -> Result<Arc<Sftp>> {
-        Ok(self.get(id)?.sftp.clone())
+    pub(crate) fn sftp(&self, id: Uuid) -> Result<Arc<dyn RemoteFs>> {
+        Ok(self.get(id)?.fs.clone())
     }
 
     fn begin(&self, id: Uuid) -> Result<CancellationToken> {
@@ -321,27 +327,28 @@ pub async fn open<R: Runtime>(
     };
     state.prompts.cancel_session(id);
     let still_wanted = state.sftp.finish_pending(id);
-    let (title, display, host_id, client, jumps) = result?;
+    let conn = result?;
     if !still_wanted {
+        let _ = conn.fs.close().await;
         return Err(CoreError::Cancelled.into());
     }
 
-    let sftp = Sftp::open(&client).await?;
     let info = SftpInfo {
         id,
-        title,
-        target: display,
-        host_id,
-        home: sftp.home().to_string(),
+        title: conn.title,
+        target: conn.display,
+        host_id: conn.host_id,
+        protocol: conn.fs.protocol(),
+        capabilities: conn.fs.capabilities(),
+        home: conn.fs.home().to_string(),
         started_at: Utc::now(),
     };
     state.sftp.live.lock().expect("sftp poisoned").insert(
         id,
         Arc::new(Live {
             info: info.clone(),
-            sftp: Arc::new(sftp),
-            client,
-            jumps,
+            fs: conn.fs,
+            keepalive: conn.keepalive,
         }),
     );
     let _ = app.emit(
@@ -355,13 +362,13 @@ pub async fn open<R: Runtime>(
     Ok(info)
 }
 
-type Connected = (
-    String,
-    String,
-    Option<Uuid>,
-    Arc<SshClient>,
-    Vec<Arc<SshClient>>,
-);
+struct Connected {
+    title: String,
+    display: String,
+    host_id: Option<Uuid>,
+    fs: Arc<dyn RemoteFs>,
+    keepalive: Vec<Arc<SshClient>>,
+}
 
 async fn connect<R: Runtime>(
     app: &AppHandle<R>,
@@ -372,13 +379,16 @@ async fn connect<R: Runtime>(
     match target {
         SftpTarget::Host { host_id } => {
             let conn = sessions::connect_host(app, id, *host_id).await?;
-            Ok((
-                conn.label,
-                conn.display,
-                Some(*host_id),
-                conn.client,
-                conn.jumps,
-            ))
+            let sftp = Sftp::open(&conn.client).await?;
+            let mut keepalive = conn.jumps;
+            keepalive.push(conn.client);
+            Ok(Connected {
+                title: conn.label,
+                display: conn.display,
+                host_id: Some(*host_id),
+                fs: Arc::new(sftp),
+                keepalive,
+            })
         }
         SftpTarget::Session { session_id } => {
             let client = state.sessions.client(*session_id)?;
@@ -388,7 +398,24 @@ async fn connect<R: Runtime>(
                 .into_iter()
                 .find(|s| s.id == *session_id)
                 .ok_or_else(|| DesktopError::not_found(format!("session {session_id}")))?;
-            Ok((info.title, info.target, info.host_id, client, Vec::new()))
+            let sftp = Sftp::open(&client).await?;
+            Ok(Connected {
+                title: info.title,
+                display: info.target,
+                host_id: info.host_id,
+                fs: Arc::new(sftp),
+                keepalive: vec![client],
+            })
+        }
+        SftpTarget::Webdav { host_id } => {
+            let conn = crate::webdav::connect(app, id, *host_id).await?;
+            Ok(Connected {
+                title: conn.label,
+                display: conn.display,
+                host_id: Some(*host_id),
+                fs: conn.fs,
+                keepalive: Vec::new(),
+            })
         }
     }
 }
@@ -398,7 +425,7 @@ pub async fn close<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
     state.prompts.cancel_session(id);
     if let Some(live) = state.sftp.remove(id) {
         crate::edits::close_for_sftp(app, id).await;
-        let _ = live.sftp.close().await;
+        let _ = live.fs.close().await;
         let _ = app.emit(SFTP_EVENT, SftpEvent::Closed { id });
         crate::presence::refresh(app);
     }
@@ -432,10 +459,10 @@ fn sort_entries(entries: &mut [RemoteEntry]) {
 pub async fn remote_list(state: &AppState, id: Uuid, path: Option<String>) -> Result<Listing> {
     let live = state.sftp.get(id)?;
     let path = match path {
-        Some(p) if !p.trim().is_empty() => live.sftp.canonicalize(p.trim()).await?,
+        Some(p) if !p.trim().is_empty() => live.fs.canonicalize(p.trim()).await?,
         _ => live.info.home.clone(),
     };
-    let mut entries = live.sftp.list(&path).await?;
+    let mut entries = live.fs.list(&path).await?;
     sort_entries(&mut entries);
     Ok(Listing {
         parent: remote_parent(&path),
@@ -477,6 +504,11 @@ pub async fn remote_remove(
 
 pub async fn remote_chmod(state: &AppState, id: Uuid, path: String, mode: u32) -> Result<()> {
     Ok(state.sftp.sftp(id)?.chmod(&path, mode & 0o7777).await?)
+}
+
+/// Server-side copy, for backends that offer one.
+pub async fn remote_copy(state: &AppState, id: Uuid, from: String, to: String) -> Result<()> {
+    Ok(state.sftp.sftp(id)?.copy(&from, &to).await?)
 }
 
 // ───────────────────────────── local fs ─────────────────────────────
@@ -710,7 +742,7 @@ fn plan_upload_sync(local: PathBuf, remote: String) -> Result<Plan> {
     })
 }
 
-async fn plan_download(sftp: &Sftp, remote: String, local: PathBuf) -> Result<Plan> {
+async fn plan_download(sftp: &dyn RemoteFs, remote: String, local: PathBuf) -> Result<Plan> {
     let root = sftp.stat(&remote).await?;
     if root.kind != EntryKind::Dir {
         return Ok(Plan {
@@ -968,7 +1000,7 @@ async fn run_job<R: Runtime>(
     let conflict = if conflict == Conflict::Rename {
         match direction {
             Direction::Upload if sftp.exists(&remote).await? => {
-                remote = unique_remote(&sftp, &remote).await?;
+                remote = unique_remote(sftp.as_ref(), &remote).await?;
             }
             Direction::Download if tokio::fs::symlink_metadata(&local).await.is_ok() => {
                 local = unique_local(&local).await?;
@@ -1048,7 +1080,7 @@ fn remote_split(path: &str) -> (String, String) {
     }
 }
 
-async fn unique_remote(sftp: &Sftp, path: &str) -> Result<String> {
+async fn unique_remote(sftp: &dyn RemoteFs, path: &str) -> Result<String> {
     let (dir, name) = remote_split(path);
     let fresh = unique_name(&name, |c| {
         let candidate = remote_join(&dir, &c);
@@ -1076,7 +1108,7 @@ async fn unique_local(path: &Path) -> Result<PathBuf> {
 async fn run_transfer<R: Runtime>(
     app: &AppHandle<R>,
     id: Uuid,
-    sftp: Arc<Sftp>,
+    sftp: Arc<dyn RemoteFs>,
     direction: Direction,
     local: PathBuf,
     remote: String,
@@ -1092,7 +1124,7 @@ async fn run_transfer<R: Runtime>(
                 .await
                 .map_err(|e| DesktopError::new("io", e.to_string()))??
         }
-        Direction::Download => plan_download(&sftp, remote.clone(), local.clone()).await?,
+        Direction::Download => plan_download(sftp.as_ref(), remote.clone(), local.clone()).await?,
     };
     let reporter = Arc::new(Reporter {
         app: app.clone(),

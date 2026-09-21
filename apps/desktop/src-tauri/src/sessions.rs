@@ -1032,7 +1032,8 @@ async fn open_mosh<R: Runtime>(
 }
 
 fn has_ssh(resolved: &ResolvedHost) -> bool {
-    resolved.host.data.ssh_config_id.is_some() || resolved.telnet.is_none()
+    resolved.host.data.ssh_config_id.is_some()
+        || (resolved.telnet.is_none() && resolved.webdav.is_none())
 }
 
 /// Which section of a saved host to open: the requested one if the host has
@@ -1048,6 +1049,9 @@ fn host_protocol(resolved: &ResolvedHost, requested: Option<&str>) -> Result<&'s
         Some("mosh") if ssh => Ok("mosh"),
         Some("mosh") => Err(DesktopError::invalid(
             "Mosh runs over the SSH section, which this host does not have",
+        )),
+        None | Some("") if !ssh && !telnet => Err(DesktopError::invalid(
+            "this host has no terminal section; open it from Files",
         )),
         None | Some("") => Ok(if !ssh {
             "telnet"

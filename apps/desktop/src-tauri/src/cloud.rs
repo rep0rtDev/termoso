@@ -319,6 +319,7 @@ pub fn apply_scoped(
                     host_chain_id: None,
                     proxy_id: None,
                     telnet: None,
+                    webdav: None,
                     env_variables: vec![],
                     keep_alive_interval: None,
                     timeout: None,

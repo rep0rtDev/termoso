@@ -4,9 +4,11 @@ import com.termoso.android.R
 import com.termoso.android.data.AppContainer
 import com.termoso.android.data.PendingPrompt
 import com.termoso.android.data.SftpConnection
+import com.termoso.android.data.SftpManager
 import com.termoso.android.data.VaultState
 import com.termoso.android.data.userMessage
 import com.termoso.android.str
+import com.termoso.core.FileProtocol
 import com.termoso.core.HostItem
 import com.termoso.core.MobileException
 import com.termoso.core.PromptAnswer
@@ -33,12 +35,13 @@ import java.io.FileNotFoundException
 class ProviderException(message: String, val locked: Boolean = false) : FileNotFoundException(message)
 
 /**
- * Where the documents provider gets its vault and SFTP connections. Nothing
- * here can show UI, so the rules are strict: the vault opens only when that
- * needs no one present (see [AppContainer.unlockSilently]), an in-use app
- * lock counts as locked, and any connection that stops to ask something —
- * password, passphrase, an unknown host key — is cancelled with a message
- * telling the user to connect from Termoso once instead.
+ * Where the documents provider gets its vault and file connections (SFTP or
+ * WebDAV). Nothing here can show UI, so the rules are strict: the vault opens
+ * only when that needs no one present (see [AppContainer.unlockSilently]), an
+ * in-use app lock counts as locked, and any connection that stops to ask
+ * something — password, passphrase, an unknown host key or certificate — is
+ * cancelled with a message telling the user to connect from Termoso once
+ * instead.
  */
 class SftpAccess(private val container: AppContainer) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -66,16 +69,17 @@ class SftpAccess(private val container: AppContainer) {
         container.hasProfile() && !container.gated.value && !container.backgroundLockDue() &&
             (container.vault.value is VaultState.Open || !container.masterKeys.authRequired())
 
-    /** Saved hosts that can carry SFTP (an SSH section), every vault. */
+    /** Saved hosts with something to browse (an SSH or a WebDAV section), every vault. */
     fun hosts(vault: VaultState.Open): List<HostItem> = runBlocking {
         runCatching { vault.repo.read { hosts(null) } }
             .getOrElse { throw ProviderException(it.userMessage()) }
-            .filter { it.protocol == "ssh" }
+            .filter { SftpManager.hasFiles(it) }
     }
 
-    fun host(vault: VaultState.Open, id: String): HostItem = runBlocking {
+    /** The host behind a share; not found when it no longer has that section. */
+    fun host(vault: VaultState.Open, id: String, protocol: FileProtocol): HostItem = runBlocking {
         try {
-            vault.repo.read { host(id) }.also { if (it.protocol != "ssh") throw notFound() }
+            vault.repo.read { host(id) }.also { if (!offers(it, protocol)) throw notFound() }
         } catch (e: MobileException.NotFound) {
             throw notFound()
         } catch (e: MobileException) {
@@ -84,24 +88,29 @@ class SftpAccess(private val container: AppContainer) {
     }
 
     /**
-     * A connected SFTP session to [hostId]: one the app already has open, or
-     * a fresh one that reached `Connected` without a prompt. Blocks the calling
-     * binder thread for at most [CONNECT_TIMEOUT_MS].
+     * A connected session to the share behind [id]: one the app already has
+     * open, or a fresh one that reached `Connected` without a prompt. Blocks
+     * the calling binder thread for at most [CONNECT_TIMEOUT_MS].
      */
-    fun connection(hostId: String): SftpConnection {
+    fun connection(id: DocumentId): SftpConnection = connection(id.hostId, id.protocol)
+
+    fun connection(hostId: String, protocol: FileProtocol): SftpConnection {
         val vault = vault()
         return runBlocking {
-            val mutex = synchronized(perHost) { perHost.getOrPut(hostId) { Mutex() } }
+            val mutex = synchronized(perHost) { perHost.getOrPut(DocumentId.rootId(hostId, protocol)) { Mutex() } }
             mutex.withLock {
-                vault.sftp.forHost(hostId).firstOrNull { it.state.value is SessionState.Connected }?.also { touch(it) }
-                    ?: open(vault, hostId)
+                vault.sftp.forHost(hostId)
+                    .firstOrNull { it.protocol == protocol && it.state.value is SessionState.Connected }
+                    ?.also { touch(it) }
+                    ?: open(vault, hostId, protocol)
             }
         }
     }
 
-    private suspend fun open(vault: VaultState.Open, hostId: String): SftpConnection {
+    private suspend fun open(vault: VaultState.Open, hostId: String, protocol: FileProtocol): SftpConnection {
         val conn = try {
-            vault.sftp.openHost(hostId)
+            if (!offers(vault.repo.read { host(hostId) }, protocol)) throw notFound()
+            vault.sftp.openHost(hostId, protocol)
         } catch (e: MobileException.NotFound) {
             throw notFound()
         } catch (e: MobileException) {
@@ -173,9 +182,15 @@ class SftpAccess(private val container: AppContainer) {
 
     private fun promptMessage(request: PromptRequest, label: String): String = when (request) {
         is PromptRequest.HostKeyUnknown, is PromptRequest.HostKeyChanged -> str(R.string.files_host_key_needs_confirmation, label)
+        is PromptRequest.Certificate -> str(R.string.files_host_certificate_needs_confirmation, label)
         is PromptRequest.Password, is PromptRequest.Passphrase, is PromptRequest.KeyboardInteractive ->
             str(R.string.files_host_needs_credentials, label)
         is PromptRequest.SecurityKeyPin, is PromptRequest.SecurityKeyInsert -> str(R.string.files_host_needs_security_key, label)
+    }
+
+    private fun offers(host: HostItem, protocol: FileProtocol): Boolean = when (protocol) {
+        FileProtocol.SFTP -> host.protocol == "ssh"
+        FileProtocol.WEBDAV -> host.webdavUrl != null
     }
 
     private companion object {

@@ -36,6 +36,12 @@ pub enum PromptRequest {
     HostKey {
         verdict: HostKeyVerdict,
     },
+    /// A TLS server (WebDAV) presented a certificate the public roots do not
+    /// vouch for; answered like a host key (reject / once / pin).
+    Certificate {
+        host: String,
+        fingerprint: String,
+    },
     Password {
         username: String,
         retry: bool,

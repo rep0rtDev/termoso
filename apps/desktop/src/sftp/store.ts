@@ -1,5 +1,6 @@
-// SFTP connections and transfers as seen by the UI. Rust owns the SFTP
-// channel, file I/O and cancellation; this mirrors its events.
+// Remote file connections (SFTP, WebDAV) and transfers as seen by the UI.
+// Rust owns the transport, file I/O and cancellation; this mirrors its
+// events. Names keep the `sftp` prefix because the IPC surface does.
 
 import type { QueryClient } from "@tanstack/react-query";
 import * as ipc from "@/ipc/commands";
@@ -8,6 +9,7 @@ import type {
   Direction,
   EditEvent,
   EditInfo,
+  RemoteCapabilities,
   SftpEvent,
   SftpInfo,
   SftpTarget,
@@ -15,7 +17,7 @@ import type {
   TransferInfo,
   Uuid,
 } from "@/ipc/types";
-import { errorMessage } from "@/ipc/types";
+import { SFTP_CAPABILITIES, errorMessage } from "@/ipc/types";
 import { createStore, omit, useStore } from "@/lib/store";
 
 export type ConnStatus = "connecting" | "open" | "error" | "closed";
@@ -165,6 +167,13 @@ export const openSftpForHost = (hostId: Uuid, title: string) =>
 
 export const openSftpForSession = (sessionId: Uuid, title: string, hostId: Uuid | null) =>
   openSftp({ kind: "session", session_id: sessionId }, title, hostId);
+
+export const openWebDavForHost = (hostId: Uuid, title: string) =>
+  openSftp({ kind: "webdav", host_id: hostId }, title, hostId);
+
+/** Capabilities of a connection; full SFTP until Rust reports otherwise. */
+export const connCapabilities = (c: SftpConn | undefined): RemoteCapabilities =>
+  c?.info?.capabilities ?? SFTP_CAPABILITIES;
 
 export function reconnectSftp(id: Uuid) {
   const c = sftpStore.get().conns[id];

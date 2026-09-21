@@ -28,6 +28,8 @@ export interface ConflictPrompt {
   existing: FsEntry;
   /** Destination directory the item is going into. */
   dest: string;
+  /** Whether the remote can append to a partial upload (SFTP yes, WebDAV no). */
+  resumeUpload: boolean;
   /** Conflicts still queued after this one. */
   remaining: number;
   resolve: (decision: ConflictDecision | null) => void;
@@ -45,6 +47,7 @@ export function ConflictDialog({ prompt }: { prompt: ConflictPrompt | null }) {
   const folder = incoming.kind === "dir";
   const canResume =
     !folder &&
+    (prompt.direction === "download" || prompt.resumeUpload) &&
     incoming.size !== null &&
     existing.size !== null &&
     existing.size > 0 &&

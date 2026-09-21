@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.termoso.android.R
 import com.termoso.android.data.SftpConnection
 import com.termoso.android.data.userMessage
+import com.termoso.android.saf.uniqueName
 import com.termoso.android.str
 import com.termoso.core.MobileException
 import com.termoso.core.SessionState
@@ -248,6 +249,15 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
     }
 
     fun chmod(entry: SftpEntry, mode: UInt) = mutate(str(R.string.permissions_changed)) { chmod(entry.path, mode) }
+
+    /** Server-side copy next to the original as `name (1)`, `name (2)`… (protocols with `serverCopy` only). */
+    fun duplicate(entry: SftpEntry) {
+        clearSelection()
+        val parent = entry.path.substringBeforeLast('/', "").ifBlank { "/" }
+        val taken = _state.value.entries.map { it.name }.toSet()
+        val target = join(parent, uniqueName(entry.name, taken))
+        mutate(str(R.string.copied_as, target.substringAfterLast('/'))) { copy(entry.path, target) }
+    }
 
     private fun mutate(done: String?, block: com.termoso.core.SftpSession.() -> Unit) {
         viewModelScope.launch {

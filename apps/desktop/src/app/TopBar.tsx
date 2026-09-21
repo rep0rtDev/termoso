@@ -19,7 +19,7 @@ import BookmarkAddedRoundedIcon from "@mui/icons-material/BookmarkAddedRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import type { DragEvent, MouseEvent, ReactNode } from "react";
-import type { Uuid } from "@/ipc/types";
+import type { HostCard, Uuid } from "@/ipc/types";
 import { PqBadge, StatusDot } from "@/terminal/TerminalPane";
 import { MultiplayerTabButton } from "@/terminal/MultiplayerControl";
 import {
@@ -325,7 +325,11 @@ const TAB_MIME = "application/x-termoso-tab";
 /** Where a drag hovers a tab: reorder before / after it, or drop hosts into it. */
 type DropSide = "before" | "after" | "into" | null;
 
-const hostTargets = (ids: Uuid[]) => ids.map((host_id) => ({ kind: "host" as const, host_id }));
+/** Workspace tabs are terminals, so WebDAV-only hosts are left out. */
+const hostTargets = (ids: Uuid[], hosts: readonly HostCard[] | undefined) =>
+  ids
+    .filter((id) => hosts?.find((h) => h.id === id)?.protocol !== "webdav")
+    .map((host_id) => ({ kind: "host" as const, host_id }));
 
 function TerminalTopTab({
   tab,
@@ -426,20 +430,19 @@ function TerminalTopTab({
     onDragLeave: () => setOver(null),
     onDrop: (e: DragEvent<HTMLElement>) => {
       setOver(null);
-      const hostIds = droppedHostIds(e);
-      if (hostIds.length > 0) {
+      const dropped = droppedHostIds(e);
+      if (dropped.length > 0) {
         e.preventDefault();
-        const added = addToWorkspace(
-          { kind: "tab", id: tab.id, name: tab.name ?? "" },
-          hostTargets(hostIds),
-          true,
-        );
+        const targets = hostTargets(dropped, hosts.data);
+        const added =
+          targets.length > 0 &&
+          addToWorkspace({ kind: "tab", id: tab.id, name: tab.name ?? "" }, targets, true);
         if (added) {
           const where = workspace ? `“${tab.name}”` : title;
           snackbar.notify(
-            hostIds.length === 1
+            targets.length === 1
               ? `Opened in ${where}`
-              : `Opened ${hostIds.length} hosts in ${where}`,
+              : `Opened ${targets.length} hosts in ${where}`,
           );
         }
         return;
@@ -544,6 +547,7 @@ function useHostDropNewWorkspace() {
   const [over, setOver] = useState(false);
   const [el, setEl] = useState<HTMLDivElement | null>(null);
   const snackbar = useSnackbar();
+  const hostCards = useHosts(null).data;
   useEffect(() => {
     if (!el) return;
     const hosts = (e: globalThis.DragEvent) =>
@@ -564,11 +568,12 @@ function useHostDropNewWorkspace() {
       const ids = parseDragData(e.dataTransfer.getData(HOST_MIME))?.ids ?? [];
       if (ids.length === 0) return;
       e.preventDefault();
-      if (addToWorkspace(null, hostTargets(ids))) {
+      const targets = hostTargets(ids, hostCards);
+      if (targets.length > 0 && addToWorkspace(null, targets)) {
         snackbar.notify(
-          ids.length === 1
+          targets.length === 1
             ? "Opened in a new workspace"
-            : `Opened ${ids.length} hosts in a new workspace`,
+            : `Opened ${targets.length} hosts in a new workspace`,
         );
       }
     };
@@ -582,7 +587,7 @@ function useHostDropNewWorkspace() {
       el.removeEventListener("dragleave", onDragLeave);
       el.removeEventListener("drop", onDrop);
     };
-  }, [el, snackbar]);
+  }, [el, snackbar, hostCards]);
   return [over, setEl] as const;
 }
 

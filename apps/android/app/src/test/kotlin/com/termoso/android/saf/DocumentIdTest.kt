@@ -2,6 +2,7 @@ package com.termoso.android.saf
 
 import android.app.Application
 import android.provider.DocumentsContract
+import com.termoso.core.FileProtocol
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -102,6 +103,40 @@ class DocumentIdTest {
         assertTrue(DocumentId(host, "/").contains(home))
         assertFalse(DocumentId(host, "/").contains(DocumentId(host, "/")))
         assertFalse(home.contains(DocumentId("00000000-0000-4000-8000-000000000000", "/home/me")))
+    }
+
+    @Test
+    fun webdavShareIsASeparateRoot() {
+        val dav = DocumentId(host, "/docs/a.txt", FileProtocol.WEBDAV)
+        assertEquals("$host+webdav:/docs/a.txt", dav.encode())
+        assertEquals(dav, DocumentId.parse(dav.encode()))
+        assertEquals("$host+webdav", dav.rootId)
+        assertEquals(host, DocumentId(host, "/docs/a.txt").rootId)
+        assertEquals(DocumentId.rootId(host, FileProtocol.WEBDAV), dav.rootId)
+
+        val root = DocumentId.root(host, FileProtocol.WEBDAV)
+        assertTrue(root.isRoot)
+        assertEquals("$host+webdav:", root.encode())
+        assertEquals(root, DocumentId.parse("$host+webdav:"))
+        assertEquals(FileProtocol.WEBDAV, root.child("x").protocol)
+        assertEquals(FileProtocol.WEBDAV, dav.parent!!.protocol)
+        assertEquals(FileProtocol.WEBDAV, dav.at("/other").protocol)
+
+        assertNull(DocumentId.parse("$host+other:/x"))
+        assertNull(DocumentId.parse("+webdav:/x"))
+        assertEquals(FileProtocol.SFTP, DocumentId.parse("$host:/x")!!.protocol)
+    }
+
+    @Test
+    fun containmentDoesNotCrossProtocols() {
+        val sftpHome = DocumentId(host, "/home")
+        val davHome = DocumentId(host, "/home", FileProtocol.WEBDAV)
+        assertFalse(sftpHome.contains(DocumentId(host, "/home/me", FileProtocol.WEBDAV)))
+        assertFalse(davHome.contains(DocumentId(host, "/home/me")))
+        assertFalse(DocumentId.root(host).contains(davHome))
+        assertFalse(DocumentId.root(host, FileProtocol.WEBDAV).contains(sftpHome))
+        assertTrue(DocumentId.root(host, FileProtocol.WEBDAV).contains(davHome))
+        assertTrue(davHome.contains(DocumentId(host, "/home/me", FileProtocol.WEBDAV)))
     }
 
     @Test

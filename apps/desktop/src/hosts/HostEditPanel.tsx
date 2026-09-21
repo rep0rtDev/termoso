@@ -24,7 +24,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
 import { distroIcon } from "./distroIcons";
 import { DistroGlyph, ProtocolGlyph } from "./HostAvatar";
-import { ConnectButton } from "./ConnectSplit";
+import { ConnectButton, connectTo, type ConnectTarget } from "./ConnectSplit";
 import { TagsPopover } from "./TagsPopover";
 import { AgentForwardingRow, CredentialsFields } from "./CredentialsFields";
 import { Field, IconTile, Loading, SectionCard, SidePanel, ToolIconButton } from "@/components/ui";
@@ -48,9 +48,9 @@ import {
   type IpVersion,
   type TelnetForm,
   type Uuid,
+  type WebDavForm,
 } from "@/ipc/types";
 import { useActiveVault } from "@/app/vault";
-import { openTerminal } from "@/terminal/store";
 import { terminalThemes } from "@/terminal/themes";
 import { monoFontFamily, sizes } from "@/theme/theme";
 import { ChainDialog, ProxyDialog } from "./HostAdvancedDialogs";
@@ -70,6 +70,34 @@ const emptyTelnet = (): TelnetForm => ({
   colorScheme: null,
   hasPassword: false,
 });
+
+const emptyWebDav = (): WebDavForm => ({
+  url: "",
+  username: "",
+  password: null,
+  identityId: null,
+  certificateFingerprint: null,
+  hasPassword: false,
+});
+
+/** `http(s)://host[:port][/path]`, the only shape the WebDAV client accepts. */
+const isWebDavUrl = (raw: string) => {
+  try {
+    const u = new URL(raw.trim());
+    return (u.protocol === "https:" || u.protocol === "http:") && u.hostname.length > 0;
+  } catch {
+    return false;
+  }
+};
+
+/** SHA-256 fingerprint as `sha256:<hex>`, bare hex or colon-separated hex. */
+const isFingerprint = (raw: string) => {
+  const s = raw
+    .trim()
+    .replace(/^sha256:/i, "")
+    .replace(/:/g, "");
+  return /^[0-9a-f]{64}$/i.test(s);
+};
 
 interface Props {
   vaultId: Uuid;
@@ -118,9 +146,12 @@ const protocolsOf = (f: HostForm): ConnectProtocol[] => [
   ...(f.telnet ? (["telnet"] as const) : []),
 ];
 
-/** What the bottom Connect opens: Mosh when enabled, else the first section. */
-const primaryOf = (f: HostForm): ConnectProtocol | null =>
-  f.ssh ? (f.useMosh ? "mosh" : "ssh") : f.telnet ? "telnet" : null;
+/** What the bottom Connect opens: Mosh when enabled, else the first section; Files for WebDAV-only. */
+const primaryOf = (f: HostForm): ConnectTarget | null =>
+  f.ssh ? (f.useMosh ? "mosh" : "ssh") : f.telnet ? "telnet" : f.webdav ? "webdav" : null;
+
+/** Terminal sections need an address; a WebDAV-only host carries its own URL. */
+const needsAddress = (f: HostForm) => f.ssh || f.telnet !== null || f.webdav === null;
 
 /**
  * Host Details laid out the Termius way: Address → General → "SSH on … port"
@@ -187,11 +218,22 @@ function HostEditor({
     setTouched(true);
     setForm((f) => ({ ...f, telnet: { ...(f.telnet ?? emptyTelnet()), ...p } }));
   };
+  const patchWebDav = (p: Partial<WebDavForm>) => {
+    setTouched(true);
+    setForm((f) => ({ ...f, webdav: { ...(f.webdav ?? emptyWebDav()), ...p } }));
+  };
 
   const readOnly = useActiveVault().readOnly;
   const protocols = protocolsOf(form);
-  const canSave =
-    form.address.trim().length > 0 && protocols.length > 0 && !save.isPending && !readOnly;
+  const addressOk = !needsAddress(form) || form.address.trim().length > 0;
+  const webdavOk =
+    form.webdav === null ||
+    (isWebDavUrl(form.webdav.url) &&
+      (form.webdav.certificateFingerprint === null ||
+        form.webdav.certificateFingerprint.trim() === "" ||
+        isFingerprint(form.webdav.certificateFingerprint)));
+  const hasSection = protocols.length > 0 || form.webdav !== null;
+  const canSave = addressOk && webdavOk && hasSection && !save.isPending && !readOnly;
   const sshPortPlaceholder = String(inh?.port ?? 22);
   const chainName = (id: Uuid | null) =>
     (chains.data ?? []).find((c) => c.id === id)?.data.label ?? null;
@@ -200,15 +242,15 @@ function HostEditor({
     return p ? `${p.data.kind.toUpperCase()} ${p.data.host}:${p.data.port}` : null;
   };
   const icon = distroIcon(form.icon) ?? distroIcon(form.osName);
-  const glyphProtocol: HostProtocol = form.ssh ? "ssh" : "telnet";
+  const glyphProtocol: HostProtocol = form.ssh ? "ssh" : form.telnet ? "telnet" : "webdav";
   const selectedTags = (tags.data ?? []).filter((t) => form.tagIds.includes(t.id));
   const selectedTagIds = new Set(form.tagIds);
 
-  const onSave = (thenConnect: ConnectProtocol | null) => {
+  const onSave = (thenConnect: ConnectTarget | null) => {
     save.mutate(form, {
       onSuccess: (card) => {
         snackbar.notify(hostId ? "Host saved" : `Host “${card.label}” added`);
-        if (thenConnect) openTerminal({ kind: "host", host_id: card.id, protocol: thenConnect });
+        if (thenConnect) connectTo(card.id, card.label, thenConnect);
         onClose();
       },
       onError: (e) => snackbar.error(errorMessage(e)),
@@ -232,7 +274,7 @@ function HostEditor({
 
   const footer =
     hostId && !touched ? (
-      <ConnectButton hostId={hostId} protocol={primaryOf(form)} />
+      <ConnectButton hostId={hostId} label={form.label} target={primaryOf(form)} />
     ) : (
       <>
         <Button
@@ -246,6 +288,7 @@ function HostEditor({
         </Button>
         <ConnectButton
           hostId={hostId}
+          target={primaryOf(form)}
           disabled={!canSave}
           onClick={() => onSave(primaryOf(form))}
         />
@@ -282,13 +325,13 @@ function HostEditor({
               {icon ? <DistroGlyph icon={icon} /> : <ProtocolGlyph protocol={glyphProtocol} />}
             </IconTile>
             <TextField
-              required
+              required={needsAddress(form)}
               autoFocus={!hostId}
               value={form.address}
               onChange={(e) => set("address", e.target.value)}
-              placeholder="IP or Hostname"
+              placeholder={needsAddress(form) ? "IP or Hostname" : "IP or Hostname (optional)"}
               slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
-              error={touched && form.address.trim().length === 0}
+              error={touched && needsAddress(form) && form.address.trim().length === 0}
               sx={{ flex: 1 }}
             />
           </Box>
@@ -430,7 +473,7 @@ function HostEditor({
               />
             }
             action={
-              form.telnet && (
+              (form.telnet !== null || form.webdav !== null) && (
                 <Tooltip title="Remove SSH">
                   <IconButton
                     size="small"
@@ -729,6 +772,85 @@ function HostEditor({
           </SectionCard>
         ) : (
           <AddSectionButton label="Add Telnet" onClick={() => set("telnet", emptyTelnet())} />
+        )}
+
+        {form.webdav ? (
+          <SectionCard
+            title="WebDAV"
+            action={
+              <Tooltip title="Remove WebDAV">
+                <IconButton
+                  size="small"
+                  aria-label="Remove WebDAV"
+                  onClick={() => set("webdav", null)}
+                >
+                  <CloseRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            }
+          >
+            <Field label="URL">
+              <TextField
+                required
+                value={form.webdav.url}
+                onChange={(e) => patchWebDav({ url: e.target.value })}
+                placeholder="https://cloud.example.com/remote.php/dav/files/user/"
+                error={
+                  touched && form.webdav.url.trim().length > 0 && !isWebDavUrl(form.webdav.url)
+                }
+                helperText={
+                  touched && form.webdav.url.trim().length > 0 && !isWebDavUrl(form.webdav.url)
+                    ? "Enter an http:// or https:// URL"
+                    : undefined
+                }
+                slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+              />
+            </Field>
+            <Divider />
+            <CredentialsFields
+              vaultId={vaultId}
+              ssh={false}
+              inlineLabel="Set on this host"
+              value={{
+                identityId: form.webdav.identityId,
+                username: form.webdav.username,
+                password: form.webdav.password,
+                hasPassword: form.webdav.hasPassword,
+                sshKeyId: null,
+                sshCertificateId: null,
+                sshId: false,
+                sshIdKeyType: null,
+                agentForwarding: false,
+              }}
+              onChange={({ identityId, username, password }) => {
+                const p: Partial<WebDavForm> = {};
+                if (identityId !== undefined) p.identityId = identityId;
+                if (username !== undefined) p.username = username;
+                if (password !== undefined) p.password = password;
+                patchWebDav(p);
+              }}
+            />
+            <Field
+              label="Certificate fingerprint"
+              hint="SHA-256 of the server certificate; pins self-signed or private-CA servers. Left empty, the system trust store decides and an unknown certificate is offered on first connect."
+            >
+              <TextField
+                value={form.webdav.certificateFingerprint ?? ""}
+                onChange={(e) =>
+                  patchWebDav({ certificateFingerprint: e.target.value.trim() || null })
+                }
+                placeholder="sha256:…"
+                error={
+                  touched &&
+                  form.webdav.certificateFingerprint !== null &&
+                  !isFingerprint(form.webdav.certificateFingerprint)
+                }
+                slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+              />
+            </Field>
+          </SectionCard>
+        ) : (
+          <AddSectionButton label="Add WebDAV" onClick={() => set("webdav", emptyWebDav())} />
         )}
       </Box>
 

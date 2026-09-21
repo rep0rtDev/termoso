@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
@@ -84,6 +85,7 @@ import com.termoso.core.QuickTarget
 import com.termoso.core.TagItem
 import com.termoso.core.TelnetDraft
 import com.termoso.core.VaultInfo
+import com.termoso.core.WebDavDraft
 import com.termoso.core.moshDefaultServerCommand
 
 /**
@@ -100,6 +102,7 @@ fun HostEditorScreen(
     prefill: QuickTarget? = null,
     onConnect: (String) -> Unit = {},
     onSftp: (String) -> Unit = {},
+    onWebdav: (String) -> Unit = {},
     onForward: (String) -> Unit = {},
 ) {
     val initialVault by shell.selectedVaultId.collectAsStateWithLifecycle()
@@ -151,12 +154,22 @@ fun HostEditorScreen(
                         Box {
                             IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text(if (savedId == null) stringResource(R.string.save_and_connect) else stringResource(R.string.connect)) },
-                                    leadingIcon = { Icon(Icons.Filled.Terminal, null) },
-                                    enabled = state.canSave,
-                                    onClick = { menu = false; saveThen(onConnect) },
-                                )
+                                if (draft.ssh || draft.telnet != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (savedId == null) stringResource(R.string.save_and_connect) else stringResource(R.string.connect)) },
+                                        leadingIcon = { Icon(Icons.Filled.Terminal, null) },
+                                        enabled = state.canSave,
+                                        onClick = { menu = false; saveThen(onConnect) },
+                                    )
+                                }
+                                if (draft.webdav != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (savedId == null) stringResource(R.string.save_and_open_webdav) else stringResource(R.string.webdav_files)) },
+                                        leadingIcon = { Icon(Icons.Filled.CloudQueue, null) },
+                                        enabled = state.canSave,
+                                        onClick = { menu = false; saveThen(onWebdav) },
+                                    )
+                                }
                                 if (draft.ssh) {
                                     DropdownMenuItem(
                                         text = { Text(if (savedId == null) stringResource(R.string.save_and_open_sftp) else "SFTP") },
@@ -239,13 +252,15 @@ fun HostEditorScreen(
     }
 }
 
-/** `ssh://user@host[:port]` from the form as it stands (Telnet-only hosts give `telnet://`). */
+/** `ssh://user@host[:port]` from the form as it stands (Telnet-only hosts give `telnet://`, WebDAV-only the share URL). */
 fun draftLink(d: HostDraft): String {
     val telnet = d.telnet
-    return if (d.ssh || telnet == null) {
-        hostLink("ssh", d.username, d.address.trim(), d.port?.toInt() ?: 22)
-    } else {
-        hostLink("telnet", "", d.address.trim(), telnet.port?.toInt() ?: 23)
+    val webdav = d.webdav
+    return when {
+        d.ssh -> hostLink("ssh", d.username, d.address.trim(), d.port?.toInt() ?: 22)
+        telnet != null -> hostLink("telnet", "", d.address.trim(), telnet.port?.toInt() ?: 23)
+        webdav != null -> webdav.url.trim()
+        else -> hostLink("ssh", d.username, d.address.trim(), d.port?.toInt() ?: 22)
     }
 }
 
@@ -284,6 +299,7 @@ private fun HostForm(
                     draft.address,
                     { v -> vm.update { it.copy(address = v) } },
                     stringResource(R.string.hostname_or_ip_address),
+                    placeholder = if (webdavOnly(draft)) stringResource(R.string.taken_from_the_webdav_url) else null,
                     keyboard = KeyboardType.Uri,
                 )
             }
@@ -302,13 +318,15 @@ private fun HostForm(
         }
 
         val telnet = draft.telnet
+        val webdav = draft.webdav
+        val sections = (if (draft.ssh) 1 else 0) + (if (telnet != null) 1 else 0) + (if (webdav != null) 1 else 0)
         if (draft.ssh) {
-            ProtocolHeader("SSH", removable = telnet != null) { vm.update { it.copy(ssh = false) } }
+            ProtocolHeader("SSH", removable = sections > 1) { vm.update { it.copy(ssh = false) } }
             SshSection(state, draft, vm, inherited, identity)
         }
 
         if (telnet != null) {
-            ProtocolHeader("Telnet", removable = draft.ssh) { vm.update { it.copy(telnet = null) } }
+            ProtocolHeader("Telnet", removable = sections > 1) { vm.update { it.copy(telnet = null) } }
             SectionCard {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     FormField(
@@ -334,7 +352,41 @@ private fun HostForm(
             }
         }
 
-        if (!draft.ssh || telnet == null) {
+        if (webdav != null) {
+            ProtocolHeader("WebDAV", removable = sections > 1) { vm.update { it.copy(webdav = null) } }
+            SectionCard {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    FormField(
+                        webdav.url,
+                        { v -> vm.updateWebdav { it.copy(url = v) } },
+                        stringResource(R.string.webdav_url),
+                        placeholder = "https://cloud.example.com/remote.php/dav/files/user/",
+                        keyboard = KeyboardType.Uri,
+                    )
+                    FormField(webdav.username, { v -> vm.updateWebdav { it.copy(username = v) } }, stringResource(R.string.username))
+                    PasswordField(
+                        password = webdav.password,
+                        hasPassword = webdav.hasPassword,
+                        inheritedHint = false,
+                        onChange = { v -> vm.updateWebdav { it.copy(password = v) } },
+                    )
+                    FormField(
+                        webdav.certificateFingerprint ?: "",
+                        { v -> vm.updateWebdav { it.copy(certificateFingerprint = v.ifBlank { null }) } },
+                        stringResource(R.string.certificate_fingerprint_sha_256),
+                        placeholder = stringResource(R.string.system_trust_roots),
+                        keyboard = KeyboardType.Ascii,
+                    )
+                    Text(
+                        stringResource(R.string.webdav_credentials_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        if (!draft.ssh || telnet == null || webdav == null) {
             Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!draft.ssh) {
                     TextButton(onClick = { vm.update { it.copy(ssh = true) } }) {
@@ -346,6 +398,12 @@ private fun HostForm(
                     TextButton(onClick = { vm.update { it.copy(telnet = TelnetDraft(port = null, username = "", password = null, identityId = null, hasPassword = false)) } }) {
                         Icon(Icons.Filled.Add, contentDescription = null)
                         Text(stringResource(R.string.add_telnet))
+                    }
+                }
+                if (webdav == null) {
+                    TextButton(onClick = { vm.update { it.copy(webdav = WebDavDraft(url = "", username = "", password = null, identityId = null, certificateFingerprint = null, hasPassword = false)) } }) {
+                        Icon(Icons.Filled.Add, contentDescription = null)
+                        Text(stringResource(R.string.add_webdav))
                     }
                 }
             }
@@ -544,6 +602,8 @@ private fun StartupSnippetRow(state: HostEditorState, draft: HostDraft, onPick: 
         empty = null,
     )
 }
+
+private fun webdavOnly(d: HostDraft) = !d.ssh && d.telnet == null && d.webdav != null
 
 private fun hasAdvanced(d: HostDraft) =
     d.envVariables.isNotEmpty() || d.keepAliveInterval != null || d.timeout != null || d.notes.isNotBlank() || d.ipVersion != "auto"

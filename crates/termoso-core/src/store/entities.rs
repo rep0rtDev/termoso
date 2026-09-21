@@ -14,7 +14,7 @@ use super::{LocalVault, Store, parse_time, parse_uuid};
 use crate::error::{CoreError, Result};
 use crate::model::{
     AnyEntity, Entity, Group, Host, Identity, Payload, Proxy, ResolvedHost, SerialConfig,
-    SshCertificate, SshConfig, SshKey, Tag, TagHost, TelnetConfig,
+    SshCertificate, SshConfig, SshKey, Tag, TagHost, TelnetConfig, WebDavConfig,
 };
 
 /// Raw local row (ciphertext), as the sync engine sees it.
@@ -589,6 +589,15 @@ impl Store {
             _ => None,
         };
 
+        let webdav = match host.data.webdav_config_id {
+            Some(cid) => self.get::<WebDavConfig>(cid)?.map(|c| c.data),
+            None => None,
+        };
+        let webdav_identity = match webdav.as_ref().and_then(|w| w.identity_id) {
+            Some(id) => self.get::<Identity>(id)?,
+            None => None,
+        };
+
         let identity_id = ssh.identity_id.or_else(|| {
             if host.data.ssh_config_id.is_none() {
                 telnet.as_ref().and_then(|t| t.identity_id)
@@ -666,6 +675,8 @@ impl Store {
             chain,
             telnet,
             serial,
+            webdav,
+            webdav_identity,
             group_path,
             tags,
         })

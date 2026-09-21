@@ -18,6 +18,7 @@ pub const KINDS: &[&str] = &[
     "host",
     "ssh_config",
     "telnet_config",
+    "webdav_config",
     "serial_config",
     "identity",
     "ssh_key",
@@ -143,6 +144,9 @@ pub mod payload {
             /// Telnet settings.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub telnet_config_id: Option<Uuid>,
+            /// WebDAV settings (a file share on this host).
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub webdav_config_id: Option<Uuid>,
             /// Serial settings (local hosts).
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub serial_config_id: Option<Uuid>,
@@ -255,6 +259,23 @@ pub mod payload {
             /// Color scheme.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub color_scheme: Option<String>,
+        }
+    }
+
+    schema! {
+        /// WebDAV share settings. Credentials live in the referenced identity
+        /// (username + password; keys do not apply).
+        #[derive(Default, PartialEq, Eq)]
+        pub struct WebDavConfig {
+            /// Base URL of the share, e.g. `https://cloud.example.com/remote.php/dav/files/alice/`.
+            pub url: String,
+            /// Identity.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub identity_id: Option<Uuid>,
+            /// SHA-256 fingerprint (`aa:bb:…`) of a self-signed or private-CA
+            /// server certificate the user chose to trust; `None` = system roots.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub certificate_fingerprint: Option<String>,
         }
     }
 

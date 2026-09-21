@@ -322,6 +322,8 @@ export interface HostCard {
   port: number;
   /** Effective Telnet port when the host also has a Telnet section. */
   telnetPort: number | null;
+  /** Collection URL when the host has a WebDAV section. */
+  webdavUrl: string | null;
   /** The SSH section connects over Mosh by default. */
   useMosh: boolean;
   tags: string[];
@@ -369,6 +371,8 @@ export interface HostForm {
   proxyId: Uuid | null;
   /** Telnet section, when the host is also (or only) reachable over Telnet. */
   telnet: TelnetForm | null;
+  /** WebDAV section: a file share browsed from Files, next to or instead of SSH. */
+  webdav: WebDavForm | null;
   envVariables: [string, string][];
   keepAliveInterval: number | null;
   timeout: number | null;
@@ -402,14 +406,41 @@ export function emptyTelnetForm(): TelnetForm {
   };
 }
 
-export type HostProtocol = "ssh" | "telnet";
+export interface WebDavForm {
+  url: string;
+  username: string;
+  /** null keeps the stored password when editing; "" clears it. */
+  password: string | null;
+  identityId: Uuid | null;
+  /** Pinned SHA-256 of the server certificate (self-signed / private CA). */
+  certificateFingerprint: string | null;
+  hasPassword: boolean;
+}
+
+export function emptyWebDavForm(): WebDavForm {
+  return {
+    url: "",
+    username: "",
+    password: null,
+    identityId: null,
+    certificateFingerprint: null,
+    hasPassword: false,
+  };
+}
+
+/** Protocol of a host section. `webdav` is a file share, not a terminal. */
+export type HostProtocol = "ssh" | "telnet" | "webdav";
+
+/** Terminal protocols. */
+export type TerminalProtocol = "ssh" | "telnet";
 
 /** What `Connect ▸` offers: the sections plus Mosh, which rides on the SSH one. */
-export type ConnectProtocol = HostProtocol | "mosh";
+export type ConnectProtocol = TerminalProtocol | "mosh";
 
-/** Protocols a saved host can be opened with. */
-export function hostProtocols(h: Pick<HostCard, "protocol" | "telnetPort">): HostProtocol[] {
+/** Terminal protocols a saved host can be opened with (empty for WebDAV-only hosts). */
+export function hostProtocols(h: Pick<HostCard, "protocol" | "telnetPort">): TerminalProtocol[] {
   if (h.protocol === "telnet") return ["telnet"];
+  if (h.protocol === "webdav") return [];
   return h.telnetPort === null ? ["ssh"] : ["ssh", "telnet"];
 }
 
@@ -418,6 +449,16 @@ export function connectProtocols(
   h: Pick<HostCard, "protocol" | "telnetPort" | "useMosh">,
 ): ConnectProtocol[] {
   return hostProtocols(h).flatMap((p) => (p === "ssh" && h.useMosh ? ["ssh", "mosh"] : [p]));
+}
+
+/** The host has an SSH section (so SFTP and port forwarding apply). */
+export function hasSsh(h: Pick<HostCard, "protocol">): boolean {
+  return h.protocol === "ssh";
+}
+
+/** The host has a WebDAV section browsable from Files. */
+export function hasWebDav(h: Pick<HostCard, "protocol" | "webdavUrl">): boolean {
+  return h.protocol === "webdav" || h.webdavUrl !== null;
 }
 
 export type IpVersion = "auto" | "4" | "6";
@@ -518,6 +559,7 @@ export function emptyHostForm(vaultId: Uuid, groupId: Uuid | null): HostForm {
     hostChainId: null,
     proxyId: null,
     telnet: null,
+    webdav: null,
     envVariables: [],
     keepAliveInterval: null,
     timeout: null,
@@ -1661,6 +1703,7 @@ export interface Question {
 
 export type PromptRequest =
   | { kind: "host_key"; verdict: HostKeyVerdict }
+  | { kind: "certificate"; host: string; fingerprint: string }
   | { kind: "password"; username: string; retry: boolean }
   | { kind: "passphrase"; key_label: string }
   | { kind: "pin"; key_label: string; retry: boolean; retries: number | null }
@@ -1707,13 +1750,37 @@ export interface Listing {
   entries: FsEntry[];
 }
 
-export type SftpTarget = { kind: "host"; host_id: Uuid } | { kind: "session"; session_id: Uuid };
+export type SftpTarget =
+  | { kind: "host"; host_id: Uuid }
+  | { kind: "session"; session_id: Uuid }
+  | { kind: "webdav"; host_id: Uuid };
+
+export type RemoteProtocol = "sftp" | "webdav";
+
+/** What the remote side supports; the panel hides controls it cannot honour. */
+export interface RemoteCapabilities {
+  permissions: boolean;
+  symlinks: boolean;
+  ownership: boolean;
+  serverCopy: boolean;
+  resumeUpload: boolean;
+}
+
+export const SFTP_CAPABILITIES: RemoteCapabilities = {
+  permissions: true,
+  symlinks: true,
+  ownership: true,
+  serverCopy: false,
+  resumeUpload: true,
+};
 
 export interface SftpInfo {
   id: Uuid;
   title: string;
   target: string;
   hostId: Uuid | null;
+  protocol: RemoteProtocol;
+  capabilities: RemoteCapabilities;
   home: string;
   startedAt: string;
 }

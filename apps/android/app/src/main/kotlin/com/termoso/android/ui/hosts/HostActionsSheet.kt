@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -47,18 +48,25 @@ import com.termoso.android.ui.terminal.copyToClipboard
 import com.termoso.core.HostItem
 import com.termoso.core.Transport
 
-/** `user@address` plus protocol/port when they are not the SSH defaults, with Mosh/Telnet flags. */
+/** `user@address` plus protocol/port when they are not the SSH defaults, with Mosh/Telnet/WebDAV flags. */
 fun hostSubtitle(h: HostItem): String {
     val target = if (h.username.isNotBlank()) "${h.username}@${h.address}" else h.address
     val ssh = h.protocol.equals("ssh", true)
-    val base = if (ssh && h.port == 22.toUShort()) target else "$target · ${h.protocol.uppercase()} ${h.port}"
+    val webdavOnly = h.protocol.equals("webdav", true)
+    val base = when {
+        webdavOnly -> "$target · WebDAV"
+        ssh && h.port == 22.toUShort() -> target
+        else -> "$target · ${h.protocol.uppercase()} ${h.port}"
+    }
     val mosh = if (ssh && h.useMosh) " · Mosh" else ""
     val telnet = if (ssh && h.telnetPort != null) " · Telnet" else ""
-    return base + mosh + telnet
+    val webdav = if (!webdavOnly && h.webdavUrl != null) " · WebDAV" else ""
+    return base + mosh + telnet + webdav
 }
 
-/** `ssh://user@host[:port]` (or `telnet://…`) for the clipboard; the default port is left out. */
-fun hostLink(h: HostItem): String = hostLink(h.protocol, h.username, h.address, h.port.toInt())
+/** `ssh://user@host[:port]` (or `telnet://…`; the share URL for WebDAV-only hosts) for the clipboard; the default port is left out. */
+fun hostLink(h: HostItem): String =
+    if (h.protocol.equals("webdav", true)) h.webdavUrl ?: h.address else hostLink(h.protocol, h.username, h.address, h.port.toInt())
 
 fun hostLink(protocol: String, username: String, address: String, port: Int): String {
     val ssh = protocol.equals("ssh", true)
@@ -86,6 +94,7 @@ fun HostActionsSheet(
     canCopyToVault: Boolean,
     onConnect: (Transport) -> Unit,
     onSftp: () -> Unit,
+    onWebdav: () -> Unit,
     onOpenSftp: (String) -> Unit,
     onOpenTerminal: () -> Unit,
     onForward: () -> Unit,
@@ -105,6 +114,8 @@ fun HostActionsSheet(
     val open = sessions.size + sftp.size
     val ssh = host.protocol.equals("ssh", true)
     val telnet = ssh && host.telnetPort != null
+    val webdav = host.webdavUrl != null
+    val terminal = !host.protocol.equals("webdav", true)
 
     fun then(action: () -> Unit): () -> Unit = { onClose(); action() }
 
@@ -171,7 +182,9 @@ fun HostActionsSheet(
 
             SectionLabel(stringResource(R.string.connect))
             SectionCard {
-                ActionRow(Icons.Filled.Terminal, if (ssh) stringResource(R.string.connect) else stringResource(R.string.connect_with_telnet), onClick = then { onConnect(Transport.AUTO) })
+                if (terminal) {
+                    ActionRow(Icons.Filled.Terminal, if (ssh) stringResource(R.string.connect) else stringResource(R.string.connect_with_telnet), onClick = then { onConnect(Transport.AUTO) })
+                }
                 if (ssh) {
                     RowDivider()
                     ActionRow(Icons.Filled.Bolt, stringResource(R.string.connect_with_mosh), onClick = then { onConnect(Transport.MOSH) })
@@ -181,6 +194,12 @@ fun HostActionsSheet(
                     }
                     RowDivider()
                     ActionRow(Icons.Filled.FolderOpen, "SFTP", onClick = then(onSftp))
+                }
+                if (webdav) {
+                    if (terminal) RowDivider()
+                    ActionRow(Icons.Filled.CloudQueue, stringResource(R.string.webdav_files), onClick = then(onWebdav))
+                }
+                if (ssh) {
                     RowDivider()
                     ActionRow(Icons.Filled.SwapHoriz, stringResource(R.string.port_forwarding_2), onClick = then(onForward))
                 }

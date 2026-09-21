@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use termoso_core::model::{
     Entity, Group, Host, HostChain, HostSnippet, Identity, Proxy, SerialConfig, Snippet,
-    SshCertificate, SshConfig, SshKey, Tag, TelnetConfig,
+    SshCertificate, SshConfig, SshKey, Tag, TelnetConfig, WebDavConfig,
 };
 use termoso_core::store::Store;
 use termoso_proto::sshid::SshIdKeyType;
@@ -28,14 +28,17 @@ pub struct HostCard {
     pub address: String,
     pub group_id: Option<Uuid>,
     pub group_path: Vec<String>,
-    /// Primary protocol, `ssh` unless the host is Telnet-only.
+    /// Primary protocol: `ssh`, or `telnet` / `webdav` when the host has no
+    /// SSH section.
     pub protocol: String,
-    /// Effective SSH (or, for Telnet-only hosts, Telnet) username.
+    /// Effective username of the primary protocol.
     pub username: String,
     /// Effective port of the primary protocol.
     pub port: u16,
     /// Effective Telnet port when the host also has a Telnet configuration.
     pub telnet_port: Option<u16>,
+    /// Base URL of the host's WebDAV share, when it has one.
+    pub webdav_url: Option<String>,
     /// The SSH section connects over Mosh by default.
     pub use_mosh: bool,
     pub tags: Vec<String>,
@@ -106,6 +109,9 @@ pub struct HostForm {
     /// Telnet section, when the host is also (or only) reachable over Telnet.
     #[serde(default)]
     pub telnet: Option<TelnetForm>,
+    /// WebDAV section, when the host exposes a file share over HTTP(S).
+    #[serde(default)]
+    pub webdav: Option<WebDavForm>,
     #[serde(default)]
     pub env_variables: Vec<(String, String)>,
     #[serde(default)]
@@ -143,6 +149,28 @@ pub struct TelnetForm {
     pub identity_id: Option<Uuid>,
     #[serde(default)]
     pub color_scheme: Option<String>,
+    #[serde(default)]
+    pub has_password: bool,
+}
+
+/// WebDAV section of the host editor: share URL, login and the certificate
+/// the user chose to trust.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebDavForm {
+    /// Base URL of the share (`https://…/remote.php/dav/files/alice/`).
+    pub url: String,
+    #[serde(default)]
+    pub username: String,
+    /// `None` keeps the stored password when editing; `Some("")` clears it.
+    #[serde(default)]
+    pub password: Option<String>,
+    /// Reference an existing (visible) identity instead of the inline one.
+    #[serde(default)]
+    pub identity_id: Option<Uuid>,
+    /// Pinned SHA-256 fingerprint of a self-signed server certificate.
+    #[serde(default)]
+    pub certificate_fingerprint: Option<String>,
     #[serde(default)]
     pub has_password: bool,
 }
@@ -217,6 +245,29 @@ fn clean_scheme(scheme: &Option<String>) -> Option<String> {
 /// Telnet is the primary protocol only when the host has no SSH section.
 fn is_telnet_only(h: &Host) -> bool {
     h.telnet_config_id.is_some() && h.ssh_config_id.is_none()
+}
+
+/// WebDAV is the primary protocol only when the host has neither SSH nor
+/// Telnet.
+fn is_webdav_only(h: &Host) -> bool {
+    h.webdav_config_id.is_some() && h.ssh_config_id.is_none() && h.telnet_config_id.is_none()
+}
+
+/// Validate and normalise a WebDAV share URL (scheme, host, trailing slash).
+fn clean_webdav_url(url: &str) -> Result<String> {
+    termoso_core::webdav::normalize_url(url.trim())
+        .map(|u| u.to_string())
+        .map_err(|e| ClientError::invalid(format!("WebDAV URL: {e}")))
+}
+
+/// `aa:bb:…` fingerprint the form may enter with or without separators.
+fn clean_fingerprint(fp: &Option<String>) -> Result<Option<String>> {
+    let Some(raw) = fp.as_deref().map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    termoso_core::webdav::normalize_fingerprint(raw)
+        .map(Some)
+        .map_err(|e| ClientError::invalid(format!("certificate fingerprint: {e}")))
 }
 
 /// Hidden inline identity flattened into a form section.
@@ -373,13 +424,35 @@ pub fn cards(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<HostCard>> {
     for h in hosts {
         let r = store.resolve_host(h.id)?;
         let telnet_only = is_telnet_only(&h.data);
+        let webdav_only = is_webdav_only(&h.data);
         let telnet_port = r.telnet.as_ref().map(|t| t.port.unwrap_or(23));
+        let webdav_url = r.webdav.as_ref().map(|w| w.url.clone());
         let port = if telnet_only {
             telnet_port.unwrap_or(23)
+        } else if webdav_only {
+            webdav_url
+                .as_deref()
+                .and_then(|u| url::Url::parse(u).ok())
+                .and_then(|u| u.port_or_known_default())
+                .unwrap_or(443)
         } else {
             r.port()
         };
-        let username = r.username();
+        let username = if webdav_only {
+            r.webdav_identity
+                .as_ref()
+                .map(|i| i.data.username.clone())
+                .unwrap_or_default()
+        } else {
+            r.username()
+        };
+        let protocol = if telnet_only {
+            "telnet"
+        } else if webdav_only {
+            "webdav"
+        } else {
+            "ssh"
+        };
         out.push(HostCard {
             id: h.id,
             vault_id: h.vault_id,
@@ -387,11 +460,12 @@ pub fn cards(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<HostCard>> {
             address: h.data.address.clone(),
             group_id: h.data.group_id,
             group_path: r.group_path,
-            protocol: if telnet_only { "telnet" } else { "ssh" }.to_string(),
+            protocol: protocol.to_string(),
             username,
             port,
             telnet_port,
-            use_mosh: !telnet_only && r.ssh.use_mosh,
+            webdav_url,
+            use_mosh: protocol == "ssh" && r.ssh.use_mosh,
             tags: r.tags,
             os_name: h.data.os_name.clone(),
             icon: h.data.icon.clone(),
@@ -585,7 +659,25 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
         Some(c) => store.get::<TelnetConfig>(c)?.map(|e| e.data),
         None => None,
     };
+    let webdav_cfg = match host.data.webdav_config_id {
+        Some(c) => store.get::<WebDavConfig>(c)?.map(|e| e.data),
+        None => None,
+    };
     let ssh_login = flatten_identity(store, ssh.as_ref().and_then(|s| s.identity_id))?;
+    let webdav = match &webdav_cfg {
+        Some(w) => {
+            let login = flatten_identity(store, w.identity_id)?;
+            Some(WebDavForm {
+                url: w.url.clone(),
+                username: login.username,
+                password: None,
+                identity_id: login.identity_id,
+                certificate_fingerprint: w.certificate_fingerprint.clone(),
+                has_password: login.has_password,
+            })
+        }
+        None => None,
+    };
     let telnet = match &telnet_cfg {
         Some(t) => {
             let login = flatten_identity(store, t.identity_id)?;
@@ -607,7 +699,7 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
         address: host.data.address,
         group_id: host.data.group_id,
         // Hosts without any section (legacy rows) edit as SSH.
-        ssh: ssh.is_some() || telnet_cfg.is_none(),
+        ssh: ssh.is_some() || (telnet_cfg.is_none() && webdav_cfg.is_none()),
         port: ssh.as_ref().and_then(|s| s.port),
         username: ssh_login.username,
         password: None,
@@ -628,6 +720,7 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
         host_chain_id: ssh.as_ref().and_then(|s| s.host_chain_id),
         proxy_id: ssh.as_ref().and_then(|s| s.proxy_id),
         telnet,
+        webdav,
         env_variables: ssh
             .as_ref()
             .map(|s| s.env_variables.clone())
@@ -650,18 +743,31 @@ fn inline_identity_of(
     })
 }
 
-/// Create or update a host with its inline ssh_config / telnet_config and
-/// their hidden identities.
+/// Create or update a host with its inline ssh_config / telnet_config /
+/// webdav_config and their hidden identities.
 pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
     let label = f.label.trim();
-    let address = f.address.trim();
+    if !f.ssh && f.telnet.is_none() && f.webdav.is_none() {
+        return Err(ClientError::invalid(
+            "a host needs an SSH, Telnet or WebDAV section",
+        ));
+    }
+    let webdav_url = match &f.webdav {
+        Some(w) => Some(clean_webdav_url(&w.url)?),
+        None => None,
+    };
+    // A WebDAV-only host may leave the address empty: it is the share's host.
+    let derived_address = webdav_url
+        .as_deref()
+        .filter(|_| !f.ssh && f.telnet.is_none())
+        .and_then(|u| url::Url::parse(u).ok())
+        .and_then(|u| u.host_str().map(str::to_string));
+    let address = match f.address.trim() {
+        "" => derived_address.as_deref().unwrap_or_default(),
+        a => a,
+    };
     if address.is_empty() {
         return Err(ClientError::invalid("address is required"));
-    }
-    if !f.ssh && f.telnet.is_none() {
-        return Err(ClientError::invalid(
-            "a host needs an SSH or a Telnet section",
-        ));
     }
     if let Some(gid) = f.group_id {
         let g = store.require::<Group>(gid)?;
@@ -690,6 +796,14 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
     let telnet_inline_identity = inline_identity_of(
         store,
         existing_telnet.as_ref().and_then(|t| t.data.identity_id),
+    )?;
+    let existing_webdav = match existing.as_ref().and_then(|h| h.data.webdav_config_id) {
+        Some(c) => store.get::<WebDavConfig>(c)?,
+        None => None,
+    };
+    let webdav_inline_identity = inline_identity_of(
+        store,
+        existing_webdav.as_ref().and_then(|w| w.data.identity_id),
     )?;
     // Serial consoles are no longer saved hosts; drop a leftover config.
     if let Some(cid) = existing.as_ref().and_then(|h| h.data.serial_config_id)
@@ -792,6 +906,46 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
         None
     };
 
+    let webdav_config_id = if let (Some(wf), Some(url)) = (&f.webdav, webdav_url) {
+        let identity_id = upsert_identity(
+            store,
+            f.vault_id,
+            webdav_inline_identity.as_ref(),
+            &Credentials {
+                identity_id: wf.identity_id,
+                username: &wf.username,
+                password: wf.password.as_deref(),
+                ssh_key_id: None,
+                ssh_certificate_id: None,
+                ssh_id: false,
+                ssh_id_key_type: None,
+                label: identity_label,
+            },
+        )?;
+        let w = WebDavConfig {
+            url,
+            identity_id,
+            certificate_fingerprint: clean_fingerprint(&wf.certificate_fingerprint)?,
+        };
+        Some(match &existing_webdav {
+            Some(e) => {
+                if e.data != w {
+                    store.update(e.id, &w)?;
+                }
+                e.id
+            }
+            None => store.insert(f.vault_id, &w)?,
+        })
+    } else {
+        if let Some(i) = &webdav_inline_identity {
+            store.delete(i.id)?;
+        }
+        if let Some(e) = &existing_webdav {
+            store.delete(e.id)?;
+        }
+        None
+    };
+
     let mut host = existing
         .as_ref()
         .map(|e| e.data.clone())
@@ -805,6 +959,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
     host.group_id = f.group_id;
     host.ssh_config_id = ssh_config_id;
     host.telnet_config_id = telnet_config_id;
+    host.webdav_config_id = webdav_config_id;
     host.serial_config_id = None;
     host.tag_ids = f.tag_ids.clone();
     host.notes = f.notes.clone();
@@ -847,6 +1002,12 @@ pub fn delete(store: &Store, id: Uuid) -> Result<()> {
     }
     if let Some(cid) = host.data.telnet_config_id
         && let Some(cfg) = store.get::<TelnetConfig>(cid)?
+    {
+        identity_refs.extend(cfg.data.identity_id);
+        store.delete(cfg.id)?;
+    }
+    if let Some(cid) = host.data.webdav_config_id
+        && let Some(cfg) = store.get::<WebDavConfig>(cid)?
     {
         identity_refs.extend(cfg.data.identity_id);
         store.delete(cfg.id)?;
@@ -1395,6 +1556,10 @@ fn copy_host_with(
         Some(c) => store.get::<TelnetConfig>(c)?.map(|e| e.data),
         None => None,
     };
+    let webdav = match src.data.webdav_config_id {
+        Some(c) => store.get::<WebDavConfig>(c)?.map(|e| e.data),
+        None => None,
+    };
     if let Some(i) = load_identity(store, ssh.as_ref().and_then(|s| s.identity_id))? {
         if i.data.is_visible && i.vault_id == vault_id {
             f.identity_id = Some(i.id);
@@ -1425,6 +1590,17 @@ fn copy_host_with(
             tf.password = i.data.password.clone();
         }
     }
+    if let Some(wf) = f.webdav.as_mut()
+        && let Some(i) = load_identity(store, webdav.as_ref().and_then(|w| w.identity_id))?
+    {
+        if i.data.is_visible && i.vault_id == vault_id {
+            wf.identity_id = Some(i.id);
+        } else {
+            wf.identity_id = None;
+            wf.username = i.data.username.clone();
+            wf.password = i.data.password.clone();
+        }
+    }
     if creds == CopyCredentials::Personal {
         f.username = String::new();
         f.password = None;
@@ -1436,6 +1612,11 @@ fn copy_host_with(
             tf.username = String::new();
             tf.password = None;
             tf.identity_id = None;
+        }
+        if let Some(wf) = f.webdav.as_mut() {
+            wf.username = String::new();
+            wf.password = None;
+            wf.identity_id = None;
         }
     }
     if !same_vault {
@@ -1637,6 +1818,7 @@ mod tests {
             host_chain_id: None,
             proxy_id: None,
             telnet: None,
+            webdav: None,
             env_variables: vec![],
             keep_alive_interval: None,
             timeout: None,
@@ -1816,6 +1998,133 @@ mod tests {
         delete(&s, card.id).unwrap();
         let telnets: Vec<Entity<TelnetConfig>> = s.list(Some(vault)).unwrap();
         assert!(telnets.is_empty());
+    }
+
+    #[test]
+    fn webdav_section_lives_next_to_ssh() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let mut f = new_form(vault);
+        f.webdav = Some(WebDavForm {
+            url: "cloud.example.com/remote.php/dav/files/alice".into(),
+            username: "alice".into(),
+            password: Some("dav".into()),
+            certificate_fingerprint: Some(
+                "D6DCE0382A45B8F81F063B705DA84C3C232FEA47D23B6FD02B5A9ACD33F73D8A".into(),
+            ),
+            ..WebDavForm::default()
+        });
+        let card = save(&s, &f).unwrap();
+        assert_eq!(card.protocol, "ssh");
+        assert_eq!(card.username, "deploy");
+        assert_eq!(
+            card.webdav_url.as_deref(),
+            Some("https://cloud.example.com/remote.php/dav/files/alice/")
+        );
+        let identities: Vec<Entity<Identity>> = s.list(Some(vault)).unwrap();
+        assert_eq!(identities.len(), 2, "one hidden identity per section");
+
+        let f = form(&s, card.id).unwrap();
+        let w = f.webdav.clone().expect("webdav section");
+        assert_eq!(w.username, "alice");
+        assert!(w.has_password);
+        assert!(w.password.is_none());
+        assert_eq!(
+            w.certificate_fingerprint.as_deref(),
+            Some(
+                "d6:dc:e0:38:2a:45:b8:f8:1f:06:3b:70:5d:a8:4c:3c:23:2f:ea:47:d2:3b:6f:d0:2b:5a:9a:cd:33:f7:3d:8a"
+            )
+        );
+        let r = s.resolve_host(card.id).unwrap();
+        assert_eq!(r.protocol(), "ssh");
+        assert_eq!(
+            r.webdav_identity.as_ref().unwrap().data.password.as_deref(),
+            Some("dav")
+        );
+
+        // Removing the section drops its config and hidden identity.
+        let mut f = f;
+        f.webdav = None;
+        let card = save(&s, &f).unwrap();
+        assert_eq!(card.webdav_url, None);
+        let davs: Vec<Entity<WebDavConfig>> = s.list(Some(vault)).unwrap();
+        assert!(davs.is_empty());
+        let identities: Vec<Entity<Identity>> = s.list(Some(vault)).unwrap();
+        assert_eq!(identities.len(), 1);
+    }
+
+    #[test]
+    fn webdav_only_hosts_take_the_address_from_the_url() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let mut f = new_form(vault);
+        f.ssh = false;
+        f.address = String::new();
+        f.webdav = Some(WebDavForm {
+            url: "http://nas.local:8080/dav".into(),
+            username: "nas".into(),
+            ..WebDavForm::default()
+        });
+        let card = save(&s, &f).unwrap();
+        assert_eq!(card.protocol, "webdav");
+        assert_eq!(card.address, "nas.local");
+        assert_eq!(card.port, 8080);
+        assert_eq!(card.username, "nas");
+        assert!(!card.use_mosh);
+        let identities: Vec<Entity<Identity>> = s.list(Some(vault)).unwrap();
+        assert_eq!(identities.len(), 1, "the SSH login is not kept");
+        let r = s.resolve_host(card.id).unwrap();
+        assert_eq!(r.protocol(), "webdav");
+
+        let mut f = form(&s, card.id).unwrap();
+        assert!(!f.ssh);
+        assert!(f.telnet.is_none());
+        let mut bad = f.clone();
+        bad.webdav.as_mut().unwrap().url = "ftp://nas.local/".into();
+        assert!(save(&s, &bad).is_err());
+        bad.webdav.as_mut().unwrap().url = "https://nas.local/".into();
+        bad.webdav.as_mut().unwrap().certificate_fingerprint = Some("zz".into());
+        assert!(save(&s, &bad).is_err());
+
+        // Adding SSH back makes it the primary protocol again.
+        f.ssh = true;
+        f.username = "deploy".into();
+        let card = save(&s, &f).unwrap();
+        assert_eq!(card.protocol, "ssh");
+        assert_eq!(card.port, 22);
+        assert!(card.webdav_url.is_some());
+
+        delete(&s, card.id).unwrap();
+        let davs: Vec<Entity<WebDavConfig>> = s.list(Some(vault)).unwrap();
+        assert!(davs.is_empty());
+        let identities: Vec<Entity<Identity>> = s.list(Some(vault)).unwrap();
+        assert!(identities.is_empty());
+    }
+
+    #[test]
+    fn duplicate_keeps_webdav_credentials() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let mut f = new_form(vault);
+        f.webdav = Some(WebDavForm {
+            url: "https://cloud.example.com/dav/".into(),
+            username: "alice".into(),
+            password: Some("dav".into()),
+            ..WebDavForm::default()
+        });
+        let card = save(&s, &f).unwrap();
+        let copy = duplicate(&s, card.id).unwrap();
+        assert_ne!(copy.id, card.id);
+        let r = s.resolve_host(copy.id).unwrap();
+        let w = r.webdav.expect("webdav travels");
+        assert_eq!(w.url, "https://cloud.example.com/dav/");
+        let i = r.webdav_identity.expect("identity travels");
+        assert_eq!(i.data.username, "alice");
+        assert_eq!(i.data.password.as_deref(), Some("dav"));
+        assert_ne!(
+            i.id,
+            s.resolve_host(card.id).unwrap().webdav_identity.unwrap().id
+        );
     }
 
     #[test]

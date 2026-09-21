@@ -879,6 +879,7 @@ pub fn apply(
                 password,
                 ..TelnetForm::default()
             }),
+            webdav: None,
             env_variables: h.env_variables.clone(),
             keep_alive_interval: h.keep_alive_interval,
             timeout: h.timeout,
@@ -1251,6 +1252,7 @@ fn build_chain(
                     host_chain_id: None,
                     proxy_id: None,
                     telnet: None,
+                    webdav: None,
                     env_variables: Vec::new(),
                     keep_alive_interval: None,
                     timeout: None,

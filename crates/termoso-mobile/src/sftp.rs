@@ -1,19 +1,23 @@
-//! SFTP over the shared connection path: one [`SftpSession`] per remote,
-//! synchronous directory operations (the caller runs them off the main
-//! thread) and background transfers that report through [`SftpListener`].
+//! Remote file systems — SFTP over the shared SSH connection path, WebDAV
+//! over HTTP(S) — behind one [`SftpSession`] per remote: synchronous
+//! directory operations (the caller runs them off the main thread) and
+//! background transfers that report through [`SftpListener`]. The name
+//! predates WebDAV; the API is protocol-neutral, see [`SftpSession::protocol`]
+//! and [`SftpSession::capabilities`].
 //!
 //! Local paths are plain files Kotlin owns (its cache directory); moving
 //! bytes between those and SAF documents is Kotlin's job. Rust never sees
 //! content URIs.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use termoso_core::model::ResolvedHost;
+use termoso_core::remote::{RemoteFile, RemoteFs};
 use termoso_core::sftp::{
-    self, OpenMode, Progress, ProgressFn, RemoteEntry, RemoteFile, Sftp, TransferOptions,
+    self, OpenMode, Progress, ProgressFn, RemoteEntry, Sftp, TransferOptions,
 };
 use termoso_core::ssh::{SshClient, SshTarget};
 use termoso_core::store::{ConnectionHistory, Store};
@@ -25,6 +29,7 @@ use crate::error::{MobileError, Result};
 use crate::presence::Slot;
 use crate::session::SessionState;
 use crate::settings::MobileSettings;
+use crate::webdav::connect_webdav;
 
 /// Progress callbacks are coalesced to this rate; the final one always goes out.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(120);
@@ -50,6 +55,39 @@ impl From<sftp::EntryKind> for EntryKind {
     }
 }
 
+/// Wire protocol behind a [`SftpSession`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FileProtocol {
+    Sftp,
+    Webdav,
+}
+
+impl FileProtocol {
+    /// Lowercase wire name, as stored in connection history and presence.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sftp => "sftp",
+            Self::Webdav => "webdav",
+        }
+    }
+}
+
+/// What the protocol can do beyond listing and transfers; the UI hides the
+/// controls for anything `false`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct FileCapabilities {
+    /// `chmod` works and entries carry a mode.
+    pub permissions: bool,
+    /// Symlinks are reported.
+    pub symlinks: bool,
+    /// Owner / group are reported.
+    pub ownership: bool,
+    /// Server-side copy without downloading.
+    pub server_copy: bool,
+    /// Interrupted uploads continue from the bytes already there.
+    pub resume_upload: bool,
+}
+
 /// One directory entry, ready to display.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SftpEntry {
@@ -62,8 +100,8 @@ pub struct SftpEntry {
     pub is_dir: bool,
     pub size: Option<u64>,
     pub mode: Option<u32>,
-    /// `drwxr-xr-x` style, `-` per unknown bit.
-    pub permissions: String,
+    /// `drwxr-xr-x` style; `None` when the protocol has no mode bits.
+    pub permissions: Option<String>,
     /// `user:group` (names when the server sends them, ids otherwise).
     pub owner: Option<String>,
     pub modified_ms: Option<i64>,
@@ -98,16 +136,16 @@ impl From<FileMode> for OpenMode {
 /// thread. Dropping the object closes the handle.
 #[derive(uniffi::Object)]
 pub struct SftpFile {
-    file: Mutex<Option<RemoteFile>>,
+    file: Mutex<Option<Box<dyn RemoteFile>>>,
     _live: Arc<Live>,
     runtime: tokio::runtime::Handle,
 }
 
 impl SftpFile {
-    fn with<T>(&self, f: impl FnOnce(&RemoteFile) -> Result<T>) -> Result<T> {
+    fn with<T>(&self, f: impl FnOnce(&dyn RemoteFile) -> Result<T>) -> Result<T> {
         let guard = self.file.lock().expect("file poisoned");
         match guard.as_ref() {
-            Some(file) => f(file),
+            Some(file) => f(file.as_ref()),
             None => Err(MobileError::Closed),
         }
     }
@@ -245,10 +283,61 @@ impl ConnectUi for SftpUi {
 }
 
 struct Live {
-    sftp: Arc<Sftp>,
-    client: Arc<SshClient>,
-    /// Kept alive for the duration of `client`.
-    _jumps: Vec<Arc<SshClient>>,
+    fs: Arc<dyn RemoteFs>,
+    /// The SSH transport SFTP runs over, with the jump clients that must
+    /// outlive it. `None` for WebDAV: the HTTP client lives inside `fs`.
+    ssh: Option<(Arc<SshClient>, Vec<Arc<SshClient>>)>,
+}
+
+impl Live {
+    async fn close(&self) {
+        let _ = self.fs.close().await;
+        if let Some((client, _)) = &self.ssh {
+            let _ = client.disconnect().await;
+        }
+    }
+}
+
+/// Which remote a session opens.
+pub(crate) enum Backend {
+    Sftp {
+        target: SshTarget,
+        resolved: Option<ResolvedHost>,
+    },
+    WebDav {
+        resolved: ResolvedHost,
+        /// App-writable directory where write-mode files spool before the
+        /// PUT.
+        spool_dir: PathBuf,
+    },
+}
+
+impl Backend {
+    fn protocol(&self) -> FileProtocol {
+        match self {
+            Self::Sftp { .. } => FileProtocol::Sftp,
+            Self::WebDav { .. } => FileProtocol::Webdav,
+        }
+    }
+
+    fn capabilities(&self) -> FileCapabilities {
+        match self {
+            Self::Sftp { .. } => FileCapabilities {
+                permissions: true,
+                symlinks: true,
+                ownership: true,
+                server_copy: false,
+                resume_upload: true,
+            },
+            Self::WebDav { .. } => FileCapabilities {
+                permissions: false,
+                symlinks: false,
+                ownership: false,
+                server_copy: true,
+                resume_upload: false,
+            },
+        }
+    }
 }
 
 struct Transfer {
@@ -519,6 +608,8 @@ struct Inner {
     conn: Arc<Connector>,
     listener: Arc<dyn SftpListener>,
     state: Arc<Mutex<SessionState>>,
+    protocol: FileProtocol,
+    capabilities: FileCapabilities,
     live: Mutex<Option<Arc<Live>>>,
     queue: Mutex<TransferQueue>,
     runtime: tokio::runtime::Handle,
@@ -528,8 +619,8 @@ struct Inner {
     presence: Option<Slot>,
 }
 
-/// A remote file system. Drop-safe: dropping the last reference closes the
-/// connection and cancels its transfers.
+/// A remote file system (SFTP or WebDAV). Drop-safe: dropping the last
+/// reference closes the connection and cancels its transfers.
 #[derive(uniffi::Object)]
 pub struct SftpSession {
     id: Uuid,
@@ -539,8 +630,7 @@ pub struct SftpSession {
 
 pub(crate) struct SftpLaunch {
     pub store: Arc<Store>,
-    pub target: SshTarget,
-    pub resolved: Option<ResolvedHost>,
+    pub backend: Backend,
     pub settings: MobileSettings,
     pub listener: Arc<dyn SftpListener>,
     pub presence: Option<Slot>,
@@ -550,8 +640,7 @@ impl SftpSession {
     pub(crate) fn launch(runtime: tokio::runtime::Handle, launch: SftpLaunch) -> Arc<Self> {
         let SftpLaunch {
             store,
-            target,
-            resolved,
+            backend,
             settings,
             listener,
             presence,
@@ -572,6 +661,8 @@ impl SftpSession {
             conn,
             listener,
             state,
+            protocol: backend.protocol(),
+            capabilities: backend.capabilities(),
             live: Mutex::new(None),
             queue: Mutex::new(TransferQueue::new(closed.clone())),
             runtime: runtime.clone(),
@@ -583,7 +674,7 @@ impl SftpSession {
             inner: inner.clone(),
             runtime: runtime.clone(),
         });
-        runtime.spawn(run(inner, target, resolved, settings));
+        runtime.spawn(run(inner, backend, settings));
         session
     }
 
@@ -621,6 +712,16 @@ impl SftpSession {
         self.inner.state.lock().expect("state poisoned").clone()
     }
 
+    /// Wire protocol; known before the connection is up.
+    pub fn protocol(&self) -> FileProtocol {
+        self.inner.protocol
+    }
+
+    /// What this protocol supports; known before the connection is up.
+    pub fn capabilities(&self) -> FileCapabilities {
+        self.inner.capabilities
+    }
+
     /// The remote home directory; empty until connected.
     pub fn home(&self) -> String {
         self.inner
@@ -628,7 +729,7 @@ impl SftpSession {
             .lock()
             .expect("live poisoned")
             .as_ref()
-            .map(|l| l.sftp.home().to_string())
+            .map(|l| l.fs.home().to_string())
             .unwrap_or_default()
     }
 
@@ -642,7 +743,7 @@ impl SftpSession {
         let live = self.live()?;
         self.runtime.block_on(async move {
             let mut entries: Vec<SftpEntry> = live
-                .sftp
+                .fs
                 .list(&dir)
                 .await?
                 .into_iter()
@@ -660,7 +761,7 @@ impl SftpSession {
     pub fn stat(&self, path: String) -> Result<SftpEntry> {
         let live = self.live()?;
         self.runtime
-            .block_on(async move { Ok(entry_from(live.sftp.stat(&path).await?)) })
+            .block_on(async move { Ok(entry_from(live.fs.stat(&path).await?)) })
     }
 
     /// Absolute, symlink-free form of `path` (`~` and relative paths resolve
@@ -670,32 +771,40 @@ impl SftpSession {
         self.runtime.block_on(async move {
             let p = path.trim();
             let p = if p.is_empty() || p == "~" {
-                live.sftp.home().to_string()
+                live.fs.home().to_string()
             } else if let Some(rest) = p.strip_prefix("~/") {
-                format!("{}/{rest}", live.sftp.home().trim_end_matches('/'))
+                format!("{}/{rest}", live.fs.home().trim_end_matches('/'))
             } else {
                 p.to_string()
             };
-            Ok(live.sftp.canonicalize(&p).await?)
+            Ok(live.fs.canonicalize(&p).await?)
         })
     }
 
     pub fn exists(&self, path: String) -> Result<bool> {
         let live = self.live()?;
         self.runtime
-            .block_on(async move { Ok(live.sftp.exists(&path).await?) })
+            .block_on(async move { Ok(live.fs.exists(&path).await?) })
     }
 
     pub fn mkdir(&self, path: String) -> Result<()> {
         let live = self.live()?;
         self.runtime
-            .block_on(async move { Ok(live.sftp.mkdir(&path).await?) })
+            .block_on(async move { Ok(live.fs.mkdir(&path).await?) })
     }
 
     pub fn rename(&self, from: String, to: String) -> Result<()> {
         let live = self.live()?;
         self.runtime
-            .block_on(async move { Ok(live.sftp.rename(&from, &to).await?) })
+            .block_on(async move { Ok(live.fs.rename(&from, &to).await?) })
+    }
+
+    /// Server-side copy of a file or directory tree; only when
+    /// [`FileCapabilities::server_copy`] is set.
+    pub fn copy(&self, from: String, to: String) -> Result<()> {
+        let live = self.live()?;
+        self.runtime
+            .block_on(async move { Ok(live.fs.copy(&from, &to).await?) })
     }
 
     /// Remove a file, symlink or (recursively) a directory.
@@ -703,11 +812,11 @@ impl SftpSession {
         let live = self.live()?;
         let cancel = self.inner.closed.child_token();
         self.runtime.block_on(async move {
-            let entry = live.sftp.stat(&path).await?;
+            let entry = live.fs.stat(&path).await?;
             if entry.kind == sftp::EntryKind::Dir {
-                live.sftp.remove_dir_all(&path, &cancel).await?;
+                live.fs.remove_dir_all(&path, &cancel).await?;
             } else {
-                live.sftp.remove_file(&path).await?;
+                live.fs.remove_file(&path).await?;
             }
             Ok(())
         })
@@ -717,14 +826,14 @@ impl SftpSession {
     pub fn chmod(&self, path: String, mode: u32) -> Result<()> {
         let live = self.live()?;
         self.runtime
-            .block_on(async move { Ok(live.sftp.chmod(&path, mode & 0o7777).await?) })
+            .block_on(async move { Ok(live.fs.chmod(&path, mode & 0o7777).await?) })
     }
 
     /// Small text files for previews; refuses anything over 64 MiB.
     pub fn read(&self, path: String) -> Result<Vec<u8>> {
         let live = self.live()?;
         self.runtime
-            .block_on(async move { Ok(live.sftp.read(&path).await?) })
+            .block_on(async move { Ok(live.fs.read(&path).await?) })
     }
 
     /// Overwrite (or create) `path` with `data`; for saving edited text
@@ -732,7 +841,7 @@ impl SftpSession {
     pub fn write(&self, path: String, data: Vec<u8>) -> Result<()> {
         let live = self.live()?;
         self.runtime
-            .block_on(async move { Ok(live.sftp.write(&path, &data).await?) })
+            .block_on(async move { Ok(live.fs.write(&path, &data).await?) })
     }
 
     /// Open `path` for positional access (see [`SftpFile`]); directories
@@ -741,7 +850,7 @@ impl SftpSession {
         let live = self.live()?;
         let file = self
             .runtime
-            .block_on(async { live.sftp.open_file(&path, mode.into()).await })?;
+            .block_on(async { live.fs.open_file(&path, mode.into()).await })?;
         Ok(Arc::new(SftpFile {
             file: Mutex::new(Some(file)),
             _live: live,
@@ -808,10 +917,7 @@ impl SftpSession {
         self.inner.closed.cancel();
         let live = self.inner.live.lock().expect("live poisoned").take();
         if let Some(live) = live {
-            self.runtime.spawn(async move {
-                let _ = live.sftp.close().await;
-                let _ = live.client.disconnect().await;
-            });
+            self.runtime.spawn(async move { live.close().await });
         }
     }
 }
@@ -867,12 +973,12 @@ impl Inner {
         };
         match launch.direction {
             TransferDirection::Download => {
-                live.sftp
+                live.fs
                     .download(&launch.remote, Path::new(&launch.local), &opts)
                     .await?;
             }
             TransferDirection::Upload => {
-                live.sftp
+                live.fs
                     .upload(Path::new(&launch.local), &launch.remote, &opts)
                     .await?;
             }
@@ -912,7 +1018,7 @@ impl Inner {
             (Some(remote), Some(live)) => {
                 let inner = self.clone();
                 self.runtime.spawn(async move {
-                    let _ = live.sftp.remove_file(&remote).await;
+                    let _ = live.fs.remove_file(&remote).await;
                     inner.listener.on_transfer(card);
                 });
             }
@@ -921,14 +1027,12 @@ impl Inner {
     }
 }
 
-fn permissions(mode: Option<u32>, kind: EntryKind) -> String {
+fn permissions(mode: Option<u32>, kind: EntryKind) -> Option<String> {
+    let mode = mode?;
     let type_char = match kind {
         EntryKind::Dir => 'd',
         EntryKind::Symlink => 'l',
         EntryKind::File | EntryKind::Other => '-',
-    };
-    let Some(mode) = mode else {
-        return format!("{type_char}---------");
     };
     let mut out = String::with_capacity(10);
     out.push(type_char);
@@ -960,7 +1064,7 @@ fn permissions(mode: Option<u32>, kind: EntryKind) -> String {
             (false, false, _) => '-',
         });
     }
-    out
+    Some(out)
 }
 
 fn entry_from(e: RemoteEntry) -> SftpEntry {
@@ -989,22 +1093,33 @@ fn entry_from(e: RemoteEntry) -> SftpEntry {
     }
 }
 
-async fn run(
-    inner: Arc<Inner>,
-    target: SshTarget,
-    resolved: Option<ResolvedHost>,
-    settings: MobileSettings,
-) {
+async fn run(inner: Arc<Inner>, backend: Backend, settings: MobileSettings) {
     let started = Instant::now();
-    let label = resolved
-        .as_ref()
-        .map(|r| r.host.data.label.clone())
-        .unwrap_or_else(|| target.host.clone());
+    let (host_id, label, target_display) = match &backend {
+        Backend::Sftp { target, resolved } => (
+            resolved.as_ref().map(|r| r.host.id),
+            resolved
+                .as_ref()
+                .map(|r| r.host.data.label.clone())
+                .unwrap_or_else(|| target.host.clone()),
+            target.display(),
+        ),
+        Backend::WebDav { resolved, .. } => (
+            Some(resolved.host.id),
+            resolved.host.data.label.clone(),
+            resolved
+                .webdav
+                .as_ref()
+                .map(|w| w.url.clone())
+                .unwrap_or_default(),
+        ),
+    };
+    let protocol = backend.protocol();
     let history = |duration: Option<u64>, error: Option<String>| ConnectionHistory {
-        host_id: resolved.as_ref().map(|r| r.host.id),
+        host_id,
         label: label.clone(),
-        target: target.display(),
-        protocol: "sftp".into(),
+        target: target_display.clone(),
+        protocol: protocol.as_str().into(),
         duration_secs: duration,
         error,
     };
@@ -1018,17 +1133,31 @@ async fn run(
     };
 
     let connect = async {
-        let (client, jumps) =
-            connect_resolved(&inner.conn, &settings, target.clone(), resolved.as_ref()).await?;
-        inner.set_state(SessionState::Connecting {
-            detail: "Opening SFTP…".into(),
-        });
-        let sftp = Sftp::open(&client).await?;
-        Ok::<_, MobileError>(Live {
-            sftp: Arc::new(sftp),
-            client,
-            _jumps: jumps,
-        })
+        match &backend {
+            Backend::Sftp { target, resolved } => {
+                let (client, jumps) =
+                    connect_resolved(&inner.conn, &settings, target.clone(), resolved.as_ref())
+                        .await?;
+                inner.set_state(SessionState::Connecting {
+                    detail: "Opening SFTP…".into(),
+                });
+                let sftp = Sftp::open(&client).await?;
+                Ok::<_, MobileError>(Live {
+                    fs: Arc::new(sftp),
+                    ssh: Some((client, jumps)),
+                })
+            }
+            Backend::WebDav {
+                resolved,
+                spool_dir,
+            } => {
+                let dav = connect_webdav(&inner.conn, resolved, spool_dir.clone()).await?;
+                Ok(Live {
+                    fs: Arc::new(dav),
+                    ssh: None,
+                })
+            }
+        }
     };
     let live = tokio::select! {
         r = connect => match r {
@@ -1047,8 +1176,7 @@ async fn run(
         }
     };
     if inner.closed.is_cancelled() {
-        let _ = live.sftp.close().await;
-        let _ = live.client.disconnect().await;
+        live.close().await;
         finish(Some("cancelled".into()));
         inner.set_state(SessionState::Closed { reason: None });
         return;
@@ -1067,11 +1195,12 @@ mod tests {
 
     #[test]
     fn permission_strings() {
-        assert_eq!(permissions(Some(0o755), EntryKind::Dir), "drwxr-xr-x");
-        assert_eq!(permissions(Some(0o644), EntryKind::File), "-rw-r--r--");
-        assert_eq!(permissions(Some(0o4755), EntryKind::File), "-rwsr-xr-x");
-        assert_eq!(permissions(Some(0o1777), EntryKind::Dir), "drwxrwxrwt");
-        assert_eq!(permissions(None, EntryKind::Symlink), "l---------");
+        let p = |m, k| permissions(Some(m), k).unwrap();
+        assert_eq!(p(0o755, EntryKind::Dir), "drwxr-xr-x");
+        assert_eq!(p(0o644, EntryKind::File), "-rw-r--r--");
+        assert_eq!(p(0o4755, EntryKind::File), "-rwsr-xr-x");
+        assert_eq!(p(0o1777, EntryKind::Dir), "drwxrwxrwt");
+        assert_eq!(permissions(None, EntryKind::Symlink), None);
     }
 
     #[test]
@@ -1096,7 +1225,7 @@ mod tests {
         assert_eq!(e.kind, EntryKind::Symlink);
         assert_eq!(e.target_kind, EntryKind::File);
         assert_eq!(e.mode, Some(0o777));
-        assert_eq!(e.permissions, "lrwxrwxrwx");
+        assert_eq!(e.permissions.as_deref(), Some("lrwxrwxrwx"));
         assert_eq!(e.owner.as_deref(), Some("u:1000"));
         assert_eq!(e.modified_ms, Some(1_700_000_000_000));
     }

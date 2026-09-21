@@ -46,6 +46,7 @@ struct PromptSheet: View {
         switch prompt.request {
         case .hostKeyUnknown: "New host key"
         case .hostKeyChanged: "Host key changed"
+        case .certificate: "Untrusted certificate"
         case .password: "Password"
         case .passphrase: "Key passphrase"
         case .securityKeyPin: "Security key PIN"
@@ -84,6 +85,20 @@ struct PromptSheet: View {
                 Button("Connect once") { answer(.hostKey(decision: .acceptOnce)) }
                 Button("Replace saved key", role: .destructive) { answer(.hostKey(decision: .acceptAndSave)) }
                     .accessibilityIdentifier("prompt.hostKey.replace")
+            }
+
+        case let .certificate(host, fingerprint):
+            Section {
+                LabeledContent("Host", value: host)
+                fingerprintRow(fingerprint, label: "TLS certificate (SHA-256)")
+            } footer: {
+                Text("The certificate of this server is not trusted by the system. Compare the fingerprint with one you trust before pinning it.")
+            }
+            Section {
+                Button("Trust and save") { answer(.hostKey(decision: .acceptAndSave)) }
+                    .accessibilityIdentifier("prompt.certificate.save")
+                Button("Connect once") { answer(.hostKey(decision: .acceptOnce)) }
+                    .accessibilityIdentifier("prompt.certificate.once")
             }
 
         case let .password(username, retry):

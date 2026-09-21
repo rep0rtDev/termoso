@@ -25,6 +25,8 @@ import com.termoso.android.data.SftpConnection
 import com.termoso.android.data.userMessage
 import com.termoso.android.str
 import com.termoso.core.FileMode
+import com.termoso.core.FileProtocol
+import com.termoso.core.HostItem
 import com.termoso.core.MobileException
 import com.termoso.core.SftpEntry
 import com.termoso.core.SftpFile
@@ -32,11 +34,13 @@ import java.io.FileNotFoundException
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Saved SSH hosts as storage roots for the system Files UI and any app that
- * uses the storage access framework. Directories list, files open for reading
- * and writing through a seekable proxy descriptor (ranges go straight to the
- * remote handle; nothing is buffered whole), and create / rename / move /
- * delete map onto the matching SFTP calls.
+ * Saved hosts as storage roots for the system Files UI and any app that uses
+ * the storage access framework: one root per SFTP (SSH) host and one per
+ * WebDAV share. Directories list, files open for reading and writing through
+ * a seekable proxy descriptor (ranges go straight to the remote handle;
+ * nothing is buffered whole), and create / rename / move / copy / delete map
+ * onto the matching remote calls; what a protocol lacks is left out of the
+ * document flags.
  *
  * What other apps get is the remote filesystem the host account already sees,
  * nothing from the vault: no credentials, no keys, no host records beyond a
@@ -83,17 +87,26 @@ class SftpDocumentsProvider : DocumentsProvider() {
             return cursor
         }
         for (host in hosts) {
-            val user = host.username.takeIf { it.isNotBlank() }?.let { "$it@" } ?: ""
-            cursor.newRow()
-                .add(Root.COLUMN_ROOT_ID, host.id)
-                .add(Root.COLUMN_DOCUMENT_ID, DocumentId.root(host.id).encode())
-                .add(Root.COLUMN_TITLE, host.label.ifBlank { host.address })
-                .add(Root.COLUMN_SUMMARY, "$user${host.address}")
-                .add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE or Root.FLAG_SUPPORTS_IS_CHILD)
-                .add(Root.COLUMN_ICON, R.mipmap.ic_launcher)
-                .add(Root.COLUMN_MIME_TYPES, "*/*")
+            if (host.protocol == "ssh") {
+                val user = host.username.takeIf { it.isNotBlank() }?.let { "$it@" } ?: ""
+                addRoot(cursor, host, FileProtocol.SFTP, "$user${host.address}")
+            }
+            val url = host.webdavUrl
+            if (url != null) addRoot(cursor, host, FileProtocol.WEBDAV, url.removePrefix("https://").removePrefix("http://").trimEnd('/'))
         }
         return cursor
+    }
+
+    private fun addRoot(cursor: MatrixCursor, host: HostItem, protocol: FileProtocol, summary: String) {
+        val title = host.label.ifBlank { host.address }
+        cursor.newRow()
+            .add(Root.COLUMN_ROOT_ID, DocumentId.rootId(host.id, protocol))
+            .add(Root.COLUMN_DOCUMENT_ID, DocumentId.root(host.id, protocol).encode())
+            .add(Root.COLUMN_TITLE, if (protocol == FileProtocol.WEBDAV && host.protocol != "webdav") "$title (WebDAV)" else title)
+            .add(Root.COLUMN_SUMMARY, summary)
+            .add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE or Root.FLAG_SUPPORTS_IS_CHILD)
+            .add(Root.COLUMN_ICON, R.mipmap.ic_launcher)
+            .add(Root.COLUMN_MIME_TYPES, "*/*")
     }
 
     private fun lockedRoot(cursor: MatrixCursor) {
@@ -122,7 +135,7 @@ class SftpDocumentsProvider : DocumentsProvider() {
         val id = DocumentId.parseOrThrow(documentId)
         val vault = access.vault()
         if (id.isRoot) {
-            val host = access.host(vault, id.hostId)
+            val host = access.host(vault, id.hostId, id.protocol)
             cursor.newRow()
                 .add(Document.COLUMN_DOCUMENT_ID, documentId)
                 .add(Document.COLUMN_DISPLAY_NAME, host.label.ifBlank { host.address })
@@ -130,9 +143,9 @@ class SftpDocumentsProvider : DocumentsProvider() {
                 .add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE)
             return cursor
         }
-        val conn = access.connection(id.hostId)
+        val conn = access.connection(id)
         val entry = sftp { conn.rust.stat(id.path) }
-        addEntry(cursor, id, entry)
+        addEntry(cursor, conn, id, entry)
         return cursor
     }
 
@@ -145,11 +158,11 @@ class SftpDocumentsProvider : DocumentsProvider() {
         }
         val parent = DocumentId.parseOrThrow(parentDocumentId)
         return try {
-            val conn = access.connection(parent.hostId)
+            val conn = access.connection(parent)
             val dir = resolveDir(conn, parent)
             for (entry in sftp { conn.rust.list(dir) }) {
                 if (!DocumentId.isValidName(entry.name)) continue
-                addEntry(cursor, DocumentId(parent.hostId, DocumentId.joinPath(dir, entry.name)), entry)
+                addEntry(cursor, conn, parent.at(DocumentId.joinPath(dir, entry.name)), entry)
             }
             cursor
         } catch (e: ProviderException) {
@@ -172,7 +185,7 @@ class SftpDocumentsProvider : DocumentsProvider() {
         val pfdMode = ParcelFileDescriptor.parseMode(mode)
         val write = pfdMode and (ParcelFileDescriptor.MODE_WRITE_ONLY or ParcelFileDescriptor.MODE_READ_WRITE) != 0
         val truncate = pfdMode and ParcelFileDescriptor.MODE_TRUNCATE != 0
-        val conn = access.connection(id.hostId)
+        val conn = access.connection(id)
         val file = sftp {
             when {
                 !write -> conn.rust.openFile(id.path, FileMode.READ)
@@ -238,11 +251,11 @@ class SftpDocumentsProvider : DocumentsProvider() {
     override fun createDocument(parentDocumentId: String, mimeType: String, displayName: String): String {
         val parent = DocumentId.parseOrThrow(parentDocumentId)
         if (!DocumentId.isValidName(displayName)) throw FileNotFoundException(str(R.string.files_invalid_name))
-        val conn = access.connection(parent.hostId)
+        val conn = access.connection(parent)
         val dir = resolveDir(conn, parent)
         val taken = sftp { conn.rust.list(dir) }.map { it.name }.toSet()
         val name = uniqueName(displayName, taken)
-        val target = DocumentId(parent.hostId, DocumentId.joinPath(dir, name))
+        val target = parent.at(DocumentId.joinPath(dir, name))
         sftp {
             if (mimeType == Document.MIME_TYPE_DIR) {
                 conn.rust.mkdir(target.path)
@@ -257,7 +270,7 @@ class SftpDocumentsProvider : DocumentsProvider() {
     override fun deleteDocument(documentId: String) {
         val id = DocumentId.parseOrThrow(documentId)
         if (id.isRoot || id.path == "/") throw FileNotFoundException(str(R.string.files_cannot_remove_root))
-        val conn = access.connection(id.hostId)
+        val conn = access.connection(id)
         sftp { conn.rust.remove(id.path) }
         revokeDocumentPermission(documentId)
         parentsOf(conn, id).forEach(::changed)
@@ -270,7 +283,7 @@ class SftpDocumentsProvider : DocumentsProvider() {
         if (displayName == id.name) return null
         val parent = id.parent ?: throw FileNotFoundException(str(R.string.files_cannot_remove_root))
         val target = parent.child(displayName)
-        val conn = access.connection(id.hostId)
+        val conn = access.connection(id)
         sftp {
             if (conn.rust.exists(target.path)) throw ProviderException(str(R.string.files_name_taken, displayName))
             conn.rust.rename(id.path, target.path)
@@ -286,10 +299,10 @@ class SftpDocumentsProvider : DocumentsProvider() {
         val targetParent = DocumentId.parseOrThrow(targetParentDocumentId)
         if (source.isRoot || source.path == "/") throw FileNotFoundException(str(R.string.files_cannot_remove_root))
         if (!sourceParent.contains(source)) throw FileNotFoundException(str(R.string.files_host_no_longer_exists))
-        if (source.hostId != targetParent.hostId) throw UnsupportedOperationException(str(R.string.files_move_between_hosts))
-        val conn = access.connection(source.hostId)
+        if (source.rootId != targetParent.rootId) throw UnsupportedOperationException(str(R.string.files_move_between_hosts))
+        val conn = access.connection(source)
         val dir = resolveDir(conn, targetParent)
-        val target = DocumentId(source.hostId, DocumentId.joinPath(dir, source.name))
+        val target = source.at(DocumentId.joinPath(dir, source.name))
         if (target == source) return sourceDocumentId
         if (source.contains(target)) throw FileNotFoundException(str(R.string.files_move_into_itself))
         sftp {
@@ -298,6 +311,23 @@ class SftpDocumentsProvider : DocumentsProvider() {
         }
         revokeDocumentPermission(sourceDocumentId)
         changed(sourceParentDocumentId)
+        changed(targetParentDocumentId)
+        return target.encode()
+    }
+
+    /** Server-side copy; only offered (see [addEntry]) where the protocol has one. */
+    override fun copyDocument(sourceDocumentId: String, targetParentDocumentId: String): String {
+        val source = DocumentId.parseOrThrow(sourceDocumentId)
+        val targetParent = DocumentId.parseOrThrow(targetParentDocumentId)
+        if (source.isRoot || source.path == "/") throw FileNotFoundException(str(R.string.files_cannot_remove_root))
+        if (source.rootId != targetParent.rootId) throw UnsupportedOperationException(str(R.string.files_move_between_hosts))
+        val conn = access.connection(source)
+        if (!conn.capabilities.serverCopy) throw UnsupportedOperationException(str(R.string.files_copy_unsupported))
+        val dir = resolveDir(conn, targetParent)
+        val taken = sftp { conn.rust.list(dir) }.map { it.name }.toSet()
+        val target = source.at(DocumentId.joinPath(dir, uniqueName(source.name, taken)))
+        if (source.contains(target)) throw FileNotFoundException(str(R.string.files_move_into_itself))
+        sftp { conn.rust.copy(source.path, target.path) }
         changed(targetParentDocumentId)
         return target.encode()
     }
@@ -319,13 +349,14 @@ class SftpDocumentsProvider : DocumentsProvider() {
     private fun parentsOf(conn: SftpConnection, id: DocumentId): List<String> {
         val parent = id.parent ?: return emptyList()
         val ids = mutableListOf(parent.encode())
-        if (parent.path == runCatching { home(conn) }.getOrNull()) ids += DocumentId.root(id.hostId).encode()
+        if (parent.path == runCatching { home(conn) }.getOrNull()) ids += DocumentId.root(id.hostId, id.protocol).encode()
         return ids
     }
 
-    private fun addEntry(cursor: MatrixCursor, id: DocumentId, entry: SftpEntry) {
+    private fun addEntry(cursor: MatrixCursor, conn: SftpConnection, id: DocumentId, entry: SftpEntry) {
         var flags = Document.FLAG_SUPPORTS_DELETE or Document.FLAG_SUPPORTS_RENAME or Document.FLAG_SUPPORTS_MOVE
         flags = flags or if (entry.isDir) Document.FLAG_DIR_SUPPORTS_CREATE else Document.FLAG_SUPPORTS_WRITE
+        if (conn.capabilities.serverCopy) flags = flags or Document.FLAG_SUPPORTS_COPY
         val row = cursor.newRow()
             .add(Document.COLUMN_DOCUMENT_ID, id.encode())
             .add(Document.COLUMN_DISPLAY_NAME, entry.name.ifEmpty { id.name })
@@ -345,7 +376,7 @@ class SftpDocumentsProvider : DocumentsProvider() {
         return this
     }
 
-    /** Run one blocking SFTP call, turning core failures into what SAF callers show. */
+    /** Run one blocking remote call, turning core failures into what SAF callers show. */
     private inline fun <T> sftp(block: () -> T): T = try {
         block()
     } catch (e: MobileException.NotFound) {

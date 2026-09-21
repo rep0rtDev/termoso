@@ -45,6 +45,7 @@ pub mod mdns;
 pub mod model;
 pub mod mosh;
 pub mod osdetect;
+pub mod remote;
 pub mod secrets;
 pub mod sftp;
 pub mod ssh;
@@ -53,6 +54,7 @@ pub mod store;
 pub mod sync;
 pub mod telnet;
 pub mod terminal;
+pub mod webdav;
 
 #[cfg(feature = "local-pty")]
 pub mod pty;

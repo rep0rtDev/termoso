@@ -85,6 +85,7 @@ import com.termoso.android.ui.vault.KnownHostsScreen
 import com.termoso.android.ui.vault.SessionLogScreen
 import com.termoso.android.ui.vault.SessionLogsScreen
 import com.termoso.android.ui.vault.VaultScreen
+import com.termoso.core.FileProtocol
 import com.termoso.core.KeyMods
 import com.termoso.core.PfKind
 import com.termoso.core.Transport
@@ -247,20 +248,33 @@ fun MainShell(
         }
     }
 
-    fun connectHost(hostId: String, transport: Transport = Transport.AUTO) {
-        scope.launch { if (shell.connectHost(hostId, transport) != null) openTerminal() }
-    }
-
     fun openSftp(connectionId: String) {
         nav.navigate(Routes.sftp(connectionId)) { launchSingleTop = true }
     }
 
+    /** SFTP for SSH hosts; a WebDAV-only host has no other browser, so it gets its share. */
     fun sftpHost(hostId: String) {
         scope.launch { shell.openSftpHost(hostId)?.let { openSftp(it.id) } }
     }
 
+    fun webdavHost(hostId: String) {
+        scope.launch { shell.openSftpHost(hostId, FileProtocol.WEBDAV)?.let { openSftp(it.id) } }
+    }
+
+    /** "Connect" on a host: a terminal, or the Files browser when the host is WebDAV-only. */
+    fun connectHost(hostId: String, transport: Transport = Transport.AUTO) {
+        scope.launch {
+            if (!shell.hasTerminal(hostId)) {
+                shell.openSftpHost(hostId, FileProtocol.WEBDAV)?.let { openSftp(it.id) }
+            } else if (shell.connectHost(hostId, transport) != null) {
+                openTerminal()
+            }
+        }
+    }
+
     /** Termius-style "Edit": a terminal to the same host running an editor on the file, exiting with it. */
     fun editInTerminal(conn: SftpConnection, path: String) {
+        if (conn.protocol != FileProtocol.SFTP) return
         scope.launch {
             val session = when {
                 conn.hostId != null -> shell.connectHost(conn.hostId)
@@ -422,6 +436,7 @@ fun MainShell(
                     onConnect = { connectHost(it) },
                     onConnectWith = ::connectHost,
                     onSftp = ::sftpHost,
+                    onWebdav = ::webdavHost,
                     onOpenSftp = ::openSftp,
                     onOpenTerminal = ::openTerminal,
                     onForward = { nav.navigate(Routes.pfNew(PfKind.LOCAL, null, it)) },
@@ -438,6 +453,7 @@ fun MainShell(
                     prefill = prefill,
                     onConnect = { connectHost(it) },
                     onSftp = ::sftpHost,
+                    onWebdav = ::webdavHost,
                     onForward = { nav.navigate(Routes.pfNew(PfKind.LOCAL, null, it)) },
                 )
             }
@@ -449,6 +465,7 @@ fun MainShell(
                     onClose = { nav.popBackStack() },
                     onConnect = { connectHost(it) },
                     onSftp = ::sftpHost,
+                    onWebdav = ::webdavHost,
                     onForward = { nav.navigate(Routes.pfNew(PfKind.LOCAL, null, it)) },
                 )
             }

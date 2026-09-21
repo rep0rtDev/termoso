@@ -438,6 +438,7 @@ fn kind_label(kind: Option<&str>, count: u64) -> String {
         Some("tag_host") => ("a tag link", "tag links"),
         Some("ssh_config") => ("an SSH config", "SSH configs"),
         Some("telnet_config") => ("a Telnet config", "Telnet configs"),
+        Some("webdav_config") => ("a WebDAV config", "WebDAV configs"),
         Some("serial_config") => ("a serial config", "serial configs"),
         Some("port_knocking") => ("a port knocking", "port knockings"),
         Some("workspace") => ("a workspace", "workspaces"),

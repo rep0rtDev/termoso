@@ -4,6 +4,8 @@ import com.termoso.android.str
 import com.termoso.android.R
 import android.content.Context
 import com.termoso.android.service.SessionService
+import com.termoso.core.FileCapabilities
+import com.termoso.core.FileProtocol
 import com.termoso.core.HostItem
 import com.termoso.core.PromptAnswer
 import com.termoso.core.PromptRequest
@@ -86,7 +88,10 @@ class SftpBridge : SftpListener {
     }
 }
 
-/** A live SFTP connection: the Rust session plus what the UI shows about it. */
+/**
+ * A live file connection (SFTP or WebDAV): the Rust session plus what the UI
+ * shows about it. [capabilities] says which operations the protocol has.
+ */
 class SftpConnection(
     val id: String,
     val label: String,
@@ -99,6 +104,8 @@ class SftpConnection(
     /** Scratch directory for downloads on their way to SAF / "Open with" and for uploads on their way in. */
     val cacheDir: File,
 ) {
+    val protocol: FileProtocol = rust.protocol()
+    val capabilities: FileCapabilities = rust.capabilities()
     val state: StateFlow<SessionState> get() = bridge.state
     val prompt: StateFlow<PendingPrompt?> get() = bridge.prompt
     val transfers: StateFlow<List<TransferCard>> get() = bridge.transfers
@@ -134,16 +141,22 @@ class SftpManager(private val context: Context, private val repo: VaultRepositor
 
     fun find(id: String): SftpConnection? = _connections.value.firstOrNull { it.id == id }
 
-    suspend fun openHost(hostId: String): SftpConnection {
+    /**
+     * Open a saved host's files. [protocol] picks the section when the host has
+     * both; `null` means the primary one (WebDAV only for WebDAV-only hosts).
+     */
+    suspend fun openHost(hostId: String, protocol: FileProtocol? = null): SftpConnection {
         val host: HostItem = repo.read { host(hostId) }
+        val wanted = protocol ?: defaultProtocol(host)
         val bridge = SftpBridge()
-        val rust = repo.read { sftpHost(hostId, bridge) }
+        val rust = repo.read { if (wanted == FileProtocol.WEBDAV) webdavHost(hostId, bridge) else sftpHost(hostId, bridge) }
         val user = host.username.takeIf { it.isNotBlank() }?.let { "$it@" } ?: ""
+        val target = if (wanted == FileProtocol.WEBDAV) host.webdavUrl ?: host.address else "$user${host.address}:${host.port}"
         return register(
             SftpConnection(
                 id = rust.id(),
                 label = host.label.ifBlank { host.address },
-                target = "$user${host.address}:${host.port}",
+                target = target,
                 hostId = hostId,
                 quick = null,
                 osName = host.osName,
@@ -176,7 +189,7 @@ class SftpManager(private val context: Context, private val repo: VaultRepositor
     suspend fun reconnect(id: String): SftpConnection? {
         val old = find(id) ?: return null
         val fresh = when {
-            old.hostId != null -> openHost(old.hostId)
+            old.hostId != null -> openHost(old.hostId, old.protocol)
             old.quick != null -> openQuick(old.quick)
             else -> return null
         }
@@ -202,8 +215,17 @@ class SftpManager(private val context: Context, private val repo: VaultRepositor
         keepAlive.sftp(_connections.value.size)
     }
 
-    /** Every open SFTP connection to a saved host. */
+    /** Every open file connection to a saved host. */
     fun forHost(hostId: String): List<SftpConnection> = _connections.value.filter { it.hostId == hostId }
+
+    companion object {
+        /** SFTP whenever the host has an SSH section; WebDAV only when that is all it has. */
+        fun defaultProtocol(host: HostItem): FileProtocol =
+            if (host.protocol.equals("webdav", true)) FileProtocol.WEBDAV else FileProtocol.SFTP
+
+        /** Whether [host] can be browsed at all (SSH → SFTP, or a WebDAV section). */
+        fun hasFiles(host: HostItem): Boolean = host.protocol.equals("ssh", true) || host.webdavUrl != null
+    }
 
     suspend fun closeAll() {
         val list = _connections.value

@@ -29,6 +29,7 @@ payloads! {
     Host => "host",
     SshConfig => "ssh_config",
     TelnetConfig => "telnet_config",
+    WebDavConfig => "webdav_config",
     SerialConfig => "serial_config",
     Identity => "identity",
     SshKey => "ssh_key",
@@ -107,6 +108,12 @@ pub struct ResolvedHost {
     /// Serial line settings when the host is a local serial device.
     #[serde(default)]
     pub serial: Option<SerialConfig>,
+    /// WebDAV share on this host, with its own identity (never inherited).
+    #[serde(default)]
+    pub webdav: Option<WebDavConfig>,
+    /// Identity referenced by the WebDAV config.
+    #[serde(default)]
+    pub webdav_identity: Option<Entity<Identity>>,
     /// Group labels from root to the host's group.
     pub group_path: Vec<String>,
     /// Tag labels.
@@ -114,7 +121,8 @@ pub struct ResolvedHost {
 }
 
 impl ResolvedHost {
-    /// `ssh` | `telnet` | `serial`, from which config the host carries.
+    /// `ssh` | `telnet` | `serial` | `webdav`, from which config the host
+    /// carries.
     pub fn protocol(&self) -> &'static str {
         if self.host.data.ssh_config_id.is_some() {
             "ssh"
@@ -122,6 +130,8 @@ impl ResolvedHost {
             "serial"
         } else if self.telnet.is_some() {
             "telnet"
+        } else if self.webdav.is_some() {
+            "webdav"
         } else {
             "ssh"
         }

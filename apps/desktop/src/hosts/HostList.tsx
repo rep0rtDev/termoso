@@ -10,7 +10,7 @@ import {
 } from "@mui/material";
 import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
 import { monoFontFamily, sizes } from "@/theme/theme";
-import { hostProtocols } from "@/ipc/types";
+import { hasWebDav, hostProtocols } from "@/ipc/types";
 import { PROTOCOL_NAME } from "./ConnectSplit";
 import { HostAvatar } from "./HostAvatar";
 import { GroupTile, groupSubtitle, SelectableTile, type HostCollectionProps } from "./HostGrid";
@@ -144,9 +144,10 @@ export function HostList(p: HostCollectionProps) {
               </TableCell>
               <TableCell>
                 <Typography variant="body2" color="text.secondary" noWrap>
-                  {hostProtocols(h)
-                    .map((x) => PROTOCOL_NAME[x])
-                    .join(", ")}
+                  {[
+                    ...hostProtocols(h).map((x) => PROTOCOL_NAME[x]),
+                    ...(hasWebDav(h) ? ["WebDAV"] : []),
+                  ].join(", ")}
                 </Typography>
               </TableCell>
               <TableCell>
@@ -156,9 +157,11 @@ export function HostList(p: HostCollectionProps) {
               </TableCell>
               <TableCell align="right">
                 <Typography variant="body2" color="text.secondary" noWrap>
-                  {h.telnetPort !== null && h.protocol === "ssh"
-                    ? `${h.port} / ${h.telnetPort}`
-                    : h.port}
+                  {h.protocol === "webdav"
+                    ? "—"
+                    : h.telnetPort !== null && h.protocol === "ssh"
+                      ? `${h.port} / ${h.telnetPort}`
+                      : h.port}
                 </Typography>
               </TableCell>
               <TableCell>

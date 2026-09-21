@@ -26,6 +26,7 @@ import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import SellOutlinedIcon from "@mui/icons-material/SellOutlined";
 import SwapVertRoundedIcon from "@mui/icons-material/SwapVertRounded";
 import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
+import CloudRoundedIcon from "@mui/icons-material/CloudRounded";
 import FolderOpenRoundedIcon from "@mui/icons-material/FolderOpenRounded";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
@@ -72,10 +73,10 @@ import {
 } from "@/ipc/hooks";
 import { useActiveVault, vaultIcon, ViewOnlyChip } from "@/app/vault";
 import type { CloudProvider, GroupNode, HostCard, HostsView, Uuid } from "@/ipc/types";
-import { connectProtocols, errorMessage, hostProtocols } from "@/ipc/types";
+import { connectProtocols, errorMessage, hasSsh, hasWebDav, hostProtocols } from "@/ipc/types";
 import { openTerminal, useTerminal } from "@/terminal/store";
 import { addToWorkspace, useWorkspaces, workspaceChoices } from "@/terminal/workspaces";
-import { openSftpForHost } from "@/sftp/store";
+import { openSftpForHost, openWebDavForHost } from "@/sftp/store";
 import {
   goToSerial,
   goToSettingsWith,
@@ -391,16 +392,28 @@ export function HostsPage() {
     if (visibleChecked.size > 0) return toggleHost(h);
     setPanel({ mode: "edit", id: h.id });
   };
+  /** Terminal for hosts that have one; a WebDAV-only host opens its share in Files. */
   const connectHosts = (list: HostCard[], background = false) => {
-    list.forEach((h, i) =>
+    const terminal = list.filter((h) => hostProtocols(h).length > 0);
+    terminal.forEach((h, i) =>
       openTerminal({ kind: "host", host_id: h.id }, { background: background || i > 0 }),
     );
+    const files = list.filter((h) => hostProtocols(h).length === 0 && hasWebDav(h));
+    files.forEach((h) => openWebDavForHost(h.id, h.label));
+    if (files.length > 0 && terminal.length === 0) goToSftp();
   };
   const connectHost = (h: HostCard) => connectHosts([h]);
+  /** Workspace tabs are terminals, so WebDAV-only hosts are left out. */
   const hostTargets = (list: HostCard[]) =>
-    list.map((h) => ({ kind: "host" as const, host_id: h.id }));
+    list
+      .filter((h) => hostProtocols(h).length > 0)
+      .map((h) => ({ kind: "host" as const, host_id: h.id }));
   const sftpHost = (h: HostCard) => {
     openSftpForHost(h.id, h.label);
+    goToSftp();
+  };
+  const webdavHost = (h: HostCard) => {
+    openWebDavForHost(h.id, h.label);
     goToSftp();
   };
   const liveLink = isLiveLink(search) ? search.trim() : null;
@@ -521,6 +534,7 @@ export function HostsPage() {
     const targets = ctxTargets(h);
     const many = targets.length > 1;
     const n = targets.length;
+    const terminalTargets = hostTargets(targets).length;
     return [
       many
         ? {
@@ -531,39 +545,61 @@ export function HostsPage() {
         : {
             label: "Connect",
             icon: <PlayArrowRoundedIcon fontSize="small" />,
-            items: connectActions(h.id, h.label, connectProtocols(h)),
+            items: connectActions(h.id, h.label, connectProtocols(h), hasWebDav(h)),
           },
-      {
-        label: "Add to Workspace",
-        icon: <TabRoundedIcon fontSize="small" />,
-        items: [
-          {
-            label: "New Workspace",
-            icon: <AddBoxOutlinedIcon fontSize="small" />,
-            divider: workspaces.length > 0,
-            onClick: () => addToWorkspace(null, hostTargets(targets)),
-          },
-          ...workspaces.map((w) => ({
-            label: w.name,
-            icon: <GridViewRoundedIcon fontSize="small" />,
-            onClick: () => {
-              addToWorkspace(w, hostTargets(targets), true);
-              snackbar.notify(many ? `${n} hosts added to “${w.name}”` : `Added to “${w.name}”`);
+      ...(terminalTargets > 0
+        ? [
+            {
+              label: "Add to Workspace",
+              icon: <TabRoundedIcon fontSize="small" />,
+              items: [
+                {
+                  label: "New Workspace",
+                  icon: <AddBoxOutlinedIcon fontSize="small" />,
+                  divider: workspaces.length > 0,
+                  onClick: () => addToWorkspace(null, hostTargets(targets)),
+                },
+                ...workspaces.map((w) => ({
+                  label: w.name,
+                  icon: <GridViewRoundedIcon fontSize="small" />,
+                  onClick: () => {
+                    addToWorkspace(w, hostTargets(targets), true);
+                    snackbar.notify(
+                      terminalTargets > 1
+                        ? `${terminalTargets} hosts added to “${w.name}”`
+                        : `Added to “${w.name}”`,
+                    );
+                  },
+                })),
+              ],
             },
-          })),
-        ],
-      },
-      {
-        label: "Open SFTP",
-        icon: <FolderCopyRoundedIcon fontSize="small" />,
-        onClick: () => sftpHost(h),
-        disabled: many || !hostProtocols(h).includes("ssh"),
-      },
+          ]
+        : []),
+      ...(hasWebDav(h) && !hasSsh(h)
+        ? []
+        : [
+            {
+              label: "Open SFTP",
+              icon: <FolderCopyRoundedIcon fontSize="small" />,
+              onClick: () => sftpHost(h),
+              disabled: many || !hasSsh(h),
+            },
+          ]),
+      ...(hasWebDav(h)
+        ? [
+            {
+              label: "Open WebDAV",
+              icon: <CloudRoundedIcon fontSize="small" />,
+              onClick: () => webdavHost(h),
+              disabled: many,
+            },
+          ]
+        : []),
       {
         label: "Port forwarding",
         icon: <SwapHorizRoundedIcon fontSize="small" />,
         onClick: () => requestForwardingRule(h.id),
-        disabled: many || !hostProtocols(h).includes("ssh"),
+        disabled: many || !hasSsh(h),
         divider: true,
       },
       {

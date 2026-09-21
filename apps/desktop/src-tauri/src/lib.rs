@@ -28,6 +28,7 @@ mod state;
 mod team;
 mod trust;
 mod update;
+mod webdav;
 mod workspaces;
 
 use termoso_client::{hosts, keychain};
@@ -145,6 +146,7 @@ pub fn run() {
             commands::sftp_rename,
             commands::sftp_remove,
             commands::sftp_chmod,
+            commands::sftp_copy,
             commands::local_home,
             commands::local_list,
             commands::local_drives,

@@ -59,6 +59,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
 import { HostAvatar } from "@/hosts/HostAvatar";
 import { hostTarget } from "@/hosts/HostGrid";
+import { openHost } from "@/hosts/open";
 import { looksLikeTarget, parseQuickConnect, quickFromHistory, quickLabel } from "@/hosts/links";
 import { relativeTime } from "@/hosts/HostList";
 import { sizes } from "@/theme/theme";
@@ -116,7 +117,7 @@ export function NewTabPage() {
   const quick = q && looksLikeTarget(q) && matches.length !== 1 ? parseQuickConnect(q) : null;
   const recent = useMemo(() => recentTargets(history.data ?? []), [history.data]);
 
-  const connect = (h: HostCard) => openTerminal({ kind: "host", host_id: h.id });
+  const connect = (h: HostCard) => openHost(h);
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape") {
       if (q) setQuery("");

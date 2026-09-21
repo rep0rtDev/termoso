@@ -46,6 +46,7 @@ const KIND_LABEL: Record<string, [string, string]> = {
   tag_host: ["tag link", "tag links"],
   ssh_config: ["SSH config", "SSH configs"],
   telnet_config: ["Telnet config", "Telnet configs"],
+  webdav_config: ["WebDAV config", "WebDAV configs"],
   serial_config: ["serial config", "serial configs"],
   port_knocking: ["port knocking", "port knockings"],
   workspace: ["workspace", "workspaces"],

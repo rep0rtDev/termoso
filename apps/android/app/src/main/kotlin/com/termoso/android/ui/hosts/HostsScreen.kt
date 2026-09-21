@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
@@ -105,6 +106,7 @@ fun HostsScreen(
     /** Connect over an explicit transport (Mosh, the Telnet section). */
     onConnectWith: (String, Transport) -> Unit,
     onSftp: (String) -> Unit,
+    onWebdav: (String) -> Unit,
     onOpenSftp: (String) -> Unit,
     onOpenTerminal: () -> Unit,
     onForward: (String) -> Unit,
@@ -145,6 +147,11 @@ fun HostsScreen(
                         val id = state.selected.first()
                         vm.clearSelection()
                         onSftp(id)
+                    },
+                    onWebdav = {
+                        val id = state.selected.first()
+                        vm.clearSelection()
+                        onWebdav(id)
                     },
                     onConnectWith = { transport ->
                         val id = state.selected.first()
@@ -253,6 +260,7 @@ fun HostsScreen(
             canCopyToVault = otherVaults.isNotEmpty(),
             onConnect = { transport -> if (transport == Transport.AUTO) onConnect(d.host.id) else onConnectWith(d.host.id, transport) },
             onSftp = { onSftp(d.host.id) },
+            onWebdav = { onWebdav(d.host.id) },
             onOpenSftp = onOpenSftp,
             onOpenTerminal = onOpenTerminal,
             onForward = { onForward(d.host.id) },
@@ -434,6 +442,7 @@ private fun SelectionBar(
     onSelectAll: () -> Unit,
     onEdit: () -> Unit,
     onSftp: () -> Unit,
+    onWebdav: () -> Unit,
     onConnectWith: (Transport) -> Unit,
     onForward: () -> Unit,
     onDuplicate: () -> Unit,
@@ -445,6 +454,7 @@ private fun SelectionBar(
     val single = state.visibleHosts.firstOrNull { it.id in state.selected }.takeIf { state.selected.size == 1 }
     val singleSsh = single?.protocol.equals("ssh", ignoreCase = true)
     val singleTelnet = singleSsh && single?.telnetPort != null
+    val singleWebdav = single?.webdavUrl != null
     TopAppBar(
         title = { Text(stringResource(R.string.selected_2, state.selected.size)) },
         navigationIcon = {
@@ -455,6 +465,9 @@ private fun SelectionBar(
                 IconButton(onClick = onEdit) { Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.edit)) }
                 if (singleSsh) {
                     IconButton(onClick = onSftp) { Icon(Icons.Filled.FolderOpen, contentDescription = "SFTP") }
+                }
+                if (singleWebdav) {
+                    IconButton(onClick = onWebdav) { Icon(Icons.Filled.CloudQueue, contentDescription = stringResource(R.string.webdav_files)) }
                 }
             }
             IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.remove_2)) }

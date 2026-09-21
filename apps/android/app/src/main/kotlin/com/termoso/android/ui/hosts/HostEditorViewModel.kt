@@ -15,6 +15,7 @@ import com.termoso.core.SnippetItem
 import com.termoso.core.TagItem
 import com.termoso.core.TelnetDraft
 import com.termoso.core.VaultInfo
+import com.termoso.core.WebDavDraft
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -66,7 +67,14 @@ data class HostEditorState(
     val savedId: String? = null,
     val error: String? = null,
 ) {
-    val canSave: Boolean get() = draft?.address?.isNotBlank() == true && !saving
+    val canSave: Boolean
+        get() {
+            val d = draft ?: return false
+            if (saving) return false
+            // A WebDAV-only host takes its address from the share URL.
+            val webdavOnly = !d.ssh && d.telnet == null && d.webdav != null
+            return d.address.isNotBlank() || (webdavOnly && d.webdav?.url?.isNotBlank() == true)
+        }
 }
 
 /**
@@ -121,6 +129,11 @@ class HostEditorViewModel(
     /** Edit the Telnet section; no-op while the host has none. */
     fun updateTelnet(transform: (TelnetDraft) -> TelnetDraft) = update { d ->
         d.telnet?.let { d.copy(telnet = transform(it)) } ?: d
+    }
+
+    /** Edit the WebDAV section; no-op while the host has none. */
+    fun updateWebdav(transform: (WebDavDraft) -> WebDavDraft) = update { d ->
+        d.webdav?.let { d.copy(webdav = transform(it)) } ?: d
     }
 
     /** Switching vault (new hosts only) resets group/tags/key/identity, which are per-vault. */
@@ -200,6 +213,13 @@ class HostEditorViewModel(
                 address = draft.address.trim(),
                 username = draft.username.trim(),
                 telnet = draft.telnet?.let { it.copy(username = it.username.trim()) },
+                webdav = draft.webdav?.let {
+                    it.copy(
+                        url = it.url.trim(),
+                        username = it.username.trim(),
+                        certificateFingerprint = it.certificateFingerprint?.trim()?.ifEmpty { null },
+                    )
+                },
                 envVariables = draft.envVariables.filter { it.name.isNotBlank() },
             )
             runCatching { repo.write { saveHost(clean) } }

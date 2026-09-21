@@ -40,6 +40,7 @@ class HostActionsTest : ResourceTest() {
         hasPassword = false,
         ssh = true,
         telnet = null,
+        webdav = null,
     )
 
     @Test

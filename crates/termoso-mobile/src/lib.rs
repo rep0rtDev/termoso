@@ -32,6 +32,7 @@ mod sshid;
 mod team;
 mod terminal;
 mod themes;
+mod webdav;
 
 pub use account::*;
 pub use ai::{AiStatusCard, AiSuggestionCard, AiTarget};

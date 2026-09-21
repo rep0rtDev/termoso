@@ -14,6 +14,7 @@ use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 
 use crate::error::{CoreError, Result};
+use crate::remote::{self, RemoteCapabilities, RemoteFs, RemoteProtocol, join};
 use crate::ssh::SshClient;
 
 /// Chunk size for transfers.
@@ -141,7 +142,7 @@ impl Default for TransferOptions {
 }
 
 impl TransferOptions {
-    fn report(&self, done: u64, total: Option<u64>) {
+    pub(crate) fn report(&self, done: u64, total: Option<u64>) {
         if let Some(p) = &self.progress {
             p(Progress { done, total });
         }
@@ -172,7 +173,7 @@ impl OpenMode {
 /// An open remote file with positional reads and writes, for callers that
 /// serve an arbitrary-size file piecewise (a proxy file descriptor, a media
 /// player seeking around) instead of transferring it whole.
-pub struct RemoteFile {
+pub struct SftpFile {
     file: tokio::sync::Mutex<Positioned>,
 }
 
@@ -194,13 +195,13 @@ impl Positioned {
     }
 }
 
-impl std::fmt::Debug for RemoteFile {
+impl std::fmt::Debug for SftpFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RemoteFile").finish_non_exhaustive()
+        f.debug_struct("SftpFile").finish_non_exhaustive()
     }
 }
 
-impl RemoteFile {
+impl SftpFile {
     /// Current size in bytes as the server reports it.
     pub async fn size(&self) -> Result<u64> {
         let file = self.file.lock().await;
@@ -306,14 +307,6 @@ fn sftp_err(e: russh_sftp::client::error::Error) -> CoreError {
 
 /// How many symlinks `list` resolves in flight at once.
 const SYMLINK_RESOLVE_CONCURRENCY: usize = 16;
-
-fn join(dir: &str, name: &str) -> String {
-    if dir.ends_with('/') {
-        format!("{dir}{name}")
-    } else {
-        format!("{dir}/{name}")
-    }
-}
 
 impl Sftp {
     /// Request the `sftp` subsystem on `client`.
@@ -516,7 +509,7 @@ impl Sftp {
     }
 
     /// Open `path` for positional access; directories are refused.
-    pub async fn open_file(&self, path: &str, mode: OpenMode) -> Result<RemoteFile> {
+    pub async fn open_file(&self, path: &str, mode: OpenMode) -> Result<SftpFile> {
         if mode == OpenMode::Read || self.exists(path).await? {
             let attrs = self.session.metadata(path).await.map_err(sftp_err)?;
             if attrs.is_dir() {
@@ -528,7 +521,7 @@ impl Sftp {
             .open_with_flags(path, mode.flags())
             .await
             .map_err(sftp_err)?;
-        Ok(RemoteFile {
+        Ok(SftpFile {
             file: tokio::sync::Mutex::new(Positioned { file, pos: Some(0) }),
         })
     }
@@ -693,5 +686,102 @@ impl Sftp {
     /// Close the subsystem channel.
     pub async fn close(&self) -> Result<()> {
         self.session.close().await.map_err(sftp_err)
+    }
+}
+
+#[async_trait::async_trait]
+impl remote::RemoteFile for SftpFile {
+    async fn size(&self) -> Result<u64> {
+        SftpFile::size(self).await
+    }
+    async fn read_at(&self, offset: u64, len: usize) -> Result<Vec<u8>> {
+        SftpFile::read_at(self, offset, len).await
+    }
+    async fn write_at(&self, offset: u64, data: &[u8]) -> Result<()> {
+        SftpFile::write_at(self, offset, data).await
+    }
+    async fn truncate(&self, size: u64) -> Result<()> {
+        SftpFile::truncate(self, size).await
+    }
+    async fn sync(&self) -> Result<()> {
+        SftpFile::sync(self).await
+    }
+    async fn close(self: Box<Self>) -> Result<()> {
+        SftpFile::close(*self).await
+    }
+}
+
+#[async_trait::async_trait]
+impl RemoteFs for Sftp {
+    fn protocol(&self) -> RemoteProtocol {
+        RemoteProtocol::Sftp
+    }
+    fn capabilities(&self) -> RemoteCapabilities {
+        RemoteCapabilities {
+            permissions: true,
+            symlinks: true,
+            ownership: true,
+            server_copy: false,
+            resume_upload: true,
+        }
+    }
+    fn home(&self) -> &str {
+        Sftp::home(self)
+    }
+    async fn canonicalize(&self, path: &str) -> Result<String> {
+        Sftp::canonicalize(self, path).await
+    }
+    async fn list(&self, dir: &str) -> Result<Vec<RemoteEntry>> {
+        Sftp::list(self, dir).await
+    }
+    async fn stat(&self, path: &str) -> Result<RemoteEntry> {
+        Sftp::stat(self, path).await
+    }
+    async fn exists(&self, path: &str) -> Result<bool> {
+        Sftp::exists(self, path).await
+    }
+    async fn mkdir(&self, path: &str) -> Result<()> {
+        Sftp::mkdir(self, path).await
+    }
+    async fn mkdir_all(&self, path: &str) -> Result<()> {
+        Sftp::mkdir_all(self, path).await
+    }
+    async fn rename(&self, from: &str, to: &str) -> Result<()> {
+        Sftp::rename(self, from, to).await
+    }
+    async fn copy(&self, _from: &str, _to: &str) -> Result<()> {
+        Err(CoreError::Sftp(
+            "server-side copy is not supported over SFTP".into(),
+        ))
+    }
+    async fn remove_file(&self, path: &str) -> Result<()> {
+        Sftp::remove_file(self, path).await
+    }
+    async fn remove_dir(&self, path: &str) -> Result<()> {
+        Sftp::remove_dir(self, path).await
+    }
+    async fn remove_dir_all(&self, path: &str, cancel: &CancellationToken) -> Result<()> {
+        Sftp::remove_dir_all(self, path, cancel).await
+    }
+    async fn chmod(&self, path: &str, mode: u32) -> Result<()> {
+        Sftp::chmod(self, path, mode).await
+    }
+    async fn read(&self, path: &str) -> Result<Vec<u8>> {
+        Sftp::read(self, path).await
+    }
+    async fn write(&self, path: &str, data: &[u8]) -> Result<()> {
+        Sftp::write(self, path, data).await
+    }
+    async fn open_file(&self, path: &str, mode: OpenMode) -> Result<Box<dyn remote::RemoteFile>> {
+        Ok(Box::new(Sftp::open_file(self, path, mode).await?))
+    }
+    async fn download(&self, remote: &str, local: &Path, opts: &TransferOptions) -> Result<u64> {
+        Sftp::download(self, remote, local, opts).await
+    }
+    async fn upload(&self, local: &Path, remote: &str, opts: &TransferOptions) -> Result<u64> {
+        Sftp::upload(self, local, remote, opts).await
+    }
+    async fn close(&self) -> Result<()> {
+        Sftp::close(self).await
     }
 }

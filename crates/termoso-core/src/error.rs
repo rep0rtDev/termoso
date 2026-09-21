@@ -72,6 +72,24 @@ pub enum CoreError {
     /// SFTP failure.
     #[error("sftp: {0}")]
     Sftp(String),
+    /// WebDAV failure; `status` is the HTTP status when the server answered.
+    #[error("webdav: {message}")]
+    WebDav {
+        /// HTTP status of the failed request, if any.
+        status: Option<u16>,
+        /// Human message (never includes credentials).
+        message: String,
+    },
+    /// The server presented a TLS certificate that is neither publicly trusted
+    /// nor pinned for this host; `fingerprint` is its SHA-256 (`aa:bb:…`) so
+    /// the caller can offer to pin it.
+    #[error("untrusted certificate for {host} (sha256 {fingerprint})")]
+    CertificateRejected {
+        /// `host:port`.
+        host: String,
+        /// Colon-separated lowercase hex SHA-256 of the leaf certificate.
+        fingerprint: String,
+    },
     /// Terminal / PTY failure.
     #[error("terminal: {0}")]
     Terminal(String),
@@ -152,6 +170,8 @@ impl CoreError {
             CoreError::HostKeyRejected { .. } => "host_key_rejected",
             CoreError::AuthFailed { .. } => "auth_failed",
             CoreError::Sftp(_) => "sftp",
+            CoreError::WebDav { .. } => "webdav",
+            CoreError::CertificateRejected { .. } => "certificate_rejected",
             CoreError::Terminal(_) => "terminal",
             CoreError::Key(_) => "key",
             CoreError::Fido2(e) => e.kind(),

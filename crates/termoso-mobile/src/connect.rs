@@ -74,6 +74,13 @@ pub enum PromptRequest {
         instructions: String,
         questions: Vec<InteractiveQuestionInfo>,
     },
+    /// A WebDAV server's TLS certificate is not trusted by the system
+    /// roots (self-signed / private CA): show the fingerprint, ask to
+    /// trust. Answered with [`PromptAnswer::HostKey`].
+    Certificate {
+        host: String,
+        fingerprint: String,
+    },
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -202,11 +209,11 @@ impl Connector {
         }
     }
 
-    async fn ask(&self, request: PromptRequest) -> Option<PromptAnswer> {
+    pub(crate) async fn ask(&self, request: PromptRequest) -> Option<PromptAnswer> {
         self.prompts.ask(self.ui.as_ref(), request).await
     }
 
-    fn give_up(&self) {
+    pub(crate) fn give_up(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
     }
 }

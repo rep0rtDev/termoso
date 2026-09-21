@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderOpen
@@ -73,6 +74,7 @@ import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.JoinLiveDialog
 import com.termoso.android.ui.terminal.quickTargetText
 import com.termoso.android.ui.terminal.siblingsOf
+import com.termoso.core.FileProtocol
 import com.termoso.core.HistoryItem
 import com.termoso.core.MobileException
 import com.termoso.core.SessionState
@@ -410,7 +412,9 @@ private fun SftpRow(
     val active = transfers.count { it.status is TransferStatus.Running || it.status is TransferStatus.Queued }
     val subtitle = when (val s = state) {
         is SessionState.Connecting -> s.detail
-        is SessionState.Connected -> stringResource(R.string.sftp, conn.target) + if (active > 0) stringResource(R.string.sep_transferring, active) else ""
+        is SessionState.Connected ->
+            (if (conn.protocol == FileProtocol.WEBDAV) stringResource(R.string.webdav_target, conn.target) else stringResource(R.string.sftp, conn.target)) +
+                if (active > 0) stringResource(R.string.sep_transferring, active) else ""
         is SessionState.Closed -> stringResource(R.string.closed) + (s.reason?.let { " · $it" } ?: "")
         is SessionState.Failed -> s.message
     }
@@ -418,7 +422,7 @@ private fun SftpRow(
     ListRow(
         title = conn.label,
         subtitle = subtitle,
-        leading = { IconTile(Icons.Filled.FolderOpen) },
+        leading = { IconTile(if (conn.protocol == FileProtocol.WEBDAV) Icons.Filled.CloudQueue else Icons.Filled.FolderOpen) },
         trailing = {
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.connection_actions)) }
@@ -428,7 +432,9 @@ private fun SftpRow(
                         MenuItem(icon, label, destructive) { menu = false; action() }
                     }
                     item(Icons.Filled.OpenInNew, stringResource(R.string.open_), action = onOpen)
-                    if (conn.hostId != null || conn.quick != null) item(Icons.Filled.Terminal, stringResource(R.string.open_terminal), action = onTerminal)
+                    if (conn.protocol == FileProtocol.SFTP && (conn.hostId != null || conn.quick != null)) {
+                        item(Icons.Filled.Terminal, stringResource(R.string.open_terminal), action = onTerminal)
+                    }
                     if (conn.hostId != null) item(Icons.Filled.Edit, stringResource(R.string.edit_host), action = onEditHost)
                     else if (conn.quick != null) item(Icons.Filled.Add, stringResource(R.string.add_to_hosts), action = onAddHost)
                     item(Icons.Filled.Close, stringResource(R.string.close_connection), destructive = true, action = onClose)

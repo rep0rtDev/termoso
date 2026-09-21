@@ -62,6 +62,8 @@ function PromptDialog({
   switch (prompt.kind) {
     case "host_key":
       return <HostKeyPrompt prompt={prompt} onAnswer={onAnswer} />;
+    case "certificate":
+      return <CertificatePrompt prompt={prompt} onAnswer={onAnswer} />;
     case "password":
       return (
         <SecretPrompt
@@ -197,6 +199,49 @@ function HostKeyPrompt({
           onClick={() => decide("accept_and_save")}
         >
           {changed ? "Replace & connect" : "Trust & connect"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function CertificatePrompt({
+  prompt,
+  onAnswer,
+}: {
+  prompt: Extract<PromptEvent, { kind: "certificate" }>;
+  onAnswer: (a: PromptAnswer) => void;
+}) {
+  const decide = (decision: "reject" | "accept_once" | "accept_and_save") =>
+    onAnswer({ kind: "host_key", decision });
+  return (
+    <Dialog open onClose={() => decide("reject")} maxWidth="sm" fullWidth>
+      <DialogTitle>Untrusted certificate</DialogTitle>
+      <DialogContent>
+        <Stack spacing={1.5}>
+          <Typography variant="body2">
+            The certificate presented by <b>{prompt.host}</b> is not signed by a trusted authority
+            (self-signed or private CA). Verify the fingerprint with the server owner before
+            trusting it.
+          </Typography>
+          <KeyBlock
+            info={{
+              host: prompt.host,
+              key_type: "SHA-256",
+              fingerprint: prompt.fingerprint,
+              public_key: "",
+            }}
+          />
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button color="inherit" onClick={() => decide("reject")}>
+          Reject
+        </Button>
+        <Box sx={{ flex: 1 }} />
+        <Button onClick={() => decide("accept_once")}>Connect once</Button>
+        <Button variant="contained" onClick={() => decide("accept_and_save")}>
+          Trust & connect
         </Button>
       </DialogActions>
     </Dialog>

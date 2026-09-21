@@ -88,6 +88,14 @@ fun PromptDialog(pending: PendingPrompt, onAnswer: (PromptAnswer) -> Unit) {
         is PromptRequest.KeyboardInteractive -> InteractiveDialog(req, onAnswer)
         is PromptRequest.SecurityKeyPin -> SecurityKeyPinDialog(req, onAnswer)
         is PromptRequest.SecurityKeyInsert -> SecurityKeyInsertDialog(req, onAnswer)
+        is PromptRequest.Certificate -> HostKeyDialog(
+            title = stringResource(R.string.untrusted_certificate),
+            host = req.host,
+            keyType = stringResource(R.string.tls_certificate_sha_256),
+            fingerprints = listOf(stringResource(R.string.fingerprint) to req.fingerprint),
+            warning = null,
+            onAnswer = onAnswer,
+        )
     }
 }
 

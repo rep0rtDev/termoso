@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
@@ -31,6 +32,7 @@ import com.termoso.android.R
 import com.termoso.android.data.SftpConnection
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.str
+import com.termoso.core.FileProtocol
 import com.termoso.core.SessionState
 import com.termoso.core.Transport
 
@@ -72,9 +74,10 @@ fun OpenTerminalRow(session: TerminalSession, onOpen: () -> Unit, onClose: () ->
 @Composable
 fun OpenSftpRow(conn: SftpConnection, onOpen: () -> Unit, onClose: () -> Unit) {
     val state by conn.state.collectAsStateWithLifecycle()
+    val webdav = conn.protocol == FileProtocol.WEBDAV
     OpenRow(
-        icon = Icons.Filled.FolderOpen,
-        title = "SFTP",
+        icon = if (webdav) Icons.Filled.CloudQueue else Icons.Filled.FolderOpen,
+        title = if (webdav) "WebDAV" else "SFTP",
         subtitle = stateLabel(state),
         failed = state is SessionState.Failed,
         onOpen = onOpen,

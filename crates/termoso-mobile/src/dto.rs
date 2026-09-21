@@ -86,7 +86,8 @@ pub struct HostItem {
     pub address: String,
     pub group_id: Option<String>,
     pub group_path: Vec<String>,
-    /// `ssh` | `telnet`.
+    /// `ssh` | `telnet` | `webdav` (the primary protocol; `webdav` only
+    /// when the host has no SSH or Telnet section).
     pub protocol: String,
     /// The SSH section opens over Mosh by default.
     pub use_mosh: bool,
@@ -95,6 +96,8 @@ pub struct HostItem {
     pub port: u16,
     /// Set when the host also has a Telnet section.
     pub telnet_port: Option<u16>,
+    /// Set when the host has a WebDAV section.
+    pub webdav_url: Option<String>,
     pub tags: Vec<String>,
     pub os_name: Option<String>,
     pub icon: Option<String>,
@@ -115,6 +118,7 @@ impl From<hosts::HostCard> for HostItem {
             group_path: c.group_path,
             protocol: c.protocol,
             telnet_port: c.telnet_port,
+            webdav_url: c.webdav_url,
             use_mosh: c.use_mosh,
             username: c.username,
             port: c.port,
@@ -175,10 +179,42 @@ pub struct HostDraft {
     /// Set by the core when the stored inline identity has a password.
     pub has_password: bool,
     /// The host has an SSH section (the SSH fields above belong to it). A
-    /// host needs this or `telnet`.
+    /// host needs this, `telnet` or `webdav`.
     pub ssh: bool,
     /// Telnet section; `None` = not reachable over Telnet.
     pub telnet: Option<TelnetDraft>,
+    /// WebDAV section; `None` = no share on this host.
+    pub webdav: Option<WebDavDraft>,
+}
+
+/// WebDAV section of the host editor. Credentials are the share's own,
+/// never inherited from the SSH identity.
+#[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
+pub struct WebDavDraft {
+    /// `http(s)://host[:port]/path/`; trimmed and normalised on save.
+    pub url: String,
+    pub username: String,
+    /// `None` keeps the stored password when editing; `Some("")` clears it.
+    pub password: Option<String>,
+    pub identity_id: Option<String>,
+    /// SHA-256 of the server certificate to trust instead of the system
+    /// roots (`AA:BB:…` or bare hex); `None` = system roots.
+    pub certificate_fingerprint: Option<String>,
+    /// Set by the core when the stored inline identity has a password.
+    pub has_password: bool,
+}
+
+impl From<hosts::WebDavForm> for WebDavDraft {
+    fn from(w: hosts::WebDavForm) -> Self {
+        Self {
+            url: w.url,
+            username: w.username,
+            password: None,
+            identity_id: w.identity_id.map(|i| i.to_string()),
+            certificate_fingerprint: w.certificate_fingerprint,
+            has_password: w.has_password,
+        }
+    }
 }
 
 /// Telnet section of the host editor.
@@ -237,6 +273,7 @@ impl HostDraft {
             has_password: false,
             ssh: true,
             telnet: None,
+            webdav: None,
         }
     }
 }
@@ -275,6 +312,7 @@ impl From<hosts::HostForm> for HostDraft {
             has_password: f.has_password,
             ssh: f.ssh,
             telnet: f.telnet.map(Into::into),
+            webdav: f.webdav.map(Into::into),
         }
     }
 }
@@ -288,7 +326,7 @@ impl HostDraft {
         base.label = self.label;
         base.address = self.address;
         base.group_id = parse_opt_id(&self.group_id)?;
-        base.ssh = self.ssh || self.telnet.is_none();
+        base.ssh = self.ssh || (self.telnet.is_none() && self.webdav.is_none());
         base.port = self.port;
         base.username = self.username;
         base.password = self.password;
@@ -329,6 +367,23 @@ impl HostDraft {
                 })
             }
         };
+        base.webdav = match self.webdav {
+            None => None,
+            Some(w) => {
+                let stored = base.webdav.take().unwrap_or_default();
+                Some(hosts::WebDavForm {
+                    url: w.url.trim().to_string(),
+                    username: w.username.trim().to_string(),
+                    password: w.password,
+                    identity_id: parse_opt_id(&w.identity_id)?,
+                    certificate_fingerprint: w
+                        .certificate_fingerprint
+                        .map(|f| f.trim().to_string())
+                        .filter(|f| !f.is_empty()),
+                    has_password: stored.has_password,
+                })
+            }
+        };
         Ok(base)
     }
 }
@@ -361,6 +416,7 @@ pub(crate) fn blank_form(vault_id: Uuid) -> hosts::HostForm {
         host_chain_id: None,
         proxy_id: None,
         telnet: None,
+        webdav: None,
         env_variables: Vec::new(),
         keep_alive_interval: None,
         timeout: None,

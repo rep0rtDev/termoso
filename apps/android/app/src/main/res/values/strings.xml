@@ -1259,4 +1259,20 @@
     <string name="files_cannot_remove_root">The host root cannot be changed</string>
     <string name="files_move_between_hosts">Moving between hosts is not supported; copy instead</string>
     <string name="files_move_into_itself">A folder cannot be moved into itself</string>
+    <string name="files_host_certificate_needs_confirmation">Connect to %1$s from Termoso once to accept its certificate</string>
+    <string name="files_copy_unsupported">This host cannot copy files on the server</string>
+
+    <!-- WebDAV -->
+    <string name="webdav_files">WebDAV files</string>
+    <string name="webdav_target">WebDAV · %1$s</string>
+    <string name="save_and_open_webdav">Save and open WebDAV</string>
+    <string name="add_webdav">Add WebDAV</string>
+    <string name="webdav_url">WebDAV URL</string>
+    <string name="certificate_fingerprint_sha_256">Certificate fingerprint (SHA-256)</string>
+    <string name="system_trust_roots">System trust roots</string>
+    <string name="webdav_credentials_hint">Credentials stay in the vault. Leave the fingerprint empty to trust the system certificate store, or pin a self-signed certificate by its SHA-256.</string>
+    <string name="taken_from_the_webdav_url">Taken from the WebDAV URL</string>
+    <string name="untrusted_certificate">Untrusted certificate</string>
+    <string name="tls_certificate_sha_256">TLS certificate (SHA-256)</string>
+    <string name="copied_as">Copied as %1$s</string>
 </resources>

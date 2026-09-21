@@ -37,9 +37,9 @@ termoso-crypto ─┬─► termoso-proto ─┬─► termoso-server           
 | `termoso-crypto` | Every primitive used by clients and server: OPAQUE (`opaque-ke`), Argon2id KDF, XChaCha20-Poly1305 envelopes with AAD, X25519 sealed boxes, BIP39-style 24-word recovery key, key wrapping. No I/O. | `opaque`, `kdf`, `aead`, `sealed`, `keys`, `recovery`, `live` |
 | `termoso-proto` | Request/response and entity types shared by server and all clients, with `utoipa` schemas. Changing a type here changes the wire protocol — keep it backward compatible (add optional fields, never repurpose). | `auth`, `account`, `vault`, `entities`, `sync`, `team`, `logs`, `ws` |
 | `termoso-server` | Stateless HTTP/WebSocket API. PostgreSQL holds durable state, Redis holds sessions cache, rate limits, short-lived login state and the pub/sub bus for realtime fan-out, S3-compatible storage holds encrypted session logs. | `routes/*`, `session`, `ws`, `events`, `sso`, `live`, `presence`, `audit`, `digest`, `ai`, `metrics` |
-| `termoso-core` | Client engine: encrypted local store, secrets, API client, sync engine, SSH/SFTP/Mosh/Telnet/Serial/PTY transports, terminal session abstraction, port forwarding, in-process SSH agent, FIDO2/CTAP2, OS detection, cloud import, autocomplete. `#![forbid(unsafe_code)]`. | `store`, `secrets`, `api`, `sync`, `ssh`, `sftp`, `terminal`, `forward`, `agent`, `keys`, `fido2`, `mosh`, `serial`, `telnet`, `pty`, `live`, `cloud`, `autocomplete` |
+| `termoso-core` | Client engine: encrypted local store, secrets, API client, sync engine, SSH/SFTP/WebDAV/Mosh/Telnet/Serial/PTY transports, terminal session abstraction, port forwarding, in-process SSH agent, FIDO2/CTAP2, OS detection, cloud import, autocomplete. `#![forbid(unsafe_code)]`. | `store`, `secrets`, `api`, `sync`, `ssh`, `sftp`, `webdav`, `remote`, `terminal`, `forward`, `agent`, `keys`, `fido2`, `mosh`, `serial`, `telnet`, `pty`, `live`, `cloud`, `autocomplete` |
 | `termoso-client` | Higher-level repositories over the store used identically by desktop and mobile: hosts with inherited group credentials, keychain façade (keys, identities, certificates), snippets with variables. | `hosts`, `keychain`, `snippets` |
-| `termoso-mobile` | UniFFI façade (`cdylib` + `staticlib`) exposing `termoso-core`/`termoso-client` to Kotlin and Swift. Owns the tokio runtime and terminal emulation (`alacritty_terminal`) so both mobile apps get identical grid frames. | `app`, `connect`, `session`, `sftp`, `forward`, `keys`, `account`, `live`, `presence`, `fido2`, `ai` |
+| `termoso-mobile` | UniFFI façade (`cdylib` + `staticlib`) exposing `termoso-core`/`termoso-client` to Kotlin and Swift. Owns the tokio runtime and terminal emulation (`alacritty_terminal`) so both mobile apps get identical grid frames. | `app`, `connect`, `session`, `sftp`, `webdav`, `forward`, `keys`, `account`, `live`, `presence`, `fido2`, `ai` |
 | `termoso-bridge` | Headless client for automation: pulls a vault, exposes a Termius-compatible REST API for hosts/groups, pushes ciphertext back. See [API_BRIDGE.md](API_BRIDGE.md). | `rest`, `sync` |
 | `termoso-wasm` | `termoso-crypto` compiled with `wasm-bindgen` for the web cabinet, so passwords and keys never leave the browser in clear. | — |
 
@@ -59,7 +59,7 @@ runtime (workspaces, updater, imports, multiplayer host/viewer, presence).
   X25519 public key; the server stores those sealed boxes but cannot open them.
 * An **entity** is one encrypted record with a client-generated UUID, a `kind`
   (`termoso_proto::entities::KINDS`: `host`, `group`, `ssh_config`,
-  `telnet_config`, `serial_config`, `identity`, `ssh_key`, `ssh_certificate`,
+  `telnet_config`, `webdav_config`, `serial_config`, `identity`, `ssh_key`, `ssh_certificate`,
   `known_host`, `snippet`, `snippet_package`, `host_snippet`, `pf_rule`,
   `proxy`, `host_chain`, `tag`, `tag_host`, `port_knocking`, `cloud_import`,
   `workspace`, `workspace_template`, `log_bookmark`), a `version` for

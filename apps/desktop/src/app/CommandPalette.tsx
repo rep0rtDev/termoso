@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNod
 import { useHistory, useHosts } from "@/ipc/hooks";
 import type { HostCard } from "@/ipc/types";
 import { HostAvatar } from "@/hosts/HostAvatar";
+import { openHost } from "@/hosts/open";
 import { looksLikeTarget, parseQuickConnect, quickFromHistory, quickLabel } from "@/hosts/links";
 import { openTerminal, setActiveTab, useTerminal } from "@/terminal/store";
 import { openTemplate, useWorkspaces } from "@/terminal/workspaces";
@@ -402,6 +403,6 @@ function hostItem(h: HostCard): Item {
     title: h.label,
     subtitle: `${h.username ? `${h.username}@` : ""}${h.address}${h.tags.length ? ` · ${h.tags.join(", ")}` : ""}`,
     icon: <HostAvatar host={h} size={sizes.tileSmall} />,
-    run: () => openTerminal({ kind: "host", host_id: h.id }),
+    run: () => openHost(h),
   };
 }

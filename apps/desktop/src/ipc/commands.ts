@@ -254,6 +254,9 @@ export const sftpRemove = (id: Uuid, path: string, recursive: boolean) =>
   invoke<null>("sftp_remove", { id, path, recursive });
 export const sftpChmod = (id: Uuid, path: string, mode: number) =>
   invoke<null>("sftp_chmod", { id, path, mode });
+/** Server-side copy (WebDAV `COPY`); only when `capabilities.serverCopy`. */
+export const sftpCopy = (id: Uuid, from: string, to: string) =>
+  invoke<null>("sftp_copy", { id, from, to });
 
 export const localHome = () => invoke<string>("local_home");
 export const localList = (path: string | null) => invoke<Listing>("local_list", { path });

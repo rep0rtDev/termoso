@@ -103,6 +103,7 @@ import com.termoso.android.ui.hosts.ConfirmDialog
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.PromptDialog
 import com.termoso.core.EntryKind
+import com.termoso.core.FileProtocol
 import com.termoso.core.SessionState
 import com.termoso.core.SftpEntry
 import com.termoso.core.TransferStatus
@@ -111,8 +112,10 @@ import java.util.Date
 import kotlinx.coroutines.launch
 
 /**
- * Remote file browser for one SFTP connection: breadcrumbs, upload, long-press
- * actions, "Open with" on tap, transfers sheet.
+ * Remote file browser for one file connection (SFTP or WebDAV): breadcrumbs,
+ * upload, long-press actions, "Open with" on tap, transfers sheet. Actions a
+ * protocol lacks (permissions, edit in terminal, server-side copy) are hidden
+ * per [SftpConnection.capabilities].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -219,8 +222,12 @@ fun SftpScreen(
                     onEdit = { onEdit(conn, state.selectedEntries.first().path); vm.clearSelection() },
                     onOpenWith = { vm.openWith(state.selectedEntries.first()) },
                     onPermissions = { dialog = SftpDialog.Permissions(state.selectedEntries.first()) },
+                    onDuplicate = { vm.duplicate(state.selectedEntries.first()) },
                     onCopyPath = { copyPath(state.selectedEntries.map { it.path }) },
                     onRemove = { dialog = SftpDialog.Remove(state.selectedEntries) },
+                    canChmod = conn.capabilities.permissions,
+                    canEditInTerminal = conn.protocol == FileProtocol.SFTP,
+                    canDuplicate = conn.capabilities.serverCopy,
                 )
             } else {
                 TopAppBar(
@@ -231,7 +238,7 @@ fun SftpScreen(
                             Column {
                                 Text(conn.label, maxLines = 1)
                                 Text(
-                                    conn.target,
+                                    if (conn.protocol == FileProtocol.WEBDAV) stringResource(R.string.webdav_target, conn.target) else conn.target,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
@@ -521,8 +528,12 @@ private fun SelectionBar(
     onEdit: () -> Unit,
     onOpenWith: () -> Unit,
     onPermissions: () -> Unit,
+    onDuplicate: () -> Unit,
     onCopyPath: () -> Unit,
     onRemove: () -> Unit,
+    canChmod: Boolean,
+    canEditInTerminal: Boolean,
+    canDuplicate: Boolean,
 ) {
     var menu by remember { mutableStateOf(false) }
     val one = state.selected.size == 1
@@ -545,22 +556,33 @@ private fun SelectionBar(
                             onClick = { menu = false; onRename() },
                         )
                         if (single != null && !single.isDir) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.edit_in_terminal)) },
-                                leadingIcon = { Icon(Icons.Filled.Edit, null) },
-                                onClick = { menu = false; onEdit() },
-                            )
+                            if (canEditInTerminal) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.edit_in_terminal)) },
+                                    leadingIcon = { Icon(Icons.Filled.Edit, null) },
+                                    onClick = { menu = false; onEdit() },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.open_with_2)) },
                                 leadingIcon = { Icon(Icons.Filled.OpenInNew, null) },
                                 onClick = { menu = false; onOpenWith() },
                             )
                         }
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.change_permissions)) },
-                            leadingIcon = { Icon(Icons.Filled.Lock, null) },
-                            onClick = { menu = false; onPermissions() },
-                        )
+                        if (canDuplicate) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.duplicate)) },
+                                leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
+                                onClick = { menu = false; onDuplicate() },
+                            )
+                        }
+                        if (canChmod) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.change_permissions)) },
+                                leadingIcon = { Icon(Icons.Filled.Lock, null) },
+                                onClick = { menu = false; onPermissions() },
+                            )
+                        }
                     }
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.copy_path)) },

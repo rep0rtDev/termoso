@@ -5,7 +5,7 @@ import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
 import CloudSyncOutlinedIcon from "@mui/icons-material/CloudSyncOutlined";
 import type { MouseEvent, ReactNode } from "react";
-import { hostProtocols, type GroupNode, type HostCard } from "@/ipc/types";
+import { hasWebDav, hostProtocols, type GroupNode, type HostCard } from "@/ipc/types";
 import { CardGrid, CheckTile, EntityCard, IconTile, SectionTitle } from "@/components/ui";
 import { HostAvatar } from "./HostAvatar";
 import type { HostDnd } from "./dnd";
@@ -45,6 +45,7 @@ const CLOUD_SHORT: Record<string, string> = {
 /** Termius' card line: protocols, then username, then tags, then the cloud it came from. */
 export function hostSubtitle(h: HostCard) {
   const parts: string[] = [...hostProtocols(h)];
+  if (hasWebDav(h)) parts.push("webdav");
   if (h.username) parts.push(h.username);
   parts.push(...h.tags);
   if (h.cloudProvider) parts.push(CLOUD_SHORT[h.cloudProvider] ?? h.cloudProvider);

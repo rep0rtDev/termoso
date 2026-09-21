@@ -2,18 +2,24 @@ package com.termoso.android.saf
 
 import android.provider.DocumentsContract
 import android.webkit.MimeTypeMap
+import com.termoso.core.FileProtocol
 
 /**
- * Document ids handed to other apps: `<host uuid>:<absolute remote path>`.
- * The uuid is the saved host; the path is the remote path as-is (Unicode,
- * spaces and colons included), always absolute and normalized. The empty
- * path is the host's root document — the remote home directory, resolved
- * only once connected.
+ * Document ids handed to other apps: `<host uuid>:<absolute remote path>`
+ * for SFTP and `<host uuid>+webdav:<absolute remote path>` for a host's
+ * WebDAV share. The uuid is the saved host; the path is the remote path as-is
+ * (Unicode, spaces and colons included), always absolute and normalized. The
+ * empty path is the root document — the remote home directory, resolved only
+ * once connected. The protocol is part of the id so an id keeps pointing at
+ * the same share even when the host later gains or loses a section.
  *
  * Ids come back from arbitrary apps, so every one is parsed strictly here
  * and nothing about the remote path is inferred from URI text.
  */
-data class DocumentId(val hostId: String, val path: String) {
+data class DocumentId(val hostId: String, val path: String, val protocol: FileProtocol = FileProtocol.SFTP) {
+    /** Root id of the share this document lives in. */
+    val rootId: String get() = rootId(hostId, protocol)
+
     /** The host itself, listed as its home directory. */
     val isRoot: Boolean get() = path.isEmpty()
 
@@ -24,40 +30,53 @@ data class DocumentId(val hostId: String, val path: String) {
     val parent: DocumentId?
         get() = when {
             isRoot || path == "/" -> null
-            else -> DocumentId(hostId, path.substringBeforeLast('/').ifEmpty { "/" })
+            else -> DocumentId(hostId, path.substringBeforeLast('/').ifEmpty { "/" }, protocol)
         }
 
     fun child(name: String): DocumentId {
         require(isValidName(name)) { "bad name" }
-        return DocumentId(hostId, joinPath(path.ifEmpty { "/" }, name))
+        return DocumentId(hostId, joinPath(path.ifEmpty { "/" }, name), protocol)
     }
 
-    /** True when [other] lives anywhere under this directory (the root spans the host). */
+    /** Same share, different path. */
+    fun at(path: String): DocumentId = DocumentId(hostId, path, protocol)
+
+    /** True when [other] lives anywhere under this directory (the root spans the share). */
     fun contains(other: DocumentId): Boolean = when {
-        other.hostId != hostId -> false
+        other.hostId != hostId || other.protocol != protocol -> false
         isRoot -> true
         path == "/" -> other.path.length > 1
         else -> other.path.startsWith("$path/")
     }
 
-    fun encode(): String = "$hostId:$path"
+    fun encode(): String = "$rootId:$path"
 
     companion object {
         private val UUID_RE = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+        private const val WEBDAV_SUFFIX = "+webdav"
 
-        fun root(hostId: String): DocumentId = DocumentId(hostId, "")
+        fun root(hostId: String, protocol: FileProtocol = FileProtocol.SFTP): DocumentId = DocumentId(hostId, "", protocol)
+
+        /** The root id of a host's share: the uuid, `+webdav` appended for WebDAV. */
+        fun rootId(hostId: String, protocol: FileProtocol): String =
+            if (protocol == FileProtocol.WEBDAV) hostId + WEBDAV_SUFFIX else hostId
 
         /** Parse an id from another app; `null` for anything malformed or escaping its path. */
         fun parse(raw: String?): DocumentId? {
             if (raw == null) return null
             val sep = raw.indexOf(':')
             if (sep < 0) return null
-            val host = raw.substring(0, sep)
+            var host = raw.substring(0, sep)
+            var protocol = FileProtocol.SFTP
+            if (host.endsWith(WEBDAV_SUFFIX)) {
+                host = host.removeSuffix(WEBDAV_SUFFIX)
+                protocol = FileProtocol.WEBDAV
+            }
             if (!UUID_RE.matches(host)) return null
             val path = raw.substring(sep + 1)
-            if (path.isEmpty()) return DocumentId(host, "")
+            if (path.isEmpty()) return DocumentId(host, "", protocol)
             val normalized = normalizeAbsolute(path) ?: return null
-            return DocumentId(host, normalized)
+            return DocumentId(host, normalized, protocol)
         }
 
         /** Same, throwing the exception SAF callers expect. */
@@ -85,7 +104,7 @@ data class DocumentId(val hostId: String, val path: String) {
     }
 }
 
-/** Root ids: the host uuid, or [LOCKED] while the vault cannot be opened silently. */
+/** Root ids: [DocumentId.rootId] per share, or [LOCKED] while the vault cannot be opened silently. */
 object RootIds {
     const val LOCKED = "locked"
 

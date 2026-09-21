@@ -52,6 +52,7 @@ const KIND_LABEL: Record<string, string> = {
   host_chain: "chains",
   ssh_config: "SSH configs",
   telnet_config: "Telnet configs",
+  webdav_config: "WebDAV configs",
 };
 
 function countsLine(v: BackupVaultSummary) {
