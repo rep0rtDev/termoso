@@ -42,6 +42,13 @@ pub enum PromptRequest {
         host: String,
         fingerprint: String,
     },
+    /// The host has no username configured: ask which account to log in
+    /// as. Answered with [`PromptAnswer::Secret`] (`remember` saves it on
+    /// the host's identity).
+    Username {
+        host: String,
+        retry: bool,
+    },
     Password {
         username: String,
         retry: bool,

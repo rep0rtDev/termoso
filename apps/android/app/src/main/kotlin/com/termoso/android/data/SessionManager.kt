@@ -264,7 +264,7 @@ class SessionManager(
         val telnet = target.protocol == "telnet"
         val transport = if (telnet) Transport.TELNET else Transport.SSH
         val rust = repo.read { connectQuick(target, options(transport), bridge) }
-        val text = if (telnet) "${target.host}:${target.port} · Telnet" else "${target.username}@${target.host}:${target.port}"
+        val text = if (telnet) "${target.host}:${target.port} · Telnet" else listOf(target.username, "${target.host}:${target.port}").filter { it.isNotBlank() }.joinToString("@")
         return register(TerminalSession(rust.id(), target.host, text, null, target, transport, null, rust, bridge))
     }
 

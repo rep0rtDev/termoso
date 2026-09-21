@@ -333,7 +333,7 @@ async fn open_once(
     let target = SshTarget {
         host: resolved.host.data.address.clone(),
         port: resolved.port(),
-        username: resolved.username(),
+        username: resolved.username().unwrap_or_default(),
     };
     let spec = ForwardSpec::from_rule(&rule.data)?;
     let (client, jumps) = connect_resolved(&inner.conn, settings, target, Some(&resolved)).await?;

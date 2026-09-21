@@ -603,6 +603,7 @@ fn plan_host(v: &VaultState, external_id: &str, req: &HostRequest) -> Result<Pla
         startup_snippet_id: old.startup_snippet_id,
         sort_order: old.sort_order,
         external_id: Some(external_id.to_string()),
+        files_provider: old.files_provider,
     };
     plan.put("host", host_id, &host)?;
     Ok(plan)

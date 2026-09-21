@@ -73,6 +73,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.termoso.android.R
 import com.termoso.android.data.VaultRepository
+import com.termoso.android.saf.FilesIntegration
 import com.termoso.android.str
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.FormField
@@ -112,6 +113,7 @@ fun HostEditorScreen(
     groupId: String?,
     onClose: () -> Unit,
     prefill: QuickTarget? = null,
+    files: FilesIntegration? = null,
     onConnect: (String) -> Unit = {},
     onSftp: (String) -> Unit = {},
     onWebdav: (String) -> Unit = {},
@@ -244,6 +246,7 @@ fun HostEditorScreen(
             draft = draft,
             vm = vm,
             viewers = viewers,
+            files = files,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
@@ -283,6 +286,7 @@ private fun HostForm(
     draft: HostDraft,
     vm: HostEditorViewModel,
     viewers: List<HostViewer>,
+    files: FilesIntegration?,
     modifier: Modifier,
 ) {
     var groupPicker by remember { mutableStateOf(false) }
@@ -440,6 +444,11 @@ private fun HostForm(
             }
         }
 
+        if (draft.ssh || webdav != null) {
+            Spacer(Modifier.height(12.dp))
+            FilesSection(draft, vm, files)
+        }
+
         Row(
             Modifier
                 .fillMaxWidth()
@@ -561,7 +570,7 @@ private fun SshSection(
                     draft.username,
                     { v -> vm.update { it.copy(username = v) } },
                     stringResource(R.string.username),
-                    placeholder = inherited?.username ?: if (draft.sshId || inherited?.sshId == true) stringResource(R.string.ssh_id_handle) else "root",
+                    placeholder = inherited?.username ?: if (draft.sshId || inherited?.sshId == true) stringResource(R.string.ssh_id_handle) else stringResource(R.string.asked_on_connect),
                 )
                 PasswordField(
                     password = draft.password,
@@ -618,6 +627,27 @@ private fun SshSection(
                 StartupSnippetRow(state, draft, onPick = { id -> vm.update { it.copy(startupSnippetId = id) } })
             }
         }
+    }
+}
+
+/**
+ * Per-host opt-in for the system file picker. The Settings switch stays the
+ * master: a host is listed only when both are on.
+ */
+@Composable
+private fun FilesSection(draft: HostDraft, vm: HostEditorViewModel, files: FilesIntegration?) {
+    val filesEnabled = files?.enabled?.collectAsStateWithLifecycle()?.value ?: true
+    SectionCard {
+        SwitchRow(
+            title = stringResource(R.string.show_in_files),
+            subtitle = if (filesEnabled) {
+                stringResource(R.string.show_in_files_summary)
+            } else {
+                stringResource(R.string.show_in_files_disabled_summary)
+            },
+            checked = draft.filesProvider,
+            onCheckedChange = { v -> vm.update { it.copy(filesProvider = v) } },
+        )
     }
 }
 

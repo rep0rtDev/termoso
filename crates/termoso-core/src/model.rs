@@ -142,13 +142,14 @@ impl ResolvedHost {
         self.ssh.port.unwrap_or(22)
     }
 
-    /// Effective username (`identity.username`, falling back to `root`).
-    pub fn username(&self) -> String {
+    /// Configured username: `identity.username`, else the SSH ID handle.
+    /// `None` when neither is set — the caller asks the user instead of
+    /// guessing a login.
+    pub fn username(&self) -> Option<String> {
         self.identity
             .as_ref()
             .map(|i| i.data.username.clone())
             .filter(|u| !u.is_empty())
             .or_else(|| self.ssh_id_handle.clone())
-            .unwrap_or_else(|| "root".to_string())
     }
 }

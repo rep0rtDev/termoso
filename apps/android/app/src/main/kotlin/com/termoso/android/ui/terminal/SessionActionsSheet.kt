@@ -53,7 +53,7 @@ fun quickTargetText(q: QuickTarget): String {
     val telnet = q.protocol.equals("telnet", true)
     val default = if (telnet) 23 else 22
     val port = if (q.port.toInt() == default) "" else ":${q.port}"
-    return if (telnet) "telnet://${q.host}$port" else "${q.username}@${q.host}$port"
+    return if (telnet) "telnet://${q.host}$port" else if (q.username.isBlank()) "${q.host}$port" else "${q.username}@${q.host}$port"
 }
 
 /** How many of [sessions] besides [session] point at the same saved host. */

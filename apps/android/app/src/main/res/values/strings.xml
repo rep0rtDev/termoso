@@ -1000,6 +1000,7 @@
     <string name="trust_save">Trust &amp; save</string>
     <string name="reject">Reject</string>
     <string name="that_didnt_work_try_again">That didn\'t work — try again.</string>
+    <string name="enter_a_username_to_continue">Enter a username to continue.</string>
     <string name="save_in_vault">Save in vault</string>
     <string name="needs_the_pin_of_the_security_key_to">%1$s needs the PIN of the security key to sign in.</string>
     <string name="wrong_pin_try_again">Wrong PIN — try again.</string>
@@ -1246,13 +1247,18 @@
     <!-- Files integration (storage access framework) -->
     <string name="files_integration">Files integration</string>
     <string name="files_show_sftp_hosts_in_files">Show SFTP hosts in Files</string>
-    <string name="files_show_sftp_hosts_in_files_summary">Browse, open and save files on your SSH hosts from the system Files app and any app that opens documents. Hosts that need a password or a new host key must be connected from Termoso first.</string>
+    <string name="files_show_sftp_hosts_in_files_summary">Browse, open and save files on your SSH hosts from the system Files app and any app that opens documents. Only hosts with “Show in Files” turned on are listed. Hosts that need a password or a new host key must be connected from Termoso first.</string>
+    <string name="show_in_files">Show in Files</string>
+    <string name="show_in_files_summary">List this host’s SFTP and WebDAV shares in the system Files app and other apps that open documents</string>
+    <string name="show_in_files_disabled_summary">Files integration is turned off in Settings; this host stays hidden until it is enabled</string>
+    <string name="asked_on_connect">Asked on connect</string>
     <string name="files_locked_root_summary">Unlock Termoso to browse SFTP hosts</string>
     <string name="files_unlock_termoso_first">Unlock Termoso first</string>
     <string name="files_host_no_longer_exists">This host no longer exists in Termoso</string>
     <string name="files_connection_timed_out">Connection timed out</string>
     <string name="files_host_key_needs_confirmation">Connect to %1$s from Termoso once to confirm its host key</string>
     <string name="files_host_needs_credentials">%1$s asks for a password. Connect from Termoso and choose to remember it</string>
+    <string name="files_host_needs_username">%1$s has no username. Connect from Termoso and choose to remember it</string>
     <string name="files_host_needs_security_key">%1$s needs a security key. Connect from Termoso instead</string>
     <string name="files_invalid_name">That name cannot be used</string>
     <string name="files_name_taken">%1$s already exists here</string>

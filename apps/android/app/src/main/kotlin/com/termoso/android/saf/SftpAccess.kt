@@ -73,10 +73,13 @@ class SftpAccess(private val container: AppContainer) {
     fun hosts(vault: VaultState.Open): List<HostItem> = runBlocking {
         runCatching { vault.repo.read { hosts(null) } }
             .getOrElse { throw ProviderException(it.userMessage()) }
-            .filter { SftpManager.hasFiles(it) }
+            .filter { it.filesProvider && SftpManager.hasFiles(it) }
     }
 
-    /** The host behind a share; not found when it no longer has that section. */
+    /**
+     * The host behind a share; not found when it no longer has that section
+     * or the user stopped sharing it with Files.
+     */
     fun host(vault: VaultState.Open, id: String, protocol: FileProtocol): HostItem = runBlocking {
         try {
             vault.repo.read { host(id) }.also { if (!offers(it, protocol)) throw notFound() }
@@ -99,6 +102,9 @@ class SftpAccess(private val container: AppContainer) {
         return runBlocking {
             val mutex = synchronized(perHost) { perHost.getOrPut(DocumentId.rootId(hostId, protocol)) { Mutex() } }
             mutex.withLock {
+                // Re-check the share setting even when a session the app opened
+                // itself is available: turning the host off must cut Files access.
+                host(vault, hostId, protocol)
                 vault.sftp.forHost(hostId)
                     .firstOrNull { it.protocol == protocol && it.state.value is SessionState.Connected }
                     ?.also { touch(it) }
@@ -183,12 +189,13 @@ class SftpAccess(private val container: AppContainer) {
     private fun promptMessage(request: PromptRequest, label: String): String = when (request) {
         is PromptRequest.HostKeyUnknown, is PromptRequest.HostKeyChanged -> str(R.string.files_host_key_needs_confirmation, label)
         is PromptRequest.Certificate -> str(R.string.files_host_certificate_needs_confirmation, label)
+        is PromptRequest.Username -> str(R.string.files_host_needs_username, label)
         is PromptRequest.Password, is PromptRequest.Passphrase, is PromptRequest.KeyboardInteractive ->
             str(R.string.files_host_needs_credentials, label)
         is PromptRequest.SecurityKeyPin, is PromptRequest.SecurityKeyInsert -> str(R.string.files_host_needs_security_key, label)
     }
 
-    private fun offers(host: HostItem, protocol: FileProtocol): Boolean = when (protocol) {
+    private fun offers(host: HostItem, protocol: FileProtocol): Boolean = host.filesProvider && when (protocol) {
         FileProtocol.SFTP -> host.protocol == "ssh"
         FileProtocol.WEBDAV -> host.webdavUrl != null
     }

@@ -989,7 +989,11 @@ mod tests {
             .unwrap();
         let r = s.resolve_host(host).unwrap();
         assert_eq!(r.port(), 22, "host config overrides group");
-        assert_eq!(r.username(), "deploy", "identity inherited from root group");
+        assert_eq!(
+            r.username().as_deref(),
+            Some("deploy"),
+            "identity inherited from root group"
+        );
         assert_eq!(r.key.as_ref().unwrap().id, key);
         assert!(r.certificate.is_none());
         assert_eq!(r.group_path, vec!["Prod", "EU"]);

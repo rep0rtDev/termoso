@@ -46,14 +46,19 @@ pub struct SshTarget {
     pub host: String,
     /// Port.
     pub port: u16,
-    /// Login name.
+    /// Login name; empty until the user supplies one (connecting with an
+    /// empty name is refused rather than defaulting to some account).
     pub username: String,
 }
 
 impl SshTarget {
-    /// `user@host:port`.
+    /// `user@host:port` (`host:port` while the user is unknown).
     pub fn display(&self) -> String {
-        format!("{}@{}:{}", self.username, self.host, self.port)
+        if self.username.is_empty() {
+            format!("{}:{}", self.host, self.port)
+        } else {
+            format!("{}@{}:{}", self.username, self.host, self.port)
+        }
     }
 }
 
@@ -315,6 +320,12 @@ async fn timeout_unless_prompting<F: Future>(
 impl SshClient {
     /// Connect over TCP (optionally through a proxy).
     pub async fn connect(opts: ConnectOptions) -> Result<Self> {
+        if opts.target.username.trim().is_empty() {
+            return Err(CoreError::Invalid(format!(
+                "no username for {}: set one on the host's identity",
+                opts.target.host
+            )));
+        }
         let stream = tokio::time::timeout(opts.timeout, async {
             match &opts.proxy {
                 Some(p) => {

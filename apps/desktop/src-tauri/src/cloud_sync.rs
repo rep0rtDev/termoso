@@ -1304,6 +1304,7 @@ mod tests {
                 timeout: None,
                 color_scheme: None,
                 has_password: false,
+                files_provider: false,
             },
         )
         .unwrap();

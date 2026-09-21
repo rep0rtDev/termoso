@@ -64,6 +64,19 @@ function PromptDialog({
       return <HostKeyPrompt prompt={prompt} onAnswer={onAnswer} />;
     case "certificate":
       return <CertificatePrompt prompt={prompt} onAnswer={onAnswer} />;
+    case "username":
+      return (
+        <SecretPrompt
+          title={`Username for ${prompt.host}`}
+          target={prompt.target}
+          label="Username"
+          visible
+          rememberLabel="Save to this host in the vault"
+          warning={prompt.retry ? "Enter a username to continue." : null}
+          onAnswer={onAnswer}
+          onCancel={cancel}
+        />
+      );
     case "password":
       return (
         <SecretPrompt
@@ -254,6 +267,7 @@ function SecretPrompt({
   label,
   warning,
   numeric,
+  visible,
   rememberLabel = "Save to this host in the vault",
   onAnswer,
   onCancel,
@@ -263,6 +277,8 @@ function SecretPrompt({
   label: string;
   warning?: string | null;
   numeric?: boolean;
+  /** Plain text field (a username, not a secret). */
+  visible?: boolean;
   /** `null` hides the remember checkbox (the secret is used once, never stored). */
   rememberLabel?: string | null;
   onAnswer: (a: PromptAnswer) => void;
@@ -290,7 +306,7 @@ function SecretPrompt({
           <Field label={label}>
             <TextField
               autoFocus
-              type="password"
+              type={visible ? "text" : "password"}
               value={value}
               onChange={(e) => setValue(e.target.value)}
               fullWidth

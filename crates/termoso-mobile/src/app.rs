@@ -106,8 +106,8 @@ pub fn profile_exists(profile_dir: String) -> bool {
 }
 
 /// Parse `user@host:port`, `ssh://user@host:port`, `telnet://host:port` or
-/// plain `host` into a target (defaults: `root`, 22; telnet 23). Errors on
-/// an empty host.
+/// plain `host` into a target (defaults: port 22, telnet 23; the username
+/// stays empty and is asked for on connect). Errors on an empty host.
 #[uniffi::export]
 pub fn parse_target(input: String) -> Result<QuickTarget> {
     let s = input.trim();
@@ -139,7 +139,7 @@ pub fn parse_target(input: String) -> Result<QuickTarget> {
     Ok(QuickTarget {
         host,
         port: port.unwrap_or(if protocol == "telnet" { 23 } else { 22 }),
-        username: user.unwrap_or_else(|| "root".into()),
+        username: user.unwrap_or_default(),
         protocol: protocol.into(),
     })
 }
@@ -1593,7 +1593,7 @@ fn ssh_target(resolved: &ResolvedHost) -> SshTarget {
     SshTarget {
         host: resolved.host.data.address.clone(),
         port: resolved.port(),
-        username: resolved.username(),
+        username: resolved.username().unwrap_or_default(),
     }
 }
 
@@ -1624,10 +1624,6 @@ fn quick_target(target: &QuickTarget) -> Result<SshTarget> {
     Ok(SshTarget {
         host: target.host.trim().to_string(),
         port: target.port,
-        username: if target.username.trim().is_empty() {
-            "root".into()
-        } else {
-            target.username.trim().to_string()
-        },
+        username: target.username.trim().to_string(),
     })
 }

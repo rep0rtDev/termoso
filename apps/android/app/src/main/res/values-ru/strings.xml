@@ -999,6 +999,7 @@
     <string name="trust_save">Доверять и сохранить</string>
     <string name="reject">Отклонить</string>
     <string name="that_didnt_work_try_again">Не сработало — попробуйте ещё раз.</string>
+    <string name="enter_a_username_to_continue">Введите имя пользователя, чтобы продолжить.</string>
     <string name="save_in_vault">Сохранить в хранилище</string>
     <string name="needs_the_pin_of_the_security_key_to">%1$s требует PIN ключа безопасности для входа.</string>
     <string name="wrong_pin_try_again">Неверный PIN — попробуйте ещё раз.</string>
@@ -1264,13 +1265,18 @@
     <!-- Files integration (storage access framework) -->
     <string name="files_integration">Интеграция с «Файлами»</string>
     <string name="files_show_sftp_hosts_in_files">Показывать SFTP-хосты в «Файлах»</string>
-    <string name="files_show_sftp_hosts_in_files_summary">Просматривайте, открывайте и сохраняйте файлы на своих SSH-хостах из системного приложения «Файлы» и любого приложения, работающего с документами. К хостам, которым нужен пароль или подтверждение нового ключа, сначала подключитесь из Termoso.</string>
+    <string name="files_show_sftp_hosts_in_files_summary">Просматривайте, открывайте и сохраняйте файлы на своих SSH-хостах из системного приложения «Файлы» и любого приложения, работающего с документами. Показываются только хосты с включённым «Показывать в Файлах». К хостам, которым нужен пароль или подтверждение нового ключа, сначала подключитесь из Termoso.</string>
+    <string name="show_in_files">Показывать в Файлах</string>
+    <string name="show_in_files_summary">Показывать SFTP- и WebDAV-ресурсы этого хоста в системном приложении «Файлы» и других приложениях, работающих с документами</string>
+    <string name="show_in_files_disabled_summary">Интеграция с Файлами выключена в настройках; хост останется скрыт, пока её не включить</string>
+    <string name="asked_on_connect">Спрашивается при подключении</string>
     <string name="files_locked_root_summary">Разблокируйте Termoso, чтобы открыть SFTP-хосты</string>
     <string name="files_unlock_termoso_first">Сначала разблокируйте Termoso</string>
     <string name="files_host_no_longer_exists">Этого хоста больше нет в Termoso</string>
     <string name="files_connection_timed_out">Время ожидания подключения истекло</string>
     <string name="files_host_key_needs_confirmation">Подключитесь к %1$s из Termoso один раз, чтобы подтвердить ключ хоста</string>
     <string name="files_host_needs_credentials">%1$s запрашивает пароль. Подключитесь из Termoso и выберите «Запомнить»</string>
+    <string name="files_host_needs_username">У %1$s не задано имя пользователя. Подключитесь из Termoso и выберите «Запомнить»</string>
     <string name="files_host_needs_security_key">Для %1$s нужен ключ безопасности. Подключитесь из Termoso</string>
     <string name="files_invalid_name">Такое имя использовать нельзя</string>
     <string name="files_name_taken">%1$s здесь уже есть</string>

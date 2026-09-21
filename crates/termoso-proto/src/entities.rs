@@ -185,6 +185,11 @@ pub mod payload {
             /// bridge (CMDB, cloud inventory); lets the bridge find it again.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub external_id: Option<String>,
+            /// Expose the host's SFTP / WebDAV share to the system file picker
+            /// (Android Storage Access Framework). Off by default so a host
+            /// never shows up in other apps unless the user opts in.
+            #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+            pub files_provider: bool,
         }
     }
 

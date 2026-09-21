@@ -236,14 +236,13 @@ function Body({ vaultId, onClose, onImported }: Omit<Props, "open">) {
               <ToggleButton value="ip">IP address</ToggleButton>
             </ToggleButtonGroup>
           </Field>
-          <Field label="Username" hint="Optional; can be set per host later.">
+          <Field label="Username" hint="Optional; asked on connect when empty.">
             <TextField
               fullWidth
               size="small"
               value={username}
               disabled={busy}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="root"
               autoComplete="off"
             />
           </Field>

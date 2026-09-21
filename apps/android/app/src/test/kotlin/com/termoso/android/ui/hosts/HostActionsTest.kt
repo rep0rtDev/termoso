@@ -41,6 +41,7 @@ class HostActionsTest : ResourceTest() {
         ssh = true,
         telnet = null,
         webdav = null,
+        filesProvider = false,
     )
 
     @Test

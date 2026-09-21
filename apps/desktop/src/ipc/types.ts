@@ -1723,6 +1723,7 @@ export interface Question {
 export type PromptRequest =
   | { kind: "host_key"; verdict: HostKeyVerdict }
   | { kind: "certificate"; host: string; fingerprint: string }
+  | { kind: "username"; host: string; retry: boolean }
   | { kind: "password"; username: string; retry: boolean }
   | { kind: "passphrase"; key_label: string }
   | { kind: "pin"; key_label: string; retry: boolean; retries: number | null }

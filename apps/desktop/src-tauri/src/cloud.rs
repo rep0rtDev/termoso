@@ -325,6 +325,7 @@ pub fn apply_scoped(
                     timeout: None,
                     color_scheme: None,
                     has_password: false,
+                    files_provider: false,
                 };
                 let card = hosts::save(store, &form)?;
                 let mut host = store.require::<Host>(card.id)?;

@@ -50,6 +50,8 @@ pub struct HostCard {
     pub ip_version: String,
     pub notes: String,
     pub sort_order: i32,
+    /// Shown to the system file picker (Android SAF).
+    pub files_provider: bool,
     pub updated_at: DateTime<Utc>,
     /// Most recent connection to this host, if any.
     pub last_connected: Option<DateTime<Utc>>,
@@ -125,6 +127,9 @@ pub struct HostForm {
     /// Set when the stored inline identity has a password (UI shows a mask).
     #[serde(default)]
     pub has_password: bool,
+    /// Expose the SFTP / WebDAV share to the system file picker (Android SAF).
+    #[serde(default)]
+    pub files_provider: bool,
 }
 
 fn default_true() -> bool {
@@ -469,7 +474,7 @@ pub fn cards(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<HostCard>> {
                 .map(|i| i.data.username.clone())
                 .unwrap_or_default()
         } else {
-            r.username()
+            r.username().unwrap_or_default()
         };
         let protocol = if telnet_only {
             "telnet"
@@ -497,6 +502,7 @@ pub fn cards(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<HostCard>> {
             ip_version: ip_version_of(&h.data.ip_version),
             notes: h.data.notes.clone(),
             sort_order: h.data.sort_order,
+            files_provider: h.data.files_provider,
             updated_at: h.updated_at,
             last_connected: recent.get(&h.id).copied(),
             cloud_provider: h.data.cloud_instance_type.clone(),
@@ -764,6 +770,7 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
         timeout: ssh.as_ref().and_then(|s| s.timeout),
         color_scheme: ssh.as_ref().and_then(|s| s.color_scheme.clone()),
         has_password: ssh_login.has_password,
+        files_provider: host.data.files_provider,
     })
 }
 
@@ -1023,6 +1030,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
     host.serial_config_id = None;
     host.tag_ids = f.tag_ids.clone();
     host.notes = f.notes.clone();
+    host.files_provider = f.files_provider;
     // Detection owns `os_name`; a form loaded before a connection must not
     // erase what the session learned meanwhile.
     if existing.is_none() {
@@ -1956,7 +1964,35 @@ mod tests {
             timeout: None,
             color_scheme: None,
             has_password: false,
+            files_provider: false,
         }
+    }
+
+    #[test]
+    fn files_provider_round_trips_and_defaults_off() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let card = save(&s, &new_form(vault)).unwrap();
+        assert!(!card.files_provider);
+
+        let mut f = form(&s, card.id).unwrap();
+        f.files_provider = true;
+        let card = save(&s, &f).unwrap();
+        assert!(card.files_provider);
+        assert!(form(&s, card.id).unwrap().files_provider);
+
+        // Hosts serialized before the field existed deserialize as hidden.
+        let stored = s.require::<Host>(card.id).unwrap();
+        let mut json = serde_json::to_value(&stored.data).unwrap();
+        assert_eq!(json["files_provider"], serde_json::Value::Bool(true));
+        json.as_object_mut().unwrap().remove("files_provider");
+        let legacy: Host = serde_json::from_value(json).unwrap();
+        assert!(!legacy.files_provider);
+        assert!(
+            !serde_json::to_string(&legacy)
+                .unwrap()
+                .contains("files_provider")
+        );
     }
 
     #[test]

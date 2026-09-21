@@ -173,7 +173,7 @@ class SftpManager(private val context: Context, private val repo: VaultRepositor
             SftpConnection(
                 id = rust.id(),
                 label = target.host,
-                target = "${target.username}@${target.host}:${target.port}",
+                target = listOf(target.username, "${target.host}:${target.port}").filter { it.isNotBlank() }.joinToString("@"),
                 hostId = null,
                 quick = target,
                 osName = null,

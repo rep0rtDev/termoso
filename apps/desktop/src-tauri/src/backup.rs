@@ -607,7 +607,7 @@ mod tests {
         assert_eq!(rep.replaced, 0);
         let restored = t.resolve_host(host_id).unwrap();
         assert_eq!(restored.port(), 2222);
-        assert_eq!(restored.username(), "deploy");
+        assert_eq!(restored.username().as_deref(), Some("deploy"));
         assert_eq!(restored.group_path, vec!["Prod, EU".to_string()]);
         assert_eq!(
             restored.identity.unwrap().data.password.as_deref(),

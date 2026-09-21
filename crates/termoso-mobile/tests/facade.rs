@@ -664,8 +664,9 @@ fn parse_targets() {
         (t.username.as_str(), t.host.as_str(), t.port),
         ("deploy", "example.org", 2200)
     );
+    // No user in the target: left empty so the connect path asks for it.
     let t = parse_target("example.org".into()).unwrap();
-    assert_eq!((t.username.as_str(), t.port), ("root", 22));
+    assert_eq!((t.username.as_str(), t.port), ("", 22));
     let t = parse_target("me@[::1]:23".into()).unwrap();
     assert_eq!((t.host.as_str(), t.port), ("::1", 23));
     assert_eq!(t.protocol, "ssh");

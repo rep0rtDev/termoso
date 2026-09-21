@@ -1189,7 +1189,51 @@ fn ssh_target(resolved: &ResolvedHost) -> SshTarget {
     SshTarget {
         host: resolved.host.data.address.clone(),
         port: resolved.port(),
-        username: resolved.username(),
+        username: resolved.username().unwrap_or_default(),
+    }
+}
+
+/// Ask for the login name when the target has none; an empty answer asks
+/// again, dismissing the prompt cancels the connection.
+async fn ask_username<R: Runtime>(
+    app: &AppHandle<R>,
+    session_id: Uuid,
+    target: &SshTarget,
+    resolved: Option<&ResolvedHost>,
+) -> Result<String> {
+    let state = app.state::<AppState>();
+    let host = resolved
+        .map(|r| r.host.data.label.clone())
+        .filter(|l| !l.is_empty())
+        .unwrap_or_else(|| target.host.clone());
+    let mut retry = false;
+    loop {
+        let answer = state
+            .prompts
+            .ask(
+                app,
+                session_id,
+                target.display(),
+                PromptRequest::Username {
+                    host: host.clone(),
+                    retry,
+                },
+            )
+            .await;
+        match answer {
+            Some(PromptAnswer::Secret { value, remember }) => {
+                let value = value.trim().to_string();
+                if value.is_empty() {
+                    retry = true;
+                    continue;
+                }
+                if remember && let Some(r) = resolved {
+                    remember_username(&state, r, &value);
+                }
+                return Ok(value);
+            }
+            _ => return Err(CoreError::Cancelled.into()),
+        }
     }
 }
 
@@ -1267,6 +1311,7 @@ pub(crate) fn dirs_home() -> Option<std::path::PathBuf> {
 }
 
 /// `[user@]host[:port]` → (user, host, port). IPv6 literals go in brackets.
+/// The user is empty when not given; the connect path asks for it.
 fn parse_quick(
     address: &str,
     username: Option<&str>,
@@ -1305,9 +1350,7 @@ fn parse_quick(
         .map(str::to_string)
         .or_else(|| user_part.map(str::to_string))
         .filter(|u| !u.is_empty())
-        .or_else(|| std::env::var("USER").ok())
-        .or_else(|| std::env::var("USERNAME").ok())
-        .unwrap_or_else(|| "root".into());
+        .unwrap_or_default();
     Ok((user, host, port))
 }
 
@@ -1326,6 +1369,10 @@ async fn ssh_connect<R: Runtime>(
     hop: Option<String>,
 ) -> Result<(Arc<SshClient>, Vec<Arc<SshClient>>)> {
     let state = app.state::<AppState>();
+    let mut target = target;
+    if target.username.trim().is_empty() {
+        target.username = ask_username(app, session_id, &target, resolved).await?;
+    }
     let mut jumps: Vec<Arc<SshClient>> = Vec::new();
 
     // Jump hosts first, in the order saved on the host chain. Each hop is
@@ -1340,7 +1387,7 @@ async fn ssh_connect<R: Runtime>(
         let hop_target = SshTarget {
             host: hop_resolved.host.data.address.clone(),
             port: hop_resolved.port(),
-            username: hop_resolved.username(),
+            username: hop_resolved.username().unwrap_or_default(),
         };
         let (client, _) = Box::pin(ssh_connect(
             app,
@@ -1487,7 +1534,7 @@ async fn ssh_connect<R: Runtime>(
                 match answer {
                     Some(PromptAnswer::Secret { value, remember }) => {
                         if remember && let Some(r) = resolved {
-                            remember_password(&state, r, &value);
+                            remember_password(&state, r, &target.username, &value);
                         }
                         password = Some(value);
                     }
@@ -1596,33 +1643,39 @@ fn proxy_config(state: &AppState, p: &termoso_core::model::Proxy) -> Result<Prox
     })
 }
 
-/// Store a password the user asked to remember: on the host's identity when
-/// it has one, otherwise on a new hidden identity attached to the host's SSH
-/// config (created if missing).
-fn remember_password(state: &AppState, resolved: &ResolvedHost, value: &Zeroizing<String>) {
+/// Store a credential the user asked to remember on the host's identity
+/// when it has one, otherwise on a new hidden identity attached to the
+/// host's SSH config (created if missing). `username` is the login the
+/// connection is using; `edit` applies the remembered value.
+fn remember_on_identity(
+    state: &AppState,
+    resolved: &ResolvedHost,
+    username: &str,
+    what: &str,
+    edit: impl Fn(&mut Identity),
+) {
     let store = &state.store;
     let result = (|| -> termoso_core::error::Result<()> {
         if let Some(ident) = &resolved.identity {
             let mut data = ident.data.clone();
-            data.password = Some(value.to_string());
+            edit(&mut data);
             return store.update(ident.id, &data);
         }
         let vault_id = resolved.host.vault_id;
-        let identity_id = store.insert(
-            vault_id,
-            &Identity {
-                label: format!("{}@{}", resolved.username(), resolved.host.data.address),
-                username: resolved.username(),
-                password: Some(value.to_string()),
-                ssh_key_id: None,
-                ssh_certificate_id: None,
-                is_visible: false,
-                ssh_id: false,
-                ssh_id_key_type: None,
-                bearer_token: None,
-                client_certificate: None,
-            },
-        )?;
+        let mut identity = Identity {
+            label: format!("{username}@{}", resolved.host.data.address),
+            username: username.to_string(),
+            password: None,
+            ssh_key_id: None,
+            ssh_certificate_id: None,
+            is_visible: false,
+            ssh_id: false,
+            ssh_id_key_type: None,
+            bearer_token: None,
+            client_certificate: None,
+        };
+        edit(&mut identity);
+        let identity_id = store.insert(vault_id, &identity)?;
         match resolved.host.data.ssh_config_id {
             Some(cfg_id) => {
                 let cfg = store.require::<SshConfig>(cfg_id)?;
@@ -1645,8 +1698,20 @@ fn remember_password(state: &AppState, resolved: &ResolvedHost, value: &Zeroizin
         }
     })();
     if let Err(e) = result {
-        tracing::warn!(error = %e, "could not remember password");
+        tracing::warn!(error = %e, "could not remember {what}");
     }
+}
+
+fn remember_password(state: &AppState, resolved: &ResolvedHost, username: &str, value: &str) {
+    remember_on_identity(state, resolved, username, "password", |i| {
+        i.password = Some(value.to_string())
+    });
+}
+
+fn remember_username(state: &AppState, resolved: &ResolvedHost, username: &str) {
+    remember_on_identity(state, resolved, username, "username", |i| {
+        i.username = username.to_string()
+    });
 }
 
 #[cfg(test)]

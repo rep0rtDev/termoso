@@ -885,6 +885,7 @@ pub fn apply(
             timeout: h.timeout,
             color_scheme: None,
             has_password: false,
+            files_provider: false,
         };
         match hosts::save(store, &form) {
             Ok(card) => {
@@ -1260,6 +1261,7 @@ fn build_chain(
                     timeout: None,
                     color_scheme: None,
                     has_password: false,
+                    files_provider: false,
                 };
                 let card = hosts::save(store, &form)?;
                 existing.hosts.push(card.clone());

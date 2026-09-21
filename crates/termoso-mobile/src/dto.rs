@@ -102,6 +102,9 @@ pub struct HostItem {
     pub os_name: Option<String>,
     pub icon: Option<String>,
     pub notes: String,
+    /// Exposed to the system file picker (SAF) when the Files integration
+    /// is on.
+    pub files_provider: bool,
     pub updated_at: i64,
     pub last_connected: Option<i64>,
     pub dirty: bool,
@@ -126,6 +129,7 @@ impl From<hosts::HostCard> for HostItem {
             os_name: c.os_name,
             icon: c.icon,
             notes: c.notes,
+            files_provider: c.files_provider,
             updated_at: millis(c.updated_at),
             last_connected: c.last_connected.map(millis),
             dirty: c.dirty,
@@ -185,6 +189,8 @@ pub struct HostDraft {
     pub telnet: Option<TelnetDraft>,
     /// WebDAV section; `None` = no share on this host.
     pub webdav: Option<WebDavDraft>,
+    /// Expose the SFTP / WebDAV share to the system file picker (SAF).
+    pub files_provider: bool,
 }
 
 /// WebDAV section of the host editor. Credentials are the share's own,
@@ -293,6 +299,7 @@ impl HostDraft {
             ssh: true,
             telnet: None,
             webdav: None,
+            files_provider: false,
         }
     }
 }
@@ -332,6 +339,7 @@ impl From<hosts::HostForm> for HostDraft {
             ssh: f.ssh,
             telnet: f.telnet.map(Into::into),
             webdav: f.webdav.map(Into::into),
+            files_provider: f.files_provider,
         }
     }
 }
@@ -372,6 +380,7 @@ impl HostDraft {
             .collect();
         base.keep_alive_interval = self.keep_alive_interval;
         base.timeout = self.timeout;
+        base.files_provider = self.files_provider;
         base.telnet = match self.telnet {
             None => None,
             Some(t) => {
@@ -447,6 +456,7 @@ pub(crate) fn blank_form(vault_id: Uuid) -> hosts::HostForm {
         timeout: None,
         color_scheme: None,
         has_password: false,
+        files_provider: false,
     }
 }
 

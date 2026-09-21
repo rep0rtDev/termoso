@@ -73,6 +73,14 @@ fun PromptDialog(pending: PendingPrompt, onAnswer: (PromptAnswer) -> Unit) {
             warning = stringResource(R.string.the_key_this_server_presents_differs_from_the),
             onAnswer = onAnswer,
         )
+        is PromptRequest.Username -> SecretDialog(
+            title = stringResource(R.string.username),
+            subtitle = stringResource(R.string.for_, req.host),
+            retry = req.retry,
+            retryText = stringResource(R.string.enter_a_username_to_continue),
+            secret = false,
+            onAnswer = onAnswer,
+        )
         is PromptRequest.Password -> SecretDialog(
             title = stringResource(R.string.password),
             subtitle = stringResource(R.string.for_, req.username),
@@ -147,10 +155,18 @@ private fun HostKeyDialog(
 }
 
 @Composable
-private fun SecretDialog(title: String, subtitle: String, retry: Boolean, onAnswer: (PromptAnswer) -> Unit) {
+private fun SecretDialog(
+    title: String,
+    subtitle: String,
+    retry: Boolean,
+    onAnswer: (PromptAnswer) -> Unit,
+    retryText: String = stringResource(R.string.that_didnt_work_try_again),
+    /** `false` for a plain value (a username): shown as typed, no eye toggle. */
+    secret: Boolean = true,
+) {
     var value by remember { mutableStateOf("") }
     var remember by rememberSaveable { mutableStateOf(false) }
-    var shown by remember { mutableStateOf(false) }
+    var shown by remember { mutableStateOf(!secret) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     val submit = { onAnswer(PromptAnswer.Secret(value = value, remember = remember)) }
@@ -162,7 +178,7 @@ private fun SecretDialog(title: String, subtitle: String, retry: Boolean, onAnsw
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (retry) {
-                    Text(stringResource(R.string.that_didnt_work_try_again), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Text(retryText, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
                 OutlinedTextField(
                     value = value,
@@ -171,18 +187,22 @@ private fun SecretDialog(title: String, subtitle: String, retry: Boolean, onAnsw
                     modifier = Modifier.fillMaxWidth().focusRequester(focus),
                     visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Password,
+                        keyboardType = if (secret) KeyboardType.Password else KeyboardType.Ascii,
                         imeAction = ImeAction.Done,
                         autoCorrectEnabled = false,
                         capitalization = KeyboardCapitalization.None,
                     ),
                     keyboardActions = KeyboardActions(onDone = { submit() }),
-                    trailingIcon = {
-                        IconButton(onClick = { shown = !shown }) {
-                            Icon(
-                                if (shown) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                contentDescription = if (shown) stringResource(R.string.hide) else stringResource(R.string.show),
-                            )
+                    trailingIcon = if (!secret) {
+                        null
+                    } else {
+                        {
+                            IconButton(onClick = { shown = !shown }) {
+                                Icon(
+                                    if (shown) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                    contentDescription = if (shown) stringResource(R.string.hide) else stringResource(R.string.show),
+                                )
+                            }
                         }
                     },
                 )

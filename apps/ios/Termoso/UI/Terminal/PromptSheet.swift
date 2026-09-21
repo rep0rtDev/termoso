@@ -47,6 +47,7 @@ struct PromptSheet: View {
         case .hostKeyUnknown: "New host key"
         case .hostKeyChanged: "Host key changed"
         case .certificate: "Untrusted certificate"
+        case .username: "Username"
         case .password: "Password"
         case .passphrase: "Key passphrase"
         case .securityKeyPin: "Security key PIN"
@@ -100,6 +101,22 @@ struct PromptSheet: View {
                 Button("Connect once") { answer(.hostKey(decision: .acceptOnce)) }
                     .accessibilityIdentifier("prompt.certificate.once")
             }
+
+        case let .username(host, retry):
+            Section {
+                TextField("Username for \(host)", text: $secret)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .focused($secretFocused)
+                    .submitLabel(.go)
+                    .onSubmit { submitSecret() }
+                    .accessibilityIdentifier("prompt.secret")
+                Toggle("Remember in this host", isOn: $remember)
+                    .accessibilityIdentifier("prompt.remember")
+            } footer: {
+                if retry { Text("Enter a username to continue.").foregroundStyle(.red) }
+            }
+            connectButton
 
         case let .password(username, retry):
             Section {
