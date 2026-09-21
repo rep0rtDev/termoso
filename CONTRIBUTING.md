@@ -54,7 +54,9 @@ cd apps/ios && ./build-core.sh --debug --sim && xcodegen generate && open Termos
 ```
 
 The web dev server proxies `/api` to `localhost:8080`; the server serves the
-built cabinet itself when `TERMOSO_WEB_DIR` points at `web/dist`.
+built cabinet itself when `TERMOSO_WEB_DIR` points at `web/dist`. Release-style
+artifacts (images, installers, APKs, `.ipa`) and the signing keys they need are
+covered in [docs/BUILDING.md](docs/BUILDING.md).
 
 ## Checks
 

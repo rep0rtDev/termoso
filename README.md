@@ -84,7 +84,7 @@ deploy/
   docker-compose.dev.yml  backing services for development and tests (+ Mailpit)
   quadlet/              the same stack as Podman Quadlet units for systemd
   .env.example          annotated server configuration
-docs/                   ARCHITECTURE, SELF_HOSTING, API_BRIDGE, RELEASING, IOS_SIDELOAD, SFTP_BENCHMARK
+docs/                   ARCHITECTURE, BUILDING, SELF_HOSTING, API_BRIDGE, RELEASING, IOS_SIDELOAD, SFTP_BENCHMARK
 scripts/check.sh        runs the same checks as CI, per component
 .github/workflows/      ci.yml (every push/PR), release.yml (tags)
 ```
@@ -252,6 +252,10 @@ Client-side settings live in the apps. Desktop honours `TERMOSO_PROFILE_DIR`
 
 ## Local development
 
+This section is the dev loop (hot reload, tests). To produce the release
+artifacts yourself — container images, installers for Linux/Windows/macOS,
+signed APKs, the iOS `.ipa` — follow [docs/BUILDING.md](docs/BUILDING.md).
+
 Prerequisites per component (all optional — work on what you touch):
 
 | Component | Needs |
@@ -371,7 +375,9 @@ signed Android APKs per ABI, the unsigned iOS `.ipa` with its AltStore source,
 `SHA256SUMS.txt`, and the `ghcr.io/rep0rtdev/termoso-server:<version>` and
 `termoso-bridge:<version>` images. The version must match in the workspace
 `Cargo.toml`, `apps/desktop/package.json` and `apps/ios/project.yml`. Process,
-secrets and the updater behaviour: [docs/RELEASING.md](docs/RELEASING.md).
+secrets and the updater behaviour: [docs/RELEASING.md](docs/RELEASING.md);
+building the same artifacts on your own machine, with your own signing keys:
+[docs/BUILDING.md](docs/BUILDING.md).
 
 ## API overview
 
