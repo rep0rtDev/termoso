@@ -1869,14 +1869,20 @@ impl WebDavFile {
         if !*dirty {
             return Ok(());
         }
-        file.flush().await?;
-        let size = file.metadata().await?.len();
+        let size = spool_len(file).await?;
         self.dav
             .put_file(spool, &self.path, size, None, &TransferOptions::default())
             .await?;
         *dirty = false;
         Ok(())
     }
+}
+
+/// `tokio::fs::File::metadata` does not wait for buffered writes, so the
+/// length is only accurate after a flush.
+async fn spool_len(file: &mut tokio::fs::File) -> Result<u64> {
+    file.flush().await?;
+    Ok(file.metadata().await?.len())
 }
 
 impl Drop for WebDavFile {
@@ -1892,10 +1898,10 @@ impl Drop for WebDavFile {
 #[async_trait::async_trait]
 impl remote::RemoteFile for WebDavFile {
     async fn size(&self) -> Result<u64> {
-        let st = self.state.lock().await;
-        match &*st {
+        let mut st = self.state.lock().await;
+        match &mut *st {
             FileState::Read { size } => Ok(*size),
-            FileState::Spool { file, .. } => Ok(file.metadata().await?.len()),
+            FileState::Spool { file, .. } => spool_len(file).await,
         }
     }
 
@@ -1911,7 +1917,7 @@ impl remote::RemoteFile for WebDavFile {
                 Ok(b.to_vec())
             }
             FileState::Spool { file, .. } => {
-                let end = file.metadata().await?.len();
+                let end = spool_len(file).await?;
                 if offset >= end {
                     return Ok(Vec::new());
                 }
