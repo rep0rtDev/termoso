@@ -26,7 +26,10 @@ use sha2::Digest as _;
 use termoso_core::error::CoreError;
 use termoso_core::remote::{RemoteFs, RemoteProtocol};
 use termoso_core::sftp::{EntryKind, OpenMode, Progress, TransferOptions};
-use termoso_core::webdav::{TlsPolicy, WebDav, WebDavConfig, fingerprint, probe_certificate};
+use termoso_core::webdav::{
+    ClientIdentity, TlsPolicy, WebDav, WebDavConfig, client_certificate_fingerprint, fingerprint,
+    probe_certificate, split_client_pem,
+};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
@@ -37,6 +40,15 @@ const NONCE: &str = "dcd98b7102dd2f0e8b11d0f600bfb0c093";
 
 const CERT_DER: &[u8] = include_bytes!("fixtures/webdav-test.crt.der");
 const KEY_DER: &[u8] = include_bytes!("fixtures/webdav-test.key.der");
+/// CA the mTLS server trusts for client certificates, and a client
+/// certificate it issued.
+const CLIENT_CA_DER: &[u8] = include_bytes!("fixtures/webdav-client-ca.crt.der");
+const CLIENT_CERT_PEM: &str = include_str!("fixtures/webdav-client.crt.pem");
+const CLIENT_KEY_PEM: &str = include_str!("fixtures/webdav-client.key.pem");
+/// A self-signed client certificate the server has never heard of.
+const STRANGER_CERT_PEM: &str = include_str!("fixtures/webdav-stranger.crt.pem");
+const STRANGER_KEY_PEM: &str = include_str!("fixtures/webdav-stranger.key.pem");
+const TOKEN: &str = "eyJ.opaque-access-token.sig";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Auth {
@@ -44,6 +56,16 @@ enum Auth {
     Basic,
     /// `algorithm` as advertised in the challenge.
     Digest(&'static str),
+    Bearer,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Tls {
+    Off,
+    /// Server certificate only.
+    Server,
+    /// Server certificate + a client certificate from `CLIENT_CA_DER` required.
+    Mutual,
 }
 
 struct ServerState {
@@ -69,6 +91,11 @@ async fn spawn(auth: Auth, tls: bool) -> Server {
 }
 
 async fn spawn_with(auth: Auth, tls: bool, strip_range: bool) -> Server {
+    let tls = if tls { Tls::Server } else { Tls::Off };
+    spawn_full(auth, tls, strip_range).await
+}
+
+async fn spawn_full(auth: Auth, tls: Tls, strip_range: bool) -> Server {
     let dav = DavHandler::builder()
         .filesystem(MemFs::new())
         .locksystem(FakeLs::new())
@@ -91,17 +118,30 @@ async fn spawn_with(auth: Auth, tls: bool, strip_range: bool) -> Server {
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
-    let task = if tls {
+    let task = if tls != Tls::Off {
         let cert = CertificateDer::from(CERT_DER.to_vec());
         let key = PrivateKeyDer::try_from(KEY_DER.to_vec()).unwrap();
-        let cfg = rustls::ServerConfig::builder_with_provider(Arc::new(
-            rustls::crypto::ring::default_provider(),
-        ))
-        .with_safe_default_protocol_versions()
-        .unwrap()
-        .with_no_client_auth()
-        .with_single_cert(vec![cert], key)
-        .unwrap();
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let builder = rustls::ServerConfig::builder_with_provider(provider.clone())
+            .with_safe_default_protocol_versions()
+            .unwrap();
+        let builder = match tls {
+            Tls::Mutual => {
+                let mut roots = rustls::RootCertStore::empty();
+                roots
+                    .add(CertificateDer::from(CLIENT_CA_DER.to_vec()))
+                    .unwrap();
+                let verifier = rustls::server::WebPkiClientVerifier::builder_with_provider(
+                    Arc::new(roots),
+                    provider,
+                )
+                .build()
+                .unwrap();
+                builder.with_client_cert_verifier(verifier)
+            }
+            _ => builder.with_no_client_auth(),
+        };
+        let cfg = builder.with_single_cert(vec![cert], key).unwrap();
         let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(cfg));
         tokio::spawn(async move {
             loop {
@@ -126,7 +166,7 @@ async fn spawn_with(auth: Auth, tls: bool, strip_range: bool) -> Server {
             axum::serve(listener, router).await.unwrap();
         })
     };
-    let scheme = if tls { "https" } else { "http" };
+    let scheme = if tls != Tls::Off { "https" } else { "http" };
     Server {
         base: format!("{scheme}://127.0.0.1:{}/dav/", addr.port()),
         state,
@@ -147,6 +187,7 @@ async fn guard(State(st): State<Arc<ServerState>>, mut req: Request, next: Next)
         Auth::Anonymous => true,
         Auth::Basic => check_basic(req.headers()),
         Auth::Digest(alg) => check_digest(&st, alg, req.method(), req.uri().path(), req.headers()),
+        Auth::Bearer => check_bearer(req.headers()),
     };
     if authorized {
         return next.run(req).await;
@@ -179,8 +220,25 @@ async fn guard(State(st): State<Arc<ServerState>>, mut req: Request, next: Next)
                 HeaderValue::from_str(&format!("Basic realm=\"{REALM}\"")).unwrap(),
             );
         }
+        Auth::Bearer => {
+            resp.headers_mut().insert(
+                header::WWW_AUTHENTICATE,
+                HeaderValue::from_str(&format!(
+                    "Bearer realm=\"{REALM}\", error=\"invalid_token\""
+                ))
+                .unwrap(),
+            );
+        }
     }
     resp
+}
+
+fn check_bearer(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        == Some(TOKEN)
 }
 
 fn check_basic(headers: &HeaderMap) -> bool {
@@ -278,10 +336,161 @@ fn cfg(server: &Server, creds: Option<(&str, &str)>) -> WebDavConfig {
         url: server.base.clone(),
         username: creds.map(|(u, _)| u.to_string()),
         password: creds.map(|(_, p)| p.to_string()),
+        bearer_token: None,
         tls: TlsPolicy::System,
+        client_identity: None,
         connect_timeout: Duration::from_secs(5),
         spool_dir: Some(std::env::temp_dir()),
     }
+}
+
+fn err_text(e: CoreError) -> String {
+    e.to_string()
+}
+
+#[tokio::test]
+async fn bearer_token_is_sent_from_the_first_request() {
+    let server = spawn(Auth::Bearer, false).await;
+
+    let mut c = cfg(&server, None);
+    c.bearer_token = Some(TOKEN.into());
+    let dav = WebDav::connect(c).await.unwrap();
+    dav.write("/t.txt", b"token").await.unwrap();
+    assert_eq!(dav.read("/t.txt").await.unwrap(), b"token");
+    // No 401 round trip: the token went out with the very first request.
+    assert_eq!(server.state.challenges_sent.load(Ordering::Relaxed), 0);
+
+    // The token wins over a username/password given alongside.
+    let mut both = cfg(&server, Some((USER, PASS)));
+    both.bearer_token = Some(TOKEN.into());
+    WebDav::connect(both).await.unwrap();
+
+    // A wrong token is not "negotiated" into anything else.
+    let mut wrong = cfg(&server, None);
+    wrong.bearer_token = Some("nope".into());
+    match WebDav::connect(wrong).await {
+        Err(CoreError::AuthFailed { remaining }) => assert_eq!(remaining, vec!["bearer"]),
+        other => panic!("expected auth failure, got {other:?}"),
+    }
+    // ...and Basic credentials do not satisfy a Bearer-only server.
+    match WebDav::connect(cfg(&server, Some((USER, PASS)))).await {
+        Err(CoreError::AuthFailed { remaining }) => assert_eq!(remaining, vec!["bearer"]),
+        other => panic!("expected auth failure, got {other:?}"),
+    }
+}
+
+#[test]
+fn client_identity_parses_pem_and_rejects_the_rest() {
+    let id = ClientIdentity::from_pem(CLIENT_CERT_PEM, CLIENT_KEY_PEM).unwrap();
+    assert_eq!(
+        id.fingerprint(),
+        client_certificate_fingerprint(CLIENT_CERT_PEM).unwrap()
+    );
+    assert_eq!(id.fingerprint().len(), 32 * 3 - 1);
+    // The private key never shows up in Debug output.
+    let dbg = format!("{id:?}");
+    assert!(dbg.contains(&id.fingerprint()));
+    assert!(!dbg.contains("PRIVATE"));
+
+    assert!(matches!(
+        ClientIdentity::from_pem("not a cert", CLIENT_KEY_PEM),
+        Err(CoreError::Invalid(_))
+    ));
+    assert!(matches!(
+        ClientIdentity::from_pem(CLIENT_CERT_PEM, "garbage"),
+        Err(CoreError::Invalid(_))
+    ));
+    // The key by itself is not a certificate.
+    assert!(matches!(
+        ClientIdentity::from_pem(CLIENT_KEY_PEM, CLIENT_KEY_PEM),
+        Err(CoreError::Invalid(_))
+    ));
+    let encrypted =
+        "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIIB\n-----END ENCRYPTED PRIVATE KEY-----\n";
+    match ClientIdentity::from_pem(CLIENT_CERT_PEM, encrypted) {
+        Err(CoreError::Invalid(m)) => assert!(m.contains("encrypted"), "{m}"),
+        other => panic!("expected invalid, got {other:?}"),
+    }
+}
+
+#[test]
+fn split_client_pem_separates_bundles() {
+    let bundle = format!("{CLIENT_KEY_PEM}\n{CLIENT_CERT_PEM}");
+    let parts = split_client_pem(&bundle).unwrap();
+    assert!(parts.certificate.starts_with("-----BEGIN CERTIFICATE-----"));
+    assert!(parts.private_key.contains("PRIVATE KEY-----"));
+    // Same identity as the two originals.
+    let id = ClientIdentity::from_pem(&parts.certificate, &parts.private_key).unwrap();
+    assert_eq!(
+        id.fingerprint(),
+        client_certificate_fingerprint(CLIENT_CERT_PEM).unwrap()
+    );
+
+    let cert_only = split_client_pem(CLIENT_CERT_PEM).unwrap();
+    assert!(cert_only.private_key.is_empty());
+    let key_only = split_client_pem(CLIENT_KEY_PEM).unwrap();
+    assert!(key_only.certificate.is_empty());
+    assert!(matches!(
+        split_client_pem("hello"),
+        Err(CoreError::Invalid(_))
+    ));
+    assert!(matches!(
+        split_client_pem(
+            "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIIB\n-----END ENCRYPTED PRIVATE KEY-----\n"
+        ),
+        Err(CoreError::Invalid(_))
+    ));
+}
+
+#[tokio::test]
+async fn mutual_tls_requires_a_certificate_the_server_trusts() {
+    let server = spawn_full(Auth::Anonymous, Tls::Mutual, false).await;
+    let fp = fingerprint(CERT_DER);
+    let identity = ClientIdentity::from_pem(CLIENT_CERT_PEM, CLIENT_KEY_PEM).unwrap();
+
+    // Pinned server certificate + our client certificate: full round trip.
+    let mut pinned = cfg(&server, None);
+    pinned.tls = TlsPolicy::Pinned(fp.clone());
+    pinned.client_identity = Some(identity.clone());
+    let dav = WebDav::connect(pinned).await.unwrap();
+    dav.write("/mtls.txt", b"both ways").await.unwrap();
+    assert_eq!(dav.read("/mtls.txt").await.unwrap(), b"both ways");
+    dav.mkdir("/d").await.unwrap();
+    assert_eq!(names(&dav.list("/").await.unwrap()), vec!["d", "mtls.txt"]);
+
+    // Without a client certificate the server refuses, and the error says so
+    // instead of surfacing a raw transport failure.
+    let mut none = cfg(&server, None);
+    none.tls = TlsPolicy::Pinned(fp.clone());
+    let msg = err_text(WebDav::connect(none).await.unwrap_err());
+    assert!(msg.contains("requires a client certificate"), "{msg}");
+
+    // A certificate from an unknown issuer is rejected with a distinct message.
+    let mut stranger = cfg(&server, None);
+    stranger.tls = TlsPolicy::Pinned(fp.clone());
+    stranger.client_identity =
+        Some(ClientIdentity::from_pem(STRANGER_CERT_PEM, STRANGER_KEY_PEM).unwrap());
+    let msg = err_text(WebDav::connect(stranger).await.unwrap_err());
+    assert!(msg.contains("rejected the client certificate"), "{msg}");
+
+    // Server verification is untouched by the client identity: an untrusted
+    // server certificate still surfaces as a rejection to pin.
+    let mut system = cfg(&server, None);
+    system.client_identity = Some(identity.clone());
+    match WebDav::connect(system).await {
+        Err(CoreError::CertificateRejected {
+            fingerprint: got, ..
+        }) => assert_eq!(got, fp),
+        other => panic!("expected certificate rejection, got {other:?}"),
+    }
+
+    // The system-roots path builds a client too (reqwest identity); it just
+    // cannot trust this self-signed server.
+    WebDav::new(WebDavConfig {
+        client_identity: Some(identity),
+        ..cfg(&server, None)
+    })
+    .unwrap();
 }
 
 fn names(entries: &[termoso_core::sftp::RemoteEntry]) -> Vec<&str> {

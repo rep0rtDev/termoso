@@ -7,10 +7,11 @@ use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use termoso_core::model::{
-    Entity, Group, Host, HostChain, HostSnippet, Identity, Proxy, SerialConfig, Snippet,
-    SshCertificate, SshConfig, SshKey, Tag, TelnetConfig, WebDavConfig,
+    ClientCertificate, Entity, Group, Host, HostChain, HostSnippet, Identity, Proxy, SerialConfig,
+    Snippet, SshCertificate, SshConfig, SshKey, Tag, TelnetConfig, WebDavConfig,
 };
 use termoso_core::store::Store;
+use termoso_core::webdav::client_certificate_fingerprint;
 use termoso_proto::sshid::SshIdKeyType;
 use uuid::Uuid;
 
@@ -173,7 +174,31 @@ pub struct WebDavForm {
     pub certificate_fingerprint: Option<String>,
     #[serde(default)]
     pub has_password: bool,
+    /// `password` (Basic / Digest, negotiated) or `token` (Bearer).
+    #[serde(default = "default_webdav_auth")]
+    pub auth: String,
+    /// `None` keeps the stored token when editing; `Some("")` clears it.
+    #[serde(default)]
+    pub bearer_token: Option<String>,
+    #[serde(default)]
+    pub has_bearer_token: bool,
+    /// PEM client certificate chain + key for servers requiring mTLS.
+    /// `None` keeps the stored pair; an empty certificate clears it.
+    #[serde(default)]
+    pub client_certificate: Option<String>,
+    #[serde(default)]
+    pub client_key: Option<String>,
+    /// SHA-256 fingerprint of the stored client certificate's leaf.
+    #[serde(default)]
+    pub client_certificate_fingerprint: Option<String>,
 }
+
+fn default_webdav_auth() -> String {
+    WEBDAV_AUTH_PASSWORD.into()
+}
+
+pub const WEBDAV_AUTH_PASSWORD: &str = "password";
+pub const WEBDAV_AUTH_TOKEN: &str = "token";
 
 /// Serial line settings as edited in the Serial tab.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -271,6 +296,7 @@ fn clean_fingerprint(fp: &Option<String>) -> Result<Option<String>> {
 }
 
 /// Hidden inline identity flattened into a form section.
+#[derive(Default)]
 struct FlatIdentity {
     identity_id: Option<Uuid>,
     username: String,
@@ -279,6 +305,8 @@ struct FlatIdentity {
     has_password: bool,
     ssh_id: bool,
     ssh_id_key_type: Option<SshIdKeyType>,
+    has_bearer_token: bool,
+    client_certificate_fingerprint: Option<String>,
 }
 
 fn flatten_identity(store: &Store, id: Option<Uuid>) -> Result<FlatIdentity> {
@@ -289,12 +317,7 @@ fn flatten_identity(store: &Store, id: Option<Uuid>) -> Result<FlatIdentity> {
     Ok(match &identity {
         Some(i) if i.data.is_visible => FlatIdentity {
             identity_id: Some(i.id),
-            username: String::new(),
-            ssh_key_id: None,
-            ssh_certificate_id: None,
-            has_password: false,
-            ssh_id: false,
-            ssh_id_key_type: None,
+            ..FlatIdentity::default()
         },
         Some(i) => FlatIdentity {
             identity_id: None,
@@ -304,16 +327,18 @@ fn flatten_identity(store: &Store, id: Option<Uuid>) -> Result<FlatIdentity> {
             has_password: i.data.password.as_deref().is_some_and(|p| !p.is_empty()),
             ssh_id: i.data.ssh_id,
             ssh_id_key_type: i.data.ssh_id_key_type,
+            has_bearer_token: i
+                .data
+                .bearer_token
+                .as_deref()
+                .is_some_and(|t| !t.is_empty()),
+            client_certificate_fingerprint: i
+                .data
+                .client_certificate
+                .as_ref()
+                .and_then(|c| client_certificate_fingerprint(&c.certificate).ok()),
         },
-        None => FlatIdentity {
-            identity_id: None,
-            username: String::new(),
-            ssh_key_id: None,
-            ssh_certificate_id: None,
-            has_password: false,
-            ssh_id: false,
-            ssh_id_key_type: None,
-        },
+        None => FlatIdentity::default(),
     })
 }
 
@@ -674,6 +699,16 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
                 identity_id: login.identity_id,
                 certificate_fingerprint: w.certificate_fingerprint.clone(),
                 has_password: login.has_password,
+                auth: if login.has_bearer_token {
+                    WEBDAV_AUTH_TOKEN.into()
+                } else {
+                    WEBDAV_AUTH_PASSWORD.into()
+                },
+                bearer_token: None,
+                has_bearer_token: login.has_bearer_token,
+                client_certificate: None,
+                client_key: None,
+                client_certificate_fingerprint: login.client_certificate_fingerprint,
             })
         }
         None => None,
@@ -826,6 +861,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
                 ssh_id: f.ssh_id,
                 ssh_id_key_type: f.ssh_id_key_type,
                 label: identity_label,
+                webdav: None,
             },
         )?;
         // Inline ssh_config, keeping fields the form does not edit.
@@ -880,6 +916,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
                 ssh_id: false,
                 ssh_id_key_type: None,
                 label: identity_label,
+                webdav: None,
             },
         )?;
         let mut t = existing_telnet
@@ -907,19 +944,42 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
     };
 
     let webdav_config_id = if let (Some(wf), Some(url)) = (&f.webdav, webdav_url) {
+        let token_mode = match wf.auth.as_str() {
+            WEBDAV_AUTH_TOKEN => true,
+            WEBDAV_AUTH_PASSWORD | "" => false,
+            other => {
+                return Err(ClientError::invalid(format!(
+                    "unknown WebDAV auth mode `{other}`"
+                )));
+            }
+        };
         let identity_id = upsert_identity(
             store,
             f.vault_id,
             webdav_inline_identity.as_ref(),
             &Credentials {
                 identity_id: wf.identity_id,
-                username: &wf.username,
-                password: wf.password.as_deref(),
+                // Switching modes drops the other mode's secret.
+                username: if token_mode { "" } else { &wf.username },
+                password: if token_mode {
+                    Some("")
+                } else {
+                    wf.password.as_deref()
+                },
                 ssh_key_id: None,
                 ssh_certificate_id: None,
                 ssh_id: false,
                 ssh_id_key_type: None,
                 label: identity_label,
+                webdav: Some(WebDavCredentials {
+                    bearer_token: if token_mode {
+                        wf.bearer_token.as_deref()
+                    } else {
+                        Some("")
+                    },
+                    client_certificate: wf.client_certificate.as_deref(),
+                    client_key: wf.client_key.as_deref(),
+                }),
             },
         )?;
         let w = WebDavConfig {
@@ -1043,6 +1103,65 @@ struct Credentials<'a> {
     ssh_id: bool,
     ssh_id_key_type: Option<SshIdKeyType>,
     label: &'a str,
+    /// WebDAV-only secrets; `None` for SSH / Telnet logins.
+    webdav: Option<WebDavCredentials<'a>>,
+}
+
+/// Token and client certificate of a WebDAV login. Each `None` keeps the
+/// stored value, `Some("")` clears it.
+struct WebDavCredentials<'a> {
+    bearer_token: Option<&'a str>,
+    client_certificate: Option<&'a str>,
+    client_key: Option<&'a str>,
+}
+
+impl WebDavCredentials<'_> {
+    fn resolve(
+        &self,
+        existing: Option<&Identity>,
+    ) -> Result<(Option<String>, Option<ClientCertificate>)> {
+        let token = match self.bearer_token.map(str::trim) {
+            Some("") => None,
+            Some(t) => Some(t.to_string()),
+            None => existing.and_then(|e| e.bearer_token.clone()),
+        };
+        let cert = match (self.client_certificate.map(str::trim), self.client_key) {
+            (Some(""), _) => None,
+            (Some(c), Some(k)) => {
+                let k = k.trim();
+                if k.is_empty() {
+                    return Err(ClientError::invalid(
+                        "client certificate: a private key is required",
+                    ));
+                }
+                termoso_core::webdav::ClientIdentity::from_pem(c, k)
+                    .map_err(|e| ClientError::invalid(e.to_string()))?;
+                Some(ClientCertificate {
+                    certificate: c.to_string(),
+                    private_key: k.to_string(),
+                })
+            }
+            (Some(c), None) => {
+                // A new certificate for the stored key (renewal).
+                let Some(k) = existing
+                    .and_then(|e| e.client_certificate.as_ref())
+                    .map(|c| c.private_key.clone())
+                else {
+                    return Err(ClientError::invalid(
+                        "client certificate: a private key is required",
+                    ));
+                };
+                termoso_core::webdav::ClientIdentity::from_pem(c, &k)
+                    .map_err(|e| ClientError::invalid(e.to_string()))?;
+                Some(ClientCertificate {
+                    certificate: c.to_string(),
+                    private_key: k,
+                })
+            }
+            (None, _) => existing.and_then(|e| e.client_certificate.clone()),
+        };
+        Ok((token, cert))
+    }
 }
 
 /// Point at a visible identity, or create / update / drop the inline hidden
@@ -1096,7 +1215,17 @@ fn upsert_identity(
         (None, Some(old)) => old.data.password.clone(),
         (None, None) => None,
     };
-    if username.is_empty() && password.is_none() && ssh_key_id.is_none() && !c.ssh_id {
+    let (bearer_token, client_certificate) = match &c.webdav {
+        Some(w) => w.resolve(existing_inline.map(|e| &e.data))?,
+        None => (None, None),
+    };
+    if username.is_empty()
+        && password.is_none()
+        && ssh_key_id.is_none()
+        && !c.ssh_id
+        && bearer_token.is_none()
+        && client_certificate.is_none()
+    {
         if let Some(old) = existing_inline {
             store.delete(old.id)?;
         }
@@ -1111,6 +1240,8 @@ fn upsert_identity(
         is_visible: false,
         ssh_id: c.ssh_id,
         ssh_id_key_type: c.ssh_id_key_type.filter(|_| c.ssh_id),
+        bearer_token,
+        client_certificate,
     };
     Ok(Some(match existing_inline {
         Some(old) => {
@@ -1309,6 +1440,7 @@ pub fn save_group_form(store: &Store, f: &GroupForm) -> Result<GroupNode> {
             ssh_id: f.ssh_id,
             ssh_id_key_type: f.ssh_id_key_type,
             label,
+            webdav: None,
         },
     )?;
 
@@ -2125,6 +2257,87 @@ mod tests {
             i.id,
             s.resolve_host(card.id).unwrap().webdav_identity.unwrap().id
         );
+    }
+
+    #[test]
+    fn webdav_token_and_client_certificate_live_in_the_identity() {
+        const CERT: &str = include_str!("../../termoso-core/tests/fixtures/webdav-client.crt.pem");
+        const KEY: &str = include_str!("../../termoso-core/tests/fixtures/webdav-client.key.pem");
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let mut f = new_form(vault);
+        f.ssh = false;
+        f.webdav = Some(WebDavForm {
+            url: "https://cloud.example.com/dav/".into(),
+            auth: WEBDAV_AUTH_TOKEN.into(),
+            bearer_token: Some(" tok-123 ".into()),
+            client_certificate: Some(CERT.into()),
+            client_key: Some(KEY.into()),
+            ..WebDavForm::default()
+        });
+        let card = save(&s, &f).unwrap();
+        let ident = s.resolve_host(card.id).unwrap().webdav_identity.unwrap();
+        assert_eq!(ident.data.bearer_token.as_deref(), Some("tok-123"));
+        assert_eq!(ident.data.username, "");
+        let cert = ident.data.client_certificate.clone().unwrap();
+        assert_eq!(cert.certificate, CERT.trim());
+        assert_eq!(cert.private_key, KEY.trim());
+        let cfg_id = s
+            .require::<Host>(card.id)
+            .unwrap()
+            .data
+            .webdav_config_id
+            .unwrap();
+        let cfg = s.require::<WebDavConfig>(cfg_id).unwrap().data;
+        assert_eq!(cfg.identity_id, Some(ident.id));
+        let cfg_json = serde_json::to_string(&cfg).unwrap();
+        assert!(!cfg_json.contains("tok-123") && !cfg_json.contains("PRIVATE KEY"));
+
+        // The form reports presence only; `None` keeps both secrets.
+        let f = form(&s, card.id).unwrap();
+        let w = f.webdav.clone().unwrap();
+        assert_eq!(w.auth, WEBDAV_AUTH_TOKEN);
+        assert!(w.has_bearer_token);
+        assert!(w.bearer_token.is_none());
+        assert!(w.client_certificate.is_none() && w.client_key.is_none());
+        assert!(w.client_certificate_fingerprint.is_some());
+        save(&s, &f).unwrap();
+        let ident = s.resolve_host(card.id).unwrap().webdav_identity.unwrap();
+        assert_eq!(ident.data.bearer_token.as_deref(), Some("tok-123"));
+        assert!(ident.data.client_certificate.is_some());
+
+        // Garbage PEM and a certificate without a key are rejected up front.
+        let mut bad = f.clone();
+        bad.webdav.as_mut().unwrap().client_certificate = Some("not pem".into());
+        bad.webdav.as_mut().unwrap().client_key = Some(KEY.into());
+        assert!(save(&s, &bad).is_err());
+        let mut fresh = new_form(vault);
+        fresh.address = "10.0.0.9".into();
+        fresh.webdav = Some(WebDavForm {
+            url: "https://other.example.com/".into(),
+            client_certificate: Some(CERT.into()),
+            ..WebDavForm::default()
+        });
+        assert!(save(&s, &fresh).is_err());
+
+        // Switching back to password auth drops the token; an empty
+        // certificate clears the pair.
+        let mut f = form(&s, card.id).unwrap();
+        {
+            let w = f.webdav.as_mut().unwrap();
+            w.auth = WEBDAV_AUTH_PASSWORD.into();
+            w.username = "alice".into();
+            w.password = Some("pw".into());
+            w.client_certificate = Some(String::new());
+        }
+        save(&s, &f).unwrap();
+        let ident = s.resolve_host(card.id).unwrap().webdav_identity.unwrap();
+        assert_eq!(ident.data.bearer_token, None);
+        assert_eq!(ident.data.client_certificate, None);
+        assert_eq!(ident.data.username, "alice");
+        assert_eq!(ident.data.password.as_deref(), Some("pw"));
+        let f = form(&s, card.id).unwrap();
+        assert_eq!(f.webdav.unwrap().auth, WEBDAV_AUTH_PASSWORD);
     }
 
     #[test]

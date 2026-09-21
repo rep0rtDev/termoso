@@ -1169,6 +1169,8 @@ fn ensure_proxy(
                 is_visible: false,
                 ssh_id: false,
                 ssh_id_key_type: None,
+                bearer_token: None,
+                client_certificate: None,
             },
         )?)
     } else {

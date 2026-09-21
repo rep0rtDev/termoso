@@ -9046,6 +9046,7 @@ dependencies = [
  "russh",
  "russh-sftp",
  "rustls 0.23.44",
+ "rustls-pki-types",
  "serde",
  "serde_json",
  "serialport",

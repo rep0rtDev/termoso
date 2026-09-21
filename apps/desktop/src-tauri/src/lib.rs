@@ -101,6 +101,8 @@ pub fn run() {
             commands::hosts_list,
             commands::host_form,
             commands::host_save,
+            commands::webdav_pem_file,
+            commands::webdav_client_identity_inspect,
             commands::host_delete,
             commands::hosts_delete,
             commands::host_duplicate,

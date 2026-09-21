@@ -104,8 +104,10 @@ import com.termoso.android.data.userMessage
 import com.termoso.android.str
 import com.termoso.android.ui.components.EmptyState
 import com.termoso.android.ui.components.HostAvatar
+import com.termoso.android.ui.components.connectingLabel
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.snippets.SnippetPickerSheet
+import com.termoso.core.ConnectStage
 import com.termoso.core.LiveEndReason
 import com.termoso.core.MobileSettings
 import com.termoso.core.SessionState
@@ -862,14 +864,14 @@ private fun StateOverlay(state: SessionState, target: String, onRetry: (() -> Un
         is SessionState.Connected -> Unit
         is SessionState.Connecting -> OverlayCard {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (s.detail.contains("Touch your security key")) {
+                if (s.stage is ConnectStage.SecurityKeyTouch) {
                     Icon(Icons.Filled.TouchApp, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                 } else {
                     CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 }
                 Column {
                     Text(target, style = MaterialTheme.typography.titleSmall)
-                    Text(s.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(connectingLabel(s), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

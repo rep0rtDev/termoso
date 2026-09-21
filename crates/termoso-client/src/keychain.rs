@@ -1005,6 +1005,10 @@ pub fn save_identity(store: &Store, form: &IdentityForm) -> Result<IdentityCard>
         is_visible: true,
         ssh_id: form.ssh_id,
         ssh_id_key_type: form.ssh_id_key_type.filter(|_| form.ssh_id),
+        bearer_token: existing.as_ref().and_then(|e| e.data.bearer_token.clone()),
+        client_certificate: existing
+            .as_ref()
+            .and_then(|e| e.data.client_certificate.clone()),
     };
     let id = match existing {
         Some(e) => {

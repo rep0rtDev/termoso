@@ -1275,4 +1275,35 @@
     <string name="untrusted_certificate">Untrusted certificate</string>
     <string name="tls_certificate_sha_256">TLS certificate (SHA-256)</string>
     <string name="copied_as">Copied as %1$s</string>
+    <string name="webdav_auth_password">Password</string>
+    <string name="webdav_auth_token">Token</string>
+    <string name="webdav_token">Bearer token</string>
+    <string name="webdav_token_saved">Bearer token (saved)</string>
+    <string name="webdav_token_hint">Sent as Authorization: Bearer on every request; the server must accept app tokens.</string>
+    <string name="webdav_client_certificate">Client certificate (mTLS)</string>
+    <string name="webdav_client_certificate_saved">Client certificate saved</string>
+    <string name="webdav_client_certificate_hint">Optional. Servers that require a client certificate get the chain and key below; both stay encrypted in the vault.</string>
+    <string name="add_client_certificate">Add client certificate</string>
+    <string name="begin_certificate_placeholder">-----BEGIN CERTIFICATE----- (leaf first, chain optional)</string>
+    <string name="begin_private_key_placeholder">-----BEGIN PRIVATE KEY----- (PKCS#8, RSA or EC, unencrypted)</string>
+    <string name="webdav_client_key_kept">Leave empty to keep the saved private key</string>
+    <string name="webdav_client_certificate_ok">Valid · SHA-256 %1$s</string>
+    <string name="webdav_client_certificate_will_be_removed">The saved client certificate will be removed on save.</string>
+    <string name="webdav_client_certificate_storage_hint">Paste or open a PEM file (a combined certificate + key file is split automatically). PKCS#12 and encrypted keys are not supported.</string>
+
+    <!-- Connection stages -->
+    <string name="stage_resolving_host">Resolving host…</string>
+    <string name="stage_connecting_to">Connecting to %1$s…</string>
+    <string name="stage_handshake">Handshake…</string>
+    <string name="stage_checking_host_key">Checking host key…</string>
+    <string name="stage_authenticating">Authenticating (%1$s)…</string>
+    <string name="stage_touch_your_security_key">Touch your security key…</string>
+    <string name="stage_authenticated">Authenticated…</string>
+    <string name="stage_starting_mosh_server">Starting mosh-server…</string>
+    <string name="stage_mosh_waiting">Mosh: waiting for udp/%1$d…</string>
+    <string name="stage_opening_shell">Opening shell…</string>
+    <string name="stage_starting_shell">Starting shell…</string>
+    <string name="stage_opening_sftp">Opening SFTP…</string>
+    <string name="stage_opening_tunnel">Opening tunnel…</string>
+    <string name="stage_via_hop">%1$s: %2$s</string>
 </resources>

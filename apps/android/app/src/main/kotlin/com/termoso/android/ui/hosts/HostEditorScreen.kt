@@ -1,5 +1,7 @@
 package com.termoso.android.ui.hosts
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -43,6 +46,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -51,11 +57,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -74,7 +82,10 @@ import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.SwitchRow
+import com.termoso.android.ui.keychain.KeyTextArea
 import com.termoso.android.ui.keychain.SshIdRows
+import com.termoso.android.ui.keychain.pasteText
+import com.termoso.android.ui.keychain.readTextFile
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.copyToClipboard
 import com.termoso.android.ui.vault.vaultLabel
@@ -87,6 +98,7 @@ import com.termoso.core.TelnetDraft
 import com.termoso.core.VaultInfo
 import com.termoso.core.WebDavDraft
 import com.termoso.core.moshDefaultServerCommand
+import kotlinx.coroutines.launch
 
 /**
  * New / edit host form. The `⋯` menu saves pending edits before it connects,
@@ -363,13 +375,30 @@ private fun HostForm(
                         placeholder = "https://cloud.example.com/remote.php/dav/files/user/",
                         keyboard = KeyboardType.Uri,
                     )
-                    FormField(webdav.username, { v -> vm.updateWebdav { it.copy(username = v) } }, stringResource(R.string.username))
-                    PasswordField(
-                        password = webdav.password,
-                        hasPassword = webdav.hasPassword,
-                        inheritedHint = false,
-                        onChange = { v -> vm.updateWebdav { it.copy(password = v) } },
-                    )
+                    WebDavAuthRow(webdav.auth) { mode -> vm.updateWebdav { it.copy(auth = mode) } }
+                    if (webdav.auth == WEBDAV_AUTH_TOKEN) {
+                        PasswordField(
+                            password = webdav.bearerToken,
+                            hasPassword = webdav.hasBearerToken,
+                            inheritedHint = false,
+                            onChange = { v -> vm.updateWebdav { it.copy(bearerToken = v) } },
+                            label = stringResource(R.string.webdav_token),
+                            savedLabel = stringResource(R.string.webdav_token_saved),
+                        )
+                        Text(
+                            stringResource(R.string.webdav_token_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        FormField(webdav.username, { v -> vm.updateWebdav { it.copy(username = v) } }, stringResource(R.string.username))
+                        PasswordField(
+                            password = webdav.password,
+                            hasPassword = webdav.hasPassword,
+                            inheritedHint = false,
+                            onChange = { v -> vm.updateWebdav { it.copy(password = v) } },
+                        )
+                    }
                     FormField(
                         webdav.certificateFingerprint ?: "",
                         { v -> vm.updateWebdav { it.copy(certificateFingerprint = v.ifBlank { null }) } },
@@ -383,6 +412,8 @@ private fun HostForm(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                RowDivider()
+                ClientCertificateBlock(vm, state, webdav)
             }
         }
 
@@ -401,7 +432,7 @@ private fun HostForm(
                     }
                 }
                 if (webdav == null) {
-                    TextButton(onClick = { vm.update { it.copy(webdav = WebDavDraft(url = "", username = "", password = null, identityId = null, certificateFingerprint = null, hasPassword = false)) } }) {
+                    TextButton(onClick = { vm.update { it.copy(webdav = emptyWebDavDraft()) } }) {
                         Icon(Icons.Filled.Add, contentDescription = null)
                         Text(stringResource(R.string.add_webdav))
                     }
@@ -633,13 +664,20 @@ private fun ProtocolHeader(title: String, removable: Boolean, onRemove: () -> Un
  * ([hasPassword]), `""` clears it, anything else replaces it.
  */
 @Composable
-private fun PasswordField(password: String?, hasPassword: Boolean, inheritedHint: Boolean, onChange: (String?) -> Unit) {
+private fun PasswordField(
+    password: String?,
+    hasPassword: Boolean,
+    inheritedHint: Boolean,
+    onChange: (String?) -> Unit,
+    label: String = stringResource(R.string.password),
+    savedLabel: String = stringResource(R.string.password_saved),
+) {
     var visible by remember { mutableStateOf(false) }
     val stored = password == null && hasPassword
     FormField(
         value = password ?: "",
         onChange = { onChange(it) },
-        label = if (stored) stringResource(R.string.password_saved) else stringResource(R.string.password),
+        label = if (stored) savedLabel else label,
         placeholder = when {
             stored -> "••••••••"
             inheritedHint -> stringResource(R.string.inherited_from_group)
@@ -663,6 +701,117 @@ private fun PasswordField(password: String?, hasPassword: Boolean, inheritedHint
             }
         },
     )
+}
+
+@Composable
+private fun WebDavAuthRow(auth: String, onPick: (String) -> Unit) {
+    val modes = listOf(
+        WEBDAV_AUTH_PASSWORD to stringResource(R.string.webdav_auth_password),
+        WEBDAV_AUTH_TOKEN to stringResource(R.string.webdav_auth_token),
+    )
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        modes.forEachIndexed { i, (mode, title) ->
+            SegmentedButton(
+                selected = auth == mode,
+                onClick = { onPick(mode) },
+                shape = SegmentedButtonDefaults.itemShape(index = i, count = modes.size),
+            ) { Text(title) }
+        }
+    }
+}
+
+/**
+ * mTLS client certificate of a WebDAV section. Follows the draft convention:
+ * `clientCertificate == null` keeps the stored pair ([WebDavDraft.clientCertificateFingerprint]
+ * says whether there is one), `""` removes it, PEM text replaces it.
+ */
+@Composable
+private fun ClientCertificateBlock(vm: HostEditorViewModel, state: HostEditorState, webdav: WebDavDraft) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val saved = webdav.clientCertificateFingerprint
+    val editing = webdav.clientCertificate != null
+    val pickPem = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching { readTextFile(context, uri) }
+                .onSuccess(vm::importClientPem)
+                .onFailure { vm.showError(it.message ?: str(R.string.could_not_read_the_file)) }
+        }
+    }
+
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.webdav_client_certificate), style = MaterialTheme.typography.titleSmall)
+        when {
+            !editing && saved != null -> {
+                Text(stringResource(R.string.webdav_client_certificate_saved), style = MaterialTheme.typography.bodyMedium)
+                Text(saved, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { vm.updateWebdav { it.copy(clientCertificate = "", clientKey = null) } }) { Text(stringResource(R.string.replace)) }
+                    TextButton(onClick = { vm.updateWebdav { it.copy(clientCertificate = "", clientKey = "") } }) { Text(stringResource(R.string.remove_2)) }
+                }
+            }
+            !editing -> {
+                Text(
+                    stringResource(R.string.webdav_client_certificate_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = { vm.updateWebdav { it.copy(clientCertificate = "", clientKey = "") } }) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Text(stringResource(R.string.add_client_certificate))
+                }
+            }
+            else -> {
+                KeyTextArea(
+                    value = webdav.clientCertificate ?: "",
+                    onChange = { v -> vm.updateWebdav { it.copy(clientCertificate = v) } },
+                    placeholder = stringResource(R.string.begin_certificate_placeholder),
+                    minLines = 3,
+                )
+                KeyTextArea(
+                    value = webdav.clientKey ?: "",
+                    onChange = { v -> vm.updateWebdav { it.copy(clientKey = v) } },
+                    placeholder = if (saved != null && webdav.clientKey == null) stringResource(R.string.webdav_client_key_kept) else stringResource(R.string.begin_private_key_placeholder),
+                    minLines = 3,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { pasteText(context)?.let(vm::importClientPem) ?: vm.showError(str(R.string.clipboard_is_empty)) }) {
+                        Icon(Icons.Filled.ContentPaste, contentDescription = null, Modifier.height(18.dp))
+                        Text(stringResource(R.string.paste))
+                    }
+                    TextButton(onClick = { pickPem.launch(arrayOf("*/*")) }) {
+                        Icon(Icons.Filled.FolderOpen, contentDescription = null, Modifier.height(18.dp))
+                        Text(stringResource(R.string.open_file))
+                    }
+                    TextButton(onClick = { vm.updateWebdav { it.copy(clientCertificate = null, clientKey = null) } }) {
+                        Text(if (saved != null) stringResource(R.string.keep_saved) else stringResource(R.string.cancel))
+                    }
+                }
+                val fingerprint = state.clientCertificateFingerprint
+                val error = state.clientCertificateError
+                when {
+                    fingerprint != null -> Text(
+                        stringResource(R.string.webdav_client_certificate_ok, fingerprint),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    error != null -> Text(error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    webdav.clientCertificate.isNullOrBlank() && saved != null -> Text(
+                        stringResource(R.string.webdav_client_certificate_will_be_removed),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    stringResource(R.string.webdav_client_certificate_storage_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
 }
 
 @Composable

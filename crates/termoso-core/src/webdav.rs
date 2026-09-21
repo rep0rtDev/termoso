@@ -22,8 +22,9 @@ use rand::Rng;
 use reqwest::header::{self, HeaderMap, HeaderValue};
 use reqwest::{Method, Request, RequestBuilder, Response, StatusCode};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
-use rustls::{DigitallySignedStruct, SignatureScheme};
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
+use rustls::{AlertDescription, DigitallySignedStruct, SignatureScheme};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
@@ -61,8 +62,144 @@ pub enum TlsPolicy {
     Pinned(String),
 }
 
+/// Client certificate + private key presented to servers that require mTLS.
+pub struct ClientIdentity {
+    certs: Vec<CertificateDer<'static>>,
+    key: PrivateKeyDer<'static>,
+}
+
+impl Clone for ClientIdentity {
+    fn clone(&self) -> Self {
+        Self {
+            certs: self.certs.clone(),
+            key: self.key.clone_key(),
+        }
+    }
+}
+
+impl std::fmt::Debug for ClientIdentity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClientIdentity")
+            .field("fingerprint", &self.fingerprint())
+            .field("chain", &self.certs.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl ClientIdentity {
+    /// Parse a PEM certificate (leaf first, intermediates after) and an
+    /// unencrypted PEM private key (PKCS#8, RSA or SEC1). Encrypted keys and
+    /// PKCS#12 bundles are rejected with a hint.
+    pub fn from_pem(cert_pem: &str, key_pem: &str) -> Result<Self> {
+        let certs: Vec<CertificateDer<'static>> =
+            CertificateDer::pem_slice_iter(cert_pem.as_bytes())
+                .collect::<std::result::Result<_, _>>()
+                .map_err(|e| CoreError::Invalid(format!("client certificate: {e}")))?;
+        if certs.is_empty() {
+            return Err(CoreError::Invalid(
+                "client certificate: no CERTIFICATE block found".into(),
+            ));
+        }
+        if key_pem.contains("ENCRYPTED PRIVATE KEY") || key_pem.contains("Proc-Type: 4,ENCRYPTED") {
+            return Err(CoreError::Invalid(
+                "client key: encrypted PEM keys are not supported; decrypt it first \
+                 (openssl pkey -in key.pem -out plain.pem)"
+                    .into(),
+            ));
+        }
+        let key = PrivateKeyDer::from_pem_slice(key_pem.as_bytes())
+            .map_err(|e| CoreError::Invalid(format!("client key: {e}")))?;
+        Ok(Self { certs, key })
+    }
+
+    /// SHA-256 fingerprint of the leaf certificate (`aa:bb:…`).
+    pub fn fingerprint(&self) -> String {
+        fingerprint(&self.certs[0])
+    }
+
+    /// The chain re-encoded as PEM, followed by the key — what reqwest wants.
+    fn bundle_pem(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        for c in &self.certs {
+            out.extend_from_slice(pem_block("CERTIFICATE", c).as_bytes());
+        }
+        let label = match &self.key {
+            PrivateKeyDer::Pkcs1(_) => "RSA PRIVATE KEY",
+            PrivateKeyDer::Sec1(_) => "EC PRIVATE KEY",
+            _ => "PRIVATE KEY",
+        };
+        out.extend_from_slice(pem_block(label, self.key.secret_der()).as_bytes());
+        out
+    }
+}
+
+fn pem_block(label: &str, der: &[u8]) -> String {
+    let b64 = base64::engine::general_purpose::STANDARD.encode(der);
+    let mut s = format!("-----BEGIN {label}-----\n");
+    for chunk in b64.as_bytes().chunks(64) {
+        s.push_str(std::str::from_utf8(chunk).expect("base64 is ascii"));
+        s.push('\n');
+    }
+    s.push_str(&format!("-----END {label}-----\n"));
+    s
+}
+
+/// SHA-256 fingerprint of the leaf certificate in a PEM chain, for showing
+/// which certificate is configured without keeping the parsed identity.
+pub fn client_certificate_fingerprint(cert_pem: &str) -> Result<String> {
+    let leaf = CertificateDer::pem_slice_iter(cert_pem.as_bytes())
+        .next()
+        .ok_or_else(|| CoreError::Invalid("client certificate: no CERTIFICATE block found".into()))?
+        .map_err(|e| CoreError::Invalid(format!("client certificate: {e}")))?;
+    Ok(fingerprint(&leaf))
+}
+
+/// Certificate chain and private key found in one PEM text (a combined
+/// bundle, a chain file or a bare key), re-encoded as canonical PEM so an
+/// editor can put each half in its own field. Either half may be empty.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PemParts {
+    /// `CERTIFICATE` blocks in file order, leaf first.
+    pub certificate: String,
+    /// The first private key block, or empty.
+    pub private_key: String,
+}
+
+/// Split a PEM text into [`PemParts`]; encrypted keys and non-PEM input
+/// (PKCS#12) are rejected.
+pub fn split_client_pem(text: &str) -> Result<PemParts> {
+    let mut parts = PemParts::default();
+    for c in CertificateDer::pem_slice_iter(text.as_bytes()) {
+        let c = c.map_err(|e| CoreError::Invalid(format!("certificate: {e}")))?;
+        parts.certificate.push_str(&pem_block("CERTIFICATE", &c));
+    }
+    if text.contains("ENCRYPTED PRIVATE KEY") || text.contains("Proc-Type: 4,ENCRYPTED") {
+        return Err(CoreError::Invalid(
+            "encrypted PEM keys are not supported; decrypt it first \
+             (openssl pkey -in key.pem -out plain.pem)"
+                .into(),
+        ));
+    }
+    if let Some(key) = PrivateKeyDer::pem_slice_iter(text.as_bytes()).next() {
+        let key = key.map_err(|e| CoreError::Invalid(format!("private key: {e}")))?;
+        let label = match &key {
+            PrivateKeyDer::Pkcs1(_) => "RSA PRIVATE KEY",
+            PrivateKeyDer::Sec1(_) => "EC PRIVATE KEY",
+            _ => "PRIVATE KEY",
+        };
+        parts.private_key = pem_block(label, key.secret_der());
+    }
+    if parts.certificate.is_empty() && parts.private_key.is_empty() {
+        return Err(CoreError::Invalid(
+            "no CERTIFICATE or PRIVATE KEY block found (PKCS#12 .p12/.pfx must be converted to PEM)"
+                .into(),
+        ));
+    }
+    Ok(parts)
+}
+
 /// Connection parameters.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WebDavConfig {
     /// Collection URL the paths hang off (`https://host/dav/`); a missing
     /// trailing slash is added, `http://` is allowed.
@@ -71,8 +208,13 @@ pub struct WebDavConfig {
     pub username: Option<String>,
     /// Password (or app token).
     pub password: Option<String>,
+    /// OAuth-style access token sent as `Authorization: Bearer …` with every
+    /// request; takes precedence over `username`/`password`.
+    pub bearer_token: Option<String>,
     /// Certificate policy.
     pub tls: TlsPolicy,
+    /// Client certificate for servers that require mTLS.
+    pub client_identity: Option<ClientIdentity>,
     /// TCP + TLS connect deadline.
     pub connect_timeout: Duration,
     /// Where write-mode [`RemoteFile`](remote::RemoteFile)s spool their
@@ -87,10 +229,46 @@ impl Default for WebDavConfig {
             url: String::new(),
             username: None,
             password: None,
+            bearer_token: None,
             tls: TlsPolicy::System,
+            client_identity: None,
             connect_timeout: Duration::from_secs(20),
             spool_dir: None,
         }
+    }
+}
+
+impl std::fmt::Debug for WebDavConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WebDavConfig")
+            .field("url", &self.url)
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| "…"))
+            .field("bearer_token", &self.bearer_token.as_ref().map(|_| "…"))
+            .field("tls", &self.tls)
+            .field("client_identity", &self.client_identity)
+            .field("connect_timeout", &self.connect_timeout)
+            .field("spool_dir", &self.spool_dir)
+            .finish()
+    }
+}
+
+impl WebDavConfig {
+    /// Take the login material a vault identity holds: username + password,
+    /// bearer token and client certificate. Corrupt stored PEM is reported as
+    /// [`CoreError::Invalid`] rather than silently connecting without mTLS.
+    pub fn with_identity(mut self, identity: Option<&crate::model::Identity>) -> Result<Self> {
+        let Some(identity) = identity else {
+            return Ok(self);
+        };
+        self.username = Some(identity.username.trim().to_string()).filter(|u| !u.is_empty());
+        self.password = identity.password.clone().filter(|p| !p.is_empty());
+        self.bearer_token = identity.bearer_token.clone().filter(|t| !t.is_empty());
+        self.client_identity = match &identity.client_certificate {
+            Some(c) => Some(ClientIdentity::from_pem(&c.certificate, &c.private_key)?),
+            None => None,
+        };
+        Ok(self)
     }
 }
 
@@ -101,6 +279,8 @@ enum AuthScheme {
     None,
     Basic,
     Digest(DigestChallenge),
+    /// Preconfigured access token, sent from the first request on.
+    Bearer,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -551,16 +731,24 @@ impl ServerCertVerifier for CaptureVerifier {
     }
 }
 
-fn tls_config_with(verifier: Arc<dyn ServerCertVerifier>) -> rustls::ClientConfig {
+fn tls_config_with(
+    verifier: Arc<dyn ServerCertVerifier>,
+    identity: Option<&ClientIdentity>,
+) -> Result<rustls::ClientConfig> {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
-    let mut cfg = rustls::ClientConfig::builder_with_provider(provider)
+    let builder = rustls::ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()
         .expect("ring supports the default protocol versions")
         .dangerous()
-        .with_custom_certificate_verifier(verifier)
-        .with_no_client_auth();
+        .with_custom_certificate_verifier(verifier);
+    let mut cfg = match identity {
+        Some(id) => builder
+            .with_client_auth_cert(id.certs.clone(), id.key.clone_key())
+            .map_err(|e| CoreError::Invalid(format!("client certificate: {e}")))?,
+        None => builder.with_no_client_auth(),
+    };
     cfg.alpn_protocols = vec![b"http/1.1".to_vec()];
-    cfg
+    Ok(cfg)
 }
 
 fn http_client(cfg: &WebDavConfig, tls: Option<rustls::ClientConfig>) -> Result<reqwest::Client> {
@@ -569,19 +757,27 @@ fn http_client(cfg: &WebDavConfig, tls: Option<rustls::ClientConfig>) -> Result<
         .redirect(reqwest::redirect::Policy::none())
         .user_agent(concat!("Termoso/", env!("CARGO_PKG_VERSION")))
         .http1_only();
-    if let Some(tls) = tls {
-        b = b.use_preconfigured_tls(tls);
+    match tls {
+        // A preconfigured config carries the client certificate itself.
+        Some(tls) => b = b.use_preconfigured_tls(tls),
+        None => {
+            if let Some(id) = &cfg.client_identity {
+                let identity = reqwest::Identity::from_pem(&id.bundle_pem())
+                    .map_err(|e| CoreError::Invalid(format!("client certificate: {e}")))?;
+                b = b.identity(identity);
+            }
+        }
     }
     Ok(b.build()?)
 }
 
-/// Is this transport error a certificate rejection? Walks the source chain,
-/// descending into nested `io::Error`s (hyper wraps the rustls error twice).
-fn is_tls_error(e: &reqwest::Error) -> bool {
+/// Innermost rustls error in a transport error's source chain, descending
+/// into nested `io::Error`s (hyper wraps the rustls error twice).
+fn rustls_error(e: &reqwest::Error) -> Option<&rustls::Error> {
     let mut src: Option<&(dyn std::error::Error + 'static)> = Some(e);
     while let Some(s) = src {
         if let Some(r) = s.downcast_ref::<rustls::Error>() {
-            return matches!(r, rustls::Error::InvalidCertificate(_));
+            return Some(r);
         }
         src = match s.downcast_ref::<std::io::Error>() {
             Some(io) => io
@@ -590,7 +786,33 @@ fn is_tls_error(e: &reqwest::Error) -> bool {
             None => s.source(),
         };
     }
-    false
+    None
+}
+
+/// Did the server close the handshake because of *our* certificate (missing
+/// or not accepted)? Returns the alert name for the message.
+fn client_certificate_alert(e: &reqwest::Error) -> Option<String> {
+    match rustls_error(e)? {
+        rustls::Error::AlertReceived(a) => match a {
+            AlertDescription::CertificateRequired
+            | AlertDescription::BadCertificate
+            | AlertDescription::UnknownCA
+            | AlertDescription::CertificateUnknown
+            | AlertDescription::CertificateRevoked
+            | AlertDescription::CertificateExpired
+            | AlertDescription::UnsupportedCertificate
+            | AlertDescription::AccessDenied
+            | AlertDescription::HandshakeFailure => Some(format!("{a:?}")),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// Is this transport error a certificate rejection? Walks the source chain,
+/// descending into nested `io::Error`s (hyper wraps the rustls error twice).
+fn is_tls_error(e: &reqwest::Error) -> bool {
+    matches!(rustls_error(e), Some(rustls::Error::InvalidCertificate(_)))
 }
 
 /// Fetch the SHA-256 fingerprint of the certificate `url`'s server presents,
@@ -609,7 +831,7 @@ pub async fn probe_certificate(url: &str, connect_timeout: Duration) -> Result<S
         connect_timeout,
         ..Default::default()
     };
-    let client = http_client(&cfg, Some(tls_config_with(verifier.clone())))?;
+    let client = http_client(&cfg, Some(tls_config_with(verifier.clone(), None)?))?;
     // The response does not matter; the handshake does.
     let _ = client.request(method("OPTIONS"), base).send().await;
     verifier
@@ -812,6 +1034,8 @@ struct Inner {
     host: String,
     username: Option<String>,
     password: Option<String>,
+    bearer_token: Option<String>,
+    has_client_identity: bool,
     auth: Mutex<AuthState>,
     spool_dir: PathBuf,
 }
@@ -832,10 +1056,13 @@ impl WebDav {
             TlsPolicy::System => None,
             TlsPolicy::Pinned(fp) => {
                 let pin = parse_fingerprint(fp)?;
-                Some(tls_config_with(Arc::new(PinVerifier {
-                    pin,
-                    provider: Arc::new(rustls::crypto::ring::default_provider()),
-                })))
+                Some(tls_config_with(
+                    Arc::new(PinVerifier {
+                        pin,
+                        provider: Arc::new(rustls::crypto::ring::default_provider()),
+                    }),
+                    cfg.client_identity.as_ref(),
+                )?)
             }
         };
         let http = http_client(&cfg, tls)?;
@@ -843,11 +1070,17 @@ impl WebDav {
             Some(p) => format!("{}:{p}", base.host_str().unwrap_or("")),
             None => base.host_str().unwrap_or("").to_string(),
         };
+        let bearer_token = cfg.bearer_token.filter(|t| !t.is_empty());
         let username = cfg.username.filter(|u| !u.is_empty());
         let password = if username.is_some() {
             Some(cfg.password.unwrap_or_default())
         } else {
             None
+        };
+        let scheme = if bearer_token.is_some() {
+            AuthScheme::Bearer
+        } else {
+            AuthScheme::None
         };
         Ok(Self {
             inner: Arc::new(Inner {
@@ -857,10 +1090,9 @@ impl WebDav {
                 http,
                 username,
                 password,
-                auth: Mutex::new(AuthState {
-                    scheme: AuthScheme::None,
-                    nc: 0,
-                }),
+                bearer_token,
+                has_client_identity: cfg.client_identity.is_some(),
+                auth: Mutex::new(AuthState { scheme, nc: 0 }),
                 spool_dir: cfg.spool_dir.unwrap_or_else(std::env::temp_dir),
             }),
         })
@@ -888,6 +1120,20 @@ impl WebDav {
                     fingerprint,
                 })
             }
+            Err(CoreError::Http(e)) => match client_certificate_alert(&e) {
+                Some(alert) if dav.inner.has_client_identity => Err(webdav_err(
+                    None,
+                    format!(
+                        "{} rejected the client certificate ({alert})",
+                        dav.inner.host
+                    ),
+                )),
+                Some(alert) => Err(webdav_err(
+                    None,
+                    format!("{} requires a client certificate ({alert})", dav.inner.host),
+                )),
+                None => Err(CoreError::Http(e)),
+            },
             Err(e) => Err(e),
         }
     }
@@ -926,11 +1172,14 @@ impl WebDav {
     }
 
     async fn authorization(&self, req: &Request) -> Option<HeaderValue> {
+        if let Some(tok) = &self.inner.bearer_token {
+            return HeaderValue::from_str(&format!("Bearer {tok}")).ok();
+        }
         let (user, pass) = (self.inner.username.as_ref()?, self.inner.password.as_ref()?);
         let mut guard = self.inner.auth.lock().await;
         let st = &mut *guard;
         match &st.scheme {
-            AuthScheme::None => None,
+            AuthScheme::None | AuthScheme::Bearer => None,
             AuthScheme::Basic => {
                 let tok =
                     base64::engine::general_purpose::STANDARD.encode(format!("{user}:{pass}"));
@@ -967,7 +1216,8 @@ impl WebDav {
             }
         }
         let offered: Vec<String> = challenges.iter().map(|c| c.scheme.clone()).collect();
-        if self.inner.username.is_none() {
+        // A token is not negotiated: the server either takes it or not.
+        if self.inner.username.is_none() || self.inner.bearer_token.is_some() {
             return Err(CoreError::AuthFailed { remaining: offered });
         }
         let digest = challenges.iter().find(|c| c.scheme == "digest");

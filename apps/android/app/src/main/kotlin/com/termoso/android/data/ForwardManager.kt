@@ -1,13 +1,13 @@
 package com.termoso.android.data
 
-import com.termoso.android.str
-import com.termoso.android.R
+import com.termoso.android.ui.components.initialTunnelConnecting
 import com.termoso.core.PfTunnel
 import com.termoso.core.PromptAnswer
 import com.termoso.core.PromptRequest
 import com.termoso.core.TunnelListener
 import com.termoso.core.TunnelState
 import com.termoso.core.TunnelStats
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,11 +20,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentHashMap
 
 /** Rust tunnel callbacks republished as flows for the UI. */
 class TunnelBridge : TunnelListener {
-    private val _state = MutableStateFlow<TunnelState>(TunnelState.Connecting(str(R.string.connecting_ellipsis)))
+    private val _state = MutableStateFlow<TunnelState>(initialTunnelConnecting())
     val state: StateFlow<TunnelState> = _state.asStateFlow()
 
     private val _prompt = MutableStateFlow<PendingPrompt?>(null)

@@ -415,7 +415,20 @@ export interface WebDavForm {
   /** Pinned SHA-256 of the server certificate (self-signed / private CA). */
   certificateFingerprint: string | null;
   hasPassword: boolean;
+  /** `password` (Basic / Digest, negotiated) or `token` (Bearer). */
+  auth: WebDavAuth;
+  /** null keeps the stored token when editing; "" clears it. */
+  bearerToken: string | null;
+  hasBearerToken: boolean;
+  /** PEM certificate chain for mTLS; null keeps the stored pair, "" clears it. */
+  clientCertificate: string | null;
+  /** PEM private key for `clientCertificate`; null keeps the stored one. */
+  clientKey: string | null;
+  /** SHA-256 of the stored client certificate (read-only). */
+  clientCertificateFingerprint: string | null;
 }
+
+export type WebDavAuth = "password" | "token";
 
 export function emptyWebDavForm(): WebDavForm {
   return {
@@ -425,6 +438,12 @@ export function emptyWebDavForm(): WebDavForm {
     identityId: null,
     certificateFingerprint: null,
     hasPassword: false,
+    auth: "password",
+    bearerToken: null,
+    hasBearerToken: false,
+    clientCertificate: null,
+    clientKey: null,
+    clientCertificateFingerprint: null,
   };
 }
 

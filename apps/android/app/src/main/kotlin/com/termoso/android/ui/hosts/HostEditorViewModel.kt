@@ -16,11 +16,32 @@ import com.termoso.core.TagItem
 import com.termoso.core.TelnetDraft
 import com.termoso.core.VaultInfo
 import com.termoso.core.WebDavDraft
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/** [WebDavDraft.auth] values, as the store spells them. */
+const val WEBDAV_AUTH_PASSWORD = "password"
+const val WEBDAV_AUTH_TOKEN = "token"
+
+/** A blank WebDAV section for "+ Add WebDAV". */
+fun emptyWebDavDraft() = WebDavDraft(
+    url = "",
+    username = "",
+    password = null,
+    identityId = null,
+    certificateFingerprint = null,
+    hasPassword = false,
+    auth = WEBDAV_AUTH_PASSWORD,
+    bearerToken = null,
+    hasBearerToken = false,
+    clientCertificate = null,
+    clientKey = null,
+    clientCertificateFingerprint = null,
+)
 
 /**
  * A fresh draft started from a quick-connect target ("Add to hosts" on an ad-hoc
@@ -66,6 +87,10 @@ data class HostEditorState(
     /** Id of the host just written by [HostEditorViewModel.save], for "save, then connect" flows. */
     val savedId: String? = null,
     val error: String? = null,
+    /** Leaf SHA-256 of the WebDAV client certificate typed into the form, once it validated. */
+    val clientCertificateFingerprint: String? = null,
+    /** Why the typed WebDAV client certificate / key pair does not validate. */
+    val clientCertificateError: String? = null,
 ) {
     val canSave: Boolean
         get() {
@@ -132,8 +157,50 @@ class HostEditorViewModel(
     }
 
     /** Edit the WebDAV section; no-op while the host has none. */
-    fun updateWebdav(transform: (WebDavDraft) -> WebDavDraft) = update { d ->
-        d.webdav?.let { d.copy(webdav = transform(it)) } ?: d
+    fun updateWebdav(transform: (WebDavDraft) -> WebDavDraft) {
+        update { d -> d.webdav?.let { d.copy(webdav = transform(it)) } ?: d }
+        validateClientCertificate()
+    }
+
+    /**
+     * Split a pasted / picked PEM file into the client certificate and key
+     * fields; a part the file does not contain leaves the field alone.
+     */
+    fun importClientPem(text: String) {
+        viewModelScope.launch {
+            runCatching { repo.read { splitClientPem(text) } }
+                .onSuccess { parts ->
+                    updateWebdav {
+                        it.copy(
+                            clientCertificate = parts.certificate.ifBlank { it.clientCertificate ?: "" },
+                            clientKey = parts.privateKey.ifBlank { it.clientKey ?: "" },
+                        )
+                    }
+                }
+                .onFailure { e -> _state.update { it.copy(error = e.userMessage()) } }
+        }
+    }
+
+    private var certificateCheck: Job? = null
+
+    private fun validateClientCertificate() {
+        val w = _state.value.draft?.webdav
+        val cert = w?.clientCertificate?.trim().orEmpty()
+        val key = w?.clientKey?.trim().orEmpty()
+        certificateCheck?.cancel()
+        if (cert.isEmpty() || key.isEmpty()) {
+            _state.update { it.copy(clientCertificateFingerprint = null, clientCertificateError = null) }
+            return
+        }
+        certificateCheck = viewModelScope.launch {
+            val result = runCatching { repo.read { inspectClientCertificate(cert, key) } }
+            _state.update {
+                it.copy(
+                    clientCertificateFingerprint = result.getOrNull(),
+                    clientCertificateError = result.exceptionOrNull()?.userMessage(),
+                )
+            }
+        }
     }
 
     /** Switching vault (new hosts only) resets group/tags/key/identity, which are per-vault. */
@@ -214,10 +281,16 @@ class HostEditorViewModel(
                 username = draft.username.trim(),
                 telnet = draft.telnet?.let { it.copy(username = it.username.trim()) },
                 webdav = draft.webdav?.let {
+                    val tokenMode = it.auth == WEBDAV_AUTH_TOKEN
                     it.copy(
                         url = it.url.trim(),
-                        username = it.username.trim(),
+                        username = if (tokenMode) "" else it.username.trim(),
+                        // Switching modes drops the other mode's secret.
+                        password = if (tokenMode) "" else it.password,
+                        bearerToken = if (tokenMode) it.bearerToken else "",
                         certificateFingerprint = it.certificateFingerprint?.trim()?.ifEmpty { null },
+                        // A new certificate with an empty key field keeps the stored key (renewal).
+                        clientKey = if (it.clientCertificateFingerprint != null) it.clientKey?.ifBlank { null } else it.clientKey,
                     )
                 },
                 envVariables = draft.envVariables.filter { it.name.isNotBlank() },
@@ -245,4 +318,6 @@ class HostEditorViewModel(
     }
 
     fun errorShown() = _state.update { it.copy(error = null) }
+
+    fun showError(message: String) = _state.update { it.copy(error = message) }
 }

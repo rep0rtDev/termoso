@@ -27,6 +27,7 @@ import { DistroGlyph, ProtocolGlyph } from "./HostAvatar";
 import { ConnectButton, connectTo, type ConnectTarget } from "./ConnectSplit";
 import { TagsPopover } from "./TagsPopover";
 import { AgentForwardingRow, CredentialsFields } from "./CredentialsFields";
+import { WebDavAuthFields } from "./WebDavAuthFields";
 import { Field, IconTile, Loading, SectionCard, SidePanel, ToolIconButton } from "@/components/ui";
 import {
   useDeleteHost,
@@ -41,6 +42,7 @@ import {
 } from "@/ipc/hooks";
 import {
   emptyHostForm,
+  emptyWebDavForm,
   errorMessage,
   type ConnectProtocol,
   type HostForm,
@@ -71,14 +73,7 @@ const emptyTelnet = (): TelnetForm => ({
   hasPassword: false,
 });
 
-const emptyWebDav = (): WebDavForm => ({
-  url: "",
-  username: "",
-  password: null,
-  identityId: null,
-  certificateFingerprint: null,
-  hasPassword: false,
-});
+const emptyWebDav = emptyWebDavForm;
 
 /** `http(s)://host[:port][/path]`, the only shape the WebDAV client accepts. */
 const isWebDavUrl = (raw: string) => {
@@ -807,31 +802,10 @@ function HostEditor({
               />
             </Field>
             <Divider />
-            <CredentialsFields
-              vaultId={vaultId}
-              ssh={false}
-              inlineLabel="Set on this host"
-              value={{
-                identityId: form.webdav.identityId,
-                username: form.webdav.username,
-                password: form.webdav.password,
-                hasPassword: form.webdav.hasPassword,
-                sshKeyId: null,
-                sshCertificateId: null,
-                sshId: false,
-                sshIdKeyType: null,
-                agentForwarding: false,
-              }}
-              onChange={({ identityId, username, password }) => {
-                const p: Partial<WebDavForm> = {};
-                if (identityId !== undefined) p.identityId = identityId;
-                if (username !== undefined) p.username = username;
-                if (password !== undefined) p.password = password;
-                patchWebDav(p);
-              }}
-            />
+            <WebDavAuthFields vaultId={vaultId} value={form.webdav} onChange={patchWebDav} />
+            <Divider />
             <Field
-              label="Certificate fingerprint"
+              label="Server certificate fingerprint"
               hint="SHA-256 of the server certificate; pins self-signed or private-CA servers. Left empty, the system trust store decides and an unknown certificate is offered on first connect."
             >
               <TextField

@@ -207,7 +207,7 @@ struct TerminalScreen: View {
     @ViewBuilder
     private func stateOverlay(_ session: TerminalSession) -> some View {
         switch session.state {
-        case let .connecting(detail):
+        case let .connecting(detail, _, _):
             VStack(spacing: 14) {
                 ProgressView()
                     .tint(Theme.terminalKeyActive)

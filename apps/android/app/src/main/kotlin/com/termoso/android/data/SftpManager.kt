@@ -1,9 +1,8 @@
 package com.termoso.android.data
 
-import com.termoso.android.str
-import com.termoso.android.R
 import android.content.Context
 import com.termoso.android.service.SessionService
+import com.termoso.android.ui.components.initialConnecting
 import com.termoso.core.FileCapabilities
 import com.termoso.core.FileProtocol
 import com.termoso.core.HostItem
@@ -14,13 +13,13 @@ import com.termoso.core.SessionState
 import com.termoso.core.SftpListener
 import com.termoso.core.SftpSession
 import com.termoso.core.TransferCard
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /**
  * Mirrors the number of live connections (terminals + SFTP + tunnels) into the
@@ -53,7 +52,7 @@ class KeepAlive(private val context: Context) {
 
 /** Rust SFTP callbacks republished as flows for the UI. */
 class SftpBridge : SftpListener {
-    private val _state = MutableStateFlow<SessionState>(SessionState.Connecting(str(R.string.connecting_ellipsis)))
+    private val _state = MutableStateFlow<SessionState>(initialConnecting())
     val state: StateFlow<SessionState> = _state.asStateFlow()
 
     private val _prompt = MutableStateFlow<PendingPrompt?>(null)

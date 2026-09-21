@@ -62,6 +62,7 @@ import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SubScreen
 import com.termoso.android.ui.components.TermosoSwitch
+import com.termoso.android.ui.components.connectingLabel
 import com.termoso.android.ui.hosts.ConfirmDialog
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.PromptDialog
@@ -306,7 +307,7 @@ private fun statusLine(rule: PfRuleItem, state: TunnelState?, stats: TunnelStats
     val host = if (rule.hostMissing) str(R.string.host_deleted) else rule.hostLabel
     return when (state) {
         null -> lastError?.let { str(R.string.stopped, it) } ?: str(R.string.host_stopped, host)
-        is TunnelState.Connecting -> "$host · ${state.detail}"
+        is TunnelState.Connecting -> "$host · ${connectingLabel(state)}"
         is TunnelState.Running -> buildString {
             append(str(R.string.running_on, state.bound))
             if (stats != null) {

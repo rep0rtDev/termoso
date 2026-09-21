@@ -117,10 +117,58 @@ pub enum HostKeyChoice {
     AcceptAndSave,
 }
 
+/// Where a connection attempt is, for the UI to render in its own language.
+/// `SessionState::Connecting::detail` carries the English rendering from
+/// [`stage_label`] for clients that do not localise it.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum ConnectStage {
+    /// Nothing reported yet.
+    Connecting,
+    Resolving,
+    /// TCP connect to `target` (`host:port`, a proxy, or a WebDAV share).
+    ConnectingTo {
+        target: String,
+    },
+    Handshake,
+    HostKey,
+    Auth {
+        method: String,
+    },
+    SecurityKeyTouch,
+    Authenticated,
+    MoshServer,
+    MoshWaiting {
+        port: u16,
+    },
+    OpeningShell,
+    StartingShell,
+    OpeningSftp,
+    OpeningTunnel,
+}
+
+impl From<&ConnectPhase> for ConnectStage {
+    fn from(p: &ConnectPhase) -> Self {
+        match p {
+            ConnectPhase::Resolving => Self::Resolving,
+            ConnectPhase::Connecting { via } => Self::ConnectingTo {
+                target: via.clone(),
+            },
+            ConnectPhase::Handshake => Self::Handshake,
+            ConnectPhase::HostKey => Self::HostKey,
+            ConnectPhase::Auth { method } => Self::Auth {
+                method: method.clone(),
+            },
+            ConnectPhase::SecurityKeyTouch { .. } => Self::SecurityKeyTouch,
+            ConnectPhase::Authenticated => Self::Authenticated,
+            ConnectPhase::MoshServer => Self::MoshServer,
+        }
+    }
+}
+
 /// The UI side of a connection attempt.
 pub(crate) trait ConnectUi: Send + Sync {
-    /// A new connect stage (`Resolving host…`, `Authenticating (password)…`).
-    fn phase(&self, detail: String);
+    /// A new connect stage; `hop` names the jump host it belongs to.
+    fn phase(&self, stage: ConnectStage, hop: Option<String>);
     /// Ask the user; the answer comes back through [`Connector::answer`].
     fn prompt(&self, prompt_id: u64, request: PromptRequest);
 }
@@ -218,16 +266,23 @@ impl Connector {
     }
 }
 
-pub(crate) fn phase_label(phase: &ConnectPhase, hop: Option<&str>) -> String {
-    let base = match phase {
-        ConnectPhase::Resolving => "Resolving host…".to_string(),
-        ConnectPhase::Connecting { via } => format!("Connecting to {via}…"),
-        ConnectPhase::Handshake => "Handshake…".into(),
-        ConnectPhase::HostKey => "Checking host key…".into(),
-        ConnectPhase::Auth { method } => format!("Authenticating ({method})…"),
-        ConnectPhase::SecurityKeyTouch { .. } => "Touch your security key…".into(),
-        ConnectPhase::Authenticated => "Authenticated…".into(),
-        ConnectPhase::MoshServer => "Starting mosh-server…".into(),
+/// English rendering of a stage, `hop: ` prefixed for jump hosts.
+pub(crate) fn stage_label(stage: &ConnectStage, hop: Option<&str>) -> String {
+    let base = match stage {
+        ConnectStage::Connecting => "Connecting…".to_string(),
+        ConnectStage::Resolving => "Resolving host…".into(),
+        ConnectStage::ConnectingTo { target } => format!("Connecting to {target}…"),
+        ConnectStage::Handshake => "Handshake…".into(),
+        ConnectStage::HostKey => "Checking host key…".into(),
+        ConnectStage::Auth { method } => format!("Authenticating ({method})…"),
+        ConnectStage::SecurityKeyTouch => "Touch your security key…".into(),
+        ConnectStage::Authenticated => "Authenticated…".into(),
+        ConnectStage::MoshServer => "Starting mosh-server…".into(),
+        ConnectStage::MoshWaiting { port } => format!("Mosh: waiting for udp/{port}…"),
+        ConnectStage::OpeningShell => "Opening shell…".into(),
+        ConnectStage::StartingShell => "Starting shell…".into(),
+        ConnectStage::OpeningSftp => "Opening SFTP…".into(),
+        ConnectStage::OpeningTunnel => "Opening tunnel…".into(),
     };
     match hop {
         Some(h) => format!("{h}: {base}"),
@@ -242,7 +297,9 @@ struct Progress {
 
 impl ConnectProgress for Progress {
     fn phase(&self, phase: ConnectPhase) {
-        self.conn.ui.phase(phase_label(&phase, self.hop.as_deref()));
+        self.conn
+            .ui
+            .phase(ConnectStage::from(&phase), self.hop.clone());
     }
 }
 
@@ -372,6 +429,8 @@ fn remember_password(store: &Store, resolved: &ResolvedHost, value: &Zeroizing<S
                 is_visible: false,
                 ssh_id: false,
                 ssh_id_key_type: None,
+                bearer_token: None,
+                client_certificate: None,
             },
         )?;
         match resolved.host.data.ssh_config_id {

@@ -434,6 +434,29 @@ impl TermosoApp {
         Ok(keychain::inspect_private(&text)?.into())
     }
 
+    /// Split a pasted / picked PEM file into the WebDAV editor's certificate
+    /// and private-key fields (either may come back empty).
+    pub fn split_client_pem(&self, text: String) -> Result<PemParts> {
+        let p = termoso_core::webdav::split_client_pem(&text)?;
+        Ok(PemParts {
+            certificate: p.certificate,
+            private_key: p.private_key,
+        })
+    }
+
+    /// Validate a WebDAV client certificate + key pair; returns the leaf
+    /// SHA-256 fingerprint.
+    pub fn inspect_client_certificate(
+        &self,
+        certificate: String,
+        private_key: String,
+    ) -> Result<String> {
+        Ok(
+            termoso_core::webdav::ClientIdentity::from_pem(&certificate, &private_key)?
+                .fingerprint(),
+        )
+    }
+
     pub fn import_key(&self, draft: KeyImportDraft) -> Result<KeyItem> {
         let form = keychain::ImportForm {
             vault_id: parse_id(&draft.vault_id)?,

@@ -26,7 +26,9 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::autocomplete::{Completer, SuggestionItem};
-use crate::connect::{ConnectUi, Connector, PromptAnswer, PromptRequest, connect_resolved};
+use crate::connect::{
+    ConnectStage, ConnectUi, Connector, PromptAnswer, PromptRequest, connect_resolved, stage_label,
+};
 use crate::error::{MobileError, Result};
 use crate::keys::{KeyMods, SpecialKey, encode_key, encode_text};
 use crate::live::{LiveListener, LiveParticipantCard, LiveShare, ShareState, ViewState};
@@ -51,9 +53,12 @@ const REMOTE_DROP_DIR: &str = "/tmp";
 /// Where the session is.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum SessionState {
-    /// Connecting; `detail` names the stage (`Resolving…`, `Authenticating (password)…`).
+    /// Connecting; `stage` is what to show (localised by the UI), `hop` the
+    /// jump host it belongs to, `detail` the English rendering of both.
     Connecting {
         detail: String,
+        stage: ConnectStage,
+        hop: Option<String>,
     },
     Connected,
     /// The remote shell ended or the connection dropped.
@@ -149,9 +154,19 @@ struct TerminalUi {
     state: Arc<Mutex<SessionState>>,
 }
 
+impl SessionState {
+    pub(crate) fn connecting(stage: ConnectStage, hop: Option<String>) -> Self {
+        Self::Connecting {
+            detail: stage_label(&stage, hop.as_deref()),
+            stage,
+            hop,
+        }
+    }
+}
+
 impl ConnectUi for TerminalUi {
-    fn phase(&self, detail: String) {
-        let state = SessionState::Connecting { detail };
+    fn phase(&self, stage: ConnectStage, hop: Option<String>) {
+        let state = SessionState::connecting(stage, hop);
         *self.state.lock().expect("state poisoned") = state.clone();
         self.listener.on_state(state);
     }
@@ -587,9 +602,10 @@ impl SshSession {
             settings.scrollback_lines,
             palette,
         );
-        let state = Arc::new(Mutex::new(SessionState::Connecting {
-            detail: "Connecting…".into(),
-        }));
+        let state = Arc::new(Mutex::new(SessionState::connecting(
+            ConnectStage::Connecting,
+            None,
+        )));
         let conn = Arc::new(Connector::new(
             store.clone(),
             Arc::new(TerminalUi {
@@ -1307,9 +1323,7 @@ async fn run(
     } else {
         set_state(
             &inner,
-            SessionState::Connecting {
-                detail: "Opening shell…".into(),
-            },
+            SessionState::connecting(ConnectStage::OpeningShell, None),
         );
         let size = *inner.size.lock().expect("size poisoned");
         match client.shell(&term_type, size).await {
@@ -1376,7 +1390,7 @@ async fn run_direct<F, Fut>(
     inner: Arc<Inner>,
     row: ConnectionHistory,
     recording: Option<(MobileSettings, Option<Uuid>)>,
-    detail: &str,
+    stage: ConnectStage,
     open: F,
     signals: mpsc::UnboundedReceiver<TermSignal>,
 ) where
@@ -1384,12 +1398,7 @@ async fn run_direct<F, Fut>(
     Fut: std::future::Future<Output = Result<(SharedTerminal, TermEvents)>>,
 {
     let history = HistoryEntry::start(inner.store.clone(), row.clone());
-    set_state(
-        &inner,
-        SessionState::Connecting {
-            detail: detail.into(),
-        },
-    );
+    set_state(&inner, SessionState::connecting(stage, None));
     let size = *inner.size.lock().expect("size poisoned");
     let opened = tokio::select! {
         r = open(size) => r,
@@ -1467,12 +1476,14 @@ async fn run_telnet(
         duration_secs: None,
         error: None,
     };
-    let detail = format!("Connecting to {host}:{port}…");
+    let stage = ConnectStage::ConnectingTo {
+        target: format!("{host}:{port}"),
+    };
     run_direct(
         inner,
         row,
         Some((settings, vault_id)),
-        &detail,
+        stage,
         |size| async move {
             let (term, events) = TelnetTerminal::connect(TelnetOptions {
                 host,
@@ -1517,7 +1528,7 @@ async fn run_local(
         inner,
         row,
         recording,
-        "Starting shell…",
+        ConnectStage::StartingShell,
         |size| async move {
             let (term, events) = LocalTerminal::spawn(LocalShellOptions {
                 argv,
@@ -1542,9 +1553,7 @@ async fn open_mosh(
 ) -> Result<(SharedTerminal, TermEvents)> {
     set_state(
         inner,
-        SessionState::Connecting {
-            detail: "Starting mosh-server…".into(),
-        },
+        SessionState::connecting(ConnectStage::MoshServer, None),
     );
     let command = resolved.and_then(|r| r.ssh.mosh_server_command.as_deref());
     let boot = mosh::start_server(client, command).await?;
@@ -1554,9 +1563,7 @@ async fn open_mosh(
     let ip = mosh::udp_target(&target.host, ip_version, &boot).await?;
     set_state(
         inner,
-        SessionState::Connecting {
-            detail: format!("Mosh: waiting for udp/{}…", boot.port),
-        },
+        SessionState::connecting(ConnectStage::MoshWaiting { port: boot.port }, None),
     );
     let size = *inner.size.lock().expect("size poisoned");
     let (term, events) = mosh::connect(&ip, &boot, size).await?;

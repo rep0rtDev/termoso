@@ -134,7 +134,7 @@ fun transportLabel(t: Transport): String = when (t) {
 }
 
 fun stateLabel(state: SessionState): String = when (state) {
-    is SessionState.Connecting -> state.detail
+    is SessionState.Connecting -> connectingLabel(state)
     is SessionState.Connected -> str(R.string.connected)
     is SessionState.Closed -> str(R.string.closed) + (state.reason?.let { " · $it" } ?: "")
     is SessionState.Failed -> state.message

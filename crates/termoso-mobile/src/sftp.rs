@@ -24,7 +24,9 @@ use termoso_core::store::{ConnectionHistory, Store};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::connect::{ConnectUi, Connector, PromptAnswer, PromptRequest, connect_resolved};
+use crate::connect::{
+    ConnectStage, ConnectUi, Connector, PromptAnswer, PromptRequest, connect_resolved,
+};
 use crate::error::{MobileError, Result};
 use crate::presence::Slot;
 use crate::session::SessionState;
@@ -271,8 +273,8 @@ struct SftpUi {
 }
 
 impl ConnectUi for SftpUi {
-    fn phase(&self, detail: String) {
-        let state = SessionState::Connecting { detail };
+    fn phase(&self, stage: ConnectStage, hop: Option<String>) {
+        let state = SessionState::connecting(stage, hop);
         *self.state.lock().expect("state poisoned") = state.clone();
         self.listener.on_state(state);
     }
@@ -645,9 +647,10 @@ impl SftpSession {
             listener,
             presence,
         } = launch;
-        let state = Arc::new(Mutex::new(SessionState::Connecting {
-            detail: "Connecting…".into(),
-        }));
+        let state = Arc::new(Mutex::new(SessionState::connecting(
+            ConnectStage::Connecting,
+            None,
+        )));
         let conn = Arc::new(Connector::new(
             store.clone(),
             Arc::new(SftpUi {
@@ -1138,9 +1141,7 @@ async fn run(inner: Arc<Inner>, backend: Backend, settings: MobileSettings) {
                 let (client, jumps) =
                     connect_resolved(&inner.conn, &settings, target.clone(), resolved.as_ref())
                         .await?;
-                inner.set_state(SessionState::Connecting {
-                    detail: "Opening SFTP…".into(),
-                });
+                inner.set_state(SessionState::connecting(ConnectStage::OpeningSftp, None));
                 let sftp = Sftp::open(&client).await?;
                 Ok::<_, MobileError>(Live {
                     fs: Arc::new(sftp),

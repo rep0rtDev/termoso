@@ -264,7 +264,8 @@ pub mod payload {
 
     schema! {
         /// WebDAV share settings. Credentials live in the referenced identity
-        /// (username + password; keys do not apply).
+        /// (username + password, a bearer token or a TLS client certificate;
+        /// SSH keys do not apply).
         #[derive(Default, PartialEq, Eq)]
         pub struct WebDavConfig {
             /// Base URL of the share, e.g. `https://cloud.example.com/remote.php/dav/files/alice/`.
@@ -333,6 +334,24 @@ pub mod payload {
             /// Passkey type to try first (`None` = ED25519, then the rest).
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub ssh_id_key_type: Option<crate::sshid::SshIdKeyType>,
+            /// Access token sent as `Authorization: Bearer …` (WebDAV). Takes
+            /// precedence over username + password.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub bearer_token: Option<String>,
+            /// TLS client certificate presented to servers requiring mTLS (WebDAV).
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub client_certificate: Option<ClientCertificate>,
+        }
+    }
+
+    schema! {
+        /// TLS client certificate + private key, both PEM.
+        #[derive(Default, PartialEq, Eq)]
+        pub struct ClientCertificate {
+            /// Certificate chain, leaf first.
+            pub certificate: String,
+            /// Unencrypted private key (PKCS#8, RSA or SEC1).
+            pub private_key: String,
         }
     }
 

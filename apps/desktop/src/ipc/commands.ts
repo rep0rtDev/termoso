@@ -137,6 +137,10 @@ export const hostsList = (vaultId?: Uuid | null) =>
   invoke<HostCard[]>("hosts_list", { vaultId: vaultId ?? null });
 export const hostForm = (id: Uuid) => invoke<HostForm>("host_form", { id });
 export const hostSave = (form: HostForm) => invoke<HostCard>("host_save", { form });
+export const webdavPemFile = (path: string) =>
+  invoke<{ certificate: string; privateKey: string }>("webdav_pem_file", { path });
+export const webdavClientIdentityInspect = (certificate: string, privateKey: string) =>
+  invoke<string>("webdav_client_identity_inspect", { certificate, privateKey });
 export const hostDelete = (id: Uuid) => invoke<null>("host_delete", { id });
 export const hostsDelete = (ids: Uuid[]) => invoke<null>("hosts_delete", { ids });
 export const hostDuplicate = (id: Uuid) => invoke<HostCard>("host_duplicate", { id });

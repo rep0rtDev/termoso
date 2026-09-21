@@ -15,7 +15,9 @@ use termoso_core::store::Store;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::connect::{ConnectUi, Connector, PromptAnswer, PromptRequest, connect_resolved};
+use crate::connect::{
+    ConnectStage, ConnectUi, Connector, PromptAnswer, PromptRequest, connect_resolved, stage_label,
+};
 use crate::dto::{millis, parse_id, parse_opt_id};
 use crate::error::{MobileError, Result};
 use crate::presence::Slot;
@@ -98,9 +100,12 @@ pub struct PfRuleDraft {
 /// Where a tunnel is in its life.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum TunnelState {
-    /// Connecting; `detail` names the stage.
+    /// Connecting; `stage` is what to show (localised by the UI), `hop` the
+    /// jump host it belongs to, `detail` the English rendering of both.
     Connecting {
         detail: String,
+        stage: ConnectStage,
+        hop: Option<String>,
     },
     /// Listening. `bound` is the local socket (local / dynamic) or the port
     /// the server opened (remote).
@@ -142,9 +147,19 @@ struct TunnelUi {
     state: Arc<Mutex<TunnelState>>,
 }
 
+impl TunnelState {
+    fn connecting(stage: ConnectStage, hop: Option<String>) -> Self {
+        Self::Connecting {
+            detail: stage_label(&stage, hop.as_deref()),
+            stage,
+            hop,
+        }
+    }
+}
+
 impl ConnectUi for TunnelUi {
-    fn phase(&self, detail: String) {
-        let state = TunnelState::Connecting { detail };
+    fn phase(&self, stage: ConnectStage, hop: Option<String>) {
+        let state = TunnelState::connecting(stage, hop);
         *self.state.lock().expect("state poisoned") = state.clone();
         self.listener.on_state(state);
     }
@@ -197,9 +212,10 @@ impl PfTunnel {
             listener,
             presence,
         } = launch;
-        let state = Arc::new(Mutex::new(TunnelState::Connecting {
-            detail: "Connecting…".into(),
-        }));
+        let state = Arc::new(Mutex::new(TunnelState::connecting(
+            ConnectStage::Connecting,
+            None,
+        )));
         let conn = Arc::new(Connector::new(
             store.clone(),
             Arc::new(TunnelUi {
@@ -321,9 +337,7 @@ async fn open_once(
     };
     let spec = ForwardSpec::from_rule(&rule.data)?;
     let (client, jumps) = connect_resolved(&inner.conn, settings, target, Some(&resolved)).await?;
-    inner.set_state(TunnelState::Connecting {
-        detail: "Opening tunnel…".into(),
-    });
+    inner.set_state(TunnelState::connecting(ConnectStage::OpeningTunnel, None));
     let forward = match Forward::start(client.clone(), spec).await {
         Ok(f) => f,
         Err(e) => {

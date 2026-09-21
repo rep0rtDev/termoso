@@ -61,12 +61,9 @@ pub async fn connect<R: Runtime>(
     let url = webdav::normalize_url(&cfg.url)?.to_string();
     let display = display_of(&url);
     let identity = resolved.webdav_identity.as_ref().map(|i| &i.data);
-    let username = identity
-        .map(|i| i.username.trim().to_string())
-        .filter(|u| !u.is_empty());
-    let mut password = identity
-        .and_then(|i| i.password.clone())
-        .map(Zeroizing::new);
+    let base = WebDavConfig::default().with_identity(identity)?;
+    let username = base.username.clone();
+    let mut password = base.password.clone().map(Zeroizing::new);
     let mut tls = cfg
         .certificate_fingerprint
         .clone()
@@ -82,6 +79,7 @@ pub async fn connect<R: Runtime>(
             tls: tls.clone(),
             connect_timeout: CONNECT_TIMEOUT,
             spool_dir: Some(spool_dir()),
+            ..base.clone()
         };
         match WebDav::connect(attempt).await {
             Ok(dav) => {
@@ -119,7 +117,9 @@ pub async fn connect<R: Runtime>(
                     _ => return Err(CoreError::Cancelled.into()),
                 }
             }
-            Err(CoreError::AuthFailed { .. }) if username.is_some() => {
+            Err(CoreError::AuthFailed { .. })
+                if username.is_some() && base.bearer_token.is_none() =>
+            {
                 let answer = state
                     .prompts
                     .ask(

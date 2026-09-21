@@ -13,7 +13,7 @@ use termoso_core::store::Store;
 use termoso_core::webdav::{self, TlsPolicy, WebDav, WebDavConfig};
 use zeroize::Zeroizing;
 
-use crate::connect::{Connector, HostKeyChoice, PromptAnswer, PromptRequest};
+use crate::connect::{ConnectStage, Connector, HostKeyChoice, PromptAnswer, PromptRequest};
 use crate::error::{MobileError, Result};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
@@ -40,12 +40,9 @@ pub(crate) async fn connect_webdav(
     };
     let url = webdav::normalize_url(&cfg.url)?.to_string();
     let identity = resolved.webdav_identity.as_ref().map(|i| &i.data);
-    let username = identity
-        .map(|i| i.username.trim().to_string())
-        .filter(|u| !u.is_empty());
-    let mut password = identity
-        .and_then(|i| i.password.clone())
-        .map(Zeroizing::new);
+    let base = WebDavConfig::default().with_identity(identity)?;
+    let username = base.username.clone();
+    let mut password = base.password.clone().map(Zeroizing::new);
     let mut tls = cfg
         .certificate_fingerprint
         .clone()
@@ -54,8 +51,12 @@ pub(crate) async fn connect_webdav(
     let mut attempts = 0;
     let mut asked_password = false;
 
-    conn.ui
-        .phase(format!("Connecting to {}…", display_of(&url)));
+    conn.ui.phase(
+        ConnectStage::ConnectingTo {
+            target: display_of(&url),
+        },
+        None,
+    );
     loop {
         let attempt = WebDavConfig {
             url: url.clone(),
@@ -64,6 +65,7 @@ pub(crate) async fn connect_webdav(
             tls: tls.clone(),
             connect_timeout: CONNECT_TIMEOUT,
             spool_dir: Some(spool_dir.clone()),
+            ..base.clone()
         };
         match WebDav::connect(attempt).await {
             Ok(dav) => return Ok(dav),
@@ -93,7 +95,9 @@ pub(crate) async fn connect_webdav(
                 }
             }
             Err(CoreError::AuthFailed { .. })
-                if username.is_some() && attempts < MAX_PASSWORD_ATTEMPTS =>
+                if username.is_some()
+                    && base.bearer_token.is_none()
+                    && attempts < MAX_PASSWORD_ATTEMPTS =>
             {
                 attempts += 1;
                 let answer = conn

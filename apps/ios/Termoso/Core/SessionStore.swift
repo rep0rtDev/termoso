@@ -33,7 +33,7 @@ final class TerminalSession: Identifiable {
 
     private(set) var handle: SshSession?
     var title: String
-    var state: SessionState = .connecting(detail: "Starting…")
+    var state: SessionState = .connecting(detail: "Starting…", stage: .connecting, hop: nil)
     /// Bumped by the core whenever the grid changed; the terminal view
     /// re-reads `frame()` on the next display cycle.
     var frameTick = 0
@@ -64,7 +64,7 @@ final class TerminalSession: Identifiable {
 
     var stateLabel: String {
         switch state {
-        case let .connecting(detail): detail.isEmpty ? "Connecting…" : detail
+        case let .connecting(detail, _, _): detail.isEmpty ? "Connecting…" : detail
         case .connected: "Connected"
         case let .closed(reason): reason.map { "Closed · \($0)" } ?? "Closed"
         case let .failed(_, message): message

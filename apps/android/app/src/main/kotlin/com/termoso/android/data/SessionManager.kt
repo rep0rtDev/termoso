@@ -2,6 +2,7 @@ package com.termoso.android.data
 
 import com.termoso.android.R
 import com.termoso.android.str
+import com.termoso.android.ui.components.initialConnecting
 import com.termoso.core.HostItem
 import com.termoso.core.LiveEndReason
 import com.termoso.core.LiveListener
@@ -46,7 +47,7 @@ sealed interface SessionEvent {
  * frame per tick it observes, no matter how many arrived in between.
  */
 class SessionBridge : SessionListener {
-    private val _state = MutableStateFlow<SessionState>(SessionState.Connecting(str(R.string.connecting_ellipsis)))
+    private val _state = MutableStateFlow<SessionState>(initialConnecting())
     val state: StateFlow<SessionState> = _state.asStateFlow()
 
     private val _frameTick = MutableStateFlow(0L)

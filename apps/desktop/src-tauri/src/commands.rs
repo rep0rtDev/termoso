@@ -213,6 +213,33 @@ pub async fn host_save(state: State<'_, AppState>, form: HostForm) -> Result<Hos
     hosts::save(&state.store, &form)
 }
 
+/// Certificate chain / private key found in a PEM file, split for the WebDAV
+/// editor's two fields. Nothing is stored until the host is saved.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PemParts {
+    pub certificate: String,
+    pub private_key: String,
+}
+
+#[tauri::command]
+pub async fn webdav_pem_file(path: String) -> Result<PemParts> {
+    let parts = termoso_core::webdav::split_client_pem(&std::fs::read_to_string(&path)?)?;
+    Ok(PemParts {
+        certificate: parts.certificate,
+        private_key: parts.private_key,
+    })
+}
+
+/// Validate a pasted certificate + key pair and return the leaf fingerprint.
+#[tauri::command]
+pub async fn webdav_client_identity_inspect(
+    certificate: String,
+    private_key: String,
+) -> Result<String> {
+    Ok(termoso_core::webdav::ClientIdentity::from_pem(&certificate, &private_key)?.fingerprint())
+}
+
 #[tauri::command]
 pub async fn host_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
     hosts::delete(&state.store, id)

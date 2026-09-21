@@ -1,5 +1,6 @@
 package com.termoso.android.ui.terminal
 
+import com.termoso.core.ConnectStage
 import com.termoso.core.SessionState
 import com.termoso.core.SuggestionItem
 import com.termoso.core.SuggestionKind
@@ -20,7 +21,7 @@ class AutocompleteTest {
         assertFalse(autocompleteAllowed(enabled = false, state = up, canWrite = true, isView = false))
         assertFalse(autocompleteAllowed(enabled = true, state = up, canWrite = false, isView = true))
         assertFalse(autocompleteAllowed(enabled = true, state = up, canWrite = true, isView = true))
-        assertFalse(autocompleteAllowed(enabled = true, state = SessionState.Connecting("Authenticating…"), canWrite = true, isView = false))
+        assertFalse(autocompleteAllowed(enabled = true, state = SessionState.Connecting("Authenticating…", ConnectStage.Auth("password"), null), canWrite = true, isView = false))
         assertFalse(autocompleteAllowed(enabled = true, state = SessionState.Closed(null), canWrite = true, isView = false))
     }
 

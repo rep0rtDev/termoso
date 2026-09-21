@@ -1,6 +1,5 @@
 package com.termoso.android.ui.connections
 
-import com.termoso.android.str
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -61,6 +60,7 @@ import com.termoso.android.R
 import com.termoso.android.data.SftpConnection
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.HostAvatar
 import com.termoso.android.ui.components.IconTile
@@ -69,6 +69,7 @@ import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.closeHostLabel
+import com.termoso.android.ui.components.connectingLabel
 import com.termoso.android.ui.hosts.ConfirmDialog
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.JoinLiveDialog
@@ -350,7 +351,7 @@ private fun ActiveSessionRow(
     val title by session.title.collectAsStateWithLifecycle()
     var menu by remember { mutableStateOf(false) }
     val subtitle = when (val s = state) {
-        is SessionState.Connecting -> s.detail
+        is SessionState.Connecting -> connectingLabel(s)
         is SessionState.Connected -> title ?: session.target
         is SessionState.Closed -> stringResource(R.string.closed) + (s.reason?.let { " · $it" } ?: "")
         is SessionState.Failed -> s.message
@@ -411,7 +412,7 @@ private fun SftpRow(
     var menu by remember { mutableStateOf(false) }
     val active = transfers.count { it.status is TransferStatus.Running || it.status is TransferStatus.Queued }
     val subtitle = when (val s = state) {
-        is SessionState.Connecting -> s.detail
+        is SessionState.Connecting -> connectingLabel(s)
         is SessionState.Connected ->
             (if (conn.protocol == FileProtocol.WEBDAV) stringResource(R.string.webdav_target, conn.target) else stringResource(R.string.sftp, conn.target)) +
                 if (active > 0) stringResource(R.string.sep_transferring, active) else ""

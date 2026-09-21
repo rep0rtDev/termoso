@@ -38,7 +38,9 @@ pub use account::*;
 pub use ai::{AiStatusCard, AiSuggestionCard, AiTarget};
 pub use app::*;
 pub use autocomplete::{SuggestionItem, SuggestionKind};
-pub use connect::{HostKeyChoice, InteractiveQuestionInfo, PromptAnswer, PromptRequest};
+pub use connect::{
+    ConnectStage, HostKeyChoice, InteractiveQuestionInfo, PromptAnswer, PromptRequest,
+};
 pub use dto::*;
 pub use error::{MobileError, Result};
 pub use fido2::{

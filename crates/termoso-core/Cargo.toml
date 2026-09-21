@@ -48,6 +48,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # WebDAV: pinned self-signed certificates need our own verifier; Digest auth
 # still means MD5 on most servers.
 rustls = { version = "0.23.27", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pki-types = { version = "1.12", features = ["std"] }
 md5 = "0.8"
 percent-encoding = "2"
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }

@@ -202,6 +202,19 @@ pub struct WebDavDraft {
     pub certificate_fingerprint: Option<String>,
     /// Set by the core when the stored inline identity has a password.
     pub has_password: bool,
+    /// `password` (Basic / Digest, negotiated) or `token` (Bearer).
+    pub auth: String,
+    /// `None` keeps the stored token when editing; `Some("")` clears it.
+    pub bearer_token: Option<String>,
+    /// Set by the core when the stored inline identity has a token.
+    pub has_bearer_token: bool,
+    /// PEM client certificate chain for servers requiring mTLS; `None`
+    /// keeps the stored pair, `Some("")` clears it.
+    pub client_certificate: Option<String>,
+    /// PEM private key for `client_certificate`; `None` keeps the stored one.
+    pub client_key: Option<String>,
+    /// Set by the core: SHA-256 of the stored client certificate.
+    pub client_certificate_fingerprint: Option<String>,
 }
 
 impl From<hosts::WebDavForm> for WebDavDraft {
@@ -213,6 +226,12 @@ impl From<hosts::WebDavForm> for WebDavDraft {
             identity_id: w.identity_id.map(|i| i.to_string()),
             certificate_fingerprint: w.certificate_fingerprint,
             has_password: w.has_password,
+            auth: w.auth,
+            bearer_token: None,
+            has_bearer_token: w.has_bearer_token,
+            client_certificate: None,
+            client_key: None,
+            client_certificate_fingerprint: w.client_certificate_fingerprint,
         }
     }
 }
@@ -381,6 +400,12 @@ impl HostDraft {
                         .map(|f| f.trim().to_string())
                         .filter(|f| !f.is_empty()),
                     has_password: stored.has_password,
+                    auth: w.auth,
+                    bearer_token: w.bearer_token,
+                    has_bearer_token: stored.has_bearer_token,
+                    client_certificate: w.client_certificate,
+                    client_key: w.client_key,
+                    client_certificate_fingerprint: stored.client_certificate_fingerprint,
                 })
             }
         };
@@ -587,6 +612,14 @@ pub struct KeyImportDraft {
     pub passphrase: Option<String>,
     pub remember_passphrase: bool,
     pub certificate: Option<String>,
+}
+
+/// Certificate chain and private key found in one PEM text; either may be
+/// empty.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct PemParts {
+    pub certificate: String,
+    pub private_key: String,
 }
 
 /// What a pasted private key looks like before importing it.

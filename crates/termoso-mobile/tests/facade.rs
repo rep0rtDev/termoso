@@ -11,11 +11,12 @@ use russh::keys::ssh_key::{Algorithm, PrivateKey};
 use russh::server::{Auth, ChannelOpenHandle, Msg, Server as _, Session};
 use russh::{Channel, ChannelId, MethodSet};
 use termoso_mobile::{
-    HostKeyChoice, IdentityDraft, KeyAlgorithm, KeyGenerateDraft, KeyImportDraft, LiveEndReason,
-    LiveListener, LiveParticipantCard, LocalShell, MobileError, PfKind, PfRuleDraft, PromptAnswer,
-    PromptRequest, QuickTarget, SessionListener, SessionState, SshIdKeyKind, SshSession,
-    TelnetDraft, TerminalOptions, TermosoApp, Transport, TunnelListener, TunnelState, VaultKind,
-    flag, generate_master_key, is_live_link, parse_target, profile_exists, sshid_handle_valid,
+    ConnectStage, HostKeyChoice, IdentityDraft, KeyAlgorithm, KeyGenerateDraft, KeyImportDraft,
+    LiveEndReason, LiveListener, LiveParticipantCard, LocalShell, MobileError, PfKind, PfRuleDraft,
+    PromptAnswer, PromptRequest, QuickTarget, SessionListener, SessionState, SshIdKeyKind,
+    SshSession, TelnetDraft, TerminalOptions, TermosoApp, Transport, TunnelListener, TunnelState,
+    VaultKind, flag, generate_master_key, is_live_link, parse_target, profile_exists,
+    sshid_handle_valid,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -1095,7 +1096,8 @@ async fn saved_host_over_mosh() {
     rec.wait_state(|st| matches!(st, SessionState::Connected));
     assert!(rec.states.lock().unwrap().iter().any(|st| matches!(
         st,
-        SessionState::Connecting { detail } if detail.starts_with("Starting mosh-server")
+        SessionState::Connecting { detail, stage: ConnectStage::MoshServer, hop: None }
+            if detail.starts_with("Starting mosh-server")
     )));
     wait_text(&s, "READY_MARK");
 

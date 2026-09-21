@@ -1293,4 +1293,35 @@
     <string name="untrusted_certificate">Недоверенный сертификат</string>
     <string name="tls_certificate_sha_256">Сертификат TLS (SHA-256)</string>
     <string name="copied_as">Скопировано как %1$s</string>
+    <string name="webdav_auth_password">Пароль</string>
+    <string name="webdav_auth_token">Токен</string>
+    <string name="webdav_token">Bearer-токен</string>
+    <string name="webdav_token_saved">Bearer-токен (сохранён)</string>
+    <string name="webdav_token_hint">Отправляется как Authorization: Bearer в каждом запросе; сервер должен принимать токены приложений.</string>
+    <string name="webdav_client_certificate">Клиентский сертификат (mTLS)</string>
+    <string name="webdav_client_certificate_saved">Клиентский сертификат сохранён</string>
+    <string name="webdav_client_certificate_hint">Необязательно. Серверам, требующим клиентский сертификат, передаются цепочка и ключ ниже; оба хранятся в хранилище в зашифрованном виде.</string>
+    <string name="add_client_certificate">Добавить клиентский сертификат</string>
+    <string name="begin_certificate_placeholder">-----BEGIN CERTIFICATE----- (сначала конечный, цепочка по желанию)</string>
+    <string name="begin_private_key_placeholder">-----BEGIN PRIVATE KEY----- (PKCS#8, RSA или EC, без шифрования)</string>
+    <string name="webdav_client_key_kept">Оставьте пустым, чтобы сохранить прежний закрытый ключ</string>
+    <string name="webdav_client_certificate_ok">Действителен · SHA-256 %1$s</string>
+    <string name="webdav_client_certificate_will_be_removed">Сохранённый клиентский сертификат будет удалён при сохранении.</string>
+    <string name="webdav_client_certificate_storage_hint">Вставьте или откройте PEM-файл (общий файл с сертификатом и ключом разделяется автоматически). PKCS#12 и зашифрованные ключи не поддерживаются.</string>
+
+    <!-- Connection stages -->
+    <string name="stage_resolving_host">Разрешение имени хоста…</string>
+    <string name="stage_connecting_to">Подключение к %1$s…</string>
+    <string name="stage_handshake">Рукопожатие…</string>
+    <string name="stage_checking_host_key">Проверка ключа хоста…</string>
+    <string name="stage_authenticating">Аутентификация (%1$s)…</string>
+    <string name="stage_touch_your_security_key">Коснитесь ключа безопасности…</string>
+    <string name="stage_authenticated">Аутентификация выполнена…</string>
+    <string name="stage_starting_mosh_server">Запуск mosh-server…</string>
+    <string name="stage_mosh_waiting">Mosh: ожидание udp/%1$d…</string>
+    <string name="stage_opening_shell">Открытие оболочки…</string>
+    <string name="stage_starting_shell">Запуск оболочки…</string>
+    <string name="stage_opening_sftp">Открытие SFTP…</string>
+    <string name="stage_opening_tunnel">Открытие туннеля…</string>
+    <string name="stage_via_hop">%1$s: %2$s</string>
 </resources>

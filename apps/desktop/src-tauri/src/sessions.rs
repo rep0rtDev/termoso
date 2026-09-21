@@ -1619,6 +1619,8 @@ fn remember_password(state: &AppState, resolved: &ResolvedHost, value: &Zeroizin
                 is_visible: false,
                 ssh_id: false,
                 ssh_id_key_type: None,
+                bearer_token: None,
+                client_certificate: None,
             },
         )?;
         match resolved.host.data.ssh_config_id {
