@@ -254,7 +254,7 @@ pub fn router(state: AppState) -> Router {
         .layer(RequestBodyLimitLayer::new(BODY_LIMIT))
         .layer(
             tower::ServiceBuilder::new()
-                .layer(TraceLayer::new_for_http())
+                .layer(TraceLayer::new_for_http().make_span_with(request_span))
                 .layer(SetResponseHeaderLayer::overriding(
                     header::X_CONTENT_TYPE_OPTIONS,
                     HeaderValue::from_static("nosniff"),
@@ -316,6 +316,31 @@ fn cors_layer(state: &AppState) -> CorsLayer {
         .max_age(Duration::from_secs(3600))
 }
 
+/// The request span carries the path only: query strings hold SSO codes and
+/// flow tokens, and the invite / start-over routes carry their secret in the
+/// path, so those segments are masked even at `debug`.
+fn request_span(req: &axum::http::Request<axum::body::Body>) -> tracing::Span {
+    tracing::debug_span!(
+        "request",
+        method = %req.method(),
+        path = %redact_path(req.uri().path()),
+    )
+}
+
+fn redact_path(path: &str) -> String {
+    const SECRET_AFTER: [&str; 2] = ["/invites/", "/auth/start-over/"];
+    for marker in SECRET_AFTER {
+        if let Some(i) = path.find(marker) {
+            let start = i + marker.len();
+            let end = path[start..].find('/').map_or(path.len(), |j| start + j);
+            if end > start {
+                return format!("{}[redacted]{}", &path[..start], &path[end..]);
+            }
+        }
+    }
+    path.to_string()
+}
+
 /// Origins of the desktop WebView (`tauri://localhost`, `http://tauri.localhost`)
 /// and a Vite dev server on the loopback host. The host is matched exactly so
 /// `http://localhost.example.com` does not qualify.
@@ -342,7 +367,21 @@ fn is_local_client_origin(origin: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_local_client_origin;
+    use super::{is_local_client_origin, redact_path};
+
+    #[test]
+    fn secret_path_segments_are_masked() {
+        assert_eq!(
+            redact_path("/api/v1/invites/abc123/accept"),
+            "/api/v1/invites/[redacted]/accept"
+        );
+        assert_eq!(
+            redact_path("/api/v1/auth/start-over/tok"),
+            "/api/v1/auth/start-over/[redacted]"
+        );
+        assert_eq!(redact_path("/api/v1/invites/"), "/api/v1/invites/");
+        assert_eq!(redact_path("/api/v1/hosts"), "/api/v1/hosts");
+    }
 
     #[test]
     fn local_origins_match_exactly() {
