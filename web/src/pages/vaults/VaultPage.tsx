@@ -86,6 +86,7 @@ function VaultDetail({ vault }: { vault: Vault }) {
               )}{" "}
               · key version {vault.key_version} · created {formatDate(vault.created_at)}
             </span>
+            {vault.is_default && <Chip size="small" variant="outlined" label="Default vault" />}
             {!vault.sealed_key && (
               <Chip size="small" color="warning" variant="outlined" label="Your key is pending" />
             )}
@@ -199,7 +200,7 @@ function VaultActions({ vault, manager }: { vault: Vault; manager: boolean }) {
           </span>
         </Tooltip>
       )}
-      {manager && vault.kind === "team" && (
+      {manager && vault.kind === "team" && !vault.is_default && (
         <Button variant="outlined" color="error" onClick={() => setDeleteOpen(true)}>
           Delete vault
         </Button>

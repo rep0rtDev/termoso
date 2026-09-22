@@ -626,6 +626,7 @@ fn apply_vault_list(
             key_version,
         )?;
         store.set_vault_session_logging(v.id, v.session_logging)?;
+        store.set_vault_default(v.id, v.is_default)?;
         if let Some(old) = rotated_from {
             store.reencrypt_vault(v.id, &old)?;
         }
@@ -754,6 +755,7 @@ mod tests {
             sealed_key: sealed,
             key_version: kv,
             session_logging: false,
+            is_default: false,
         }
     }
 

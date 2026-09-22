@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS vaults (
     cursor      INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL,
     session_logging INTEGER NOT NULL DEFAULT 0, -- team vault: record every member's sessions
-    logs_cursor INTEGER NOT NULL DEFAULT 0      -- GET /vaults/{id}/logs cursor (team vaults)
+    logs_cursor INTEGER NOT NULL DEFAULT 0,     -- GET /vaults/{id}/logs cursor (team vaults)
+    is_default  INTEGER NOT NULL DEFAULT 0      -- team's first vault: undeletable
 );
 
 CREATE TABLE IF NOT EXISTS entities (

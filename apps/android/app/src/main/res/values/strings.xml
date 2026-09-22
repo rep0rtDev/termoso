@@ -1231,6 +1231,7 @@
     </plurals>
     <string name="sep_current">" · current"</string>
     <string name="sep_waiting_for_key">" · waiting for key"</string>
+    <string name="sep_default_vault">" · default vault"</string>
     <plurals name="n_keys">
         <item quantity="one">%d key</item>
         <item quantity="other">%d keys</item>

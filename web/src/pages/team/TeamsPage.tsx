@@ -22,21 +22,41 @@ import { useNavigate } from "react-router";
 import { errorMessage } from "@/api/client";
 import { teamsApi } from "@/api/endpoints";
 import { queryKeys, useServerInfo } from "@/api/hooks";
+import { useAuthState } from "@/auth/store";
 import { EmptyState } from "@/components/EmptyState";
 import { Loading } from "@/components/Loading";
 import { PageHeader } from "@/components/PageHeader";
 import { RoleChip } from "@/components/RoleChip";
+import { useSnackbar } from "@/components/Snackbar";
 import { formatDate } from "@/components/format";
+import { createDefaultTeamVault } from "@/vaults/keys";
 
 export function TeamsPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const info = useServerInfo();
+  const snack = useSnackbar();
+  const { session } = useAuthState();
   const teams = useQuery({ queryKey: queryKeys.teams, queryFn: teamsApi.list });
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const create = useMutation({
-    mutationFn: () => teamsApi.create(name.trim()),
+    mutationFn: async () => {
+      const team = await teamsApi.create(name.trim());
+      // The team's default vault is created client-side: its key is generated in
+      // this tab and sealed to our public key, so the server only sees ciphertext.
+      if (session) {
+        try {
+          await createDefaultTeamVault(team, {
+            user_id: session.user.id,
+            public_key: session.keys.public_key,
+          });
+        } catch (e) {
+          snack.error(`Team created, but its default vault was not: ${errorMessage(e)}`);
+        }
+      }
+      return team;
+    },
     onSuccess: async (team) => {
       setOpen(false);
       setName("");

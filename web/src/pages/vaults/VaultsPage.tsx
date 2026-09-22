@@ -54,6 +54,7 @@ export function VaultsPage() {
                 </Typography>
               </Stack>
               <Stack direction="row" spacing={0.5} sx={{ alignItems: "center", flexShrink: 0 }}>
+                {v.is_default && <Chip size="small" variant="outlined" label="Default" />}
                 {!v.sealed_key && <Chip size="small" color="warning" label="Key pending" />}
                 <RoleChip role={v.my_role} />
               </Stack>

@@ -47,6 +47,7 @@ function vault(kind: LocalVault["kind"], sessionLogging: boolean): LocalVault {
     cursor: 0,
     session_logging: sessionLogging,
     logs_cursor: 0,
+    is_default: false,
   };
 }
 

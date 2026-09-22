@@ -1194,6 +1194,7 @@
     <string name="copied_to">«%1$s» скопирован в %2$s</string>
     <string name="sep_current">" · текущая"</string>
     <string name="sep_waiting_for_key">" · ожидает ключ"</string>
+    <string name="sep_default_vault">" · хранилище по умолчанию"</string>
     <string name="could_not_create_in_the_download_folder">Не удалось создать %1$s в папке загрузок</string>
     <string name="could_not_write">Не удалось записать %1$s</string>
     <string name="n_seconds_short">%1$d с</string>

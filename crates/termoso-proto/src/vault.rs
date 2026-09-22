@@ -71,6 +71,10 @@ schema! {
         /// vault key, so the server still sees nothing).
         #[serde(default)]
         pub session_logging: bool,
+        /// Team vaults only: the team's first vault. It cannot be deleted
+        /// (only renamed), so a team always keeps at least one vault.
+        #[serde(default)]
+        pub is_default: bool,
     }
 }
 

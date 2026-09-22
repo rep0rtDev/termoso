@@ -109,10 +109,12 @@ fun TeamVaultScreen(
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(text = { Text(stringResource(R.string.rename_vault)) }, onClick = { menu = false; renaming = true })
                         DropdownMenuItem(text = { Text(stringResource(R.string.rotate_key)) }, onClick = { menu = false; rotating = true })
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.delete_vault), color = MaterialTheme.colorScheme.error) },
-                            onClick = { menu = false; deleting = true },
-                        )
+                        if (vault?.isDefault != true) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.delete_vault), color = MaterialTheme.colorScheme.error) },
+                                onClick = { menu = false; deleting = true },
+                            )
+                        }
                     }
                 }
             }
@@ -135,7 +137,11 @@ fun TeamVaultScreen(
             SectionCard {
                 ListRow(
                     title = vault.name,
-                    subtitle = if (vault.locked) stringResource(R.string.key_not_received_yet_ask_a_manager_to) else stringResource(R.string.you_5, vault.access.label()),
+                    subtitle = when {
+                        vault.locked -> stringResource(R.string.key_not_received_yet_ask_a_manager_to)
+                        vault.isDefault -> stringResource(R.string.you_5, vault.access.label()) + stringResource(R.string.sep_default_vault)
+                        else -> stringResource(R.string.you_5, vault.access.label())
+                    },
                     leading = { IconTile(if (vault.locked) Icons.Filled.Lock else Icons.Filled.LockOpen) },
                 )
             }

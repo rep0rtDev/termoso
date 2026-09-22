@@ -40,7 +40,7 @@ pub use logs::{LogItem, LogMeta, LogRow, MAX_CAPTURE_BYTES, Recorder};
 
 const SCHEMA: &str = include_str!("schema.sql");
 const ACCOUNT_AVATAR: &str = "account_avatar";
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 /// Schema 1 → 2: team session logs (per-vault logging flag and cursor,
 /// author / pin / note on log rows).
@@ -53,6 +53,12 @@ ALTER TABLE session_logs ADD COLUMN author TEXT;
 ALTER TABLE session_logs ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE session_logs ADD COLUMN note TEXT NOT NULL DEFAULT '';
 ALTER TABLE session_logs ADD COLUMN note_by TEXT;
+COMMIT;";
+
+/// Schema 2 → 3: the team's default (undeletable) vault flag.
+const MIGRATE_V3: &str = "
+BEGIN;
+ALTER TABLE vaults ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0;
 COMMIT;";
 
 /// A vault as seen by this device.
@@ -78,6 +84,8 @@ pub struct LocalVault {
     pub session_logging: bool,
     /// `GET /vaults/{id}/logs` cursor.
     pub logs_cursor: i64,
+    /// The team's first vault: can be renamed but not deleted.
+    pub is_default: bool,
 }
 
 /// Vault kind including the device-only local vault.
@@ -231,16 +239,23 @@ impl Store {
             master,
             keys: Mutex::new(HashMap::new()),
         };
-        match store.meta("schema_version")? {
+        let version = store.meta("schema_version")?;
+        match version.as_deref().map(|v| v.parse::<i64>().ok()) {
             None => store.set_meta("schema_version", &SCHEMA_VERSION.to_string())?,
-            Some(v) if v.parse::<i64>().ok() == Some(SCHEMA_VERSION) => {}
-            Some(v) if v.parse::<i64>().ok() == Some(1) => {
-                store.conn().execute_batch(MIGRATE_V2)?;
+            Some(Some(v)) if v == SCHEMA_VERSION => {}
+            Some(Some(from)) if (1..SCHEMA_VERSION).contains(&from) => {
+                if from < 2 {
+                    store.conn().execute_batch(MIGRATE_V2)?;
+                }
+                if from < 3 {
+                    store.conn().execute_batch(MIGRATE_V3)?;
+                }
                 store.set_meta("schema_version", &SCHEMA_VERSION.to_string())?;
             }
-            Some(v) => {
+            Some(_) => {
                 return Err(CoreError::Invalid(format!(
-                    "database schema {v} is newer than this client"
+                    "database schema {} is newer than this client",
+                    version.unwrap_or_default()
                 )));
             }
         }
@@ -392,7 +407,7 @@ impl Store {
         let conn = self.conn();
         let mut st = conn.prepare(
             "SELECT id, kind, name, team_id, role, wrapped_key IS NOT NULL, key_version, cursor,
-                    session_logging, logs_cursor
+                    session_logging, logs_cursor, is_default
              FROM vaults ORDER BY kind = 'local' DESC, kind, name",
         )?;
         let rows = st.query_map([], |r| {
@@ -407,6 +422,7 @@ impl Store {
                 r.get::<_, i64>(7)?,
                 r.get::<_, bool>(8)?,
                 r.get::<_, i64>(9)?,
+                r.get::<_, bool>(10)?,
             ))
         })?;
         let mut out = Vec::new();
@@ -422,6 +438,7 @@ impl Store {
                 cursor,
                 session_logging,
                 logs_cursor,
+                is_default,
             ) = row?;
             out.push(LocalVault {
                 id: parse_uuid(&id)?,
@@ -434,6 +451,7 @@ impl Store {
                 cursor,
                 session_logging,
                 logs_cursor,
+                is_default,
             });
         }
         Ok(out)
@@ -532,6 +550,15 @@ impl Store {
     pub fn set_vault_session_logging(&self, id: Uuid, on: bool) -> Result<()> {
         self.conn().execute(
             "UPDATE vaults SET session_logging = ?2 WHERE id = ?1",
+            params![id.to_string(), on],
+        )?;
+        Ok(())
+    }
+
+    /// Mirror the server's default-vault flag.
+    pub fn set_vault_default(&self, id: Uuid, on: bool) -> Result<()> {
+        self.conn().execute(
+            "UPDATE vaults SET is_default = ?2 WHERE id = ?1",
             params![id.to_string(), on],
         )?;
         Ok(())
@@ -906,7 +933,8 @@ mod tests {
             store
                 .conn()
                 .execute_batch(
-                    "ALTER TABLE vaults DROP COLUMN session_logging;
+                    "ALTER TABLE vaults DROP COLUMN is_default;
+                     ALTER TABLE vaults DROP COLUMN session_logging;
                      ALTER TABLE vaults DROP COLUMN logs_cursor;
                      ALTER TABLE session_logs DROP COLUMN author_id;
                      ALTER TABLE session_logs DROP COLUMN author;
@@ -925,6 +953,7 @@ mod tests {
         let local = store.local_vault().unwrap();
         assert_eq!(local.id, local_id);
         assert!(!local.session_logging);
+        assert!(!local.is_default);
         assert_eq!(local.logs_cursor, 0);
         let logs = store.logs().unwrap();
         assert_eq!(logs.len(), 1);
