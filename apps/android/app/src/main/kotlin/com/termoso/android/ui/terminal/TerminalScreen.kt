@@ -81,18 +81,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupProperties
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -435,7 +433,6 @@ private fun ActiveSession(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
-    val density = LocalDensity.current
     val configuration = LocalConfiguration.current
     val scope = rememberCoroutineScope()
     val controller = remember(session) { TerminalController(session) }
@@ -462,7 +459,6 @@ private fun ActiveSession(
     LaunchedEffect(panelRequest) { if (panelRequest > 0) panelSheet = true }
     var dropping by remember { mutableStateOf<DropProgress?>(null) }
     var confirmDrop by remember { mutableStateOf<List<Uri>?>(null) }
-    var menuAt by remember { mutableStateOf<Pair<CellPoint, Offset>?>(null) }
     var zoomDelta by rememberSaveable { mutableStateOf(0) }
     var scrolled by remember { mutableStateOf(false) }
 
@@ -682,7 +678,49 @@ private fun ActiveSession(
                         imeShown = true
                         panelExpanded = false
                     },
-                    onLongPress = { cell, offset -> menuAt = cell to offset },
+                    onCopy = { text ->
+                        copyToClipboard(context, text)
+                        scope.launch { snackbar.showSnackbar(str(R.string.selection_copied)) }
+                    },
+                    onPaste = ::paste,
+                    selectionMenu = { cell, dismiss ->
+                        // Non-focusable: a focusable popup would hide the IME and resize the grid.
+                        DropdownMenu(
+                            expanded = true,
+                            onDismissRequest = dismiss,
+                            properties = PopupProperties(focusable = false),
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.copy_line)) },
+                                onClick = {
+                                    dismiss()
+                                    val line = CellGrid(session.rust.frame()).let { g ->
+                                        if (cell.row in 0 until g.rows) g.lineText(cell.row) else ""
+                                    }
+                                    copyToClipboard(context, line)
+                                    scope.launch { snackbar.showSnackbar(str(R.string.line_copied)) }
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.copy_screen)) },
+                                onClick = {
+                                    dismiss()
+                                    copyToClipboard(context, controller.visibleText())
+                                    scope.launch { snackbar.showSnackbar(str(R.string.screen_copied)) }
+                                },
+                            )
+                            if (FileDrop.blocker(session) == null) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.send_file)) },
+                                    onClick = { dismiss(); pickFiles.launch(arrayOf("*/*")) },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.history_themes)) },
+                                onClick = { dismiss(); panelSheet = true },
+                            )
+                        }
+                    },
                     onZoom = ::zoom,
                     gestures = TerminalGestures(
                         pinchZoom = settings.pinchZoom,
@@ -697,38 +735,6 @@ private fun ActiveSession(
                         modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
                     ) {
                         Icon(Icons.Filled.KeyboardDoubleArrowDown, contentDescription = stringResource(R.string.scroll_to_bottom))
-                    }
-                }
-                menuAt?.let { (cell, offset) ->
-                    val at = with(density) { DpOffset(offset.x.toDp(), offset.y.toDp()) }
-                    DropdownMenu(expanded = true, onDismissRequest = { menuAt = null }, offset = at) {
-                        DropdownMenuItem(text = { Text(stringResource(R.string.paste_2)) }, onClick = { menuAt = null; paste() })
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.copy_line)) },
-                            onClick = {
-                                menuAt = null
-                                val line = CellGrid(session.rust.frame()).let { g ->
-                                    if (cell.row in 0 until g.rows) g.lineText(cell.row) else ""
-                                }
-                                copyToClipboard(context, line)
-                                scope.launch { snackbar.showSnackbar(str(R.string.line_copied)) }
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.copy_screen)) },
-                            onClick = {
-                                menuAt = null
-                                copyToClipboard(context, controller.visibleText())
-                                scope.launch { snackbar.showSnackbar(str(R.string.screen_copied)) }
-                            },
-                        )
-                        if (FileDrop.blocker(session) == null) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.send_file)) },
-                                onClick = { menuAt = null; pickFiles.launch(arrayOf("*/*")) },
-                            )
-                        }
-                        DropdownMenuItem(text = { Text(stringResource(R.string.history_themes)) }, onClick = { menuAt = null; panelSheet = true })
                     }
                 }
                 StateOverlay(

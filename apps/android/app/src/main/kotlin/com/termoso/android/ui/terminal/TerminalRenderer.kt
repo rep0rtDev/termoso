@@ -33,6 +33,12 @@ class CellGrid(val frame: GridFrame) {
 
     fun flags(row: Int, col: Int): Int = (buf.getInt((row * cols + col) * CELL_BYTES + 4) ushr 24) and 0xFF
 
+    /** Second half of a double-width character. */
+    fun isSpacer(row: Int, col: Int): Boolean = flags(row, col) and FLAG_WIDE_SPACER != 0
+
+    /** Concealed (SGR 8) text; never leaves the grid as plain text. */
+    fun isHidden(row: Int, col: Int): Boolean = flags(row, col) and FLAG_HIDDEN != 0
+
     /** Text of one row with trailing blanks trimmed. */
     fun lineText(row: Int): String {
         val sb = StringBuilder(cols)

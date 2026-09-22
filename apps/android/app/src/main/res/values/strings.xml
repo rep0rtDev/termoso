@@ -1072,6 +1072,7 @@
     <string name="this_session_cannot_be_cloned">This session cannot be cloned</string>
     <string name="scroll_to_bottom">Scroll to bottom</string>
     <string name="copy_line">Copy line</string>
+    <string name="selection_copied">Copied to clipboard</string>
     <string name="line_copied">Line copied</string>
     <string name="copy_screen">Copy screen</string>
     <string name="screen_copied">Screen copied</string>

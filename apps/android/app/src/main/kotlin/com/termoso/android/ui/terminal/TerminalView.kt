@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,7 +62,11 @@ fun TerminalView(
     modifier: Modifier = Modifier,
     onFrame: (CellGrid) -> Unit = {},
     onTap: () -> Unit = {},
-    onLongPress: (CellPoint, Offset) -> Unit = { _, _ -> },
+    /** Text copied from a selection; the caller puts it on the clipboard. */
+    onCopy: (String) -> Unit = {},
+    onPaste: () -> Unit = {},
+    /** Extra entries of the selection bar's overflow menu. */
+    selectionMenu: @Composable (cell: CellPoint, dismiss: () -> Unit) -> Unit = { _, _ -> },
     onZoom: (Int) -> Unit = {},
     gestures: TerminalGestures = TerminalGestures(),
     /** Two-finger horizontal swipe; `true` = towards the next session. */
@@ -79,11 +84,22 @@ fun TerminalView(
     var focused by remember { mutableStateOf(false) }
     var blinkOn by remember { mutableStateOf(true) }
 
+    var selection by remember(session) { mutableStateOf<TermSelection?>(null) }
+    var dragSelecting by remember { mutableStateOf(false) }
+
     val tick by session.frameTick.collectAsStateWithLifecycle()
 
     LaunchedEffect(session, tick) {
         val frame = withContext(Dispatchers.Default) { session.rust.frame() }
         val next = CellGrid(frame)
+        val prev = grid
+        if (prev != null && (prev.cols != next.cols || prev.rows != next.rows || prev.frame.altScreen != next.frame.altScreen)) {
+            selection = null
+        } else {
+            // Keep the selection on the same text while the viewport scrolls through history.
+            val delta = next.frame.displayOffset.toInt() - (prev?.frame?.displayOffset?.toInt() ?: 0)
+            if (delta != 0) selection = selection?.shiftedRows(delta)
+        }
         grid = next
         blinkOn = true
         onFrame(next)
@@ -123,13 +139,18 @@ fun TerminalView(
     val background = grid?.frame?.background?.toInt()?.let { Color(it or (0xFF shl 24)) } ?: Color(0xFF0D1117)
 
     val currentTap by rememberUpdatedState(onTap)
-    val currentLongPress by rememberUpdatedState(onLongPress)
     val currentZoom by rememberUpdatedState(onZoom)
     val currentSwipe by rememberUpdatedState(onSwipeSession)
     val currentGestures by rememberUpdatedState(gestures)
     val currentMetrics by rememberUpdatedState(metrics)
     val currentGrid by rememberUpdatedState(grid)
     val slop = with(density) { 12.dp.toPx() }
+    val selectionColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+
+    fun selectWordAt(offset: Offset) {
+        val g = currentGrid ?: return
+        selection = g.wordAt(currentMetrics.cellAt(offset, g))
+    }
 
     Box(
         modifier
@@ -138,18 +159,20 @@ fun TerminalView(
             .pointerInput(session) {
                 detectTapGestures(
                     onTap = {
+                        if (selection != null) {
+                            selection = null
+                            return@detectTapGestures
+                        }
                         controller.inputView?.let { v ->
                             v.requestFocus()
                             context.getSystemService<InputMethodManager>()?.showSoftInput(v, 0)
                         }
                         currentTap()
                     },
+                    onDoubleTap = { offset -> selectWordAt(offset) },
                     onLongPress = { offset ->
-                        val cell = CellPoint(
-                            row = (offset.y / currentMetrics.height).toInt(),
-                            col = (offset.x / currentMetrics.width).toInt(),
-                        )
-                        currentLongPress(cell, offset)
+                        selectWordAt(offset)
+                        dragSelecting = selection != null
                     },
                 )
             }
@@ -167,7 +190,20 @@ fun TerminalView(
                     do {
                         val event = awaitPointerEvent()
                         val pressed = event.changes.count { it.pressed }
-                        if (pressed >= 2) {
+                        if (!dragSelecting && event.changes.all { it.isConsumed }) {
+                            // A selection handle or the action bar owns this gesture.
+                            continue
+                        }
+                        if (dragSelecting) {
+                            // Long press keeps selecting while the finger moves.
+                            val p = event.changes.firstOrNull { it.pressed }?.position
+                            val sel = selection
+                            val grid = currentGrid
+                            if (p != null && sel != null && grid != null) {
+                                selection = TermSelection(sel.anchor, currentMetrics.cellAt(p, grid))
+                            }
+                            event.changes.forEach { it.consume() }
+                        } else if (pressed >= 2) {
                             multi = true
                             panAcc += event.calculatePan()
                             if (g.pinchZoom) {
@@ -219,6 +255,7 @@ fun TerminalView(
                             }
                         }
                     } while (event.changes.any { it.pressed })
+                    dragSelecting = false
                 }
             },
     ) {
@@ -231,6 +268,28 @@ fun TerminalView(
                 cursorVisible = blinkOn,
                 cursorOverride = override,
                 focused = focused,
+            )
+            selection?.let { drawSelection(it, g, metrics, selectionColor) }
+        }
+        val sel = selection
+        val g = grid
+        if (sel != null && g != null) {
+            SelectionOverlay(
+                selection = sel,
+                grid = g,
+                metrics = metrics,
+                viewport = size,
+                onChange = { selection = it },
+                onCopy = {
+                    onCopy(g.textIn(sel))
+                    selection = null
+                },
+                onPaste = {
+                    selection = null
+                    onPaste()
+                },
+                onSelectAll = { selection = g.all() },
+                more = { dismiss -> selectionMenu(sel.start) { dismiss(); selection = null } },
             )
         }
         AndroidView(
