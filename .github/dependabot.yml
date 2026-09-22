@@ -7,6 +7,13 @@ updates:
     groups:
       rust-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # opaque-ke 4.x (incl. 4.1 pre-releases) pins argon2 ^0.5 (Ksf impl) and
+      # p256 ^0.13; revisit when opaque-ke moves to the RustCrypto 0.6/0.14 line.
+      - dependency-name: argon2
+        update-types: ["version-update:semver-major"]
+      - dependency-name: p256
+        update-types: ["version-update:semver-major"]
     labels: [area:deps, area:rust]
 
   - package-ecosystem: npm
