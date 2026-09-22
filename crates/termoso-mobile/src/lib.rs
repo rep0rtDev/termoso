@@ -62,5 +62,7 @@ pub use sshid::{
     sshid_provision_command, sshid_type_is_hardware, sshid_type_label,
 };
 pub use team::*;
-pub use terminal::{CELL_BYTES, CursorStyle, GridFrame, GridSnapshot, TerminalPalette, flag};
+pub use terminal::{
+    CELL_BYTES, CursorStyle, Emulator, GridFrame, GridSnapshot, TerminalPalette, flag,
+};
 pub use themes::{TERMOSO_DARK, TERMOSO_LIGHT, TerminalTheme, terminal_theme, terminal_themes};
