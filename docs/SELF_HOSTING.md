@@ -149,9 +149,19 @@ otherwise. Everything else (`TERMOSO_WEBAUTHN__RP_ID`, OAuth redirect URIs,
 * `TERMOSO_ANDROID_APP_LINKS=<package>=<SHA-256>` publishes
   `/.well-known/assetlinks.json` so invitation and multiplayer links open in
   the Android app; the fingerprint is the one of the APK you distribute.
-* SSO providers are configured as `TERMOSO_SSO__<slug>__*`; the redirect URI
-  to register with the IdP is `<TERMOSO_PUBLIC_URL>/api/v1/auth/sso/callback`.
-  Only OIDC is implemented; a `KIND=saml` provider is rejected at start-up.
+* SSO providers are configured as `TERMOSO_SSO__<slug>__*`. For OIDC the
+  redirect URI to register with the IdP is
+  `<TERMOSO_PUBLIC_URL>/api/v1/auth/sso/callback`. For SAML 2.0 (`KIND=saml`)
+  set `SAML_METADATA` to the IdP metadata (an `https://` URL, a file path or
+  inline XML) and register our SP with the IdP by pointing it at
+  `<TERMOSO_PUBLIC_URL>/api/v1/auth/sso/<slug>/saml/metadata` — that
+  document is also the SP `entityID`, and the Assertion Consumer Service is
+  `<TERMOSO_PUBLIC_URL>/api/v1/auth/sso/saml/acs` (HTTP-POST). Responses must
+  be signed with a certificate published in the IdP metadata; SHA-1 is
+  refused unless `SAML_ALLOW_SHA1=true`. Give the SP its own certificate and
+  key (`SAML_SP_CERTIFICATE`/`SAML_SP_PRIVATE_KEY`, PEM or paths) to sign
+  `AuthnRequest`s and to receive encrypted assertions. See
+  `deploy/.env.example` for the full variable list.
 * **Use a publicly trusted certificate** (Let's Encrypt is fine). The Rust
   clients and the server's outgoing HTTPS ship the Mozilla root store
   (`webpki-roots`) and do not consult the OS trust store, so a private CA is
@@ -399,9 +409,10 @@ passwords, and do not point a production `TERMOSO_DATABASE_URL` at it.
 * The API Bridge exposes hosts and groups only, and holds the keys of the
   vaults it was granted — treat its host as part of those vaults' trust
   boundary.
-* SAML SSO is not implemented (configured providers of that kind are
-  rejected at start-up); OIDC covers Google, Microsoft, GitHub and any
-  discovery-capable IdP.
+* SAML is SP-initiated sign-in only: no IdP-initiated responses, no Single
+  Logout, no artifact binding. Signing in through SAML (like OIDC) proves the
+  e-mail; the vault password is still required, so the IdP never holds vault
+  key material.
 * Private certificate authorities are not supported by the clients (see
   above); the server must present a chain that validates against the Mozilla
   root store.

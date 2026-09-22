@@ -76,6 +76,12 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/sso/callback", get(auth::sso_callback))
         .route("/auth/sso/flow/{flow_id}", get(auth::sso_poll))
         .route("/auth/sso/{provider}/start", get(auth::sso_start))
+        .route(
+            "/auth/sso/{provider}/saml/metadata",
+            get(auth::sso_saml_metadata),
+        )
+        .route("/auth/sso/saml/post/{flow_id}", get(auth::sso_saml_post))
+        .route("/auth/sso/saml/acs", post(auth::sso_saml_acs))
         // account
         .route(
             "/account",

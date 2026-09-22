@@ -1,0 +1,42 @@
+<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_resp42" Version="2.0" IssueInstant="2026-01-01T00:00:00Z" Destination="https://sp.example/api/v1/auth/sso/saml/acs" InResponseTo="_req42">
+  <saml:Issuer>https://idp.example/saml</saml:Issuer>
+  <ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:SignedInfo><ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/><ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/><ds:Reference URI="#_resp42"><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/><ds:Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>1dNbh653M1b7TgVDA2OFXHvH6QfXDHaEgr9qlcxbC/A=</ds:DigestValue></ds:Reference></ds:SignedInfo><ds:SignatureValue>kdh6w8PgZC8913Cr4wrWR7m/cuPVDk64+ZHxO2eDXyRKdwNFIoJ4CpVaYi58qYOBDO8rY4dyufRjCCYjZy10KUprKFPjRIJdGzoovBd5MdwRERydJ7a0yzQmELRlawiG1s1z3gp1sGgVlOX0z3LDDQ3iTQMzZw/EGUIr17OF8T3MA4aO8tw34mGNBFt9FxTvFBu9c51EWalNS58A3INzI7Cbu3SEyVj50RcJz2kVbz4hlcVqz0DaYHFRYldO7F7VCac87gY03o04aTRy3OL9Khx74jZg/TN9b9+02VBU5X9yMIP5kOBYTj3D1CpqZSawLsNjK+PpXqfiYBjnIMUWSQ==</ds:SignatureValue><ds:KeyInfo><ds:X509Data><ds:X509Certificate>MIIDGTCCAgGgAwIBAgIUfGGFQF7LsoRQhldYvVZuoBtGGz4wDQYJKoZIhvcNAQEL
+BQAwGzEZMBcGA1UEAwwQdGVybW9zby10ZXN0LWlkcDAgFw0yNjA5MjIwNDU5MDda
+GA8yMTI2MDgyOTA0NTkwN1owGzEZMBcGA1UEAwwQdGVybW9zby10ZXN0LWlkcDCC
+ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAL7S2EfQwTiscHg5UBfvJucH
+gDLP7CVjc9xgaz0ACYP8Sci9+kW+NrJFCaCMbnnVNWZtuvLbM2aM7lZQX1xYbMh1
+M5SvKJyNw0fx5Uf8OP+hRwUWMT4KAhVRSRGo1vB8nRijMLZEoFBu1vNuKdzBwDcy
+EPuY0BzjkS/SnNsinw8gO6gD6pD0HVxppaEQRFsmARYvhTJ0jhaq0hExGRsN5RYr
+jXHdCAfMFR9LKFLyGA9ULfipBOAtJar+CdziBDeUzpoxtKwl60FM0CVsmMpDPyl9
+cKWl+qlBrozSlkexZh6zdD9UiidLoTbMsI0S7TD4nYC66slyDKUU53qDlJDyw7MC
+AwEAAaNTMFEwHQYDVR0OBBYEFGE3RdcJMx9X8k3YuqBfoIzgYOUsMB8GA1UdIwQY
+MBaAFGE3RdcJMx9X8k3YuqBfoIzgYOUsMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZI
+hvcNAQELBQADggEBABR5PrZ7LNKMN9Th78pSMmnK/4253oCTOSzyIRGnQsikU+aR
+Ob6DJ3+jRDgTED79we/ihsjYNUA+KOezMEZW1ajHCt2CqHoUIQlaIWjrckZwQpgN
+VgA7BcLeU83II8vb4TK1euGF3v8LDO1gnN6upBM3sB2WXsOMkhftGY630FFFnJPo
+1r2DLh0OUTpfw/d01pR18sDTwFhYODenYrkgK5/cwRzsbCC+5jPeU5P4GeCTL2pK
+/pnioM9fh7xuEQPwX7kTjzrb6h8hxJSP4OVbhpQ6W/SQ50E50GIMhIEiDASvt8Nv
+avAPuOIF9YMXXkHggUV0Gq6rtgixZeCMjwzW6PQ=
+</ds:X509Certificate></ds:X509Data></ds:KeyInfo></ds:Signature><samlp:Status><samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/></samlp:Status>
+  <saml:Assertion xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ID="_assert42" Version="2.0" IssueInstant="2026-01-01T00:00:00Z">
+    <saml:Issuer>https://idp.example/saml</saml:Issuer>
+    <saml:Subject>
+      <saml:NameID Format="urn:oasis:names:tc:SAML:2.0:nameid-format:persistent">user-42</saml:NameID>
+      <saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
+        <saml:SubjectConfirmationData InResponseTo="_req42" NotOnOrAfter="2100-01-01T00:00:00Z" Recipient="https://sp.example/api/v1/auth/sso/saml/acs"/>
+      </saml:SubjectConfirmation>
+    </saml:Subject>
+    <saml:Conditions NotBefore="2026-01-01T00:00:00Z" NotOnOrAfter="2100-01-01T00:00:00Z">
+      <saml:AudienceRestriction><saml:Audience>https://sp.example/api/v1/auth/sso/corp/saml/metadata</saml:Audience></saml:AudienceRestriction>
+    </saml:Conditions>
+    <saml:AuthnStatement AuthnInstant="2026-01-01T00:00:00Z" SessionIndex="_sess42">
+      <saml:AuthnContext><saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:Password</saml:AuthnContextClassRef></saml:AuthnContext>
+    </saml:AuthnStatement>
+    <saml:AttributeStatement>
+      <saml:Attribute Name="mail" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+        <saml:AttributeValue xsi:type="xs:string">grace@example.com</saml:AttributeValue>
+      </saml:Attribute>
+      <saml:Attribute Name="displayName"><saml:AttributeValue xsi:type="xs:string">Grace &amp; Hopper &lt;3</saml:AttributeValue></saml:Attribute>
+    </saml:AttributeStatement>
+  </saml:Assertion>
+</samlp:Response>
