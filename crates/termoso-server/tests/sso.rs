@@ -636,6 +636,7 @@ async fn anonymous_token_lookups_are_rate_limited_per_ip() {
     let paths = [
         "/auth/sso/flow/not-a-flow",
         "/auth/sso/callback?state=not-a-flow&code=x",
+        "/auth/sso/saml/post/not-a-flow",
         "/invites/not-an-invite",
     ];
     let mut limited = false;

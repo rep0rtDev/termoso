@@ -1246,8 +1246,10 @@ pub async fn sso_saml_metadata(
 /// SAML HTTP-POST binding: auto-submitting form carrying the `AuthnRequest`.
 pub async fn sso_saml_post(
     State(state): State<AppState>,
+    client: Client,
     Path(flow_id): Path<String>,
 ) -> ApiResult<Html<String>> {
+    ratelimit::check_ip(&state, ratelimit::ANON_IP, client.ip.as_deref()).await?;
     let form = sso::saml_post_form(&state, &flow_id).await?;
     Ok(Html(
         SAML_POST_HTML
