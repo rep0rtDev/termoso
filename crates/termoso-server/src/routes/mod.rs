@@ -298,14 +298,7 @@ fn cors_layer(state: &AppState) -> CorsLayer {
         // send a browser Origin the server can pre-validate; the web cabinet is
         // expected to be same-origin unless TERMOSO_CORS_ORIGINS is set.
         AllowOrigin::predicate(|origin: &HeaderValue, _| {
-            origin
-                .to_str()
-                .map(|o| {
-                    o.starts_with("tauri://")
-                        || o.starts_with("http://tauri.localhost")
-                        || o.starts_with("http://localhost")
-                })
-                .unwrap_or(false)
+            origin.to_str().is_ok_and(is_local_client_origin)
         })
     } else {
         AllowOrigin::list(origins.iter().filter_map(|o| HeaderValue::from_str(o).ok()))
@@ -321,4 +314,57 @@ fn cors_layer(state: &AppState) -> CorsLayer {
         ])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
         .max_age(Duration::from_secs(3600))
+}
+
+/// Origins of the desktop WebView (`tauri://localhost`, `http://tauri.localhost`)
+/// and a Vite dev server on the loopback host. The host is matched exactly so
+/// `http://localhost.example.com` does not qualify.
+fn is_local_client_origin(origin: &str) -> bool {
+    let Some((scheme, rest)) = origin.split_once("://") else {
+        return false;
+    };
+    let host = rest.rsplit_once(':').map_or(rest, |(h, port)| {
+        if port.bytes().all(|b| b.is_ascii_digit()) {
+            h
+        } else {
+            rest
+        }
+    });
+    match scheme {
+        "tauri" => host == "localhost",
+        "http" | "https" => matches!(
+            host,
+            "localhost" | "tauri.localhost" | "127.0.0.1" | "[::1]"
+        ),
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_local_client_origin;
+
+    #[test]
+    fn local_origins_match_exactly() {
+        for ok in [
+            "tauri://localhost",
+            "http://tauri.localhost",
+            "http://localhost",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://[::1]:5173",
+        ] {
+            assert!(is_local_client_origin(ok), "{ok}");
+        }
+        for bad in [
+            "http://localhost.example.com",
+            "http://localhost.example.com:80",
+            "http://tauri.localhost.evil",
+            "tauri://evil",
+            "localhost",
+            "null",
+        ] {
+            assert!(!is_local_client_origin(bad), "{bad}");
+        }
+    }
 }

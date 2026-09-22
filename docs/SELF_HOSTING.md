@@ -90,7 +90,10 @@ unusable — store the key next to the backups.
 The API and cabinet share one origin; the cabinet is a single-page app served
 with an `index.html` fallback by the server itself, so the proxy only needs
 to forward everything, including WebSocket upgrades, to `api:8080` and set
-`X-Forwarded-For` (the stack sets `TERMOSO_TRUST_PROXY=true`).
+`X-Forwarded-For` (the stack sets `TERMOSO_TRUST_PROXY=true`). The API takes
+the *last* address in that header — the one your proxy appended — so a client
+cannot spoof its IP for rate limits and security events. Never enable
+`TERMOSO_TRUST_PROXY` on a server reachable without the proxy in front.
 
 The Compose `proxy` profile does this with Caddy and Let's Encrypt:
 

@@ -7,7 +7,7 @@ use axum::extract::{
 };
 use axum::http::HeaderMap;
 use axum::http::request::Parts;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use uuid::Uuid;
 
 use crate::error::Error;
@@ -66,24 +66,35 @@ pub fn bearer(headers: &HeaderMap) -> Option<&str> {
         .filter(|t| !t.is_empty())
 }
 
+/// Client address for rate limits and security events.
+///
+/// Behind a trusted proxy the *last* `X-Forwarded-For` entry is used: that is
+/// the one the proxy itself appended, whereas earlier entries arrive from the
+/// client and can be forged. Values that are not IP addresses are ignored.
 pub fn client_ip(parts: &Parts, trust_proxy: bool) -> Option<String> {
-    if trust_proxy {
-        if let Some(v) = parts
-            .headers
-            .get("x-forwarded-for")
-            .and_then(|v| v.to_str().ok())
-            && let Some(first) = v.split(',').next().map(str::trim).filter(|s| !s.is_empty())
-        {
-            return Some(first.to_string());
-        }
-        if let Some(v) = parts.headers.get("x-real-ip").and_then(|v| v.to_str().ok()) {
-            return Some(v.trim().to_string());
-        }
+    if trust_proxy && let Some(ip) = forwarded_ip(&parts.headers) {
+        return Some(ip.to_string());
     }
     parts
         .extensions
         .get::<ConnectInfo<SocketAddr>>()
         .map(|c| c.0.ip().to_string())
+}
+
+fn forwarded_ip(headers: &HeaderMap) -> Option<IpAddr> {
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    header("x-forwarded-for")
+        .and_then(|v| v.rsplit(',').next())
+        .or_else(|| header("x-real-ip"))
+        .and_then(parse_ip)
+}
+
+fn parse_ip(v: &str) -> Option<IpAddr> {
+    let v = v.trim();
+    v.trim_matches(['[', ']'])
+        .parse()
+        .ok()
+        .or_else(|| v.parse::<SocketAddr>().ok().map(|s| s.ip()))
 }
 
 pub fn user_agent(headers: &HeaderMap) -> Option<String> {
@@ -234,5 +245,45 @@ where
         <Json<T> as FromRequest<S>>::from_request(req, state)
             .await
             .map(Some)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parts(headers: &[(&str, &str)]) -> Parts {
+        let mut req = http::Request::builder();
+        for (k, v) in headers {
+            req = req.header(*k, *v);
+        }
+        let (mut parts, ()) = req.body(()).unwrap().into_parts();
+        parts
+            .extensions
+            .insert(ConnectInfo::<SocketAddr>("10.0.0.2:4000".parse().unwrap()));
+        parts
+    }
+
+    #[test]
+    fn proxy_headers_are_ignored_unless_trusted() {
+        let p = parts(&[("x-forwarded-for", "1.2.3.4")]);
+        assert_eq!(client_ip(&p, false).as_deref(), Some("10.0.0.2"));
+        assert_eq!(client_ip(&p, true).as_deref(), Some("1.2.3.4"));
+    }
+
+    #[test]
+    fn last_forwarded_entry_wins() {
+        let p = parts(&[("x-forwarded-for", "6.6.6.6, 203.0.113.9")]);
+        assert_eq!(client_ip(&p, true).as_deref(), Some("203.0.113.9"));
+        let p = parts(&[("x-forwarded-for", "6.6.6.6,[2001:db8::1]:443")]);
+        assert_eq!(client_ip(&p, true).as_deref(), Some("2001:db8::1"));
+    }
+
+    #[test]
+    fn garbage_falls_back_to_the_socket() {
+        let p = parts(&[("x-forwarded-for", "unknown"), ("x-real-ip", "nope")]);
+        assert_eq!(client_ip(&p, true).as_deref(), Some("10.0.0.2"));
+        let p = parts(&[("x-real-ip", "198.51.100.7")]);
+        assert_eq!(client_ip(&p, true).as_deref(), Some("198.51.100.7"));
     }
 }

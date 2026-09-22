@@ -13,5 +13,5 @@ export async function startSso(provider: string, next: string): Promise<void> {
 export function takeSsoNext(): string {
   const v = sessionStorage.getItem(SSO_NEXT_KEY);
   sessionStorage.removeItem(SSO_NEXT_KEY);
-  return v?.startsWith("/") ? v : "/account";
+  return v?.startsWith("/") && !v.startsWith("//") ? v : "/account";
 }
