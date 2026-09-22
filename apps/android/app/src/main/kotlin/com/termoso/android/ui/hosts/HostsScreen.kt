@@ -72,6 +72,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -123,6 +124,7 @@ fun HostsScreen(
     val openByHost = (sessions.mapNotNull { it.hostId } + sftp.mapNotNull { it.hostId }).groupingBy { it }.eachCount()
     val presence = rememberVaultPresence(shell, vault)
     val viewersByHost = remember(presence) { viewersByHost(presence) }
+    val online = remember(viewersByHost) { viewersByHost.values.flatten().sortedBy { it.since } }
 
     LaunchedEffect(state.error) {
         state.error?.let { shell.notify(it); vm.errorShown() }
@@ -174,7 +176,18 @@ fun HostsScreen(
                         if (searching) {
                             SearchField(state.query, vm::setQuery)
                         } else {
-                            Text(state.group?.label ?: stringResource(R.string.hosts))
+                            Column {
+                                Text(state.group?.label ?: stringResource(R.string.hosts))
+                                if (vault != null && vaults.size > 1) {
+                                    Text(
+                                        vaultLabel(vault),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
                         }
                     },
                     navigationIcon = {
@@ -238,6 +251,8 @@ fun HostsScreen(
                 state = state,
                 openByHost = openByHost,
                 viewersByHost = viewersByHost,
+                online = online,
+                onOnline = { dialog = HostsDialog.Online },
                 padding = padding,
                 onOpenGroup = onOpenGroup,
                 onGroupLongPress = { dialog = HostsDialog.GroupMenu(it) },
@@ -309,6 +324,20 @@ fun HostsScreen(
             onConfirm = { vm.renameGroup(d.group, it); dialog = null },
             onDismiss = { dialog = null },
         )
+        HostsDialog.Online -> {
+            var labels by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+            LaunchedEffect(selectedVaultId) {
+                val id = selectedVaultId ?: return@LaunchedEffect
+                labels = runCatching { shell.repo.read { hosts(id) } }.getOrDefault(emptyList())
+                    .associate { it.id to it.label.ifBlank { it.address } }
+            }
+            TeamOnlineSheet(
+                repo = shell.repo,
+                viewersByHost = viewersByHost,
+                hostLabel = { labels[it] },
+                onClose = { dialog = null },
+            )
+        }
     }
 }
 
@@ -320,6 +349,7 @@ private sealed interface HostsDialog {
     data object NewGroup : HostsDialog
     data class GroupMenu(val group: GroupItem) : HostsDialog
     data class RenameGroup(val group: GroupItem) : HostsDialog
+    data object Online : HostsDialog
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -329,6 +359,9 @@ private fun HostList(
     state: HostsUiState,
     openByHost: Map<String, Int>,
     viewersByHost: Map<String, List<HostViewer>>,
+    /** Teammates connected anywhere in the vault; empty outside team vaults. */
+    online: List<HostViewer>,
+    onOnline: () -> Unit,
     padding: PaddingValues,
     onOpenGroup: (String) -> Unit,
     onGroupLongPress: (GroupItem) -> Unit,
@@ -343,7 +376,7 @@ private fun HostList(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
     ) {
         if (groups.isNotEmpty()) {
-            item { SectionLabel(stringResource(R.string.groups)) }
+            item { LabelWithOnline(stringResource(R.string.groups), repo, online, onOnline) }
             item {
                 SectionCard {
                     groups.forEachIndexed { i, g ->
@@ -362,7 +395,13 @@ private fun HostList(
             }
         }
         if (hosts.isNotEmpty()) {
-            item { SectionLabel(stringResource(R.string.hosts)) }
+            item {
+                if (groups.isEmpty()) {
+                    LabelWithOnline(stringResource(R.string.hosts), repo, online, onOnline)
+                } else {
+                    SectionLabel(stringResource(R.string.hosts))
+                }
+            }
             item {
                 SectionCard {
                     hosts.forEachIndexed { i, h ->
@@ -400,6 +439,15 @@ private fun HostList(
                 }
             }
         }
+    }
+}
+
+/** Section label with the team’s online avatars on the right (team vaults only). */
+@Composable
+private fun LabelWithOnline(text: String, repo: VaultRepository, online: List<HostViewer>, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        SectionLabel(text, Modifier.weight(1f))
+        TeamOnlineStack(repo, online, onClick, Modifier.padding(top = 8.dp))
     }
 }
 

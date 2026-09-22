@@ -181,8 +181,15 @@ fun MainShell(
     val scope = rememberCoroutineScope()
     val backStack by nav.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
-    val showBar = tabs.any { it.route == currentRoute }
+    // The host list is the Vaults tab's landing page, so the bar stays while browsing hosts.
+    val vaultsTabRoute = currentRoute == Routes.VAULT || currentRoute == Routes.HOSTS
+    val showBar = vaultsTabRoute || tabs.any { it.route == currentRoute }
     val snackbar = remember { SnackbarHostState() }
+
+    // Like Termius: start in the hosts of the vault used last; “All vaults” is one step back.
+    LaunchedEffect(Unit) {
+        if (shell.takeFirstLanding()) nav.navigate(Routes.hosts(null)) { launchSingleTop = true }
+    }
 
     val notice by shell.notice.collectAsStateWithLifecycle()
     LaunchedEffect(notice) {
@@ -234,6 +241,7 @@ fun MainShell(
     // Files shared into the app: sent to the active terminal, or held until one is opened.
     val pendingShare by container.pendingShare.collectAsStateWithLifecycle()
     val openSessions by shell.sessions.sessions.collectAsStateWithLifecycle()
+    val openSftp by shell.sftp.connections.collectAsStateWithLifecycle()
     LaunchedEffect(pendingShare, openSessions.isEmpty()) {
         if (pendingShare == null) return@LaunchedEffect
         if (openSessions.isEmpty()) {
@@ -294,17 +302,27 @@ fun MainShell(
             if (showBar) {
                 NavigationBar {
                     tabs.forEach { tab ->
-                        val selected = currentRoute == tab.route
+                        val selected = if (tab.route == Routes.VAULT) vaultsTabRoute else currentRoute == tab.route
                         NavigationBarItem(
                             selected = selected,
                             onClick = {
-                                nav.navigate(tab.route) {
-                                    popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                if (tab.route == Routes.VAULT && currentRoute == Routes.HOSTS) {
+                                    nav.popBackStack(Routes.VAULT, inclusive = false)
+                                } else {
+                                    nav.navigate(tab.route) {
+                                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
                                 }
                             },
-                            icon = { Icon(if (selected) tab.selectedIcon else tab.icon, contentDescription = stringResource(tab.label)) },
+                            icon = {
+                                if (tab.route == Routes.CONNECTIONS) {
+                                    ConnectionsTabIcon(openSessions, openSftp, selected)
+                                } else {
+                                    Icon(if (selected) tab.selectedIcon else tab.icon, contentDescription = stringResource(tab.label))
+                                }
+                            },
                             label = { Text(stringResource(tab.label)) },
                         )
                     }

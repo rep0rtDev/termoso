@@ -47,7 +47,7 @@ fun HostAvatar(osName: String?, modifier: Modifier = Modifier, selected: Boolean
     Box(
         modifier = modifier
             .size(size.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape((size * 0.25f).dp))
             .background(
                 when {
                     selected -> MaterialTheme.colorScheme.primary

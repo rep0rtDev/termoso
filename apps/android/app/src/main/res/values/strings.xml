@@ -1114,9 +1114,11 @@
     <string name="sign_in_to_sync">Sign in to sync</string>
     <string name="syncing_3">Syncing</string>
     <string name="synced_2">Synced</string>
-    <string name="team_vault_shared_with_your_team_end_to">Team vault — shared with your team, end-to-end encrypted.</string>
-    <string name="personal_vault_synced_to_your_devices_end_to">Personal vault — synced to your devices, end-to-end encrypted.</string>
-    <string name="local_vault_stored_only_on_this_device_encrypted">Local vault — stored only on this device, encrypted with a key that never leaves it.</string>
+    <string name="vault_hint_team">Shared with your team, end-to-end encrypted</string>
+    <string name="vault_hint_personal">Synced to your devices, end-to-end encrypted</string>
+    <string name="vault_hint_local">Only on this device</string>
+    <string name="all_vaults">All vaults</string>
+    <string name="known_hosts_shared_by_all_vaults">Shared by all vaults</string>
     <string name="local_vault">Local vault</string>
     <string name="personal_vault">Personal vault</string>
     <string name="welcome_to_termoso">Welcome to Termoso</string>
@@ -1236,6 +1238,10 @@
     <plurals name="n_identities">
         <item quantity="one">%d identity</item>
         <item quantity="other">%d identities</item>
+    </plurals>
+    <plurals name="n_active_connections">
+        <item quantity="one">Connections, %d active</item>
+        <item quantity="other">Connections, %d active</item>
     </plurals>
     <string name="could_not_create_in_the_download_folder">Could not create %1$s in the download folder</string>
     <string name="could_not_write">Could not write %1$s</string>
