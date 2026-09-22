@@ -194,6 +194,7 @@ pub fn router(state: AppState) -> Router {
             put(vaults::upsert_member).delete(vaults::remove_member),
         )
         .route("/vaults/{id}/rotate-key", post(vaults::rotate_key))
+        .route("/vaults/{id}/my-key", put(vaults::reseal_my_key))
         // sync
         .route("/sync/push", post(sync::push))
         .route("/sync/pull", post(sync::pull))

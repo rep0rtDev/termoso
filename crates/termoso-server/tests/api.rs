@@ -28,7 +28,8 @@ use termoso_proto::team::{
     UpdateTeamRequest,
 };
 use termoso_proto::vault::{
-    CreateVaultRequest, Vault, VaultKind, VaultList, VaultMemberUpsert, VaultRole,
+    CreateVaultRequest, ResealMyKeyRequest, Vault, VaultKind, VaultList, VaultMemberUpsert,
+    VaultRole,
 };
 use termoso_proto::ws::{ClientMessage, ServerMessage};
 use tokio_tungstenite::tungstenite::Message;
@@ -1672,4 +1673,156 @@ async fn log_action(s: &TestServer, team_id: Uuid, token: &str, action: &str) ->
         .find(|e| e["action"] == action)
         .cloned()
         .unwrap_or_else(|| panic!("{action} missing in {log}"))
+}
+
+#[tokio::test]
+async fn reseal_my_key_upgrades_own_copy_without_granting_access() {
+    let s = server!();
+    let alice = register(s, &unique_email("alice"), "pw-alice-1234567").await;
+    let mallory = register(s, &unique_email("mallory"), "pw-mallory-12345").await;
+    let vaults: VaultList = s
+        .json(Method::GET, "/vaults", Some(alice.token()), NOBODY)
+        .await;
+    let personal = vaults
+        .vaults
+        .iter()
+        .find(|v| v.kind == VaultKind::Personal)
+        .expect("personal vault");
+    let sealed_self =
+        sealed::seal_vault_key_self(&alice.keypair, &alice.personal_vault_key).unwrap();
+
+    // A stranger cannot touch someone else's vault (404: it does not exist for them).
+    s.expect_status(
+        Method::PUT,
+        &format!("/vaults/{}/my-key", personal.id),
+        Some(mallory.token()),
+        Some(&ResealMyKeyRequest {
+            key_version: personal.key_version,
+            sealed_key: sealed::seal_vault_key_self(&mallory.keypair, &mallory.personal_vault_key)
+                .unwrap(),
+        }),
+        StatusCode::NOT_FOUND,
+    )
+    .await;
+    // Malformed envelope and stale key version are rejected.
+    s.expect_status(
+        Method::PUT,
+        &format!("/vaults/{}/my-key", personal.id),
+        Some(alice.token()),
+        Some(&ResealMyKeyRequest {
+            key_version: personal.key_version,
+            sealed_key: "not base64!".into(),
+        }),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+    s.expect_status(
+        Method::PUT,
+        &format!("/vaults/{}/my-key", personal.id),
+        Some(alice.token()),
+        Some(&ResealMyKeyRequest {
+            key_version: personal.key_version + 1,
+            sealed_key: sealed_self.clone(),
+        }),
+        StatusCode::CONFLICT,
+    )
+    .await;
+
+    // Success: same key, same version, new self-authenticated envelope.
+    s.expect_status(
+        Method::PUT,
+        &format!("/vaults/{}/my-key", personal.id),
+        Some(alice.token()),
+        Some(&ResealMyKeyRequest {
+            key_version: personal.key_version,
+            sealed_key: sealed_self.clone(),
+        }),
+        StatusCode::NO_CONTENT,
+    )
+    .await;
+    let vaults: VaultList = s
+        .json(Method::GET, "/vaults", Some(alice.token()), NOBODY)
+        .await;
+    let after = vaults.vaults.iter().find(|v| v.id == personal.id).unwrap();
+    assert_eq!(after.key_version, personal.key_version);
+    assert_eq!(after.sealed_key.as_deref(), Some(sealed_self.as_str()));
+    let (key, origin) =
+        sealed::open_vault_key_checked(&alice.keypair, after.sealed_key.as_ref().unwrap()).unwrap();
+    assert_eq!(key.as_bytes(), alice.personal_vault_key.as_bytes());
+    assert_eq!(origin, sealed::SealedKeyOrigin::SelfAuthenticated);
+
+    // A team member without a sealed key (pending) cannot use it to smuggle one in.
+    let team: Team = s
+        .json(
+            Method::POST,
+            "/teams",
+            Some(alice.token()),
+            Some(&CreateTeamRequest { name: "Ops".into() }),
+        )
+        .await;
+    let vault_key = SymmetricKey::generate();
+    let vault: Vault = s
+        .json(
+            Method::POST,
+            &format!("/teams/{}/vaults", team.id),
+            Some(alice.token()),
+            Some(&CreateVaultRequest {
+                name: "Shared".into(),
+                members: vec![VaultMemberUpsert {
+                    user_id: alice.id(),
+                    role: VaultRole::Manager,
+                    sealed_key: sealed::seal_vault_key(alice.keypair.public(), &vault_key).unwrap(),
+                }],
+            }),
+        )
+        .await;
+    let invite: serde_json::Value = s
+        .json(
+            Method::POST,
+            &format!("/teams/{}/invites", team.id),
+            Some(alice.token()),
+            Some(&CreateInviteRequest {
+                email: mallory.email.clone(),
+                role: TeamRole::Member,
+                vault_ids: vec![vault.id],
+            }),
+        )
+        .await;
+    let token = invite["url"]
+        .as_str()
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_string();
+    let _: Team = s
+        .json(
+            Method::POST,
+            &format!("/invites/{token}/accept"),
+            Some(mallory.token()),
+            NOBODY,
+        )
+        .await;
+    s.expect_status(
+        Method::PUT,
+        &format!("/vaults/{}/my-key", vault.id),
+        Some(mallory.token()),
+        Some(&ResealMyKeyRequest {
+            key_version: 1,
+            sealed_key: sealed::seal_vault_key_self(&mallory.keypair, &vault_key).unwrap(),
+        }),
+        StatusCode::FORBIDDEN,
+    )
+    .await;
+    let mv: VaultList = s
+        .json(Method::GET, "/vaults", Some(mallory.token()), NOBODY)
+        .await;
+    assert!(
+        mv.vaults
+            .iter()
+            .find(|v| v.id == vault.id)
+            .unwrap()
+            .sealed_key
+            .is_none()
+    );
 }

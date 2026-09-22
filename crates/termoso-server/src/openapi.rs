@@ -126,6 +126,7 @@ impl Modify for BearerAuth {
         crate::routes::vaults::upsert_member,
         crate::routes::vaults::remove_member,
         crate::routes::vaults::rotate_key,
+        crate::routes::vaults::reseal_my_key,
         crate::routes::sync::push,
         crate::routes::sync::pull,
         crate::routes::history::push,

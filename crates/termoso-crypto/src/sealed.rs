@@ -34,9 +34,77 @@ pub fn seal_vault_key(
     seal_b64(recipient, vault_key.as_bytes())
 }
 
-/// Open a sealed vault key.
+/// Open a sealed vault key in either format (see [`open_vault_key_checked`]).
 pub fn open_vault_key(recipient: &KeyPair, sealed: &str) -> Result<SymmetricKey, CryptoError> {
-    SymmetricKey::from_slice(&open_b64(recipient, sealed)?)
+    open_vault_key_checked(recipient, sealed).map(|(k, _)| k)
+}
+
+/// How a vault key was sealed to us.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SealedKeyOrigin {
+    /// Anonymous sealed box: anyone who knows our public key could have
+    /// produced it, including the server.
+    Anonymous,
+    /// Authenticated box from our own key pair to itself: only a holder of
+    /// our account private key could have produced it.
+    SelfAuthenticated,
+}
+
+const SELF_TAG: u8 = 0x01;
+const NONCE_LEN: usize = 24;
+const SELF_SEALED_LEN: usize = 1 + NONCE_LEN + 32 + 16;
+const ANON_SEALED_LEN: usize = 32 + 32 + 16;
+
+/// Seal a vault key to ourselves so that other devices of the same account
+/// can verify it was produced by a holder of the account private key: a
+/// `crypto_box` from our key pair to our own public key, encoded as
+/// `0x01 ‖ nonce ‖ ciphertext` in base64. Used for the personal vault, whose
+/// key must never be replaced by anything the server made up.
+pub fn seal_vault_key_self(me: &KeyPair, vault_key: &SymmetricKey) -> Result<String, CryptoError> {
+    use crypto_box::aead::{Aead, AeadCore};
+    let sbox = SalsaBox::new(me.public(), me.secret());
+    let nonce = SalsaBox::generate_nonce(&mut OsRng);
+    let ct = sbox
+        .encrypt(&nonce, vault_key.as_bytes().as_slice())
+        .map_err(|_| CryptoError::Encrypt)?;
+    let mut out = Vec::with_capacity(SELF_SEALED_LEN);
+    out.push(SELF_TAG);
+    out.extend_from_slice(&nonce);
+    out.extend_from_slice(&ct);
+    Ok(b64(&out))
+}
+
+/// Open a sealed vault key and report which format it used. The two formats
+/// have distinct lengths (80 bytes anonymous, 73 bytes self-authenticated),
+/// so a caller can require [`SealedKeyOrigin::SelfAuthenticated`] where the
+/// server must not be able to substitute a key.
+pub fn open_vault_key_checked(
+    recipient: &KeyPair,
+    sealed: &str,
+) -> Result<(SymmetricKey, SealedKeyOrigin), CryptoError> {
+    use crypto_box::aead::Aead;
+    let bytes = unb64(sealed)?;
+    match bytes.len() {
+        ANON_SEALED_LEN => {
+            let key = recipient
+                .secret()
+                .unseal(&bytes)
+                .map_err(|_| CryptoError::Decrypt)?;
+            Ok((SymmetricKey::from_slice(&key)?, SealedKeyOrigin::Anonymous))
+        }
+        SELF_SEALED_LEN if bytes[0] == SELF_TAG => {
+            let (nonce, ct) = bytes[1..].split_at(NONCE_LEN);
+            let sbox = SalsaBox::new(recipient.public(), recipient.secret());
+            let key = sbox
+                .decrypt(nonce.into(), ct)
+                .map_err(|_| CryptoError::Decrypt)?;
+            Ok((
+                SymmetricKey::from_slice(&key)?,
+                SealedKeyOrigin::SelfAuthenticated,
+            ))
+        }
+        _ => Err(CryptoError::Envelope),
+    }
 }
 
 /// Authenticated (non-anonymous) box between two parties — used later for
@@ -89,6 +157,53 @@ mod tests {
 
         let other = KeyPair::generate();
         assert!(open_vault_key(&other, &sealed).is_err());
+        assert_eq!(
+            open_vault_key_checked(&member, &sealed).unwrap().1,
+            SealedKeyOrigin::Anonymous
+        );
+    }
+
+    #[test]
+    fn self_sealed_roundtrip_and_origin() {
+        let me = KeyPair::generate();
+        let vk = SymmetricKey::generate();
+        let sealed = seal_vault_key_self(&me, &vk).unwrap();
+        assert_eq!(unb64(&sealed).unwrap().len(), SELF_SEALED_LEN);
+        let (opened, origin) = open_vault_key_checked(&me, &sealed).unwrap();
+        assert_eq!(opened.as_bytes(), vk.as_bytes());
+        assert_eq!(origin, SealedKeyOrigin::SelfAuthenticated);
+        assert_eq!(
+            open_vault_key(&me, &sealed).unwrap().as_bytes(),
+            vk.as_bytes()
+        );
+
+        // Someone who only knows our public key cannot produce it.
+        let other = KeyPair::generate();
+        assert!(open_vault_key_checked(&other, &sealed).is_err());
+        let forged = {
+            use crypto_box::aead::{Aead, AeadCore};
+            let sbox = SalsaBox::new(me.public(), other.secret());
+            let nonce = SalsaBox::generate_nonce(&mut OsRng);
+            let ct = sbox.encrypt(&nonce, vk.as_bytes().as_slice()).unwrap();
+            let mut out = vec![SELF_TAG];
+            out.extend_from_slice(&nonce);
+            out.extend_from_slice(&ct);
+            b64(&out)
+        };
+        assert!(open_vault_key_checked(&me, &forged).is_err());
+
+        // Tampering with the tag or length is rejected as malformed.
+        let mut bytes = unb64(&sealed).unwrap();
+        bytes[0] = 0x02;
+        assert!(matches!(
+            open_vault_key_checked(&me, &b64(&bytes)),
+            Err(CryptoError::Envelope)
+        ));
+        bytes.push(0);
+        assert!(matches!(
+            open_vault_key_checked(&me, &b64(&bytes)),
+            Err(CryptoError::Envelope)
+        ));
     }
 
     #[test]

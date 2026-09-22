@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use termoso_core::account as core;
 use termoso_core::api::{ApiClient, AuditQuery};
-use termoso_core::store::Store;
+use termoso_core::store::{LocalVaultKind, Store};
 use termoso_crypto::keys::{SymmetricKey, public_key_from_b64};
 use termoso_crypto::sealed;
 use termoso_proto::team::{
@@ -274,13 +274,24 @@ async fn rotate_with(api: &ApiClient, store: &Store, vault_id: Uuid) -> Result<(
     }
     let members = api.vault_members(vault_id).await?.members;
     let key = SymmetricKey::generate();
+    // Personal vault: only we hold it, and only a self-authenticated envelope
+    // is accepted back by our own devices.
+    let me = (vault.kind == LocalVaultKind::Personal)
+        .then(|| store.account_secrets())
+        .transpose()?
+        .map(|s| s.private_key);
     let sealed_for = members
         .iter()
         .filter(|m| !m.pending)
         .map(|m| {
             Ok(SealedKeyFor {
                 user_id: m.user_id,
-                sealed_key: seal_for(&m.public_key, &key)?,
+                sealed_key: match &me {
+                    Some(pair) => {
+                        sealed::seal_vault_key_self(pair, &key).map_err(CoreError::from)?
+                    }
+                    None => seal_for(&m.public_key, &key)?,
+                },
             })
         })
         .collect::<Result<Vec<_>>>()?;

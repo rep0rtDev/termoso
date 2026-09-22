@@ -45,8 +45,8 @@ use termoso_proto::team::{
     UpdateTeamRequest,
 };
 use termoso_proto::vault::{
-    CreateVaultRequest, RotateVaultKeyRequest, RotateVaultKeyResponse, UpdateVaultRequest, Vault,
-    VaultList, VaultMemberList, VaultMemberUpsert,
+    CreateVaultRequest, ResealMyKeyRequest, RotateVaultKeyRequest, RotateVaultKeyResponse,
+    UpdateVaultRequest, Vault, VaultList, VaultMemberList, VaultMemberUpsert,
 };
 use url::Url;
 use uuid::Uuid;
@@ -574,6 +574,11 @@ impl ApiClient {
         req: &RotateVaultKeyRequest,
     ) -> Result<RotateVaultKeyResponse> {
         self.post(&format!("vaults/{id}/rotate-key"), req).await
+    }
+
+    /// `PUT /vaults/{id}/my-key` — replace our own sealed copy of the current key.
+    pub async fn reseal_my_key(&self, id: Uuid, req: &ResealMyKeyRequest) -> Result<()> {
+        self.put_empty(&format!("vaults/{id}/my-key"), req).await
     }
 
     /// `GET /teams`.

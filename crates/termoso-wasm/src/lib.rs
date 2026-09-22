@@ -201,7 +201,8 @@ pub struct NewAccountKeys {
     pub recovery_wrapped_private_key: String,
     /// Recovery verifier, base64.
     pub recovery_verifier: String,
-    /// Personal vault key sealed to `public_key`.
+    /// Personal vault key in a self-authenticated envelope (see
+    /// `termoso_crypto::sealed::seal_vault_key_self`).
     pub personal_vault_sealed_key: String,
     /// 24-word recovery phrase — show once, never store.
     pub recovery_phrase: String,
@@ -255,7 +256,7 @@ pub fn create_account_keys(export_key: &str) -> Result<JsValue, WasmError> {
         )
         .map_err(js_err)?,
         recovery_verifier: recovery.verifier_b64().map_err(js_err)?,
-        personal_vault_sealed_key: sealed::seal_vault_key(pair.public(), &vault_key)
+        personal_vault_sealed_key: sealed::seal_vault_key_self(&pair, &vault_key)
             .map_err(js_err)?,
         recovery_phrase: recovery.phrase(),
         private_key: secret.to_b64(),
@@ -397,13 +398,33 @@ pub fn seal_vault_key(recipient_public_key: &str, vault_key: &str) -> Result<Str
     sealed::seal_vault_key(&pk, &key).map_err(js_err)
 }
 
-/// Open a vault key sealed to us. Returns base64 key.
+/// Seal a vault key to ourselves in the self-authenticated envelope used for
+/// the personal vault: only the holder of `private_key` can produce it, so a
+/// server cannot substitute the key.
+#[wasm_bindgen]
+pub fn seal_vault_key_self(private_key: &str, vault_key: &str) -> Result<String, WasmError> {
+    let pair = keypair(private_key)?;
+    let key = symmetric(vault_key)?;
+    sealed::seal_vault_key_self(&pair, &key).map_err(js_err)
+}
+
+/// Open a vault key sealed to us (either envelope format). Returns base64 key.
 #[wasm_bindgen]
 pub fn open_vault_key(private_key: &str, sealed_key: &str) -> Result<String, WasmError> {
     let pair = keypair(private_key)?;
     Ok(sealed::open_vault_key(&pair, sealed_key)
         .map_err(js_err)?
         .to_b64())
+}
+
+/// `true` when the envelope opens and was produced with our own private key
+/// (personal vault format); `false` for an anonymous sealed box. Errors when
+/// it does not open.
+#[wasm_bindgen]
+pub fn sealed_key_is_self(private_key: &str, sealed_key: &str) -> Result<bool, WasmError> {
+    let pair = keypair(private_key)?;
+    let (_, origin) = sealed::open_vault_key_checked(&pair, sealed_key).map_err(js_err)?;
+    Ok(origin == sealed::SealedKeyOrigin::SelfAuthenticated)
 }
 
 // ───────────────────────────── entity encryption ─────────────────────────────

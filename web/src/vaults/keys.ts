@@ -1,7 +1,14 @@
 import { vaultsApi } from "@/api/endpoints";
 import type { PendingVaultKey, Vault, VaultMember } from "@/api/types";
 import { requireUnlocked } from "@/auth/unlock";
-import { generateVaultKey, loadCrypto, openVaultKey, sealVaultKey } from "@/crypto";
+import {
+  generateVaultKey,
+  loadCrypto,
+  openVaultKey,
+  sealVaultKey,
+  sealVaultKeySelf,
+  sealedKeyIsSelf,
+} from "@/crypto";
 
 /** Opens the caller's copy of a vault key; throws when the key is still pending. */
 export async function openMyVaultKey(vault: Vault): Promise<string> {
@@ -9,16 +16,33 @@ export async function openMyVaultKey(vault: Vault): Promise<string> {
     throw new Error("Your copy of this vault key is still pending; ask a vault manager.");
   const privateKey = await requireUnlocked();
   await loadCrypto();
-  return openVaultKey(privateKey, vault.sealed_key);
+  const vaultKey = openVaultKey(privateKey, vault.sealed_key);
+  if (vault.kind === "personal" && !sealedKeyIsSelf(privateKey, vault.sealed_key)) {
+    // Legacy anonymous envelope: replace the server copy with one only we
+    // could have produced. Best effort; native clients do the same on sync.
+    void vaultsApi
+      .resealMyKey(vault.id, vault.key_version, sealVaultKeySelf(privateKey, vaultKey))
+      .catch(() => undefined);
+  }
+  return vaultKey;
 }
 
-/** Creates a fresh vault key and seals it to each recipient's public key. */
-export async function newSealedVaultKey(recipients: { user_id: string; public_key: string }[]) {
+/**
+ * Creates a fresh vault key and seals it to each recipient's public key. For
+ * the personal vault the only recipient is us and the envelope must be
+ * self-authenticated, otherwise our own devices refuse the rotation.
+ */
+export async function newSealedVaultKey(
+  recipients: { user_id: string; public_key: string }[],
+  selfPrivateKey?: string,
+) {
   await loadCrypto();
   const vaultKey = generateVaultKey();
   return recipients.map((r) => ({
     user_id: r.user_id,
-    sealed_key: sealVaultKey(r.public_key, vaultKey),
+    sealed_key: selfPrivateKey
+      ? sealVaultKeySelf(selfPrivateKey, vaultKey)
+      : sealVaultKey(r.public_key, vaultKey),
   }));
 }
 
@@ -76,8 +100,11 @@ export async function sealVaultKeysFor(
  * still encrypted under the old version are re-encrypted by clients as they sync.
  */
 export async function rotateVaultKey(vault: Vault, members: VaultMember[]): Promise<number> {
-  await requireUnlocked();
-  const sealed = await newSealedVaultKey(members.filter((m) => !m.pending));
+  const privateKey = await requireUnlocked();
+  const sealed = await newSealedVaultKey(
+    members.filter((m) => !m.pending),
+    vault.kind === "personal" ? privateKey : undefined,
+  );
   const r = await vaultsApi.rotateKey(vault.id, vault.key_version, sealed);
   return r.key_version;
 }
