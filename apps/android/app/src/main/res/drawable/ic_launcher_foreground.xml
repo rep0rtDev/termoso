@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Terminal prompt mark on the emerald brand colour. -->
+<!-- Termoso mark shared with the desktop/web clients (favicon.svg 64-unit grid mapped onto the
+     72dp visible area of the adaptive icon: x' = 18 + 1.125x). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -7,16 +8,8 @@
     android:viewportHeight="108">
     <path
         android:fillColor="#2BB884"
-        android:pathData="M30,30 h48 a8,8 0 0 1 8,8 v32 a8,8 0 0 1 -8,8 h-48 a8,8 0 0 1 -8,-8 v-32 a8,8 0 0 1 8,-8 z" />
+        android:pathData="M36,40.5 h36 v9 H58.5 v22.5 h-9 V49.5 H36 z" />
     <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="5"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M36,44 L46,54 L36,64" />
-    <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="5"
-        android:strokeLineCap="round"
-        android:pathData="M52,64 L70,64" />
+        android:fillColor="#5AA9E6"
+        android:pathData="M67.5,63 h4.5 a2.25,2.25 0 0 1 2.25,2.25 v4.5 a2.25,2.25 0 0 1 -2.25,2.25 h-4.5 a2.25,2.25 0 0 1 -2.25,-2.25 v-4.5 a2.25,2.25 0 0 1 2.25,-2.25 z" />
 </vector>

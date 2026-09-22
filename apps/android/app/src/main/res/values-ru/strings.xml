@@ -1119,9 +1119,11 @@
     <string name="sign_in_to_sync">Войдите для синхронизации</string>
     <string name="syncing_3">Синхронизация</string>
     <string name="synced_2">Синхронизировано</string>
-    <string name="team_vault_shared_with_your_team_end_to">Командное хранилище — общее с вашей командой, сквозное шифрование.</string>
-    <string name="personal_vault_synced_to_your_devices_end_to">Личное хранилище — синхронизируется с вашими устройствами, сквозное шифрование.</string>
-    <string name="local_vault_stored_only_on_this_device_encrypted">Локальное хранилище — хранится только на этом устройстве, зашифровано ключом, который его никогда не покидает.</string>
+    <string name="vault_hint_team">Общее с командой, сквозное шифрование</string>
+    <string name="vault_hint_personal">Синхронизируется с вашими устройствами, сквозное шифрование</string>
+    <string name="vault_hint_local">Только на этом устройстве</string>
+    <string name="all_vaults">Все хранилища</string>
+    <string name="known_hosts_shared_by_all_vaults">Общие для всех хранилищ</string>
     <string name="local_vault">Локальное хранилище</string>
     <string name="personal_vault">Личное хранилище</string>
     <string name="welcome_to_termoso">Добро пожаловать в Termoso</string>
@@ -1279,6 +1281,12 @@
         <item quantity="few">%d идентификатора</item>
         <item quantity="many">%d идентификаторов</item>
         <item quantity="other">%d идентификатора</item>
+    </plurals>
+    <plurals name="n_active_connections">
+        <item quantity="one">Соединения, %d активное</item>
+        <item quantity="few">Соединения, %d активных</item>
+        <item quantity="many">Соединения, %d активных</item>
+        <item quantity="other">Соединения, %d активных</item>
     </plurals>
 
     <!-- Files integration (storage access framework) -->

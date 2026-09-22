@@ -1,6 +1,7 @@
 package com.termoso.android.ui.hosts
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,12 +12,16 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -78,11 +83,18 @@ fun rememberMinuteNow(): Instant {
 
 /** Overlapping initials of the people on a host, `+N` when there are more than [max]. */
 @Composable
-fun PresenceStack(repo: VaultRepository, viewers: List<HostViewer>, modifier: Modifier = Modifier, max: Int = 3) {
+fun PresenceStack(
+    repo: VaultRepository,
+    viewers: List<HostViewer>,
+    modifier: Modifier = Modifier,
+    max: Int = 3,
+    size: Int = 22,
+) {
     val people = distinctPeople(viewers)
     if (people.isEmpty()) return
     val shown = people.take(max)
     val rest = people.size - shown.size
+    val overlap = size * 3 / 11
     Row(
         modifier
             .padding(start = 8.dp)
@@ -90,15 +102,71 @@ fun PresenceStack(repo: VaultRepository, viewers: List<HostViewer>, modifier: Mo
         verticalAlignment = Alignment.CenterVertically,
     ) {
         shown.forEachIndexed { i, v ->
-            PresenceAvatar(repo, v, size = 22, modifier = Modifier.offset(x = (-6 * i).dp))
+            PresenceAvatar(repo, v, size = size, modifier = Modifier.offset(x = (-overlap * i).dp))
         }
         if (rest > 0) {
             Text(
                 "+$rest",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.offset(x = (-6 * (shown.size - 1)).dp).padding(start = 3.dp),
+                modifier = Modifier.offset(x = (-overlap * (shown.size - 1)).dp).padding(start = 3.dp),
             )
+        }
+    }
+}
+
+/**
+ * Teammates online anywhere in a team vault, as a tappable avatar stack next to
+ * a section label (the “who is around” row above Groups).
+ */
+@Composable
+fun TeamOnlineStack(repo: VaultRepository, viewers: List<HostViewer>, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    if (viewers.isEmpty()) return
+    PresenceStack(
+        repo = repo,
+        viewers = viewers,
+        size = 28,
+        modifier = modifier
+            .clip(CircleShape)
+            .clickable(onClick = onClick, onClickLabel = stringResource(R.string.connected_now_2))
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+    )
+}
+
+/** Who is connected where in the vault: one row per teammate device and host. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TeamOnlineSheet(
+    repo: VaultRepository,
+    viewersByHost: Map<String, List<HostViewer>>,
+    hostLabel: (String) -> String?,
+    onClose: () -> Unit,
+) {
+    val now = rememberMinuteNow()
+    ModalBottomSheet(onDismissRequest = onClose) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            Text(
+                stringResource(R.string.connected_now_2),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+            )
+            viewersByHost.entries
+                .sortedBy { (id, _) -> hostLabel(id)?.lowercase() ?: "\uFFFF" }
+                .forEach { (hostId, viewers) ->
+                    SectionLabel(hostLabel(hostId) ?: stringResource(R.string.unknown_host))
+                    SectionCard {
+                        viewers.forEachIndexed { i, v ->
+                            if (i > 0) RowDivider()
+                            ViewerRow(repo, v, now)
+                        }
+                    }
+                }
         }
     }
 }
@@ -137,56 +205,61 @@ fun ConnectedNowSection(repo: VaultRepository, viewers: List<HostViewer>) {
     SectionCard {
         viewers.forEachIndexed { i, v ->
             if (i > 0) RowDivider()
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PresenceAvatar(repo, v, size = 36)
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        if (v.me) stringResource(R.string.you_2, v.name) else v.name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(
-                            if (v.platform == "android" || v.platform == "ios") Icons.Filled.PhoneAndroid else Icons.Filled.Computer,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(14.dp),
-                        )
-                        Text(
-                            platformLabel(v.platform),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            "· ${v.deviceName}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        v.protocols.joinToString(" · ") { protocolLabel(it) },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        connectedFor(v.since, now),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            ViewerRow(repo, v, now)
+        }
+    }
+}
+
+@Composable
+private fun ViewerRow(repo: VaultRepository, v: HostViewer, now: Instant) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PresenceAvatar(repo, v, size = 36)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                if (v.me) stringResource(R.string.you_2, v.name) else v.name,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Icon(
+                    if (v.platform == "android" || v.platform == "ios") Icons.Filled.PhoneAndroid else Icons.Filled.Computer,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(14.dp),
+                )
+                Text(
+                    platformLabel(v.platform),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "· ${v.deviceName}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                v.protocols.joinToString(" · ") { protocolLabel(it) },
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                connectedFor(v.since, now),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
