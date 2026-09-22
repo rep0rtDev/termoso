@@ -130,6 +130,12 @@ pub struct MobileSettings {
     /// together with the account on sign-out.
     #[serde(default = "default_true")]
     pub sync_credentials: bool,
+    /// Keep key passphrases typed at connect time (without "remember") in
+    /// process memory until the vault is locked or the app exits, so the
+    /// next connection with that key does not ask again. Nothing is written
+    /// to the vault or synced.
+    #[serde(default)]
+    pub cache_passphrases: bool,
     /// Record terminal output of every session into the encrypted log
     /// store (team vaults with session logging on record regardless).
     #[serde(default)]
@@ -197,6 +203,7 @@ impl Default for MobileSettings {
             lock_on_background: false,
             lock_after_seconds: 0,
             sync_credentials: true,
+            cache_passphrases: false,
             record_sessions: false,
             volume_up_action: String::new(),
             volume_down_action: String::new(),

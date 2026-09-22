@@ -224,6 +224,9 @@ class AppContainer(context: Context) {
         open.ai.close()
         open.account.close()
         fido2.close()
-        withContext(Dispatchers.IO) { open.repo.app.close() }
+        withContext(Dispatchers.IO) {
+            open.repo.app.forgetCachedPassphrases()
+            open.repo.app.close()
+        }
     }
 }

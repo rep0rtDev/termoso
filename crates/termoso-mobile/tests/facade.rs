@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
-use russh::keys::ssh_key::{Algorithm, PrivateKey};
+use russh::keys::ssh_key::{Algorithm, PrivateKey, PublicKey};
 use russh::server::{Auth, ChannelOpenHandle, Msg, Server as _, Session};
 use russh::{Channel, ChannelId, MethodSet};
 use termoso_mobile::{
@@ -61,6 +61,8 @@ fn mosh_server_installed() -> bool {
 #[derive(Clone, Default)]
 struct Srv {
     kbd: bool,
+    /// Accept any public key for `USER` instead of a password.
+    pubkey: bool,
 }
 
 struct Handler {
@@ -82,6 +84,8 @@ impl Handler {
     fn offered(&self) -> Auth {
         let methods: &[russh::MethodKind] = if self.srv.kbd {
             &[russh::MethodKind::KeyboardInteractive]
+        } else if self.srv.pubkey {
+            &[russh::MethodKind::PublicKey]
         } else {
             &[russh::MethodKind::Password]
         };
@@ -101,6 +105,26 @@ impl russh::server::Handler for Handler {
 
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
         Ok(if !self.srv.kbd && user == USER && password == PASSWORD {
+            Auth::Accept
+        } else {
+            self.offered()
+        })
+    }
+
+    async fn auth_publickey_offered(
+        &mut self,
+        _user: &str,
+        _key: &PublicKey,
+    ) -> Result<Auth, Self::Error> {
+        Ok(if self.srv.pubkey {
+            Auth::Accept
+        } else {
+            self.offered()
+        })
+    }
+
+    async fn auth_publickey(&mut self, user: &str, _key: &PublicKey) -> Result<Auth, Self::Error> {
+        Ok(if self.srv.pubkey && user == USER {
             Auth::Accept
         } else {
             self.offered()
@@ -253,8 +277,11 @@ impl russh::server::Handler for Handler {
 }
 
 async fn start(kbd: bool) -> u16 {
+    start_with(Srv { kbd, pubkey: false }).await
+}
+
+async fn start_with(mut server: Srv) -> u16 {
     let host_key = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap();
-    let mut server = Srv { kbd };
     let config = Arc::new(russh::server::Config {
         auth_rejection_time: Duration::from_millis(0),
         auth_rejection_time_initial: Some(Duration::from_millis(0)),
@@ -1043,6 +1070,150 @@ async fn saved_host_keyboard_interactive_and_rejected_key() {
     };
     assert_eq!(kind, "cancelled");
     assert!(!s.answer(id, PromptAnswer::Cancel), "stale prompt id");
+}
+
+/// Connects a saved key-authenticated host, answering the host-key prompt
+/// once and the passphrase prompt (with `remember`) when it comes. Returns
+/// whether a passphrase was asked for.
+fn connect_with_key(app: &Arc<TermosoApp>, host: &str, passphrase: &str, remember: bool) -> bool {
+    let rec = Arc::new(Recorder::default());
+    let s = app
+        .connect_host(host.to_string(), opts(), rec.clone())
+        .unwrap();
+    let mut n = 0;
+    let mut asked = false;
+    let t = Instant::now();
+    loop {
+        let prompt = rec.prompts.lock().unwrap().get(n).cloned();
+        match prompt {
+            Some((id, PromptRequest::HostKeyUnknown { .. })) => {
+                n += 1;
+                assert!(s.answer(
+                    id,
+                    PromptAnswer::HostKey {
+                        decision: HostKeyChoice::AcceptAndSave
+                    }
+                ));
+            }
+            Some((id, PromptRequest::Passphrase { retry, .. })) => {
+                n += 1;
+                assert!(!retry);
+                asked = true;
+                assert!(s.answer(
+                    id,
+                    PromptAnswer::Secret {
+                        value: passphrase.into(),
+                        remember,
+                    }
+                ));
+            }
+            Some((_, other)) => panic!("unexpected prompt {other:?}"),
+            None => {
+                let done =
+                    rec.states.lock().unwrap().iter().any(|st| {
+                        matches!(st, SessionState::Connected | SessionState::Failed { .. })
+                    });
+                if done {
+                    break;
+                }
+                assert!(
+                    t.elapsed() < Duration::from_secs(15),
+                    "stuck; states {:?}",
+                    rec.states.lock().unwrap()
+                );
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+    }
+    let st =
+        rec.wait_state(|st| matches!(st, SessionState::Connected | SessionState::Failed { .. }));
+    assert!(matches!(st, SessionState::Connected), "{st:?}");
+    s.disconnect();
+    rec.wait_state(|st| matches!(st, SessionState::Closed { .. }));
+    asked
+}
+
+/// Opt-in RAM cache: a passphrase typed without "remember" is reused for
+/// the next connection with that key, never written to the vault, and
+/// dropped on lock; the setting off asks every time; "remember" still
+/// persists as before.
+#[tokio::test(flavor = "multi_thread")]
+async fn key_passphrase_cached_in_memory_until_lock() {
+    let port = start_with(Srv {
+        kbd: false,
+        pubkey: true,
+    })
+    .await;
+    let (app, _dir) = app();
+    let vault = app.local_vault().unwrap().id;
+    let key = app
+        .generate_key(KeyGenerateDraft {
+            vault_id: vault.clone(),
+            label: "locked".into(),
+            algorithm: KeyAlgorithm::Ed25519,
+            comment: String::new(),
+            passphrase: Some("pp".into()),
+            remember_passphrase: false,
+        })
+        .unwrap();
+    let mut d = app.new_host_draft(vault, None).unwrap();
+    d.label = "key".into();
+    d.address = "127.0.0.1".into();
+    d.port = Some(port);
+    d.username = USER.into();
+    d.ssh_key_id = Some(key.id.clone());
+    let host = app.save_host(d).unwrap();
+
+    // Default: off. Every connection asks.
+    assert!(!app.settings().unwrap().cache_passphrases);
+    assert!(connect_with_key(&app, &host.id, "pp", false));
+    assert!(connect_with_key(&app, &host.id, "pp", false));
+    assert_eq!(app.cached_passphrase_count(), 0);
+
+    // On: asked once, then served from memory; the vault stays clean.
+    let mut settings = app.settings().unwrap();
+    settings.cache_passphrases = true;
+    app.save_settings(settings).unwrap();
+    assert!(connect_with_key(&app, &host.id, "pp", false));
+    assert_eq!(app.cached_passphrase_count(), 1);
+    assert!(!connect_with_key(&app, &host.id, "pp", false));
+    let vault_key = |id: &str| {
+        app.keys(None)
+            .unwrap()
+            .into_iter()
+            .find(|k| k.id == id)
+            .unwrap()
+    };
+    assert!(
+        !vault_key(&key.id).has_passphrase,
+        "RAM cache must not persist"
+    );
+    assert!(
+        app.export_private_key(key.id.clone(), None, None).is_err(),
+        "vault copy still needs the passphrase"
+    );
+
+    // Lock (or any explicit clear) forgets it.
+    app.forget_cached_passphrases();
+    assert_eq!(app.cached_passphrase_count(), 0);
+    assert!(connect_with_key(&app, &host.id, "pp", false));
+    assert_eq!(app.cached_passphrase_count(), 1);
+
+    // Turning the setting off clears the cache too.
+    let mut settings = app.settings().unwrap();
+    settings.cache_passphrases = false;
+    app.save_settings(settings).unwrap();
+    assert_eq!(app.cached_passphrase_count(), 0);
+    assert!(connect_with_key(&app, &host.id, "pp", false));
+
+    // "Remember" still writes to the vault and does not go through the cache.
+    let mut settings = app.settings().unwrap();
+    settings.cache_passphrases = true;
+    app.save_settings(settings).unwrap();
+    assert!(connect_with_key(&app, &host.id, "pp", true));
+    assert_eq!(app.cached_passphrase_count(), 0);
+    assert!(vault_key(&key.id).has_passphrase);
+    assert!(!connect_with_key(&app, &host.id, "pp", false));
 }
 
 // ---- Mosh -----------------------------------------------------------------

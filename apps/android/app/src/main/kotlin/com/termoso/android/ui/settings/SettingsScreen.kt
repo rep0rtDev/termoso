@@ -305,6 +305,13 @@ fun SettingsScreen(
                     modifier = Modifier.clickable(enabled = appLock && settings.lockOnBackground) { delayPicker = true },
                 )
                 RowDivider()
+                SwitchRow(
+                    title = stringResource(R.string.remember_key_passphrases_in_memory),
+                    subtitle = stringResource(R.string.key_passphrases_kept_in_ram_until_vault_locked),
+                    checked = settings.cachePassphrases,
+                    onCheckedChange = { v -> set { it.copy(cachePassphrases = v) } },
+                )
+                RowDivider()
                 if (appLock) {
                     ChevronRow(
                         title = stringResource(R.string.lock_now),
