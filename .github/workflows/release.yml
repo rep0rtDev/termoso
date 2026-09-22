@@ -57,7 +57,7 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - id: v
         shell: bash
         run: |
@@ -106,7 +106,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Tauri system libraries
         if: runner.os == 'Linux'
@@ -123,7 +123,7 @@ jobs:
         with:
           key: release-${{ matrix.artifact }}
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -163,7 +163,7 @@ jobs:
           fi
 
       - name: Build, sign and (on tags) publish
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -176,7 +176,7 @@ jobs:
           releaseName: ${{ github.ref_type == 'tag' && format('Termoso {0}', github.ref_name) || '' }}
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
-          includeUpdaterJson: true
+          uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           releaseBody: |
             Signed desktop builds of Termoso ${{ needs.version.outputs.version }}.
@@ -193,7 +193,7 @@ jobs:
             docs/RELEASING.md.
 
       - name: Upload bundles as workflow artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: termoso-desktop-${{ needs.version.outputs.version }}-${{ matrix.artifact }}
           if-no-files-found: error
@@ -216,24 +216,24 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
       - uses: Swatinem/rust-cache@v2
         with:
           key: android-release
-      - uses: taiki-e/cache-cargo-install-action@v2
+      - uses: taiki-e/cache-cargo-install-action@v3
         with:
           tool: cargo-ndk@4.1.2
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
         with:
           packages: platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.2.12479018
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: true
 
@@ -273,7 +273,7 @@ jobs:
           done
         working-directory: apps/android
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: termoso-android-${{ needs.version.outputs.version }}
           if-no-files-found: error
@@ -288,7 +288,7 @@ jobs:
     needs: version
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios
@@ -327,7 +327,7 @@ jobs:
           ls -l out
           unzip -l "out/termoso-$v-ios.ipa" | tail -3
         working-directory: apps/ios
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: termoso-ios-${{ needs.version.outputs.version }}
           if-no-files-found: error
@@ -344,7 +344,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: apps/ios/altstore
           path: src
@@ -355,11 +355,11 @@ jobs:
             --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -1)
           [ -n "$id" ] || { echo "::error::no release for $GITHUB_REF_NAME"; exit 1; }
           echo "id=$id" >> "$GITHUB_OUTPUT"
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           name: termoso-android-${{ needs.version.outputs.version }}
           path: android
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v8
         with:
           name: termoso-ios-${{ needs.version.outputs.version }}
           path: ios
