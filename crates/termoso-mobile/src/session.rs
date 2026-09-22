@@ -27,7 +27,8 @@ use uuid::Uuid;
 
 use crate::autocomplete::{Completer, SuggestionItem};
 use crate::connect::{
-    ConnectStage, ConnectUi, Connector, PromptAnswer, PromptRequest, connect_resolved, stage_label,
+    ConnectStage, ConnectUi, Connector, PromptAnswer, PromptRequest, SecretCache, connect_resolved,
+    stage_label,
 };
 use crate::error::{MobileError, Result};
 use crate::keys::{KeyMods, SpecialKey, encode_key, encode_text};
@@ -501,6 +502,7 @@ pub(crate) enum LaunchTarget {
 
 pub(crate) struct Launch {
     pub store: Arc<Store>,
+    pub secrets: Arc<SecretCache>,
     pub target: LaunchTarget,
     pub settings: MobileSettings,
     pub options: TerminalOptions,
@@ -560,6 +562,7 @@ impl SshSession {
     pub(crate) fn launch(runtime: tokio::runtime::Handle, launch: Launch) -> Arc<Self> {
         let Launch {
             store,
+            secrets,
             target,
             settings,
             options,
@@ -608,6 +611,7 @@ impl SshSession {
         )));
         let conn = Arc::new(Connector::new(
             store.clone(),
+            secrets.clone(),
             Arc::new(TerminalUi {
                 listener: listener.clone(),
                 state: state.clone(),
@@ -736,6 +740,7 @@ impl SshSession {
         let state = Arc::new(Mutex::new(SessionState::Connected));
         let conn = Arc::new(Connector::new(
             store.clone(),
+            Arc::new(SecretCache::default()),
             Arc::new(TerminalUi {
                 listener: listener.clone(),
                 state: state.clone(),

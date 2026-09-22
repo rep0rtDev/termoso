@@ -16,7 +16,8 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::connect::{
-    ConnectStage, ConnectUi, Connector, PromptAnswer, PromptRequest, connect_resolved, stage_label,
+    ConnectStage, ConnectUi, Connector, PromptAnswer, PromptRequest, SecretCache, connect_resolved,
+    stage_label,
 };
 use crate::dto::{millis, parse_id, parse_opt_id};
 use crate::error::{MobileError, Result};
@@ -197,6 +198,7 @@ pub struct PfTunnel {
 
 pub(crate) struct TunnelLaunch {
     pub store: Arc<Store>,
+    pub secrets: Arc<SecretCache>,
     pub rule: Entity<PfRule>,
     pub settings: MobileSettings,
     pub listener: Arc<dyn TunnelListener>,
@@ -207,6 +209,7 @@ impl PfTunnel {
     pub(crate) fn launch(runtime: tokio::runtime::Handle, launch: TunnelLaunch) -> Arc<Self> {
         let TunnelLaunch {
             store,
+            secrets,
             rule,
             settings,
             listener,
@@ -218,6 +221,7 @@ impl PfTunnel {
         )));
         let conn = Arc::new(Connector::new(
             store.clone(),
+            secrets.clone(),
             Arc::new(TunnelUi {
                 listener: listener.clone(),
                 state: state.clone(),

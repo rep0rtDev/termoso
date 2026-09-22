@@ -23,6 +23,7 @@ use crate::account::{
     ServerCard, SyncListener, SyncStatus,
 };
 use crate::ai::{AiStatusCard, AiSuggestionCard, AiTarget};
+use crate::connect::SecretCache;
 use crate::dto::*;
 use crate::error::{MobileError, Result};
 use crate::fido2::{self, Fido2GenerateDraft, Fido2Listener, Fido2LoadDraft, SecurityKeyCard};
@@ -177,6 +178,7 @@ pub fn server_info(url: String) -> Result<ServerCard> {
 #[derive(uniffi::Object)]
 pub struct TermosoApp {
     store: Arc<Store>,
+    secrets: Arc<SecretCache>,
     profile_dir: PathBuf,
     account: Arc<AccountRuntime>,
     presence: Arc<presence::Tracker>,
@@ -206,6 +208,7 @@ impl TermosoApp {
         Ok(Arc::new(Self {
             account: AccountRuntime::new(store.clone(), presence.clone(), dir.join("logs")),
             store,
+            secrets: Arc::new(SecretCache::default()),
             profile_dir: dir,
             presence,
         }))
@@ -500,10 +503,9 @@ impl TermosoApp {
         next: Option<String>,
         remember: bool,
     ) -> Result<KeyItem> {
-        Ok(
-            keychain::change_passphrase(&self.store, parse_id(&id)?, current, next, remember)?
-                .into(),
-        )
+        let id = parse_id(&id)?;
+        self.secrets.forget_passphrase(id);
+        Ok(keychain::change_passphrase(&self.store, id, current, next, remember)?.into())
     }
 
     pub fn set_key_certificate(&self, id: String, certificate: Option<String>) -> Result<KeyItem> {
@@ -511,7 +513,9 @@ impl TermosoApp {
     }
 
     pub fn delete_key(&self, id: String) -> Result<()> {
-        Ok(keychain::delete(&self.store, parse_id(&id)?)?)
+        let id = parse_id(&id)?;
+        self.secrets.forget_passphrase(id);
+        Ok(keychain::delete(&self.store, id)?)
     }
 
     // ---- FIDO2 security keys ------------------------------------------
@@ -745,7 +749,22 @@ impl TermosoApp {
     }
 
     pub fn save_settings(&self, settings: MobileSettings) -> Result<()> {
+        if !settings.cache_passphrases {
+            self.secrets.clear();
+        }
         settings.save(&self.store)
+    }
+
+    /// Drop every key passphrase held in memory (see
+    /// `MobileSettings::cache_passphrases`). Called before the vault is
+    /// locked; closing the profile clears them as well.
+    pub fn forget_cached_passphrases(&self) {
+        self.secrets.clear();
+    }
+
+    /// How many key passphrases are currently held in memory.
+    pub fn cached_passphrase_count(&self) -> u32 {
+        self.secrets.len() as u32
     }
 
     // ---- account & sync -----------------------------------------------
@@ -845,6 +864,7 @@ impl TermosoApp {
     /// Revoke this device on the server and forget the account, synced
     /// vaults and keys locally. The local vault stays.
     pub fn account_sign_out(&self) -> Result<()> {
+        self.secrets.clear();
         let _ = std::fs::remove_dir_all(self.profile_dir.join(AVATARS_DIR));
         RUNTIME.block_on(self.account.sign_out())
     }
@@ -1207,6 +1227,7 @@ impl TermosoApp {
             RUNTIME.handle().clone(),
             Launch {
                 store: self.store.clone(),
+                secrets: self.secrets.clone(),
                 target,
                 settings: MobileSettings::load(&self.store)?,
                 options,
@@ -1245,6 +1266,7 @@ impl TermosoApp {
             RUNTIME.handle().clone(),
             Launch {
                 store: self.store.clone(),
+                secrets: self.secrets.clone(),
                 target: LaunchTarget::Local {
                     argv,
                     cwd: (!home.is_empty()).then(|| home.into()),
@@ -1292,6 +1314,7 @@ impl TermosoApp {
             RUNTIME.handle().clone(),
             Launch {
                 store: self.store.clone(),
+                secrets: self.secrets.clone(),
                 target: launch,
                 settings: MobileSettings::load(&self.store)?,
                 options,
@@ -1366,6 +1389,7 @@ impl TermosoApp {
             RUNTIME.handle().clone(),
             SftpLaunch {
                 store: self.store.clone(),
+                secrets: self.secrets.clone(),
                 backend: FileBackend::Sftp {
                     target,
                     resolved: Some(resolved),
@@ -1394,6 +1418,7 @@ impl TermosoApp {
             RUNTIME.handle().clone(),
             SftpLaunch {
                 store: self.store.clone(),
+                secrets: self.secrets.clone(),
                 backend: FileBackend::WebDav {
                     resolved,
                     spool_dir: self.profile_dir.join("webdav-spool"),
@@ -1415,6 +1440,7 @@ impl TermosoApp {
             RUNTIME.handle().clone(),
             SftpLaunch {
                 store: self.store.clone(),
+                secrets: self.secrets.clone(),
                 backend: FileBackend::Sftp {
                     target: quick_target(&target)?,
                     resolved: None,
@@ -1464,6 +1490,7 @@ impl TermosoApp {
             RUNTIME.handle().clone(),
             TunnelLaunch {
                 store: self.store.clone(),
+                secrets: self.secrets.clone(),
                 rule,
                 settings: MobileSettings::load(&self.store)?,
                 listener,

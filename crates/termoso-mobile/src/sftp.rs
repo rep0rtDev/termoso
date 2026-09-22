@@ -25,7 +25,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::connect::{
-    ConnectStage, ConnectUi, Connector, PromptAnswer, PromptRequest, connect_resolved,
+    ConnectStage, ConnectUi, Connector, PromptAnswer, PromptRequest, SecretCache, connect_resolved,
 };
 use crate::error::{MobileError, Result};
 use crate::presence::Slot;
@@ -632,6 +632,7 @@ pub struct SftpSession {
 
 pub(crate) struct SftpLaunch {
     pub store: Arc<Store>,
+    pub secrets: Arc<SecretCache>,
     pub backend: Backend,
     pub settings: MobileSettings,
     pub listener: Arc<dyn SftpListener>,
@@ -642,6 +643,7 @@ impl SftpSession {
     pub(crate) fn launch(runtime: tokio::runtime::Handle, launch: SftpLaunch) -> Arc<Self> {
         let SftpLaunch {
             store,
+            secrets,
             backend,
             settings,
             listener,
@@ -653,6 +655,7 @@ impl SftpSession {
         )));
         let conn = Arc::new(Connector::new(
             store.clone(),
+            secrets.clone(),
             Arc::new(SftpUi {
                 listener: listener.clone(),
                 state: state.clone(),

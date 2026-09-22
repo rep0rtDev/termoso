@@ -23,6 +23,7 @@ use termoso_core::ssh::{
 };
 use termoso_core::store::Store;
 use tokio::sync::oneshot;
+use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::error::{MobileError, Result};
@@ -221,12 +222,59 @@ impl PromptBroker {
     }
 }
 
+/// Key passphrases the user typed without saving them, kept only in RAM
+/// for the lifetime of the open profile (`MobileSettings::cache_passphrases`).
+/// Never serialised; zeroised when forgotten or when the profile closes.
+#[derive(Default)]
+pub struct SecretCache {
+    passphrases: Mutex<HashMap<Uuid, Zeroizing<String>>>,
+}
+
+impl SecretCache {
+    pub fn passphrase(&self, key: Uuid) -> Option<Zeroizing<String>> {
+        self.passphrases
+            .lock()
+            .expect("secret cache poisoned")
+            .get(&key)
+            .cloned()
+    }
+
+    pub fn remember_passphrase(&self, key: Uuid, value: Zeroizing<String>) {
+        self.passphrases
+            .lock()
+            .expect("secret cache poisoned")
+            .insert(key, value);
+    }
+
+    pub fn forget_passphrase(&self, key: Uuid) {
+        self.passphrases
+            .lock()
+            .expect("secret cache poisoned")
+            .remove(&key);
+    }
+
+    pub fn clear(&self) {
+        self.passphrases
+            .lock()
+            .expect("secret cache poisoned")
+            .clear();
+    }
+
+    pub fn len(&self) -> usize {
+        self.passphrases
+            .lock()
+            .expect("secret cache poisoned")
+            .len()
+    }
+}
+
 /// Everything one connection attempt needs from its owner: the store for
 /// credentials and known hosts, the UI for prompts, the prompt broker and
 /// the "user gave up" flag.
 pub(crate) struct Connector {
     pub store: Arc<Store>,
     pub ui: Arc<dyn ConnectUi>,
+    pub secrets: Arc<SecretCache>,
     prompts: PromptBroker,
     /// Set when the user dismissed a prompt; turns the resulting connect
     /// error into `Cancelled`.
@@ -234,10 +282,11 @@ pub(crate) struct Connector {
 }
 
 impl Connector {
-    pub fn new(store: Arc<Store>, ui: Arc<dyn ConnectUi>) -> Self {
+    pub fn new(store: Arc<Store>, secrets: Arc<SecretCache>, ui: Arc<dyn ConnectUi>) -> Self {
         Self {
             store,
             ui,
+            secrets,
             prompts: PromptBroker::new(),
             cancelled: AtomicBool::new(false),
         }
@@ -586,11 +635,23 @@ async fn ssh_connect(
         .and_then(|i| i.data.password.clone())
         .filter(|p| !p.is_empty())
         .map(Zeroizing::new);
+    let key_id = resolved.and_then(|r| r.key.as_ref()).map(|k| k.id);
     let mut passphrase: Option<Zeroizing<String>> = resolved
         .and_then(|r| r.key.as_ref())
         .and_then(|k| k.data.passphrase.clone())
         .filter(|p| !p.is_empty())
         .map(Zeroizing::new);
+    let cache_passphrases = settings.cache_passphrases && key_id.is_some();
+    let mut cached_passphrase = false;
+    if passphrase.is_none()
+        && cache_passphrases
+        && let Some(id) = key_id
+        && let Some(p) = conn.secrets.passphrase(id)
+    {
+        passphrase = Some(p);
+        cached_passphrase = true;
+    }
+    let mut typed_passphrase: Option<Zeroizing<String>> = None;
     let proxy = match resolved.and_then(|r| r.proxy.as_ref()) {
         Some(p) => Some(proxy_config(store, &p.data)?),
         None => None,
@@ -683,7 +744,14 @@ async fn ssh_connect(
             None => SshClient::connect(opts).await,
         };
         match result {
-            Ok(client) => return Ok((Arc::new(client), jumps)),
+            Ok(client) => {
+                if let Some((id, p)) = key_id.zip(typed_passphrase.take())
+                    && cache_passphrases
+                {
+                    conn.secrets.remember_passphrase(id, p);
+                }
+                return Ok((Arc::new(client), jumps));
+            }
             Err(CoreError::AuthFailed { remaining })
                 if attempts < MAX_PASSWORD_ATTEMPTS
                     && !conn.cancelled()
@@ -715,6 +783,10 @@ async fn ssh_connect(
                 if attempts < MAX_PASSWORD_ATTEMPTS && msg.contains("passphrase") =>
             {
                 attempts += 1;
+                if cached_passphrase && let Some(id) = key_id {
+                    conn.secrets.forget_passphrase(id);
+                    cached_passphrase = false;
+                }
                 let answer = conn
                     .ask(PromptRequest::Passphrase {
                         key_label: key_label.clone(),
@@ -731,6 +803,9 @@ async fn ssh_connect(
                             if let Err(e) = store.update(key.id, &data) {
                                 tracing::warn!("remember passphrase: {e}");
                             }
+                            typed_passphrase = None;
+                        } else {
+                            typed_passphrase = Some(value.clone());
                         }
                         passphrase = Some(value);
                     }
