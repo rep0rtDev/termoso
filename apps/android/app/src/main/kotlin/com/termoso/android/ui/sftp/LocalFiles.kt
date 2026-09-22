@@ -35,13 +35,26 @@ object LocalFiles {
         return PickedDocument(uri, name?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "file", size)
     }
 
-    /** Copy a picked document into [target] (parents created). */
+    /**
+     * Copy a picked document into [target] (parents created), keeping the
+     * document's modification time so uploads carry the original date.
+     */
     fun copyIn(resolver: ContentResolver, uri: Uri, target: File) {
         target.parentFile?.mkdirs()
         resolver.openInputStream(uri)?.use { input ->
             target.outputStream().use { output -> input.copyTo(output) }
         } ?: throw IllegalStateException(str(R.string.cannot_read_file, uri.lastPathSegment.orEmpty()))
+        lastModified(resolver, uri)?.let { target.setLastModified(it) }
     }
+
+    /** `COLUMN_LAST_MODIFIED` of a document, when its provider reports one. */
+    fun lastModified(resolver: ContentResolver, uri: Uri): Long? = runCatching {
+        resolver.query(uri, arrayOf(DocumentsContract.Document.COLUMN_LAST_MODIFIED), null, null, null)?.use { c ->
+            if (!c.moveToFirst()) return@use null
+            val i = c.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
+            if (i >= 0 && !c.isNull(i)) c.getLong(i).takeIf { it > 0 } else null
+        }
+    }.getOrNull()
 
     /** One file or folder inside a picked SAF tree. */
     data class TreeChild(val uri: Uri, val name: String, val isDir: Boolean, val size: Long?)

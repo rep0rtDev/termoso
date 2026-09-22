@@ -55,6 +55,7 @@ class SftpDocumentsProvider : DocumentsProvider() {
     }
     private val access: SftpAccess by lazy { SftpAccess(container) }
     private val homes = ConcurrentHashMap<String, String>()
+    private val pending = PendingWrites()
     private var ioThreadStarted = false
     private val ioThread by lazy { HandlerThread("termoso-saf").apply { start(); ioThreadStarted = true } }
     private val ioHandler by lazy { Handler(ioThread.looper) }
@@ -144,6 +145,7 @@ class SftpDocumentsProvider : DocumentsProvider() {
             return cursor
         }
         val conn = access.connection(id)
+        pending.await(documentId)
         val entry = sftp { conn.rust.stat(id.path) }
         addEntry(cursor, conn, id, entry)
         return cursor
@@ -160,6 +162,7 @@ class SftpDocumentsProvider : DocumentsProvider() {
         return try {
             val conn = access.connection(parent)
             val dir = resolveDir(conn, parent)
+            pending.await { id -> DocumentId.parse(id)?.let { it.rootId == parent.rootId && it.parent?.path == dir } == true }
             for (entry in sftp { conn.rust.list(dir) }) {
                 if (!DocumentId.isValidName(entry.name)) continue
                 addEntry(cursor, conn, parent.at(DocumentId.joinPath(dir, entry.name)), entry)
@@ -195,12 +198,25 @@ class SftpDocumentsProvider : DocumentsProvider() {
         }
         val storage = ctx.getSystemService(StorageManager::class.java)
         val parents = parentsOf(conn, id)
-        val callback = RemoteFileCallback(file) {
-            if (write) parents.forEach(::changed)
-        }
+        if (write) pending.opened(documentId)
+        val callback = RemoteFileCallback(
+            file,
+            onReleasing = { if (write) pending.releasing(documentId) },
+            onReleased = {
+                if (write) {
+                    pending.released(documentId)
+                    changedDocument(documentId)
+                    parents.forEach(::changed)
+                }
+            },
+        )
         return try {
             storage.openProxyFileDescriptor(pfdMode, callback, ioHandler)
         } catch (e: Exception) {
+            if (write) {
+                pending.releasing(documentId)
+                pending.released(documentId)
+            }
             file.use { runCatching { it.release() } }
             throw FileNotFoundException(e.message ?: e.toString())
         }
@@ -210,8 +226,16 @@ class SftpDocumentsProvider : DocumentsProvider() {
         throw FileNotFoundException("No thumbnails")
     }
 
-    /** Range reads and writes against one remote handle, on the provider's own thread. */
-    private class RemoteFileCallback(private val file: SftpFile, private val onReleased: () -> Unit) : ProxyFileDescriptorCallback() {
+    /**
+     * Range reads and writes against one remote handle, on the provider's own
+     * thread. Release commits what the protocol holds back until close (the
+     * WebDAV spool) and is bracketed by [onReleasing] / [onReleased].
+     */
+    private class RemoteFileCallback(
+        private val file: SftpFile,
+        private val onReleasing: () -> Unit,
+        private val onReleased: () -> Unit,
+    ) : ProxyFileDescriptorCallback() {
         override fun onGetSize(): Long = errno { file.size().toLong() }
 
         override fun onRead(offset: Long, size: Int, data: ByteArray): Int = errno {
@@ -230,8 +254,12 @@ class SftpDocumentsProvider : DocumentsProvider() {
         }
 
         override fun onRelease() {
-            file.use { f -> runCatching { f.release() }.onFailure { Log.w(TAG, "release: ${it.message}") } }
-            onReleased()
+            onReleasing()
+            try {
+                file.use { f -> runCatching { f.release() }.onFailure { Log.w(TAG, "release: ${it.message}") } }
+            } finally {
+                onReleased()
+            }
         }
 
         private inline fun <T> errno(block: () -> T): T = try {
@@ -369,6 +397,10 @@ class SftpDocumentsProvider : DocumentsProvider() {
 
     private fun changed(documentId: String) {
         context?.contentResolver?.notifyChange(DocumentsContract.buildChildDocumentsUri(FilesIntegration.AUTHORITY, documentId), null)
+    }
+
+    private fun changedDocument(documentId: String) {
+        context?.contentResolver?.notifyChange(DocumentsContract.buildDocumentUri(FilesIntegration.AUTHORITY, documentId), null)
     }
 
     private fun MatrixCursor.withError(message: String): MatrixCursor {
