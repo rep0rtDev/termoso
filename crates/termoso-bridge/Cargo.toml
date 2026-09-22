@@ -3,6 +3,7 @@ name = "termoso-bridge"
 description = "Termoso API Bridge: a self-hosted REST endpoint that encrypts hosts, groups and credentials locally and syncs them into your vaults"
 version.workspace = true
 edition.workspace = true
+publish = false
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true

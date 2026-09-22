@@ -3,6 +3,7 @@ name = "termoso-crypto"
 description = "Zero-knowledge cryptography primitives shared by Termoso clients and server"
 version.workspace = true
 edition.workspace = true
+publish = false
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true

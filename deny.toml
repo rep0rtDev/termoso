@@ -1,0 +1,80 @@
+# cargo-deny policy for the Termoso workspace.
+#
+#   cargo deny check advisories   # RustSEC advisories against Cargo.lock
+#   cargo deny check licenses     # every dependency licence is on the allow list
+#   cargo deny check bans         # no denied crates / wildcard deps
+#   cargo deny check sources      # dependencies come from crates.io only
+#
+# `ignore` entries below carry the reason they were accepted; drop them as soon
+# as the upstream fix ships.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+  # RSA "Marvin" timing side channel (private-key operations). No fixed release
+  # exists (0.10 is still an rc with the same status). Where it is reachable:
+  # russh signs one SSH userauth challenge per connection with an RSA client
+  # key (timing not observable remotely at the required precision; Ed25519 is
+  # the default key type); openidconnect only verifies RS256 signatures with
+  # the IdP's public key; rsa 0.9 in termoso-server is a dev-dependency of the
+  # mock IdP. Any future RSA *decryption* with a long-lived key (e.g. SAML
+  # encrypted assertions) must be rate-limited and revisit this entry.
+  { id = "RUSTSEC-2023-0071", reason = "no upstream fix; only per-connection SSH signing and public-key verification are reachable" },
+  # Unmaintained transitive crates without a known vulnerability: pulled in by
+  # Tauri/tera/gtk tooling, not by Termoso code.
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error via tauri build tooling; compile-time only" },
+  { id = "RUSTSEC-2025-0075", reason = "unic-* via tera (uniffi-bindgen templates); compile-time only" },
+  { id = "RUSTSEC-2025-0080", reason = "unic-* via tera (uniffi-bindgen templates); compile-time only" },
+  { id = "RUSTSEC-2025-0081", reason = "unic-* via tera (uniffi-bindgen templates); compile-time only" },
+  { id = "RUSTSEC-2025-0098", reason = "unic-* via tera (uniffi-bindgen templates); compile-time only" },
+  { id = "RUSTSEC-2025-0100", reason = "unic-* via tera (uniffi-bindgen templates); compile-time only" },
+]
+
+[licenses]
+version = 2
+allow = [
+  "0BSD",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-1-Clause",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "MIT-0",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Unlicense",
+  "Zlib",
+]
+confidence-threshold = 0.8
+
+# Workspace crates are AGPL-3.0-only and publish = false.
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+  # TLS goes through rustls everywhere (openssl is only linked by webauthn-rs
+  # for attestation certificate parsing, never as a TLS backend).
+  { crate = "native-tls", reason = "rustls only" },
+  { crate = "hyper-tls", reason = "rustls only" },
+  # Legacy hyper 0.14 / rustls 0.21 line (unpatched rustls-webpki 0.101 and h2 0.3).
+  { crate = "rustls@^0.21", reason = "rustls-webpki 0.101 has open advisories; use the hyper 1.x client features" },
+  { crate = "h2@^0.3", reason = "h2 0.3 has open advisories; use the hyper 1.x client features" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
