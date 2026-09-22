@@ -45,6 +45,12 @@ check_rust() {
   # Server tests use PostgreSQL/Redis/MinIO/Mailpit from deploy/docker-compose.dev.yml
   # when reachable and skip otherwise (TERMOSO_TEST_REQUIRE_SERVICES=1 to insist).
   run rust . cargo test --workspace --locked
+  # Advisories, licence allow-list, banned crates and registry sources: deny.toml.
+  if cargo deny --version >/dev/null 2>&1; then
+    run rust . cargo deny --locked check advisories bans licenses sources
+  else
+    skip rust "cargo-deny not found (cargo install cargo-deny --locked); CI runs it"
+  fi
 }
 
 npm_checks() {
@@ -52,6 +58,7 @@ npm_checks() {
   shift 2
   has npm || { skip "$area" "npm not found"; return; }
   run "$area" "$dir" npm ci --no-audit --no-fund
+  run "$area" "$dir" npm audit --audit-level=moderate
   local script
   for script in "$@"; do run "$area" "$dir" npm run "$script"; done
 }

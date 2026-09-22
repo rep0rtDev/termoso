@@ -3,6 +3,7 @@ name = "termoso-mobile"
 description = "Termoso mobile façade: UniFFI bindings over termoso-core for the Android and iOS clients"
 version.workspace = true
 edition.workspace = true
+publish = false
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true

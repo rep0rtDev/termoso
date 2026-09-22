@@ -3,6 +3,7 @@ name = "termoso-server"
 description = "Termoso backend: zero-knowledge sync, auth, teams and vaults"
 version.workspace = true
 edition.workspace = true
+publish = false
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -26,7 +27,6 @@ bytes = { workspace = true }
 sqlx = { workspace = true }
 redis = { workspace = true }
 aws-sdk-s3 = { workspace = true }
-aws-config = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

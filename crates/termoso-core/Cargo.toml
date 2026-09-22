@@ -3,6 +3,7 @@ name = "termoso-core"
 description = "Termoso client core: encrypted local vault, sync, SSH/SFTP/PTY engines shared by desktop and mobile"
 version.workspace = true
 edition.workspace = true
+publish = false
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true

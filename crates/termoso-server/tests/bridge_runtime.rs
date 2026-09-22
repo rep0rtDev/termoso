@@ -623,12 +623,12 @@ async fn rejects_bad_input_and_unauthenticated_callers() {
 #[tokio::test]
 async fn local_rate_limit_returns_429_with_retry_after() {
     let s = server!();
-    let r = rig_with(s, "bridge-ratelimit", 5).await;
-    // Burst is 2× the rate; the 11th request within the same instant is
-    // refused — with or without a valid key.
+    // Burst is 2× the rate, so at 1 req/s the third request is refused unless
+    // a whole second passed since the first — with or without a valid key.
+    let r = rig_with(s, "bridge-ratelimit", 1).await;
     let mut statuses = Vec::new();
     let mut limited = None;
-    for i in 0..12 {
+    for i in 0..4 {
         let mut req = r.http().get(format!("{}/v1/hosts/", r.base));
         if i % 2 == 0 {
             req = req.bearer_auth(&r.key);
