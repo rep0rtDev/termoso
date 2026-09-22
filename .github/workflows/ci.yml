@@ -337,6 +337,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       RUSTFLAGS: ""
+      # The prebuilt cargo-fuzz binary is musl-static and defaults to its own
+      # build triple; pin the target so the targets link against the host glibc std.
+      FUZZ_TARGET: x86_64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@v7
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libudev-dev
@@ -349,7 +352,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: fuzz
-      - run: cargo +nightly fuzz check
+      - run: cargo +nightly fuzz check --target "$FUZZ_TARGET"
         working-directory: fuzz
       - run: cargo +nightly run --example seed
         working-directory: fuzz
@@ -357,7 +360,7 @@ jobs:
         working-directory: fuzz
         run: |
           for t in $(cargo +nightly fuzz list); do
-            cargo +nightly fuzz run "$t" -- -max_total_time=20 -max_len=16384 -timeout=10 -rss_limit_mb=2048
+            cargo +nightly fuzz run --target "$FUZZ_TARGET" "$t" -- -max_total_time=20 -max_len=16384 -timeout=10 -rss_limit_mb=2048
           done
       - uses: actions/upload-artifact@v7
         if: failure()
