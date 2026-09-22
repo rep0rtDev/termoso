@@ -313,7 +313,7 @@ async fn build_saml(
     if let (Some(cert), Some(key)) = (&cert_der, &key) {
         let cert_pub = saml::dsig::cert_public_key(cert).context("SP certificate")?;
         anyhow::ensure!(
-            cert_pub == key.to_public_key(),
+            &cert_pub == key.public_key(),
             "SP private key does not match the SP certificate"
         );
     }

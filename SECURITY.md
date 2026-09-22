@@ -49,5 +49,18 @@ upgrading is the fix.
   in the web cabinet and desktop webview. The full transitive Gradle graph of
   the Android app is submitted to GitHub so Dependabot alerts cover it too.
   Every accepted advisory carries a written reason in `deny.toml`.
+* The one accepted vulnerability advisory (the others are unmaintained
+  compile-time crates) is RUSTSEC-2023-0071 ("Marvin", a timing
+  side channel in the pure-Rust `rsa` crate's private-key arithmetic, with no
+  fixed release). The server does not use that crate for private-key
+  operations: the SAML SP key — signing `AuthnRequest`s and unwrapping
+  encrypted assertions, the only RSA private-key operation an outsider can
+  trigger (through the ACS) — runs in AWS-LC, whose RSA is constant-time.
+  `rsa` remains for parsing and for public-key signature checks, where the
+  advisory does not apply. What remains: an SSH client signing a userauth
+  challenge with an RSA key does so on the user's own device (Ed25519 is the
+  default), so the timing is not remotely observable. This narrows the
+  exposure; it is not a claim that RSA timing is a solved problem everywhere
+  in the dependency tree.
 * Cryptographic choices are documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md);
   if you believe one of them is wrong, that is a valid report too.

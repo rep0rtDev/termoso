@@ -1,0 +1,20 @@
+[package]
+name = "termoso-awslc-rsa"
+description = "RSA private-key decryption (OAEP with independent digest/MGF1 hashes, PKCS#1 v1.5) over AWS-LC's constant-time RSA — the one unsafe FFI boundary in the server"
+version.workspace = true
+edition.workspace = true
+publish = false
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+aws-lc-sys = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+aws-lc-rs = { workspace = true }
+rsa = { version = "0.9", features = ["sha1", "sha2"] }
+rand = "0.8"
+sha1 = "0.10"
+sha2 = { workspace = true }
