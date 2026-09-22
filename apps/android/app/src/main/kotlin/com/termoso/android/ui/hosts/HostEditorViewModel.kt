@@ -7,6 +7,7 @@ import com.termoso.android.data.VaultRepository
 import com.termoso.core.EnvVar
 import com.termoso.core.GroupItem
 import com.termoso.core.HostDraft
+import com.termoso.core.HostKeyPinItem
 import com.termoso.core.IdentityItem
 import com.termoso.core.InheritedInfo
 import com.termoso.core.KeyItem
@@ -91,6 +92,10 @@ data class HostEditorState(
     val clientCertificateFingerprint: String? = null,
     /** Why the typed WebDAV client certificate / key pair does not validate. */
     val clientCertificateError: String? = null,
+    /** Server keys pinned for the draft's `address:port`, across all unlocked vaults. */
+    val hostKeyPins: List<HostKeyPinItem> = emptyList(),
+    val hostKeyPinsBusy: Boolean = false,
+    val hostKeyPinError: String? = null,
 ) {
     val canSave: Boolean
         get() {
@@ -149,6 +154,41 @@ class HostEditorViewModel(
 
     fun update(transform: (HostDraft) -> HostDraft) {
         _state.update { s -> s.draft?.let { s.copy(draft = transform(it)) } ?: s }
+    }
+
+    fun loadHostKeyPins(host: String, port: UShort) {
+        if (host.isBlank()) {
+            _state.update { it.copy(hostKeyPins = emptyList(), hostKeyPinError = null) }
+            return
+        }
+        viewModelScope.launch {
+            runCatching { repo.read { hostKeyPins(host.trim(), port) } }
+                .onSuccess { pins -> _state.update { it.copy(hostKeyPins = pins) } }
+                .onFailure { e -> _state.update { it.copy(hostKeyPinError = e.userMessage()) } }
+        }
+    }
+
+    /** Pin a pasted OpenSSH public key (or, with `null`, the keys trusted in other vaults) into the draft's vault. */
+    fun pinHostKey(host: String, port: UShort, publicKey: String?) {
+        val vaultId = _state.value.draft?.vaultId ?: return
+        _state.update { it.copy(hostKeyPinsBusy = true, hostKeyPinError = null) }
+        viewModelScope.launch {
+            runCatching { repo.write { pinHostKey(vaultId, host.trim(), port, publicKey) } }
+                .onSuccess { pins -> _state.update { it.copy(hostKeyPins = pins, hostKeyPinsBusy = false) } }
+                .onFailure { e -> _state.update { it.copy(hostKeyPinsBusy = false, hostKeyPinError = e.userMessage()) } }
+        }
+    }
+
+    fun unpinHostKey(id: String, host: String, port: UShort) {
+        _state.update { it.copy(hostKeyPinsBusy = true, hostKeyPinError = null) }
+        viewModelScope.launch {
+            runCatching {
+                repo.write { unpinHostKey(id) }
+                repo.read { hostKeyPins(host.trim(), port) }
+            }
+                .onSuccess { pins -> _state.update { it.copy(hostKeyPins = pins, hostKeyPinsBusy = false) } }
+                .onFailure { e -> _state.update { it.copy(hostKeyPinsBusy = false, hostKeyPinError = e.userMessage()) } }
+        }
     }
 
     /** Edit the Telnet section; no-op while the host has none. */

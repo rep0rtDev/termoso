@@ -28,6 +28,7 @@ import { ConnectButton, connectTo, type ConnectTarget } from "./ConnectSplit";
 import { TagsPopover } from "./TagsPopover";
 import { AgentForwardingRow, CredentialsFields } from "./CredentialsFields";
 import { WebDavAuthFields } from "./WebDavAuthFields";
+import { ServerKeyField } from "./ServerKeyField";
 import { Field, IconTile, Loading, SectionCard, SidePanel, ToolIconButton } from "@/components/ui";
 import {
   useDeleteHost,
@@ -679,6 +680,12 @@ function HostEditor({
                     />
                   </Field>
                 </Box>
+                <ServerKeyField
+                  vaultId={vaultId}
+                  host={form.address}
+                  port={form.port ?? inh?.port ?? 22}
+                  readOnly={readOnly}
+                />
                 <Field
                   label="Mosh"
                   hint={

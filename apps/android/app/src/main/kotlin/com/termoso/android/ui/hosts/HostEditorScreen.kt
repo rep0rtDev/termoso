@@ -42,6 +42,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -64,6 +65,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -92,6 +94,9 @@ import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.copyToClipboard
 import com.termoso.android.ui.vault.vaultLabel
 import com.termoso.core.HostDraft
+import com.termoso.core.VaultKind
+import com.termoso.core.VaultAccess
+import com.termoso.core.HostKeyPinItem
 import com.termoso.core.IdentityItem
 import com.termoso.core.InheritedInfo
 import com.termoso.core.QuickTarget
@@ -626,6 +631,121 @@ private fun SshSection(
             RowDivider()
             Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 StartupSnippetRow(state, draft, onPick = { id -> vm.update { it.copy(startupSnippetId = id) } })
+            }
+        }
+        RowDivider()
+        ServerKeySection(state, draft, vm, inherited)
+    }
+}
+
+/**
+ * Server keys pinned for `address:port`, grouped by the vault holding them.
+ * Team-vault pins sync to every member, so an admin can hand out the trusted
+ * fingerprint before anyone connects; a key contradicting any pin is refused.
+ */
+@Composable
+private fun ServerKeySection(state: HostEditorState, draft: HostDraft, vm: HostEditorViewModel, inherited: InheritedInfo?) {
+    val host = draft.address.trim()
+    val port = draft.port ?: inherited?.port ?: 22u
+    val vault = state.vaults.firstOrNull { it.id == draft.vaultId }
+    val isTeam = vault?.kind == VaultKind.TEAM
+    val canWrite = vault?.access != VaultAccess.VIEW
+    var paste by remember { mutableStateOf(false) }
+    var line by remember { mutableStateOf("") }
+    LaunchedEffect(host, port) { vm.loadHostKeyPins(host, port) }
+
+    val here = state.hostKeyPins.filter { it.vaultId == draft.vaultId }
+    val elsewhere = state.hostKeyPins.filter { it.vaultId != draft.vaultId }
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.server_key), style = MaterialTheme.typography.labelLarge)
+        Text(
+            when {
+                host.isEmpty() -> stringResource(R.string.server_key_enter_address)
+                state.hostKeyPins.isEmpty() -> stringResource(R.string.server_key_not_pinned)
+                isTeam -> stringResource(R.string.server_key_team_hint)
+                else -> stringResource(R.string.server_key_local_hint)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        here.forEach { p ->
+            PinRow(
+                pin = p,
+                where = if (isTeam) stringResource(R.string.server_key_where_team) else null,
+                onRemove = if (canWrite) ({ vm.unpinHostKey(p.id, host, port) }) else null,
+                enabled = !state.hostKeyPinsBusy,
+            )
+        }
+        elsewhere.forEach { p ->
+            val other = state.vaults.firstOrNull { it.id == p.vaultId }
+            PinRow(
+                pin = p,
+                where = when (other?.kind) {
+                    null -> stringResource(R.string.server_key_where_other)
+                    VaultKind.LOCAL -> stringResource(R.string.server_key_where_device)
+                    else -> other.name
+                },
+                onRemove = null,
+                enabled = !state.hostKeyPinsBusy,
+            )
+        }
+        state.hostKeyPinError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        if (canWrite && host.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (elsewhere.isNotEmpty()) {
+                    TextButton(enabled = !state.hostKeyPinsBusy, onClick = { vm.pinHostKey(host, port, null) }) {
+                        Text(if (isTeam) stringResource(R.string.server_key_pin_for_team) else stringResource(R.string.server_key_pin_here))
+                    }
+                }
+                TextButton(enabled = !state.hostKeyPinsBusy, onClick = { paste = !paste }) {
+                    Text(if (paste) stringResource(R.string.cancel) else stringResource(R.string.server_key_paste))
+                }
+            }
+        }
+        if (paste) {
+            OutlinedTextField(
+                value = line,
+                onValueChange = { line = it },
+                label = { Text(stringResource(R.string.server_key_public_key)) },
+                placeholder = { Text("ssh-ed25519 AAAA…") },
+                minLines = 2,
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+                textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(
+                    enabled = !state.hostKeyPinsBusy && line.isNotBlank(),
+                    onClick = {
+                        vm.pinHostKey(host, port, line)
+                        paste = false
+                        line = ""
+                    },
+                ) { Text(stringResource(R.string.server_key_pin)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PinRow(pin: HostKeyPinItem, where: String?, onRemove: (() -> Unit)?, enabled: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                pin.fingerprint,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                listOfNotNull(pin.keyType, where).joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (onRemove != null) {
+            IconButton(onClick = onRemove, enabled = enabled) {
+                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.server_key_unpin))
             }
         }
     }

@@ -113,6 +113,18 @@ final class VaultsModel {
         run { try repository.deleteGroup(id: id) }
     }
 
+    func hostKeyPins(host: String, port: UInt16) throws -> [HostKeyPinItem] {
+        try repository.hostKeyPins(host: host, port: port)
+    }
+
+    func pinHostKey(vaultId: String, host: String, port: UInt16, publicKey: String?) throws -> [HostKeyPinItem] {
+        try repository.pinHostKey(vaultId: vaultId, host: host, port: port, publicKey: publicKey)
+    }
+
+    func unpinHostKey(id: String) throws {
+        try repository.unpinHostKey(id: id)
+    }
+
     func createTag(label: String) throws -> TagItem {
         guard let vaultId = selectedVaultId else {
             throw MobileError.Invalid(detail: "No vault selected")

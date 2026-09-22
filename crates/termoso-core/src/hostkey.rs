@@ -2,9 +2,11 @@
 //!
 //! Every SSH connection goes through [`KnownHosts::check`]. Trust is stored as
 //! `known_host` entities in the store (so it syncs with the account like
-//! everything else). Unknown or changed keys are never accepted silently: the
-//! transport asks a [`HostKeyPrompt`] callback, which the UI answers with an
-//! explicit user decision.
+//! everything else). Pins from every unlocked vault count: a key pinned in a
+//! team vault by an admin is trusted by all members, and a presented key that
+//! contradicts *any* pin is reported as changed. Unknown or changed keys are
+//! never accepted silently: the transport asks a [`HostKeyPrompt`] callback,
+//! which the UI answers with an explicit user decision.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -176,40 +178,44 @@ impl KnownHosts {
             .collect())
     }
 
-    /// Compare the presented key with the pins.
+    /// Compare the presented key with the pins. A pin of the same type in any
+    /// vault that holds a different key wins over a matching one elsewhere:
+    /// a team pin cannot be overridden by accepting a key locally.
     pub fn check(&self, host: &str, port: u16, key: &PublicKey) -> Result<HostKeyVerdict> {
         let presented = info(host, port, key);
-        let pinned = self.for_host(host, port)?;
-        if pinned.is_empty() {
-            return Ok(HostKeyVerdict::Unknown { key: presented });
-        }
-        for p in &pinned {
-            if p.data.key_type == presented.key_type {
-                return if p.data.public_key.trim() == presented.public_key {
-                    Ok(HostKeyVerdict::Known)
-                } else {
-                    Ok(HostKeyVerdict::Changed {
-                        old: HostKeyInfo {
-                            host: p.data.hostname.clone(),
-                            key_type: p.data.key_type.clone(),
-                            fingerprint: p.data.fingerprint.clone(),
-                            public_key: p.data.public_key.clone(),
-                        },
-                        new: presented,
-                    })
-                };
+        let mut known = false;
+        for p in self.for_host(host, port)? {
+            if p.data.key_type != presented.key_type {
+                continue;
+            }
+            if p.data.public_key.trim() == presented.public_key {
+                known = true;
+            } else {
+                return Ok(HostKeyVerdict::Changed {
+                    old: HostKeyInfo {
+                        host: p.data.hostname,
+                        key_type: p.data.key_type,
+                        fingerprint: p.data.fingerprint,
+                        public_key: p.data.public_key,
+                    },
+                    new: presented,
+                });
             }
         }
-        // Pinned with another algorithm only: treat as unknown for this
-        // algorithm (server added a key type) but tell the UI what we know.
+        if known {
+            return Ok(HostKeyVerdict::Known);
+        }
+        // No pin, or pinned with another algorithm only (server added a key
+        // type): unknown for this algorithm.
         Ok(HostKeyVerdict::Unknown { key: presented })
     }
 
-    /// Pin a key (replacing any pin of the same type).
+    /// Pin a key into this vault, replacing any pin of the same type that
+    /// this vault holds. Pins in other vaults are left alone.
     pub fn trust(&self, host: &str, port: u16, key: &PublicKey) -> Result<Uuid> {
         let i = info(host, port, key);
         for existing in self.for_host(host, port)? {
-            if existing.data.key_type == i.key_type {
+            if existing.vault_id == self.vault_id && existing.data.key_type == i.key_type {
                 self.store.delete(existing.id)?;
             }
         }
@@ -224,9 +230,13 @@ impl KnownHosts {
         )
     }
 
-    /// Remove every pin for a host.
+    /// Remove every pin this vault holds for a host.
     pub fn forget(&self, host: &str, port: u16) -> Result<usize> {
-        let pins = self.for_host(host, port)?;
+        let pins: Vec<_> = self
+            .for_host(host, port)?
+            .into_iter()
+            .filter(|p| p.vault_id == self.vault_id)
+            .collect();
         for p in &pins {
             self.store.delete(p.id)?;
         }
@@ -305,8 +315,10 @@ pub use ssh_key::Algorithm;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::LocalVaultKind;
     use russh::keys::ssh_key::PrivateKey;
     use termoso_crypto::keys::SymmetricKey;
+    use termoso_proto::vault::VaultRole;
 
     fn key() -> PublicKey {
         PrivateKey::random(&mut rand::rng(), ssh_key::Algorithm::Ed25519)
@@ -374,6 +386,48 @@ mod tests {
         let exported = kh.export_openssh().unwrap();
         assert!(exported.contains("[git.example]:2222 ssh-ed25519 "));
         assert!(exported.contains("10.0.0.5 ssh-ed25519 "));
+    }
+
+    #[test]
+    fn pin_in_another_vault_is_trusted_and_cannot_be_overridden() {
+        let store = Arc::new(Store::open_in_memory(SymmetricKey::generate()).unwrap());
+        let local = store.local_vault().unwrap().id;
+        let team = Uuid::new_v4();
+        store
+            .upsert_vault(
+                team,
+                LocalVaultKind::Team,
+                "Team",
+                Some(Uuid::new_v4()),
+                VaultRole::Editor,
+                Some(&SymmetricKey::generate()),
+                1,
+            )
+            .unwrap();
+        let admin = KnownHosts::new(store.clone(), team);
+        let member = KnownHosts::new(store.clone(), local);
+        let (k1, k2) = (key(), key());
+
+        // Admin pins in the team vault: members trust it without a prompt.
+        admin.trust("db.internal", 22, &k1).unwrap();
+        assert_eq!(
+            member.check("db.internal", 22, &k1).unwrap(),
+            HostKeyVerdict::Known
+        );
+
+        // A different key is "changed" even if the member pins it locally.
+        member.trust("db.internal", 22, &k2).unwrap();
+        assert!(matches!(
+            member.check("db.internal", 22, &k2).unwrap(),
+            HostKeyVerdict::Changed { .. }
+        ));
+        // The local pin did not touch the team pin.
+        assert_eq!(member.for_host("db.internal", 22).unwrap().len(), 2);
+        assert_eq!(member.forget("db.internal", 22).unwrap(), 1);
+        assert_eq!(
+            member.check("db.internal", 22, &k1).unwrap(),
+            HostKeyVerdict::Known
+        );
     }
 
     #[test]

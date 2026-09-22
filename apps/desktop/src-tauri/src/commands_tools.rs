@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
+use termoso_client::trust::HostKeyPin;
 use termoso_core::secrets::MasterKeySource;
 use termoso_proto::account::{ServerInfo, UserProfile};
 use termoso_proto::ai::{AiCommandResponse, AiStatus};
@@ -592,6 +593,37 @@ pub async fn known_host_forget(state: State<'_, AppState>, id: Uuid) -> Result<(
 #[tauri::command]
 pub async fn known_host_forget_host(state: State<'_, AppState>, hostname: String) -> Result<usize> {
     trust::forget_host(&*state.store()?, &hostname)
+}
+
+#[tauri::command]
+pub async fn host_key_pins(
+    state: State<'_, AppState>,
+    host: String,
+    port: u16,
+) -> Result<Vec<HostKeyPin>> {
+    termoso_client::trust::pins(&state.store()?, &host, port)
+}
+
+#[tauri::command]
+pub async fn host_key_pin(
+    state: State<'_, AppState>,
+    vault_id: Uuid,
+    host: String,
+    port: u16,
+    public_key: Option<String>,
+) -> Result<Vec<HostKeyPin>> {
+    termoso_client::trust::pin(
+        &state.store()?,
+        vault_id,
+        &host,
+        port,
+        public_key.as_deref(),
+    )
+}
+
+#[tauri::command]
+pub async fn host_key_unpin(state: State<'_, AppState>, id: Uuid) -> Result<()> {
+    termoso_client::trust::unpin(&state.store()?, id)
 }
 
 #[tauri::command]

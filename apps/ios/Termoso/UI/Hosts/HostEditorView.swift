@@ -31,6 +31,9 @@ struct HostEditorView: View {
     @State private var newTag = ""
     @State private var error: String?
     @State private var confirmDelete = false
+    @State private var pins: [HostKeyPinItem] = []
+    @State private var pastedKey = ""
+    @State private var showPaste = false
 
     var body: some View {
         NavigationStack {
@@ -179,6 +182,8 @@ struct HostEditorView: View {
 
             tagsSection(binding)
 
+            serverKeySection(current)
+
             Section("Advanced") {
                 OptionalNumberField("Keep-alive (s)", value: binding.keepAliveInterval, placeholder: "off")
                 OptionalNumberField("Timeout (s)", value: binding.timeout, placeholder: "default")
@@ -278,6 +283,110 @@ struct HostEditorView: View {
                     .disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
                     .accessibilityIdentifier("hostEditor.addTag")
             }
+        }
+    }
+
+    /// Server keys pinned for `address:port`, grouped by the vault holding them.
+    /// Team-vault pins sync to every member, so an admin can hand out the
+    /// trusted fingerprint before anyone connects; a contradicting key is refused.
+    @ViewBuilder
+    private func serverKeySection(_ current: HostDraft) -> some View {
+        let host = current.address.trimmingCharacters(in: .whitespaces)
+        let port = current.port ?? 22
+        let vault = model.vaults.first { $0.id == current.vaultId }
+        let isTeam = vault?.kind == .team
+        let canWrite = vault?.access != .view
+        let here = pins.filter { $0.vaultId == current.vaultId }
+        let elsewhere = pins.filter { $0.vaultId != current.vaultId }
+        Section {
+            if host.isEmpty {
+                Text("Enter the address first.").foregroundStyle(.secondary)
+            } else if pins.isEmpty {
+                Text("Not pinned yet: the fingerprint is confirmed on first connection.").foregroundStyle(.secondary)
+            }
+            ForEach(here, id: \.id) { pin in
+                pinRow(pin, where: isTeam ? "team" : nil, removable: canWrite)
+            }
+            ForEach(elsewhere, id: \.id) { pin in
+                let other = model.vaults.first { $0.id == pin.vaultId }
+                pinRow(pin, where: other.map { $0.kind == .local ? "this device" : $0.name } ?? "another vault", removable: false)
+            }
+            if canWrite, !host.isEmpty {
+                if !elsewhere.isEmpty {
+                    Button(isTeam ? "Pin for the team" : "Pin in this vault") {
+                        pinHostKey(host: host, port: port, publicKey: nil, vaultId: current.vaultId)
+                    }
+                }
+                Button(showPaste ? "Cancel" : "Paste public key") { showPaste.toggle() }
+                if showPaste {
+                    TextField("ssh-ed25519 AAAA… (ssh-keyscan line)", text: $pastedKey, axis: .vertical)
+                        .font(.system(.footnote, design: .monospaced))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .lineLimit(2 ... 4)
+                    Button("Pin") {
+                        pinHostKey(host: host, port: port, publicKey: pastedKey, vaultId: current.vaultId)
+                        pastedKey = ""
+                        showPaste = false
+                    }
+                    .disabled(pastedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        } header: {
+            Text("Server key")
+        } footer: {
+            if !host.isEmpty, !pins.isEmpty {
+                Text(isTeam
+                    ? "Pinned keys sync to every team member: they connect without a fingerprint prompt, and a different key is refused."
+                    : "Keys accepted on first connection are pinned here; a different key is refused.")
+            }
+        }
+        .task(id: "\(host):\(port)") { loadPins(host: host, port: port) }
+    }
+
+    @ViewBuilder
+    private func pinRow(_ pin: HostKeyPinItem, where: String?, removable: Bool) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(pin.fingerprint)
+                    .font(.system(.footnote, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text([pin.keyType, `where`].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if removable {
+                Button(role: .destructive) {
+                    do {
+                        try model.unpinHostKey(id: pin.id)
+                        pins.removeAll { $0.id == pin.id }
+                    } catch {
+                        self.error = userMessage(for: error)
+                    }
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Unpin")
+            }
+        }
+    }
+
+    private func loadPins(host: String, port: UInt16) {
+        guard !host.isEmpty else {
+            pins = []
+            return
+        }
+        pins = (try? model.hostKeyPins(host: host, port: port)) ?? []
+    }
+
+    private func pinHostKey(host: String, port: UInt16, publicKey: String?, vaultId: String) {
+        do {
+            pins = try model.pinHostKey(vaultId: vaultId, host: host, port: port, publicKey: publicKey)
+        } catch {
+            self.error = userMessage(for: error)
         }
     }
 

@@ -35,6 +35,7 @@ export const keys = {
   snippets: (vaultId: Uuid | null) => ["snippets", vaultId] as const,
   packages: (vaultId: Uuid | null) => ["packages", vaultId] as const,
   knownHosts: ["knownHosts"] as const,
+  hostKeyPins: (host: string, port: number) => ["knownHosts", "pins", host, port] as const,
   logs: ["logs"] as const,
   logBody: (id: Uuid) => ["logs", id, "body"] as const,
   bookmarks: (id: Uuid) => ["logs", id, "bookmarks"] as const,
@@ -257,6 +258,12 @@ export const usePackages = (vaultId: Uuid | null) =>
   useQuery({ queryKey: keys.packages(vaultId), queryFn: () => ipc.snippetPackages(vaultId) });
 export const useKnownHosts = () =>
   useQuery({ queryKey: keys.knownHosts, queryFn: ipc.knownHostsList });
+export const useHostKeyPins = (host: string, port: number) =>
+  useQuery({
+    queryKey: keys.hostKeyPins(host, port),
+    queryFn: () => ipc.hostKeyPins(host, port),
+    enabled: host.trim() !== "",
+  });
 export const useLogs = () => useQuery({ queryKey: keys.logs, queryFn: ipc.logsList });
 export const useLogBody = (id: Uuid | null) =>
   useQuery({
