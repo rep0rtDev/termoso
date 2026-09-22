@@ -172,6 +172,19 @@ schema! {
 }
 
 schema! {
+    /// `PUT /vaults/{id}/my-key` – replace the caller's own sealed copy of the
+    /// current vault key (same `key_version`, same key) — used to upgrade an
+    /// anonymous sealed box to a self-authenticated one. Never grants access:
+    /// the caller must already hold a sealed key for this version.
+    pub struct ResealMyKeyRequest {
+        /// Expected current version (optimistic concurrency).
+        pub key_version: i32,
+        /// The current key, sealed to the caller's own public key.
+        pub sealed_key: String,
+    }
+}
+
+schema! {
     /// Response to rotation.
     pub struct RotateVaultKeyResponse {
         /// New key version.

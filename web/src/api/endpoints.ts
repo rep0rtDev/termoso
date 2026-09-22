@@ -247,6 +247,9 @@ export const vaultsApi = {
     http.delete<undefined>(`/vaults/${id}/members/${userId}`),
   rotateKey: (id: string, base_key_version: number, members: SealedKeyFor[]) =>
     http.post<{ key_version: number }>(`/vaults/${id}/rotate-key`, { base_key_version, members }),
+  /** Replaces the caller's own sealed copy of the current key (same version, same key). */
+  resealMyKey: (id: string, key_version: number, sealed_key: string) =>
+    http.put<undefined>(`/vaults/${id}/my-key`, { key_version, sealed_key }),
 };
 
 export interface ListParams {

@@ -629,6 +629,42 @@ pub async fn remove_member(
 
 // ───────────────────────────── key rotation ─────────────────────────────
 
+/// Replace the caller's own sealed copy of the current key. The key and its
+/// version do not change, so this never grants or extends access; it lets a
+/// client swap an anonymous sealed box for a self-authenticated one so its
+/// other devices can tell the key came from the account holder.
+#[utoipa::path(put, path = "/api/v1/vaults/{id}/my-key", tag = "vaults", params(("id" = Uuid, Path)),
+    request_body = ResealMyKeyRequest, responses((status = 204)))]
+pub async fn reseal_my_key(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<Uuid>,
+    Body(req): Body<ResealMyKeyRequest>,
+) -> ApiResult<NoContent> {
+    validate_sealed(&req.sealed_key)?;
+    let a = access(&state.db, id, auth.user_id()).await?;
+    if a.pending {
+        return Err(Error::forbidden("You do not hold a key for this vault"));
+    }
+    if a.key_version != req.key_version {
+        return Err(Error::conflict("Vault key was rotated"));
+    }
+    let updated = sqlx::query(
+        "UPDATE vault_members SET sealed_key = $3
+         WHERE vault_id = $1 AND user_id = $2 AND key_version = $4 AND sealed_key IS NOT NULL",
+    )
+    .bind(id)
+    .bind(auth.user_id())
+    .bind(&req.sealed_key)
+    .bind(req.key_version)
+    .execute(&state.db)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(Error::conflict("Vault key was rotated"));
+    }
+    Ok(NoContent)
+}
+
 /// Rotate the vault key: the client generates a new key, re-seals it to every
 /// remaining member and re-encrypts entities client-side afterwards (entities
 /// carry `key_version`, so old and new can coexist during the migration).

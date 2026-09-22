@@ -23,7 +23,7 @@ use termoso_proto::auth::{
     MfaCredential, MfaMethod, Platform, ReauthFinishRequest, ReauthMethod, ReauthStartRequest,
     RegisterFinishRequest, RegisterStartRequest, Session,
 };
-use termoso_proto::vault::Vault;
+use termoso_proto::vault::{ResealMyKeyRequest, Vault};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -448,7 +448,7 @@ pub async fn register(
             &secret,
         )?,
         recovery_verifier: recovery.verifier_b64()?,
-        personal_vault_sealed_key: sealed::seal_vault_key(pair.public(), &personal_vault_key)?,
+        personal_vault_sealed_key: sealed::seal_vault_key_self(&pair, &personal_vault_key)?,
     };
 
     let resp = api
@@ -529,16 +529,56 @@ pub fn sign_out_local(api: &ApiClient, store: &Store) -> Result<()> {
 pub async fn refresh_vaults(api: &ApiClient, store: &Store) -> Result<Vec<Uuid>> {
     let remote = api.vaults().await?;
     let secrets = store.account_secrets()?;
-    apply_vault_list(store, &secrets.private_key, &remote)
+    let applied = apply_vault_list(store, &secrets.private_key, &remote)?;
+    for (id, key_version) in applied.reseal {
+        let sealed_key = sealed::seal_vault_key_self(&secrets.private_key, &store.vault_key(id)?)?;
+        if let Err(e) = api
+            .reseal_my_key(
+                id,
+                &ResealMyKeyRequest {
+                    key_version,
+                    sealed_key,
+                },
+            )
+            .await
+        {
+            tracing::warn!(vault = %id, "cannot upgrade personal vault key envelope: {e}");
+        }
+    }
+    Ok(applied.unlocked)
 }
 
-fn apply_vault_list(store: &Store, private_key: &KeyPair, remote: &[Vault]) -> Result<Vec<Uuid>> {
+struct AppliedVaults {
+    /// Ids of vaults whose key we hold, personal vault first.
+    unlocked: Vec<Uuid>,
+    /// Personal vaults whose server-side envelope is still an anonymous
+    /// sealed box and should be re-sealed to ourselves: `(id, key_version)`.
+    reseal: Vec<(Uuid, i32)>,
+}
+
+/// Mirror the server's vault list into the store, deciding per vault whether
+/// the offered key may replace the one we hold. The server is not trusted
+/// with key material, so:
+///
+/// * a key we already hold is never replaced at the same `key_version`;
+/// * `key_version` never moves backwards;
+/// * for the personal vault a new key is only accepted from a
+///   self-authenticated envelope (produced with the account private key);
+///   team vault keys are sealed by a team manager, whose identity the
+///   anonymous sealed box cannot prove (see SECURITY.md);
+/// * a vault we have no key for yet accepts whatever opens (first use).
+fn apply_vault_list(
+    store: &Store,
+    private_key: &KeyPair,
+    remote: &[Vault],
+) -> Result<AppliedVaults> {
     let local = store.vaults()?;
     let mut unlocked = Vec::new();
+    let mut reseal = Vec::new();
     for v in remote {
         let existing = local.iter().find(|l| l.id == v.id);
-        let key = match &v.sealed_key {
-            Some(sealed) => match sealed::open_vault_key(private_key, sealed) {
+        let offered = match &v.sealed_key {
+            Some(sealed) => match sealed::open_vault_key_checked(private_key, sealed) {
                 Ok(k) => Some(k),
                 Err(e) => {
                     tracing::warn!(vault = %v.id, "cannot open sealed vault key: {e}");
@@ -547,11 +587,34 @@ fn apply_vault_list(store: &Store, private_key: &KeyPair, remote: &[Vault]) -> R
             },
             None => None,
         };
-        let rotated_from = match existing {
-            Some(l) if l.unlocked && key.is_some() && l.key_version != v.key_version => {
-                Some(store.vault_key(l.id)?)
-            }
+        let held = match existing {
+            Some(l) if l.unlocked => Some((store.vault_key(l.id)?, l.key_version)),
             _ => None,
+        };
+        let personal = v.kind == termoso_proto::vault::VaultKind::Personal;
+        let offered_origin = offered.as_ref().map(|(_, o)| *o);
+        // (key to install, key to re-encrypt from, key_version to record)
+        let (install, rotated_from, key_version) = match (held, offered) {
+            (None, Some((k, _))) => (Some(k), None, v.key_version),
+            (None, None) => (None, None, v.key_version),
+            (Some((h, hv)), Some((k, _))) if hv == v.key_version => {
+                if h.as_bytes() != k.as_bytes() {
+                    tracing::warn!(vault = %v.id, "server offered a different key for the version we hold; ignoring");
+                }
+                (None, None, hv)
+            }
+            (Some((_, hv)), Some(_)) if v.key_version < hv => {
+                tracing::warn!(vault = %v.id, "server rolled the vault key version back ({} -> {}); ignoring", hv, v.key_version);
+                (None, None, hv)
+            }
+            (Some((_, hv)), Some((_, origin)))
+                if personal && origin != sealed::SealedKeyOrigin::SelfAuthenticated =>
+            {
+                tracing::warn!(vault = %v.id, "refusing personal vault key rotation: envelope was not produced with the account key");
+                (None, None, hv)
+            }
+            (Some((h, _)), Some((k, _))) => (Some(k), Some(h), v.key_version),
+            (Some((_, hv)), None) => (None, None, hv),
         };
         store.upsert_vault(
             v.id,
@@ -559,15 +622,23 @@ fn apply_vault_list(store: &Store, private_key: &KeyPair, remote: &[Vault]) -> R
             &v.name,
             v.team_id,
             v.my_role,
-            key.as_ref(),
-            v.key_version,
+            install.as_ref(),
+            key_version,
         )?;
         store.set_vault_session_logging(v.id, v.session_logging)?;
         if let Some(old) = rotated_from {
             store.reencrypt_vault(v.id, &old)?;
         }
-        if key.is_some() || existing.is_some_and(|l| l.unlocked) {
+        let now_unlocked = install.is_some() || existing.is_some_and(|l| l.unlocked);
+        if now_unlocked {
             unlocked.push(v.id);
+        }
+        if personal
+            && now_unlocked
+            && key_version == v.key_version
+            && offered_origin == Some(sealed::SealedKeyOrigin::Anonymous)
+        {
+            reseal.push((v.id, v.key_version));
         }
     }
     for l in local.iter().filter(|l| l.kind.is_synced()) {
@@ -584,7 +655,7 @@ fn apply_vault_list(store: &Store, private_key: &KeyPair, remote: &[Vault]) -> R
             )
         })
     });
-    Ok(unlocked)
+    Ok(AppliedVaults { unlocked, reseal })
 }
 
 fn finish_opaque(
@@ -710,8 +781,10 @@ mod tests {
             ),
             vault(pending, VaultKind::Team, None, 1),
         ];
-        let unlocked = apply_vault_list(&store, &me, &remote).unwrap();
-        assert_eq!(unlocked, vec![personal, team]);
+        let applied = apply_vault_list(&store, &me, &remote).unwrap();
+        assert_eq!(applied.unlocked, vec![personal, team]);
+        // Legacy anonymous personal envelope: accepted on first use, queued for upgrade.
+        assert_eq!(applied.reseal, vec![(personal, 1)]);
         assert_eq!(
             store.vault_key(personal).unwrap().as_bytes(),
             personal_key.as_bytes()
@@ -739,11 +812,12 @@ mod tests {
         let remote = vec![vault(
             personal,
             VaultKind::Personal,
-            Some(sealed::seal_vault_key(me.public(), &new_personal).unwrap()),
+            Some(sealed::seal_vault_key_self(&me, &new_personal).unwrap()),
             2,
         )];
-        let unlocked = apply_vault_list(&store, &me, &remote).unwrap();
-        assert_eq!(unlocked, vec![personal]);
+        let applied = apply_vault_list(&store, &me, &remote).unwrap();
+        assert_eq!(applied.unlocked, vec![personal]);
+        assert!(applied.reseal.is_empty());
         assert!(store.vault(team).is_err());
         let v = store.vault(personal).unwrap();
         assert_eq!((v.key_version, v.cursor), (2, 42));
@@ -763,6 +837,132 @@ mod tests {
             .unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].data["label"], "a");
+    }
+
+    /// A server (or anyone who knows our public key) must not be able to swap
+    /// the personal vault key for one it knows: at the same version the held
+    /// key wins, at a newer version only a self-authenticated envelope counts,
+    /// and the version never moves backwards.
+    #[test]
+    fn personal_key_is_not_replaced_by_server_supplied_envelopes() {
+        let store = Store::open_in_memory(SymmetricKey::generate()).unwrap();
+        let me = KeyPair::generate();
+        let real = SymmetricKey::generate();
+        let personal = Uuid::new_v4();
+        let remote = vec![vault(
+            personal,
+            VaultKind::Personal,
+            Some(sealed::seal_vault_key_self(&me, &real).unwrap()),
+            1,
+        )];
+        let applied = apply_vault_list(&store, &me, &remote).unwrap();
+        assert_eq!(applied.unlocked, vec![personal]);
+        assert!(applied.reseal.is_empty());
+        let host_id = Uuid::new_v4();
+        store
+            .put_raw(
+                personal,
+                "host",
+                host_id,
+                &serde_json::json!({"label": "a"}),
+            )
+            .unwrap();
+        store.mark_pushed(host_id, 1, 1).unwrap();
+
+        let evil = SymmetricKey::generate();
+        let holds_real = |store: &Store| {
+            let v = store.vault(personal).unwrap();
+            assert!(v.unlocked);
+            assert_eq!(v.key_version, 1);
+            assert_eq!(
+                store.vault_key(personal).unwrap().as_bytes(),
+                real.as_bytes()
+            );
+            let row = store.row(host_id).unwrap().unwrap();
+            assert!(!row.dirty && row.key_version == 1);
+        };
+
+        // Same version, different key (anonymous envelope): ignored.
+        let remote = vec![vault(
+            personal,
+            VaultKind::Personal,
+            Some(sealed::seal_vault_key(me.public(), &evil).unwrap()),
+            1,
+        )];
+        let applied = apply_vault_list(&store, &me, &remote).unwrap();
+        assert_eq!(applied.unlocked, vec![personal]);
+        holds_real(&store);
+        // ...and we would overwrite the server copy with our own key, not adopt theirs.
+        assert_eq!(applied.reseal, vec![(personal, 1)]);
+
+        // "Rotation" to a key the server made up (anonymous envelope): refused,
+        // nothing is re-encrypted, local version stays.
+        let remote = vec![vault(
+            personal,
+            VaultKind::Personal,
+            Some(sealed::seal_vault_key(me.public(), &evil).unwrap()),
+            2,
+        )];
+        let applied = apply_vault_list(&store, &me, &remote).unwrap();
+        assert_eq!(applied.unlocked, vec![personal]);
+        assert!(applied.reseal.is_empty());
+        holds_real(&store);
+
+        // Version rollback with the (old) real key: refused too.
+        let remote = vec![vault(
+            personal,
+            VaultKind::Personal,
+            Some(sealed::seal_vault_key_self(&me, &real).unwrap()),
+            0,
+        )];
+        apply_vault_list(&store, &me, &remote).unwrap();
+        holds_real(&store);
+
+        // Missing envelope keeps the held key.
+        let remote = vec![vault(personal, VaultKind::Personal, None, 1)];
+        let applied = apply_vault_list(&store, &me, &remote).unwrap();
+        assert_eq!(applied.unlocked, vec![personal]);
+        holds_real(&store);
+
+        // A genuine rotation from another of our devices is accepted.
+        let rotated = SymmetricKey::generate();
+        let remote = vec![vault(
+            personal,
+            VaultKind::Personal,
+            Some(sealed::seal_vault_key_self(&me, &rotated).unwrap()),
+            2,
+        )];
+        apply_vault_list(&store, &me, &remote).unwrap();
+        let v = store.vault(personal).unwrap();
+        assert_eq!(v.key_version, 2);
+        assert_eq!(
+            store.vault_key(personal).unwrap().as_bytes(),
+            rotated.as_bytes()
+        );
+        let row = store.row(host_id).unwrap().unwrap();
+        assert!(row.dirty && row.key_version == 2);
+    }
+
+    /// Team keys are sealed by a manager (anonymous box), so a rotation is
+    /// accepted, but the same-version and rollback rules still apply.
+    #[test]
+    fn team_key_same_version_and_rollback_are_ignored() {
+        let store = Store::open_in_memory(SymmetricKey::generate()).unwrap();
+        let me = KeyPair::generate();
+        let k1 = SymmetricKey::generate();
+        let k2 = SymmetricKey::generate();
+        let team = Uuid::new_v4();
+        let seal = |k: &SymmetricKey| Some(sealed::seal_vault_key(me.public(), k).unwrap());
+        apply_vault_list(&store, &me, &[vault(team, VaultKind::Team, seal(&k1), 1)]).unwrap();
+        apply_vault_list(&store, &me, &[vault(team, VaultKind::Team, seal(&k2), 1)]).unwrap();
+        assert_eq!(store.vault_key(team).unwrap().as_bytes(), k1.as_bytes());
+        let applied =
+            apply_vault_list(&store, &me, &[vault(team, VaultKind::Team, seal(&k2), 2)]).unwrap();
+        assert!(applied.reseal.is_empty());
+        assert_eq!(store.vault_key(team).unwrap().as_bytes(), k2.as_bytes());
+        apply_vault_list(&store, &me, &[vault(team, VaultKind::Team, seal(&k1), 1)]).unwrap();
+        assert_eq!(store.vault(team).unwrap().key_version, 2);
+        assert_eq!(store.vault_key(team).unwrap().as_bytes(), k2.as_bytes());
     }
 
     #[test]

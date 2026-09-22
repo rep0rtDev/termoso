@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use termoso_core::account as core;
 use termoso_core::api::{ApiClient, AuditQuery};
+use termoso_core::store::LocalVaultKind;
 use termoso_core::termoso_crypto::keys::{SymmetricKey, public_key_from_b64};
 use termoso_core::termoso_crypto::sealed;
 use termoso_proto::team::{
@@ -532,13 +533,25 @@ async fn rotate_with(api: &ApiClient, state: &AppState, vault_id: Uuid) -> Resul
     }
     let members = api.vault_members(vault_id).await?.members;
     let key = SymmetricKey::generate();
+    // Personal vault: only we hold it, and only a self-authenticated envelope
+    // is accepted back by our own devices.
+    let me = if vault.kind == LocalVaultKind::Personal {
+        Some(state.store()?.account_secrets()?.private_key)
+    } else {
+        None
+    };
     let sealed_for = members
         .iter()
         .filter(|m| !m.pending)
         .map(|m| {
             Ok(SealedKeyFor {
                 user_id: m.user_id,
-                sealed_key: seal_for(&m.public_key, &key)?,
+                sealed_key: match &me {
+                    Some(pair) => {
+                        sealed::seal_vault_key_self(pair, &key).map_err(CoreError::from)?
+                    }
+                    None => seal_for(&m.public_key, &key)?,
+                },
             })
         })
         .collect::<Result<Vec<_>>>()?;

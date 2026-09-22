@@ -55,8 +55,22 @@ runtime (workspaces, updater, imports, multiplayer host/viewer, presence).
   *local* vault (never synced). Signing in adds the account's **personal**
   vault and any **team** vaults the account is a member of.
 * Every vault has a symmetric **vault key** (versioned; rotation bumps
-  `key_version`). Members receive it as a sealed box for their account's
-  X25519 public key; the server stores those sealed boxes but cannot open them.
+  `key_version`). The server stores one sealed copy per member and cannot
+  open any of them. Two envelope formats exist (`termoso-crypto::sealed`):
+  * **Team vaults** use an anonymous sealed box (ephemeral X25519 →
+    member's account public key). Anyone who knows the member's public key
+    can produce one, which is what lets a vault manager hand keys to new
+    members; the member trusts the server's key directory for who is in the
+    vault (see the threat model in `SECURITY.md`).
+  * **Personal vaults** use a *self-authenticated* envelope
+    (`0x01 ‖ nonce ‖ crypto_box(me → me)`). Only the holder of the account
+    private key can create it, so a server cannot substitute a personal
+    vault key it chose. Clients accept a *new* personal `key_version` only
+    in this format, never replace a personal key they already hold with a
+    same-version envelope from the server, ignore lower versions, and
+    re-seal a legacy anonymous envelope through `PUT /vaults/{id}/my-key`
+    (same version, caller must already hold the key) on first sync. Signup
+    and personal rotation on every client (core, WASM/web) seal this way.
 * An **entity** is one encrypted record with a client-generated UUID, a `kind`
   (`termoso_proto::entities::KINDS`: `host`, `group`, `ssh_config`,
   `telnet_config`, `webdav_config`, `serial_config`, `identity`, `ssh_key`, `ssh_certificate`,
