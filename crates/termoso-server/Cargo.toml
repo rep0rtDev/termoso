@@ -86,7 +86,7 @@ saml-test-support = []
 termoso-server = { path = ".", features = ["saml-test-support"] }
 tower = { workspace = true }
 http-body-util = "0.1"
-tokio-tungstenite = "0.29"
+tokio-tungstenite = "0.30"
 # Software CTAP2 authenticator drives the WebAuthn ceremonies end to end.
 termoso-core = { workspace = true, features = ["fido2-soft"] }
 # The API bridge runtime is exercised end to end against the in-process server.
