@@ -213,7 +213,6 @@ class TerminalSession(
  */
 class SessionManager(
     private val repo: VaultRepository,
-    private val keepAlive: KeepAlive,
     /** `HOME` and working directory of local shells; created on first use. */
     private val localHome: File,
 ) {
@@ -368,7 +367,6 @@ class SessionManager(
         }
         _sessions.update { list -> list.filterNot { it.id == fresh.id }.map { if (it.id == id) fresh else it } }
         withContext(Dispatchers.IO) { runCatching { old.rust.disconnect() } }
-        keepAlive.terminals(_sessions.value.size)
         return fresh
     }
 
@@ -395,7 +393,6 @@ class SessionManager(
     private fun register(session: TerminalSession): TerminalSession {
         _sessions.update { it + session }
         _activeId.value = session.id
-        keepAlive.terminals(_sessions.value.size)
         return session
     }
 
@@ -405,7 +402,6 @@ class SessionManager(
         _sessions.update { list -> list.filterNot { it.id == id } }
         if (_activeId.value == id) _activeId.value = _sessions.value.lastOrNull()?.id
         withContext(Dispatchers.IO) { runCatching { session.rust.disconnect() } }
-        keepAlive.terminals(_sessions.value.size)
     }
 
     /** Disconnect and drop several tabs at once; unknown ids are skipped. */
@@ -416,7 +412,6 @@ class SessionManager(
         _sessions.update { list -> list.filterNot { it.id in wanted } }
         if (_activeId.value in wanted) _activeId.value = _sessions.value.lastOrNull()?.id
         withContext(Dispatchers.IO) { closing.forEach { runCatching { it.rust.disconnect() } } }
-        keepAlive.terminals(_sessions.value.size)
     }
 
     /** Every open tab to a saved host. */
@@ -427,6 +422,5 @@ class SessionManager(
         _sessions.value = emptyList()
         _activeId.value = null
         withContext(Dispatchers.IO) { list.forEach { runCatching { it.rust.disconnect() } } }
-        keepAlive.terminals(0)
     }
 }

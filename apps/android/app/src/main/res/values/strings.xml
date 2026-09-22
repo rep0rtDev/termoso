@@ -26,8 +26,19 @@
     <string name="local">Local</string>
     <string name="on_this_device">%1$s on this device</string>
     <string name="shared_terminal">Shared terminal</string>
-    <string name="s_1_active_session">1 active session</string>
     <string name="active_sessions">%1$s active sessions</string>
+    <plurals name="notif_terminals">
+        <item quantity="one">%d terminal</item>
+        <item quantity="other">%d terminals</item>
+    </plurals>
+    <plurals name="notif_file_connections">
+        <item quantity="one">%d file connection</item>
+        <item quantity="other">%d file connections</item>
+    </plurals>
+    <plurals name="notif_tunnels">
+        <item quantity="one">%d tunnel</item>
+        <item quantity="other">%d tunnels</item>
+    </plurals>
     <string name="active_sessions_2">Active sessions</string>
     <string name="shown_while_a_terminal_is_connected_so_the">Shown while a terminal is connected so the connection survives in the background.</string>
     <string name="unlock_termoso">Unlock Termoso</string>
@@ -273,7 +284,8 @@
     <string name="save_a_server_with_its_credentials">Save a server with its credentials</string>
     <string name="local_terminal">Local terminal</string>
     <string name="a_shell_on_this_device">A shell on this device</string>
-    <string name="browse_and_transfer_files_on_a_host">Browse and transfer files on a host</string>
+    <string name="files">Files</string>
+    <string name="files_protocols_subtitle">SFTP / WebDAV</string>
     <string name="join_shared_terminal">Join shared terminal</string>
     <string name="open_a_join_link_somebody_sent_you">Open a join link somebody sent you</string>
     <string name="recent">Recent</string>
@@ -711,7 +723,7 @@
     <string name="pause">Pause</string>
     <string name="resume">Resume</string>
     <string name="dismiss">Dismiss</string>
-    <string name="new_sftp_connection">New SFTP connection</string>
+    <string name="new_sftp_connection">Browse files</string>
     <string name="saved_hosts">Saved hosts</string>
     <string name="no_ssh_hosts_yet">No SSH hosts yet</string>
     <string name="add_a_host_in_vaults_or_type_user">Add a host in Vaults, or type user@host above.</string>
@@ -1160,8 +1172,7 @@
     <string name="cloud_server_blurb">%1$s · free forever, no limits, no plans. Everything is end-to-end encrypted — the server never sees your hosts, keys or passwords.</string>
     <string name="sep_no_email">" · no email"</string>
     <string name="ssh_id_delete_text">@%1$s and every key published under it are removed from the server; the passkeys on this phone are wiped.</string>
-    <string name="quick_connect_placeholder">user@host:port, telnet://host or join link</string>
-    <string name="quick_connect_hint">Type user@host or telnet://host above and press Go</string>
+    <string name="quick_connect_placeholder">user@host, telnet://host or link</string>
     <string name="sep_transferring">" · %1$d transferring"</string>
     <string name="duration_s">%1$ds</string>
     <string name="duration_m">%1$dm</string>

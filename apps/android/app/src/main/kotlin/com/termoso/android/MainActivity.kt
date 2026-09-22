@@ -22,6 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.termoso.android.data.AppContainer
 import com.termoso.android.data.VaultState
+import com.termoso.android.service.SessionService
 import com.termoso.android.ui.TermosoRoot
 import com.termoso.android.ui.keychain.LocalFido2
 import com.termoso.android.ui.theme.TermosoTheme
@@ -50,6 +51,11 @@ class MainActivity : FragmentActivity() {
         }
         handleLink(intent, container)
         setContent { App(container) }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        SessionService.ensureRunning(this)
     }
 
     override fun onNewIntent(intent: Intent) {

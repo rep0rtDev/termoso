@@ -74,7 +74,7 @@ class Tunnel(
  * the rule card falls back to its switch-off state; [lastError] keeps the
  * reason for the card to show.
  */
-class ForwardManager(private val repo: VaultRepository, private val keepAlive: KeepAlive) {
+class ForwardManager(private val repo: VaultRepository) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val watchers = ConcurrentHashMap<String, Job>()
 
@@ -107,7 +107,6 @@ class ForwardManager(private val repo: VaultRepository, private val keepAlive: K
         val rust = repo.read { startPf(ruleId, bridge) }
         val tunnel = Tunnel(ruleId, rust, bridge)
         _tunnels.update { it + (ruleId to tunnel) }
-        syncKeepAlive()
         watchers[ruleId] = scope.launch { watch(tunnel) }
         return tunnel
     }
@@ -124,16 +123,12 @@ class ForwardManager(private val repo: VaultRepository, private val keepAlive: K
         watchers.values.forEach { it.cancel() }
         watchers.clear()
         withContext(Dispatchers.IO) { list.forEach { runCatching { it.rust.stop() } } }
-        keepAlive.forwards(0)
     }
 
     private fun remove(ruleId: String) {
         watchers.remove(ruleId)?.cancel()
         _tunnels.update { it - ruleId }
-        syncKeepAlive()
     }
-
-    private fun syncKeepAlive() = keepAlive.forwards(_tunnels.value.size)
 
     /** Poll counters while running; drop the tunnel once Rust reports a terminal state. */
     private suspend fun watch(tunnel: Tunnel) {

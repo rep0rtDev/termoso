@@ -1,7 +1,6 @@
 package com.termoso.android.data
 
 import android.content.Context
-import com.termoso.android.service.SessionService
 import com.termoso.android.ui.components.initialConnecting
 import com.termoso.core.FileCapabilities
 import com.termoso.core.FileProtocol
@@ -20,35 +19,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
-
-/**
- * Mirrors the number of live connections (terminals + SFTP + tunnels) into the
- * foreground service so the process survives in the background while
- * anything is connected.
- */
-class KeepAlive(private val context: Context) {
-    private var terminals = 0
-    private var sftp = 0
-    private var forwards = 0
-
-    @Synchronized
-    fun terminals(count: Int) {
-        terminals = count
-        SessionService.sync(context, terminals + sftp + forwards)
-    }
-
-    @Synchronized
-    fun sftp(count: Int) {
-        sftp = count
-        SessionService.sync(context, terminals + sftp + forwards)
-    }
-
-    @Synchronized
-    fun forwards(count: Int) {
-        forwards = count
-        SessionService.sync(context, terminals + sftp + forwards)
-    }
-}
 
 /** Rust SFTP callbacks republished as flows for the UI. */
 class SftpBridge : SftpListener {
@@ -134,7 +104,7 @@ class SftpConnection(
  * once; state and prompts arrive on the connection's flows. The scratch files
  * a connection used are wiped when it closes.
  */
-class SftpManager(private val context: Context, private val repo: VaultRepository, private val keepAlive: KeepAlive) {
+class SftpManager(private val context: Context, private val repo: VaultRepository) {
     private val _connections = MutableStateFlow<List<SftpConnection>>(emptyList())
     val connections: StateFlow<List<SftpConnection>> = _connections.asStateFlow()
 
@@ -194,7 +164,6 @@ class SftpManager(private val context: Context, private val repo: VaultRepositor
         }
         _connections.update { list -> list.filterNot { it.id == fresh.id }.map { if (it.id == id) fresh else it } }
         dispose(old)
-        keepAlive.sftp(_connections.value.size)
         return fresh
     }
 
@@ -202,7 +171,6 @@ class SftpManager(private val context: Context, private val repo: VaultRepositor
         val conn = find(id) ?: return
         _connections.update { list -> list.filterNot { it.id == id } }
         dispose(conn)
-        keepAlive.sftp(_connections.value.size)
     }
 
     suspend fun closeMany(ids: Collection<String>) {
@@ -211,7 +179,6 @@ class SftpManager(private val context: Context, private val repo: VaultRepositor
         if (closing.isEmpty()) return
         _connections.update { list -> list.filterNot { it.id in wanted } }
         closing.forEach { dispose(it) }
-        keepAlive.sftp(_connections.value.size)
     }
 
     /** Every open file connection to a saved host. */
@@ -230,12 +197,10 @@ class SftpManager(private val context: Context, private val repo: VaultRepositor
         val list = _connections.value
         _connections.value = emptyList()
         list.forEach { dispose(it) }
-        keepAlive.sftp(0)
     }
 
     private fun register(conn: SftpConnection): SftpConnection {
         _connections.update { it + conn }
-        keepAlive.sftp(_connections.value.size)
         return conn
     }
 

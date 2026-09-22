@@ -180,7 +180,7 @@ private fun LockedScreen(error: String?, manual: Boolean, authRequired: Boolean,
                 manual -> {
                     IconTile(Icons.Filled.Lock, size = 64, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(16.dp))
-                    Text(stringResource(R.string.termoso_is_locked), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.termoso_is_locked), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
                     Text(
                         error ?: if (authRequired) {
                             stringResource(R.string.unlock_with_your_fingerprint_or_screen_lock_to)
@@ -196,8 +196,8 @@ private fun LockedScreen(error: String?, manual: Boolean, authRequired: Boolean,
                 }
                 error == null -> CircularProgressIndicator()
                 else -> {
-                    Text(stringResource(R.string.could_not_open_the_vault), style = MaterialTheme.typography.titleMedium)
-                    Text(error, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.could_not_open_the_vault), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                    Text(error, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(16.dp))
                     Button(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                 }
