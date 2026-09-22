@@ -7,6 +7,13 @@ updates:
     groups:
       rust-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # opaque-ke 4.x (incl. 4.1 pre-releases) pins argon2 ^0.5 (Ksf impl) and
+      # p256 ^0.13; revisit when opaque-ke moves to the RustCrypto 0.6/0.14 line.
+      - dependency-name: argon2
+        update-types: ["version-update:semver-major"]
+      - dependency-name: p256
+        update-types: ["version-update:semver-major"]
     labels: [area:deps, area:rust]
 
   - package-ecosystem: npm
@@ -16,6 +23,10 @@ updates:
     groups:
       web-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # typescript-eslint 8.x peers on typescript <6.1; TS 7 breaks npm ci + lint.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     labels: [area:deps, area:web]
 
   - package-ecosystem: npm
@@ -25,6 +36,10 @@ updates:
     groups:
       desktop-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # typescript-eslint 8.x peers on typescript <6.1; TS 7 breaks npm ci + lint.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     labels: [area:deps, area:desktop]
 
   - package-ecosystem: gradle
@@ -36,7 +51,7 @@ updates:
         update-types: [minor, patch]
     ignore:
       # AndroidX 2026 minors (Compose 1.12, core 1.19, lifecycle 2.11,
-      # navigation 2.10) require compileSdk 37 + AGP 9.1; drop once migrated.
+      # navigation 2.10) require compileSdk 37; drop once migrated.
       - dependency-name: "androidx.*"
         update-types: ["version-update:semver-minor"]
     labels: [area:deps, area:android]
@@ -52,4 +67,9 @@ updates:
   - package-ecosystem: docker
     directory: /deploy
     schedule: { interval: weekly, day: monday }
+    ignore:
+      # Web build stage tracks the Node LTS line; odd majors are not LTS.
+      # Bump manually together with ci.yml / release.yml node-version.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
     labels: [area:deps, area:deploy]
