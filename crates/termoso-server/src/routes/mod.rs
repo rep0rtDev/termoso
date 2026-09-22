@@ -240,7 +240,13 @@ pub fn router(state: AppState) -> Router {
         .route("/.well-known/assetlinks.json", get(server::assetlinks))
         .route("/sshid/{handle}", get(sshid::public_default))
         .route("/sshid/{handle}/{type}", get(sshid::public_typed))
-        .nest("/api/v1", api);
+        .nest(
+            "/api/v1",
+            api.layer(SetResponseHeaderLayer::if_not_present(
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("no-store"),
+            )),
+        );
 
     if state.cfg.swagger_ui {
         app = app.merge(crate::openapi::swagger());
@@ -260,7 +266,7 @@ pub fn router(state: AppState) -> Router {
         .layer(RequestBodyLimitLayer::new(BODY_LIMIT))
         .layer(
             tower::ServiceBuilder::new()
-                .layer(TraceLayer::new_for_http())
+                .layer(TraceLayer::new_for_http().make_span_with(request_span))
                 .layer(SetResponseHeaderLayer::overriding(
                     header::X_CONTENT_TYPE_OPTIONS,
                     HeaderValue::from_static("nosniff"),
@@ -304,14 +310,7 @@ fn cors_layer(state: &AppState) -> CorsLayer {
         // send a browser Origin the server can pre-validate; the web cabinet is
         // expected to be same-origin unless TERMOSO_CORS_ORIGINS is set.
         AllowOrigin::predicate(|origin: &HeaderValue, _| {
-            origin
-                .to_str()
-                .map(|o| {
-                    o.starts_with("tauri://")
-                        || o.starts_with("http://tauri.localhost")
-                        || o.starts_with("http://localhost")
-                })
-                .unwrap_or(false)
+            origin.to_str().is_ok_and(is_local_client_origin)
         })
     } else {
         AllowOrigin::list(origins.iter().filter_map(|o| HeaderValue::from_str(o).ok()))
@@ -327,4 +326,96 @@ fn cors_layer(state: &AppState) -> CorsLayer {
         ])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
         .max_age(Duration::from_secs(3600))
+}
+
+/// The request span carries the path only: query strings hold SSO codes and
+/// flow tokens, and the invite / start-over routes carry their secret in the
+/// path, so those segments are masked even at `debug`.
+fn request_span(req: &axum::http::Request<axum::body::Body>) -> tracing::Span {
+    tracing::debug_span!(
+        "request",
+        method = %req.method(),
+        path = %redact_path(req.uri().path()),
+    )
+}
+
+fn redact_path(path: &str) -> String {
+    const SECRET_AFTER: [&str; 2] = ["/invites/", "/auth/start-over/"];
+    for marker in SECRET_AFTER {
+        if let Some(i) = path.find(marker) {
+            let start = i + marker.len();
+            let end = path[start..].find('/').map_or(path.len(), |j| start + j);
+            if end > start {
+                return format!("{}[redacted]{}", &path[..start], &path[end..]);
+            }
+        }
+    }
+    path.to_string()
+}
+
+/// Origins of the desktop WebView (`tauri://localhost`, `http://tauri.localhost`)
+/// and a Vite dev server on the loopback host. The host is matched exactly so
+/// `http://localhost.example.com` does not qualify.
+fn is_local_client_origin(origin: &str) -> bool {
+    let Some((scheme, rest)) = origin.split_once("://") else {
+        return false;
+    };
+    let host = rest.rsplit_once(':').map_or(rest, |(h, port)| {
+        if port.bytes().all(|b| b.is_ascii_digit()) {
+            h
+        } else {
+            rest
+        }
+    });
+    match scheme {
+        "tauri" => host == "localhost",
+        "http" | "https" => matches!(
+            host,
+            "localhost" | "tauri.localhost" | "127.0.0.1" | "[::1]"
+        ),
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_local_client_origin, redact_path};
+
+    #[test]
+    fn secret_path_segments_are_masked() {
+        assert_eq!(
+            redact_path("/api/v1/invites/abc123/accept"),
+            "/api/v1/invites/[redacted]/accept"
+        );
+        assert_eq!(
+            redact_path("/api/v1/auth/start-over/tok"),
+            "/api/v1/auth/start-over/[redacted]"
+        );
+        assert_eq!(redact_path("/api/v1/invites/"), "/api/v1/invites/");
+        assert_eq!(redact_path("/api/v1/hosts"), "/api/v1/hosts");
+    }
+
+    #[test]
+    fn local_origins_match_exactly() {
+        for ok in [
+            "tauri://localhost",
+            "http://tauri.localhost",
+            "http://localhost",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://[::1]:5173",
+        ] {
+            assert!(is_local_client_origin(ok), "{ok}");
+        }
+        for bad in [
+            "http://localhost.example.com",
+            "http://localhost.example.com:80",
+            "http://tauri.localhost.evil",
+            "tauri://evil",
+            "localhost",
+            "null",
+        ] {
+            assert!(!is_local_client_origin(bad), "{bad}");
+        }
+    }
 }

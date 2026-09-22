@@ -54,6 +54,15 @@ pub const AI_USER: Limit = Limit {
     max: 10,
     window: Duration::from_secs(60),
 };
+/// Unauthenticated lookups keyed by an unguessable token (SSO flow polling,
+/// SSO callbacks, invite previews) per IP. Generous enough for a NAT full of
+/// people polling once a second, tight enough to keep token scanning cheap to
+/// refuse.
+pub const ANON_IP: Limit = Limit {
+    name: "anon_ip",
+    max: 240,
+    window: Duration::from_secs(60),
+};
 
 pub async fn check(state: &AppState, limit: Limit, subject: &str) -> ApiResult<()> {
     let key = format!("rl:{}:{}", limit.name, subject);

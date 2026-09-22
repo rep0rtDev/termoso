@@ -1209,8 +1209,10 @@ pub struct SsoCallbackQuery {
 
 pub async fn sso_callback(
     State(state): State<AppState>,
+    client: Client,
     Query(q): Query<SsoCallbackQuery>,
 ) -> ApiResult<Response> {
+    ratelimit::check_ip(&state, ratelimit::ANON_IP, client.ip.as_deref()).await?;
     let flow_id = q.state.ok_or_else(|| Error::bad_request("missing state"))?;
     let (redirect, flow_id) =
         sso::callback(&state, &flow_id, q.code.as_deref(), q.error.as_deref()).await?;
@@ -1244,8 +1246,10 @@ pub async fn sso_saml_metadata(
 /// SAML HTTP-POST binding: auto-submitting form carrying the `AuthnRequest`.
 pub async fn sso_saml_post(
     State(state): State<AppState>,
+    client: Client,
     Path(flow_id): Path<String>,
 ) -> ApiResult<Html<String>> {
+    ratelimit::check_ip(&state, ratelimit::ANON_IP, client.ip.as_deref()).await?;
     let form = sso::saml_post_form(&state, &flow_id).await?;
     Ok(Html(
         SAML_POST_HTML
@@ -1282,8 +1286,10 @@ pub async fn sso_saml_acs(
     params(("flow_id" = String, Path)), responses((status = 200, body = SsoResult)))]
 pub async fn sso_poll(
     State(state): State<AppState>,
+    client: Client,
     Path(flow_id): Path<String>,
 ) -> ApiResult<Json<SsoResult>> {
+    ratelimit::check_ip(&state, ratelimit::ANON_IP, client.ip.as_deref()).await?;
     Ok(Json(sso::poll(&state, &flow_id).await?))
 }
 

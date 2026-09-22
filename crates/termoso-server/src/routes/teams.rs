@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::audit;
 use crate::error::{ApiResult, Error, NoContent};
 use crate::events::{self, Event};
-use crate::extract::{Auth, Json as Body, StepUp};
+use crate::extract::{Auth, Client, Json as Body, StepUp};
 use crate::presence;
 use crate::ratelimit;
 use crate::state::AppState;
@@ -885,8 +885,10 @@ pub async fn delete_invite(
     responses((status = 200, body = InvitePreview)))]
 pub async fn invite_preview(
     State(state): State<AppState>,
+    client: Client,
     Path(token): Path<String>,
 ) -> ApiResult<Json<InvitePreview>> {
+    ratelimit::check_ip(&state, ratelimit::ANON_IP, client.ip.as_deref()).await?;
     let row: Option<(String, String, String, String)> = sqlx::query_as(
         "SELECT t.name, COALESCE(u.display_name, u.email), i.email, i.role
          FROM team_invites i JOIN teams t ON t.id = i.team_id JOIN users u ON u.id = i.invited_by

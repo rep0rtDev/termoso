@@ -466,6 +466,9 @@ async fn allowed_domains_and_redirect_filtering() {
         ("http://127.0.0.1:1420/callback".to_string(), true),
         ("termoso://sso".to_string(), true),
         ("https://evil.example/phish".to_string(), false),
+        (format!("http://{}.evil.example/cabinet/sso", s.addr), false),
+        (format!("http://{}@evil.example/cabinet/sso", s.addr), false),
+        ("http://localhost.evil.example/sso".to_string(), false),
         ("javascript:alert(1)".to_string(), false),
         ("//evil.example".to_string(), false),
         ("not a url".to_string(), false),
@@ -622,4 +625,54 @@ async fn registry_rejects_incomplete_providers() {
     .await
     .expect_err("discovery must fail");
     assert!(unreachable.contains("discovery"));
+}
+
+/// Anonymous token lookups (flow polling, the OIDC callback, invite previews)
+/// are capped per client IP so a token scan is refused instead of served.
+#[tokio::test]
+async fn anonymous_token_lookups_are_rate_limited_per_ip() {
+    let Some(s) = server().await else { return };
+    let ip = "203.0.113.77";
+    let paths = [
+        "/auth/sso/flow/not-a-flow",
+        "/auth/sso/callback?state=not-a-flow&code=x",
+        "/auth/sso/saml/post/not-a-flow",
+        "/invites/not-an-invite",
+    ];
+    let mut limited = false;
+    for i in 0..300 {
+        let r = s
+            .http()
+            .get(s.url(paths[i % paths.len()]))
+            .header("x-forwarded-for", ip)
+            .send()
+            .await
+            .unwrap();
+        if r.status() == StatusCode::TOO_MANY_REQUESTS {
+            let body: serde_json::Value = r.json().await.unwrap();
+            assert_eq!(body["code"], "rate_limited");
+            assert!(body["details"]["retry_after"].as_u64().unwrap_or(0) >= 1);
+            limited = true;
+            break;
+        }
+        assert!(
+            r.status().is_client_error(),
+            "unknown tokens must be rejected, got {}",
+            r.status()
+        );
+    }
+    assert!(
+        limited,
+        "300 anonymous lookups from one IP were never limited"
+    );
+
+    // Other clients are unaffected.
+    let r = s
+        .http()
+        .get(s.url("/auth/sso/flow/not-a-flow"))
+        .header("x-forwarded-for", "203.0.113.78")
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(r.status(), StatusCode::TOO_MANY_REQUESTS);
 }
