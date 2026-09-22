@@ -204,6 +204,7 @@ fun ConnectionsScreen(
                                 val hostId = s.hostId
                                 val quick = s.quick
                                 when {
+                                    s.local != null -> scope.launch { shell.openLocalFiles()?.let { onOpenSftp(it.id) } }
                                     hostId != null -> onSftpHost(hostId)
                                     quick != null -> scope.launch { shell.openSftpQuick(quick)?.let { onOpenSftp(it.id) } }
                                 }
@@ -371,6 +372,7 @@ private fun ActiveSessionRow(
                     if (!session.isView) item(Icons.Filled.ContentCopy, stringResource(R.string.duplicate), action = onDuplicate)
                     if (session.reconnectable) item(Icons.Filled.Refresh, stringResource(R.string.reconnect), action = onReconnect)
                     if (ssh) item(Icons.Filled.FolderOpen, stringResource(R.string.open_sftp), action = onSftp)
+                    if (!session.isView && session.local != null) item(Icons.Filled.FolderOpen, stringResource(R.string.open_local_files), action = onSftp)
                     if (session.hostId != null) item(Icons.Filled.Edit, stringResource(R.string.edit_host), action = onEditHost)
                     else if (session.quick != null) item(Icons.Filled.Add, stringResource(R.string.add_to_hosts), action = onAddHost)
                     item(Icons.Filled.Close, stringResource(R.string.close_session), destructive = true, action = onClose)
@@ -408,7 +410,11 @@ private fun SftpRow(
     val subtitle = when (val s = state) {
         is SessionState.Connecting -> connectingLabel(s)
         is SessionState.Connected ->
-            (if (conn.protocol == FileProtocol.WEBDAV) stringResource(R.string.webdav_target, conn.target) else stringResource(R.string.sftp, conn.target)) +
+            when (conn.protocol) {
+                FileProtocol.WEBDAV -> stringResource(R.string.webdav_target, conn.target)
+                FileProtocol.LOCAL -> conn.target
+                FileProtocol.SFTP -> stringResource(R.string.sftp, conn.target)
+            } +
                 if (active > 0) stringResource(R.string.sep_transferring, active) else ""
         is SessionState.Closed -> stringResource(R.string.closed) + (s.reason?.let { " · $it" } ?: "")
         is SessionState.Failed -> s.message
@@ -417,7 +423,13 @@ private fun SftpRow(
     ListRow(
         title = conn.label,
         subtitle = subtitle,
-        leading = { IconTile(if (conn.protocol == FileProtocol.WEBDAV) Icons.Filled.CloudQueue else Icons.Filled.FolderOpen) },
+        leading = {
+            when (conn.protocol) {
+                FileProtocol.WEBDAV -> IconTile(Icons.Filled.CloudQueue)
+                FileProtocol.LOCAL -> IconTile(Icons.Filled.PhoneAndroid)
+                FileProtocol.SFTP -> IconTile(Icons.Filled.FolderOpen)
+            }
+        },
         trailing = {
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.connection_actions)) }

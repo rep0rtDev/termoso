@@ -101,6 +101,12 @@ class SftpAccess(private val container: AppContainer) {
         val vault = vault()
         return runBlocking {
             val mutex = synchronized(perHost) { perHost.getOrPut(DocumentId.rootId(hostId, protocol)) { Mutex() } }
+            if (protocol == FileProtocol.LOCAL) {
+                return@runBlocking mutex.withLock {
+                    vault.sftp.findLocal()?.takeIf { it.state.value is SessionState.Connected }?.also { touch(it) }
+                        ?: openLocal(vault)
+                }
+            }
             mutex.withLock {
                 // Re-check the share setting even when a session the app opened
                 // itself is available: turning the host off must cut Files access.
@@ -113,6 +119,15 @@ class SftpAccess(private val container: AppContainer) {
         }
     }
 
+    private suspend fun openLocal(vault: VaultState.Open): SftpConnection {
+        val conn = try {
+            vault.sftp.openLocal()
+        } catch (e: MobileException) {
+            throw ProviderException(e.userMessage())
+        }
+        return settle(vault, conn)
+    }
+
     private suspend fun open(vault: VaultState.Open, hostId: String, protocol: FileProtocol): SftpConnection {
         val conn = try {
             if (!offers(vault.repo.read { host(hostId) }, protocol)) throw notFound()
@@ -122,6 +137,11 @@ class SftpAccess(private val container: AppContainer) {
         } catch (e: MobileException) {
             throw ProviderException(e.userMessage())
         }
+        return settle(vault, conn)
+    }
+
+    /** Wait for [conn] to connect; anything else (a prompt, a failure, silence) closes it and throws. */
+    private suspend fun settle(vault: VaultState.Open, conn: SftpConnection): SftpConnection {
         val outcome = withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
             merge(
                 conn.state.filter { it !is SessionState.Connecting }.map { Outcome.Settled(it) },
@@ -198,6 +218,7 @@ class SftpAccess(private val container: AppContainer) {
     private fun offers(host: HostItem, protocol: FileProtocol): Boolean = host.filesProvider && when (protocol) {
         FileProtocol.SFTP -> host.protocol == "ssh"
         FileProtocol.WEBDAV -> host.webdavUrl != null
+        FileProtocol.LOCAL -> false
     }
 
     private companion object {

@@ -40,6 +40,9 @@ sealed interface VaultState {
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
     val profileDir: File = File(context.noBackupFilesDir, "profile")
+
+    /** `HOME` of local shells, the one app-private directory the Files browser and provider expose. */
+    val localHome: File = File(appContext.filesDir, "home")
     val masterKeys = MasterKeyStore(context)
 
     /** FIDO2 tokens on USB/NFC; process-wide, started on first use by the UI. */
@@ -183,8 +186,8 @@ class AppContainer(context: Context) {
             }
             VaultRepository(app)
         }.also {
-            val sessions = SessionManager(it, File(appContext.filesDir, "home"))
-            val sftp = SftpManager(appContext, it)
+            val sessions = SessionManager(it, localHome)
+            val sftp = SftpManager(appContext, it, localHome)
             val forwards = ForwardManager(it)
             val account = AccountManager(it, onSignOut = sessions::endLive)
             _vault.value = VaultState.Open(

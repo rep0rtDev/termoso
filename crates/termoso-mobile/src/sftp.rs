@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use termoso_core::localfs::LocalFs;
 use termoso_core::model::ResolvedHost;
 use termoso_core::remote::{RemoteFile, RemoteFs};
 use termoso_core::sftp::{
@@ -62,6 +63,8 @@ impl From<sftp::EntryKind> for EntryKind {
 pub enum FileProtocol {
     Sftp,
     Webdav,
+    /// The local shell's home directory on this device.
+    Local,
 }
 
 impl FileProtocol {
@@ -70,6 +73,7 @@ impl FileProtocol {
         match self {
             Self::Sftp => "sftp",
             Self::Webdav => "webdav",
+            Self::Local => "local",
         }
     }
 }
@@ -312,6 +316,8 @@ pub(crate) enum Backend {
         /// PUT.
         spool_dir: PathBuf,
     },
+    /// The local shell's home; paths are relative to it and cannot leave it.
+    Local { root: PathBuf },
 }
 
 impl Backend {
@@ -319,6 +325,7 @@ impl Backend {
         match self {
             Self::Sftp { .. } => FileProtocol::Sftp,
             Self::WebDav { .. } => FileProtocol::Webdav,
+            Self::Local { .. } => FileProtocol::Local,
         }
     }
 
@@ -337,6 +344,13 @@ impl Backend {
                 ownership: false,
                 server_copy: true,
                 resume_upload: false,
+            },
+            Self::Local { .. } => FileCapabilities {
+                permissions: true,
+                symlinks: true,
+                ownership: false,
+                server_copy: true,
+                resume_upload: true,
             },
         }
     }
@@ -1100,6 +1114,35 @@ fn entry_from(e: RemoteEntry) -> SftpEntry {
 }
 
 async fn run(inner: Arc<Inner>, backend: Backend, settings: MobileSettings) {
+    if let Backend::Local { root } = &backend {
+        // No connection to record: the directory is right here.
+        let result = tokio::select! {
+            r = LocalFs::open(root) => r,
+            _ = inner.closed.cancelled() => {
+                inner.set_state(SessionState::Closed { reason: None });
+                return;
+            }
+        };
+        match result {
+            Ok(fs) => {
+                *inner.live.lock().expect("live poisoned") = Some(Arc::new(Live {
+                    fs: Arc::new(fs),
+                    ssh: None,
+                }));
+                inner.set_state(SessionState::Connected);
+                inner.closed.cancelled().await;
+                inner.set_state(SessionState::Closed { reason: None });
+            }
+            Err(e) => {
+                let e = MobileError::from(e);
+                inner.set_state(SessionState::Failed {
+                    kind: e.kind(),
+                    message: e.to_string(),
+                });
+            }
+        }
+        return;
+    }
     let started = Instant::now();
     let (host_id, label, target_display) = match &backend {
         Backend::Sftp { target, resolved } => (
@@ -1119,6 +1162,7 @@ async fn run(inner: Arc<Inner>, backend: Backend, settings: MobileSettings) {
                 .map(|w| w.url.clone())
                 .unwrap_or_default(),
         ),
+        Backend::Local { .. } => unreachable!("handled above"),
     };
     let protocol = backend.protocol();
     let history = |duration: Option<u64>, error: Option<String>| ConnectionHistory {
@@ -1161,6 +1205,7 @@ async fn run(inner: Arc<Inner>, backend: Backend, settings: MobileSettings) {
                     ssh: None,
                 })
             }
+            Backend::Local { .. } => unreachable!("handled above"),
         }
     };
     let live = tokio::select! {

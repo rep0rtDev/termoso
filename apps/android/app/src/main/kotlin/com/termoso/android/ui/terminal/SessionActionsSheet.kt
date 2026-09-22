@@ -156,6 +156,14 @@ fun SessionActionsSheet(
                         RowDivider()
                     }
                 }
+                if (!session.isView && session.local != null) {
+                    ActionRow(
+                        Icons.Filled.FolderOpen,
+                        stringResource(R.string.open_local_files),
+                        onClick = then { shell.launch { shell.openLocalFiles()?.let { onOpenSftp(it.id) } } },
+                    )
+                    RowDivider()
+                }
                 ActionRow(
                     Icons.Filled.Groups,
                     when {

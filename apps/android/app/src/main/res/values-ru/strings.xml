@@ -1293,7 +1293,7 @@
     <!-- Files integration (storage access framework) -->
     <string name="files_integration">Интеграция с «Файлами»</string>
     <string name="files_show_sftp_hosts_in_files">Показывать SFTP-хосты в «Файлах»</string>
-    <string name="files_show_sftp_hosts_in_files_summary">Просматривайте, открывайте и сохраняйте файлы на своих SSH-хостах из системного приложения «Файлы» и любого приложения, работающего с документами. Показываются только хосты с включённым «Показывать в Файлах». К хостам, которым нужен пароль или подтверждение нового ключа, сначала подключитесь из Termoso.</string>
+    <string name="files_show_sftp_hosts_in_files_summary">Просматривайте, открывайте и сохраняйте файлы на своих SSH-хостах из системного приложения «Файлы» и любого приложения, работающего с документами. Показываются только хосты с включённым «Показывать в Файлах»; домашняя папка локального терминала есть всегда. К хостам, которым нужен пароль или подтверждение нового ключа, сначала подключитесь из Termoso.</string>
     <string name="show_in_files">Показывать в Файлах</string>
     <string name="show_in_files_summary">Показывать SFTP- и WebDAV-ресурсы этого хоста в системном приложении «Файлы» и других приложениях, работающих с документами</string>
     <string name="show_in_files_disabled_summary">Интеграция с Файлами выключена в настройках; хост останется скрыт, пока её не включить</string>
@@ -1317,6 +1317,9 @@
     <!-- WebDAV -->
     <string name="webdav_files">Файлы WebDAV</string>
     <string name="webdav_target">WebDAV · %1$s</string>
+    <string name="local_shell_files">Файлы локального терминала</string>
+    <string name="open_local_files">Открыть файлы</string>
+    <string name="files_local_root_summary">Домашняя папка локального терминала</string>
     <string name="save_and_open_webdav">Сохранить и открыть WebDAV</string>
     <string name="server_key">Ключ сервера</string>
     <string name="server_key_enter_address">Сначала укажите адрес.</string>

@@ -41,6 +41,7 @@ pub mod forward;
 pub mod hostkey;
 pub mod keys;
 pub mod live;
+pub mod localfs;
 pub mod mdns;
 pub mod model;
 pub mod mosh;

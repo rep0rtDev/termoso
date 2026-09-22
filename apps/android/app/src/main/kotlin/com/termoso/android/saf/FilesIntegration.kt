@@ -46,8 +46,9 @@ class FilesIntegration(context: Context) {
     }
 
     /**
-     * Roots follow the vault (locked ↔ open) and the host list inside it, so a
-     * host renamed or added in the app shows up in the picker without a restart.
+     * Roots follow the vault (locked ↔ open ↔ gated behind app lock) and the
+     * host list inside it, so a host renamed or added in the app shows up in
+     * the picker without a restart.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun watch(container: AppContainer, scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)) {
@@ -60,6 +61,7 @@ class FilesIntegration(context: Context) {
                     }
                 }
                 .combine(container.appLock) { vault, lock -> Triple(vault.first, vault.second, lock) }
+                .combine(container.gated) { state, gated -> state to gated }
                 .distinctUntilChanged()
                 .collectLatest { notifyRootsChanged() }
         }
