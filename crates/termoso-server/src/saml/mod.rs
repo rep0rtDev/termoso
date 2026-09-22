@@ -15,6 +15,7 @@
 pub mod c14n;
 pub mod dsig;
 pub mod metadata;
+pub mod sp_key;
 pub mod xmlenc;
 
 use std::io::Write as _;
@@ -23,9 +24,7 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use chrono::{DateTime, Duration, Utc};
 use roxmltree::{Document, Node};
-use rsa::RsaPrivateKey;
-use rsa::pkcs1v15::SigningKey;
-use rsa::signature::{SignatureEncoding, Signer};
+pub use sp_key::SpKey;
 
 pub const NS_PROTOCOL: &str = "urn:oasis:names:tc:SAML:2.0:protocol";
 pub const NS_ASSERTION: &str = "urn:oasis:names:tc:SAML:2.0:assertion";
@@ -112,7 +111,7 @@ pub struct SamlIdentity {
 pub struct SpConfig {
     pub entity_id: String,
     pub acs_url: String,
-    pub key: Option<RsaPrivateKey>,
+    pub key: Option<SpKey>,
     pub cert_der: Option<Vec<u8>>,
     pub sign_requests: bool,
     pub allow_sha1: bool,
@@ -214,11 +213,10 @@ impl ServiceProvider {
                     .as_ref()
                     .ok_or_else(|| anyhow::anyhow!("no SP key"))?;
                 query.push_str(&format!("&SigAlg={}", urlenc(dsig::RSA_SHA256)));
-                let sig = SigningKey::<sha2::Sha256>::new(key.clone()).sign(query.as_bytes());
-                query.push_str(&format!(
-                    "&Signature={}",
-                    urlenc(&STANDARD.encode(sig.to_bytes()))
-                ));
+                let sig = key
+                    .sign_sha256(query.as_bytes())
+                    .map_err(|_| anyhow::anyhow!("signing AuthnRequest"))?;
+                query.push_str(&format!("&Signature={}", urlenc(&STANDARD.encode(sig))));
             }
             let sep = if sso.contains('?') { '&' } else { '?' };
             return Ok(AuthnRedirect::Url(format!("{sso}{sep}{query}")));
@@ -572,17 +570,9 @@ pub fn pem_to_der(pem: &str) -> anyhow::Result<Vec<u8>> {
     Ok(STANDARD.decode(body)?)
 }
 
-/// Parse a PEM private key (PKCS#8 or PKCS#1).
-pub fn parse_private_key(pem: &str) -> anyhow::Result<RsaPrivateKey> {
-    use rsa::pkcs1::DecodeRsaPrivateKey;
-    use rsa::pkcs8::DecodePrivateKey;
-    if pem.contains("BEGIN RSA PRIVATE KEY") {
-        return Ok(RsaPrivateKey::from_pkcs1_pem(pem)?);
-    }
-    if pem.contains("BEGIN PRIVATE KEY") {
-        return Ok(RsaPrivateKey::from_pkcs8_pem(pem)?);
-    }
-    anyhow::bail!("expected a PEM RSA private key (PKCS#8 or PKCS#1)")
+/// Parse a PEM RSA private key (PKCS#8 or PKCS#1) into the SP key.
+pub fn parse_private_key(pem: &str) -> anyhow::Result<SpKey> {
+    Ok(SpKey::from_pem(pem)?)
 }
 
 /// Test fixtures shared by unit and integration tests: a mock IdP that mints
@@ -596,14 +586,21 @@ pub mod test_support {
     pub const SP_KEY_PEM: &str = include_str!("../../tests/fixtures/saml/sp.key");
     pub const SP_CERT_PEM: &str = include_str!("../../tests/fixtures/saml/sp.crt");
 
-    pub fn idp_key() -> RsaPrivateKey {
+    pub fn idp_key() -> SpKey {
         parse_private_key(IDP_KEY_PEM).unwrap()
     }
     pub fn idp_cert_der() -> Vec<u8> {
         pem_to_der(IDP_CERT_PEM).unwrap()
     }
-    pub fn sp_key() -> RsaPrivateKey {
+    pub fn sp_key() -> SpKey {
         parse_private_key(SP_KEY_PEM).unwrap()
+    }
+    pub fn sp_public_key() -> rsa::RsaPublicKey {
+        sp_key().public_key().clone()
+    }
+    /// A fresh key unrelated to any fixture.
+    pub fn random_key() -> SpKey {
+        SpKey::from_rsa(&rsa::RsaPrivateKey::new(&mut rand::thread_rng(), 2048).unwrap()).unwrap()
     }
     pub fn sp_cert_der() -> Vec<u8> {
         pem_to_der(SP_CERT_PEM).unwrap()
@@ -889,7 +886,7 @@ mod tests {
         let q = url.split_once('?').unwrap().1;
         let (signed, sig) = q.split_once("&Signature=").unwrap();
         let sig = STANDARD.decode(percent_decode(sig)).unwrap();
-        let vk = rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new(sp_key().to_public_key());
+        let vk = rsa::pkcs1v15::VerifyingKey::<sha2::Sha256>::new(sp_public_key());
         rsa::signature::Verifier::verify(
             &vk,
             signed.as_bytes(),
@@ -953,7 +950,7 @@ mod tests {
     fn encrypted_assertion() {
         let p = provider(true);
         let mut s = spec();
-        s.encrypt_for = Some(sp_key().to_public_key());
+        s.encrypt_for = Some(sp_public_key());
         let id = p
             .consume_response(&build_response_b64(&s), "_req1", s.now)
             .unwrap();
@@ -1067,7 +1064,7 @@ mod tests {
             Err(SamlError::Signature(dsig::DsigError::Digest))
         ));
         // Signed by an unknown key.
-        let other = RsaPrivateKey::new(&mut rand::thread_rng(), 2048).unwrap();
+        let other = random_key();
         let mut unsigned = s.clone();
         unsigned.sign_assertion = false;
         let xml = build_response_xml(&unsigned);

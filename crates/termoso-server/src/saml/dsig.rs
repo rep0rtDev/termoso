@@ -7,13 +7,14 @@
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use roxmltree::{Document, Node};
-use rsa::pkcs1v15::{Signature, SigningKey, VerifyingKey};
-use rsa::signature::{SignatureEncoding, Signer, Verifier};
-use rsa::{RsaPrivateKey, RsaPublicKey};
+use rsa::RsaPublicKey;
+use rsa::pkcs1v15::{Signature, VerifyingKey};
+use rsa::signature::Verifier;
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use subtle::ConstantTimeEq;
 
 use super::c14n::{self, Method};
+use super::sp_key::SpKey;
 
 pub const NS: &str = "http://www.w3.org/2000/09/xmldsig#";
 const ENVELOPED: &str = "http://www.w3.org/2000/09/xmldsig#enveloped-signature";
@@ -225,7 +226,7 @@ fn strip_ws(s: &str) -> String {
 pub fn sign_enveloped(
     xml: &str,
     id: &str,
-    key: &RsaPrivateKey,
+    key: &SpKey,
     cert_der: Option<&[u8]>,
 ) -> anyhow::Result<String> {
     let doc = Document::parse(xml)?;
@@ -254,7 +255,9 @@ pub fn sign_enveloped(
         id = id,
         digest = digest
     );
-    let signature = SigningKey::<Sha256>::new(key.clone()).sign(signed_info.as_bytes());
+    let signature = key
+        .sign_sha256(signed_info.as_bytes())
+        .map_err(|_| anyhow::anyhow!("RSA signing failed"))?;
     let key_info = match cert_der {
         Some(der) => format!(
             "<ds:KeyInfo><ds:X509Data><ds:X509Certificate>{}</ds:X509Certificate></ds:X509Data></ds:KeyInfo>",
@@ -264,7 +267,7 @@ pub fn sign_enveloped(
     };
     let sig_xml = format!(
         r#"<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">{signed_info}<ds:SignatureValue>{}</ds:SignatureValue>{key_info}</ds:Signature>"#,
-        STANDARD.encode(signature.to_bytes())
+        STANDARD.encode(signature)
     );
     // Insert after Issuer (end of its range) or right after the start tag.
     let issuer = element
@@ -297,8 +300,8 @@ pub fn cert_public_key(der: &[u8]) -> anyhow::Result<RsaPublicKey> {
 mod tests {
     use super::*;
 
-    fn key() -> RsaPrivateKey {
-        RsaPrivateKey::new(&mut rand::thread_rng(), 2048).unwrap()
+    fn key() -> SpKey {
+        super::super::test_support::random_key()
     }
 
     const DOC: &str = r#"<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_r1" Version="2.0"><saml:Issuer>idp</saml:Issuer><samlp:Status><samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/></samlp:Status><saml:Assertion ID="_a1"><saml:Issuer>idp</saml:Issuer><saml:Subject><saml:NameID>u@x.io</saml:NameID></saml:Subject></saml:Assertion></samlp:Response>"#;
@@ -317,7 +320,7 @@ mod tests {
         let a = find(&doc, "_a1");
         assert!(is_signed(a));
         assert!(!is_signed(find(&doc, "_r1")));
-        verify_enveloped(&doc, a, &[k.to_public_key()], false).unwrap();
+        verify_enveloped(&doc, a, &[k.public_key().clone()], false).unwrap();
         // Signature sits right after Issuer.
         assert!(signed.contains("</saml:Issuer><ds:Signature"));
     }
@@ -327,7 +330,7 @@ mod tests {
         let k = key();
         let signed = sign_enveloped(DOC, "_r1", &k, None).unwrap();
         let doc = Document::parse(&signed).unwrap();
-        let other = key().to_public_key();
+        let other = key().public_key().clone();
         assert!(matches!(
             verify_enveloped(&doc, find(&doc, "_r1"), &[other], false),
             Err(DsigError::Signature)
@@ -335,7 +338,7 @@ mod tests {
         let tampered = signed.replace("u@x.io", "evil@x.io");
         let doc = Document::parse(&tampered).unwrap();
         assert!(matches!(
-            verify_enveloped(&doc, find(&doc, "_r1"), &[k.to_public_key()], false),
+            verify_enveloped(&doc, find(&doc, "_r1"), &[k.public_key().clone()], false),
             Err(DsigError::Digest)
         ));
     }
@@ -361,7 +364,7 @@ mod tests {
             .filter(|n| n.attribute("ID") == Some("_a1"))
         {
             assert!(matches!(
-                verify_enveloped(&doc, n, &[k.to_public_key()], false),
+                verify_enveloped(&doc, n, &[k.public_key().clone()], false),
                 Err(DsigError::BadId) | Err(DsigError::Unsigned)
             ));
         }
@@ -381,7 +384,7 @@ mod tests {
         );
         let doc = Document::parse(&moved).unwrap();
         assert!(matches!(
-            verify_enveloped(&doc, find(&doc, "_r1"), &[k.to_public_key()], false),
+            verify_enveloped(&doc, find(&doc, "_r1"), &[k.public_key().clone()], false),
             Err(DsigError::BadReference)
         ));
     }
@@ -394,7 +397,7 @@ mod tests {
             .replace(DIGEST_SHA256, DIGEST_SHA1);
         let doc = Document::parse(&signed).unwrap();
         assert!(matches!(
-            verify_enveloped(&doc, find(&doc, "_r1"), &[k.to_public_key()], false),
+            verify_enveloped(&doc, find(&doc, "_r1"), &[k.public_key().clone()], false),
             Err(DsigError::Sha1Disabled)
         ));
     }

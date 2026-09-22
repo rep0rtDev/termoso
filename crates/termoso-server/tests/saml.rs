@@ -355,7 +355,7 @@ async fn post_binding_signed_requests_and_encrypted_assertions() {
         ("corpMail".into(), email.clone()),
         ("mail".into(), "ignored@other.test".into()),
     ];
-    spec.encrypt_for = Some(saml_support::sp_key().to_public_key());
+    spec.encrypt_for = Some(saml_support::sp_public_key());
     let resp = acs(
         s,
         Some(&flow.flow_id),
@@ -501,7 +501,7 @@ async fn acs_rejects_forged_stale_and_misdirected_responses() {
             "encrypted for a provider without a key",
             Box::new(|r| {
                 let mut sp = spec_for(r, &email);
-                sp.encrypt_for = Some(saml_support::sp_key().to_public_key());
+                sp.encrypt_for = Some(saml_support::sp_public_key());
                 sp
             }),
         ),
@@ -541,7 +541,7 @@ async fn acs_rejects_forged_stale_and_misdirected_responses() {
         .attribute("ID")
         .unwrap()
         .to_string();
-    let other = rsa::RsaPrivateKey::new(&mut rand::thread_rng(), 2048).unwrap();
+    let other = saml_support::random_key();
     let forged = termoso_server::saml::dsig::sign_enveloped(&xml, &rid, &other, None).unwrap();
     let resp = acs(
         s,

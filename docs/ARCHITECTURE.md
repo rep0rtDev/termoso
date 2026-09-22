@@ -198,7 +198,14 @@ sync_once
   optionally signed `AuthnRequest`s over HTTP-Redirect or HTTP-POST, an
   HTTP-POST ACS, XML-DSig verification against the IdP metadata certificates
   only (pure-Rust C14N 1.0/1.1/exclusive, RSA-SHA256+, single-signature and
-  duplicate-ID rejection) and XML-Encryption for encrypted assertions. Every
+  duplicate-ID rejection) and XML-Encryption for encrypted assertions
+  (`rsa-oaep-mgf1p`, `rsa-oaep` with any SHA-1/2 digest and MGF1 hash
+  combination, `rsa-1_5` only with `SAML_ALLOW_SHA1`; AES-CBC/GCM content).
+  All SP private-key operations — request signing and key unwrapping — run in
+  AWS-LC (`aws-lc-rs`, plus `crates/termoso-awslc-rsa`, the one `unsafe` FFI
+  boundary in the workspace, so OAEP digest and MGF1 hash can be set
+  independently as XML Encryption allows); the RustCrypto `rsa` crate only
+  parses keys and verifies IdP signatures. Every
   response is checked for `InResponseTo`, `Destination`, `Issuer`, audience,
   recipient, status and time window, and the RelayState is bound to the
   one-shot flow state in Redis. SSO only proves who owns the e-mail; the

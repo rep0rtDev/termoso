@@ -207,7 +207,7 @@ mod tests {
         assert_eq!(md.sso_post.as_deref(), Some("https://idp.example/sso/post"));
         assert!(md.want_authn_requests_signed);
         assert_eq!(md.signing_keys.len(), 1);
-        assert_eq!(md.signing_keys[0], key.to_public_key());
+        assert_eq!(&md.signing_keys[0], key.public_key());
         assert!(parse_idp(&xml, Some("https://sp.example/other")).is_err());
     }
 

@@ -8827,6 +8827,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "termoso-awslc-rsa"
+version = "0.4.0"
+dependencies = [
+ "aws-lc-rs",
+ "aws-lc-sys",
+ "rand 0.8.8",
+ "rsa 0.9.10",
+ "sha1 0.10.7",
+ "sha2 0.10.9",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "termoso-bridge"
 version = "0.4.0"
 dependencies = [
@@ -9031,6 +9044,7 @@ dependencies = [
  "anyhow",
  "argon2 0.5.3",
  "async-trait",
+ "aws-lc-rs",
  "aws-sdk-s3",
  "axum",
  "base64 0.23.1",
@@ -9061,6 +9075,7 @@ dependencies = [
  "sha2 0.10.9",
  "sqlx",
  "subtle",
+ "termoso-awslc-rsa",
  "termoso-bridge",
  "termoso-core",
  "termoso-crypto",
