@@ -8842,7 +8842,7 @@ dependencies = [
  "aws-lc-sys",
  "rand 0.8.8",
  "rsa 0.9.10",
- "sha1 0.10.7",
+ "sha1 0.11.0",
  "sha2 0.10.9",
  "thiserror 2.0.20",
 ]
@@ -9079,7 +9079,7 @@ dependencies = [
  "rsa 0.9.10",
  "serde",
  "serde_json",
- "sha1 0.10.7",
+ "sha1 0.11.0",
  "sha2 0.10.9",
  "sqlx",
  "subtle",
