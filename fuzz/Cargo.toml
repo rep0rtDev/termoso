@@ -1,0 +1,76 @@
+[package]
+name = "termoso-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+base64 = "0.23"
+chrono = "0.4"
+roxmltree = "0.21"
+rsa = "0.9"
+url = "2"
+termoso-core = { path = "../crates/termoso-core" }
+termoso-mobile = { path = "../crates/termoso-mobile" }
+termoso-server = { path = "../crates/termoso-server", features = ["saml-test-support"] }
+
+[[bin]]
+name = "saml_response"
+path = "fuzz_targets/saml_response.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "saml_metadata"
+path = "fuzz_targets/saml_metadata.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "saml_xml"
+path = "fuzz_targets/saml_xml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "webdav_multistatus"
+path = "fuzz_targets/webdav_multistatus.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "webdav_path"
+path = "fuzz_targets/webdav_path.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "terminal_feed"
+path = "fuzz_targets/terminal_feed.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ssh_keys"
+path = "fuzz_targets/ssh_keys.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "quick_target"
+path = "fuzz_targets/quick_target.rs"
+test = false
+doc = false
+bench = false

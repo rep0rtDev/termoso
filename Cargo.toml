@@ -12,6 +12,8 @@ members = [
     "crates/termoso-wasm",
     "apps/desktop/src-tauri",
 ]
+# cargo-fuzz targets (nightly, libFuzzer); built on their own via `cargo fuzz`.
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.4.0"
