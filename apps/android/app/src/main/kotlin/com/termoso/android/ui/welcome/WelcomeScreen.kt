@@ -68,6 +68,7 @@ fun WelcomeScreen(onCreateAccount: () -> Unit, onSignIn: () -> Unit, onContinueO
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = DarkLayers.text,
+                textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(8.dp))
             Text(
@@ -103,6 +104,7 @@ fun WelcomeScreen(onCreateAccount: () -> Unit, onSignIn: () -> Unit, onContinueO
                 stringResource(R.string.free_forever_open_source_no_telemetry),
                 style = MaterialTheme.typography.labelMedium,
                 color = DarkLayers.secondary,
+                textAlign = TextAlign.Center,
             )
         }
     }

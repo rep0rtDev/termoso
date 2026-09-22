@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -52,6 +53,7 @@ import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
+import com.termoso.android.ui.components.SegmentedLabel
 import com.termoso.android.ui.components.SubScreen
 import com.termoso.android.ui.components.SwitchRow
 import com.termoso.android.ui.components.groupRow
@@ -96,7 +98,7 @@ fun TerminalAppearanceScreen(shell: ShellViewModel, onBack: () -> Unit) {
             item {
                 SectionCard {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.size), Modifier.width(56.dp))
+                        Text(stringResource(R.string.size), Modifier.widthIn(min = 56.dp), maxLines = 1, softWrap = false)
                         IconButton(onClick = { set { it.copy(terminalFontSize = (it.terminalFontSize - 1u).coerceAtLeast(6u)) } }) {
                             Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.smaller))
                         }
@@ -144,7 +146,7 @@ fun TerminalAppearanceScreen(shell: ShellViewModel, onBack: () -> Unit) {
                                 selected = settings.cursorStyle == id,
                                 onClick = { set { it.copy(cursorStyle = id) } },
                                 shape = SegmentedButtonDefaults.itemShape(i, cursorStyles.size),
-                            ) { Text(stringResource(label)) }
+                            ) { SegmentedLabel(stringResource(label)) }
                         }
                     }
                     RowDivider()

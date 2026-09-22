@@ -32,6 +32,7 @@ import com.termoso.android.R
 import com.termoso.android.str
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.PickerRow
+import com.termoso.android.ui.components.SegmentedLabel
 import com.termoso.android.ui.components.SubScreen
 import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.vault.vaultLabel
@@ -61,7 +62,7 @@ fun ForwardWizardScreen(shell: ShellViewModel, onBack: () -> Unit, onContinue: (
                         selected = kind == k,
                         onClick = { kind = k },
                         shape = SegmentedButtonDefaults.itemShape(index = i, count = PfKind.entries.size),
-                    ) { Text(shortTitle(k)) }
+                    ) { SegmentedLabel(shortTitle(k)) }
                 }
             }
             if (open.size > 1) {

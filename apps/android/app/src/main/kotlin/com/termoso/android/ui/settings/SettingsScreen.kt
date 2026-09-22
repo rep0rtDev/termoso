@@ -3,7 +3,6 @@ package com.termoso.android.ui.settings
 import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,7 +24,6 @@ import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -50,6 +48,7 @@ import com.termoso.android.data.AccountManager
 import com.termoso.android.data.AppContainer
 import com.termoso.android.str
 import com.termoso.android.ui.components.ChevronRow
+import com.termoso.android.ui.components.ChoiceSheet
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.RowDivider
@@ -365,10 +364,10 @@ fun SettingsScreen(
     }
 
     if (themePicker) {
-        RadioDialog(stringResource(R.string.app_theme), themes.map { it.first to stringResource(it.second) }, settings.appTheme, onPick = { set { s -> s.copy(appTheme = it) } }) { themePicker = false }
+        ChoiceSheet(stringResource(R.string.app_theme), themes.map { it.first to stringResource(it.second) }, settings.appTheme, onPick = { set { s -> s.copy(appTheme = it) } }) { themePicker = false }
     }
     if (languagePicker) {
-        RadioDialog(
+        ChoiceSheet(
             stringResource(R.string.language),
             languages.map { it.first to stringResource(it.second) },
             language,
@@ -378,7 +377,7 @@ fun SettingsScreen(
         ) { languagePicker = false }
     }
     if (delayPicker) {
-        RadioDialog(stringResource(R.string.lock_after), lockDelays.map { it.first to stringResource(it.second) }, settings.lockAfterSeconds, onPick = { set { s -> s.copy(lockAfterSeconds = it) } }) { delayPicker = false }
+        ChoiceSheet(stringResource(R.string.lock_after), lockDelays.map { it.first to stringResource(it.second) }, settings.lockAfterSeconds, onPick = { set { s -> s.copy(lockAfterSeconds = it) } }) { delayPicker = false }
     }
     if (privacy) {
         AlertDialog(
@@ -406,29 +405,4 @@ fun SettingsScreen(
             confirmButton = { TextButton(onClick = { licenses = false }) { Text(stringResource(R.string.close)) } },
         )
     }
-}
-
-@Composable
-internal fun <T> RadioDialog(title: String, options: List<Pair<T, String>>, selected: T, onPick: (T) -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column {
-                options.forEach { (id, label) ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { onPick(id); onDismiss() }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(selected = selected == id, onClick = null)
-                        Text(label)
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) } },
-    )
 }

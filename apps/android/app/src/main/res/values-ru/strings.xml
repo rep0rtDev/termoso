@@ -26,8 +26,25 @@
     <string name="local">Локальное</string>
     <string name="on_this_device">%1$s на этом устройстве</string>
     <string name="shared_terminal">Общий терминал</string>
-    <string name="s_1_active_session">1 активная сессия</string>
     <string name="active_sessions">Активных сессий: %1$s</string>
+    <plurals name="notif_terminals">
+        <item quantity="one">%d терминал</item>
+        <item quantity="few">%d терминала</item>
+        <item quantity="many">%d терминалов</item>
+        <item quantity="other">%d терминала</item>
+    </plurals>
+    <plurals name="notif_file_connections">
+        <item quantity="one">%d файловое соединение</item>
+        <item quantity="few">%d файловых соединения</item>
+        <item quantity="many">%d файловых соединений</item>
+        <item quantity="other">%d файловых соединения</item>
+    </plurals>
+    <plurals name="notif_tunnels">
+        <item quantity="one">%d туннель</item>
+        <item quantity="few">%d туннеля</item>
+        <item quantity="many">%d туннелей</item>
+        <item quantity="other">%d туннеля</item>
+    </plurals>
     <string name="active_sessions_2">Активные сессии</string>
     <string name="shown_while_a_terminal_is_connected_so_the">Показывается, пока терминал подключён, чтобы соединение сохранялось в фоне.</string>
     <string name="unlock_termoso">Разблокировать Termoso</string>
@@ -273,8 +290,9 @@
     <string name="save_a_server_with_its_credentials">Сохранить сервер с его учётными данными</string>
     <string name="local_terminal">Локальный терминал</string>
     <string name="a_shell_on_this_device">Оболочка на этом устройстве</string>
-    <string name="browse_and_transfer_files_on_a_host">Просмотр и передача файлов на хосте</string>
-    <string name="join_shared_terminal">Присоединиться к общему терминалу</string>
+    <string name="files">Файлы</string>
+    <string name="files_protocols_subtitle">SFTP / WebDAV</string>
+    <string name="join_shared_terminal">Подключиться к сессии</string>
     <string name="open_a_join_link_somebody_sent_you">Открыть ссылку-приглашение, которую вам прислали</string>
     <string name="recent">Недавние</string>
     <string name="close_all_sessions_2">Закрыть все сессии?</string>
@@ -710,7 +728,7 @@
     <string name="pause">Пауза</string>
     <string name="resume">Продолжить</string>
     <string name="dismiss">Скрыть</string>
-    <string name="new_sftp_connection">Новое SFTP-соединение</string>
+    <string name="new_sftp_connection">Обзор файлов</string>
     <string name="saved_hosts">Сохранённые хосты</string>
     <string name="no_ssh_hosts_yet">SSH-хостов пока нет</string>
     <string name="add_a_host_in_vaults_or_type_user">Добавьте хост в Хранилищах или введите user@host выше.</string>
@@ -1129,7 +1147,7 @@
     <string name="sk_kind_ed25519_hint">sk-ssh-ed25519 — нужен ключ FIDO2 с поддержкой Ed25519</string>
     <string name="sk_kind_ecdsa_hint">sk-ecdsa-sha2-nistp256 — поддерживается любым ключом FIDO2</string>
     <string name="block">Блок</string>
-    <string name="underline">Подчёркивание</string>
+    <string name="underline">Черта</string>
     <string name="bar">Полоса</string>
     <string name="saved_to">%1$s сохранён в %2$s</string>
     <string name="viewers_two">%1$s и %2$s</string>
@@ -1145,8 +1163,7 @@
     <string name="cloud_server_blurb">%1$s · бесплатно навсегда, без ограничений и тарифов. Всё защищено сквозным шифрованием — сервер никогда не видит ваши хосты, ключи и пароли.</string>
     <string name="sep_no_email">" · без почты"</string>
     <string name="ssh_id_delete_text">@%1$s и все ключи, опубликованные под ним, удаляются с сервера; ключи на этом телефоне стираются.</string>
-    <string name="quick_connect_placeholder">user@host:port, telnet://host или ссылка-приглашение</string>
-    <string name="quick_connect_hint">Введите user@host или telnet://host выше и нажмите «Перейти»</string>
+    <string name="quick_connect_placeholder">user@host, telnet://host или ссылка</string>
     <string name="sep_transferring">" · передаётся: %1$d"</string>
     <string name="duration_s">%1$d с</string>
     <string name="duration_m">%1$d мин</string>

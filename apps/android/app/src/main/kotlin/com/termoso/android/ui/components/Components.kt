@@ -118,7 +118,7 @@ fun ListRow(
                 title,
                 style = MaterialTheme.typography.bodyLarge,
                 color = titleColor,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             if (!subtitle.isNullOrEmpty()) {
@@ -126,7 +126,7 @@ fun ListRow(
                     subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }

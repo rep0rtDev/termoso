@@ -271,8 +271,8 @@ fun ConnectionsScreen(
                 )
                 RowDivider()
                 ChevronRow(
-                    title = "SFTP",
-                    subtitle = stringResource(R.string.browse_and_transfer_files_on_a_host),
+                    title = stringResource(R.string.files),
+                    subtitle = stringResource(R.string.files_protocols_subtitle),
                     leading = { IconTile(Icons.Filled.FolderOpen) },
                     modifier = Modifier.clickable(onClick = onNewSftp),
                 )
@@ -282,12 +282,6 @@ fun ConnectionsScreen(
                     subtitle = stringResource(R.string.open_a_join_link_somebody_sent_you),
                     leading = { IconTile(Icons.Filled.Groups) },
                     modifier = Modifier.clickable { joinDialog = true },
-                )
-                RowDivider()
-                ListRow(
-                    title = stringResource(R.string.quick_connect),
-                    subtitle = stringResource(R.string.quick_connect_hint),
-                    leading = { IconTile(Icons.Filled.Terminal) },
                 )
             }
 

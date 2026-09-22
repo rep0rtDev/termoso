@@ -82,6 +82,7 @@ import com.termoso.android.ui.components.PickerRow
 import com.termoso.android.ui.components.RowDivider
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
+import com.termoso.android.ui.components.SegmentedLabel
 import com.termoso.android.ui.components.SwitchRow
 import com.termoso.android.ui.keychain.KeyTextArea
 import com.termoso.android.ui.keychain.SshIdRows
@@ -745,7 +746,7 @@ private fun WebDavAuthRow(auth: String, onPick: (String) -> Unit) {
                 selected = auth == mode,
                 onClick = { onPick(mode) },
                 shape = SegmentedButtonDefaults.itemShape(index = i, count = modes.size),
-            ) { Text(title) }
+            ) { SegmentedLabel(title) }
         }
     }
 }

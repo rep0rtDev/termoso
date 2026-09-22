@@ -55,6 +55,7 @@ import com.termoso.android.data.ServerChoice
 import com.termoso.android.str
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.SecretField
+import com.termoso.android.ui.components.SegmentedLabel
 import com.termoso.android.ui.components.SubScreen
 import com.termoso.android.ui.keychain.LocalFido2
 import com.termoso.android.ui.keychain.SecurityKeyListening
@@ -129,7 +130,7 @@ private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
                 onClick = { vm.switchMode(m) },
                 shape = SegmentedButtonDefaults.itemShape(i, modes.size),
                 enabled = !vm.busy,
-            ) { Text(label) }
+            ) { SegmentedLabel(label) }
         }
     }
 
@@ -142,7 +143,7 @@ private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
                 onClick = { vm.chooseServer(s) },
                 shape = SegmentedButtonDefaults.itemShape(i, servers.size),
                 enabled = !vm.busy,
-            ) { Text(label) }
+            ) { SegmentedLabel(label) }
         }
     }
     when (vm.server) {

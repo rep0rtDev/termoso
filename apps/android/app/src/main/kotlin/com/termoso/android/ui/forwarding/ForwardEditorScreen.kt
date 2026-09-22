@@ -49,6 +49,7 @@ import com.termoso.android.ui.components.ListRow
 import com.termoso.android.ui.components.PickerRow
 import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
+import com.termoso.android.ui.components.SegmentedLabel
 import com.termoso.android.ui.components.SwitchRow
 import com.termoso.android.ui.hosts.ConfirmDialog
 import com.termoso.android.ui.shell.ShellViewModel
@@ -228,7 +229,7 @@ fun ForwardEditorScreen(
                         selected = s.kind == k,
                         onClick = { vm.update { it.copy(kind = k) } },
                         shape = SegmentedButtonDefaults.itemShape(index = i, count = PfKind.entries.size),
-                    ) { Text(kindTitle(k).substringBefore(" ")) }
+                    ) { SegmentedLabel(kindTitle(k).substringBefore(" ")) }
                 }
             }
 

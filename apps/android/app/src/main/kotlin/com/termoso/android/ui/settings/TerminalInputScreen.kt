@@ -45,6 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termoso.android.R
 import com.termoso.android.str
 import com.termoso.android.ui.components.ChevronRow
+import com.termoso.android.ui.components.ChoiceSheet
 import com.termoso.android.ui.components.FormField
 import com.termoso.android.ui.components.IconTile
 import com.termoso.android.ui.components.ListRow
@@ -234,7 +235,7 @@ fun TerminalInputScreen(shell: ShellViewModel, onBack: () -> Unit) {
 
     volumePick?.let { up ->
         val current = InputAction.parse(if (up) settings.volumeUpAction else settings.volumeDownAction)
-        RadioDialog(
+        ChoiceSheet(
             title = if (up) stringResource(R.string.volume_up) else stringResource(R.string.volume_down),
             options = InputAction.choices.map { it to InputAction.title(it) },
             selected = current,
@@ -246,7 +247,7 @@ fun TerminalInputScreen(shell: ShellViewModel, onBack: () -> Unit) {
         )
     }
     if (hotkeyPick) {
-        RadioDialog(stringResource(R.string.app_shortcuts), HardwareKeys.hotkeyModes.map { it.first to stringResource(it.second) }, settings.hardwareHotkeys, onPick = { set { s -> s.copy(hardwareHotkeys = it) } }) {
+        ChoiceSheet(stringResource(R.string.app_shortcuts), HardwareKeys.hotkeyModes.map { it.first to stringResource(it.second) }, settings.hardwareHotkeys, onPick = { set { s -> s.copy(hardwareHotkeys = it) } }) {
             hotkeyPick = false
         }
     }
