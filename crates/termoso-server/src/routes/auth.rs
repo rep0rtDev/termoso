@@ -1208,8 +1208,10 @@ pub struct SsoCallbackQuery {
 
 pub async fn sso_callback(
     State(state): State<AppState>,
+    client: Client,
     Query(q): Query<SsoCallbackQuery>,
 ) -> ApiResult<Response> {
+    ratelimit::check_ip(&state, ratelimit::ANON_IP, client.ip.as_deref()).await?;
     let flow_id = q.state.ok_or_else(|| Error::bad_request("missing state"))?;
     let (redirect, flow_id) =
         sso::callback(&state, &flow_id, q.code.as_deref(), q.error.as_deref()).await?;
@@ -1224,8 +1226,10 @@ pub async fn sso_callback(
     params(("flow_id" = String, Path)), responses((status = 200, body = SsoResult)))]
 pub async fn sso_poll(
     State(state): State<AppState>,
+    client: Client,
     Path(flow_id): Path<String>,
 ) -> ApiResult<Json<SsoResult>> {
+    ratelimit::check_ip(&state, ratelimit::ANON_IP, client.ip.as_deref()).await?;
     Ok(Json(sso::poll(&state, &flow_id).await?))
 }
 
