@@ -286,21 +286,34 @@ pub async fn start(
 
 /// Only allow redirects to the web cabinet or custom app schemes (desktop/mobile deep links).
 fn is_safe_redirect(state: &AppState, r: &str) -> bool {
-    if let Ok(u) = url::Url::parse(r) {
-        let scheme = u.scheme();
-        if scheme == "termoso" {
-            return true;
+    is_safe_redirect_for(state.cfg.web_url(), &state.cfg.public_url, r)
+}
+
+/// `r` must be the app scheme, or an http(s) URL whose *origin* (scheme, host,
+/// port) equals the cabinet's or the API's, or a plain-http loopback address
+/// (the desktop / dev-server callbacks). Compared as parsed origins so
+/// `https://app.example.com.evil.test` and `https://app.example.com@evil.test`
+/// are not mistaken for the cabinet.
+fn is_safe_redirect_for(web_url: &str, public_url: &str, r: &str) -> bool {
+    let Ok(u) = url::Url::parse(r) else {
+        return false;
+    };
+    match u.scheme() {
+        "termoso" => true,
+        "http" | "https" => {
+            let origin = u.origin();
+            if !origin.is_tuple() || !u.username().is_empty() || u.password().is_some() {
+                return false;
+            }
+            let same_origin = |base: &str| {
+                url::Url::parse(base).is_ok_and(|b| b.origin().is_tuple() && b.origin() == origin)
+            };
+            let loopback = u.scheme() == "http"
+                && matches!(u.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
+            same_origin(web_url) || same_origin(public_url) || loopback
         }
-        if scheme == "http" || scheme == "https" {
-            let web = state.cfg.web_url().trim_end_matches('/');
-            let public = state.cfg.public_url.trim_end_matches('/');
-            return r.starts_with(web)
-                || r.starts_with(public)
-                || r.starts_with("http://localhost")
-                || r.starts_with("http://127.0.0.1");
-        }
+        _ => false,
     }
-    false
 }
 
 /// Handle the IdP redirect. Returns `(redirect target if any, flow_id)`.
@@ -513,4 +526,52 @@ pub async fn link_identity(
     .execute(&state.db)
     .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_safe_redirect_for;
+
+    const WEB: &str = "https://app.example.com/";
+    const API: &str = "https://api.example.com:8443";
+
+    fn ok(r: &str) -> bool {
+        is_safe_redirect_for(WEB, API, r)
+    }
+
+    #[test]
+    fn own_origins_loopback_and_app_scheme_pass() {
+        assert!(ok("https://app.example.com/sso/done?x=1"));
+        assert!(ok("https://api.example.com:8443/cabinet"));
+        assert!(ok("http://localhost:5173/sso"));
+        assert!(ok("http://127.0.0.1:1420/callback"));
+        assert!(ok("http://[::1]:1420/callback"));
+        assert!(ok("termoso://sso"));
+    }
+
+    #[test]
+    fn host_prefix_userinfo_and_scheme_tricks_fail() {
+        assert!(!ok("https://app.example.com.evil.test/"));
+        assert!(!ok("https://app.example.com@evil.test/"));
+        assert!(!ok("https://app.example.com:pw@evil.test/"));
+        assert!(!ok("https://app.example.com:444/"));
+        assert!(!ok("http://app.example.com/"));
+        assert!(!ok("https://api.example.com/"));
+        assert!(!ok("http://localhost.evil.test/"));
+        assert!(!ok("https://localhost/"));
+        assert!(!ok("https://evil.example/phish"));
+        assert!(!ok("javascript:alert(1)"));
+        assert!(!ok("//evil.example"));
+        assert!(!ok("not a url"));
+    }
+
+    #[test]
+    fn web_url_defaults_to_the_api_origin() {
+        assert!(is_safe_redirect_for(
+            API,
+            API,
+            "https://api.example.com:8443/"
+        ));
+        assert!(!is_safe_redirect_for(API, API, "https://app.example.com/"));
+    }
 }
