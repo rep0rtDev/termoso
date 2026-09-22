@@ -43,6 +43,7 @@ use termoso_server::config::{
     AiConfig, Config, S3Config, SmtpConfig, SmtpSecurity, SsoKindConfig, SsoProviderConfig,
     WebauthnConfig,
 };
+use termoso_server::saml::test_support as saml_support;
 use uuid::Uuid;
 
 const DEFAULT_PG: &str = "postgres://termoso:termoso@localhost:5432/termoso";
@@ -60,6 +61,11 @@ pub const SSO_PROVIDER: &str = "mock";
 /// Same IdP, but only `@corp.test` addresses may sign in through it.
 pub const SSO_CORP_PROVIDER: &str = "mock-corp";
 pub const SSO_CORP_DOMAIN: &str = "corp.test";
+/// SAML providers (see `server()` for how they differ).
+pub const SAML_PROVIDER: &str = "mock-saml";
+pub const SAML_CORP_PROVIDER: &str = "mock-saml-corp";
+pub const SAML_IDP_ENTITY: &str = "https://idp.test/saml";
+pub const SAML_IDP_SSO_URL: &str = "https://idp.test/saml/sso";
 /// Dedicated SSH ID origin (`TERMOSO_SSHID_URL`) and its `Host` value.
 pub const SSHID_URL: &str = "http://sshid.test:8443";
 pub const SSHID_HOST: &str = "sshid.test:8443";
@@ -245,8 +251,7 @@ async fn boot() -> Option<TestServer> {
             client_id: Some(oidc::CLIENT_ID.into()),
             client_secret: Some(oidc::CLIENT_SECRET.into()),
             scopes: None,
-            saml_metadata: None,
-            allowed_domains: None,
+            ..SsoProviderConfig::default()
         },
     );
     sso.insert(
@@ -258,8 +263,41 @@ async fn boot() -> Option<TestServer> {
             client_id: Some(oidc::CLIENT_ID.into()),
             client_secret: Some(oidc::CLIENT_SECRET.into()),
             scopes: Some("groups".into()),
-            saml_metadata: None,
             allowed_domains: Some(format!("{SSO_CORP_DOMAIN}, Other.Example")),
+            ..SsoProviderConfig::default()
+        },
+    );
+    // SAML: HTTP-Redirect binding, unsigned requests, no SP key.
+    sso.insert(
+        SAML_PROVIDER.to_string(),
+        SsoProviderConfig {
+            name: Some("Mock SAML".into()),
+            kind: SsoKindConfig::Saml,
+            saml_metadata: Some(saml_support::idp_metadata_xml(
+                SAML_IDP_ENTITY,
+                SAML_IDP_SSO_URL,
+            )),
+            ..SsoProviderConfig::default()
+        },
+    );
+    // SAML: HTTP-POST binding, IdP wants signed requests, SP has a key
+    // (so encrypted assertions work), corporate domain allow-list.
+    sso.insert(
+        SAML_CORP_PROVIDER.to_string(),
+        SsoProviderConfig {
+            name: Some("Corp SAML".into()),
+            kind: SsoKindConfig::Saml,
+            saml_metadata: Some(saml_support::idp_metadata_xml_with(
+                SAML_IDP_ENTITY,
+                SAML_IDP_SSO_URL,
+                termoso_server::saml::metadata::BINDING_POST,
+                true,
+            )),
+            saml_sp_certificate: Some(saml_support::SP_CERT_PEM.into()),
+            saml_sp_private_key: Some(saml_support::SP_KEY_PEM.into()),
+            saml_email_attribute: Some("corpMail".into()),
+            allowed_domains: Some(SSO_CORP_DOMAIN.into()),
+            ..SsoProviderConfig::default()
         },
     );
 

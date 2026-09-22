@@ -195,10 +195,63 @@ pub struct SsoProviderConfig {
     pub client_secret: Option<String>,
     /// Extra scopes (space separated) in addition to `openid email profile`.
     pub scopes: Option<String>,
-    /// SAML IdP metadata URL or XML path.
+    /// SAML IdP metadata: an `https://` URL, a file path, or inline XML.
     pub saml_metadata: Option<String>,
+    /// Pick this `entityID` when the metadata is an `EntitiesDescriptor`
+    /// aggregate (federations). Also enforced as the response `Issuer`.
+    pub saml_idp_entity_id: Option<String>,
+    /// Our SP `entityID`. Defaults to the SP metadata URL
+    /// (`<public_url>/api/v1/auth/sso/<slug>/saml/metadata`).
+    pub saml_sp_entity_id: Option<String>,
+    /// SP X.509 certificate (PEM, or a path). Published in SP metadata;
+    /// enables signed `AuthnRequest`s and encrypted assertions.
+    pub saml_sp_certificate: Option<String>,
+    /// SP RSA private key matching the certificate (PKCS#8/PKCS#1 PEM, or a path).
+    pub saml_sp_private_key: Option<String>,
+    /// Sign `AuthnRequest`s. Defaults to whatever the IdP metadata asks for
+    /// (`WantAuthnRequestsSigned`), and requires the SP key.
+    pub saml_sign_requests: Option<bool>,
+    /// Accept RSA-SHA1 / SHA-1 digests from legacy IdPs (off by default).
+    #[serde(default)]
+    pub saml_allow_sha1: bool,
+    /// Attribute carrying the email when the IdP does not use a standard
+    /// name (`mail`, `email`, the OID / WS-Fed claim URIs) or an email `NameID`.
+    pub saml_email_attribute: Option<String>,
+    /// Attribute carrying the display name (same fallbacks as for email).
+    pub saml_name_attribute: Option<String>,
+    /// Tolerated clock difference with the IdP, seconds.
+    #[serde(default = "default_saml_clock_skew")]
+    pub saml_clock_skew_secs: u64,
     /// Only allow emails from these domains (comma separated).
     pub allowed_domains: Option<String>,
+}
+
+fn default_saml_clock_skew() -> u64 {
+    120
+}
+
+impl Default for SsoProviderConfig {
+    fn default() -> Self {
+        Self {
+            name: None,
+            kind: SsoKindConfig::default(),
+            issuer: None,
+            client_id: None,
+            client_secret: None,
+            scopes: None,
+            saml_metadata: None,
+            saml_idp_entity_id: None,
+            saml_sp_entity_id: None,
+            saml_sp_certificate: None,
+            saml_sp_private_key: None,
+            saml_sign_requests: None,
+            saml_allow_sha1: false,
+            saml_email_attribute: None,
+            saml_name_attribute: None,
+            saml_clock_skew_secs: default_saml_clock_skew(),
+            allowed_domains: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]

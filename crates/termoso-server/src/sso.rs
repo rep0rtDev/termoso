@@ -2,8 +2,8 @@
 //! (OPAQUE) is still required because the server never holds decryption keys.
 //!
 //! Supported: any OpenID Connect provider (discovery), presets for `google`
-//! and `microsoft`, and GitHub (plain OAuth2 + user API). SAML is accepted in
-//! the configuration but not implemented yet and is rejected at startup.
+//! and `microsoft`, GitHub (plain OAuth2 + user API), and SAML 2.0 IdPs
+//! (SP-initiated, HTTP-Redirect/POST out, HTTP-POST ACS in; see [`crate::saml`]).
 
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -20,6 +20,7 @@ use termoso_proto::auth::{SsoKind, SsoProvider, SsoResult};
 
 use crate::config::{Config, SsoKindConfig, SsoProviderConfig};
 use crate::error::{ApiResult, Error};
+use crate::saml;
 use crate::state::AppState;
 use crate::util::random_token;
 
@@ -46,6 +47,7 @@ type GitHubClient = oauth2::basic::BasicClient<
 enum Backend {
     Oidc(Box<OidcClient>),
     GitHub(Box<GitHubClient>),
+    Saml(Box<saml::ServiceProvider>),
 }
 
 pub struct Provider {
@@ -69,6 +71,18 @@ struct FlowState {
     pkce: String,
     /// Where to send the browser after the callback (client deep link / web cabinet URL).
     redirect: Option<String>,
+    /// SAML: the `AuthnRequest` ID the response must answer.
+    #[serde(default)]
+    saml_request_id: Option<String>,
+    /// SAML HTTP-POST binding: form the browser has to submit to the IdP.
+    #[serde(default)]
+    saml_post: Option<SamlPostForm>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SamlPostForm {
+    pub action: String,
+    pub saml_request: String,
 }
 
 /// What a consumed `sso_session` token proves.
@@ -128,9 +142,20 @@ impl SsoRegistry {
             .map(|p| SsoProvider {
                 id: p.id.clone(),
                 name: p.name.clone(),
-                kind: SsoKind::Oidc,
+                kind: match p.backend {
+                    Backend::Saml(_) => SsoKind::Saml,
+                    Backend::Oidc(_) | Backend::GitHub(_) => SsoKind::Oidc,
+                },
             })
             .collect()
+    }
+
+    /// SP metadata XML for a SAML provider.
+    pub fn saml_metadata(&self, id: &str) -> ApiResult<String> {
+        match &self.get(id)?.backend {
+            Backend::Saml(sp) => Ok(sp.metadata_xml()),
+            _ => Err(Error::not_found("SAML provider")),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -150,17 +175,7 @@ async fn build_provider(
     redirect: &RedirectUrl,
     http: &reqwest::Client,
 ) -> anyhow::Result<Provider> {
-    if p.kind == SsoKindConfig::Saml {
-        anyhow::bail!(
-            "SAML providers are not supported yet; use an OIDC bridge (e.g. Keycloak/Dex) for now"
-        );
-    }
-    let client_id = p.client_id.clone().context("client_id is required")?;
-    let client_secret = p
-        .client_secret
-        .clone()
-        .context("client_secret is required")?;
-    let allowed_domains = p
+    let allowed_domains: Vec<String> = p
         .allowed_domains
         .as_deref()
         .map(crate::config::split_csv)
@@ -168,6 +183,21 @@ async fn build_provider(
         .into_iter()
         .map(|d| d.to_lowercase())
         .collect();
+    if p.kind == SsoKindConfig::Saml {
+        let sp = build_saml(slug, p, redirect, http).await?;
+        return Ok(Provider {
+            id: slug.to_string(),
+            name: p.name.clone().unwrap_or_else(|| slug.to_string()),
+            allowed_domains,
+            extra_scopes: Vec::new(),
+            backend: Backend::Saml(Box::new(sp)),
+        });
+    }
+    let client_id = p.client_id.clone().context("client_id is required")?;
+    let client_secret = p
+        .client_secret
+        .clone()
+        .context("client_secret is required")?;
     let extra_scopes: Vec<String> = p
         .scopes
         .as_deref()
@@ -222,6 +252,100 @@ async fn build_provider(
     })
 }
 
+/// Materialise a value that may be given inline or as a file path.
+fn inline_or_file(value: &str, inline_marker: &str, what: &str) -> anyhow::Result<String> {
+    if value.trim_start().starts_with(inline_marker) {
+        return Ok(value.to_string());
+    }
+    std::fs::read_to_string(value).with_context(|| format!("reading {what} from {value}"))
+}
+
+async fn build_saml(
+    slug: &str,
+    p: &SsoProviderConfig,
+    redirect: &RedirectUrl,
+    http: &reqwest::Client,
+) -> anyhow::Result<saml::ServiceProvider> {
+    let source = p
+        .saml_metadata
+        .as_deref()
+        .context("saml_metadata (URL, file path or XML) is required")?;
+    let xml = if source.starts_with("https://") || source.starts_with("http://") {
+        http.get(source)
+            .send()
+            .await
+            .and_then(|r| r.error_for_status())
+            .with_context(|| format!("fetching IdP metadata from {source}"))?
+            .text()
+            .await?
+    } else {
+        inline_or_file(source, "<", "IdP metadata")?
+    };
+    let idp = saml::metadata::parse_idp(&xml, p.saml_idp_entity_id.as_deref())
+        .context("parsing IdP metadata")?;
+
+    let api_base = redirect
+        .as_str()
+        .trim_end_matches("/auth/sso/callback")
+        .to_string();
+    let acs_url = format!("{api_base}/auth/sso/saml/acs");
+    let entity_id = p
+        .saml_sp_entity_id
+        .clone()
+        .unwrap_or_else(|| format!("{api_base}/auth/sso/{slug}/saml/metadata"));
+    let cert_der = p
+        .saml_sp_certificate
+        .as_deref()
+        .map(|c| {
+            inline_or_file(c, "-----", "SP certificate").and_then(|pem| saml::pem_to_der(&pem))
+        })
+        .transpose()
+        .context("SP certificate")?;
+    let key = p
+        .saml_sp_private_key
+        .as_deref()
+        .map(|k| {
+            inline_or_file(k, "-----", "SP private key")
+                .and_then(|pem| saml::parse_private_key(&pem))
+        })
+        .transpose()
+        .context("SP private key")?;
+    if let (Some(cert), Some(key)) = (&cert_der, &key) {
+        let cert_pub = saml::dsig::cert_public_key(cert).context("SP certificate")?;
+        anyhow::ensure!(
+            cert_pub == key.to_public_key(),
+            "SP private key does not match the SP certificate"
+        );
+    }
+    if idp.want_authn_requests_signed && key.is_none() && p.saml_sign_requests.is_none() {
+        tracing::warn!(
+            provider = slug,
+            "IdP wants signed AuthnRequests but no saml_sp_private_key is configured; sending unsigned"
+        );
+    }
+    let sign_requests = p
+        .saml_sign_requests
+        .unwrap_or(idp.want_authn_requests_signed && key.is_some());
+    anyhow::ensure!(
+        !sign_requests || key.is_some(),
+        "saml_sign_requests needs saml_sp_private_key"
+    );
+    saml::ServiceProvider::new(
+        saml::SpConfig {
+            entity_id,
+            acs_url,
+            key,
+            cert_der,
+            sign_requests,
+            allow_sha1: p.saml_allow_sha1,
+            email_attribute: p.saml_email_attribute.clone(),
+            name_attribute: p.saml_name_attribute.clone(),
+            clock_skew: chrono::Duration::seconds(p.saml_clock_skew_secs as i64),
+        },
+        idp,
+    )
+}
+
 /// Begin a flow. Returns `(authorization_url, flow_id)`.
 pub async fn start(
     state: &AppState,
@@ -231,6 +355,8 @@ pub async fn start(
     let provider = state.sso.get(provider_id)?;
     let flow_id = random_token();
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+    let mut saml_request_id = None;
+    let mut saml_post = None;
     let (url, nonce) = match &provider.backend {
         Backend::Oidc(client) => {
             let fid = flow_id.clone();
@@ -262,6 +388,31 @@ pub async fn start(
             let (url, _csrf) = req.url();
             (url.to_string(), None)
         }
+        Backend::Saml(sp) => {
+            let request_id = saml::ServiceProvider::new_request_id();
+            let target = sp
+                .start(&request_id, &flow_id, chrono::Utc::now())
+                .map_err(|e| Error::Internal(e.context("building SAML AuthnRequest")))?;
+            saml_request_id = Some(request_id);
+            let url = match target {
+                saml::AuthnRedirect::Url(u) => u,
+                saml::AuthnRedirect::Post {
+                    action,
+                    saml_request,
+                    ..
+                } => {
+                    saml_post = Some(SamlPostForm {
+                        action,
+                        saml_request,
+                    });
+                    format!(
+                        "{}/api/v1/auth/sso/saml/post/{flow_id}",
+                        state.cfg.public_url.trim_end_matches('/')
+                    )
+                }
+            };
+            (url, None)
+        }
     };
     let redirect = redirect.filter(|r| is_safe_redirect(state, r));
     state
@@ -273,6 +424,8 @@ pub async fn start(
                 nonce,
                 pkce: pkce_verifier.secret().clone(),
                 redirect,
+                saml_request_id,
+                saml_post,
             },
             FLOW_TTL,
         )
@@ -339,6 +492,92 @@ pub async fn callback(
         .set_json(&result_key(flow_id), &outcome, FLOW_TTL)
         .await?;
     Ok((flow.redirect, flow_id.to_string()))
+}
+
+/// HTTP-POST binding: the form the browser auto-submits to the IdP. The flow
+/// stays pending until the ACS consumes it.
+pub async fn saml_post_form(state: &AppState, flow_id: &str) -> ApiResult<SamlPostForm> {
+    let flow = state
+        .cache
+        .get_json::<FlowState>(&flow_key(flow_id))
+        .await?
+        .ok_or_else(Error::token_expired)?;
+    flow.saml_post.ok_or_else(|| Error::not_found("SAML flow"))
+}
+
+/// Assertion Consumer Service. `relay_state` is our flow id; returns
+/// `(redirect target if any, flow_id)` like [`callback`].
+pub async fn saml_acs(
+    state: &AppState,
+    relay_state: &str,
+    saml_response: &str,
+) -> ApiResult<(Option<String>, String)> {
+    let Some(flow) = state
+        .cache
+        .take_json::<FlowState>(&flow_key(relay_state))
+        .await?
+    else {
+        return Err(Error::token_expired());
+    };
+    let outcome = match consume_saml(state, &flow, saml_response) {
+        Ok(sess) => finish(state, sess).await?,
+        Err(e) => {
+            tracing::warn!(error = %e, provider = %flow.provider, "saml response rejected");
+            SsoResult::Failed {
+                message: match e.downcast_ref::<saml::SamlError>() {
+                    Some(saml::SamlError::Status(s)) => {
+                        format!("Identity provider returned an error: {s}")
+                    }
+                    _ => "Could not verify your identity with the provider".into(),
+                },
+            }
+        }
+    };
+    state
+        .cache
+        .set_json(&result_key(relay_state), &outcome, FLOW_TTL)
+        .await?;
+    Ok((flow.redirect, relay_state.to_string()))
+}
+
+fn consume_saml(
+    state: &AppState,
+    flow: &FlowState,
+    saml_response: &str,
+) -> anyhow::Result<SsoSession> {
+    let provider = state
+        .sso
+        .get(&flow.provider)
+        .map_err(|_| anyhow::anyhow!("provider vanished"))?;
+    let Backend::Saml(sp) = &provider.backend else {
+        anyhow::bail!("flow does not belong to a SAML provider");
+    };
+    let request_id = flow
+        .saml_request_id
+        .as_deref()
+        .context("flow has no AuthnRequest id")?;
+    let identity = sp.consume_response(saml_response, request_id, chrono::Utc::now())?;
+    apply_domain_policy(
+        provider,
+        SsoSession {
+            provider: provider.id.clone(),
+            subject: identity.subject,
+            email: identity.email,
+            display_name: identity.name,
+        },
+    )
+}
+
+fn apply_domain_policy(provider: &Provider, sess: SsoSession) -> anyhow::Result<SsoSession> {
+    let email = crate::util::normalize_email(&sess.email).context("invalid email from provider")?;
+    if !provider.allowed_domains.is_empty() {
+        let domain = email.rsplit('@').next().unwrap_or_default();
+        anyhow::ensure!(
+            provider.allowed_domains.iter().any(|d| d == domain),
+            "email domain not allowed for this provider"
+        );
+    }
+    Ok(SsoSession { email, ..sess })
 }
 
 async fn exchange(state: &AppState, flow: &FlowState, code: &str) -> anyhow::Result<SsoSession> {
@@ -422,16 +661,9 @@ async fn exchange(state: &AppState, flow: &FlowState, code: &str) -> anyhow::Res
                 display_name: user.name.or(Some(user.login)),
             }
         }
+        Backend::Saml(_) => anyhow::bail!("SAML flows complete on the ACS, not the OAuth callback"),
     };
-    let email = crate::util::normalize_email(&sess.email).context("invalid email from provider")?;
-    if !provider.allowed_domains.is_empty() {
-        let domain = email.rsplit('@').next().unwrap_or_default();
-        anyhow::ensure!(
-            provider.allowed_domains.iter().any(|d| d == domain),
-            "email domain not allowed for this provider"
-        );
-    }
-    Ok(SsoSession { email, ..sess })
+    apply_domain_policy(provider, sess)
 }
 
 async fn finish(state: &AppState, sess: SsoSession) -> ApiResult<SsoResult> {

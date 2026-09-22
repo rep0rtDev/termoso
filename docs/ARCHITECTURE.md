@@ -179,10 +179,17 @@ sync_once
   (also used for security-key sign-in from Android over CTAP2), e-mail codes,
   backup codes. New devices need e-mail approval when SMTP is configured.
 * **SSO** (`sso.rs`): OpenID Connect providers (any discovery URL, presets
-  for Google/Microsoft, GitHub over plain OAuth2). SAML is accepted in the
-  configuration but rejected at startup until it is implemented. SSO only
-  proves who owns the e-mail; the vault password (OPAQUE) and the recovery key
-  remain the only ways to unwrap key material, so an IdP cannot read vaults.
+  for Google/Microsoft, GitHub over plain OAuth2) and SAML 2.0 as an
+  SP-initiated service provider (`saml/`): IdP metadata parsing, SP metadata,
+  optionally signed `AuthnRequest`s over HTTP-Redirect or HTTP-POST, an
+  HTTP-POST ACS, XML-DSig verification against the IdP metadata certificates
+  only (pure-Rust C14N 1.0/1.1/exclusive, RSA-SHA256+, single-signature and
+  duplicate-ID rejection) and XML-Encryption for encrypted assertions. Every
+  response is checked for `InResponseTo`, `Destination`, `Issuer`, audience,
+  recipient, status and time window, and the RelayState is bound to the
+  one-shot flow state in Redis. SSO only proves who owns the e-mail; the
+  vault password (OPAQUE) and the recovery key remain the only ways to unwrap
+  key material, so an IdP cannot read vaults.
 * **SSH ID**: an account can publish public keys under a handle
   (`/sshid/<handle>`), served as `authorized_keys` text so servers can trust a
   person rather than a file.
