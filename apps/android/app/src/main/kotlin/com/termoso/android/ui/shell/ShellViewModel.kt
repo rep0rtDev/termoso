@@ -143,6 +143,12 @@ class ShellViewModel(
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
 
+    /** Files browser for the local shell's home directory; reuses the open one if there is any. */
+    suspend fun openLocalFiles(): SftpConnection? =
+        sftp.findLocal() ?: runCatching { sftp.openLocal() }
+            .onFailure { notify(it.userMessage()) }
+            .getOrNull()
+
     /**
      * Expand the snippet in Rust and type it into the given open terminals.
      * `paste` leaves out the trailing newline. Sessions the snippet asks to

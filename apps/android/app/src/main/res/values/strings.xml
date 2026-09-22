@@ -1268,7 +1268,7 @@
     <!-- Files integration (storage access framework) -->
     <string name="files_integration">Files integration</string>
     <string name="files_show_sftp_hosts_in_files">Show SFTP hosts in Files</string>
-    <string name="files_show_sftp_hosts_in_files_summary">Browse, open and save files on your SSH hosts from the system Files app and any app that opens documents. Only hosts with “Show in Files” turned on are listed. Hosts that need a password or a new host key must be connected from Termoso first.</string>
+    <string name="files_show_sftp_hosts_in_files_summary">Browse, open and save files on your SSH hosts from the system Files app and any app that opens documents. Only hosts with “Show in Files” turned on are listed; the home directory of the local terminal is always there. Hosts that need a password or a new host key must be connected from Termoso first.</string>
     <string name="show_in_files">Show in Files</string>
     <string name="show_in_files_summary">List this host’s SFTP and WebDAV shares in the system Files app and other apps that open documents</string>
     <string name="show_in_files_disabled_summary">Files integration is turned off in Settings; this host stays hidden until it is enabled</string>
@@ -1292,6 +1292,9 @@
     <!-- WebDAV -->
     <string name="webdav_files">WebDAV files</string>
     <string name="webdav_target">WebDAV · %1$s</string>
+    <string name="local_shell_files">Local terminal files</string>
+    <string name="open_local_files">Open files</string>
+    <string name="files_local_root_summary">Home directory of the local terminal</string>
     <string name="save_and_open_webdav">Save and open WebDAV</string>
     <string name="server_key">Server key</string>
     <string name="server_key_enter_address">Enter the address first.</string>

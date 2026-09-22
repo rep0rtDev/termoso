@@ -13,6 +13,10 @@ import com.termoso.core.FileProtocol
  * once connected. The protocol is part of the id so an id keeps pointing at
  * the same share even when the host later gains or loses a section.
  *
+ * The local shell's home directory is the one non-host root, `local:<path>`,
+ * where the path is relative to that directory (`/` is the directory itself);
+ * the word cannot be a uuid, so the two kinds of id never mix.
+ *
  * Ids come back from arbitrary apps, so every one is parsed strictly here
  * and nothing about the remote path is inferred from URI text.
  */
@@ -55,11 +59,20 @@ data class DocumentId(val hostId: String, val path: String, val protocol: FilePr
         private val UUID_RE = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
         private const val WEBDAV_SUFFIX = "+webdav"
 
+        /** Stands in for the host id of the local shell's home directory. */
+        const val LOCAL = "local"
+
         fun root(hostId: String, protocol: FileProtocol = FileProtocol.SFTP): DocumentId = DocumentId(hostId, "", protocol)
 
-        /** The root id of a host's share: the uuid, `+webdav` appended for WebDAV. */
-        fun rootId(hostId: String, protocol: FileProtocol): String =
-            if (protocol == FileProtocol.WEBDAV) hostId + WEBDAV_SUFFIX else hostId
+        /** The local shell's home directory. */
+        fun local(path: String = ""): DocumentId = DocumentId(LOCAL, path, FileProtocol.LOCAL)
+
+        /** The root id of a host's share: the uuid, `+webdav` appended for WebDAV; [LOCAL] for the local home. */
+        fun rootId(hostId: String, protocol: FileProtocol): String = when (protocol) {
+            FileProtocol.SFTP -> hostId
+            FileProtocol.WEBDAV -> hostId + WEBDAV_SUFFIX
+            FileProtocol.LOCAL -> LOCAL
+        }
 
         /** Parse an id from another app; `null` for anything malformed or escaping its path. */
         fun parse(raw: String?): DocumentId? {
@@ -68,11 +81,15 @@ data class DocumentId(val hostId: String, val path: String, val protocol: FilePr
             if (sep < 0) return null
             var host = raw.substring(0, sep)
             var protocol = FileProtocol.SFTP
-            if (host.endsWith(WEBDAV_SUFFIX)) {
-                host = host.removeSuffix(WEBDAV_SUFFIX)
-                protocol = FileProtocol.WEBDAV
+            if (host == LOCAL) {
+                protocol = FileProtocol.LOCAL
+            } else {
+                if (host.endsWith(WEBDAV_SUFFIX)) {
+                    host = host.removeSuffix(WEBDAV_SUFFIX)
+                    protocol = FileProtocol.WEBDAV
+                }
+                if (!UUID_RE.matches(host)) return null
             }
-            if (!UUID_RE.matches(host)) return null
             val path = raw.substring(sep + 1)
             if (path.isEmpty()) return DocumentId(host, "", protocol)
             val normalized = normalizeAbsolute(path) ?: return null

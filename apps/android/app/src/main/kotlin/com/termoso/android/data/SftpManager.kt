@@ -1,6 +1,7 @@
 package com.termoso.android.data
 
 import android.content.Context
+import com.termoso.android.R
 import com.termoso.android.ui.components.initialConnecting
 import com.termoso.core.FileCapabilities
 import com.termoso.core.FileProtocol
@@ -58,8 +59,9 @@ class SftpBridge : SftpListener {
 }
 
 /**
- * A live file connection (SFTP or WebDAV): the Rust session plus what the UI
- * shows about it. [capabilities] says which operations the protocol has.
+ * A live file connection (SFTP, WebDAV or the local shell's home): the Rust
+ * session plus what the UI shows about it. [capabilities] says which
+ * operations the protocol has.
  */
 class SftpConnection(
     val id: String,
@@ -75,6 +77,9 @@ class SftpConnection(
 ) {
     val protocol: FileProtocol = rust.protocol()
     val capabilities: FileCapabilities = rust.capabilities()
+
+    /** The local shell's home directory rather than a host. */
+    val isLocal: Boolean get() = protocol == FileProtocol.LOCAL
     val state: StateFlow<SessionState> get() = bridge.state
     val prompt: StateFlow<PendingPrompt?> get() = bridge.prompt
     val transfers: StateFlow<List<TransferCard>> get() = bridge.transfers
@@ -104,11 +109,20 @@ class SftpConnection(
  * once; state and prompts arrive on the connection's flows. The scratch files
  * a connection used are wiped when it closes.
  */
-class SftpManager(private val context: Context, private val repo: VaultRepository) {
+class SftpManager(
+    private val context: Context,
+    private val repo: VaultRepository,
+    /** `HOME` of local shells, the directory [openLocal] browses. */
+    private val localHome: File,
+) {
     private val _connections = MutableStateFlow<List<SftpConnection>>(emptyList())
     val connections: StateFlow<List<SftpConnection>> = _connections.asStateFlow()
 
     fun find(id: String): SftpConnection? = _connections.value.firstOrNull { it.id == id }
+
+    /** The one connection to the local home that is still usable, if any. */
+    fun findLocal(): SftpConnection? =
+        _connections.value.firstOrNull { it.isLocal && it.state.value !is SessionState.Closed && it.state.value !is SessionState.Failed }
 
     /**
      * Open a saved host's files. [protocol] picks the section when the host has
@@ -154,10 +168,35 @@ class SftpManager(private val context: Context, private val repo: VaultRepositor
         )
     }
 
+    /**
+     * Browse the local shell's home directory (the same one local terminals
+     * start in). Paths stay inside it; nothing else under the app's private
+     * storage is reachable.
+     */
+    suspend fun openLocal(): SftpConnection {
+        val bridge = SftpBridge()
+        withContext(Dispatchers.IO) { localHome.mkdirs() }
+        val rust = repo.read { localFiles(localHome.absolutePath, bridge) }
+        return register(
+            SftpConnection(
+                id = rust.id(),
+                label = context.getString(R.string.local_shell_files),
+                target = context.getString(R.string.files_local_root_summary),
+                hostId = null,
+                quick = null,
+                osName = "android",
+                rust = rust,
+                bridge = bridge,
+                cacheDir = cacheFor(rust.id()),
+            ),
+        )
+    }
+
     /** Replace a closed/failed connection with a fresh one to the same target. */
     suspend fun reconnect(id: String): SftpConnection? {
         val old = find(id) ?: return null
         val fresh = when {
+            old.isLocal -> openLocal()
             old.hostId != null -> openHost(old.hostId, old.protocol)
             old.quick != null -> openQuick(old.quick)
             else -> return null

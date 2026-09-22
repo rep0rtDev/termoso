@@ -140,6 +140,42 @@ class DocumentIdTest {
     }
 
     @Test
+    fun localShellHomeIsItsOwnRoot() {
+        val root = DocumentId.local()
+        assertTrue(root.isRoot)
+        assertEquals(FileProtocol.LOCAL, root.protocol)
+        assertEquals("local:", root.encode())
+        assertEquals("local", root.rootId)
+        assertEquals(root, DocumentId.parse("local:"))
+        assertEquals(DocumentId.rootId("ignored", FileProtocol.LOCAL), root.rootId)
+
+        val file = DocumentId.parse("local:/notes/a.txt")!!
+        assertEquals(DocumentId.local("/notes/a.txt"), file)
+        assertEquals(FileProtocol.LOCAL, file.protocol)
+        assertEquals("a.txt", file.name)
+        assertEquals(DocumentId.local("/notes"), file.parent)
+        assertEquals(FileProtocol.LOCAL, root.child("x").protocol)
+        assertEquals(DocumentId.local("/a/b"), DocumentId.parse("local:/a//./b/"))
+
+        assertTrue(root.contains(file))
+        assertFalse(root.contains(DocumentId(host, "/notes/a.txt")))
+        assertFalse(DocumentId.root(host).contains(file))
+        assertFalse(DocumentId.root(host, FileProtocol.WEBDAV).contains(file))
+    }
+
+    @Test
+    fun localIdsRejectTraversalAndLookalikes() {
+        assertNull(DocumentId.parse("local:/a/../etc/passwd"))
+        assertNull(DocumentId.parse("local:.."))
+        assertNull(DocumentId.parse("local:relative"))
+        assertNull(DocumentId.parse("local:/a\u0000b"))
+        assertNull(DocumentId.parse("Local:/x"))
+        assertNull(DocumentId.parse("local+webdav:/x"))
+        assertNull(DocumentId.parse("locals:/x"))
+        assertNull(DocumentId.parse("local"))
+    }
+
+    @Test
     fun mimeTypes() {
         val lookup: (String) -> String? = { ext -> mapOf("pdf" to "application/pdf", "txt" to "text/plain")[ext] }
         assertEquals(DocumentsContract.Document.MIME_TYPE_DIR, DocumentMime.of("anything.pdf", isDir = true, lookup))

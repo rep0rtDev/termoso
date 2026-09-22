@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,10 +75,17 @@ fun OpenTerminalRow(session: TerminalSession, onOpen: () -> Unit, onClose: () ->
 @Composable
 fun OpenSftpRow(conn: SftpConnection, onOpen: () -> Unit, onClose: () -> Unit) {
     val state by conn.state.collectAsStateWithLifecycle()
-    val webdav = conn.protocol == FileProtocol.WEBDAV
     OpenRow(
-        icon = if (webdav) Icons.Filled.CloudQueue else Icons.Filled.FolderOpen,
-        title = if (webdav) "WebDAV" else "SFTP",
+        icon = when (conn.protocol) {
+            FileProtocol.WEBDAV -> Icons.Filled.CloudQueue
+            FileProtocol.LOCAL -> Icons.Filled.PhoneAndroid
+            FileProtocol.SFTP -> Icons.Filled.FolderOpen
+        },
+        title = when (conn.protocol) {
+            FileProtocol.WEBDAV -> "WebDAV"
+            FileProtocol.LOCAL -> stringResource(R.string.local_shell_files)
+            FileProtocol.SFTP -> "SFTP"
+        },
         subtitle = stateLabel(state),
         failed = state is SessionState.Failed,
         onOpen = onOpen,

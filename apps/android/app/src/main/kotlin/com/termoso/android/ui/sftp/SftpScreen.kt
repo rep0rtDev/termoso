@@ -239,7 +239,11 @@ fun SftpScreen(
                             Column {
                                 Text(conn.label, maxLines = 1)
                                 Text(
-                                    if (conn.protocol == FileProtocol.WEBDAV) stringResource(R.string.webdav_target, conn.target) else conn.target,
+                                    when (conn.protocol) {
+                                        FileProtocol.WEBDAV -> stringResource(R.string.webdav_target, conn.target)
+                                        FileProtocol.LOCAL -> conn.target
+                                        FileProtocol.SFTP -> conn.target
+                                    },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,

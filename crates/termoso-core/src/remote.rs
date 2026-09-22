@@ -1,7 +1,7 @@
 //! Protocol-neutral view of a remote filesystem, implemented by
-//! [`Sftp`](crate::sftp::Sftp) and [`WebDav`](crate::webdav::WebDav) so the
-//! file panels, transfer queues and the Android documents provider drive
-//! either through one object.
+//! [`Sftp`](crate::sftp::Sftp), [`WebDav`](crate::webdav::WebDav) and
+//! [`LocalFs`](crate::localfs::LocalFs) so the file panels, transfer queues
+//! and the Android documents provider drive any of them through one object.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -21,14 +21,17 @@ pub enum RemoteProtocol {
     Sftp,
     /// WebDAV over HTTP(S).
     WebDav,
+    /// A directory on this device.
+    Local,
 }
 
 impl RemoteProtocol {
-    /// Lowercase wire name (`"sftp"`, `"webdav"`).
+    /// Lowercase wire name (`"sftp"`, `"webdav"`, `"local"`).
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Sftp => "sftp",
             Self::WebDav => "webdav",
+            Self::Local => "local",
         }
     }
 }

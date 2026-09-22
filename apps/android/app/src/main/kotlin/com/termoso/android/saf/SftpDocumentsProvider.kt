@@ -82,6 +82,7 @@ class SftpDocumentsProvider : DocumentsProvider() {
             lockedRoot(cursor)
             return cursor
         }
+        localRoot(cursor)
         val hosts = try {
             access.hosts(vault)
         } catch (e: ProviderException) {
@@ -106,6 +107,18 @@ class SftpDocumentsProvider : DocumentsProvider() {
             .add(Root.COLUMN_TITLE, if (protocol == FileProtocol.WEBDAV && host.protocol != "webdav") "$title (WebDAV)" else title)
             .add(Root.COLUMN_SUMMARY, summary)
             .add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE or Root.FLAG_SUPPORTS_IS_CHILD)
+            .add(Root.COLUMN_ICON, R.mipmap.ic_launcher)
+            .add(Root.COLUMN_MIME_TYPES, "*/*")
+    }
+
+    /** The local shell's home directory; the rest of the app's private storage stays out of reach. */
+    private fun localRoot(cursor: MatrixCursor) {
+        cursor.newRow()
+            .add(Root.COLUMN_ROOT_ID, DocumentId.LOCAL)
+            .add(Root.COLUMN_DOCUMENT_ID, DocumentId.local().encode())
+            .add(Root.COLUMN_TITLE, str(R.string.local_shell_files))
+            .add(Root.COLUMN_SUMMARY, str(R.string.files_local_root_summary))
+            .add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE or Root.FLAG_SUPPORTS_IS_CHILD or Root.FLAG_LOCAL_ONLY)
             .add(Root.COLUMN_ICON, R.mipmap.ic_launcher)
             .add(Root.COLUMN_MIME_TYPES, "*/*")
     }
@@ -136,10 +149,14 @@ class SftpDocumentsProvider : DocumentsProvider() {
         val id = DocumentId.parseOrThrow(documentId)
         val vault = access.vault()
         if (id.isRoot) {
-            val host = access.host(vault, id.hostId, id.protocol)
+            val name = if (id.protocol == FileProtocol.LOCAL) {
+                str(R.string.local_shell_files)
+            } else {
+                access.host(vault, id.hostId, id.protocol).let { it.label.ifBlank { it.address } }
+            }
             cursor.newRow()
                 .add(Document.COLUMN_DOCUMENT_ID, documentId)
-                .add(Document.COLUMN_DISPLAY_NAME, host.label.ifBlank { host.address })
+                .add(Document.COLUMN_DISPLAY_NAME, name)
                 .add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR)
                 .add(Document.COLUMN_FLAGS, Document.FLAG_DIR_SUPPORTS_CREATE)
             return cursor
@@ -366,8 +383,10 @@ class SftpDocumentsProvider : DocumentsProvider() {
     private fun resolveDir(conn: SftpConnection, id: DocumentId): String =
         if (id.isRoot) home(conn) else id.path
 
-    private fun home(conn: SftpConnection): String =
-        homes[conn.id] ?: sftp { conn.rust.canonicalize("~") }.also { homes[conn.id] = it }
+    private fun home(conn: SftpConnection): String = when (conn.protocol) {
+        FileProtocol.LOCAL -> "/"
+        else -> homes[conn.id] ?: sftp { conn.rust.canonicalize("~") }.also { homes[conn.id] = it }
+    }
 
     /**
      * Ids whose child listings show [id]: its directory, plus the host root

@@ -1463,6 +1463,33 @@ impl TermosoApp {
         ))
     }
 
+    /// Browse `home`, the local shell's home directory, as a file session.
+    /// Paths are relative to it and never leave it (symlinks pointing out
+    /// are dangling), so the rest of the app's private data stays private.
+    pub fn local_files(
+        &self,
+        home: String,
+        listener: Arc<dyn SftpListener>,
+    ) -> Result<Arc<SftpSession>> {
+        let home = home.trim();
+        if home.is_empty() {
+            return Err(MobileError::invalid("local home is empty"));
+        }
+        Ok(SftpSession::launch(
+            RUNTIME.handle().clone(),
+            SftpLaunch {
+                store: self.store.clone(),
+                secrets: self.secrets.clone(),
+                backend: FileBackend::Local {
+                    root: PathBuf::from(home),
+                },
+                settings: MobileSettings::load(&self.store)?,
+                listener,
+                presence: None,
+            },
+        ))
+    }
+
     /// Open SFTP to an ad-hoc target.
     pub fn sftp_quick(
         &self,
