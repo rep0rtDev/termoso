@@ -160,10 +160,11 @@ otherwise. Everything else (`TERMOSO_WEBAUTHN__RP_ID`, OAuth redirect URIs,
   `<TERMOSO_PUBLIC_URL>/api/v1/auth/sso/<slug>/saml/metadata` — that
   document is also the SP `entityID`, and the Assertion Consumer Service is
   `<TERMOSO_PUBLIC_URL>/api/v1/auth/sso/saml/acs` (HTTP-POST). Responses must
-  be signed with a certificate published in the IdP metadata; SHA-1 is
-  refused unless `SAML_ALLOW_SHA1=true`. Give the SP its own certificate and
-  key (`SAML_SP_CERTIFICATE`/`SAML_SP_PRIVATE_KEY`, PEM or paths) to sign
-  `AuthnRequest`s and to receive encrypted assertions. See
+  be signed with a certificate published in the IdP metadata; SHA-1 and
+  PKCS#1 v1.5 key transport are refused unless `SAML_ALLOW_SHA1=true`. Give
+  the SP its own certificate and key (`SAML_SP_CERTIFICATE`/
+  `SAML_SP_PRIVATE_KEY`, PEM or paths) to sign `AuthnRequest`s and to receive
+  encrypted assertions (RSA-OAEP + AES-CBC/GCM). See
   `deploy/.env.example` for the full variable list.
 * **Use a publicly trusted certificate** (Let's Encrypt is fine). The Rust
   clients and the server's outgoing HTTPS ship the Mozilla root store

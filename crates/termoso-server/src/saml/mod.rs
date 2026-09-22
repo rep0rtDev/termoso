@@ -285,14 +285,13 @@ impl ServiceProvider {
         {
             return Err(SamlError::Issuer);
         }
-        self.check_status(response)?;
-
         let response_signed = if dsig::is_signed(response) {
             dsig::verify_enveloped(&doc, response, &self.idp.signing_keys, self.sp.allow_sha1)?;
             true
         } else {
             false
         };
+        self.check_status(response, response_signed)?;
 
         // Exactly one assertion, plain or encrypted.
         let plain: Vec<Node> = children(response, NS_ASSERTION, "Assertion").collect();
@@ -301,7 +300,7 @@ impl ServiceProvider {
             (1, 0) => self.consume_assertion(&doc, plain[0], response_signed, request_id, now),
             (0, 1) => {
                 let key = self.sp.key.as_ref().ok_or(SamlError::NoDecryptionKey)?;
-                let wrapped = xmlenc::decrypt_assertion(encrypted[0], key)?;
+                let wrapped = xmlenc::decrypt_assertion(encrypted[0], key, self.sp.allow_sha1)?;
                 let adoc =
                     Document::parse(&wrapped).map_err(|e| SamlError::Malformed(e.to_string()))?;
                 let assertion = adoc
@@ -321,7 +320,9 @@ impl ServiceProvider {
         }
     }
 
-    fn check_status(&self, response: Node) -> Result<(), SamlError> {
+    /// Free-text `StatusMessage` is only surfaced from a signed response:
+    /// anyone can POST an unsigned failure to the ACS.
+    fn check_status(&self, response: Node, signed: bool) -> Result<(), SamlError> {
         let status = child(response, NS_PROTOCOL, "Status")
             .ok_or_else(|| SamlError::Malformed("no Status".into()))?;
         let code = child(status, NS_PROTOCOL, "StatusCode")
@@ -341,7 +342,10 @@ impl ServiceProvider {
             detail.push_str(" / ");
             detail.push_str(sub.rsplit(':').next().unwrap_or(sub));
         }
-        if let Some(msg) = child(status, NS_PROTOCOL, "StatusMessage").and_then(|m| m.text()) {
+        if let Some(msg) = child(status, NS_PROTOCOL, "StatusMessage")
+            .filter(|_| signed)
+            .and_then(|m| m.text())
+        {
             let msg: String = msg.trim().chars().take(200).collect();
             if !msg.is_empty() {
                 detail.push_str(": ");
@@ -650,6 +654,7 @@ pub mod test_support {
         pub recipient: Option<String>,
         pub destination: Option<String>,
         pub status: String,
+        pub status_message: Option<String>,
         pub sign_assertion: bool,
         pub sign_response: bool,
         pub encrypt_for: Option<rsa::RsaPublicKey>,
@@ -679,6 +684,7 @@ pub mod test_support {
                 recipient: Some(acs_url.into()),
                 destination: Some(acs_url.into()),
                 status: STATUS_SUCCESS.into(),
+                status_message: None,
                 sign_assertion: true,
                 sign_response: false,
                 encrypt_for: None,
@@ -778,7 +784,7 @@ pub mod test_support {
             concat!(
                 r#"<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="{rid}" Version="2.0" IssueInstant="{now}"{dest} InResponseTo="{irt}">"#,
                 "<saml:Issuer>{idp}</saml:Issuer>",
-                r#"<samlp:Status><samlp:StatusCode Value="{status}"/></samlp:Status>"#,
+                r#"<samlp:Status><samlp:StatusCode Value="{status}"/>{status_message}</samlp:Status>"#,
                 "{assertion}",
                 "</samlp:Response>"
             ),
@@ -788,6 +794,11 @@ pub mod test_support {
             irt = spec.in_response_to,
             idp = xml_text(&spec.idp_entity_id),
             status = spec.status,
+            status_message = spec
+                .status_message
+                .as_deref()
+                .map(|m| format!("<samlp:StatusMessage>{}</samlp:StatusMessage>", xml_text(m)))
+                .unwrap_or_default(),
             assertion = assertion,
         );
         if spec.sign_response {
@@ -1028,6 +1039,18 @@ mod tests {
             p.consume_response(&build_response_b64(&bad), "_req1", s.now),
             Err(SamlError::Status(_))
         ));
+
+        // Free-text StatusMessage reaches the user only from a signed response.
+        bad.status_message = Some("call +1-555-SCAM to unlock".into());
+        match p.consume_response(&build_response_b64(&bad), "_req1", s.now) {
+            Err(SamlError::Status(d)) => assert_eq!(d, "Responder"),
+            other => panic!("expected Status, got {other:?}"),
+        }
+        bad.sign_response = true;
+        match p.consume_response(&build_response_b64(&bad), "_req1", s.now) {
+            Err(SamlError::Status(d)) => assert_eq!(d, "Responder: call +1-555-SCAM to unlock"),
+            other => panic!("expected Status, got {other:?}"),
+        }
 
         let mut bad = s.clone();
         bad.name_id = "not-an-email".into();

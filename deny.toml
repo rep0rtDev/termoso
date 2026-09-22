@@ -20,10 +20,14 @@ ignore = [
   # russh signs one SSH userauth challenge per connection with an RSA client
   # key (timing not observable remotely at the required precision; Ed25519 is
   # the default key type); openidconnect only verifies RS256 signatures with
-  # the IdP's public key; rsa 0.9 in termoso-server is a dev-dependency of the
-  # mock IdP. Any future RSA *decryption* with a long-lived key (e.g. SAML
-  # encrypted assertions) must be rate-limited and revisit this entry.
-  { id = "RUSTSEC-2023-0071", reason = "no upstream fix; only per-connection SSH signing and public-key verification are reachable" },
+  # the IdP's public key. termoso-server uses rsa 0.9 for SAML: signing
+  # AuthnRequests (SP key, one per login) and decrypting EncryptedAssertion
+  # key transport (SP key, long-lived). The latter is the only remotely
+  # drivable private-key operation: the ACS is rate-limited per IP (AUTH_IP),
+  # PKCS#1 v1.5 key transport is refused unless SAML_ALLOW_SHA1 opts in, and
+  # the Marvin attack needs a large volume of precisely timed decryptions.
+  # Re-evaluate when a fixed rsa release exists.
+  { id = "RUSTSEC-2023-0071", reason = "no upstream fix; SSH signing, JWT verification and rate-limited SAML OAEP decryption (RSA-1.5 off by default)" },
   # Unmaintained transitive crates without a known vulnerability: pulled in by
   # Tauri/tera/gtk tooling, not by Termoso code.
   { id = "RUSTSEC-2024-0370", reason = "proc-macro-error via tauri build tooling; compile-time only" },
