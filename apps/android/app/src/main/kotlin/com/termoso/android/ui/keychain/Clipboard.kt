@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.PersistableBundle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 
 /** Copy text; `sensitive` hides it from the Android 13+ clipboard preview overlay. */
 fun copyText(context: Context, label: String, text: String, sensitive: Boolean = false) {
@@ -38,9 +39,15 @@ private const val MAX_KEY_FILE_BYTES = 256 * 1024
 /** Read a picked document as UTF-8 text, refusing anything too large to be a key or certificate. */
 suspend fun readTextFile(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
     val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
-        val buf = input.readNBytes(MAX_KEY_FILE_BYTES + 1)
-        require(buf.size <= MAX_KEY_FILE_BYTES) { str(R.string.file_is_too_large_to_be_a_key) }
-        buf
+        val out = ByteArrayOutputStream()
+        val chunk = ByteArray(16 * 1024)
+        while (true) {
+            val n = input.read(chunk)
+            if (n < 0) break
+            out.write(chunk, 0, n)
+            require(out.size() <= MAX_KEY_FILE_BYTES) { str(R.string.file_is_too_large_to_be_a_key) }
+        }
+        out.toByteArray()
     } ?: error(str(R.string.could_not_open_the_file))
     bytes.toString(Charsets.UTF_8)
 }
