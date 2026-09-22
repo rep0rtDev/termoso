@@ -6277,6 +6277,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "termoso-awslc-rsa"
+version = "0.4.0"
+dependencies = [
+ "aws-lc-sys",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "termoso-client"
 version = "0.4.0"
 dependencies = [
@@ -6423,6 +6431,7 @@ dependencies = [
  "anyhow",
  "argon2 0.5.3",
  "async-trait",
+ "aws-lc-rs",
  "aws-sdk-s3",
  "axum",
  "base64 0.23.1",
@@ -6452,6 +6461,7 @@ dependencies = [
  "sha2 0.10.9",
  "sqlx",
  "subtle",
+ "termoso-awslc-rsa",
  "termoso-crypto",
  "termoso-proto",
  "thiserror 2.0.20",

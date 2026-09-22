@@ -4,6 +4,7 @@
 
 use libfuzzer_sys::fuzz_target;
 use std::sync::LazyLock;
+use termoso_server::saml::SpKey;
 use termoso_server::saml::c14n::{Method, canonicalize};
 use termoso_server::saml::dsig::{cert_public_key, is_signed, verify_enveloped};
 use termoso_server::saml::test_support::{idp_cert_der, sp_key};
@@ -11,7 +12,7 @@ use termoso_server::saml::xmlenc::decrypt_assertion;
 
 static KEYS: LazyLock<Vec<rsa::RsaPublicKey>> =
     LazyLock::new(|| vec![cert_public_key(&idp_cert_der()).unwrap()]);
-static SP_KEY: LazyLock<rsa::RsaPrivateKey> = LazyLock::new(sp_key);
+static SP_KEY: LazyLock<SpKey> = LazyLock::new(sp_key);
 
 const METHODS: [&str; 4] = [
     "http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
