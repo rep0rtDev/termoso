@@ -268,7 +268,13 @@ function VaultRow({
     ) : (
       <ComputerOutlinedIcon sx={{ fontSize: 15 }} />
     );
-  const note = !v.unlocked ? "Locked" : v.role === "viewer" ? "Read-only" : null;
+  const note = !v.unlocked
+    ? "Locked"
+    : v.role === "viewer"
+      ? "Read-only"
+      : v.is_default
+        ? "Default"
+        : null;
   return (
     <ListRow
       icon={vaultIcon(v)}
@@ -347,15 +353,19 @@ function VaultDetails({
       icon: <RefreshRoundedIcon fontSize="small" />,
       disabled: !manager,
       onClick: () => setConfirm("rotate"),
-      divider: true,
+      divider: !v.is_default,
     },
-    {
-      label: "Delete vault",
-      icon: <DeleteOutlineRoundedIcon fontSize="small" />,
-      danger: true,
-      disabled: !manager,
-      onClick: () => setConfirm("delete"),
-    },
+    ...(v.is_default
+      ? []
+      : [
+          {
+            label: "Delete vault",
+            icon: <DeleteOutlineRoundedIcon fontSize="small" />,
+            danger: true,
+            disabled: !manager,
+            onClick: () => setConfirm("delete"),
+          } satisfies MenuAction,
+        ]),
   ];
 
   const commitName = () => {

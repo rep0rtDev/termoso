@@ -138,8 +138,8 @@ fn validate_sealed(sealed: &str) -> ApiResult<()> {
 
 #[utoipa::path(get, path = "/api/v1/vaults", tag = "vaults", responses((status = 200, body = VaultList)))]
 pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<VaultList>> {
-    let rows: Vec<(Uuid, String, Option<Uuid>, String, DateTime<Utc>, String, Option<String>, i32, bool)> = sqlx::query_as(
-        "SELECT v.id, v.kind, v.team_id, v.name, v.created_at, vm.role, vm.sealed_key, v.key_version, v.session_logging
+    let rows: Vec<(Uuid, String, Option<Uuid>, String, DateTime<Utc>, String, Option<String>, i32, bool, bool)> = sqlx::query_as(
+        "SELECT v.id, v.kind, v.team_id, v.name, v.created_at, vm.role, vm.sealed_key, v.key_version, v.session_logging, v.is_default
          FROM vaults v JOIN vault_members vm ON vm.vault_id = v.id
          WHERE vm.user_id = $1 AND v.deleted_at IS NULL
          ORDER BY v.kind, v.created_at",
@@ -161,6 +161,7 @@ pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<V
                     sealed_key,
                     key_version,
                     session_logging,
+                    is_default,
                 )| Vault {
                     id,
                     kind: if kind == "team" {
@@ -175,6 +176,7 @@ pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<V
                     sealed_key,
                     key_version,
                     session_logging,
+                    is_default,
                 },
             )
             .collect(),
@@ -188,13 +190,14 @@ pub async fn get(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Vault>> {
     let a = access(&state.db, id, auth.user_id()).await?;
-    let (name, created_at, sealed_key, session_logging): (
+    let (name, created_at, sealed_key, session_logging, is_default): (
         String,
         DateTime<Utc>,
         Option<String>,
         bool,
+        bool,
     ) = sqlx::query_as(
-        "SELECT v.name, v.created_at, vm.sealed_key, v.session_logging FROM vaults v
+        "SELECT v.name, v.created_at, vm.sealed_key, v.session_logging, v.is_default FROM vaults v
          LEFT JOIN vault_members vm ON vm.vault_id = v.id AND vm.user_id = $2 WHERE v.id = $1",
     )
     .bind(id)
@@ -211,6 +214,7 @@ pub async fn get(
         sealed_key,
         key_version: a.key_version,
         session_logging,
+        is_default,
     }))
 }
 
@@ -247,13 +251,22 @@ pub async fn create_team_vault(
     }
     let id = Uuid::new_v4();
     let mut tx = state.db.begin().await?;
-    let (created_at,): (DateTime<Utc>,) =
-        sqlx::query_as("INSERT INTO vaults (id, kind, team_id, name) VALUES ($1, 'team', $2, $3) RETURNING created_at")
-            .bind(id)
-            .bind(team_id)
-            .bind(&name)
-            .fetch_one(&mut *tx)
-            .await?;
+    // Serialise per team so exactly one vault becomes the default.
+    sqlx::query("SELECT 1 FROM teams WHERE id = $1 FOR UPDATE")
+        .bind(team_id)
+        .execute(&mut *tx)
+        .await?;
+    let (created_at, is_default): (DateTime<Utc>, bool) = sqlx::query_as(
+        "INSERT INTO vaults (id, kind, team_id, name, is_default)
+         VALUES ($1, 'team', $2, $3, NOT EXISTS (
+             SELECT 1 FROM vaults WHERE team_id = $2 AND kind = 'team' AND is_default AND deleted_at IS NULL))
+         RETURNING created_at, is_default",
+    )
+    .bind(id)
+    .bind(team_id)
+    .bind(&name)
+    .fetch_one(&mut *tx)
+    .await?;
     for m in &req.members {
         sqlx::query(
             "INSERT INTO vault_members (vault_id, user_id, role, sealed_key, key_version, added_by) VALUES ($1, $2, $3, $4, 1, $5)",
@@ -276,6 +289,7 @@ pub async fn create_team_vault(
             .vault(id)
             .details(serde_json::json!({
                 "name": name,
+                "default": is_default,
                 "members": req.members.iter().map(|m| serde_json::json!({
                     "user_id": m.user_id,
                     "role": vault_role_str(m.role),
@@ -293,6 +307,7 @@ pub async fn create_team_vault(
         sealed_key: Some(me.sealed_key.clone()),
         key_version: 1,
         session_logging: false,
+        is_default,
     }))
 }
 
@@ -369,10 +384,16 @@ pub async fn delete(
         return Err(Error::forbidden("The personal vault cannot be deleted"));
     }
     let members = member_ids(&state.db, id).await?;
-    let (name,): (String,) = sqlx::query_as("SELECT name FROM vaults WHERE id = $1")
-        .bind(id)
-        .fetch_one(&state.db)
-        .await?;
+    let (name, is_default): (String, bool) =
+        sqlx::query_as("SELECT name, is_default FROM vaults WHERE id = $1")
+            .bind(id)
+            .fetch_one(&state.db)
+            .await?;
+    if is_default {
+        return Err(Error::forbidden(
+            "The team's default vault cannot be deleted; rename it instead",
+        ));
+    }
     let log_keys: Vec<(String,)> =
         sqlx::query_as("SELECT object_key FROM session_logs WHERE vault_id = $1")
             .bind(id)

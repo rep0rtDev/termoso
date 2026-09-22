@@ -321,6 +321,8 @@ export interface Vault {
   key_version: number;
   /** Team vault: a manager turned on recording of every member's sessions. */
   session_logging: boolean;
+  /** Team vault: the team's first vault. It can be renamed but not deleted. */
+  is_default: boolean;
 }
 
 /** Who recorded a session log, as the server shows it to vault members. */

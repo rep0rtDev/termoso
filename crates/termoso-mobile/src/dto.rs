@@ -53,6 +53,9 @@ pub struct VaultInfo {
     pub team_id: Option<String>,
     pub access: VaultAccess,
     pub locked: bool,
+    /// The team's first vault: can be renamed but not deleted.
+    #[uniffi(default = false)]
+    pub is_default: bool,
 }
 
 impl From<LocalVault> for VaultInfo {
@@ -72,6 +75,7 @@ impl From<LocalVault> for VaultInfo {
                 VaultRole::Manager => VaultAccess::Manage,
             },
             locked: !v.unlocked,
+            is_default: v.is_default,
         }
     }
 }

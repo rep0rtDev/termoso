@@ -1,5 +1,5 @@
-import { vaultsApi } from "@/api/endpoints";
-import type { PendingVaultKey, Vault, VaultMember } from "@/api/types";
+import { teamsApi, vaultsApi } from "@/api/endpoints";
+import type { PendingVaultKey, Team, Vault, VaultMember } from "@/api/types";
 import { requireUnlocked } from "@/auth/unlock";
 import {
   generateVaultKey,
@@ -44,6 +44,19 @@ export async function newSealedVaultKey(
       ? sealVaultKeySelf(selfPrivateKey, vaultKey)
       : sealVaultKey(r.public_key, vaultKey),
   }));
+}
+
+/**
+ * Creates a team's first vault, named after the team, with the creator as its
+ * only manager. The vault key is generated here and sealed to the creator's
+ * public key; the server marks the team's first vault as the default one.
+ */
+export async function createDefaultTeamVault(
+  team: Team,
+  me: { user_id: string; public_key: string },
+): Promise<Vault> {
+  const members = (await newSealedVaultKey([me])).map((s) => ({ ...s, role: "manager" as const }));
+  return teamsApi.createVault(team.id, team.name, members);
 }
 
 /** Seals the vault key for a member who joined without one (e.g. via invite). */

@@ -156,6 +156,8 @@ export interface LocalVault {
   /** Team vault: the manager turned on recording of every member's sessions. */
   session_logging: boolean;
   logs_cursor: number;
+  /** Team vault: the team's first vault. It can be renamed but not deleted. */
+  is_default: boolean;
 }
 
 /** Member of a team vault as the server sees it. */
