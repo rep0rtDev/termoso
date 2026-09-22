@@ -15,32 +15,31 @@ use termoso_proto::auth::{
     AuthResponse, BackupCodes, MfaCredential, MfaMethod, MfaStatus, MfaVerifyRequest,
     TotpCodeRequest, TotpSetupResponse, WebauthnChallengeRequest, WebauthnRegisterFinishRequest,
 };
-use totp_rs::{Algorithm, Secret, TOTP};
+use totp_rs::{Algorithm, Secret, Totp};
 use uuid::Uuid;
 
 /// Authenticator side of TOTP, built from the enrolment response.
-fn authenticator(setup: &TotpSetupResponse) -> TOTP {
-    let from_url = TOTP::from_url(&setup.otpauth_url).expect("otpauth url parses");
-    let bytes = Secret::Encoded(setup.secret.clone())
-        .to_bytes()
-        .expect("base32 secret");
+fn authenticator(setup: &TotpSetupResponse) -> Totp {
+    let from_url = Totp::from_url(&setup.otpauth_url).expect("otpauth url parses");
+    let secret = Secret::try_from_base32(&setup.secret).expect("base32 secret");
     assert_eq!(
-        from_url.secret, bytes,
+        from_url.secret().as_bytes(),
+        secret.as_bytes(),
         "secret and otpauth url must describe the same key"
     );
     assert_eq!(
-        (from_url.algorithm, from_url.digits, from_url.step),
+        (from_url.algorithm(), from_url.digits(), from_url.step()),
         (Algorithm::SHA1, 6, 30)
     );
     from_url
 }
 
-fn code(totp: &TOTP) -> String {
-    totp.generate_current().expect("clock")
+fn code(totp: &Totp) -> String {
+    totp.generate_current().to_string()
 }
 
 /// Enrol TOTP for `u`; returns the authenticator and the fresh backup codes.
-async fn enroll_totp(s: &TestServer, u: &User) -> (TOTP, Vec<String>) {
+async fn enroll_totp(s: &TestServer, u: &User) -> (Totp, Vec<String>) {
     let setup: TotpSetupResponse = s
         .json(
             Method::POST,
@@ -354,7 +353,7 @@ async fn totp_enrolment_and_login() {
 }
 
 /// A TOTP code different from `used` (waits for the next 30 s step if needed).
-async fn fresh_code(totp: &TOTP, used: &str) -> String {
+async fn fresh_code(totp: &Totp, used: &str) -> String {
     loop {
         let c = code(totp);
         if c != used {

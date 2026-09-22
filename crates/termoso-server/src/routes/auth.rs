@@ -565,17 +565,17 @@ async fn available_mfa_methods(state: &AppState, user: &UserRow) -> ApiResult<Ve
 
 // ───────────────────────────── MFA ─────────────────────────────
 
-pub fn totp_for(state: &AppState, user: &UserRow, secret: &[u8]) -> ApiResult<totp_rs::TOTP> {
-    totp_rs::TOTP::new(
-        totp_rs::Algorithm::SHA1,
-        6,
-        1,
-        30,
-        secret.to_vec(),
-        Some(state.cfg.server_name.clone()),
-        user.email.clone(),
-    )
-    .map_err(|e| Error::Internal(anyhow::anyhow!("totp: {e}")))
+pub fn totp_for(state: &AppState, user: &UserRow, secret: &[u8]) -> ApiResult<totp_rs::Totp> {
+    totp_rs::Builder::new()
+        .with_algorithm(totp_rs::Algorithm::SHA1)
+        .with_digits(6)
+        .with_skew(1)
+        .with_step_duration(30)
+        .with_secret(secret.to_vec())
+        .with_issuer(Some(state.cfg.server_name.as_str()))
+        .with_account_name(user.email.as_str())
+        .build()
+        .map_err(|e| Error::Internal(anyhow::anyhow!("totp: {e}")))
 }
 
 pub fn decrypt_totp_secret(state: &AppState, user: &UserRow) -> ApiResult<Option<Vec<u8>>> {
@@ -585,17 +585,18 @@ pub fn decrypt_totp_secret(state: &AppState, user: &UserRow) -> ApiResult<Option
     }
 }
 
-/// Verifies a TOTP code with ±1 step skew and rejects replays within the window.
+/// Verifies a TOTP code with ±1 step skew and rejects replays of the matched
+/// time step (RFC 6238 §5.2) within the window.
 pub async fn check_totp(state: &AppState, user: &UserRow, code: &str) -> ApiResult<bool> {
     let Some(secret) = decrypt_totp_secret(state, user)? else {
         return Ok(false);
     };
     let code = normalize_code(code);
     let totp = totp_for(state, user, &secret)?;
-    if !totp.check_current(&code).unwrap_or(false) {
+    let Some(step) = totp.check_current(&code) else {
         return Ok(false);
-    }
-    let replay_key = format!("totp_used:{}:{}", user.id, code);
+    };
+    let replay_key = format!("totp_used:{}:{step}", user.id);
     let (n, _) = state
         .cache
         .incr_window(&replay_key, Duration::from_secs(95))
