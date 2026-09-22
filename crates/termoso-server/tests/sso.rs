@@ -10,6 +10,7 @@ use reqwest::{Method, StatusCode, redirect::Policy};
 use termoso_proto::admin::{AdminUpdateUserRequest, AdminUser};
 use termoso_proto::auth::{AuthResponse, SsoKind, SsoProvider, SsoResult, SsoStartResponse};
 use termoso_server::config::{Config, SsoKindConfig, SsoProviderConfig};
+use termoso_server::saml::test_support as saml_support;
 use termoso_server::sso::SsoRegistry;
 use url::Url;
 
@@ -91,9 +92,22 @@ async fn providers_are_listed_and_flows_start_with_pkce() {
         .json(Method::GET, "/auth/sso/providers", None, NOBODY)
         .await;
     let ids: Vec<&str> = providers.iter().map(|p| p.id.as_str()).collect();
-    assert_eq!(ids, [SSO_PROVIDER, SSO_CORP_PROVIDER]);
+    assert_eq!(
+        ids,
+        [
+            SSO_PROVIDER,
+            SSO_CORP_PROVIDER,
+            SAML_PROVIDER,
+            SAML_CORP_PROVIDER
+        ]
+    );
     let mock = providers.iter().find(|p| p.id == SSO_PROVIDER).unwrap();
     assert_eq!((mock.name.as_str(), mock.kind), ("Mock IdP", SsoKind::Oidc));
+    let saml = providers.iter().find(|p| p.id == SAML_PROVIDER).unwrap();
+    assert_eq!(
+        (saml.name.as_str(), saml.kind),
+        ("Mock SAML", SsoKind::Saml)
+    );
 
     s.expect_status(
         Method::GET,
@@ -482,7 +496,7 @@ async fn allowed_domains_and_redirect_filtering() {
 }
 
 #[tokio::test]
-async fn registry_rejects_incomplete_and_saml_providers() {
+async fn registry_rejects_incomplete_providers() {
     let Some(s) = server().await else { return };
     let oidc_ok = SsoProviderConfig {
         name: None,
@@ -490,9 +504,7 @@ async fn registry_rejects_incomplete_and_saml_providers() {
         issuer: Some(s.idp.issuer.clone()),
         client_id: Some(oidc::CLIENT_ID.into()),
         client_secret: Some(oidc::CLIENT_SECRET.into()),
-        scopes: None,
-        saml_metadata: None,
-        allowed_domains: None,
+        ..SsoProviderConfig::default()
     };
     let build = |slug: &str, p: SsoProviderConfig| {
         let mut cfg = Config {
@@ -513,17 +525,73 @@ async fn registry_rejects_incomplete_and_saml_providers() {
         .expect("discovery works");
     assert_eq!(ok[0].name, "acme", "slug is the default name");
 
-    let saml = build(
+    let saml_no_metadata = build(
         "okta",
         SsoProviderConfig {
             kind: SsoKindConfig::Saml,
-            saml_metadata: Some("https://okta.example/metadata".into()),
-            ..oidc_ok.clone()
+            ..SsoProviderConfig::default()
         },
     )
     .await
-    .expect_err("SAML must be rejected at startup");
-    assert!(saml.contains("SAML"), "{saml}");
+    .expect_err("SAML needs metadata");
+    assert!(
+        saml_no_metadata.contains("saml_metadata"),
+        "{saml_no_metadata}"
+    );
+
+    let saml_bad_metadata = build(
+        "okta",
+        SsoProviderConfig {
+            kind: SsoKindConfig::Saml,
+            saml_metadata: Some("<md:EntityDescriptor xmlns:md=\"urn:oasis:names:tc:SAML:2.0:metadata\" entityID=\"x\"/>".into()),
+            ..SsoProviderConfig::default()
+        },
+    )
+    .await
+    .expect_err("metadata without an IdP role");
+    assert!(
+        saml_bad_metadata.contains("IDPSSODescriptor"),
+        "{saml_bad_metadata}"
+    );
+
+    let saml_sign_without_key = build(
+        "okta",
+        SsoProviderConfig {
+            kind: SsoKindConfig::Saml,
+            saml_metadata: Some(saml_support::idp_metadata_xml(
+                SAML_IDP_ENTITY,
+                SAML_IDP_SSO_URL,
+            )),
+            saml_sign_requests: Some(true),
+            ..SsoProviderConfig::default()
+        },
+    )
+    .await
+    .expect_err("signing needs a key");
+    assert!(
+        saml_sign_without_key.contains("saml_sp_private_key"),
+        "{saml_sign_without_key}"
+    );
+
+    let saml_key_mismatch = build(
+        "okta",
+        SsoProviderConfig {
+            kind: SsoKindConfig::Saml,
+            saml_metadata: Some(saml_support::idp_metadata_xml(
+                SAML_IDP_ENTITY,
+                SAML_IDP_SSO_URL,
+            )),
+            saml_sp_certificate: Some(saml_support::IDP_CERT_PEM.into()),
+            saml_sp_private_key: Some(saml_support::SP_KEY_PEM.into()),
+            ..SsoProviderConfig::default()
+        },
+    )
+    .await
+    .expect_err("cert/key mismatch");
+    assert!(
+        saml_key_mismatch.contains("does not match"),
+        "{saml_key_mismatch}"
+    );
 
     let no_secret = build(
         "acme",

@@ -43,5 +43,11 @@ upgrading is the fix.
 * Every release is built from tagged source on CI; desktop updates are signed
   and the updater is off unless you turn it on.
 * Dependencies are updated weekly by Dependabot and reviewed like any change.
+  CI fails on RustSec advisories, licences outside the allow-list, crates
+  from unknown registries or git sources and banned legacy TLS/HTTP stacks
+  (`deny.toml`), and on `npm audit` findings of moderate severity or higher
+  in the web cabinet and desktop webview. The full transitive Gradle graph of
+  the Android app is submitted to GitHub so Dependabot alerts cover it too.
+  Every accepted advisory carries a written reason in `deny.toml`.
 * Cryptographic choices are documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md);
   if you believe one of them is wrong, that is a valid report too.

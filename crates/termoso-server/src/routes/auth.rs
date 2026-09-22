@@ -3,7 +3,8 @@
 use std::time::Duration;
 
 use axum::Json;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Form, Path, Query, State};
+use axum::http::header;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::{Deserialize, Serialize};
 use termoso_crypto::encoding::{b64, unb64, unb64_array};
@@ -1215,11 +1216,68 @@ pub async fn sso_callback(
     let flow_id = q.state.ok_or_else(|| Error::bad_request("missing state"))?;
     let (redirect, flow_id) =
         sso::callback(&state, &flow_id, q.code.as_deref(), q.error.as_deref()).await?;
+    Ok(sso_done(&state, redirect, &flow_id))
+}
+
+fn sso_done(state: &AppState, redirect: Option<String>, flow_id: &str) -> Response {
     if let Some(target) = redirect {
         let sep = if target.contains('?') { '&' } else { '?' };
-        return Ok(Redirect::to(&format!("{target}{sep}flow={flow_id}")).into_response());
+        return Redirect::to(&format!("{target}{sep}flow={flow_id}")).into_response();
     }
-    Ok(Html(SSO_DONE_HTML.replace("{name}", &html_escape(&state.cfg.server_name))).into_response())
+    Html(SSO_DONE_HTML.replace("{name}", &html_escape(&state.cfg.server_name))).into_response()
+}
+
+/// SP metadata for a SAML provider — hand this URL (or its output) to the IdP.
+#[utoipa::path(get, path = "/api/v1/auth/sso/{provider}/saml/metadata", tag = "auth",
+    params(("provider" = String, Path)),
+    responses((status = 200, description = "SAML SP EntityDescriptor", content_type = "application/samlmetadata+xml")))]
+pub async fn sso_saml_metadata(
+    State(state): State<AppState>,
+    Path(provider): Path<String>,
+) -> ApiResult<Response> {
+    let xml = state.sso.saml_metadata(&provider)?;
+    Ok((
+        [(header::CONTENT_TYPE, "application/samlmetadata+xml")],
+        xml,
+    )
+        .into_response())
+}
+
+/// SAML HTTP-POST binding: auto-submitting form carrying the `AuthnRequest`.
+pub async fn sso_saml_post(
+    State(state): State<AppState>,
+    Path(flow_id): Path<String>,
+) -> ApiResult<Html<String>> {
+    let form = sso::saml_post_form(&state, &flow_id).await?;
+    Ok(Html(
+        SAML_POST_HTML
+            .replace("{action}", &html_escape(&form.action))
+            .replace("{request}", &html_escape(&form.saml_request))
+            .replace("{relay}", &html_escape(&flow_id)),
+    ))
+}
+
+#[derive(Deserialize)]
+pub struct SamlAcsForm {
+    #[serde(rename = "SAMLResponse")]
+    pub saml_response: String,
+    #[serde(rename = "RelayState")]
+    pub relay_state: Option<String>,
+}
+
+/// SAML Assertion Consumer Service (HTTP-POST binding).
+pub async fn sso_saml_acs(
+    State(state): State<AppState>,
+    client: Client,
+    Form(form): Form<SamlAcsForm>,
+) -> ApiResult<Response> {
+    ratelimit::check_ip(&state, ratelimit::AUTH_IP, client.ip.as_deref()).await?;
+    let relay = form
+        .relay_state
+        .filter(|r| !r.is_empty())
+        .ok_or_else(|| Error::bad_request("missing RelayState"))?;
+    let (redirect, flow_id) = sso::saml_acs(&state, &relay, &form.saml_response).await?;
+    Ok(sso_done(&state, redirect, &flow_id))
 }
 
 #[utoipa::path(get, path = "/api/v1/auth/sso/flow/{flow_id}", tag = "auth",
@@ -1237,7 +1295,16 @@ fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
+
+const SAML_POST_HTML: &str = r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Signing in…</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#12151F;color:#E6E8F0;font-family:system-ui,sans-serif}
+button{background:#3DDC84;color:#0B1F14;border:0;border-radius:8px;padding:10px 18px;font-size:15px;cursor:pointer}</style></head>
+<body><form method="post" action="{action}"><input type="hidden" name="SAMLRequest" value="{request}"><input type="hidden" name="RelayState" value="{relay}">
+<noscript><button type="submit">Continue to your identity provider</button></noscript></form>
+<script>document.forms[0].submit()</script></body></html>"#;
 
 const SSO_DONE_HTML: &str = r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{name}</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">

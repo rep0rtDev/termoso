@@ -54,6 +54,7 @@ impl Modify for BearerAuth {
         crate::routes::auth::sso_providers,
         crate::routes::auth::sso_start,
         crate::routes::auth::sso_poll,
+        crate::routes::auth::sso_saml_metadata,
         crate::routes::account::get,
         crate::routes::account::update_profile,
         crate::routes::account::put_presence,

@@ -307,6 +307,28 @@ jobs:
           path: apps/android/app/build/outputs/apk/debug/*.apk
           retention-days: 7
 
+  # Supply chain: RustSec advisories, license allow-list, banned crates and
+  # registry sources for the whole workspace (deny.toml), plus the npm
+  # advisory database for both JS trees. Gradle is covered by the dependency
+  # graph submitted from dependency-graph.yml (Dependabot alerts).
+  supply-chain:
+    name: supply chain (cargo deny + npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2
+      - run: cargo deny --locked check advisories bans licenses sources
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm audit --audit-level=moderate
+        working-directory: web
+      - run: npm audit --audit-level=moderate
+        working-directory: apps/desktop
+
   docker:
     name: docker image
     runs-on: ubuntu-latest

@@ -3,6 +3,7 @@ name = "termoso-server"
 description = "Termoso backend: zero-knowledge sync, auth, teams and vaults"
 version.workspace = true
 edition.workspace = true
+publish = false
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -26,7 +27,6 @@ bytes = { workspace = true }
 sqlx = { workspace = true }
 redis = { workspace = true }
 aws-sdk-s3 = { workspace = true }
-aws-config = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -62,13 +62,26 @@ metrics-exporter-prometheus = { workspace = true }
 url = { workspace = true }
 http = { workspace = true }
 async-trait = "0.1"
+# SAML: pure-Rust XML-DSig / XML-Enc over roxmltree (no libxml2/xmlsec).
+roxmltree = "0.21"
+flate2 = "1"
+x509-parser = "0.18"
+rsa = { version = "0.9", features = ["sha1", "sha2"] }
+sha1 = "0.10"
+sha2 = { workspace = true }
+aes = "0.8"
+cbc = "0.1"
+aes-gcm = "0.10"
+
+[features]
+# Mock SAML IdP (fixture keys, signed/encrypted responses) for the test suites.
+saml-test-support = []
 
 [dev-dependencies]
+termoso-server = { path = ".", features = ["saml-test-support"] }
 tower = { workspace = true }
 http-body-util = "0.1"
 tokio-tungstenite = "0.29"
-# Mock OIDC provider in the integration tests signs RS256 ID tokens.
-rsa = { version = "0.9", features = ["sha2"] }
 # Software CTAP2 authenticator drives the WebAuthn ceremonies end to end.
 termoso-core = { workspace = true, features = ["fido2-soft"] }
 # The API bridge runtime is exercised end to end against the in-process server.
