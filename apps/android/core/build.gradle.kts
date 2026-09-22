@@ -3,7 +3,6 @@ import org.gradle.process.ExecOperations
 
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
 }
 
 // Cargo workspace root: apps/android/core -> ../../..
@@ -40,7 +39,9 @@ android {
  * Always runs (cargo is incremental itself and tracks the whole workspace). An unstripped
  * copy of the first ABI's library is kept for uniffi-bindgen (it reads the UniFFI metadata
  * from the symbol table); the packaged libraries are stripped with the NDK's llvm-strip —
- * DWARF only for debug, everything for release — so the APK stays small.
+ * DWARF only for debug, everything for release — so the APK stays small. The output
+ * directory is cleared first: cargo-ndk keeps an existing (already stripped) copy when
+ * cargo had nothing to rebuild.
  */
 abstract class CargoNdkBuild @Inject constructor(private val exec: ExecOperations) : DefaultTask() {
     @get:Input abstract val abis: ListProperty<String>
@@ -61,6 +62,7 @@ abstract class CargoNdkBuild @Inject constructor(private val exec: ExecOperation
         args += listOf("-o", outDir.get().asFile.absolutePath, "build", "-p", "termoso-mobile")
         // The workspace release profile strips the symbol table, which also drops the UniFFI metadata.
         if (release.get()) args += listOf("--release", "--config", "profile.release.strip=\"debuginfo\"")
+        outDir.get().asFile.deleteRecursively()
         exec.exec {
             workingDir = workspace.get().asFile
             ndkHome.orNull?.let { environment("ANDROID_NDK_HOME", it) }
