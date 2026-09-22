@@ -234,7 +234,13 @@ pub fn router(state: AppState) -> Router {
         .route("/.well-known/assetlinks.json", get(server::assetlinks))
         .route("/sshid/{handle}", get(sshid::public_default))
         .route("/sshid/{handle}/{type}", get(sshid::public_typed))
-        .nest("/api/v1", api);
+        .nest(
+            "/api/v1",
+            api.layer(SetResponseHeaderLayer::if_not_present(
+                header::CACHE_CONTROL,
+                HeaderValue::from_static("no-store"),
+            )),
+        );
 
     if state.cfg.swagger_ui {
         app = app.merge(crate::openapi::swagger());

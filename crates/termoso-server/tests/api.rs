@@ -61,7 +61,16 @@ async fn health_and_server_info() {
         .unwrap();
     assert_eq!(r.status(), StatusCode::OK, "{}", r.text().await.unwrap());
 
-    let info: ServerInfo = s.json(Method::GET, "/server/info", None, NOBODY).await;
+    let r = s.http().get(s.url("/server/info")).send().await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert_eq!(
+        r.headers()["cache-control"],
+        "no-store",
+        "API responses must not land in shared or disk caches"
+    );
+    assert_eq!(r.headers()["x-content-type-options"], "nosniff");
+    assert_eq!(r.headers()["referrer-policy"], "no-referrer");
+    let info: ServerInfo = r.json().await.unwrap();
     assert!(info.registration_open);
     assert_eq!(info.version, termoso_server::VERSION);
     assert_eq!(info.sshid_url, SSHID_URL);
