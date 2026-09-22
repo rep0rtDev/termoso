@@ -17,7 +17,7 @@ use termoso_core::model::{Host, Identity};
 use termoso_core::store::{CommandHistory, EntityFilter, LogMeta};
 use termoso_core::sync::{ConflictPolicy, SyncEngine, SyncEvent, SyncOptions};
 use termoso_crypto::keys::{SymmetricKey, public_key_from_b64};
-use termoso_crypto::sealed::seal_vault_key;
+use termoso_crypto::sealed::{seal_vault_key, seal_vault_key_self};
 use termoso_proto::auth::MfaCredential;
 use termoso_proto::error::codes;
 use termoso_proto::vault::{RotateVaultKeyRequest, SealedKeyFor};
@@ -622,17 +622,43 @@ async fn vault_key_rotation_reencrypts_and_recovers_stale_rows() {
     ea.sync_once().await.unwrap();
     eb.sync_once().await.unwrap();
 
-    // A rotates the personal vault key (sealed only for itself) and pushes.
-    let new_key = SymmetricKey::generate();
+    // A personal key that arrives in an anonymous envelope could have been
+    // minted by anyone holding the public key (the server included): the
+    // client keeps its current key and version.
     let me = a.store.account().unwrap().unwrap();
     let recipient = public_key_from_b64(&me.public_key).unwrap();
-    let sealed = seal_vault_key(&recipient, &new_key).unwrap();
+    let before = a.store.vault(vault).unwrap().key_version;
+    let forged = a
+        .api
+        .rotate_vault_key(
+            vault,
+            &RotateVaultKeyRequest {
+                base_key_version: before,
+                members: vec![SealedKeyFor {
+                    user_id: me.user_id,
+                    sealed_key: seal_vault_key(&recipient, &SymmetricKey::generate()).unwrap(),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+    assert!(forged.key_version > before);
+    let unlocked = account::refresh_vaults(&a.api, &a.store).await.unwrap();
+    assert_eq!(unlocked, vec![vault], "still unlocked with the held key");
+    assert_eq!(a.store.vault(vault).unwrap().key_version, before);
+    assert_eq!(a.store.pending_changes().unwrap(), 0);
+
+    // A rotates the personal vault key (sealed to itself with its own account
+    // key, as clients do) and pushes.
+    let new_key = SymmetricKey::generate();
+    let pair = a.store.account_secrets().unwrap().private_key;
+    let sealed = seal_vault_key_self(&pair, &new_key).unwrap();
     let rotated = a
         .api
         .rotate_vault_key(
             vault,
             &RotateVaultKeyRequest {
-                base_key_version: a.store.vault(vault).unwrap().key_version,
+                base_key_version: forged.key_version,
                 members: vec![SealedKeyFor {
                     user_id: me.user_id,
                     sealed_key: sealed,
