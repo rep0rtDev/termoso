@@ -34,6 +34,11 @@ updates:
     groups:
       android-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # AndroidX 2026 minors (Compose 1.12, core 1.19, lifecycle 2.11,
+      # navigation 2.10) require compileSdk 37 + AGP 9.1; drop once migrated.
+      - dependency-name: "androidx.*"
+        update-types: ["version-update:semver-minor"]
     labels: [area:deps, area:android]
 
   - package-ecosystem: github-actions

@@ -75,6 +75,9 @@ jobs:
   bundle:
     name: ${{ matrix.name }}
     needs: version
+    # Dependabot PRs do not see repository secrets, so the signing step would
+    # fail on an empty key; the CI workflow still builds the desktop there.
+    if: github.actor != 'dependabot[bot]'
     strategy:
       fail-fast: false
       matrix:
