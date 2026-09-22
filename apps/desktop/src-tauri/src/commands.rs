@@ -39,9 +39,9 @@ pub fn app_info(state: State<'_, AppState>) -> Result<AppInfo> {
     Ok(AppInfo {
         version: env!("CARGO_PKG_VERSION"),
         profile_dir: state.profile_dir.display().to_string(),
-        device_id: state.store.device_id()?,
+        device_id: state.store()?.device_id()?,
         master_key_source: state.master_source(),
-        signed_in: state.store.account()?.is_some(),
+        signed_in: state.store()?.account()?.is_some(),
         platform: std::env::consts::OS,
     })
 }
@@ -88,17 +88,17 @@ pub async fn settings_set<R: Runtime>(
 
 #[tauri::command]
 pub fn vaults_list(state: State<'_, AppState>) -> Result<Vec<LocalVault>> {
-    Ok(state.store.vaults()?)
+    Ok(state.store()?.vaults()?)
 }
 
 #[tauri::command]
 pub fn vault_default(state: State<'_, AppState>) -> Result<LocalVault> {
-    if let Some(p) = state.store.personal_vault()?
+    if let Some(p) = state.store()?.personal_vault()?
         && p.unlocked
     {
         return Ok(p);
     }
-    Ok(state.store.local_vault()?)
+    Ok(state.store()?.local_vault()?)
 }
 
 fn check_kind(kind: &str) -> Result<()> {
@@ -117,7 +117,7 @@ pub async fn entities_list(
     vault_id: Option<Uuid>,
 ) -> Result<Vec<AnyEntity>> {
     check_kind(&kind)?;
-    Ok(state.store.list_any(&EntityFilter {
+    Ok(state.store()?.list_any(&EntityFilter {
         vault_id,
         kind: Some(kind),
         include_deleted: false,
@@ -126,7 +126,7 @@ pub async fn entities_list(
 
 #[tauri::command]
 pub async fn entity_get(state: State<'_, AppState>, id: Uuid) -> Result<Option<AnyEntity>> {
-    Ok(state.store.get_any(id)?)
+    Ok(state.store()?.get_any(id)?)
 }
 
 /// Create (no `id`) or replace (`id`) an entity. The payload must be a full
@@ -143,22 +143,22 @@ pub async fn entity_save(
     check_kind(&kind)?;
     validate_payload(&kind, &data)?;
     let id = id.unwrap_or_else(Uuid::new_v4);
-    state.store.put_raw(vault_id, &kind, id, &data)?;
+    state.store()?.put_raw(vault_id, &kind, id, &data)?;
     state
-        .store
+        .store()?
         .get_any(id)?
         .ok_or_else(|| DesktopError::not_found(format!("entity {id}")))
 }
 
 #[tauri::command]
 pub async fn entity_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    state.store.delete(id)?;
+    state.store()?.delete(id)?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn entity_move(state: State<'_, AppState>, id: Uuid, vault_id: Uuid) -> Result<Uuid> {
-    Ok(state.store.move_to_vault(id, vault_id)?)
+    Ok(state.store()?.move_to_vault(id, vault_id)?)
 }
 
 /// Reject payloads that do not match the typed schema so a UI bug cannot
@@ -200,17 +200,17 @@ pub async fn hosts_list(
     state: State<'_, AppState>,
     vault_id: Option<Uuid>,
 ) -> Result<Vec<HostCard>> {
-    hosts::cards(&state.store, vault_id)
+    hosts::cards(&*state.store()?, vault_id)
 }
 
 #[tauri::command]
 pub async fn host_form(state: State<'_, AppState>, id: Uuid) -> Result<HostForm> {
-    hosts::form(&state.store, id)
+    hosts::form(&*state.store()?, id)
 }
 
 #[tauri::command]
 pub async fn host_save(state: State<'_, AppState>, form: HostForm) -> Result<HostCard> {
-    hosts::save(&state.store, &form)
+    hosts::save(&*state.store()?, &form)
 }
 
 /// Certificate chain / private key found in a PEM file, split for the WebDAV
@@ -242,20 +242,20 @@ pub async fn webdav_client_identity_inspect(
 
 #[tauri::command]
 pub async fn host_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    hosts::delete(&state.store, id)
+    hosts::delete(&*state.store()?, id)
 }
 
 #[tauri::command]
 pub async fn hosts_delete(state: State<'_, AppState>, ids: Vec<Uuid>) -> Result<()> {
     for id in ids {
-        hosts::delete(&state.store, id)?;
+        hosts::delete(&*state.store()?, id)?;
     }
     Ok(())
 }
 
 #[tauri::command]
 pub async fn host_duplicate(state: State<'_, AppState>, id: Uuid) -> Result<HostCard> {
-    hosts::duplicate(&state.store, id)
+    hosts::duplicate(&*state.store()?, id)
 }
 
 #[tauri::command]
@@ -264,7 +264,7 @@ pub async fn hosts_move(
     ids: Vec<Uuid>,
     group_id: Option<Uuid>,
 ) -> Result<()> {
-    hosts::move_hosts(&state.store, &ids, group_id)
+    hosts::move_hosts(&*state.store()?, &ids, group_id)
 }
 
 #[tauri::command]
@@ -281,9 +281,9 @@ pub async fn hosts_copy_to_vault(
         hosts::CopyCredentials::Personal
     };
     if move_hosts {
-        hosts::move_to_vault(&state.store, &ids, vault_id, creds)
+        hosts::move_to_vault(&*state.store()?, &ids, vault_id, creds)
     } else {
-        hosts::copy_to_vault(&state.store, &ids, vault_id, creds)
+        hosts::copy_to_vault(&*state.store()?, &ids, vault_id, creds)
     }
 }
 
@@ -310,7 +310,7 @@ pub async fn host_inherited(
     state: State<'_, AppState>,
     group_id: Option<Uuid>,
 ) -> Result<Inherited> {
-    hosts::inherited(&state.store, group_id)
+    hosts::inherited(&*state.store()?, group_id)
 }
 
 #[tauri::command]
@@ -318,7 +318,7 @@ pub async fn groups_list(
     state: State<'_, AppState>,
     vault_id: Option<Uuid>,
 ) -> Result<Vec<GroupNode>> {
-    hosts::groups(&state.store, vault_id)
+    hosts::groups(&*state.store()?, vault_id)
 }
 
 #[tauri::command]
@@ -329,22 +329,22 @@ pub async fn group_save(
     label: String,
     parent_id: Option<Uuid>,
 ) -> Result<GroupNode> {
-    hosts::save_group(&state.store, vault_id, id, &label, parent_id)
+    hosts::save_group(&*state.store()?, vault_id, id, &label, parent_id)
 }
 
 #[tauri::command]
 pub async fn group_form(state: State<'_, AppState>, id: Uuid) -> Result<GroupForm> {
-    hosts::group_form(&state.store, id)
+    hosts::group_form(&*state.store()?, id)
 }
 
 #[tauri::command]
 pub async fn group_save_form(state: State<'_, AppState>, form: GroupForm) -> Result<GroupNode> {
-    hosts::save_group_form(&state.store, &form)
+    hosts::save_group_form(&*state.store()?, &form)
 }
 
 #[tauri::command]
 pub async fn group_duplicate(state: State<'_, AppState>, id: Uuid) -> Result<GroupNode> {
-    hosts::duplicate_group(&state.store, id)
+    hosts::duplicate_group(&*state.store()?, id)
 }
 
 #[tauri::command]
@@ -358,12 +358,12 @@ pub async fn group_delete(
     } else {
         hosts::delete_group
     };
-    crate::cloud_sync::delete_group_with(&state.store, id, delete)
+    crate::cloud_sync::delete_group_with(&*state.store()?, id, delete)
 }
 
 #[tauri::command]
 pub async fn tags_list(state: State<'_, AppState>, vault_id: Option<Uuid>) -> Result<Vec<TagInfo>> {
-    hosts::tags(&state.store, vault_id)
+    hosts::tags(&*state.store()?, vault_id)
 }
 
 #[tauri::command]
@@ -373,12 +373,12 @@ pub async fn tag_update(
     label: String,
     color: Option<String>,
 ) -> Result<TagInfo> {
-    hosts::tag_update(&state.store, id, label, color)
+    hosts::tag_update(&*state.store()?, id, label, color)
 }
 
 #[tauri::command]
 pub async fn tag_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    hosts::tag_delete(&state.store, id)
+    hosts::tag_delete(&*state.store()?, id)
 }
 
 #[tauri::command]
@@ -387,7 +387,7 @@ pub async fn tags_merge(
     sources: Vec<Uuid>,
     target: Uuid,
 ) -> Result<TagInfo> {
-    hosts::tags_merge(&state.store, &sources, target)
+    hosts::tags_merge(&*state.store()?, &sources, target)
 }
 
 #[tauri::command]
@@ -396,7 +396,7 @@ pub async fn history_connections(
     limit: Option<usize>,
 ) -> Result<Vec<HistoryItem<ConnectionHistory>>> {
     Ok(state
-        .store
+        .store()?
         .connections(limit.unwrap_or(50).clamp(1, 1000))?)
 }
 
@@ -413,7 +413,7 @@ pub async fn history_record_command(
     if command.is_empty() || command.len() > 4096 {
         return Ok(None);
     }
-    Ok(Some(state.store.record_command(&CommandHistory {
+    Ok(Some(state.store()?.record_command(&CommandHistory {
         host_id,
         command: command.to_string(),
     })?))
@@ -424,25 +424,27 @@ pub async fn history_commands(
     state: State<'_, AppState>,
     limit: Option<usize>,
 ) -> Result<Vec<HistoryItem<CommandHistory>>> {
-    Ok(state.store.commands(limit.unwrap_or(500).clamp(1, 5000))?)
+    Ok(state
+        .store()?
+        .commands(limit.unwrap_or(500).clamp(1, 5000))?)
 }
 
 #[tauri::command]
 pub async fn history_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    Ok(state.store.delete_history(id)?)
+    Ok(state.store()?.delete_history(id)?)
 }
 
 #[tauri::command]
 pub async fn history_clear_commands(state: State<'_, AppState>) -> Result<()> {
     Ok(state
-        .store
+        .store()?
         .clear_history(Some(termoso_proto::sync::HistoryKind::Command))?)
 }
 
 #[tauri::command]
 pub async fn history_clear_connections(state: State<'_, AppState>) -> Result<()> {
     Ok(state
-        .store
+        .store()?
         .clear_history(Some(termoso_proto::sync::HistoryKind::Connection))?)
 }
 

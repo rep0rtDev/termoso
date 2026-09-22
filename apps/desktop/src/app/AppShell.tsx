@@ -14,14 +14,25 @@ import { LogsPage } from "@/logs/LogsPage";
 import { PromptHost } from "@/prompts/PromptHost";
 import { TerminalWorkspace } from "@/terminal/TerminalWorkspace";
 import { TerminalOverlays } from "@/terminal/TerminalOverlays";
-import { startTerminalEvents, useTerminal } from "@/terminal/store";
+import { dropAllTabs, startTerminalEvents, useTerminal } from "@/terminal/store";
 import { startMultiplayerEvents } from "@/terminal/multiplayer";
 import { startWorkspaces } from "@/terminal/workspaces";
 import { RestoreBanner } from "@/terminal/RestoreBanner";
-import { startSftpEvents } from "@/sftp/store";
+import { dropAllSftp, startSftpEvents } from "@/sftp/store";
 import { startUpdateEvents } from "@/update/store";
 import { UpdateBanner } from "@/update/UpdateBanner";
-import { useAccount, useCloudSyncEvents, useSettings, useSyncNotices } from "@/ipc/hooks";
+import {
+  useAccount,
+  useCloudSyncEvents,
+  useSettings,
+  useSyncNotices,
+  useVaultEvents,
+  useVaultStatus,
+} from "@/ipc/hooks";
+import * as ipc from "@/ipc/commands";
+import { errorMessage } from "@/ipc/types";
+import { EmptyState } from "@/components/EmptyState";
+import { LockScreen } from "./LockScreen";
 import { WelcomeScreen } from "@/welcome/WelcomeScreen";
 import { RecoveryPrompt } from "@/account/SignIn";
 import { goToSettings, isHomeTab, isNewTab, isSerialTab, isSftpTab, useNav } from "./navigation";
@@ -32,7 +43,57 @@ import { applyShortcutOverrides } from "./shortcuts";
 import { CommandPalette } from "./CommandPalette";
 import { startDeepLinks } from "./deepLinks";
 
+/** Report user input to Rust for the inactivity timer, at most once per interval. */
+const ACTIVITY_INTERVAL_MS = 15_000;
+
+function useActivityReporter(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return;
+    let last = 0;
+    const report = () => {
+      const now = Date.now();
+      if (now - last < ACTIVITY_INTERVAL_MS) return;
+      last = now;
+      void ipc.vaultActivity().catch(() => undefined);
+    };
+    const events = ["keydown", "pointerdown", "wheel"] as const;
+    for (const ev of events) window.addEventListener(ev, report, { capture: true, passive: true });
+    return () => {
+      for (const ev of events) window.removeEventListener(ev, report, { capture: true });
+    };
+  }, [enabled]);
+}
+
+/**
+ * Lock gate: the whole shell (queries, event listeners, terminals) lives only
+ * while the vault is open, so a lock tears everything down and an unlock
+ * starts from a clean slate.
+ */
 export function AppShell() {
+  const status = useVaultStatus();
+  useVaultEvents();
+  useEffect(() => {
+    let active = true;
+    const un = ipc.onVaultEvent((e) => {
+      if (!active || e.type !== "locked") return;
+      dropAllTabs();
+      dropAllSftp();
+    });
+    return () => {
+      active = false;
+      void un.then((f) => f());
+    };
+  }, []);
+  useActivityReporter(status.data?.passwordProtected === true && !status.data.locked);
+
+  if (status.isPending) return <Box sx={{ height: "100%", bgcolor: "surface.lowest" }} />;
+  if (status.error)
+    return <EmptyState title="Vault unavailable" description={errorMessage(status.error)} />;
+  if (status.data.locked) return <LockScreen />;
+  return <UnlockedShell />;
+}
+
+function UnlockedShell() {
   const section = useNav((s) => s.section);
   const queryClient = useQueryClient();
   const tabs = useTerminal((s) => s.tabs);

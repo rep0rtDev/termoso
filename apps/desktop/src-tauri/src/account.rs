@@ -224,7 +224,7 @@ fn device_name() -> String {
 
 fn device(state: &AppState) -> Result<termoso_proto::auth::DeviceInfo> {
     Ok(core::device_info(
-        &state.store,
+        &*state.store()?,
         &device_name(),
         core::current_platform(),
         env!("CARGO_PKG_VERSION"),
@@ -251,11 +251,11 @@ fn local_credentials(state: &AppState) -> Result<usize> {
     if state.settings()?.sync_credentials {
         return Ok(0);
     }
-    let Some(vault) = state.store.personal_vault()? else {
+    let Some(vault) = state.store()?.personal_vault()? else {
         return Ok(0);
     };
     Ok(state
-        .store
+        .store()?
         .rows(&EntityFilter {
             vault_id: Some(vault.id),
             ..EntityFilter::default()
@@ -308,10 +308,10 @@ fn normalize_url(url: &str) -> Result<String> {
 
 pub fn status(state: &AppState, pending: Option<LoginOutcome>) -> Result<AccountStatus> {
     Ok(AccountStatus {
-        account: state.store.account()?.map(Into::into),
+        account: state.store()?.account()?.map(Into::into),
         pending,
         sync: state.account.sync_status(),
-        vaults: state.store.vaults()?,
+        vaults: state.store()?.vaults()?,
         local_credentials: local_credentials(state)?,
     })
 }
@@ -331,7 +331,7 @@ pub async fn server_info(url: &str) -> Result<ServerInfo> {
 
 pub async fn login<R: Runtime>(app: &AppHandle<R>, form: LoginForm) -> Result<LoginOutcome> {
     let state = app.state::<AppState>();
-    if state.store.account()?.is_some() {
+    if state.store()?.account()?.is_some() {
         return Err(DesktopError::invalid("already signed in"));
     }
     if form.password.is_empty() {
@@ -342,7 +342,7 @@ pub async fn login<R: Runtime>(app: &AppHandle<R>, form: LoginForm) -> Result<Lo
     let mut inner = state.account.inner.lock().await;
     let (flow, step) = LoginFlow::start(
         api.clone(),
-        state.store.clone(),
+        state.store()?.clone(),
         &form.email,
         &form.password,
         device,
@@ -445,7 +445,7 @@ pub async fn cancel_login<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
     let mut inner = state.account.inner.lock().await;
     inner.flow = None;
     inner.pending = None;
-    if state.store.account()?.is_none() {
+    if state.store()?.account()?.is_none() {
         inner.api = None;
     }
     Ok(())
@@ -453,7 +453,7 @@ pub async fn cancel_login<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
 
 pub async fn register<R: Runtime>(app: &AppHandle<R>, form: RegisterForm) -> Result<Registered> {
     let state = app.state::<AppState>();
-    if state.store.account()?.is_some() {
+    if state.store()?.account()?.is_some() {
         return Err(DesktopError::invalid("already signed in"));
     }
     if form.password.chars().count() < 12 {
@@ -466,7 +466,7 @@ pub async fn register<R: Runtime>(app: &AppHandle<R>, form: RegisterForm) -> Res
     let mut inner = state.account.inner.lock().await;
     let registered = core::register(
         api.clone(),
-        state.store.clone(),
+        state.store()?.clone(),
         RegisterInput {
             email: form.email,
             password: form.password,
@@ -495,12 +495,12 @@ pub async fn register<R: Runtime>(app: &AppHandle<R>, form: RegisterForm) -> Res
 /// servers are not an error: the engine will retry in the background.
 pub async fn resume<R: Runtime>(app: &AppHandle<R>) -> Result<Option<AccountCard>> {
     let state = app.state::<AppState>();
-    let Some(stored) = state.store.account()? else {
+    let Some(stored) = state.store()?.account()? else {
         return Ok(None);
     };
     let api = Arc::new(ApiClient::new(&stored.server_url)?);
     let mut inner = state.account.inner.lock().await;
-    match core::resume(&api, &state.store).await {
+    match core::resume(&api, &*state.store()?).await {
         Ok(Some(signed)) => {
             inner.api = Some(api);
             start_engine(app, &state, &mut inner)?;
@@ -508,7 +508,7 @@ pub async fn resume<R: Runtime>(app: &AppHandle<R>) -> Result<Option<AccountCard
         }
         Ok(None) => Ok(None),
         Err(e) if e.is_unauthorized() => {
-            core::sign_out_local(&api, &state.store)?;
+            core::sign_out_local(&api, &*state.store()?)?;
             state.account.update_status(|s| {
                 s.state = SyncState::Error;
                 s.last_error = Some("session revoked by the server".into());
@@ -517,7 +517,7 @@ pub async fn resume<R: Runtime>(app: &AppHandle<R>) -> Result<Option<AccountCard
         }
         Err(e) => {
             // Offline: keep the stored token, run the engine so it reconnects.
-            let secrets = state.store.account_secrets()?;
+            let secrets = state.store()?.account_secrets()?;
             api.set_token(Some(secrets.token));
             inner.api = Some(api);
             start_engine(app, &state, &mut inner)?;
@@ -530,6 +530,23 @@ pub async fn resume<R: Runtime>(app: &AppHandle<R>) -> Result<Option<AccountCard
     }
 }
 
+/// Stop the sync engine and forget the in-memory API client and login
+/// flows without touching the stored account: the device stays signed in
+/// and [`resume`] picks it up again after unlock.
+pub async fn suspend<R: Runtime>(app: &AppHandle<R>) {
+    let state = app.state::<AppState>();
+    let mut inner = state.account.inner.lock().await;
+    stop_engine(&mut inner).await;
+    inner.flow = None;
+    inner.pending = None;
+    inner.reauth = None;
+    if let Some(api) = inner.api.take() {
+        api.set_token(None);
+    }
+    drop(inner);
+    state.account.update_status(|s| *s = SyncStatus::default());
+}
+
 pub async fn sign_out<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
     let state = app.state::<AppState>();
     let mut inner = state.account.inner.lock().await;
@@ -539,16 +556,16 @@ pub async fn sign_out<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
     inner.reauth = None;
     let api = match inner.api.take() {
         Some(api) => api,
-        None => match state.store.account()? {
+        None => match state.store()?.account()? {
             Some(a) => {
                 let api = Arc::new(ApiClient::new(&a.server_url)?);
-                api.set_token(Some(state.store.account_secrets()?.token));
+                api.set_token(Some(state.store()?.account_secrets()?.token));
                 api
             }
             None => return Ok(()),
         },
     };
-    core::sign_out(&api, &state.store).await?;
+    core::sign_out(&api, &*state.store()?).await?;
     crate::avatars::clear_cache(&state);
     state.account.update_status(|s| *s = SyncStatus::default());
     let _ = app.emit(SYNC_EVENT, SyncNotice::SignedOut);
@@ -565,7 +582,7 @@ fn start_engine<R: Runtime>(app: &AppHandle<R>, state: &AppState, inner: &mut In
         .api
         .clone()
         .ok_or_else(|| DesktopError::invalid("no API client"))?;
-    let engine = SyncEngine::new(api, state.store.clone(), sync_options(state)?);
+    let engine = SyncEngine::new(api, state.store()?.clone(), sync_options(state)?);
     let cancel = CancellationToken::new();
     let mut rx = engine.subscribe();
     let watcher_app = app.clone();
@@ -663,7 +680,7 @@ async fn on_event<R: Runtime>(app: &AppHandle<R>, ev: SyncEvent) -> bool {
             if let Some(api) = inner.api.take() {
                 api.set_token(None);
             }
-            if let Err(e) = state.store.clear_account() {
+            if let Err(e) = state.store().and_then(|s| Ok(s.clear_account()?)) {
                 tracing::warn!("clearing revoked account failed: {e}");
             }
             state.account.update_status(|s| {
@@ -804,7 +821,7 @@ pub async fn reauth_start<R: Runtime>(
 ) -> Result<ReauthOutcome> {
     let state = app.state::<AppState>();
     let account = state
-        .store
+        .store()?
         .account()?
         .ok_or_else(|| DesktopError::invalid("not signed in"))?;
     let api = api(app).await?;
@@ -906,7 +923,7 @@ pub async fn vault_members<R: Runtime>(
 
 pub async fn revoke_device<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
     let state = app.state::<AppState>();
-    if state.store.account()?.map(|a| a.device_id) == Some(id) {
+    if state.store()?.account()?.map(|a| a.device_id) == Some(id) {
         return Err(DesktopError::invalid(
             "use sign out to remove the current device",
         ));

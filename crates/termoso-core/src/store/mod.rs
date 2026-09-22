@@ -213,6 +213,12 @@ impl Store {
         Self::init(Connection::open(path)?, master)
     }
 
+    /// The device master key this store was opened with (needed to re-wrap
+    /// it, e.g. under a password). Never leaves the process.
+    pub fn master_key(&self) -> &SymmetricKey {
+        &self.master
+    }
+
     /// In-memory database (tests, ephemeral profiles).
     pub fn open_in_memory(master: SymmetricKey) -> Result<Self> {
         Self::init(Connection::open_in_memory()?, master)

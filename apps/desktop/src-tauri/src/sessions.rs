@@ -383,6 +383,19 @@ impl Sessions {
             .ok_or_else(|| DesktopError::not_found(format!("session {id}")))
     }
 
+    /// Every live session plus every connection attempt in flight.
+    pub fn ids(&self) -> Vec<Uuid> {
+        let mut ids: Vec<Uuid> = self
+            .live
+            .lock()
+            .expect("sessions poisoned")
+            .keys()
+            .copied()
+            .collect();
+        ids.extend(self.pending.lock().expect("sessions poisoned").keys());
+        ids
+    }
+
     /// Cancel a connection attempt or close a live session.
     fn close(&self, id: Uuid) -> Option<Live> {
         if let Some(tok) = self.pending.lock().expect("sessions poisoned").remove(&id) {
@@ -479,7 +492,7 @@ pub async fn open<R: Runtime>(
         None
     } else {
         state
-            .store
+            .store()?
             .record_connection(&ConnectionHistory {
                 host_id: info.host_id,
                 label: info.title.clone(),
@@ -560,13 +573,14 @@ fn start_recording(
     let settings = state.settings().ok()?;
     let vault_id = match vault_id {
         Some(v) => v,
-        None => state.store.local_vault().ok()?.id,
+        None => state.store().ok()?.local_vault().ok()?.id,
     };
     // The user's own switch records everything; a team vault whose manager
     // turned session logging on records its hosts' sessions for the team
     // regardless.
     let team_policy = state
-        .store
+        .store()
+        .ok()?
         .vault(vault_id)
         .ok()
         .is_some_and(|v| v.kind == LocalVaultKind::Team && v.session_logging);
@@ -583,7 +597,7 @@ fn start_recording(
         cols: size.cols,
         rows: size.rows,
     };
-    match Recorder::begin(&state.store, vault_id, meta) {
+    match Recorder::begin(&*state.store().ok()?, vault_id, meta) {
         Ok(r) => {
             tracing::debug!(session = %info.id, log = %r.id(), "recording session");
             Some(Arc::new(r))
@@ -603,7 +617,11 @@ async fn finish_recording<R: Runtime>(app: &AppHandle<R>, recorder: Option<Arc<R
         return;
     };
     let state = app.state::<AppState>();
-    match rec.finish(&state.store, &state.logs_dir()) {
+    let Ok(store) = state.store() else {
+        tracing::warn!("saving session recording skipped: vault locked");
+        return;
+    };
+    match rec.finish(&store, &state.logs_dir()) {
         Ok(()) => {
             if let Some(engine) = crate::account::engine(app).await {
                 engine.request_sync();
@@ -612,7 +630,7 @@ async fn finish_recording<R: Runtime>(app: &AppHandle<R>, recorder: Option<Arc<R
         Err(e) => tracing::warn!("saving session recording failed: {e}"),
     }
     if let Ok(settings) = state.settings()
-        && let Err(e) = crate::logs::prune(&state.store, settings.log_retention_days)
+        && let Err(e) = crate::logs::prune(&store, settings.log_retention_days)
     {
         tracing::debug!("log retention sweep failed: {e}");
     }
@@ -624,7 +642,7 @@ fn startup_script(state: &AppState, resolved: &ResolvedHost) -> String {
         .host
         .data
         .startup_snippet_id
-        .and_then(|id| state.store.require::<Snippet>(id).ok())
+        .and_then(|id| state.store().ok()?.require::<Snippet>(id).ok())
         .map(|s| snippets::script_to_send(&s.data.script))
         .unwrap_or_default()
 }
@@ -648,12 +666,25 @@ pub async fn close<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
     Ok(())
 }
 
+/// Close every terminal session and abort every pending connection.
+pub async fn close_all<R: Runtime>(app: &AppHandle<R>) {
+    let ids = app.state::<AppState>().sessions.ids();
+    for id in ids {
+        if let Err(e) = close(app, id).await {
+            tracing::debug!(session = %id, "close on lock: {e}");
+        }
+    }
+}
+
 fn finish_history(state: &AppState, history_id: Uuid, info: &SessionInfo, error: Option<String>) {
     let duration = Utc::now()
         .signed_duration_since(info.started_at)
         .num_seconds()
         .max(0) as u64;
-    let _ = state.store.update_connection(
+    let Ok(store) = state.store() else {
+        return;
+    };
+    let _ = store.update_connection(
         history_id,
         &ConnectionHistory {
             host_id: info.host_id,
@@ -869,7 +900,7 @@ async fn connect<R: Runtime>(
             })
         }
         OpenTarget::Host { host_id, protocol } => {
-            let resolved = state.store.resolve_host(*host_id)?;
+            let resolved = state.store()?.resolve_host(*host_id)?;
             let label = resolved.host.data.label.clone();
             if host_protocol(&resolved, protocol.as_deref())? == "telnet" {
                 let telnet = resolved.telnet.clone().unwrap_or_default();
@@ -1092,7 +1123,7 @@ pub async fn connect_host<R: Runtime>(
     host_id: Uuid,
 ) -> Result<HostConnection> {
     let state = app.state::<AppState>();
-    let resolved = state.store.resolve_host(host_id)?;
+    let resolved = state.store()?.resolve_host(host_id)?;
     if !has_ssh(&resolved) {
         return Err(DesktopError::invalid(
             "SFTP and port forwarding need an SSH section on the host",
@@ -1131,12 +1162,14 @@ fn detect_os_in_background<R: Runtime>(
         };
         let state = app.state::<AppState>();
         let saved = (|| -> Result<Uuid> {
-            let mut host = state.store.require::<termoso_core::model::Host>(host_id)?;
+            let mut host = state
+                .store()?
+                .require::<termoso_core::model::Host>(host_id)?;
             if host.data.os_name.is_some() {
                 return Ok(host.vault_id);
             }
             host.data.os_name = Some(os.to_string());
-            state.store.update(host.id, &host.data)?;
+            state.store()?.update(host.id, &host.data)?;
             Ok(host.vault_id)
         })();
         match saved {
@@ -1383,7 +1416,7 @@ async fn ssh_connect<R: Runtime>(
     // which also rules out cycles.
     let mut via = jump;
     for link in chain {
-        let hop_resolved = state.store.resolve_host(link.id)?;
+        let hop_resolved = state.store()?.resolve_host(link.id)?;
         let hop_target = SshTarget {
             host: hop_resolved.host.data.address.clone(),
             port: hop_resolved.port(),
@@ -1403,7 +1436,7 @@ async fn ssh_connect<R: Runtime>(
         via = Some(client);
     }
 
-    let known_hosts = KnownHosts::new(state.store.clone(), state.store.local_vault()?.id);
+    let known_hosts = KnownHosts::new(state.store()?.clone(), state.store()?.local_vault()?.id);
     let display = target.display();
     let ssh_cfg = resolved.map(|r| r.ssh.clone()).unwrap_or_default();
     let identity = resolved.and_then(|r| r.identity.clone());
@@ -1428,7 +1461,11 @@ async fn ssh_connect<R: Runtime>(
         let mut auth: Vec<AuthMethod> = Vec::new();
         if identity.as_ref().is_some_and(|i| i.data.ssh_id) {
             let preferred = identity.as_ref().and_then(|i| i.data.ssh_id_key_type);
-            auth.extend(sshid::auth_methods(&state.store, preferred, pin.clone())?);
+            auth.extend(sshid::auth_methods(
+                &*state.store()?,
+                preferred,
+                pin.clone(),
+            )?);
         }
         let mut agent_key_selected = false;
         if let Some(key) = resolved.and_then(|r| r.key.as_ref()) {
@@ -1563,7 +1600,7 @@ async fn ssh_connect<R: Runtime>(
                         if remember && let Some(key) = resolved.and_then(|r| r.key.as_ref()) {
                             let mut data = key.data.clone();
                             data.passphrase = Some(value.to_string());
-                            let _ = state.store.update(key.id, &data);
+                            let _ = state.store()?.update(key.id, &data);
                         }
                         passphrase = Some(value);
                     }
@@ -1623,7 +1660,7 @@ fn proxy_config(state: &AppState, p: &termoso_core::model::Proxy) -> Result<Prox
         .ok_or_else(|| DesktopError::invalid(format!("unsupported proxy type {}", p.kind)))?;
     let (username, password) = match p.identity_id {
         Some(id) => {
-            let ident = state.store.get::<Identity>(id)?;
+            let ident = state.store()?.get::<Identity>(id)?;
             (
                 ident.as_ref().map(|i| i.data.username.clone()),
                 ident
@@ -1654,7 +1691,9 @@ fn remember_on_identity(
     what: &str,
     edit: impl Fn(&mut Identity),
 ) {
-    let store = &state.store;
+    let Ok(store) = state.store() else {
+        return;
+    };
     let result = (|| -> termoso_core::error::Result<()> {
         if let Some(ident) = &resolved.identity {
             let mut data = ident.data.clone();

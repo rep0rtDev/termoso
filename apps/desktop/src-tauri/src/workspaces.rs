@@ -153,7 +153,7 @@ fn validate_view_mode(mode: &str) -> Result<()> {
 }
 
 pub fn load(state: &AppState) -> Result<WorkspacesState> {
-    Ok(match state.store.secret_meta(META_KEY)? {
+    Ok(match state.store()?.secret_meta(META_KEY)? {
         Some(json) => serde_json::from_str(&json)?,
         None => WorkspacesState::default(),
     })
@@ -171,7 +171,7 @@ pub fn workspaces_set(
 ) -> Result<WorkspacesState> {
     workspaces.validate()?;
     state
-        .store
+        .store()?
         .set_secret_meta(META_KEY, &serde_json::to_string(&workspaces)?)?;
     Ok(workspaces)
 }

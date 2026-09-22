@@ -66,7 +66,7 @@ fn context(state: &AppState, session_id: Uuid) -> (Option<String>, Option<String
         Some(local_os().to_string())
     } else {
         info.host_id
-            .and_then(|id| state.store.require::<Host>(id).ok())
+            .and_then(|id| state.store().ok()?.require::<Host>(id).ok())
             .and_then(|h| h.data.os_name)
     };
     (os, info.shell)

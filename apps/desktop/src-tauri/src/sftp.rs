@@ -252,6 +252,29 @@ impl SftpSessions {
             .is_some()
     }
 
+    /// Every open browser plus every connection attempt in flight.
+    pub fn ids(&self) -> Vec<Uuid> {
+        let mut ids: Vec<Uuid> = self
+            .live
+            .lock()
+            .expect("sftp poisoned")
+            .keys()
+            .copied()
+            .collect();
+        ids.extend(self.pending.lock().expect("sftp poisoned").keys());
+        ids
+    }
+
+    /// Every transfer known to the queue, whatever its state.
+    pub fn transfer_ids(&self) -> Vec<Uuid> {
+        self.transfers
+            .lock()
+            .expect("sftp poisoned")
+            .keys()
+            .copied()
+            .collect()
+    }
+
     fn remove(&self, id: Uuid) -> Option<Arc<Live>> {
         if let Some(tok) = self.pending.lock().expect("sftp poisoned").remove(&id) {
             tok.cancel();
@@ -416,6 +439,24 @@ async fn connect<R: Runtime>(
                 fs: conn.fs,
                 keepalive: Vec::new(),
             })
+        }
+    }
+}
+
+/// Drop every transfer (running ones are interrupted, paused ones
+/// discarded) and close every browser.
+pub async fn close_all<R: Runtime>(app: &AppHandle<R>) {
+    let state = app.state::<AppState>();
+    for id in state.sftp.transfer_ids() {
+        state.sftp.cancel_transfer(app, id);
+        // A running job drops out of the queue when its task observes the
+        // cancel; a second call removes it if it has already stopped.
+        state.sftp.cancel_transfer(app, id);
+    }
+    let ids = state.sftp.ids();
+    for id in ids {
+        if let Err(e) = close(app, id).await {
+            tracing::debug!(sftp = %id, "close on lock: {e}");
         }
     }
 }

@@ -10,10 +10,12 @@ import type {
   ProxyData,
   Settings,
   Uuid,
+  VaultStatus,
 } from "./types";
 
 export const keys = {
   app: ["app"] as const,
+  vaultStatus: ["vaultStatus"] as const,
   settings: ["settings"] as const,
   vaults: ["vaults"] as const,
   defaultVault: ["vaults", "default"] as const,
@@ -52,6 +54,41 @@ export const keys = {
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.app, queryFn: ipc.appInfo });
+
+export const useVaultStatus = () =>
+  useQuery({ queryKey: keys.vaultStatus, queryFn: ipc.vaultStatus, staleTime: Infinity });
+
+/**
+ * Mirror lock / unlock into the query cache: a locked vault must not keep
+ * showing (or refetching) vault data, an unlocked one starts from scratch.
+ */
+export function useVaultEvents() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    let active = true;
+    const un = ipc.onVaultEvent((e) => {
+      if (!active) return;
+      const locked = e.type === "locked";
+      qc.setQueryData<VaultStatus>(keys.vaultStatus, (s) => (s ? { ...s, locked } : s));
+      void qc.invalidateQueries({ queryKey: keys.vaultStatus });
+      if (locked) {
+        // Let the shell unmount first so nothing re-subscribes to the vault data.
+        const vaultData = (q: { queryKey: readonly unknown[] }) => q.queryKey[0] !== "vaultStatus";
+        setTimeout(() => {
+          void qc
+            .cancelQueries({ predicate: vaultData })
+            .finally(() => qc.removeQueries({ predicate: vaultData }));
+        }, 0);
+      } else {
+        void qc.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "vaultStatus" });
+      }
+    });
+    return () => {
+      active = false;
+      void un.then((f) => f());
+    };
+  }, [qc]);
+}
 
 export const useSettings = () =>
   useQuery({ queryKey: keys.settings, queryFn: ipc.settingsGet, staleTime: Infinity });

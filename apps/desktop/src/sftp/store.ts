@@ -196,6 +196,11 @@ export async function closeSftp(id: Uuid) {
   await ipc.sftpClose(id).catch(() => undefined);
 }
 
+/** Vault locked: forget every connection locally (Rust closed them already). */
+export function dropAllSftp() {
+  for (const id of sftpStore.get().order) void closeSftp(id);
+}
+
 // ───────────────────────────── transfers ─────────────────────────────
 
 function addTransfer(info: TransferInfo) {

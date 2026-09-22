@@ -46,17 +46,17 @@ use crate::update::{self, UpdateInfo};
 
 #[tauri::command]
 pub async fn keys_list(state: State<'_, AppState>, vault_id: Option<Uuid>) -> Result<Vec<KeyCard>> {
-    keychain::keys_list(&state.store, vault_id)
+    keychain::keys_list(&*state.store()?, vault_id)
 }
 
 #[tauri::command]
 pub async fn key_generate(state: State<'_, AppState>, form: GenerateForm) -> Result<KeyCard> {
-    keychain::generate(&state.store, &form)
+    keychain::generate(&*state.store()?, &form)
 }
 
 #[tauri::command]
 pub async fn key_import(state: State<'_, AppState>, form: ImportForm) -> Result<KeyCard> {
-    keychain::import(&state.store, &form)
+    keychain::import(&*state.store()?, &form)
 }
 
 fn blocking_err(e: tokio::task::JoinError) -> DesktopError {
@@ -78,7 +78,7 @@ pub async fn fido2_generate(
     state: State<'_, AppState>,
     form: Fido2GenerateForm,
 ) -> Result<KeyCard> {
-    let store = state.store.clone();
+    let store = state.store()?.clone();
     tokio::task::spawn_blocking(move || keychain::fido2_generate(&store, &form))
         .await
         .map_err(blocking_err)?
@@ -90,7 +90,7 @@ pub async fn fido2_load_resident(
     state: State<'_, AppState>,
     form: Fido2LoadForm,
 ) -> Result<Vec<KeyCard>> {
-    let store = state.store.clone();
+    let store = state.store()?.clone();
     tokio::task::spawn_blocking(move || keychain::fido2_load_resident(&store, &form))
         .await
         .map_err(blocking_err)?
@@ -125,7 +125,7 @@ pub async fn key_import_file(state: State<'_, AppState>, form: ImportFileForm) -
         None => form.certificate,
     };
     keychain::import(
-        &state.store,
+        &*state.store()?,
         &ImportForm {
             vault_id: form.vault_id,
             label: form.label,
@@ -144,7 +144,7 @@ pub async fn key_import_agent(
     state: State<'_, AppState>,
     form: AgentImportForm,
 ) -> Result<KeyCard> {
-    keychain::import_agent(&state.store, &form)
+    keychain::import_agent(&*state.store()?, &form)
 }
 
 /// `.pub` file variant of `key_import_agent`.
@@ -175,7 +175,7 @@ pub async fn key_import_agent_file(
         None => None,
     };
     keychain::import_agent(
-        &state.store,
+        &*state.store()?,
         &AgentImportForm {
             vault_id: form.vault_id,
             label: form.label,
@@ -211,7 +211,7 @@ pub async fn certificate_inspect_file(path: String) -> Result<CertificateCard> {
 /// Certificate text attached to a key (public data), for display/copy.
 #[tauri::command]
 pub async fn key_certificate(state: State<'_, AppState>, id: Uuid) -> Result<Option<String>> {
-    keychain::certificate_text(&state.store, id)
+    keychain::certificate_text(&*state.store()?, id)
 }
 
 /// Attach (`Some(text)`) or detach (`None`) the certificate of a key.
@@ -221,7 +221,7 @@ pub async fn key_set_certificate(
     id: Uuid,
     certificate: Option<String>,
 ) -> Result<KeyCard> {
-    keychain::set_certificate(&state.store, id, certificate)
+    keychain::set_certificate(&*state.store()?, id, certificate)
 }
 
 #[tauri::command]
@@ -231,7 +231,7 @@ pub async fn key_set_certificate_file(
     path: String,
 ) -> Result<KeyCard> {
     let text = std::fs::read_to_string(&path)?;
-    keychain::set_certificate(&state.store, id, Some(text))
+    keychain::set_certificate(&*state.store()?, id, Some(text))
 }
 
 /// Copy or move a key (with its certificate) into another vault.
@@ -242,12 +242,12 @@ pub async fn key_copy_to_vault(
     vault_id: Uuid,
     move_key: bool,
 ) -> Result<KeyCard> {
-    keychain::copy_to_vault(&state.store, id, vault_id, move_key)
+    keychain::copy_to_vault(&*state.store()?, id, vault_id, move_key)
 }
 
 #[tauri::command]
 pub async fn key_rename(state: State<'_, AppState>, id: Uuid, label: String) -> Result<KeyCard> {
-    keychain::rename(&state.store, id, &label)
+    keychain::rename(&*state.store()?, id, &label)
 }
 
 #[tauri::command]
@@ -258,7 +258,7 @@ pub async fn key_change_passphrase(
     next: Option<String>,
     remember: bool,
 ) -> Result<KeyCard> {
-    keychain::change_passphrase(&state.store, id, current, next, remember)
+    keychain::change_passphrase(&*state.store()?, id, current, next, remember)
 }
 
 #[tauri::command]
@@ -267,12 +267,12 @@ pub async fn key_remember_passphrase(
     id: Uuid,
     passphrase: Option<String>,
 ) -> Result<KeyCard> {
-    keychain::remember_passphrase(&state.store, id, passphrase)
+    keychain::remember_passphrase(&*state.store()?, id, passphrase)
 }
 
 #[tauri::command]
 pub async fn key_public(state: State<'_, AppState>, id: Uuid) -> Result<String> {
-    keychain::public_key(&state.store, id)
+    keychain::public_key(&*state.store()?, id)
 }
 
 /// Explicit export of private material. `export_passphrase` re-encrypts the
@@ -284,7 +284,7 @@ pub async fn key_export(
     passphrase: Option<String>,
     export_passphrase: Option<String>,
 ) -> Result<String> {
-    Ok(keychain::export(&state.store, id, passphrase, export_passphrase)?.to_string())
+    Ok(keychain::export(&*state.store()?, id, passphrase, export_passphrase)?.to_string())
 }
 
 #[tauri::command]
@@ -295,9 +295,9 @@ pub async fn key_export_file(
     passphrase: Option<String>,
     export_passphrase: Option<String>,
 ) -> Result<()> {
-    let text = keychain::export(&state.store, id, passphrase, export_passphrase)?;
+    let text = keychain::export(&*state.store()?, id, passphrase, export_passphrase)?;
     write_private(&path, text.as_bytes())?;
-    let public = keychain::public_key(&state.store, id)?;
+    let public = keychain::public_key(&*state.store()?, id)?;
     std::fs::write(format!("{path}.pub"), format!("{public}\n"))?;
     Ok(())
 }
@@ -343,7 +343,7 @@ pub async fn key_export_to_host<R: Runtime>(
     id: Uuid,
     host_id: Uuid,
 ) -> Result<ExportToHostResult> {
-    let public = keychain::public_key(&state.store, id)?;
+    let public = keychain::public_key(&*state.store()?, id)?;
     let conn = sessions::connect_host(&app, Uuid::new_v4(), host_id).await?;
     let out = conn
         .client
@@ -402,7 +402,7 @@ pub async fn agent_keys() -> Result<AgentKeys> {
 
 #[tauri::command]
 pub async fn key_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    keychain::delete(&state.store, id)
+    keychain::delete(&*state.store()?, id)
 }
 
 #[tauri::command]
@@ -410,17 +410,17 @@ pub async fn identities_list(
     state: State<'_, AppState>,
     vault_id: Option<Uuid>,
 ) -> Result<Vec<IdentityCard>> {
-    keychain::identities(&state.store, vault_id)
+    keychain::identities(&*state.store()?, vault_id)
 }
 
 #[tauri::command]
 pub async fn identity_save(state: State<'_, AppState>, form: IdentityForm) -> Result<IdentityCard> {
-    keychain::save_identity(&state.store, &form)
+    keychain::save_identity(&*state.store()?, &form)
 }
 
 #[tauri::command]
 pub async fn identity_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    keychain::delete_identity(&state.store, id)
+    keychain::delete_identity(&*state.store()?, id)
 }
 
 /// Copy or move an identity (with its key and certificate) into another vault.
@@ -431,7 +431,7 @@ pub async fn identity_copy_to_vault(
     vault_id: Uuid,
     move_identity: bool,
 ) -> Result<IdentityCard> {
-    keychain::copy_identity_to_vault(&state.store, id, vault_id, move_identity)
+    keychain::copy_identity_to_vault(&*state.store()?, id, vault_id, move_identity)
 }
 
 #[tauri::command]
@@ -500,17 +500,17 @@ pub async fn snippets_list(
     state: State<'_, AppState>,
     vault_id: Option<Uuid>,
 ) -> Result<Vec<SnippetCard>> {
-    snippets::list(&state.store, vault_id)
+    snippets::list(&*state.store()?, vault_id)
 }
 
 #[tauri::command]
 pub async fn snippet_save(state: State<'_, AppState>, form: SnippetForm) -> Result<SnippetCard> {
-    snippets::save(&state.store, &form)
+    snippets::save(&*state.store()?, &form)
 }
 
 #[tauri::command]
 pub async fn snippet_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    snippets::delete(&state.store, id)
+    snippets::delete(&*state.store()?, id)
 }
 
 #[tauri::command]
@@ -520,7 +520,7 @@ pub async fn snippet_copy_to_vault(
     vault_id: Uuid,
     move_snippet: bool,
 ) -> Result<SnippetCard> {
-    snippets::copy_to_vault(&state.store, id, vault_id, move_snippet)
+    snippets::copy_to_vault(&*state.store()?, id, vault_id, move_snippet)
 }
 
 #[tauri::command]
@@ -529,7 +529,7 @@ pub async fn snippet_set_targets(
     id: Uuid,
     host_ids: Vec<Uuid>,
 ) -> Result<SnippetCard> {
-    snippets::set_targets(&state.store, id, &host_ids)
+    snippets::set_targets(&*state.store()?, id, &host_ids)
 }
 
 #[tauri::command]
@@ -548,7 +548,7 @@ pub async fn snippet_packages(
     state: State<'_, AppState>,
     vault_id: Option<Uuid>,
 ) -> Result<Vec<PackageNode>> {
-    snippets::packages(&state.store, vault_id)
+    snippets::packages(&*state.store()?, vault_id)
 }
 
 #[tauri::command]
@@ -559,12 +559,12 @@ pub async fn snippet_package_save(
     label: String,
     parent_id: Option<Uuid>,
 ) -> Result<PackageNode> {
-    snippets::save_package(&state.store, vault_id, id, &label, parent_id)
+    snippets::save_package(&*state.store()?, vault_id, id, &label, parent_id)
 }
 
 #[tauri::command]
 pub async fn snippet_package_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    snippets::delete_package(&state.store, id)
+    snippets::delete_package(&*state.store()?, id)
 }
 
 #[tauri::command]
@@ -574,24 +574,24 @@ pub async fn snippet_package_copy_to_vault(
     vault_id: Uuid,
     move_package: bool,
 ) -> Result<PackageNode> {
-    snippets::copy_package_to_vault(&state.store, id, vault_id, move_package)
+    snippets::copy_package_to_vault(&*state.store()?, id, vault_id, move_package)
 }
 
 // ───────────────────────────── known hosts ─────────────────────────────
 
 #[tauri::command]
 pub async fn known_hosts_list(state: State<'_, AppState>) -> Result<Vec<KnownHostCard>> {
-    trust::list(&state.store)
+    trust::list(&*state.store()?)
 }
 
 #[tauri::command]
 pub async fn known_host_forget(state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    trust::forget(&state.store, id)
+    trust::forget(&*state.store()?, id)
 }
 
 #[tauri::command]
 pub async fn known_host_forget_host(state: State<'_, AppState>, hostname: String) -> Result<usize> {
-    trust::forget_host(&state.store, &hostname)
+    trust::forget_host(&*state.store()?, &hostname)
 }
 
 #[tauri::command]
@@ -695,7 +695,7 @@ pub async fn cloud_discover(
     vault_id: Uuid,
     config: termoso_core::cloud::CloudConfig,
 ) -> Result<CloudPreview> {
-    cloud::discover(&state.store, vault_id, config).await
+    cloud::discover(&*state.store()?, vault_id, config).await
 }
 
 #[tauri::command]
@@ -705,7 +705,7 @@ pub async fn cloud_import(
     preview_id: Uuid,
     selection: CloudSelection,
 ) -> Result<CloudImportReport> {
-    cloud::apply_cached(&state.store, vault_id, preview_id, &selection)
+    cloud::apply_cached(&*state.store()?, vault_id, preview_id, &selection)
 }
 
 #[tauri::command]
@@ -720,7 +720,7 @@ pub fn cloud_sync_list(
     state: State<'_, AppState>,
     vault_id: Option<Uuid>,
 ) -> Result<Vec<CloudSyncGroup>> {
-    cloud_sync::list(&state.store, vault_id)
+    cloud_sync::list(&*state.store()?, vault_id)
 }
 
 #[tauri::command]
@@ -728,7 +728,7 @@ pub fn cloud_sync_get(
     state: State<'_, AppState>,
     group_id: Uuid,
 ) -> Result<Option<CloudSyncGroup>> {
-    cloud_sync::get(&state.store, group_id)
+    cloud_sync::get(&*state.store()?, group_id)
 }
 
 /// Create or update a group's cloud sync. `secret` is encrypted into local
@@ -740,12 +740,12 @@ pub fn cloud_sync_save(
     config: CloudSyncConfig,
     secret: Option<CloudSyncSecret>,
 ) -> Result<CloudSyncGroup> {
-    cloud_sync::save(&state.store, group_id, config, secret)
+    cloud_sync::save(&*state.store()?, group_id, config, secret)
 }
 
 #[tauri::command]
 pub fn cloud_sync_forget(state: State<'_, AppState>, group_id: Uuid) -> Result<()> {
-    cloud_sync::forget(&state.store, group_id)
+    cloud_sync::forget(&*state.store()?, group_id)
 }
 
 /// "Sync now": list machines with the stored credentials and reconcile the
@@ -756,7 +756,7 @@ pub async fn cloud_sync_run(
     state: State<'_, AppState>,
     group_id: Uuid,
 ) -> Result<CloudSyncGroup> {
-    let group = cloud_sync::run(&state.store, group_id).await?;
+    let group = cloud_sync::run(&*state.store()?, group_id).await?;
     let _ = app.emit(cloud_sync::EVENT, &group);
     Ok(group)
 }
@@ -783,7 +783,7 @@ pub async fn hosts_export_csv(
     include_passwords: bool,
     path: String,
 ) -> Result<backup::CsvExportReport> {
-    backup::export_hosts_csv(&state.store, vault_id, include_passwords, &path)
+    backup::export_hosts_csv(&*state.store()?, vault_id, include_passwords, &path)
 }
 
 /// Encrypt the given vaults (all unlocked when empty) into a `.termoso` file.
@@ -794,7 +794,7 @@ pub async fn backup_export(
     password: String,
     path: String,
 ) -> Result<BackupSummary> {
-    let store = state.store.clone();
+    let store = state.store()?.clone();
     tauri::async_runtime::spawn_blocking(move || {
         backup::export_file(&store, &vault_ids, &password, &path)
     })
@@ -824,7 +824,7 @@ pub async fn backup_restore<R: Runtime>(
     source: usize,
     vault_id: Uuid,
 ) -> Result<backup::RestoreReport> {
-    let report = backup::apply(&state.store, preview_id, source, vault_id)?;
+    let report = backup::apply(&*state.store()?, preview_id, source, vault_id)?;
     let _ = app.emit(SYNC_EVENT, SyncNotice::EntitiesChanged { vault_id });
     Ok(report)
 }
@@ -833,14 +833,14 @@ pub async fn backup_restore<R: Runtime>(
 
 #[tauri::command]
 pub async fn logs_list(state: State<'_, AppState>) -> Result<Vec<LogCard>> {
-    logs::list(&state.store)
+    logs::list(&*state.store()?)
 }
 
 /// Fetch the encrypted body from the server when it is not on this device
 /// yet (a teammate's recording, or our own from another device).
 async fn ensure_body<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
     let state = app.state::<AppState>();
-    let card = logs::list(&state.store)?
+    let card = logs::list(&*state.store()?)?
         .into_iter()
         .find(|l| l.id == id)
         .ok_or_else(|| DesktopError::not_found(format!("log {id}")))?;
@@ -861,7 +861,7 @@ pub async fn log_read<R: Runtime>(
     id: Uuid,
 ) -> Result<LogBody> {
     ensure_body(&app, id).await?;
-    logs::read(&state.store, id)
+    logs::read(&*state.store()?, id)
 }
 
 #[tauri::command]
@@ -872,7 +872,7 @@ pub async fn log_export<R: Runtime>(
     path: String,
 ) -> Result<usize> {
     ensure_body(&app, id).await?;
-    logs::export(&state.store, id, &path)
+    logs::export(&*state.store()?, id, &path)
 }
 
 /// Pin / annotate for the team. Goes through the server when it knows the
@@ -885,7 +885,7 @@ pub async fn log_annotate<R: Runtime>(
     pinned: Option<bool>,
     note: Option<String>,
 ) -> Result<LogCard> {
-    let card = logs::list(&state.store)?
+    let card = logs::list(&*state.store()?)?
         .into_iter()
         .find(|l| l.id == id)
         .ok_or_else(|| DesktopError::not_found(format!("log {id}")))?;
@@ -901,12 +901,12 @@ pub async fn log_annotate<R: Runtime>(
                 ));
             }
             engine.annotate_log(id, pinned, note).await?;
-            logs::list(&state.store)?
+            logs::list(&*state.store()?)?
                 .into_iter()
                 .find(|l| l.id == id)
                 .ok_or_else(|| DesktopError::not_found(format!("log {id}")))
         }
-        _ => logs::annotate_local(&state.store, id, pinned, note.as_deref()),
+        _ => logs::annotate_local(&*state.store()?, id, pinned, note.as_deref()),
     }
 }
 
@@ -928,7 +928,7 @@ pub async fn vault_session_logging_set<R: Runtime>(
 
 #[tauri::command]
 pub async fn log_delete<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
-    logs::delete(&app.state::<AppState>().store, id)?;
+    logs::delete(&*app.state::<AppState>().store()?, id)?;
     if let Some(engine) = account::engine(&app).await {
         engine.request_sync();
     }
@@ -937,7 +937,7 @@ pub async fn log_delete<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
 
 #[tauri::command]
 pub async fn log_bookmarks(state: State<'_, AppState>, log_id: Uuid) -> Result<Vec<BookmarkCard>> {
-    logs::bookmarks(&state.store, log_id)
+    logs::bookmarks(&*state.store()?, log_id)
 }
 
 #[tauri::command]
@@ -947,12 +947,12 @@ pub async fn log_bookmark_add(
     offset: u64,
     note: String,
 ) -> Result<BookmarkCard> {
-    logs::add_bookmark(&state.store, log_id, offset, &note)
+    logs::add_bookmark(&*state.store()?, log_id, offset, &note)
 }
 
 #[tauri::command]
 pub async fn log_bookmark_delete(state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    logs::delete_bookmark(&state.store, id)
+    logs::delete_bookmark(&*state.store()?, id)
 }
 
 // ───────────────────────────── account / sync ─────────────────────────────

@@ -19,6 +19,7 @@ mod mosh;
 mod multiplayer;
 mod presence;
 mod prompts;
+mod security;
 mod sessions;
 mod sftp;
 mod smoke;
@@ -76,12 +77,17 @@ pub fn run() {
             tracing::info!(
                 profile = %state.profile_dir.display(),
                 master = ?state.master_source(),
+                locked = state.is_locked(),
                 "profile opened"
             );
+            let locked = state.is_locked();
             app.manage(state);
             app.manage(UpdateHub::default());
             let handle = app.handle().clone();
-            tauri::async_runtime::spawn(startup(handle));
+            tauri::async_runtime::spawn(security::inactivity_watcher(handle.clone()));
+            if !locked {
+                tauri::async_runtime::spawn(startup(handle));
+            }
             Ok(())
         })
         .on_page_load(smoke::on_page_load)
@@ -91,6 +97,12 @@ pub fn run() {
             commands::deep_links_register,
             commands::settings_get,
             commands::settings_set,
+            security::vault_status,
+            security::vault_unlock,
+            security::vault_lock,
+            security::vault_activity,
+            security::master_password_set,
+            security::master_password_remove,
             commands::vaults_list,
             commands::vault_default,
             commands::entities_list,
@@ -335,17 +347,22 @@ pub fn run() {
         });
 }
 
-/// Background work after the window is up: restore the account session,
-/// sweep old recordings and bring up auto-start forwards.
-async fn startup(app: tauri::AppHandle) {
+/// Background work once the vault is open (at start-up, or after every
+/// unlock): restore the account session, sweep old recordings and bring up
+/// auto-start forwards.
+pub(crate) async fn startup(app: tauri::AppHandle) {
     let state = app.state::<AppState>();
+    let Ok(store) = state.store() else {
+        return;
+    };
     let settings = state.settings().unwrap_or_default();
     edits::sweep_stale();
-    match logs::prune(&state.store, settings.log_retention_days) {
+    match logs::prune(&store, settings.log_retention_days) {
         Ok(n) if n > 0 => tracing::info!(pruned = n, "old recordings removed"),
         Ok(_) => {}
         Err(e) => tracing::warn!("log retention sweep failed: {e}"),
     }
+    drop(store);
     match account::resume(&app).await {
         Ok(Some(a)) => tracing::info!(email = %a.email, "account session restored"),
         Ok(None) => {}
@@ -359,6 +376,13 @@ async fn startup(app: tauri::AppHandle) {
             Ok(_) => {}
             Err(e) => tracing::warn!("forwarding autostart failed: {e}"),
         }
+    }
+    if state
+        .lock
+        .first_startup_done
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
+    {
+        return;
     }
     if settings.update_check == "startup" {
         update::check_on_startup(&app).await;

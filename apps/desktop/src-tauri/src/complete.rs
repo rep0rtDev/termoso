@@ -81,7 +81,7 @@ pub async fn terminal_insert_password(
     let info = state.sessions.info(id)?;
     let password: Zeroizing<String> = match identity_id {
         Some(iid) => state
-            .store
+            .store()?
             .require::<Identity>(iid)?
             .data
             .password
@@ -93,7 +93,7 @@ pub async fn terminal_insert_password(
                 .host_id
                 .ok_or_else(|| DesktopError::invalid("session has no saved host"))?;
             state
-                .store
+                .store()?
                 .resolve_host(host_id)?
                 .identity
                 .and_then(|i| i.data.password)
@@ -118,7 +118,7 @@ pub fn terminal_host_identity(state: State<'_, AppState>, id: Uuid) -> Result<Op
     let Some(host_id) = info.host_id else {
         return Ok(None);
     };
-    let resolved = state.store.resolve_host(host_id)?;
+    let resolved = state.store()?.resolve_host(host_id)?;
     Ok(resolved
         .identity
         .filter(|i| i.data.password.as_deref().is_some_and(|p| !p.is_empty()))

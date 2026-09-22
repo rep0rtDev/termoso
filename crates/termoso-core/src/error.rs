@@ -102,6 +102,9 @@ pub enum CoreError {
     /// Mosh bootstrap or UDP session failure.
     #[error("{0}")]
     Mosh(#[from] crate::mosh::MoshError),
+    /// The master password did not unlock the profile.
+    #[error("wrong master password")]
+    WrongPassword,
     /// Operation was cancelled.
     #[error("cancelled")]
     Cancelled,
@@ -176,6 +179,7 @@ impl CoreError {
             CoreError::Key(_) => "key",
             CoreError::Fido2(e) => e.kind(),
             CoreError::Mosh(_) => "mosh",
+            CoreError::WrongPassword => "wrong_password",
             CoreError::Cancelled => "cancelled",
             CoreError::Closed => "closed",
         }

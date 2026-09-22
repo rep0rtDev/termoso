@@ -620,10 +620,14 @@ pub async fn scheduler(app: AppHandle) {
     tokio::time::sleep(Duration::from_secs(15)).await;
     loop {
         let state = app.state::<AppState>();
-        match due(&state.store) {
+        let Ok(store) = state.store() else {
+            tokio::time::sleep(TICK).await;
+            continue;
+        };
+        match due(&store) {
             Ok(ids) => {
                 for gid in ids {
-                    match run(&state.store, gid).await {
+                    match run(&store, gid).await {
                         Ok(group) => {
                             if let Some(err) = &group.status.error {
                                 tracing::warn!(group = %gid, "cloud sync failed: {err}");
@@ -636,6 +640,7 @@ pub async fn scheduler(app: AppHandle) {
             }
             Err(e) => tracing::warn!("cloud sync scheduler: {e}"),
         }
+        drop(store);
         tokio::time::sleep(TICK).await;
     }
 }

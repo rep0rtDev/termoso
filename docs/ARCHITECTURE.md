@@ -82,6 +82,49 @@ it in the OS keychain (Secret Service / Credential Manager / Keychain) with an
 owner-only file fallback, Android in the Keystore (optionally gated by
 biometrics), iOS in the Keychain (this-device-only, excluded from backups).
 
+### Desktop master password and App Lock
+
+The master password does **not** replace the device master key: the SQLite
+store stays encrypted with the same random 256-bit key, so enabling, changing
+or removing the password never rewrites or rekeys the database. What changes
+is where that key lives.
+
+* **Off (default).** The key is in the OS keychain (or `master.key`, owner-only,
+  when no keychain is available). Anyone logged into your OS account can open
+  the vault; nothing is asked at start-up.
+* **On.** `master.pw` in the profile holds the key wrapped with a key derived
+  from the password (Argon2id, 64 MiB / 3 passes, random 16-byte salt;
+  XChaCha20-Poly1305 over the raw key). The wrapper is written to a temporary
+  file in the same directory, read back and unwrapped with the new password,
+  fsynced, then renamed over the old one — only after that is the keychain
+  entry / `master.key` deleted. The keychain therefore holds **no copy** once
+  the password is on; a stale `master.pw.tmp` from a crash is ignored and
+  replaced. Wrong passwords fail closed with a generic error and leave the
+  wrapper untouched.
+* **Start-up.** With `master.pw` present the app starts *locked*: the window
+  shows the unlock screen and no `Store` exists in the process. Nothing in
+  the profile is read until the password is entered.
+* **Lock.** *Lock now* (Settings → Security, command palette, `Ctrl+Shift+L`)
+  and the inactivity timer (Settings → Security → *Lock after inactivity*;
+  the webview reports keyboard/pointer input, `0` = never) run the same
+  sequence: end hosted multiplayer shares, close every terminal session
+  (including viewer tabs), SFTP/WebDAV connection and transfer, port-forward
+  rule and edit-in-place watcher, suspend the account runtime (the sync
+  engine stops, the API token is dropped from memory but the signed-in
+  session is kept), then drop the `Store` so the master key is gone. Every
+  vault command returns the `locked` error until the next unlock, which
+  re-opens the store and re-runs the normal start-up (account resume,
+  forwarding autostart).
+
+**Recovery.** A forgotten master password cannot be reset: the key exists only
+inside `master.pw`, and there is no escrow. The supported way back is an
+*encrypted backup* (Settings → Security → Export…, or Account → Backup), which
+has its own password and restores every vault into a fresh profile. Turning
+the password off (with the current password) moves the key back to the
+keychain / file. Deleting `master.pw` — or both the keychain entry and
+`master.key` while the password is off — makes the database permanently
+unreadable.
+
 ### Server storage
 
 PostgreSQL (migrations in `crates/termoso-server/migrations`, applied on start)

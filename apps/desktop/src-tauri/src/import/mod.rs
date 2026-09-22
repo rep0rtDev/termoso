@@ -761,7 +761,7 @@ pub fn apply(
     preview: &ImportPreview,
     selection: &ImportSelection,
 ) -> Result<ImportReport> {
-    let store = &state.store;
+    let store = &*state.store()?;
     let mut report = ImportReport::default();
     let mut existing = Existing::load(store, vault_id)?;
 
@@ -1439,7 +1439,7 @@ broken line
         assert!(single.keys[0].agent_backed);
 
         let state = AppState::in_memory(dir.path().join("profile"));
-        let store = &state.store;
+        let store = &*state.store().unwrap();
         let vault = store.local_vault().unwrap().id;
         let report = apply(
             &state,

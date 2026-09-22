@@ -149,6 +149,17 @@ impl Multiplayer {
 
     /// Forget a session (tab closed / relay ended). A hosted share is stopped
     /// on the server so viewers hear about it right away.
+    /// Sessions this device is sharing as host.
+    pub fn host_ids(&self) -> Vec<Uuid> {
+        self.entries
+            .lock()
+            .expect("multiplayer poisoned")
+            .iter()
+            .filter(|(_, e)| e.role == LiveRole::Host)
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
     pub fn detach(&self, id: Uuid) {
         let entry = self
             .entries
@@ -236,6 +247,16 @@ pub async fn start<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<ShareInfo
 }
 
 /// Stop sharing a session (host). Viewers get `Ended`; the tab keeps running.
+/// End every share hosted from this device (viewers see the session close).
+pub async fn stop_all<R: Runtime>(app: &AppHandle<R>) {
+    let ids = app.state::<AppState>().multiplayer.host_ids();
+    for id in ids {
+        if let Err(e) = stop(app, id).await {
+            tracing::debug!(session = %id, "stop share on lock: {e}");
+        }
+    }
+}
+
 pub async fn stop<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
     let state = app.state::<AppState>();
     let Some(share) = state.multiplayer.take_share(id) else {

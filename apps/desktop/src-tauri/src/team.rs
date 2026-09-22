@@ -90,7 +90,7 @@ pub struct VaultAccess {
 async fn refresh<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
     let state = app.state::<AppState>();
     let api = api(app).await?;
-    core::refresh_vaults(&api, &state.store).await?;
+    core::refresh_vaults(&api, &*state.store()?).await?;
     let _ = app.emit(SYNC_EVENT, SyncNotice::VaultsChanged);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -123,9 +123,9 @@ pub async fn create<R: Runtime>(app: &AppHandle<R>, name: &str) -> Result<Team> 
         .create_team(&CreateTeamRequest { name: name.clone() })
         .await?;
     let state = app.state::<AppState>();
-    let secrets = state.store.account_secrets()?;
+    let secrets = state.store()?.account_secrets()?;
     let me = state
-        .store
+        .store()?
         .account()?
         .ok_or_else(|| DesktopError::invalid("not signed in"))?;
     let key = SymmetricKey::generate();
@@ -282,7 +282,7 @@ async fn rotate_after_removal<R: Runtime>(
     team_id: Uuid,
 ) -> Result<()> {
     let state = app.state::<AppState>();
-    let vaults = state.store.vaults()?;
+    let vaults = state.store()?.vaults()?;
     for v in vaults
         .iter()
         .filter(|v| v.team_id == Some(team_id) && v.unlocked && v.role.can_manage())
@@ -416,9 +416,9 @@ pub async fn create_vault<R: Runtime>(
     let name = clean_name(name)?;
     let api = api(app).await?;
     let state = app.state::<AppState>();
-    let secrets = state.store.account_secrets()?;
+    let secrets = state.store()?.account_secrets()?;
     let me = state
-        .store
+        .store()?
         .account()?
         .ok_or_else(|| DesktopError::invalid("not signed in"))?;
     let keys = public_keys(&api, team_id).await?;
@@ -478,11 +478,11 @@ pub async fn set_vault_access<R: Runtime>(
 ) -> Result<()> {
     let api = api(app).await?;
     let state = app.state::<AppState>();
-    let vault = state.store.vault(vault_id)?;
+    let vault = state.store()?.vault(vault_id)?;
     let team_id = vault
         .team_id
         .ok_or_else(|| DesktopError::invalid("not a team vault"))?;
-    let key = state.store.vault_key(vault_id)?;
+    let key = state.store()?.vault_key(vault_id)?;
     let keys = public_keys(&api, team_id).await?;
     let pk = keys
         .get(&user_id)
@@ -508,7 +508,7 @@ pub async fn remove_vault_access<R: Runtime>(
     let api = api(app).await?;
     api.remove_vault_member(vault_id, user_id).await?;
     let state = app.state::<AppState>();
-    let me = state.store.account()?.map(|a| a.user_id);
+    let me = state.store()?.account()?.map(|a| a.user_id);
     if me != Some(user_id) {
         rotate_with(&api, &state, vault_id).await?;
     }
@@ -526,7 +526,7 @@ pub async fn rotate_vault_key<R: Runtime>(app: &AppHandle<R>, vault_id: Uuid) ->
 /// keep waiting for a manager to grant the new key. Local rows are re-encrypted
 /// by the vault refresh that follows.
 async fn rotate_with(api: &ApiClient, state: &AppState, vault_id: Uuid) -> Result<()> {
-    let vault = state.store.vault(vault_id)?;
+    let vault = state.store()?.vault(vault_id)?;
     if !vault.unlocked {
         return Err(DesktopError::invalid("you need the vault key to rotate it"));
     }

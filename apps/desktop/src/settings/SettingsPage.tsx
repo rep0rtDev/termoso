@@ -22,7 +22,8 @@ import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import ArticleRoundedIcon from "@mui/icons-material/ArticleRounded";
 import SystemUpdateAltRoundedIcon from "@mui/icons-material/SystemUpdateAltRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AccountPage } from "@/account/AccountPage";
 import { setSettingsPage, useNav, type SettingsPage as PageId } from "@/app/navigation";
 import { EmptyState } from "@/components/EmptyState";
@@ -30,10 +31,11 @@ import { Page, PageBody } from "@/components/PageHeader";
 import { useSnackbar } from "@/components/Snackbar";
 import { Loading, Mono, SectionCard, SettingRow } from "@/components/ui";
 import * as ipc from "@/ipc/commands";
-import { keys, useAppInfo, useSaveSettings, useSettings } from "@/ipc/hooks";
+import { useAppInfo, useSaveSettings, useSettings } from "@/ipc/hooks";
 import { UpdatesCard } from "@/update/UpdatesCard";
 import { FontPicker, FontPreview } from "./FontPicker";
 import { KeyboardPage } from "./KeyboardPage";
+import { SecurityPage } from "./SecurityPage";
 import { SftpPage } from "./SftpPage";
 import { TeamPage } from "@/team/TeamPage";
 import { VaultsPage } from "@/team/VaultsPage";
@@ -56,6 +58,7 @@ const PAGES: { id: PageId; label: string; icon: ReactNode }[] = [
   { id: "team", label: "Team", icon: <GroupsRoundedIcon /> },
   { id: "vaults", label: "Vaults", icon: <LockRoundedIcon /> },
   { id: "sshid", label: "SSH ID", icon: <FingerprintRoundedIcon /> },
+  { id: "security", label: "Security", icon: <ShieldRoundedIcon /> },
   { id: "general", label: "General", icon: <TuneRoundedIcon /> },
   { id: "terminal", label: "Terminal", icon: <TerminalRoundedIcon /> },
   { id: "keyboard", label: "Keyboard", icon: <KeyboardRoundedIcon /> },
@@ -132,6 +135,7 @@ function PreferencesPage({
   return (
     <PageBody>
       <Box sx={{ maxWidth: 760, display: "flex", flexDirection: "column", gap: 1.5 }}>
+        {page === "security" && <SecurityPage s={s} update={update} />}
         {page === "general" && <General s={s} update={update} />}
         {page === "terminal" && <Terminal s={s} update={update} />}
         {page === "keyboard" && <KeyboardPage s={s} update={update} />}
@@ -674,19 +678,7 @@ function Logs({ s, update }: SectionProps) {
 }
 
 function About() {
-  const snackbar = useSnackbar();
-  const qc = useQueryClient();
   const info = useAppInfo();
-  const migrate = useMutation({
-    mutationFn: ipc.masterKeyMigrate,
-    onSuccess: (src) => {
-      void qc.invalidateQueries({ queryKey: keys.app });
-      snackbar.notify(
-        src === "keychain" ? "Master key moved to the OS keychain" : "No OS keychain available",
-      );
-    },
-    onError: (e) => snackbar.error(errorMessage(e)),
-  });
   const d = info.data;
 
   return (
@@ -701,27 +693,6 @@ function About() {
             <Value>
               <Mono>{d?.profileDir ?? "…"}</Mono>
             </Value>
-          }
-        />
-      </SectionCard>
-
-      <SectionCard title="Security">
-        <SettingRow
-          label="Master key"
-          hint={
-            d?.masterKeySource === "file"
-              ? "No OS keychain was available; the key is kept in an owner-only file in the profile."
-              : "Encrypts the local database and every stored secret."
-          }
-          last
-          control={
-            d?.masterKeySource === "file" ? (
-              <Button variant="tonal" disabled={migrate.isPending} onClick={() => migrate.mutate()}>
-                Move to OS keychain
-              </Button>
-            ) : (
-              <Value>{d ? "OS keychain" : "…"}</Value>
-            )
           }
         />
       </SectionCard>

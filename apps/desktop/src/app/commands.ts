@@ -43,6 +43,8 @@ import {
 } from "./navigation";
 import { commandForEvent, registerCommands, tabDigit, type Command } from "./shortcuts";
 import { IS_MAC } from "@/lib/platform";
+import * as ipc from "@/ipc/commands";
+import { errorMessage } from "@/ipc/types";
 
 export const DOCS_URL = "https://github.com/rep0rtDev/termoso#readme";
 
@@ -181,6 +183,22 @@ export const COMMANDS: Command[] = [
     keywords: "colors appearance",
     keys: [],
     run: () => goToSettings("terminal"),
+  },
+  {
+    id: "nav.security",
+    title: "Security & App Lock",
+    group: "Navigation",
+    keywords: "master password lock",
+    keys: [],
+    run: () => goToSettings("security"),
+  },
+  {
+    id: "vault.lock",
+    title: "Lock vault",
+    group: "Navigation",
+    keywords: "master password app lock",
+    keys: ["ctrl+shift+l"],
+    run: () => void ipc.vaultLock().catch((e: unknown) => toast(errorMessage(e), "error")),
   },
   {
     id: "nav.docs",

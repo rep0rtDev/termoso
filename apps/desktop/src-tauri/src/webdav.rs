@@ -54,7 +54,7 @@ pub async fn connect<R: Runtime>(
     host_id: Uuid,
 ) -> Result<Connection> {
     let state = app.state::<AppState>();
-    let resolved = state.store.resolve_host(host_id)?;
+    let resolved = state.store()?.resolve_host(host_id)?;
     let Some(cfg) = resolved.webdav.clone() else {
         return Err(DesktopError::invalid("this host has no WebDAV section"));
     };
@@ -157,7 +157,7 @@ fn pin_certificate(state: &AppState, resolved: &ResolvedHost, fingerprint: &str)
         return;
     };
     cfg.certificate_fingerprint = Some(fingerprint.to_string());
-    if let Err(e) = state.store.update(cfg_id, &cfg) {
+    if let Err(e) = state.store().and_then(|s| Ok(s.update(cfg_id, &cfg)?)) {
         tracing::warn!(error = %e, "could not pin WebDAV certificate");
     }
 }
@@ -172,7 +172,7 @@ fn remember_password(state: &AppState, resolved: &ResolvedHost, value: &Zeroizin
         password: Some(value.to_string()),
         ..ident.data.clone()
     };
-    if let Err(e) = state.store.update(ident.id, &data) {
+    if let Err(e) = state.store().and_then(|s| Ok(s.update(ident.id, &data)?)) {
         tracing::warn!(error = %e, "could not remember WebDAV password");
     }
 }

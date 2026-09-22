@@ -28,7 +28,17 @@ export function errorMessage(e: unknown): string {
   return String(e);
 }
 
-export type MasterKeySource = "keychain" | "file";
+export type MasterKeySource = "keychain" | "file" | "password";
+
+/** Master password / App Lock state (`vault_status`). */
+export interface VaultStatus {
+  locked: boolean;
+  passwordProtected: boolean;
+  masterSource: MasterKeySource;
+  minPasswordChars: number;
+}
+
+export type VaultEvent = { type: "locked" } | { type: "unlocked" };
 
 export interface AppInfo {
   version: string;
@@ -93,6 +103,8 @@ export interface Settings {
   useSshAgent: boolean;
   recordSessions: boolean;
   logRetentionDays: number;
+  /** Relock a password-protected vault after this many idle minutes; 0 = never. */
+  lockAfterMinutes: number;
   autostartForwarding: boolean;
   syncConflict: SyncConflict;
   syncIntervalSeconds: number;

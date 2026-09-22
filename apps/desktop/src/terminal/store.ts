@@ -1939,6 +1939,12 @@ export function closeTab(tabId: string) {
   for (const id of tab.paneIds) void closePane(id);
 }
 
+/** Vault locked: Rust already closed every session, so drop the tabs without asking. */
+export function dropAllTabs() {
+  const s = terminalStore.get();
+  for (const t of s.tabs) for (const id of t.paneIds) void closePane(id);
+}
+
 export function setActiveTab(tabId: string) {
   update((s) => (s.activeTabId === tabId ? s : { ...s, activeTabId: tabId }));
 }

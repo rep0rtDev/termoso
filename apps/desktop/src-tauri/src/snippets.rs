@@ -31,7 +31,7 @@ pub async fn run(
     vars: &HashMap<String, String>,
     paste: bool,
 ) -> Result<RunResult> {
-    let snippet = state.store.require::<Snippet>(snippet_id)?;
+    let snippet = state.store()?.require::<Snippet>(snippet_id)?;
     let expanded = expand(&snippet.data.script, vars)?;
     let text = if paste {
         script_to_paste(&expanded)

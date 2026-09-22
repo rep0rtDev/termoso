@@ -152,14 +152,14 @@ pub async fn publish_now<R: Runtime>(app: &AppHandle<R>) -> Result<SshIdView> {
         .await?
         .ok_or_else(|| DesktopError::invalid("SSH ID is not set up"))?;
     let handle = profile.handle.clone();
-    let s = state.store.clone();
+    let s = state.store()?.clone();
     let keys = tokio::task::spawn_blocking(move || core::ensure_device_keys(&s, &handle))
         .await
         .map_err(|e| DesktopError::invalid(e.to_string()))??;
     let profile = api
         .put_sshid_device_keys(&core::upload_request(&keys))
         .await?;
-    view_of(&state.store, Some(profile))
+    view_of(&*state.store()?, Some(profile))
 }
 
 async fn load(api: &Arc<ApiClient>, store: &Arc<Store>) -> Result<Option<SshIdProfile>> {
@@ -176,10 +176,10 @@ pub async fn view<R: Runtime>(app: &AppHandle<R>) -> Result<SshIdView> {
     let state = app.state::<AppState>();
     let api = match api(app).await {
         Ok(api) => api,
-        Err(_) => return signed_out(&state.store),
+        Err(_) => return signed_out(&*state.store()?),
     };
-    let profile = load(&api, &state.store).await?;
-    let mut v = view_of(&state.store, profile)?;
+    let profile = load(&api, &state.store()?).await?;
+    let mut v = view_of(&*state.store()?, profile)?;
     if v.profile.is_none() {
         v.base_url = api
             .server_info()
@@ -195,7 +195,7 @@ pub async fn view<R: Runtime>(app: &AppHandle<R>) -> Result<SshIdView> {
 pub async fn refresh<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
     let state = app.state::<AppState>();
     let api = api(app).await?;
-    load(&api, &state.store).await?;
+    load(&api, &state.store()?).await?;
     Ok(())
 }
 
@@ -207,9 +207,9 @@ pub async fn create<R: Runtime>(app: &AppHandle<R>, handle: &str) -> Result<SshI
         DesktopError::invalid("username must be 3–32 characters: lowercase letters, digits, - or _")
     })?;
     let profile = api.create_sshid(&handle).await?;
-    let profile = publish(&api, &state.store, profile).await?;
-    core::set_handle(&state.store, Some(&profile.handle))?;
-    view_of(&state.store, Some(profile))
+    let profile = publish(&api, &state.store()?, profile).await?;
+    core::set_handle(&*state.store()?, Some(&profile.handle))?;
+    view_of(&*state.store()?, Some(profile))
 }
 
 /// Delete the SSH ID: every published key goes with it on the server, the
@@ -218,13 +218,13 @@ pub async fn delete<R: Runtime>(app: &AppHandle<R>) -> Result<SshIdView> {
     let state = app.state::<AppState>();
     let api = api(app).await?;
     api.delete_sshid().await?;
-    core::forget(&state.store)?;
-    for k in state.store.list::<SshKey>(None)? {
+    core::forget(&*state.store()?)?;
+    for k in state.store()?.list::<SshKey>(None)? {
         if k.data.ssh_id {
-            state.store.delete(k.id)?;
+            state.store()?.delete(k.id)?;
         }
     }
-    view_of(&state.store, None)
+    view_of(&*state.store()?, None)
 }
 
 /// Replace this device's passkeys with fresh ones and publish them.
@@ -242,8 +242,8 @@ pub async fn rotate<R: Runtime>(app: &AppHandle<R>) -> Result<SshIdView> {
     let profile = api
         .put_sshid_device_keys(&core::upload_request(&keys))
         .await?;
-    core::save_device_keys(&state.store, &keys)?;
-    view_of(&state.store, Some(profile))
+    core::save_device_keys(&*state.store()?, &keys)?;
+    view_of(&*state.store()?, Some(profile))
 }
 
 /// Make a credential on the token, attach its public key to the SSH ID and
@@ -280,12 +280,12 @@ pub async fn add_fido2<R: Runtime>(app: &AppHandle<R>, form: SshIdFido2Form) -> 
             public_key: material.public_key.clone(),
         })
         .await?;
-    let vault_id = match state.store.personal_vault()? {
+    let vault_id = match state.store()?.personal_vault()? {
         Some(v) => v.id,
-        None => state.store.local_vault()?.id,
+        None => state.store()?.local_vault()?.id,
     };
     let credential = fido2::describe(&material.private_key, None).and_then(|s| s.credential_id);
-    state.store.insert(
+    state.store()?.insert(
         vault_id,
         &SshKey {
             label,
@@ -298,7 +298,7 @@ pub async fn add_fido2<R: Runtime>(app: &AppHandle<R>, form: SshIdFido2Form) -> 
         },
     )?;
     let profile = api.sshid().await?;
-    view_of(&state.store, profile)
+    view_of(&*state.store()?, profile)
 }
 
 /// Remove a published key. A FIDO2 key handle stored for it is dropped too;
@@ -314,19 +314,19 @@ pub async fn remove_key<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<SshI
         .map(|k| k.public_key.clone());
     api.remove_sshid_key(id).await?;
     if let Some(pk) = removed {
-        for k in state.store.list::<SshKey>(None)? {
+        for k in state.store()?.list::<SshKey>(None)? {
             if k.data.ssh_id
                 && k.data
                     .public_key
                     .as_deref()
                     .is_some_and(|p| same_key(p, &pk))
             {
-                state.store.delete(k.id)?;
+                state.store()?.delete(k.id)?;
             }
         }
     }
     let profile = api.sshid().await?;
-    view_of(&state.store, profile)
+    view_of(&*state.store()?, profile)
 }
 
 /// Unpublish another device's passkeys by signing that device out: its
@@ -337,7 +337,7 @@ pub async fn remove_device<R: Runtime>(app: &AppHandle<R>, device_id: Uuid) -> R
     crate::account::revoke_device(app, device_id).await?;
     let api = api(app).await?;
     let profile = api.sshid().await?;
-    view_of(&state.store, profile)
+    view_of(&*state.store()?, profile)
 }
 
 /// Authentication methods for an identity that logs in with SSH ID: this

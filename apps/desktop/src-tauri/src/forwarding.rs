@@ -237,6 +237,22 @@ impl Forwards {
         }
     }
 
+    /// Running, starting and retrying rules.
+    pub fn all_ids(&self) -> Vec<Uuid> {
+        let mut ids = self.running_ids();
+        ids.extend(self.pending.lock().expect("forwards poisoned").keys());
+        ids.extend(self.reconnecting.lock().expect("forwards poisoned").keys());
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    }
+
+    fn cancel_pending(&self, id: Uuid) {
+        if let Some(tok) = self.pending.lock().expect("forwards poisoned").remove(&id) {
+            tok.cancel();
+        }
+    }
+
     fn finish_pending(&self, id: Uuid) -> bool {
         self.pending
             .lock()
@@ -410,9 +426,9 @@ fn host_labels(store: &Store, vault_id: Option<Uuid>) -> Result<HashMap<Uuid, St
 }
 
 pub fn rules(state: &AppState, vault_id: Option<Uuid>) -> Result<Vec<PfRuleCard>> {
-    let hosts = host_labels(&state.store, vault_id)?;
+    let hosts = host_labels(&*state.store()?, vault_id)?;
     let mut out = Vec::new();
-    for e in state.store.list::<PfRule>(vault_id)? {
+    for e in state.store()?.list::<PfRule>(vault_id)? {
         out.push(card(&state.forwards, &e, &hosts)?);
     }
     out.sort_by_key(|a| a.label.to_lowercase());
@@ -420,14 +436,14 @@ pub fn rules(state: &AppState, vault_id: Option<Uuid>) -> Result<Vec<PfRuleCard>
 }
 
 pub fn rule(state: &AppState, id: Uuid) -> Result<PfRuleCard> {
-    let e = state.store.require::<PfRule>(id)?;
-    let hosts = host_labels(&state.store, Some(e.vault_id))?;
+    let e = state.store()?.require::<PfRule>(id)?;
+    let hosts = host_labels(&*state.store()?, Some(e.vault_id))?;
     card(&state.forwards, &e, &hosts)
 }
 
 pub fn save(state: &AppState, form: &PfRuleForm) -> Result<PfRuleCard> {
     let data = validate(form)?;
-    let host = state.store.require::<Host>(form.host_id)?;
+    let host = state.store()?.require::<Host>(form.host_id)?;
     if host.vault_id != form.vault_id {
         return Err(DesktopError::invalid("host belongs to another vault"));
     }
@@ -436,23 +452,23 @@ pub fn save(state: &AppState, form: &PfRuleForm) -> Result<PfRuleCard> {
     }
     let id = match form.id {
         Some(id) => {
-            state.store.require::<PfRule>(id)?;
-            state.store.update(id, &data)?;
+            state.store()?.require::<PfRule>(id)?;
+            state.store()?.update(id, &data)?;
             id
         }
-        None => state.store.insert(form.vault_id, &data)?,
+        None => state.store()?.insert(form.vault_id, &data)?,
     };
     rule(state, id)
 }
 
 /// Duplicate a rule next to the original ("<label> copy"), not running.
 pub fn duplicate(state: &AppState, id: Uuid) -> Result<PfRuleCard> {
-    let src = state.store.require::<PfRule>(id)?;
+    let src = state.store()?.require::<PfRule>(id)?;
     let mut data = src.data.clone();
     if !data.label.is_empty() {
         data.label = format!("{} copy", data.label);
     }
-    let new_id = state.store.insert(src.vault_id, &data)?;
+    let new_id = state.store()?.insert(src.vault_id, &data)?;
     rule(state, new_id)
 }
 
@@ -462,11 +478,11 @@ pub fn duplicate(state: &AppState, id: Uuid) -> Result<PfRuleCard> {
 /// arrives without credentials: sharing them is an explicit choice made on the
 /// Hosts page, never a side effect of copying a rule.
 pub fn copy_to_vault(state: &AppState, id: Uuid, vault_id: Uuid) -> Result<PfRuleCard> {
-    let src = state.store.require::<PfRule>(id)?;
+    let src = state.store()?.require::<PfRule>(id)?;
     if src.vault_id == vault_id {
         return Err(DesktopError::invalid("rule is already in that vault"));
     }
-    let vault = state.store.vault(vault_id)?;
+    let vault = state.store()?.vault(vault_id)?;
     if !vault.unlocked {
         return Err(DesktopError::invalid("target vault is locked"));
     }
@@ -475,15 +491,15 @@ pub fn copy_to_vault(state: &AppState, id: Uuid, vault_id: Uuid) -> Result<PfRul
     } else {
         hosts::CopyCredentials::Shared
     };
-    let host = state.store.require::<Host>(src.data.host_id)?;
+    let host = state.store()?.require::<Host>(src.data.host_id)?;
     let host_id = match state
-        .store
+        .store()?
         .list::<Host>(Some(vault_id))?
         .into_iter()
         .find(|h| h.data.label == host.data.label && h.data.address == host.data.address)
     {
         Some(h) => h.id,
-        None => hosts::copy_to_vault(&state.store, &[host.id], vault_id, creds)?
+        None => hosts::copy_to_vault(&*state.store()?, &[host.id], vault_id, creds)?
             .into_iter()
             .next()
             .ok_or_else(|| DesktopError::not_found(format!("host {}", host.id)))?,
@@ -492,7 +508,7 @@ pub fn copy_to_vault(state: &AppState, id: Uuid, vault_id: Uuid) -> Result<PfRul
         host_id,
         ..src.data.clone()
     };
-    let new_id = state.store.insert(vault_id, &data)?;
+    let new_id = state.store()?.insert(vault_id, &data)?;
     rule(state, new_id)
 }
 
@@ -511,8 +527,8 @@ pub async fn move_to_vault<R: Runtime>(
 pub async fn delete<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
     stop(app, id).await?;
     let state = app.state::<AppState>();
-    state.store.require::<PfRule>(id)?;
-    state.store.delete(id)?;
+    state.store()?.require::<PfRule>(id)?;
+    state.store()?.delete(id)?;
     state
         .forwards
         .errors
@@ -535,7 +551,7 @@ fn emit<R: Runtime>(app: &AppHandle<R>, id: Uuid) {
 /// under the rule id, so the UI can answer or cancel them like a session.
 pub async fn start<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<PfRuleCard> {
     let state = app.state::<AppState>();
-    let e = state.store.require::<PfRule>(id)?;
+    let e = state.store()?.require::<PfRule>(id)?;
     let spec = ForwardSpec::from_rule(&e.data)?;
     let cancel = state.forwards.begin(id)?;
     emit(app, id);
@@ -657,6 +673,18 @@ fn schedule_reconnect<R: Runtime>(app: &AppHandle<R>, id: Uuid, reason: String) 
     });
 }
 
+/// Stop every tunnel, abort starts in flight and drop retry loops.
+pub async fn stop_all<R: Runtime>(app: &AppHandle<R>) {
+    let state = app.state::<AppState>();
+    let ids = state.forwards.all_ids();
+    for id in ids {
+        state.forwards.cancel_pending(id);
+        if let Err(e) = stop(app, id).await {
+            tracing::debug!(rule = %id, "stop on lock: {e}");
+        }
+    }
+}
+
 pub async fn stop<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
     let state = app.state::<AppState>();
     state.prompts.cancel_session(id);
@@ -678,7 +706,7 @@ pub async fn autostart<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<Uuid>> {
     let state = app.state::<AppState>();
     let running = state.forwards.running_ids();
     let mut started = Vec::new();
-    for e in state.store.list::<PfRule>(None)? {
+    for e in state.store()?.list::<PfRule>(None)? {
         if e.data.auto_start && !running.contains(&e.id) && start(app, e.id).await.is_ok() {
             started.push(e.id);
         }
@@ -689,7 +717,7 @@ pub async fn autostart<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<Uuid>> {
 /// Snapshot of every rule's runtime counters (cheap; polled by the UI).
 pub fn runtimes(state: &AppState) -> Result<HashMap<Uuid, PfRuntime>> {
     Ok(state
-        .store
+        .store()?
         .list::<PfRule>(None)?
         .into_iter()
         .map(|e| (e.id, state.forwards.runtime(e.id)))

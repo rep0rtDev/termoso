@@ -96,6 +96,8 @@ import type {
   TransferInfo,
   UpdateEvent,
   UpdateInfo,
+  VaultEvent,
+  VaultStatus,
   Uuid,
   InviteResult,
   PendingVaultKey,
@@ -118,6 +120,19 @@ import type {
 export const appInfo = () => invoke<AppInfo>("app_info");
 
 export const settingsGet = () => invoke<Settings>("settings_get");
+
+// ───────────────────────────── master password / App Lock ─────────────────────────────
+
+export const vaultStatus = () => invoke<VaultStatus>("vault_status");
+export const vaultUnlock = (password: string) => invoke<VaultStatus>("vault_unlock", { password });
+export const vaultLock = () => invoke<VaultStatus>("vault_lock");
+export const vaultActivity = () => invoke<null>("vault_activity");
+export const masterPasswordSet = (current: string | null, password: string) =>
+  invoke<VaultStatus>("master_password_set", { current, password });
+export const masterPasswordRemove = (current: string) =>
+  invoke<VaultStatus>("master_password_remove", { current });
+export const onVaultEvent = (cb: (e: VaultEvent) => void): Promise<UnlistenFn> =>
+  listen<VaultEvent>("vault", (ev) => cb(ev.payload));
 export const settingsSet = (settings: Settings) => invoke<Settings>("settings_set", { settings });
 
 export const workspacesGet = () => invoke<WorkspacesState>("workspaces_get");

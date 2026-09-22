@@ -34,8 +34,10 @@ pub fn refresh<R: Runtime>(app: &AppHandle<R>) {
 /// Team-vault sessions open on this device, across terminals (SSH / Mosh /
 /// Telnet), SFTP browsers and running port-forwarding tunnels.
 pub(crate) fn collect(state: &AppState) -> Vec<PresenceSession> {
-    let team_vaults: HashSet<Uuid> = state
-        .store
+    let Ok(store) = state.store() else {
+        return Vec::new();
+    };
+    let team_vaults: HashSet<Uuid> = store
         .vaults()
         .unwrap_or_default()
         .into_iter()
@@ -47,7 +49,7 @@ pub(crate) fn collect(state: &AppState) -> Vec<PresenceSession> {
     }
     let mut out = Vec::new();
     let mut push = |host_id: Uuid, protocol: &str, since: DateTime<Utc>| {
-        let Ok(host) = state.store.require::<Host>(host_id) else {
+        let Ok(host) = store.require::<Host>(host_id) else {
             return;
         };
         if team_vaults.contains(&host.vault_id) {
@@ -70,7 +72,7 @@ pub(crate) fn collect(state: &AppState) -> Vec<PresenceSession> {
         }
     }
     for (rule_id, since) in state.forwards.running_since() {
-        if let Ok(rule) = state.store.require::<PfRule>(rule_id) {
+        if let Ok(rule) = store.require::<PfRule>(rule_id) {
             push(rule.data.host_id, "forward", since);
         }
     }

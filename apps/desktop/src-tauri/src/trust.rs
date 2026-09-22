@@ -33,8 +33,8 @@ pub struct ImportReport {
 
 fn known_hosts(state: &AppState) -> Result<KnownHosts> {
     Ok(KnownHosts::new(
-        state.store.clone(),
-        state.store.local_vault()?.id,
+        state.store()?.clone(),
+        state.store()?.local_vault()?.id,
     ))
 }
 

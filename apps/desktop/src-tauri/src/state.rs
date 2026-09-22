@@ -2,7 +2,9 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use termoso_core::secrets::{self, MasterKeySource};
@@ -27,7 +29,10 @@ const SETTINGS_META: &str = "desktop.settings";
 pub struct AppState {
     pub profile_dir: PathBuf,
     pub master_source: std::sync::Mutex<MasterKeySource>,
-    pub store: Arc<Store>,
+    /// `None` while the vault is locked: the master key and every decrypted
+    /// row live only inside `Store`, so dropping it is what "locked" means.
+    store: RwLock<Option<Arc<Store>>>,
+    pub lock: LockRuntime,
     pub sessions: Sessions,
     pub sftp: SftpSessions,
     pub edits: Edits,
@@ -37,21 +42,73 @@ pub struct AppState {
     pub multiplayer: Multiplayer,
 }
 
+/// App Lock bookkeeping that outlives the store.
+#[derive(Default)]
+pub struct LockRuntime {
+    /// Last user interaction reported by the webview (inactivity relock).
+    last_activity: std::sync::Mutex<Option<Instant>>,
+    /// Once-per-process start-up work (update check, cloud sync scheduler)
+    /// has run; later unlocks skip it.
+    pub first_startup_done: AtomicBool,
+    /// A lock is tearing the runtime down; unlock and further locks wait.
+    pub locking: AtomicBool,
+}
+
+impl LockRuntime {
+    pub fn touch(&self) {
+        self.touch_at(Instant::now());
+    }
+
+    pub fn touch_at(&self, at: Instant) {
+        *self.last_activity.lock().expect("activity poisoned") = Some(at);
+    }
+
+    pub fn idle_for_at(&self, now: Instant) -> Option<Duration> {
+        self.last_activity
+            .lock()
+            .expect("activity poisoned")
+            .map(|t| now.saturating_duration_since(t))
+    }
+
+    /// `true` once the idle time reaches `lock_after_minutes` (0 = never).
+    pub fn idle_expired(&self, lock_after_minutes: u32, now: Instant) -> bool {
+        if lock_after_minutes == 0 {
+            return false;
+        }
+        let limit = Duration::from_secs(u64::from(lock_after_minutes) * 60);
+        self.idle_for_at(now).is_some_and(|idle| idle >= limit)
+    }
+}
+
 impl AppState {
-    /// Open (or create) the profile: master key from the OS keychain, falling
-    /// back to an owner-only file, then the encrypted local store.
+    /// Prepare the profile. Without a master password the key is read from
+    /// the OS keychain (falling back to an owner-only file) and the store
+    /// opens right away; with one, the store stays closed until
+    /// [`AppState::unlock_with_password`].
     pub fn open() -> Result<Self> {
         let profile_dir = std::env::var_os(PROFILE_ENV)
             .map(PathBuf::from)
             .unwrap_or_else(|| secrets::default_profile_dir(PROFILE_NAME));
+        Self::open_at(profile_dir)
+    }
+
+    pub fn open_at(profile_dir: PathBuf) -> Result<Self> {
         std::fs::create_dir_all(&profile_dir)?;
         std::fs::create_dir_all(profile_dir.join(LOGS_DIR))?;
-        let master = secrets::load_or_create(&profile_dir, PROFILE_NAME, true)?;
-        let store = Store::open(&profile_dir.join(DB_FILE), master.key)?;
+        let (source, store) = if secrets::password_protected(&profile_dir) {
+            (MasterKeySource::Password, None)
+        } else {
+            let master = secrets::load_or_create(&profile_dir, PROFILE_NAME, true)?;
+            let store = Store::open(&profile_dir.join(DB_FILE), master.key)?;
+            (master.source, Some(Arc::new(store)))
+        };
+        let lock = LockRuntime::default();
+        lock.touch();
         Ok(Self {
             profile_dir,
-            master_source: std::sync::Mutex::new(master.source),
-            store: Arc::new(store),
+            master_source: std::sync::Mutex::new(source),
+            store: RwLock::new(store),
+            lock,
             sessions: Sessions::default(),
             sftp: SftpSessions::default(),
             edits: Edits::default(),
@@ -70,7 +127,10 @@ impl AppState {
         Self {
             profile_dir,
             master_source: std::sync::Mutex::new(MasterKeySource::File),
-            store: Arc::new(Store::open_in_memory(SymmetricKey::generate()).expect("store")),
+            store: RwLock::new(Some(Arc::new(
+                Store::open_in_memory(SymmetricKey::generate()).expect("store"),
+            ))),
+            lock: LockRuntime::default(),
             sessions: Sessions::default(),
             sftp: SftpSessions::default(),
             edits: Edits::default(),
@@ -81,16 +141,101 @@ impl AppState {
         }
     }
 
+    /// The open store, or `locked` when the vault is locked. Every command
+    /// that touches vault data goes through here, so a locked vault refuses
+    /// them uniformly instead of each command checking.
+    pub fn store(&self) -> Result<Arc<Store>> {
+        self.store
+            .read()
+            .expect("store poisoned")
+            .clone()
+            .ok_or_else(|| DesktopError::new("locked", "the vault is locked"))
+    }
+
+    pub fn is_locked(&self) -> bool {
+        self.store.read().expect("store poisoned").is_none()
+    }
+
+    pub fn password_protected(&self) -> bool {
+        secrets::password_protected(&self.profile_dir)
+    }
+
+    /// Open the store with the master key unwrapped by `password`. A wrong
+    /// password leaves the on-disk record untouched.
+    pub fn unlock_with_password(&self, password: &str) -> Result<()> {
+        let mut slot = self.store.write().expect("store poisoned");
+        if slot.is_some() {
+            return Ok(());
+        }
+        let master = secrets::unlock_with_password(&self.profile_dir, PROFILE_NAME, password)?;
+        let store = Store::open(&self.profile_dir.join(DB_FILE), master.key)?;
+        *slot = Some(Arc::new(store));
+        *self.master_source.lock().expect("master source poisoned") = master.source;
+        self.lock.touch();
+        Ok(())
+    }
+
+    /// Drop the store (and with it the master key and every cached vault
+    /// key). Returns whether anything was open. Callers must have shut down
+    /// the runtimes that hold their own `Arc<Store>` first.
+    pub fn close_store(&self) -> bool {
+        let taken = self.store.write().expect("store poisoned").take();
+        if let Some(store) = &taken
+            && Arc::strong_count(store) > 1
+        {
+            tracing::warn!(
+                refs = Arc::strong_count(store) - 1,
+                "store still referenced after lock; key stays in memory until released"
+            );
+        }
+        taken.is_some()
+    }
+
     pub fn master_source(&self) -> MasterKeySource {
         *self.master_source.lock().expect("master source poisoned")
     }
 
     /// Move a file-based master key into the OS keychain.
     pub fn migrate_master_key(&self) -> Result<MasterKeySource> {
+        if self.master_source() == MasterKeySource::Password {
+            return Err(DesktopError::invalid(
+                "the master key is protected by a password; remove it first",
+            ));
+        }
         if secrets::migrate_file_to_keychain(&self.profile_dir, PROFILE_NAME)? {
             *self.master_source.lock().expect("master source poisoned") = MasterKeySource::Keychain;
         }
         Ok(self.master_source())
+    }
+
+    /// Wrap the master key under `password` (enable or change). With a
+    /// password already set, `current` must unlock it first.
+    pub fn set_master_password(&self, current: Option<&str>, password: &str) -> Result<()> {
+        let store = self.store()?;
+        if self.password_protected() {
+            secrets::verify_password(&self.profile_dir, current.unwrap_or_default())?;
+        }
+        secrets::set_password(
+            &self.profile_dir,
+            PROFILE_NAME,
+            store.master_key(),
+            password,
+        )?;
+        *self.master_source.lock().expect("master source poisoned") = MasterKeySource::Password;
+        Ok(())
+    }
+
+    /// Go back to keychain / file storage after proving `current`.
+    pub fn remove_master_password(&self, current: &str) -> Result<MasterKeySource> {
+        let store = self.store()?;
+        if !self.password_protected() {
+            return Ok(self.master_source());
+        }
+        secrets::verify_password(&self.profile_dir, current)?;
+        let source =
+            secrets::remove_password(&self.profile_dir, PROFILE_NAME, store.master_key(), true)?;
+        *self.master_source.lock().expect("master source poisoned") = source;
+        Ok(source)
     }
 
     /// Where encrypted session recordings live.
@@ -99,7 +244,7 @@ impl AppState {
     }
 
     pub fn settings(&self) -> Result<Settings> {
-        Ok(match self.store.meta(SETTINGS_META)? {
+        Ok(match self.store()?.meta(SETTINGS_META)? {
             Some(raw) => serde_json::from_str(&raw)?,
             None => Settings::default(),
         })
@@ -107,7 +252,7 @@ impl AppState {
 
     pub fn save_settings(&self, settings: &Settings) -> Result<()> {
         settings.validate()?;
-        self.store
+        self.store()?
             .set_meta(SETTINGS_META, &serde_json::to_string(settings)?)?;
         Ok(())
     }
@@ -192,6 +337,9 @@ pub struct Settings {
     /// Release feed URL; empty = project default. Point it at your own server
     /// to keep updates fully self-hosted.
     pub update_url: String,
+    /// Lock the vault after this many minutes without keyboard / mouse input
+    /// in the app (0 = never). Only meaningful with a master password.
+    pub lock_after_minutes: u32,
     /// The start-up sign-in screen was dismissed with "Continue offline";
     /// signing in stays one click away in the account menu.
     pub welcome_seen: bool,
@@ -259,6 +407,7 @@ impl Default for Settings {
             sync_credentials: true,
             update_check: "manual".into(),
             update_url: String::new(),
+            lock_after_minutes: 0,
             welcome_seen: false,
             shortcuts: BTreeMap::new(),
             sftp_open_with: BTreeMap::new(),
@@ -331,6 +480,9 @@ impl Settings {
             ));
         }
         crate::update::feed_url(&self.update_url)?;
+        if self.lock_after_minutes > 7 * 24 * 60 {
+            return Err(DesktopError::invalid("lockAfterMinutes too large"));
+        }
         if self.shortcuts.len() > MAX_SHORTCUTS {
             return Err(DesktopError::invalid("too many shortcut overrides"));
         }
@@ -376,6 +528,184 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use termoso_core::model::Group;
+
+    fn state() -> (tempfile::TempDir, AppState) {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::open_at(dir.path().to_path_buf()).unwrap();
+        (dir, state)
+    }
+
+    fn group(state: &AppState, name: &str) -> uuid::Uuid {
+        let store = state.store().unwrap();
+        let vault = store.local_vault().unwrap().id;
+        store
+            .insert(
+                vault,
+                &Group {
+                    label: name.into(),
+                    ..Group::default()
+                },
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn lock_cycle_keeps_data_and_refuses_wrong_password() {
+        let (dir, state) = state();
+        assert!(!state.is_locked());
+        assert!(!state.password_protected());
+        let id = group(&state, "before");
+        let db_before = std::fs::read(dir.path().join(DB_FILE)).unwrap();
+
+        state.set_master_password(None, "correct horse").unwrap();
+        assert!(state.password_protected());
+        assert_eq!(state.master_source(), MasterKeySource::Password);
+        assert!(!dir.path().join("master.key").exists());
+        // Wrapping the key does not touch the database.
+        assert_eq!(std::fs::read(dir.path().join(DB_FILE)).unwrap(), db_before);
+
+        assert!(state.close_store());
+        assert!(state.is_locked());
+        assert_eq!(state.store().unwrap_err().kind, "locked");
+        assert_eq!(state.settings().unwrap_err().kind, "locked");
+
+        assert_eq!(
+            state
+                .unlock_with_password("wrong password")
+                .unwrap_err()
+                .kind,
+            "wrong_password"
+        );
+        assert!(state.is_locked());
+
+        state.unlock_with_password("correct horse").unwrap();
+        assert!(!state.is_locked());
+        let g: Group = state.store().unwrap().require::<Group>(id).unwrap().data;
+        assert_eq!(g.label, "before");
+    }
+
+    #[test]
+    fn fresh_start_on_protected_profile_is_locked() {
+        let (dir, state) = state();
+        state.set_master_password(None, "correct horse").unwrap();
+        drop(state);
+
+        let state = AppState::open_at(dir.path().to_path_buf()).unwrap();
+        assert!(state.is_locked());
+        assert_eq!(state.master_source(), MasterKeySource::Password);
+        state.unlock_with_password("correct horse").unwrap();
+        assert!(!state.is_locked());
+    }
+
+    #[test]
+    fn change_and_remove_password_need_the_current_one() {
+        let (dir, state) = state();
+        let id = group(&state, "kept");
+        state.set_master_password(None, "first password").unwrap();
+        assert_eq!(
+            state
+                .set_master_password(Some("nope nope"), "second password")
+                .unwrap_err()
+                .kind,
+            "wrong_password"
+        );
+        assert_eq!(
+            state
+                .set_master_password(None, "second password")
+                .unwrap_err()
+                .kind,
+            "wrong_password"
+        );
+        state
+            .set_master_password(Some("first password"), "second password")
+            .unwrap();
+        state.close_store();
+        assert_eq!(
+            state
+                .unlock_with_password("first password")
+                .unwrap_err()
+                .kind,
+            "wrong_password"
+        );
+        state.unlock_with_password("second password").unwrap();
+
+        assert_eq!(
+            state
+                .remove_master_password("first password")
+                .unwrap_err()
+                .kind,
+            "wrong_password"
+        );
+        assert!(state.password_protected());
+        let source = state.remove_master_password("second password").unwrap();
+        assert_ne!(source, MasterKeySource::Password);
+        assert!(!state.password_protected());
+        assert!(!dir.path().join("master.pw").exists());
+        drop(state);
+
+        // Plain storage again: opens without a prompt and the data is there.
+        let state = AppState::open_at(dir.path().to_path_buf()).unwrap();
+        assert!(!state.is_locked());
+        let g: Group = state.store().unwrap().require::<Group>(id).unwrap().data;
+        assert_eq!(g.label, "kept");
+    }
+
+    #[test]
+    fn lock_without_password_is_not_locked_on_restart() {
+        let (dir, state) = state();
+        assert!(state.close_store());
+        assert!(state.is_locked());
+        drop(state);
+        let state = AppState::open_at(dir.path().to_path_buf()).unwrap();
+        assert!(!state.is_locked());
+    }
+
+    #[test]
+    fn idle_timeout_is_deterministic() {
+        let lock = LockRuntime::default();
+        let t0 = Instant::now();
+        assert!(!lock.idle_expired(5, t0), "no activity yet → never lock");
+        lock.touch_at(t0);
+        assert!(
+            !lock.idle_expired(0, t0 + Duration::from_secs(3600)),
+            "0 = disabled"
+        );
+        assert!(!lock.idle_expired(5, t0 + Duration::from_secs(299)));
+        assert!(lock.idle_expired(5, t0 + Duration::from_secs(300)));
+        lock.touch_at(t0 + Duration::from_secs(290));
+        assert!(
+            !lock.idle_expired(5, t0 + Duration::from_secs(300)),
+            "activity resets"
+        );
+        assert!(lock.idle_expired(5, t0 + Duration::from_secs(590)));
+    }
+
+    #[test]
+    fn locked_state_rejects_vault_access_and_password_changes() {
+        let (dir, state) = state();
+        state.set_master_password(None, "correct horse").unwrap();
+        assert!(state.close_store());
+        let err = state.store().unwrap_err();
+        assert_eq!(err.kind, "locked");
+        assert_eq!(state.settings().unwrap_err().kind, "locked");
+        assert_eq!(
+            state
+                .set_master_password(Some("correct horse"), "another one")
+                .unwrap_err()
+                .kind,
+            "locked"
+        );
+        assert_eq!(
+            state
+                .remove_master_password("correct horse")
+                .unwrap_err()
+                .kind,
+            "locked"
+        );
+        assert!(state.password_protected(), "wrapper untouched while locked");
+        drop(dir);
+    }
 
     #[test]
     fn defaults_validate_and_old_blobs_still_load() {
