@@ -1096,6 +1096,16 @@ export interface ImportReport {
   added: number;
 }
 
+/** A server key pinned for one `host:port`; team-vault pins sync to every member. */
+export interface HostKeyPin {
+  id: Uuid;
+  vaultId: Uuid;
+  keyType: string;
+  fingerprint: string;
+  /** `<type> <base64>` */
+  publicKey: string;
+}
+
 // ───────────────────────────── import (ssh_config / PuTTY / CSV) ─────────────────────────────
 
 export type ImportSource = "ssh_config" | "putty" | "csv";

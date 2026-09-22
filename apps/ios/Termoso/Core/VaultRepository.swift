@@ -80,6 +80,20 @@ struct VaultRepository: Sendable {
         try app.createTag(vaultId: vaultId, label: label)
     }
 
+    // MARK: Server key pins
+
+    func hostKeyPins(host: String, port: UInt16) throws -> [HostKeyPinItem] {
+        try app.hostKeyPins(host: host, port: port)
+    }
+
+    func pinHostKey(vaultId: String, host: String, port: UInt16, publicKey: String?) throws -> [HostKeyPinItem] {
+        try app.pinHostKey(vaultId: vaultId, host: host, port: port, publicKey: publicKey)
+    }
+
+    func unpinHostKey(id: String) throws {
+        try app.unpinHostKey(id: id)
+    }
+
     // MARK: Settings
 
     func settings() throws -> MobileSettings {

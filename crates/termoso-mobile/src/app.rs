@@ -593,6 +593,39 @@ impl TermosoApp {
         Ok(self.store.delete(parse_id(&id)?)?)
     }
 
+    /// Server keys pinned for `host:port` across all unlocked vaults.
+    pub fn host_key_pins(&self, host: String, port: u16) -> Result<Vec<HostKeyPinItem>> {
+        Ok(termoso_client::trust::pins(&self.store, &host, port)?
+            .into_iter()
+            .map(HostKeyPinItem::from)
+            .collect())
+    }
+
+    /// Pin a server key into `vault_id`: a pasted OpenSSH public-key line, or
+    /// (with `public_key` empty) the keys already trusted in other vaults.
+    pub fn pin_host_key(
+        &self,
+        vault_id: String,
+        host: String,
+        port: u16,
+        public_key: Option<String>,
+    ) -> Result<Vec<HostKeyPinItem>> {
+        Ok(termoso_client::trust::pin(
+            &self.store,
+            parse_id(&vault_id)?,
+            &host,
+            port,
+            public_key.as_deref().filter(|s| !s.trim().is_empty()),
+        )?
+        .into_iter()
+        .map(HostKeyPinItem::from)
+        .collect())
+    }
+
+    pub fn unpin_host_key(&self, id: String) -> Result<()> {
+        Ok(termoso_client::trust::unpin(&self.store, parse_id(&id)?)?)
+    }
+
     // ---- history ------------------------------------------------------
 
     /// Past connections, newest first. `vault_id` is the vault the saved

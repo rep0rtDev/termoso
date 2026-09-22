@@ -735,6 +735,29 @@ pub struct KnownHostItem {
     pub updated_at: i64,
 }
 
+/// A server key pinned for one `host:port`; team-vault pins sync to members.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct HostKeyPinItem {
+    pub id: String,
+    pub vault_id: String,
+    pub key_type: String,
+    pub fingerprint: String,
+    /// `<type> <base64>`
+    pub public_key: String,
+}
+
+impl From<termoso_client::trust::HostKeyPin> for HostKeyPinItem {
+    fn from(p: termoso_client::trust::HostKeyPin) -> Self {
+        Self {
+            id: p.id.to_string(),
+            vault_id: p.vault_id.to_string(),
+            key_type: p.key_type,
+            fingerprint: p.fingerprint,
+            public_key: p.public_key,
+        }
+    }
+}
+
 /// A command typed at a shell prompt, newest first.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct CommandHistoryItem {

@@ -56,6 +56,7 @@ import type {
   Inherited,
   KeyCard,
   KeyPreview,
+  HostKeyPin,
   KnownHostCard,
   Listing,
   LiveEvent,
@@ -467,6 +468,15 @@ export const knownHostsExportText = () => invoke<string>("known_hosts_export_tex
 export const knownHostsExportFile = (path: string) =>
   invoke<number>("known_hosts_export_file", { path });
 export const knownHostsDefaultPath = () => invoke<string | null>("known_hosts_default_path");
+export const hostKeyPins = (host: string, port: number) =>
+  invoke<HostKeyPin[]>("host_key_pins", { host, port });
+export const hostKeyPin = (args: {
+  vaultId: Uuid;
+  host: string;
+  port: number;
+  publicKey: string | null;
+}) => invoke<HostKeyPin[]>("host_key_pin", args);
+export const hostKeyUnpin = (id: Uuid) => invoke<null>("host_key_unpin", { id });
 
 // import from other tools
 export const importScanSsh = (dir: string | null) =>
