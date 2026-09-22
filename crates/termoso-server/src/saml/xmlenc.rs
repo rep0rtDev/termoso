@@ -52,8 +52,14 @@ fn cipher_value(n: Node) -> Result<Vec<u8>, EncError> {
         .map_err(|_| EncError::Malformed("CipherValue base64"))
 }
 
-/// Decrypt `saml:EncryptedAssertion` → assertion XML text.
-pub fn decrypt_assertion(encrypted: Node, sp_key: &RsaPrivateKey) -> Result<String, EncError> {
+/// Decrypt `saml:EncryptedAssertion` → assertion XML text. PKCS#1 v1.5 key
+/// transport (`rsa-1_5`, padding-oracle prone) is only accepted with
+/// `allow_legacy`.
+pub fn decrypt_assertion(
+    encrypted: Node,
+    sp_key: &RsaPrivateKey,
+    allow_legacy: bool,
+) -> Result<String, EncError> {
     let data = child(encrypted, NS, "EncryptedData").ok_or(EncError::Malformed("EncryptedData"))?;
     let data_alg = child(data, NS, "EncryptionMethod")
         .and_then(|m| m.attribute("Algorithm"))
@@ -83,7 +89,7 @@ pub fn decrypt_assertion(encrypted: Node, sp_key: &RsaPrivateKey) -> Result<Stri
     let wrapped = cipher_value(enc_key)?;
 
     let content_key = match key_alg {
-        RSA_1_5 => sp_key.decrypt(Pkcs1v15Encrypt, &wrapped),
+        RSA_1_5 if allow_legacy => sp_key.decrypt(Pkcs1v15Encrypt, &wrapped),
         RSA_OAEP_MGF1P => sp_key.decrypt(Oaep::new::<sha1::Sha1>(), &wrapped),
         RSA_OAEP => {
             let digest = child(key_method, DS_NS, "DigestMethod")
@@ -225,11 +231,31 @@ mod tests {
         let assertion = r#"<saml:Assertion ID="_a" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"><saml:Issuer>idp</saml:Issuer></saml:Assertion>"#;
         let enc = encrypt_assertion(assertion, &key.to_public_key());
         let doc = roxmltree::Document::parse(&enc).unwrap();
-        let out = decrypt_assertion(doc.root_element(), &key).unwrap();
+        let out = decrypt_assertion(doc.root_element(), &key, false).unwrap();
         assert!(out.contains(assertion));
         let wrong = RsaPrivateKey::new(&mut rand::thread_rng(), 2048).unwrap();
         assert!(matches!(
-            decrypt_assertion(doc.root_element(), &wrong),
+            decrypt_assertion(doc.root_element(), &wrong, false),
+            Err(EncError::Decrypt)
+        ));
+    }
+
+    #[test]
+    fn rsa15_key_transport_requires_legacy_flag() {
+        let key = RsaPrivateKey::new(&mut rand::thread_rng(), 2048).unwrap();
+        let assertion =
+            r#"<saml:Assertion ID="_a" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"/>"#;
+        let enc =
+            encrypt_assertion(assertion, &key.to_public_key()).replace(RSA_OAEP_MGF1P, RSA_1_5);
+        let doc = roxmltree::Document::parse(&enc).unwrap();
+        assert!(matches!(
+            decrypt_assertion(doc.root_element(), &key, false),
+            Err(EncError::Unsupported(_))
+        ));
+        // With the flag the algorithm is accepted (and fails only because the
+        // key was actually wrapped with OAEP).
+        assert!(matches!(
+            decrypt_assertion(doc.root_element(), &key, true),
             Err(EncError::Decrypt)
         ));
     }

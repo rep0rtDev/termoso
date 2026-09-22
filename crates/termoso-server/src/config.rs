@@ -211,7 +211,9 @@ pub struct SsoProviderConfig {
     /// Sign `AuthnRequest`s. Defaults to whatever the IdP metadata asks for
     /// (`WantAuthnRequestsSigned`), and requires the SP key.
     pub saml_sign_requests: Option<bool>,
-    /// Accept RSA-SHA1 / SHA-1 digests from legacy IdPs (off by default).
+    /// Accept legacy algorithms from old IdPs: RSA-SHA1 / SHA-1 digests and
+    /// PKCS#1 v1.5 (`rsa-1_5`) key transport for encrypted assertions (off by
+    /// default).
     #[serde(default)]
     pub saml_allow_sha1: bool,
     /// Attribute carrying the email when the IdP does not use a standard
