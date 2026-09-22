@@ -818,13 +818,13 @@ async fn email_is_a_second_factor_once_another_is_enabled() {
             NOBODY,
         )
         .await;
-    let totp = totp_rs::TOTP::from_url(&setup.otpauth_url).unwrap();
+    let totp = totp_rs::Totp::from_url(&setup.otpauth_url).unwrap();
     s.json::<_, termoso_proto::auth::BackupCodes>(
         Method::POST,
         "/account/mfa/totp/confirm",
         Some(u.token()),
         Some(&termoso_proto::auth::TotpCodeRequest {
-            code: totp.generate_current().unwrap(),
+            code: totp.generate_current().to_string(),
         }),
     )
     .await;

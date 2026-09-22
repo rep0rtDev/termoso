@@ -18,7 +18,7 @@ use termoso_proto::auth::{
 use termoso_proto::error::codes;
 use termoso_proto::sync::{EntityChange, PullRequest, PullResponse, PushRequest, PushResponse};
 use termoso_proto::vault::VaultList;
-use totp_rs::TOTP;
+use totp_rs::Totp;
 use uuid::Uuid;
 
 fn assert_reauth_required(v: &serde_json::Value) {
@@ -278,8 +278,8 @@ async fn step_up_asks_for_the_second_factor_when_enabled() {
             NOBODY,
         )
         .await;
-    let totp = TOTP::from_url(&setup.otpauth_url).expect("otpauth url");
-    let code = || totp.generate_current().expect("clock");
+    let totp = Totp::from_url(&setup.otpauth_url).expect("otpauth url");
+    let code = || totp.generate_current().to_string();
     let _: BackupCodes = s
         .json(
             Method::POST,
@@ -843,8 +843,8 @@ async fn start_over_keeps_asking_for_the_second_factor() {
             NOBODY,
         )
         .await;
-    let totp = TOTP::from_url(&setup.otpauth_url).expect("otpauth url");
-    let code = || totp.generate_current().expect("clock");
+    let totp = Totp::from_url(&setup.otpauth_url).expect("otpauth url");
+    let code = || totp.generate_current().to_string();
     let _: BackupCodes = s
         .json(
             Method::POST,

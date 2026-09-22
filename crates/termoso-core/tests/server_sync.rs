@@ -67,9 +67,9 @@ async fn wait_for<F: FnMut(&SyncEvent) -> bool>(
 }
 
 /// A TOTP code different from `used` (waits for the next 30 s step if needed).
-async fn fresh_code(totp: &totp_rs::TOTP, used: &str) -> String {
+async fn fresh_code(totp: &totp_rs::Totp, used: &str) -> String {
     loop {
-        let c = totp.generate_current().unwrap();
+        let c = totp.generate_current().to_string();
         if c != used {
             return c;
         }
@@ -170,8 +170,8 @@ async fn login_with_totp_second_factor() {
         .json()
         .await
         .unwrap();
-    let totp = totp_rs::TOTP::from_url(&setup.otpauth_url).unwrap();
-    let enrolled = totp.generate_current().unwrap();
+    let totp = totp_rs::Totp::from_url(&setup.otpauth_url).unwrap();
+    let enrolled = totp.generate_current().to_string();
     let confirm = s
         .raw(
             reqwest::Method::POST,

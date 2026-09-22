@@ -67,12 +67,10 @@ pub async fn totp_setup(
     if u.totp_enabled {
         return Err(Error::conflict("TOTP is already enabled"));
     }
-    let secret = totp_rs::Secret::generate_secret();
-    let bytes = secret
-        .to_bytes()
-        .map_err(|e| Error::Internal(anyhow::anyhow!("totp secret: {e:?}")))?;
-    let totp = totp_for(&state, &u, &bytes)?;
-    let encrypted = state.encrypt_secret("totp", &bytes)?;
+    let secret = totp_rs::Secret::generate();
+    let bytes = secret.as_bytes();
+    let totp = totp_for(&state, &u, bytes)?;
+    let encrypted = state.encrypt_secret("totp", bytes)?;
     codes::set_flow(
         &state,
         P_TOTP_SETUP,
@@ -82,8 +80,10 @@ pub async fn totp_setup(
     )
     .await?;
     Ok(Json(TotpSetupResponse {
-        secret: secret.to_encoded().to_string(),
-        otpauth_url: totp.get_url(),
+        secret: secret.to_base32(),
+        otpauth_url: totp
+            .to_url()
+            .map_err(|e| Error::Internal(anyhow::anyhow!("totp url: {e}")))?,
     }))
 }
 
