@@ -29,7 +29,7 @@ fn main() {
     s.sign_response = true;
     variants.push(("signed_both", s));
     let mut s = base();
-    s.encrypt_for = Some(rsa::RsaPublicKey::from(sp_key()));
+    s.encrypt_for = Some(sp_key().public_key().clone());
     variants.push(("encrypted", s));
     let mut s = base();
     s.attributes = vec![
