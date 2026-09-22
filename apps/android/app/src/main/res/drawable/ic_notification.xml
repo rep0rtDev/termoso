@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Monochrome status-bar glyph: terminal prompt mark. -->
+<!-- Monochrome status-bar glyph: the Termoso mark (favicon.svg 64-unit grid scaled 0.375). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -8,16 +8,8 @@
     android:tint="#FFFFFF">
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M4,4 h16 a2,2 0 0 1 2,2 v12 a2,2 0 0 1 -2,2 h-16 a2,2 0 0 1 -2,-2 v-12 a2,2 0 0 1 2,-2 z M4,6 v12 h16 v-12 z" />
+        android:pathData="M6,7.5 h12 v3 H13.5 v7.5 h-3 V10.5 H6 z" />
     <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.8"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M7,9.5 L9.5,12 L7,14.5" />
-    <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.8"
-        android:strokeLineCap="round"
-        android:pathData="M11.5,14.5 L16,14.5" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M16.5,15 h1.5 a0.75,0.75 0 0 1 0.75,0.75 v1.5 a0.75,0.75 0 0 1 -0.75,0.75 h-1.5 a0.75,0.75 0 0 1 -0.75,-0.75 v-1.5 a0.75,0.75 0 0 1 0.75,-0.75 z" />
 </vector>
