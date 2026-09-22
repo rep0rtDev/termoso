@@ -8893,7 +8893,7 @@ dependencies = [
 name = "termoso-core"
 version = "0.4.0"
 dependencies = [
- "aes 0.8.4",
+ "aes 0.9.3",
  "anyhow",
  "async-trait",
  "axum",
@@ -9053,7 +9053,7 @@ dependencies = [
 name = "termoso-server"
 version = "0.4.0"
 dependencies = [
- "aes 0.8.4",
+ "aes 0.9.3",
  "aes-gcm 0.10.3",
  "anyhow",
  "argon2 0.5.3",

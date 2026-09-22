@@ -34,7 +34,7 @@ ctap-hid-fido2 = { version = "3.5", optional = true }
 # platform hands us (Android USB host / NFC).
 ciborium = { version = "0.2", optional = true }
 p256 = { version = "0.13", optional = true, features = ["ecdh"] }
-aes = { version = "0.8" }
+aes = { version = "0.9" }
 cbc = { version = "0.1", optional = true }
 # Mosh: AES-128-OCB3 datagrams + zlib-compressed instructions.
 ocb3 = { version = "0.1", default-features = false }
