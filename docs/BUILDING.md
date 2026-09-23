@@ -253,12 +253,12 @@ enumeration) plus the tools the AppImage bundler needs:
 
 ```bash
 # Debian / Ubuntu
-sudo apt-get install -y build-essential curl wget file patchelf pkg-config libssl-dev \
+sudo apt-get install -y build-essential curl wget file patchelf xdg-utils pkg-config libssl-dev \
   libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
   libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libudev-dev
 
 # Fedora
-sudo dnf install -y @development-tools curl wget file patchelf openssl-devel \
+sudo dnf install -y @development-tools curl wget file patchelf xdg-utils openssl-devel \
   webkit2gtk4.1-devel gtk3-devel libappindicator-gtk3-devel librsvg2-devel \
   libsoup3-devel javascriptcoregtk4.1-devel systemd-devel
 ```
@@ -287,7 +287,8 @@ declares them as dependencies. On an arm64 host the same command produces
 architecture you target.
 
 `--bundles` accepts any subset of `deb,rpm,appimage`; leave it out to build
-all three. Building the AppImage needs `file` and `patchelf` and downloads
+all three. Building the AppImage needs `file`, `patchelf` and `xdg-mime`
+(`xdg-utils`) and downloads
 `linuxdeploy` on first use.
 
 ### Windows
