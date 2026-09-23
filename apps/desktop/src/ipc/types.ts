@@ -119,6 +119,18 @@ export interface Settings {
   updateUrl: string;
   /** Start-up sign-in screen was dismissed with "Continue offline". */
   welcomeSeen: boolean;
+  /** Master switch for system notifications. */
+  notifications: boolean;
+  /** A command finished in a tab that was not in front. */
+  notifyCommands: boolean;
+  /** Only commands that ran at least this long are reported; 0 = every one. */
+  notifyCommandSeconds: number;
+  /** A transfer finished or failed while the SFTP tab was not in front. */
+  notifyTransfers: boolean;
+  /** A live session was dropped by the network / server. */
+  notifySessions: boolean;
+  /** Shared vault access, someone joined a shared terminal, remote sign-out. */
+  notifyAccount: boolean;
   /** Shortcut overrides: command id → chord (`ctrl+shift+k`), `""` = unbound. */
   shortcuts: Record<string, string>;
   /** SFTP “Open with” associations: lower-case extension (`""` = none) → app. */

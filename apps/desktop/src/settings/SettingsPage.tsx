@@ -299,6 +299,76 @@ function General({ s, update }: SectionProps) {
         {!IS_MAC && <DeepLinksRow />}
       </SectionCard>
 
+      <SectionCard title={tr("Notifications")}>
+        <SettingRow
+          label={tr("System notifications")}
+          hint={tr(
+            "Shown by the operating system for things that happen while the window or tab is not in front. Only the host or file name and a status are included, never command text.",
+          )}
+          last={!s.notifications}
+          control={
+            <Toggle checked={s.notifications} onChange={(v) => update({ notifications: v })} />
+          }
+        />
+        {s.notifications && (
+          <>
+            <SettingRow
+              label={tr("Command finished in a background tab")}
+              hint={tr("Needs shell integration on the host.")}
+              control={
+                <Toggle
+                  checked={s.notifyCommands}
+                  onChange={(v) => update({ notifyCommands: v })}
+                />
+              }
+            />
+            {s.notifyCommands && (
+              <SettingRow
+                label={tr("Only commands longer than")}
+                hint={tr("Seconds. 0 reports every command.")}
+                control={
+                  <NumberInput
+                    value={s.notifyCommandSeconds}
+                    onChange={(n) => update({ notifyCommandSeconds: n })}
+                    min={0}
+                    max={3600}
+                  />
+                }
+              />
+            )}
+            <SettingRow
+              label={tr("Transfer finished or failed")}
+              control={
+                <Toggle
+                  checked={s.notifyTransfers}
+                  onChange={(v) => update({ notifyTransfers: v })}
+                />
+              }
+            />
+            <SettingRow
+              label={tr("Connection lost")}
+              hint={tr("A live session was closed by the server or the network.")}
+              control={
+                <Toggle
+                  checked={s.notifySessions}
+                  onChange={(v) => update({ notifySessions: v })}
+                />
+              }
+            />
+            <SettingRow
+              label={tr("Team and account")}
+              hint={tr(
+                "A vault was shared with you, someone joined your shared terminal, this device was signed out.",
+              )}
+              last
+              control={
+                <Toggle checked={s.notifyAccount} onChange={(v) => update({ notifyAccount: v })} />
+              }
+            />
+          </>
+        )}
+      </SectionCard>
+
       <SectionCard title={tr("SSH agent")}>
         <SettingRow
           label={tr("Use the system SSH agent")}

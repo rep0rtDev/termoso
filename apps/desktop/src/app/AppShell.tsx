@@ -42,6 +42,7 @@ import { startCommands } from "./commands";
 import { applyShortcutOverrides } from "./shortcuts";
 import { CommandPalette } from "./CommandPalette";
 import { startDeepLinks } from "./deepLinks";
+import { startNotifications } from "./notifications";
 import { tr } from "@/i18n";
 
 /** Report user input to Rust for the inactivity timer, at most once per interval. */
@@ -116,9 +117,11 @@ function UnlockedShell() {
     startUpdateEvents();
     const stopCommands = startCommands();
     const stopLinks = startDeepLinks();
+    const stopNotifications = startNotifications();
     return () => {
       stopCommands();
       stopLinks();
+      stopNotifications();
     };
   }, [queryClient]);
   useEffect(() => {

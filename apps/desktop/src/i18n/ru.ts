@@ -25,6 +25,8 @@ export const ru: Readonly<Record<string, string>> = {
     "Забытый мастер-пароль нельзя восстановить или сбросить: ключ хранилища существует только зашифрованным этим паролем. Держите зашифрованную резервную копию — у неё свой пароль, и она восстанавливает все хосты, ключи и сниппеты в новый профиль. Если удалить из профиля и копию в связке ключей, и файл пароля, база станет нечитаемой навсегда.",
   "A hardware credential works from any signed-in device that has the token plugged in.":
     "Аппаратные учётные данные работают с любого устройства, где выполнен вход и подключён токен.",
+  "A live session was closed by the server or the network.":
+    "Активная сессия была закрыта сервером или сетью.",
   "A password is stored.": "Пароль сохранён.",
   "A password is stored. Type to replace it or clear it to remove.":
     "Пароль сохранён. Введите новый, чтобы заменить, или очистите поле, чтобы удалить.",
@@ -38,6 +40,8 @@ export const ru: Readonly<Record<string, string>> = {
     "Менеджер хранилища может включить запись сессий, чтобы все участники хранилища видели записи друг друга. Ваши собственные записи появляются здесь, когда запись включена в настройках.",
   "A vault manager turned on session logging: every member's sessions to this vault's hosts are recorded and shared with the vault.":
     "Менеджер хранилища включил запись сессий: сессии каждого участника к хостам этого хранилища записываются и доступны хранилищу.",
+  "A vault was shared with you, someone joined your shared terminal, this device was signed out.":
+    "С вами поделились хранилищем, кто-то присоединился к вашему общему терминалу, это устройство вышло из аккаунта.",
   "AGPL-3.0 on GitHub": "AGPL-3.0 на GitHub",
   "AI command suggestions": "Подсказки команд от ИИ",
   "AI provider": "Провайдер ИИ",
@@ -198,6 +202,10 @@ export const ru: Readonly<Record<string, string>> = {
   "Broadcast input: on": "Ввод во все панели: включён",
   "Bundled faces ship with the app; Nerd Font symbols are always available as a fallback.":
     "Встроенные шрифты поставляются с приложением; символы Nerd Font всегда доступны как запасной вариант.",
+  "Command failed (exit {code})": "Команда завершилась с ошибкой (код {code})",
+  "Command finished": "Команда завершена",
+  "Command finished in a background tab": "Команда завершилась в фоновой вкладке",
+  "Connection lost": "Соединение потеряно",
   "CSV file…": "CSV-файл…",
   "Can't open link: {url}": "Не удалось открыть ссылку: {url}",
   Cancel: "Отмена",
@@ -454,6 +462,7 @@ export const ru: Readonly<Record<string, string>> = {
   Done: "Готово",
   "Double-click a tag to rename it. Renaming onto an existing tag merges the two.":
     "Двойной клик по тегу — переименовать. Переименование в существующий тег объединяет их.",
+  "Download finished": "Скачивание завершено",
   Downloading: "Скачивание",
   "Downloading recording": "Скачивание записи",
   "Drag and drop a private key file to import": "Перетащите файл приватного ключа для импорта",
@@ -956,6 +965,7 @@ export const ru: Readonly<Record<string, string>> = {
   "Need help configuring the port forwarding rule?":
     "Нужна помощь с настройкой правила проброса портов?",
   "Needs a master password": "Требуется мастер-пароль",
+  "Needs shell integration on the host.": "Требуется интеграция с оболочкой на хосте.",
   "Negotiating encryption{where}…": "Согласование шифрования{where}…",
   "Negotiating keys{where}": "Согласование ключей{where}",
   Never: "Никогда",
@@ -1120,7 +1130,9 @@ export const ru: Readonly<Record<string, string>> = {
   "Nothing matches.": "Ничего не найдено.",
   "Nothing to run on": "Негде выполнять",
   "Nothing to share yet — {vault} is empty.": "Делиться пока нечем — {vault} пусто.",
+  Notifications: "Уведомления",
   OK: "ОК",
+  "Only commands longer than": "Только команды длиннее",
   "OS keychain": "Системная связка ключей",
   Octal: "Восьмеричный",
   Odd: "Нечётный",
@@ -1482,8 +1494,11 @@ export const ru: Readonly<Record<string, string>> = {
   "Runs in confidential compute (TEE): the operator cannot read your request, though the model itself does. This is not end-to-end encryption.":
     "Работает в конфиденциальных вычислениях (TEE): оператор не может прочитать ваш запрос, но сама модель — может. Это не сквозное шифрование.",
   "Runs right after the shell opens.": "Выполняется сразу после открытия shell.",
+  "Seconds. 0 reports every command.": "Секунды. 0 — сообщать о каждой команде.",
   "SHA-256 of the server certificate; pins self-signed or private-CA servers. Left empty, the system trust store decides and an unknown certificate is offered on first connect.":
     "SHA-256 сертификата сервера; закрепляет самоподписанные серверы или серверы с частным CA. Если пусто, решает системное хранилище доверия, а неизвестный сертификат предлагается при первом подключении.",
+  "Shown by the operating system for things that happen while the window or tab is not in front. Only the host or file name and a status are included, never command text.":
+    "Показываются операционной системой о событиях, произошедших пока окно или вкладка не на переднем плане. Включаются только имя хоста или файла и статус, но никогда текст команды.",
   "SOCKS proxy": "SOCKS-прокси",
   "SOCKS proxy on local port {localPort} through {host}":
     "SOCKS-прокси на локальном порту {localPort} через {host}",
@@ -1746,12 +1761,14 @@ export const ru: Readonly<Record<string, string>> = {
   Syncing: "Синхронизация",
   "Syncing with {name}…": "Синхронизация с {name}…",
   "Syncing…": "Синхронизация…",
+  "System notifications": "Системные уведомления",
   "Tab insert": "Tab — вставить",
   Tags: "Теги",
   Target: "Цель",
   "Targets for execution": "Цели для выполнения",
   Team: "Команда",
   "Team actions": "Действия команды",
+  "Team and account": "Команда и аккаунт",
   "Team changes, vault access and shared data edits will show up here.":
     "Здесь будут показаны изменения команды, доступа к хранилищам и общих данных.",
   "Team name": "Название команды",
@@ -1883,6 +1900,7 @@ export const ru: Readonly<Record<string, string>> = {
     "Это изменение влияет на безопасность аккаунта. Введите пароль для {account}, чтобы продолжить.",
   "This device": "Это устройство",
   "This device only": "Только это устройство",
+  "This device was signed out of the account.": "Это устройство вышло из аккаунта.",
   "This device wins": "Побеждает это устройство",
   "This device's {sshIdTypeLabel} key is not published yet":
     "Ключ {sshIdTypeLabel} этого устройства ещё не опубликован",
@@ -1926,6 +1944,8 @@ export const ru: Readonly<Record<string, string>> = {
   "Touch the key for every connection": "Касаться ключа при каждом подключении",
   "Touch your security key to continue": "Коснитесь ключа безопасности, чтобы продолжить",
   "Touch your security key…": "Коснитесь ключа безопасности…",
+  "Transfer failed": "Передача не удалась",
+  "Transfer finished or failed": "Передача завершена или не удалась",
   "Transfer ownership": "Передать владение",
   Transfers: "Передачи",
   "Trust & connect": "Доверять и подключиться",
@@ -1967,6 +1987,7 @@ export const ru: Readonly<Record<string, string>> = {
   "Up to date": "Актуально",
   Updates: "Обновления",
   "Upload failed": "Ошибка загрузки",
+  "Upload finished": "Загрузка завершена",
   "Upload now": "Загрузить сейчас",
   "Upload to the account server": "Загружать на сервер аккаунта",
   "Uploading changes…": "Загрузка изменений…",
@@ -1989,6 +2010,7 @@ export const ru: Readonly<Record<string, string>> = {
   "Vault locked": "Хранилище заблокировано",
   "Vault name": "Название хранилища",
   "Vault renamed": "Хранилище переименовано",
+  "Vault shared with you": "С вами поделились хранилищем",
   "Vault unavailable": "Хранилище недоступно",
   "Vault: {name}": "Хранилище: {name}",
   Vaults: "Хранилища",
@@ -2360,4 +2382,5 @@ export const ru: Readonly<Record<string, string>> = {
   "…and {count} more": "…и ещё {count}",
   "↑↓ select": "↑↓ выбор",
   "✓ I have stored it safely": "✓ Я надёжно сохранил",
+  "{name} joined your shared terminal": "{name} присоединился к вашему общему терминалу",
 };

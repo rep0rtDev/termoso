@@ -3,6 +3,7 @@ import { useColorScheme } from "@mui/material";
 import { useSettings } from "@/ipc/hooks";
 import { setLanguage } from "@/i18n";
 import { applyTerminalScheme, applyTerminalSettings } from "@/terminal/store";
+import { applyNotificationSettings } from "./notifications";
 
 /** Keeps MUI's color scheme, the UI language and the terminals in step with the settings stored by Rust. */
 export function ThemeModeSync() {
@@ -13,6 +14,7 @@ export function ThemeModeSync() {
       setMode(data.theme);
       setLanguage(data.language);
       applyTerminalSettings(data);
+      applyNotificationSettings(data);
     }
   }, [data, setMode]);
   useEffect(() => {

@@ -890,6 +890,21 @@ export function onCommandEvent(listener: CommandListener): () => void {
   };
 }
 
+type DropListener = (paneId: Uuid) => void;
+const dropListeners = new Set<DropListener>();
+
+/** A connected session ended without the user asking for it (network / server side). */
+export function onSessionDropped(listener: DropListener): () => void {
+  dropListeners.add(listener);
+  return () => {
+    dropListeners.delete(listener);
+  };
+}
+
+function reportDrop(paneId: Uuid) {
+  for (const l of dropListeners) l(paneId);
+}
+
 function handleMark(paneId: Uuid, data: string, family: 133 | 633): boolean {
   const rt = runtimes.get(paneId);
   if (!rt) return true;
@@ -2072,7 +2087,10 @@ function onSessionEvent(ev: SessionEvent) {
       writeSystemLine(ev.id, `[${detail}]`);
       // A shell that returned an exit code was ended on purpose (`exit`, Ctrl-D);
       // anything else is a drop.
-      if (wasLive && ev.code === null && autoReconnects(pane)) queueReconnect(ev.id);
+      if (wasLive && ev.code === null) {
+        reportDrop(ev.id);
+        if (autoReconnects(pane)) queueReconnect(ev.id);
+      }
       break;
     }
     case "error":
@@ -2081,6 +2099,7 @@ function onSessionEvent(ev: SessionEvent) {
         patchPane(ev.id, { status: "error", message: ev.message });
         appendLog(ev.id, ev.message, "error");
         writeSystemLine(ev.id, ev.message, "31");
+        if (wasLive) reportDrop(ev.id);
         if ((wasLive && autoReconnects(pane)) || retries.has(ev.id)) queueReconnect(ev.id);
       }
       break;
@@ -2089,7 +2108,10 @@ function onSessionEvent(ev: SessionEvent) {
         const wasLive = pane.status === "connected";
         patchPane(ev.id, { status: "exited", message: tr("Connection closed") });
         writeSystemLine(ev.id, tr("[connection closed]"));
-        if (wasLive && autoReconnects(pane)) queueReconnect(ev.id);
+        if (wasLive) {
+          reportDrop(ev.id);
+          if (autoReconnects(pane)) queueReconnect(ev.id);
+        }
       }
       break;
   }

@@ -345,6 +345,19 @@ pub struct Settings {
     /// The start-up sign-in screen was dismissed with "Continue offline";
     /// signing in stays one click away in the account menu.
     pub welcome_seen: bool,
+    /// Master switch for system notifications.
+    pub notifications: bool,
+    /// A command finished in a tab that was not in front (shell integration).
+    pub notify_commands: bool,
+    /// Only commands that ran at least this long are reported; 0 = every one.
+    pub notify_command_seconds: u32,
+    /// A file transfer finished or failed while the SFTP tab was not in front.
+    pub notify_transfers: bool,
+    /// A live session was dropped by the network / server.
+    pub notify_sessions: bool,
+    /// Team and account: access to a shared vault, someone joined a shared
+    /// terminal, this device was signed out remotely.
+    pub notify_account: bool,
     /// Keyboard shortcut overrides: command id → chord (`ctrl+shift+k`), or
     /// an empty string to unbind. Commands not listed keep their defaults.
     pub shortcuts: BTreeMap<String, String>,
@@ -415,6 +428,12 @@ impl Default for Settings {
             update_url: String::new(),
             lock_after_minutes: 0,
             welcome_seen: false,
+            notifications: true,
+            notify_commands: true,
+            notify_command_seconds: 5,
+            notify_transfers: true,
+            notify_sessions: true,
+            notify_account: true,
             shortcuts: BTreeMap::new(),
             sftp_open_with: BTreeMap::new(),
         }
@@ -494,6 +513,9 @@ impl Settings {
         crate::update::feed_url(&self.update_url)?;
         if self.lock_after_minutes > 7 * 24 * 60 {
             return Err(DesktopError::invalid("lockAfterMinutes too large"));
+        }
+        if self.notify_command_seconds > 3600 {
+            return Err(DesktopError::invalid("notifyCommandSeconds too large"));
         }
         if self.shortcuts.len() > MAX_SHORTCUTS {
             return Err(DesktopError::invalid("too many shortcut overrides"));

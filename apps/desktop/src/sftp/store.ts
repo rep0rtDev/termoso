@@ -410,6 +410,17 @@ function onSftpEvent(ev: SftpEvent) {
   }
 }
 
+type TransferDoneListener = (transfer: Transfer) => void;
+const transferDoneListeners = new Set<TransferDoneListener>();
+
+/** A transfer reached `done` or `failed` (cancellations are not reported). */
+export function onTransferDone(listener: TransferDoneListener): () => void {
+  transferDoneListeners.add(listener);
+  return () => {
+    transferDoneListeners.delete(listener);
+  };
+}
+
 function onTransferEvent(ev: TransferEvent, queryClient: QueryClient) {
   switch (ev.type) {
     case "started":
@@ -463,6 +474,10 @@ function onTransferEvent(ev: TransferEvent, queryClient: QueryClient) {
       });
       const side = t?.direction === "upload" ? "remote" : "local";
       void queryClient.invalidateQueries({ queryKey: ["fs", side] });
+      const done = sftpStore.get().transfers[ev.id];
+      if (done && ev.type !== "cancelled") {
+        for (const l of transferDoneListeners) l(done);
+      }
       break;
     }
   }
