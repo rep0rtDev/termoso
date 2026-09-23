@@ -158,6 +158,10 @@ schema! {
         pub version: String,
         /// Whether new accounts can sign up.
         pub registration_open: bool,
+        /// Whether an SSO-verified identity may sign up while registration is
+        /// otherwise closed.
+        #[serde(default)]
+        pub sso_registration: bool,
         /// Configured SSO providers.
         pub sso_providers: Vec<crate::auth::SsoProvider>,
         /// Feature flags.

@@ -6,6 +6,18 @@ import { authApi } from "@/api/endpoints";
 import { Loading } from "@/components/Loading";
 import { AuthTitle } from "./common";
 import { takeSsoNext } from "@/auth/sso";
+import type { SsoResult } from "@/api/types";
+
+// Terminal results are one-shot on the server; share a single in-flight poll
+// per flow so overlapping effects (StrictMode, fast remounts) do not race.
+const inflight = new Map<string, Promise<SsoResult>>();
+function pollOnce(flow: string): Promise<SsoResult> {
+  const pending = inflight.get(flow);
+  if (pending) return pending;
+  const p = authApi.ssoPoll(flow).finally(() => inflight.delete(flow));
+  inflight.set(flow, p);
+  return p;
+}
 
 export function SsoCallbackPage() {
   const [params] = useSearchParams();
@@ -20,7 +32,7 @@ export function SsoCallbackPage() {
     let attempts = 0;
     const tick = async () => {
       try {
-        const r = await authApi.ssoPoll(flow);
+        const r = await pollOnce(flow);
         if (cancelled) return;
         const next = takeSsoNext();
         switch (r.status) {

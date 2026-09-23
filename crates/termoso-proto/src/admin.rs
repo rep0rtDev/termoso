@@ -86,6 +86,10 @@ schema! {
         /// Only emails in `allowed_domains` may register (empty = any).
         #[serde(default)]
         pub allowed_domains: Vec<String>,
+        /// Users verified by a configured SSO provider may sign up even while
+        /// `registration_open` is off (domain filter still applies).
+        #[serde(default)]
+        pub sso_registration: bool,
         /// Require verified email before syncing.
         pub require_email_verification: bool,
         /// Require approval code when logging in from a new device.
@@ -115,6 +119,7 @@ impl Default for ServerSettings {
         Self {
             registration_open: true,
             allowed_domains: Vec::new(),
+            sso_registration: false,
             require_email_verification: false,
             new_device_email_approval: true,
             users_can_create_teams: true,
