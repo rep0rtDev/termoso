@@ -11,6 +11,7 @@
 use std::sync::RwLock;
 use std::time::Duration;
 
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest::{Method, RequestBuilder, Response, StatusCode};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -23,8 +24,9 @@ use termoso_proto::auth::{
     AuthResponse, Device, DeviceApproveRequest, DeviceApproveResendRequest, DeviceList,
     LoginFinishRequest, LoginStartRequest, LoginStartResponse, MfaCredential, MfaStatus,
     MfaVerifyRequest, ReauthFinishRequest, ReauthStartRequest, ReauthStartResponse,
-    RegisterFinishRequest, RegisterStartRequest, RegisterStartResponse, WebauthnChallengeRequest,
-    WebauthnCredentialInfo, WebauthnRegisterFinishRequest,
+    RegisterFinishRequest, RegisterStartRequest, RegisterStartResponse, SsoResult,
+    SsoStartResponse, WebauthnChallengeRequest, WebauthnCredentialInfo,
+    WebauthnRegisterFinishRequest,
 };
 use termoso_proto::error::ApiError;
 use termoso_proto::live::{CreateLiveSessionRequest, LiveSession, LiveSessionList};
@@ -253,6 +255,27 @@ impl ApiClient {
     }
 
     // ───────────────────────────── auth ─────────────────────────────
+
+    /// `GET /auth/sso/{provider}/start` — begin a browser-based SSO round
+    /// trip. `redirect` is where the server sends the browser afterwards
+    /// (an app deep link); without it the browser lands on a "return to the
+    /// app" page and the client picks the result up via [`Self::sso_poll`].
+    pub async fn sso_start(
+        &self,
+        provider: &str,
+        redirect: Option<&str>,
+    ) -> Result<SsoStartResponse> {
+        let path = format!("auth/sso/{}/start", pct(provider));
+        match redirect {
+            Some(r) => self.get_query(&path, &[("redirect", r)]).await,
+            None => self.get(&path).await,
+        }
+    }
+
+    /// `GET /auth/sso/flow/{flow_id}` — outcome of an SSO round trip.
+    pub async fn sso_poll(&self, flow_id: &str) -> Result<SsoResult> {
+        self.get(&format!("auth/sso/flow/{}", pct(flow_id))).await
+    }
 
     /// `POST /auth/register/start`.
     pub async fn register_start(
@@ -825,6 +848,11 @@ impl ApiClient {
 
 pub(crate) fn default_user_agent() -> String {
     format!("termoso-core/{}", env!("CARGO_PKG_VERSION"))
+}
+
+/// Percent-encode a caller-supplied path segment.
+fn pct(segment: &str) -> String {
+    utf8_percent_encode(segment, NON_ALPHANUMERIC).to_string()
 }
 
 /// Turn a user-typed server address into a base URL with a trailing slash.

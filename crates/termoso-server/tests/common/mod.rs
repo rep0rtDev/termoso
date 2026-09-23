@@ -782,6 +782,20 @@ pub async fn register_raw(
     invite_token: Option<String>,
     sso_session: Option<String>,
 ) -> User {
+    try_register(server, email, password, invite_token, sso_session)
+        .await
+        .unwrap_or_else(|(status, body)| panic!("register {email} -> {status}: {body}"))
+}
+
+/// Like [`register_raw`], but a rejected `/auth/register/finish` is returned
+/// as its status and error body instead of panicking.
+pub async fn try_register(
+    server: &TestServer,
+    email: &str,
+    password: &str,
+    invite_token: Option<String>,
+    sso_session: Option<String>,
+) -> Result<User, (StatusCode, serde_json::Value)> {
     let (request, state) = opaque::client_registration_start(password.as_bytes()).expect("start");
     let start: RegisterStartResponse = server
         .json(
@@ -810,8 +824,8 @@ pub async fn register_raw(
         personal_vault_key,
     } = fresh;
 
-    let resp: AuthResponse = server
-        .json(
+    let resp = server
+        .call(
             Method::POST,
             "/auth/register/finish",
             None,
@@ -826,17 +840,27 @@ pub async fn register_raw(
             }),
         )
         .await;
+    let status = resp.status();
+    let text = resp.text().await.expect("body");
+    if !status.is_success() {
+        return Err((
+            status,
+            serde_json::from_str(&text).unwrap_or(serde_json::Value::Null),
+        ));
+    }
+    let resp: AuthResponse = serde_json::from_str(&text)
+        .unwrap_or_else(|e| panic!("POST /auth/register/finish: {e}: {text}"));
     let AuthResponse::Authenticated(session) = resp else {
         panic!("expected direct session after registration, got {resp:?}");
     };
-    User {
+    Ok(User {
         email: email.into(),
         password: password.into(),
         session,
         keypair,
         personal_vault_key,
         recovery,
-    }
+    })
 }
 
 /// A brand-new client-side key hierarchy, as generated at registration or

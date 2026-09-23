@@ -96,6 +96,16 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
             }
           />
           <SettingRow
+            label="Sign-up via single sign-on"
+            description="Users verified by a configured SSO provider may create an account even when registration is closed. Allowed domains still apply."
+            control={
+              <Switch
+                checked={s.sso_registration}
+                onChange={(e) => set("sso_registration", e.target.checked)}
+              />
+            }
+          />
+          <SettingRow
             label="Require verified email"
             description="Accounts cannot be used until the address is confirmed."
             control={

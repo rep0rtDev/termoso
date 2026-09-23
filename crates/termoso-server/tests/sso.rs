@@ -155,6 +155,56 @@ async fn providers_are_listed_and_flows_start_with_pkce() {
 }
 
 #[tokio::test]
+async fn terminal_results_are_handed_out_once() {
+    let Some(s) = server().await else { return };
+    let who = identity(&unique_email("once"), "");
+    let flow = start(s, SSO_PROVIDER, None).await;
+    let who = Identity {
+        nonce: auth_params(&flow.authorization_url)["nonce"].clone(),
+        ..who
+    };
+    // Still pending until the browser leg lands; pending may be asked for again.
+    assert!(matches!(poll(s, &flow.flow_id).await, SsoResult::Pending));
+    assert!(matches!(poll(s, &flow.flow_id).await, SsoResult::Pending));
+    let resp = callback(
+        s,
+        &[("state", &flow.flow_id), ("code", &oidc::code_for(&who))],
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(matches!(
+        poll(s, &flow.flow_id).await,
+        SsoResult::RegistrationRequired { .. }
+    ));
+    // The flow id was the OAuth `state` and sits in browser history: a second
+    // reader gets nothing.
+    s.expect_status(
+        Method::GET,
+        &format!("/auth/sso/flow/{}", flow.flow_id),
+        None,
+        NOBODY,
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
+
+    // Failures are one-shot as well.
+    let flow = start(s, SSO_PROVIDER, None).await;
+    callback(s, &[("state", &flow.flow_id), ("error", "access_denied")]).await;
+    assert!(matches!(
+        poll(s, &flow.flow_id).await,
+        SsoResult::Failed { .. }
+    ));
+    s.expect_status(
+        Method::GET,
+        &format!("/auth/sso/flow/{}", flow.flow_id),
+        None,
+        NOBODY,
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
+}
+
+#[tokio::test]
 async fn sso_registers_then_logs_in_and_skips_device_approval() {
     let Some(s) = server().await else { return };
     let email = unique_email("sso");
@@ -396,8 +446,7 @@ async fn callback_rejects_bad_codes_errors_and_replays() {
         SsoResult::Failed { .. }
     ));
 
-    // Result of a finished flow is still readable (until the TTL) but the
-    // flow itself can't be completed twice.
+    // A finished flow can't be completed twice.
     let flow = start(s, SSO_PROVIDER, None).await;
     let who = identity(&email, &auth_params(&flow.authorization_url)["nonce"]);
     callback(

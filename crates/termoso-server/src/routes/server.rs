@@ -22,6 +22,7 @@ pub async fn info(
         name: state.cfg.server_name.clone(),
         version: VERSION.to_string(),
         registration_open: settings.registration_open,
+        sso_registration: settings.sso_registration && !state.sso.list().is_empty(),
         sso_providers: state.sso.list(),
         features: ServerFeatures {
             session_logs: state.storage.is_some(),

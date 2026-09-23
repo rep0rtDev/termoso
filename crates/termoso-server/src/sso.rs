@@ -721,12 +721,21 @@ async fn finish(state: &AppState, sess: SsoSession) -> ApiResult<SsoResult> {
     })
 }
 
+/// Outcome of a flow. Terminal results are handed out once: the `flow_id`
+/// doubles as the OAuth `state` and shows up in browser history and IdP logs,
+/// so nothing useful must remain behind it after the client has collected the
+/// `sso_session`.
 pub async fn poll(state: &AppState, flow_id: &str) -> ApiResult<SsoResult> {
-    state
-        .cache
-        .get_json::<SsoResult>(&result_key(flow_id))
-        .await?
-        .ok_or_else(Error::token_expired)
+    let key = result_key(flow_id);
+    match state.cache.get_json::<SsoResult>(&key).await? {
+        None => Err(Error::token_expired()),
+        Some(SsoResult::Pending) => Ok(SsoResult::Pending),
+        Some(_) => state
+            .cache
+            .take_json::<SsoResult>(&key)
+            .await?
+            .ok_or_else(Error::token_expired),
+    }
 }
 
 /// Consume an `sso_session` token; verifies it matches `email`.

@@ -36,6 +36,8 @@ export interface ServerInfo {
   name: string;
   version: string;
   registration_open: boolean;
+  /** SSO-verified identities may sign up even while registration is closed. */
+  sso_registration: boolean;
   sso_providers: SsoProvider[];
   features: ServerFeatures;
   max_entity_bytes: number;
@@ -426,6 +428,7 @@ export interface AdminUpdateUserRequest {
 export interface ServerSettings {
   registration_open: boolean;
   allowed_domains: string[];
+  sso_registration: boolean;
   require_email_verification: boolean;
   new_device_email_approval: boolean;
   users_can_create_teams: boolean;

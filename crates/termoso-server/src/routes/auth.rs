@@ -178,10 +178,14 @@ async fn load_invite(state: &AppState, token: &str) -> ApiResult<Option<InviteRo
     }))
 }
 
+/// Sign-up policy: the bootstrap admin and invited addresses always get in;
+/// everyone else needs open registration (or an IdP-verified identity when
+/// `sso_registration` is on) and an address in `allowed_domains`.
 async fn registration_allowed(
     state: &AppState,
     email: &str,
     invite: Option<&InviteRow>,
+    sso_verified: bool,
 ) -> ApiResult<()> {
     if state.is_bootstrap_admin(email) {
         return Ok(());
@@ -191,10 +195,23 @@ async fn registration_allowed(
     {
         return Ok(());
     }
-    if state.settings().await?.registration_open {
-        return Ok(());
+    let settings = state.settings().await?;
+    if !(settings.registration_open || (sso_verified && settings.sso_registration)) {
+        return Err(Error::registration_closed());
     }
-    Err(Error::registration_closed())
+    if !settings.allowed_domains.is_empty() {
+        let domain = email.rsplit_once('@').map(|(_, d)| d).unwrap_or("");
+        if !settings
+            .allowed_domains
+            .iter()
+            .any(|d| d.eq_ignore_ascii_case(domain))
+        {
+            return Err(Error::forbidden(
+                "Sign-up is limited to approved email domains on this server",
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[utoipa::path(post, path = "/api/v1/auth/register/start", tag = "auth",
@@ -238,12 +255,11 @@ pub async fn register_finish(
         ),
         None => None,
     };
-    registration_allowed(&state, &email, invite.as_ref()).await?;
-
     let sso_sess = match &req.sso_session {
         Some(t) => Some(sso::consume_session(&state, t, &email).await?),
         None => None,
     };
+    registration_allowed(&state, &email, invite.as_ref(), sso_sess.is_some()).await?;
     let invite_matches = invite
         .as_ref()
         .is_some_and(|i| i.email.eq_ignore_ascii_case(&email));
