@@ -3,6 +3,7 @@ import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import ErrorRoundedIcon from "@mui/icons-material/ErrorRounded";
 import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
 import type { RunTarget, SnippetRun, TargetState } from "./run";
+import { tr } from "@/i18n";
 
 export const STATE_LABEL: Record<TargetState, string> = {
   pending: "Waiting",
@@ -28,7 +29,7 @@ export function TargetStateIcon({ state }: { state: TargetState }) {
 
 export function targetDetail(t: RunTarget): string {
   if (t.message) return t.message;
-  if (t.state === "done" && t.exit !== null) return `Exit code ${t.exit}`;
+  if (t.state === "done" && t.exit !== null) return tr("Exit code {exit}", { exit: t.exit });
   return STATE_LABEL[t.state];
 }
 

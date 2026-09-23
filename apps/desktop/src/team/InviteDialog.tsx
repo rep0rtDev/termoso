@@ -34,6 +34,7 @@ import {
 } from "@/ipc/types";
 import { looksLikeEmail, teamRoleLabel } from "./roles";
 import { ShareDataDialog } from "./ShareDataDialog";
+import { tr } from "@/i18n";
 
 /**
  * “Invite your teammates” (Termius flow): one e-mail per row, `+ Add another`, a compact
@@ -90,8 +91,8 @@ function Body({
       const url = r.find((x) => x.url)?.url;
       if (copy && url) {
         void copyToClipboard(url)
-          .then(() => snackbar.notify("Invitation link copied"))
-          .catch(() => snackbar.error("Clipboard is not available"));
+          .then(() => snackbar.notify(tr("Invitation link copied")))
+          .catch(() => snackbar.error(tr("Clipboard is not available")));
       }
     },
     onError: (e) => snackbar.error(errorMessage(e)),
@@ -139,15 +140,16 @@ function Body({
           </Box>
         </Box>
         <Typography variant="h5" sx={{ fontWeight: 700, textAlign: "center" }}>
-          Invite your teammates
+          {tr("Invite your teammates")}
         </Typography>
         <Typography
           variant="body2"
           color="text.secondary"
           sx={{ textAlign: "center", maxWidth: 440, mx: "auto" }}
         >
-          Manage infrastructure together in shared team vaults. Keep your teammates on the same page
-          and boost their productivity.
+          {tr(
+            "Manage infrastructure together in shared team vaults. Keep your teammates on the same page and boost their productivity.",
+          )}
         </Typography>
         <Box sx={{ borderTop: "1px solid", borderColor: "divider", my: 1.5 }} />
         <Stack spacing={1.25}>
@@ -161,11 +163,11 @@ function Body({
                   fullWidth
                   size="small"
                   type="email"
-                  label={v ? "Email" : undefined}
-                  placeholder="Email"
+                  label={v ? tr("Email") : undefined}
+                  placeholder={tr("Email")}
                   value={value}
                   error={invalid}
-                  helperText={invalid ? "Not an e-mail address" : undefined}
+                  helperText={invalid ? tr("Not an e-mail address") : undefined}
                   onChange={(e) => setRows((r) => r.map((x, j) => (j === i ? e.target.value : x)))}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && v && !invalid && i === rows.length - 1) {
@@ -176,7 +178,7 @@ function Body({
                 {rows.length > 1 && (
                   <IconButton
                     size="small"
-                    aria-label="Remove"
+                    aria-label={tr("Remove")}
                     onClick={() => setRows((r) => r.filter((_, j) => j !== i))}
                   >
                     <CloseRoundedIcon fontSize="small" />
@@ -192,12 +194,12 @@ function Body({
             disabled={rows[rows.length - 1]?.trim() === ""}
             onClick={() => setRows((r) => [...r, ""])}
           >
-            + Add another
+            {tr("+ Add another")}
           </Button>
         </Stack>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap", mt: 1.5 }}>
           <Typography variant="caption" color="text.secondary">
-            Invite as
+            {tr("Invite as")}
           </Typography>
           <TextField
             select
@@ -208,14 +210,14 @@ function Body({
           >
             {(["member", "admin"] as TeamRole[]).map((r) => (
               <MenuItem key={r} value={r}>
-                {teamRoleLabel[r]}
+                {tr(teamRoleLabel[r])}
               </MenuItem>
             ))}
           </TextField>
           {vaults.length > 0 && (
             <>
               <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                with access to
+                {tr("with access to")}
               </Typography>
               {vaults.map((v) => {
                 const on = vaultIds.has(v.id);
@@ -242,10 +244,10 @@ function Body({
       </Box>
       <Footer>
         <Button color="inherit" onClick={onClose} disabled={send.isPending}>
-          Later
+          {tr("Later")}
         </Button>
         <Box sx={{ flex: 1 }} />
-        <Tooltip title="Send the invitation and copy the first link to the clipboard">
+        <Tooltip title={tr("Send the invitation and copy the first link to the clipboard")}>
           <span>
             <Button
               variant="tonal"
@@ -253,7 +255,7 @@ function Body({
               disabled={!ready || send.isPending}
               onClick={() => send.mutate({ copy: true })}
             >
-              Copy invitation link
+              {tr("Copy invitation link")}
             </Button>
           </span>
         </Tooltip>
@@ -262,7 +264,7 @@ function Body({
           disabled={!ready || send.isPending}
           onClick={() => send.mutate({ copy: false })}
         >
-          {send.isPending ? "Inviting…" : "Continue"}
+          {send.isPending ? tr("Inviting…") : tr("Continue")}
         </Button>
       </Footer>
     </>
@@ -304,14 +306,15 @@ function Results({
       <Box sx={{ px: 4, pt: 3, pb: 2 }}>
         <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
           {ok.length === results.length
-            ? `Invited to ${team.name}`
-            : `${ok.length} of ${results.length} invited`}
+            ? tr("Invited to {name}", { name: team.name })
+            : tr("{length} of {length2} invited", { length: ok.length, length2: results.length })}
         </Typography>
         <Stack spacing={1.5}>
           {ok.length > 0 && (
             <Alert severity="info">
-              An e-mail goes out when the server has mail set up. Copy a link to send it yourself —
-              it works only for the address it was issued to and expires in 14 days.
+              {tr(
+                "An e-mail goes out when the server has mail set up. Copy a link to send it yourself — it works only for the address it was issued to and expires in 14 days.",
+              )}
             </Alert>
           )}
           <Stack spacing={1}>
@@ -323,12 +326,12 @@ function Results({
       </Box>
       <Footer>
         <Button color="inherit" onClick={onClose}>
-          {onShare ? "Later" : "Done"}
+          {onShare ? tr("Later") : tr("Done")}
         </Button>
         <Box sx={{ flex: 1 }} />
         {onShare && (
           <Button variant="contained" onClick={onShare}>
-            Share data
+            {tr("Share data")}
           </Button>
         )}
       </Footer>
@@ -368,20 +371,20 @@ export function InviteResultRow({ result: r }: { result: InviteResult }) {
           </Mono>
         ) : (
           <Typography variant="caption" color="error" sx={{ display: "block" }}>
-            {r.error ?? "Failed"}
+            {r.error ?? tr("Failed")}
           </Typography>
         )}
       </Box>
       {r.url && (
-        <Tooltip title="Copy invitation link">
+        <Tooltip title={tr("Copy invitation link")}>
           <IconButton
             size="small"
             onClick={() => {
               const url = r.url;
               if (!url) return;
               void copyToClipboard(url)
-                .then(() => snackbar.notify("Invitation link copied"))
-                .catch(() => snackbar.error("Clipboard is not available"));
+                .then(() => snackbar.notify(tr("Invitation link copied")))
+                .catch(() => snackbar.error(tr("Clipboard is not available")));
             }}
           >
             <ContentCopyRoundedIcon fontSize="small" />

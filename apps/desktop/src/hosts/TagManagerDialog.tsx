@@ -28,6 +28,7 @@ import { useSnackbar } from "@/components/Snackbar";
 import { useDeleteTag, useMergeTags, useTags, useUpdateTag } from "@/ipc/hooks";
 import { errorMessage, type TagInfo, type Uuid } from "@/ipc/types";
 import { TAG_COLORS, TagDot } from "./TagChip";
+import { tr } from "@/i18n";
 
 const hostsLabel = (n: number) => `${n} host${n === 1 ? "" : "s"}`;
 
@@ -80,7 +81,7 @@ export function TagManagerDialog({
     update.mutate(
       { id: tag.id, label, color: tag.color },
       {
-        onSuccess: () => snackbar.notify(`Renamed to “${label}”`),
+        onSuccess: () => snackbar.notify(tr("Renamed to “{label}”", { label })),
         onError: (e) => snackbar.error(errorMessage(e)),
       },
     );
@@ -100,7 +101,7 @@ export function TagManagerDialog({
       const { tag } = pending;
       remove.mutate(tag.id, {
         onSuccess: () => {
-          snackbar.notify(`Removed “${tag.label}”`, "info");
+          snackbar.notify(tr("Removed “{label}”", { label: tag.label }), "info");
           setPending({ kind: "none" });
         },
         onError: (e) => snackbar.error(errorMessage(e)),
@@ -111,7 +112,9 @@ export function TagManagerDialog({
         { sources: [source.id], target: target.id },
         {
           onSuccess: (t) => {
-            snackbar.notify(`Merged “${source.label}” into “${t.label}”`);
+            snackbar.notify(
+              tr("Merged “{label}” into “{label2}”", { label: source.label, label2: t.label }),
+            );
             setPending({ kind: "none" });
           },
           onError: (e) => snackbar.error(errorMessage(e)),
@@ -125,16 +128,16 @@ export function TagManagerDialog({
       <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <SellOutlinedIcon fontSize="small" />
-          Tags
+          {tr("Tags")}
           <Box sx={{ flex: 1 }} />
-          <IconButton size="small" aria-label="Close" onClick={onClose}>
+          <IconButton size="small" aria-label={tr("Close")} onClick={onClose}>
             <CloseRoundedIcon fontSize="small" />
           </IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 0 }}>
           {list.length === 0 ? (
             <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-              No tags yet — add them in the host editor.
+              {tr("No tags yet — add them in the host editor.")}
             </Typography>
           ) : (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
@@ -156,10 +159,10 @@ export function TagManagerDialog({
                       "&:hover .tag-actions, &:focus-within .tag-actions": { opacity: 1 },
                     }}
                   >
-                    <Tooltip title="Colour">
+                    <Tooltip title={tr("Colour")}>
                       <IconButton
                         size="small"
-                        aria-label={`Colour of ${t.label}`}
+                        aria-label={tr("Colour of {label}", { label: t.label })}
                         onClick={(e) => setColorFor({ tag: t, anchor: e.currentTarget })}
                       >
                         {t.color ? (
@@ -204,20 +207,20 @@ export function TagManagerDialog({
                       {hostsLabel(t.hosts)}
                     </Typography>
                     <Box className="tag-actions" sx={{ display: "flex", gap: 0.25, flexShrink: 0 }}>
-                      <Tooltip title="Rename">
+                      <Tooltip title={tr("Rename")}>
                         <IconButton
                           size="small"
-                          aria-label={`Rename ${t.label}`}
+                          aria-label={tr("Rename {label}", { label: t.label })}
                           onClick={() => setEditing({ id: t.id, label: t.label })}
                         >
                           <EditOutlinedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Merge into…">
+                      <Tooltip title={tr("Merge into…")}>
                         <span>
                           <IconButton
                             size="small"
-                            aria-label={`Merge ${t.label}`}
+                            aria-label={tr("Merge {label}", { label: t.label })}
                             disabled={list.length < 2}
                             onClick={(e) => setMergeFor({ tag: t, anchor: e.currentTarget })}
                           >
@@ -225,10 +228,10 @@ export function TagManagerDialog({
                           </IconButton>
                         </span>
                       </Tooltip>
-                      <Tooltip title="Delete">
+                      <Tooltip title={tr("Delete")}>
                         <IconButton
                           size="small"
-                          aria-label={`Delete ${t.label}`}
+                          aria-label={tr("Delete {label}", { label: t.label })}
                           onClick={() => setPending({ kind: "delete", tag: t })}
                         >
                           <DeleteOutlineRoundedIcon fontSize="small" />
@@ -241,12 +244,12 @@ export function TagManagerDialog({
             </Box>
           )}
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1.5 }}>
-            Double-click a tag to rename it. Renaming onto an existing tag merges the two.
+            {tr("Double-click a tag to rename it. Renaming onto an existing tag merges the two.")}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={onClose} color="inherit">
-            Done
+            {tr("Done")}
           </Button>
         </DialogActions>
       </Dialog>
@@ -259,10 +262,10 @@ export function TagManagerDialog({
       >
         {colorFor && (
           <Box sx={{ p: 1, display: "flex", gap: 0.5, alignItems: "center" }}>
-            <Tooltip title="No colour">
+            <Tooltip title={tr("No colour")}>
               <IconButton
                 size="small"
-                aria-label="No colour"
+                aria-label={tr("No colour")}
                 onClick={() => setColor(colorFor.tag, null)}
               >
                 <BlockRoundedIcon fontSize="small" />
@@ -330,26 +333,33 @@ export function TagManagerDialog({
 
       <ConfirmDialog
         open={pending.kind === "delete"}
-        title={pending.kind === "delete" ? `Delete tag “${pending.tag.label}”?` : ""}
+        title={
+          pending.kind === "delete" ? tr("Delete tag “{label}”?", { label: pending.tag.label }) : ""
+        }
         danger
-        confirmLabel="Delete"
+        confirmLabel={tr("Delete")}
         busy={busy}
         onCancel={() => setPending({ kind: "none" })}
         onConfirm={runPending}
       >
         {pending.kind === "delete" && pending.tag.hosts > 0
-          ? `The tag is removed from ${hostsLabel(pending.tag.hosts)}. The hosts themselves stay.`
-          : "No host carries this tag."}
+          ? tr("The tag is removed from {hostsLabel}. The hosts themselves stay.", {
+              hostsLabel: hostsLabel(pending.tag.hosts),
+            })
+          : tr("No host carries this tag.")}
       </ConfirmDialog>
 
       <ConfirmDialog
         open={pending.kind === "merge"}
         title={
           pending.kind === "merge"
-            ? `Merge “${pending.source.label}” into “${pending.target.label}”?`
+            ? tr("Merge “{label}” into “{label2}”?", {
+                label: pending.source.label,
+                label2: pending.target.label,
+              })
             : ""
         }
-        confirmLabel="Merge"
+        confirmLabel={tr("Merge")}
         busy={busy}
         onCancel={() => setPending({ kind: "none" })}
         onConfirm={runPending}

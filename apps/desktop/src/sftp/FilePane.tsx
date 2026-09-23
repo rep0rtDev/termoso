@@ -74,6 +74,7 @@ import {
   type SortKey,
 } from "./format";
 import { fsQueryKey } from "./store";
+import { tr, trn, msg } from "@/i18n";
 
 export type Side = "local" | "remote";
 
@@ -148,10 +149,10 @@ type Dialog =
   | null;
 
 const COLUMNS: { key: SortKey; label: string; width?: number; align?: "right" }[] = [
-  { key: "name", label: "Name" },
-  { key: "mtime", label: "Date Modified", width: 140 },
-  { key: "size", label: "Size", width: 84, align: "right" },
-  { key: "kind", label: "Kind", width: 96 },
+  { key: "name", label: msg("Name") },
+  { key: "mtime", label: msg("Date Modified"), width: 140 },
+  { key: "size", label: msg("Size"), width: 84, align: "right" },
+  { key: "kind", label: msg("Kind"), width: 96 },
 ];
 
 /** `/a/b/c` → `[{label: "/", path: "/"}, {label: "a", path: "/a"}, …]`; Windows drives keep their root. */
@@ -315,9 +316,13 @@ export function FilePane(props: Props) {
     if (isDirLike(entry)) navigate(entry.path);
     else if (isBrokenLink(entry))
       snack.error(
-        `Cannot open "${entry.name}": this symbolic link is broken or points to something that no longer exists`,
+        tr(
+          'Cannot open "{name}": this symbolic link is broken or points to something that no longer exists',
+          { name: entry.name },
+        ),
       );
-    else if (entry.kind === "other") snack.error(`Cannot open "${entry.name}": not a regular file`);
+    else if (entry.kind === "other")
+      snack.error(tr('Cannot open "{name}": not a regular file', { name: entry.name }));
     else onOpen(entry, "default");
   };
 
@@ -435,7 +440,7 @@ export function FilePane(props: Props) {
           <InputBase
             autoFocus
             value={filter}
-            placeholder="Filter"
+            placeholder={tr("Filter")}
             onChange={(e) => setFilter(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Escape") setFilter(null);
@@ -444,7 +449,7 @@ export function FilePane(props: Props) {
               <SearchRoundedIcon sx={{ fontSize: 16, mr: 0.5, color: "text.secondary" }} />
             }
             endAdornment={
-              <ToolIconButton title="Close filter" onClick={() => setFilter(null)}>
+              <ToolIconButton title={tr("Close filter")} onClick={() => setFilter(null)}>
                 <CloseRoundedIcon sx={{ fontSize: 14 }} />
               </ToolIconButton>
             }
@@ -468,7 +473,7 @@ export function FilePane(props: Props) {
             onClick={() => setFilter("")}
             sx={{ minWidth: 0, px: 1 }}
           >
-            Filter
+            {tr("Filter")}
           </Button>
         )}
         <Button
@@ -479,7 +484,7 @@ export function FilePane(props: Props) {
           onClick={(e) => setActionsAnchor(e.currentTarget)}
           sx={{ minWidth: 0, px: 1 }}
         >
-          Actions
+          {tr("Actions")}
         </Button>
       </Stack>
       <Stack
@@ -495,14 +500,14 @@ export function FilePane(props: Props) {
         }}
       >
         <ToolIconButton
-          title="Back"
+          title={tr("Back")}
           disabled={disabled || history.idx <= 0}
           onClick={() => step(-1)}
         >
           <ArrowBackRoundedIcon fontSize="small" />
         </ToolIconButton>
         <ToolIconButton
-          title="Forward"
+          title={tr("Forward")}
           disabled={disabled || history.idx >= history.stack.length - 1}
           onClick={() => step(1)}
         >
@@ -518,7 +523,7 @@ export function FilePane(props: Props) {
             onClick={(e) => setDrivesAnchor(e.currentTarget)}
             sx={{ minWidth: 0, px: 1, fontFamily: monoFontFamily, fontSize: 12.5 }}
           >
-            {crumbsOf(resolvedPath ?? "")[0]?.label ?? "Drives"}
+            {crumbsOf(resolvedPath ?? "")[0]?.label ?? tr("Drives")}
           </Button>
         )}
         {pathDraft !== null ? (
@@ -548,7 +553,7 @@ export function FilePane(props: Props) {
             }}
           />
         ) : (
-          <Tooltip title="Click to edit the path" enterDelay={800}>
+          <Tooltip title={tr("Click to edit the path")} enterDelay={800}>
             <Stack
               direction="row"
               onClick={() => {
@@ -599,7 +604,7 @@ export function FilePane(props: Props) {
                       noWrap
                       sx={{ fontFamily: "inherit", fontSize: "inherit" }}
                     >
-                      {c.label}
+                      {tr(c.label)}
                     </Typography>
                   </Stack>
                 </Stack>
@@ -639,7 +644,7 @@ export function FilePane(props: Props) {
             <ListItemIcon>
               <OpenInNewRoundedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>Open</ListItemText>
+            <ListItemText>{tr("Open")}</ListItemText>
           </MenuItem>
         )}
         {actionFile && (
@@ -647,7 +652,7 @@ export function FilePane(props: Props) {
             <ListItemIcon>
               <AppsRoundedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>Open with…</ListItemText>
+            <ListItemText>{tr("Open with…")}</ListItemText>
           </MenuItem>
         )}
         {selectedEntries.length > 0 && (
@@ -656,7 +661,7 @@ export function FilePane(props: Props) {
               <TransferIcon fontSize="small" />
             </ListItemIcon>
             <ListItemText>
-              Copy to target directory
+              {tr("Copy to target directory")}
               {selectedEntries.length > 1 ? ` (${selectedEntries.length})` : ""}
             </ListItemText>
           </MenuItem>
@@ -666,7 +671,7 @@ export function FilePane(props: Props) {
             <ListItemIcon>
               <DriveFileRenameOutlineRoundedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>Rename</ListItemText>
+            <ListItemText>{tr("Rename")}</ListItemText>
           </MenuItem>
         )}
         {selectedEntries.length > 0 && (
@@ -678,7 +683,8 @@ export function FilePane(props: Props) {
               <DeleteOutlineRoundedIcon fontSize="small" color="error" />
             </ListItemIcon>
             <ListItemText>
-              Delete{selectedEntries.length > 1 ? ` (${selectedEntries.length})` : ""}
+              {tr("Delete")}
+              {selectedEntries.length > 1 ? ` (${selectedEntries.length})` : ""}
             </ListItemText>
           </MenuItem>
         )}
@@ -687,13 +693,13 @@ export function FilePane(props: Props) {
           <ListItemIcon>
             <RefreshRoundedIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Refresh</ListItemText>
+          <ListItemText>{tr("Refresh")}</ListItemText>
         </MenuItem>
         <MenuItem onClick={() => setDialog({ kind: "mkdir" })}>
           <ListItemIcon>
             <CreateNewFolderRoundedIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>New Folder</ListItemText>
+          <ListItemText>{tr("New Folder")}</ListItemText>
         </MenuItem>
         <MenuItem onClick={() => setShowHidden((v) => !v)}>
           <ListItemIcon>
@@ -703,28 +709,30 @@ export function FilePane(props: Props) {
               <VisibilityRoundedIcon fontSize="small" />
             )}
           </ListItemIcon>
-          <ListItemText>{showHidden ? "Hide Hidden Files" : "Show Hidden Files"}</ListItemText>
+          <ListItemText>
+            {showHidden ? tr("Hide Hidden Files") : tr("Show Hidden Files")}
+          </ListItemText>
         </MenuItem>
         {actionSingle && chmod && (
           <MenuItem onClick={() => setDialog({ kind: "chmod", entry: actionSingle })}>
             <ListItemIcon>
               <LockOutlinedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>Edit Permissions</ListItemText>
+            <ListItemText>{tr("Edit Permissions")}</ListItemText>
           </MenuItem>
         )}
         <MenuItem disabled={entries.length === 0} onClick={selectAll}>
           <ListItemIcon>
             <SelectAllRoundedIcon fontSize="small" />
           </ListItemIcon>
-          <ListItemText>Select All</ListItemText>
+          <ListItemText>{tr("Select All")}</ListItemText>
         </MenuItem>
         {onClose && (
           <MenuItem onClick={onClose} sx={{ color: "error.main" }}>
             <ListItemIcon>
               <CloseRoundedIcon fontSize="small" color="error" />
             </ListItemIcon>
-            <ListItemText>Close</ListItemText>
+            <ListItemText>{tr("Close")}</ListItemText>
           </MenuItem>
         )}
       </Menu>
@@ -793,7 +801,7 @@ export function FilePane(props: Props) {
                         ...(c.align === "right" && { flexDirection: "row-reverse" }),
                       }}
                     >
-                      {c.label}
+                      {tr(c.label)}
                     </TableSortLabel>
                   </TableCell>
                 ))}
@@ -838,7 +846,9 @@ export function FilePane(props: Props) {
                           {e.name}
                         </Typography>
                         {inEdit && (
-                          <Tooltip title="Open in a local application — saves are uploaded back">
+                          <Tooltip
+                            title={tr("Open in a local application — saves are uploaded back")}
+                          >
                             <EditRoundedIcon sx={{ fontSize: 14, color: "primary.main" }} />
                           </Tooltip>
                         )}
@@ -849,7 +859,7 @@ export function FilePane(props: Props) {
                             noWrap
                           >
                             → {e.link_target}
-                            {isBrokenLink(e) ? " (missing)" : ""}
+                            {isBrokenLink(e) ? ` (${tr("missing")})` : ""}
                           </Typography>
                         )}
                       </Stack>
@@ -876,10 +886,10 @@ export function FilePane(props: Props) {
                     sx={{ color: "text.disabled", textAlign: "center", py: 4 }}
                   >
                     {filter
-                      ? "No matching items"
+                      ? tr("No matching items")
                       : canReceive
-                        ? "Empty directory — drop files here"
-                        : "Empty directory"}
+                        ? tr("Empty directory — drop files here")
+                        : tr("Empty directory")}
                   </TableCell>
                 </TableRow>
               )}
@@ -899,8 +909,8 @@ export function FilePane(props: Props) {
         }}
       >
         <Typography variant="caption" color="text.secondary">
-          {entries.length} {entries.length === 1 ? "item" : "items"}
-          {selected.size > 0 ? ` · ${selected.size} selected` : ""}
+          {trn(entries.length, "{count} item", "{count} items")}
+          {selected.size > 0 ? ` · ${tr("{count} selected", { count: selected.size })}` : ""}
         </Typography>
       </Stack>
 
@@ -917,7 +927,7 @@ export function FilePane(props: Props) {
             <ListItemIcon>
               <OpenInNewRoundedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>Open</ListItemText>
+            <ListItemText>{tr("Open")}</ListItemText>
           </MenuItem>
         )}
         {menuFile && (
@@ -925,7 +935,7 @@ export function FilePane(props: Props) {
             <ListItemIcon>
               <AppsRoundedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>Open with…</ListItemText>
+            <ListItemText>{tr("Open with…")}</ListItemText>
           </MenuItem>
         )}
         {menuFile && <Divider />}
@@ -935,7 +945,7 @@ export function FilePane(props: Props) {
               <TransferIcon fontSize="small" />
             </ListItemIcon>
             <ListItemText>
-              Copy to target directory
+              {tr("Copy to target directory")}
               {menuTargets.length > 1 ? ` (${menuTargets.length})` : ""}
             </ListItemText>
           </MenuItem>
@@ -945,7 +955,7 @@ export function FilePane(props: Props) {
             <ListItemIcon>
               <DriveFileRenameOutlineRoundedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>Rename</ListItemText>
+            <ListItemText>{tr("Rename")}</ListItemText>
           </MenuItem>
         )}
         {menuSingle && chmod && (
@@ -953,7 +963,7 @@ export function FilePane(props: Props) {
             <ListItemIcon>
               <LockOutlinedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>Edit Permissions</ListItemText>
+            <ListItemText>{tr("Edit Permissions")}</ListItemText>
           </MenuItem>
         )}
         {menuSingle && (
@@ -965,7 +975,7 @@ export function FilePane(props: Props) {
             <ListItemIcon>
               <ContentCopyRoundedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>Copy path</ListItemText>
+            <ListItemText>{tr("Copy path")}</ListItemText>
           </MenuItem>
         )}
         {menu?.entry && <Divider />}
@@ -978,7 +988,9 @@ export function FilePane(props: Props) {
               <DeleteOutlineRoundedIcon fontSize="small" color="error" />
             </ListItemIcon>
             <ListItemText>
-              Delete{menuTargets.length > 1 ? ` ${menuTargets.length} items` : ""}
+              {menuTargets.length > 1
+                ? tr("Delete {count} items", { count: menuTargets.length })
+                : tr("Delete")}
             </ListItemText>
           </MenuItem>
         )}
@@ -987,7 +999,7 @@ export function FilePane(props: Props) {
             <ListItemIcon>
               <CreateNewFolderRoundedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>New Folder</ListItemText>
+            <ListItemText>{tr("New Folder")}</ListItemText>
           </MenuItem>
         )}
         {!menu?.entry && (
@@ -995,7 +1007,7 @@ export function FilePane(props: Props) {
             <ListItemIcon>
               <RefreshRoundedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>Refresh</ListItemText>
+            <ListItemText>{tr("Refresh")}</ListItemText>
           </MenuItem>
         )}
       </Menu>
@@ -1003,9 +1015,9 @@ export function FilePane(props: Props) {
       {dialog?.kind === "mkdir" && listing.data && (
         <NameDialog
           open
-          title="New folder"
-          label="Folder name"
-          confirmLabel="Create"
+          title={tr("New folder")}
+          label={tr("Folder name")}
+          confirmLabel={tr("Create")}
           busy={mutate.isPending}
           onCancel={() => setDialog(null)}
           onConfirm={(name) => mutate.mutate(() => api.mkdir(joinPath(listing.data.path, name)))}
@@ -1014,10 +1026,10 @@ export function FilePane(props: Props) {
       {dialog?.kind === "rename" && listing.data && (
         <NameDialog
           open
-          title="Rename"
-          label="New name"
+          title={tr("Rename")}
+          label={tr("New name")}
           initial={dialog.entry.name}
-          confirmLabel="Rename"
+          confirmLabel={tr("Rename")}
           busy={mutate.isPending}
           onCancel={() => setDialog(null)}
           onConfirm={(name) =>
@@ -1039,10 +1051,10 @@ export function FilePane(props: Props) {
         open={dialog?.kind === "delete"}
         title={
           dialog?.kind === "delete" && dialog.entries.length > 1
-            ? `Delete ${dialog.entries.length} items?`
-            : "Delete?"
+            ? tr("Delete {length} items?", { length: dialog.entries.length })
+            : tr("Delete?")
         }
-        confirmLabel="Delete"
+        confirmLabel={tr("Delete")}
         danger
         busy={mutate.isPending}
         onCancel={() => setDialog(null)}
@@ -1064,7 +1076,7 @@ export function FilePane(props: Props) {
           </Box>
         )}
         <Typography variant="body2" sx={{ mt: 1 }}>
-          This cannot be undone.
+          {tr("This cannot be undone.")}
         </Typography>
       </ConfirmDialog>
     </Box>

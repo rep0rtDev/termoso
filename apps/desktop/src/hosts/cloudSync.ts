@@ -8,24 +8,25 @@ import {
   type Uuid,
 } from "@/ipc/types";
 import { CLOUD_PROVIDERS, cloudErrorMessage, emptyDraft, type Draft } from "./cloud";
+import { tr, trn, msg } from "@/i18n";
 
 /** Refresh periods offered in the editor; `0` = manual only. */
 export const SYNC_INTERVALS: { minutes: number; label: string }[] = [
-  { minutes: 0, label: "Manually only" },
-  { minutes: 15, label: "Every 15 minutes" },
-  { minutes: 30, label: "Every 30 minutes" },
-  { minutes: 60, label: "Every hour" },
-  { minutes: 6 * 60, label: "Every 6 hours" },
-  { minutes: 24 * 60, label: "Every day" },
-  { minutes: 7 * 24 * 60, label: "Every week" },
+  { minutes: 0, label: msg("Manually only") },
+  { minutes: 15, label: msg("Every 15 minutes") },
+  { minutes: 30, label: msg("Every 30 minutes") },
+  { minutes: 60, label: msg("Every hour") },
+  { minutes: 6 * 60, label: msg("Every 6 hours") },
+  { minutes: 24 * 60, label: msg("Every day") },
+  { minutes: 7 * 24 * 60, label: msg("Every week") },
 ];
 
 export function intervalLabel(minutes: number): string {
   const known = SYNC_INTERVALS.find((i) => i.minutes === minutes);
-  if (known) return known.label;
-  if (minutes % (24 * 60) === 0) return `Every ${minutes / (24 * 60)} days`;
-  if (minutes % 60 === 0) return `Every ${minutes / 60} hours`;
-  return `Every ${minutes} minutes`;
+  if (known) return tr(known.label);
+  if (minutes % (24 * 60) === 0) return tr("Every {count} days", { count: minutes / (24 * 60) });
+  if (minutes % 60 === 0) return tr("Every {count} hours", { count: minutes / 60 });
+  return tr("Every {count} minutes", { count: minutes });
 }
 
 /** Clamp a typed interval into what Rust accepts (`0` stays manual). */
@@ -37,8 +38,9 @@ export function clampInterval(minutes: number): number {
 export const providerName = (p: CloudProvider) =>
   CLOUD_PROVIDERS.find((x) => x.id === p)?.name ?? p;
 
-export const SYNC_PRIVACY_NOTE =
-  "The key or token is encrypted on this device with your vault key, used only to list machines at the provider, and never synced, shown again or logged.";
+export const SYNC_PRIVACY_NOTE = msg(
+  "The key or token is encrypted on this device with your vault key, used only to list machines at the provider, and never synced, shown again or logged.",
+);
 
 /** Editor state: the shared credential draft plus the schedule fields. */
 export interface SyncDraft {
@@ -172,28 +174,29 @@ export type SyncTone = "ok" | "error" | "paused" | "idle" | "running";
 /** One-line status for cards and the group panel. */
 export function syncSummary(g: CloudSyncGroup, now = Date.now()): { tone: SyncTone; text: string } {
   const name = providerName(g.config.provider);
-  if (g.running) return { tone: "running", text: `Syncing with ${name}…` };
+  if (g.running) return { tone: "running", text: tr("Syncing with {name}…", { name }) };
   if (!g.hasSecret) {
-    return { tone: "paused", text: `${name} · credentials not on this device` };
+    return { tone: "paused", text: tr("{name} · credentials not on this device", { name }) };
   }
   if (g.status.error) {
     return {
       tone: "error",
-      text: `${name} · failed ${relative(g.status.lastRun, now)}: ${cloudErrorMessage(
-        { kind: g.status.errorKind ?? "", message: g.status.error },
+      text: tr("{name} · failed {when}: {error}", {
         name,
-      )}`,
+        when: relative(g.status.lastRun, now),
+        error: cloudErrorMessage({ kind: g.status.errorKind ?? "", message: g.status.error }, name),
+      }),
     };
   }
   const last = g.status.lastSuccess
-    ? `synced ${relative(g.status.lastSuccess, now)}`
-    : "not synced yet";
+    ? tr("synced {when}", { when: relative(g.status.lastSuccess, now) })
+    : tr("not synced yet");
   const cadence = !g.config.enabled
-    ? "paused"
+    ? tr("paused")
     : g.config.intervalMinutes === 0
-      ? "manual"
+      ? tr("manual")
       : g.nextRun
-        ? `next ${relative(g.nextRun, now)}`
+        ? tr("next {when}", { when: relative(g.nextRun, now) })
         : intervalLabel(g.config.intervalMinutes).toLowerCase();
   return {
     tone: !g.config.enabled ? "paused" : g.status.lastSuccess ? "ok" : "idle",
@@ -203,33 +206,31 @@ export function syncSummary(g: CloudSyncGroup, now = Date.now()): { tone: SyncTo
 
 /** `5 min ago` / `in 2 h` — both directions, coarse. */
 export function relative(iso: string | undefined, now = Date.now()): string {
-  if (!iso) return "never";
+  if (!iso) return tr("never");
   const t = Date.parse(iso);
-  if (Number.isNaN(t)) return "never";
+  if (Number.isNaN(t)) return tr("never");
   const diff = Math.round((t - now) / 1000);
   const future = diff > 0;
   const s = Math.abs(diff);
+  if (s < 45) return future ? tr("in moments") : tr("just now");
   const unit =
-    s < 45
-      ? "moments"
-      : s < 3600
-        ? `${Math.max(1, Math.round(s / 60))} min`
-        : s < 86400
-          ? `${Math.round(s / 3600)} h`
-          : `${Math.round(s / 86400)} d`;
-  if (unit === "moments") return future ? "in moments" : "just now";
-  return future ? `in ${unit}` : `${unit} ago`;
+    s < 3600
+      ? tr("{count} min", { count: Math.max(1, Math.round(s / 60)) })
+      : s < 86400
+        ? tr("{count} h", { count: Math.round(s / 3600) })
+        : tr("{count} d", { count: Math.round(s / 86400) });
+  return future ? tr("in {unit}", { unit }) : tr("{unit} ago", { unit });
 }
 
 export function reportLine(g: CloudSyncGroup): string | null {
   const r = g.status.report;
   if (!r) return null;
   const parts = [
-    r.created ? `${r.created} added` : null,
-    r.updated ? `${r.updated} updated` : null,
-    r.removed ? `${r.removed} removed` : null,
-    r.skipped ? `${r.skipped} skipped` : null,
+    r.created ? tr("{count} added", { count: r.created }) : null,
+    r.updated ? tr("{count} updated", { count: r.updated }) : null,
+    r.removed ? tr("{count} removed", { count: r.removed }) : null,
+    r.skipped ? tr("{count} skipped", { count: r.skipped }) : null,
   ].filter((x): x is string => x !== null);
-  const machines = g.status.instances === 1 ? "1 machine" : `${g.status.instances} machines`;
-  return parts.length ? `${machines} · ${parts.join(", ")}` : `${machines} · up to date`;
+  const machines = trn(g.status.instances, "1 machine", "{count} machines");
+  return parts.length ? `${machines} · ${parts.join(", ")}` : `${machines} · ${tr("up to date")}`;
 }

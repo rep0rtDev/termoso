@@ -26,6 +26,7 @@ import type { LocalVault, Uuid } from "@/ipc/types";
 import { useDefaultVault, useVaults } from "@/ipc/hooks";
 import { createStore, useStore } from "@/lib/store";
 import { goToSettings, goToSettingsWith } from "./navigation";
+import { tr } from "@/i18n";
 
 const VAULT_KEY = "termoso.activeVault";
 
@@ -86,10 +87,10 @@ export const vaultHint = (v: LocalVault) =>
     : v.role === "viewer"
       ? "Read-only"
       : v.kind === "team"
-        ? "Team vault"
+        ? tr("Team vault")
         : v.kind === "personal"
-          ? "Synced personal vault"
-          : "This device only";
+          ? tr("Synced personal vault")
+          : tr("This device only");
 
 /** Small “View only” marker for pages whose active vault we can only read. */
 export function ViewOnlyChip({ sx }: { sx?: SxProps<Theme> }) {
@@ -98,8 +99,8 @@ export function ViewOnlyChip({ sx }: { sx?: SxProps<Theme> }) {
       size="small"
       variant="outlined"
       icon={<LockRoundedIcon />}
-      label="View only"
-      title="You can view this vault but not change it"
+      label={tr("View only")}
+      title={tr("You can view this vault but not change it")}
       sx={sx}
     />
   );
@@ -160,7 +161,7 @@ export function VaultMenu({
       })}
       {active.vaults.length === 0 && (
         <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 1 }}>
-          No vaults yet
+          {tr("No vaults yet")}
         </Typography>
       )}
       <Divider />
@@ -175,8 +176,8 @@ export function VaultMenu({
           <AddRoundedIcon fontSize="small" />
         </ListItemIcon>
         <ListItemText
-          primary="New vault"
-          secondary="Local, personal or shared with your team"
+          primary={tr("New vault")}
+          secondary={tr("Local, personal or shared with your team")}
           slotProps={{ secondary: { sx: { fontSize: 11 } } }}
         />
       </MenuItem>
@@ -190,7 +191,7 @@ export function VaultMenu({
         <ListItemIcon>
           <SettingsRoundedIcon fontSize="small" />
         </ListItemIcon>
-        <ListItemText primary="Manage vaults" />
+        <ListItemText primary={tr("Manage vaults")} />
       </MenuItem>
     </Menu>
   );

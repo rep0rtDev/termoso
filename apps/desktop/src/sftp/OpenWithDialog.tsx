@@ -16,6 +16,7 @@ import { Field } from "@/components/ui";
 import { useAppInfo, useSaveSettings, useSettings } from "@/ipc/hooks";
 import type { FsEntry } from "@/ipc/types";
 import { extensionOf } from "./format";
+import { tr } from "@/i18n";
 
 export { extensionOf };
 
@@ -78,7 +79,7 @@ export function OpenWithDialog({ entry, onCancel, onConfirm }: Props) {
 
   return (
     <Dialog open={entry !== null} onClose={onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle>Open with…</DialogTitle>
+      <DialogTitle>{tr("Open with…")}</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }} noWrap>
           {entry?.name}
@@ -90,7 +91,7 @@ export function OpenWithDialog({ entry, onCancel, onConfirm }: Props) {
             confirm();
           }}
         >
-          <Field label="Application">
+          <Field label={tr("Application")}>
             <Autocomplete
               freeSolo
               autoHighlight
@@ -101,7 +102,7 @@ export function OpenWithDialog({ entry, onCancel, onConfirm }: Props) {
                 <TextField
                   {...params}
                   autoFocus
-                  placeholder="Command, path or application name"
+                  placeholder={tr("Command, path or application name")}
                   margin="dense"
                 />
               )}
@@ -118,7 +119,9 @@ export function OpenWithDialog({ entry, onCancel, onConfirm }: Props) {
             }
             label={
               <Typography variant="body2">
-                Always use for {ext ? `.${ext}` : "files without extension"}
+                {ext
+                  ? tr("Always use for .{ext}", { ext })
+                  : tr("Always use for files without extension")}
               </Typography>
             }
           />
@@ -126,10 +129,10 @@ export function OpenWithDialog({ entry, onCancel, onConfirm }: Props) {
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button color="inherit" onClick={onCancel}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button variant="contained" disabled={!valid} onClick={confirm}>
-          Open
+          {tr("Open")}
         </Button>
       </DialogActions>
     </Dialog>

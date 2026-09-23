@@ -12,6 +12,7 @@ import { hostTarget } from "@/hosts/HostGrid";
 import { requestEditHost } from "@/app/navigation";
 import { monoFontFamily } from "@/theme/theme";
 import { closePane, copyText, reconnectPane, type Pane } from "./store";
+import { tr, msg } from "@/i18n";
 
 interface Stage {
   key: ConnectPhase["kind"];
@@ -19,12 +20,12 @@ interface Stage {
 }
 
 const STAGES: Stage[] = [
-  { key: "resolving", label: "Resolve" },
-  { key: "connecting", label: "Connect" },
-  { key: "handshake", label: "Key exchange" },
-  { key: "host_key", label: "Host key" },
-  { key: "auth", label: "Authenticate" },
-  { key: "authenticated", label: "Shell" },
+  { key: "resolving", label: msg("Resolve") },
+  { key: "connecting", label: msg("Connect") },
+  { key: "handshake", label: msg("Key exchange") },
+  { key: "host_key", label: msg("Host key") },
+  { key: "auth", label: msg("Authenticate") },
+  { key: "authenticated", label: msg("Shell") },
 ];
 
 const pulse = keyframes`
@@ -34,30 +35,30 @@ const pulse = keyframes`
 
 function statusLine(pane: Pane): string {
   const p = pane.progress;
-  if (pane.status === "error") return pane.message ?? "Connection failed";
+  if (pane.status === "error") return pane.message ?? tr("Connection failed");
   if (pane.status === "closed") return pane.message ?? "Cancelled";
   if (!p) {
-    if (pane.protocol === "local" || pane.target.kind === "local") return "Starting shell…";
-    return pane.protocol === "serial" ? "Opening device…" : "Connecting…";
+    if (pane.protocol === "local" || pane.target.kind === "local") return tr("Starting shell…");
+    return pane.protocol === "serial" ? tr("Opening device…") : tr("Connecting…");
   }
   const where = p.hop ? ` through ${p.hop}` : "";
   switch (p.phase.kind) {
     case "resolving":
-      return `Resolving address${where}…`;
+      return tr("Resolving address{where}…", { where });
     case "connecting":
-      return `Connecting via ${p.phase.via}${where}…`;
+      return tr("Connecting via {via}{where}…", { via: p.phase.via, where });
     case "handshake":
-      return `Negotiating encryption${where}…`;
+      return tr("Negotiating encryption{where}…", { where });
     case "host_key":
-      return "Waiting for you to verify the host key";
+      return tr("Waiting for you to verify the host key");
     case "auth":
-      return `Authenticating with ${p.phase.method}${where}…`;
+      return tr("Authenticating with {method}{where}…", { method: p.phase.method, where });
     case "security_key_touch":
-      return "Touch your security key to continue";
+      return tr("Touch your security key to continue");
     case "authenticated":
-      return "Authenticated — opening shell…";
+      return tr("Authenticated — opening shell…");
     case "mosh_server":
-      return "Starting mosh-server on the host…";
+      return tr("Starting mosh-server on the host…");
   }
 }
 
@@ -127,10 +128,11 @@ export function ConnectionView({ pane }: { pane: Pane }) {
 
   const copyLogs = () =>
     void copyText(pane.log.map((l) => `${time(l.at)}  ${l.text}`).join("\n")).then(() =>
-      snackbar.notify("Logs copied"),
+      snackbar.notify(tr("Logs copied")),
     );
 
-  const stageLabel = current >= 0 && current < STAGES.length ? STAGES[current]?.label : undefined;
+  const stageLabel =
+    current >= 0 && current < STAGES.length ? tr(STAGES[current]?.label ?? "") : undefined;
 
   return (
     <Box
@@ -187,7 +189,7 @@ export function ConnectionView({ pane }: { pane: Pane }) {
             disabled={!pane.log.length}
             sx={{ flexShrink: 0 }}
           >
-            {logOpen ? "Hide logs" : "Show logs"}
+            {logOpen ? tr("Hide logs") : tr("Show logs")}
           </Button>
         </Stack>
 
@@ -265,9 +267,10 @@ export function ConnectionView({ pane }: { pane: Pane }) {
                   color: failed ? "error.main" : "text.secondary",
                 }}
               >
-                {pane.status === "connected" ? "Connected" : stageLabel}
+                {pane.status === "connected" ? tr("Connected") : stageLabel}
                 <Box component="span" sx={{ color: "text.disabled", fontWeight: 400 }}>
-                  {` · step ${current + 1} of ${STAGES.length}`}
+                  {" · " +
+                    tr("step {value} of {length}", { value: current + 1, length: STAGES.length })}
                 </Box>
               </Typography>
             )}
@@ -287,10 +290,10 @@ export function ConnectionView({ pane }: { pane: Pane }) {
             {failed ? (
               <>
                 <Button variant="tonal" onClick={() => void closePane(pane.id)}>
-                  Close
+                  {tr("Close")}
                 </Button>
                 <Button variant="contained" onClick={() => void reconnectPane(pane.id)}>
-                  Start over
+                  {tr("Start over")}
                 </Button>
                 {pane.hostId && (
                   <Button
@@ -301,7 +304,7 @@ export function ConnectionView({ pane }: { pane: Pane }) {
                       if (id) requestEditHost(id);
                     }}
                   >
-                    Edit host
+                    {tr("Edit host")}
                   </Button>
                 )}
                 <Button
@@ -310,12 +313,12 @@ export function ConnectionView({ pane }: { pane: Pane }) {
                   onClick={copyLogs}
                   disabled={!pane.log.length}
                 >
-                  Copy logs
+                  {tr("Copy logs")}
                 </Button>
               </>
             ) : (
               <Button variant="tonal" onClick={() => void closePane(pane.id)}>
-                Cancel
+                {tr("Cancel")}
               </Button>
             )}
           </Stack>

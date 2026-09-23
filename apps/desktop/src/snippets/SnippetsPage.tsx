@@ -71,6 +71,7 @@ import { terminalStore, type Pane } from "@/terminal/store";
 import { startRun, summarize, useLastRun, watchRun, type SnippetRun } from "./run";
 import { RunTargets, TargetStateIcon } from "./RunStatus";
 import { TargetsDialog } from "./TargetsDialog";
+import { tr, trx } from "@/i18n";
 
 const VAR_HINT = "Use {{name}} placeholders; you will be asked for values on run.";
 
@@ -104,21 +105,21 @@ function SnippetDialog({
   const valid = f.label.trim().length > 0 && f.script.trim().length > 0;
   return (
     <Dialog open onClose={busy ? undefined : onCancel} maxWidth="sm" fullWidth>
-      <DialogTitle>{initial ? "Edit snippet" : "New snippet"}</DialogTitle>
+      <DialogTitle>{initial ? tr("Edit snippet") : tr("New snippet")}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           <Stack direction="row" spacing={2}>
-            <Field label="Label" sx={{ flex: 1 }}>
+            <Field label={tr("Label")} sx={{ flex: 1 }}>
               <TextField autoFocus value={f.label} onChange={(e) => set("label", e.target.value)} />
             </Field>
-            <Field label="Package" sx={{ width: 200 }}>
+            <Field label={tr("Package")} sx={{ width: 200 }}>
               <TextField
                 select
                 value={f.packageId ?? ""}
                 onChange={(e) => set("packageId", e.target.value === "" ? null : e.target.value)}
               >
                 <MenuItem value="">
-                  <em>None</em>
+                  <em>{tr("None")}</em>
                 </MenuItem>
                 {packages.map((p) => (
                   <MenuItem key={p.id} value={p.id}>
@@ -128,7 +129,7 @@ function SnippetDialog({
               </TextField>
             </Field>
           </Stack>
-          <Field label="Script">
+          <Field label={tr("Script")}>
             <TextField
               value={f.script}
               onChange={(e) => set("script", e.target.value)}
@@ -146,16 +147,16 @@ function SnippetDialog({
                 onChange={(e) => set("closeAfterRun", e.target.checked)}
               />
             }
-            label="Close the terminal after running"
+            label={tr("Close the terminal after running")}
           />
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onCancel} disabled={busy} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button variant="contained" disabled={!valid || busy} onClick={() => onConfirm(f)}>
-          Save
+          {tr("Save")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -174,7 +175,7 @@ function VariableFields({
   return (
     <Stack spacing={1.5}>
       <Typography variant="overline" color="text.secondary">
-        Variables
+        {tr("Variables")}
       </Typography>
       {variables.map((v, i) => (
         <Field key={v} label={v}>
@@ -211,7 +212,7 @@ export function VariablesDialog({
   const valid = varsComplete(snippet, vars);
   return (
     <Dialog open onClose={onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle>Run “{snippet.label}”</DialogTitle>
+      <DialogTitle>{tr("Run “{snippet}”", { snippet: snippet.label })}</DialogTitle>
       <DialogContent>
         <Stack
           component="form"
@@ -231,7 +232,7 @@ export function VariablesDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onCancel} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           type="submit"
@@ -240,7 +241,7 @@ export function VariablesDialog({
           disabled={!valid}
           startIcon={<PlayArrowRoundedIcon />}
         >
-          Run
+          {tr("Run")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -283,7 +284,9 @@ export function RunDialog({
 
   return (
     <Dialog open onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle>Run “{snippet.label}” in open terminals</DialogTitle>
+      <DialogTitle>
+        {tr("Run “{snippet}” in open terminals", { snippet: snippet.label })}
+      </DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           {snippet.variables.length > 0 && (
@@ -291,7 +294,7 @@ export function RunDialog({
           )}
           <Box sx={{ display: "flex", alignItems: "center" }}>
             <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
-              Terminals
+              {tr("Terminals")}
             </Typography>
             {panes.length > 1 && (
               <Button
@@ -303,13 +306,13 @@ export function RunDialog({
                   )
                 }
               >
-                {selected.size === panes.length ? "Clear" : "Select all"}
+                {selected.size === panes.length ? tr("Clear") : tr("Select all")}
               </Button>
             )}
           </Box>
           {panes.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              No connected terminals. Open a host first.
+              {tr("No connected terminals. Open a host first.")}
             </Typography>
           ) : (
             <List dense disablePadding sx={{ mx: -1 }}>
@@ -329,7 +332,7 @@ export function RunDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onCancel} disabled={busy} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           variant="contained"
@@ -337,7 +340,7 @@ export function RunDialog({
           startIcon={<PlayArrowRoundedIcon />}
           onClick={() => onConfirm([...selected], vars)}
         >
-          Run
+          {tr("Run")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -408,14 +411,14 @@ function SnippetPanel({
   return (
     <SidePanel
       title={snippet.label}
-      subtitle={pkg ? pkg.label : "No package"}
+      subtitle={pkg ? pkg.label : tr("No package")}
       onClose={onClose}
       actions={
         <>
-          <ToolIconButton title="Edit" onClick={onEdit}>
+          <ToolIconButton title={tr("Edit")} onClick={onEdit}>
             <EditRoundedIcon fontSize="small" />
           </ToolIconButton>
-          <ToolIconButton title="Delete" onClick={onDelete}>
+          <ToolIconButton title={tr("Delete")} onClick={onDelete}>
             <DeleteOutlineRoundedIcon fontSize="small" />
           </ToolIconButton>
         </>
@@ -428,7 +431,7 @@ function SnippetPanel({
             disabled={busy || openCount === 0}
             onClick={onRunInTerminals}
           >
-            Open terminals
+            {tr("Open terminals")}
           </Button>
           <Button
             variant="contained"
@@ -436,12 +439,12 @@ function SnippetPanel({
             disabled={busy || targets.length === 0}
             onClick={onRun}
           >
-            Run
+            {tr("Run")}
           </Button>
         </>
       }
     >
-      <SectionCard title="Script">
+      <SectionCard title={tr("Script")}>
         <Box
           component="pre"
           sx={{
@@ -466,14 +469,14 @@ function SnippetPanel({
               <Chip key={v} label={`{{${v}}}`} size="small" sx={{ fontFamily: monoFontFamily }} />
             ))}
             {snippet.closeAfterRun && (
-              <Chip label="closes terminal" size="small" variant="outlined" />
+              <Chip label={tr("closes terminal")} size="small" variant="outlined" />
             )}
           </Box>
         )}
       </SectionCard>
 
       <SectionCard
-        title="Targets for execution"
+        title={tr("Targets for execution")}
         action={
           <Button
             size="small"
@@ -481,14 +484,15 @@ function SnippetPanel({
             onClick={onAddTargets}
             disabled={busy}
           >
-            Add targets
+            {tr("Add targets")}
           </Button>
         }
       >
         {targets.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
-            No targets yet. Add hosts or whole groups — Run connects to each of them and types the
-            script.
+            {tr(
+              "No targets yet. Add hosts or whole groups — Run connects to each of them and types the script.",
+            )}
           </Typography>
         ) : (
           <Stack spacing={0.5} sx={{ mx: -1 }}>
@@ -524,11 +528,11 @@ function SnippetPanel({
                     </Typography>
                   </Box>
                   {state && <TargetStateIcon state={state} />}
-                  <Tooltip title="Remove target">
+                  <Tooltip title={tr("Remove target")}>
                     <IconButton
                       className="target-remove"
                       size="small"
-                      aria-label={`Remove ${h.label}`}
+                      aria-label={tr("Remove {label}", { label: h.label })}
                       onClick={() => onRemoveTarget(h.id)}
                       disabled={busy}
                       sx={{ opacity: 0, transition: "opacity 120ms" }}
@@ -545,7 +549,7 @@ function SnippetPanel({
 
       {lastRun && (
         <SectionCard
-          title="Last run"
+          title={tr("Last run")}
           action={
             <Typography variant="caption" color="text.secondary">
               {fmtTime(lastRun.startedAt)} · {summarize(lastRun)}
@@ -625,7 +629,7 @@ export function SnippetsPage() {
     copyTo: (id: Uuid, vaultId: Uuid, move: boolean) => Promise<unknown>,
   ): MenuAction[] => {
     const others = (vaults.data ?? []).filter((v) => v.id !== item.vaultId);
-    if (others.length === 0) return [{ label: "No other vaults", disabled: true }];
+    if (others.length === 0) return [{ label: tr("No other vaults"), disabled: true }];
     return others.map((v) => ({
       label: v.name,
       icon: v.unlocked ? undefined : <LockOutlinedIcon fontSize="small" />,
@@ -641,7 +645,7 @@ export function SnippetsPage() {
   };
 
   const collaborate: MenuAction = {
-    label: "Collaborate",
+    label: tr("Collaborate"),
     icon: <GroupAddRoundedIcon fontSize="small" />,
     disabled: vault.data?.kind !== "team",
     onClick: () => openCollaboration(vault.data),
@@ -649,7 +653,7 @@ export function SnippetsPage() {
 
   const snippetMenu = (s: SnippetCard): MenuAction[] => [
     {
-      label: "Run",
+      label: tr("Run"),
       icon: <PlayArrowRoundedIcon fontSize="small" />,
       onClick: () => {
         if (s.targetHostIds.length > 0) runOnTargets(s);
@@ -657,7 +661,7 @@ export function SnippetsPage() {
       },
     },
     {
-      label: "Edit",
+      label: tr("Edit"),
       icon: <EditRoundedIcon fontSize="small" />,
       disabled: readOnly,
       onClick: () => setDialog({ kind: "edit", snippet: s }),
@@ -665,18 +669,18 @@ export function SnippetsPage() {
     },
     collaborate,
     {
-      label: "Move to",
+      label: tr("Move to"),
       icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
       disabled: readOnly,
       items: vaultTargets(s, true, ipc.snippetCopyToVault),
     },
     {
-      label: "Copy to",
+      label: tr("Copy to"),
       icon: <LibraryAddOutlinedIcon fontSize="small" />,
       items: vaultTargets(s, false, ipc.snippetCopyToVault),
     },
     {
-      label: "Delete",
+      label: tr("Delete"),
       icon: <DeleteOutlineRoundedIcon fontSize="small" />,
       danger: true,
       disabled: readOnly,
@@ -686,7 +690,7 @@ export function SnippetsPage() {
 
   const packageMenu = (p: PackageNode): MenuAction[] => [
     {
-      label: "Rename",
+      label: tr("Rename"),
       icon: <EditRoundedIcon fontSize="small" />,
       disabled: readOnly,
       onClick: () => setDialog({ kind: "package", pkg: p }),
@@ -694,18 +698,18 @@ export function SnippetsPage() {
     },
     collaborate,
     {
-      label: "Move to",
+      label: tr("Move to"),
       icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
       disabled: readOnly,
       items: vaultTargets(p, true, ipc.snippetPackageCopyToVault),
     },
     {
-      label: "Copy to",
+      label: tr("Copy to"),
       icon: <LibraryAddOutlinedIcon fontSize="small" />,
       items: vaultTargets(p, false, ipc.snippetPackageCopyToVault),
     },
     {
-      label: "Delete",
+      label: tr("Delete"),
       icon: <DeleteOutlineRoundedIcon fontSize="small" />,
       danger: true,
       disabled: readOnly,
@@ -732,7 +736,7 @@ export function SnippetsPage() {
     setSelectedId(snippet.id);
     const run = startRun({ snippet, vars, sessionIds, hostIds, hosts: hostList });
     if (run.targets.length === 0) {
-      snackbar.error("Nothing to run on");
+      snackbar.error(tr("Nothing to run on"));
       return;
     }
     watchRun(run.id, (done) => {
@@ -764,18 +768,18 @@ export function SnippetsPage() {
         actions={
           <>
             <SplitButton
-              label="New snippet"
+              label={tr("New snippet")}
               icon={<AddRoundedIcon />}
               disabled={!vaultId || readOnly}
               onClick={() => setDialog({ kind: "edit", snippet: null })}
               items={[
                 {
-                  label: "New snippet",
+                  label: tr("New snippet"),
                   icon: <AddRoundedIcon fontSize="small" />,
                   onClick: () => setDialog({ kind: "edit", snippet: null }),
                 },
                 {
-                  label: "New package",
+                  label: tr("New package"),
                   icon: <CreateNewFolderRoundedIcon fontSize="small" />,
                   onClick: () => setDialog({ kind: "package", pkg: null }),
                 },
@@ -790,7 +794,7 @@ export function SnippetsPage() {
                 setSelectedId(null);
               }}
             >
-              Shell History
+              {tr("Shell History")}
             </Button>
           </>
         }
@@ -799,7 +803,10 @@ export function SnippetsPage() {
             {readOnly && <ViewOnlyChip sx={{ mr: 1 }} />}
             {pkgFilter.kind === "all"
               ? `${snippets.data?.length ?? 0} ${snippets.data?.length === 1 ? "snippet" : "snippets"}`
-              : `${visible.length} of ${snippets.data?.length ?? 0}`}
+              : tr("{length} of {value}", {
+                  length: visible.length,
+                  value: snippets.data?.length ?? 0,
+                })}
           </Typography>
         }
       />
@@ -820,17 +827,17 @@ export function SnippetsPage() {
             color="text.secondary"
             sx={{ px: 1, display: "block", mb: 0.5 }}
           >
-            Packages
+            {tr("Packages")}
           </Typography>
           <List dense disablePadding>
             <ListItemButton selected={pkgFilter.kind === "all"} onClick={() => setPkgFilter(ALL)}>
-              <ListItemText primary="All snippets" />
+              <ListItemText primary={tr("All snippets")} />
               <Typography variant="caption" color="text.secondary">
                 {snippets.data?.length ?? 0}
               </Typography>
             </ListItemButton>
             <ListItemButton selected={pkgFilter.kind === "none"} onClick={() => setPkgFilter(NONE)}>
-              <ListItemText primary="Unpackaged" />
+              <ListItemText primary={tr("Unpackaged")} />
               <Typography variant="caption" color="text.secondary">
                 {(snippets.data ?? []).filter((x) => x.packageId === null).length}
               </Typography>
@@ -849,7 +856,7 @@ export function SnippetsPage() {
                 <Box className="pkg-actions" sx={{ display: "flex", opacity: 0 }}>
                   <IconButton
                     size="small"
-                    aria-label="Rename package"
+                    aria-label={tr("Rename package")}
                     onClick={(e) => {
                       e.stopPropagation();
                       setDialog({ kind: "package", pkg: p });
@@ -859,7 +866,7 @@ export function SnippetsPage() {
                   </IconButton>
                   <IconButton
                     size="small"
-                    aria-label="Delete package"
+                    aria-label={tr("Delete package")}
                     onClick={(e) => {
                       e.stopPropagation();
                       setDialog({ kind: "deletePackage", pkg: p });
@@ -876,19 +883,24 @@ export function SnippetsPage() {
           {loading ? (
             <Loading />
           ) : loadError ? (
-            <EmptyState title="Could not load snippets" description={errorMessage(loadError)} />
+            <EmptyState
+              title={tr("Could not load snippets")}
+              description={errorMessage(loadError)}
+            />
           ) : visible.length === 0 ? (
             <EmptyState
               icon={<CodeRoundedIcon />}
-              title={pkgFilter.kind === "all" ? "No snippets yet" : "Nothing here"}
-              description="Save the commands you type over and over, pick the hosts they should run on and run them everywhere at once. Use {{name}} placeholders to be asked for values on run."
+              title={pkgFilter.kind === "all" ? tr("No snippets yet") : tr("Nothing here")}
+              description={tr(
+                "Save the commands you type over and over, pick the hosts they should run on and run them everywhere at once. Use {{name}} placeholders to be asked for values on run.",
+              )}
               action={
                 readOnly ? undefined : (
                   <Button
                     variant="contained"
                     onClick={() => setDialog({ kind: "edit", snippet: null })}
                   >
-                    New snippet
+                    {tr("New snippet")}
                   </Button>
                 )
               }
@@ -919,7 +931,12 @@ export function SnippetsPage() {
                       <>
                         {s.label}
                         {s.closeAfterRun && (
-                          <Chip label="closes tab" size="small" variant="outlined" sx={{ ml: 1 }} />
+                          <Chip
+                            label={tr("closes tab")}
+                            size="small"
+                            variant="outlined"
+                            sx={{ ml: 1 }}
+                          />
                         )}
                       </>
                     }
@@ -955,14 +972,14 @@ export function SnippetsPage() {
                           else setDialog({ kind: "run", snippet: s });
                         }}
                       >
-                        Run
+                        {tr("Run")}
                       </Button>
                     }
                     actions={
                       readOnly ? undefined : (
                         <>
                           <ToolIconButton
-                            title="Edit"
+                            title={tr("Edit")}
                             onClick={(e) => {
                               e.stopPropagation();
                               setDialog({ kind: "edit", snippet: s });
@@ -971,7 +988,7 @@ export function SnippetsPage() {
                             <EditRoundedIcon fontSize="small" />
                           </ToolIconButton>
                           <ToolIconButton
-                            title="Delete"
+                            title={tr("Delete")}
                             onClick={(e) => {
                               e.stopPropagation();
                               setDialog({ kind: "delete", snippet: s });
@@ -1081,8 +1098,8 @@ export function SnippetsPage() {
       {dialog.kind === "delete" && (
         <ConfirmDialog
           open
-          title="Delete snippet?"
-          confirmLabel="Delete"
+          title={tr("Delete snippet?")}
+          confirmLabel={tr("Delete")}
           danger
           busy={op.isPending}
           onCancel={() => setDialog({ kind: "none" })}
@@ -1090,20 +1107,22 @@ export function SnippetsPage() {
             const id = dialog.snippet.id;
             op.mutate(async () => {
               await ipc.snippetDelete(id);
-              return "Snippet deleted";
+              return tr("Snippet deleted");
             });
           }}
         >
-          <b>{dialog.snippet.label}</b> will be removed, including its targets and host bindings.
+          {trx("{snippet} will be removed, including its targets and host bindings.", {
+            snippet: <b>{dialog.snippet.label}</b>,
+          })}
         </ConfirmDialog>
       )}
       {vaultId && dialog.kind === "package" && (
         <NameDialog
           open
-          title={dialog.pkg ? "Rename package" : "New package"}
-          label="Name"
+          title={dialog.pkg ? tr("Rename package") : tr("New package")}
+          label={tr("Name")}
           initial={dialog.pkg?.label ?? ""}
-          confirmLabel={dialog.pkg ? "Rename" : "Create"}
+          confirmLabel={dialog.pkg ? tr("Rename") : tr("Create")}
           busy={op.isPending}
           onCancel={() => setDialog({ kind: "none" })}
           onConfirm={(label) => {
@@ -1123,8 +1142,8 @@ export function SnippetsPage() {
       {dialog.kind === "deletePackage" && (
         <ConfirmDialog
           open
-          title="Delete package?"
-          confirmLabel="Delete"
+          title={tr("Delete package?")}
+          confirmLabel={tr("Delete")}
           danger
           busy={op.isPending}
           onCancel={() => setDialog({ kind: "none" })}
@@ -1133,11 +1152,13 @@ export function SnippetsPage() {
             op.mutate(async () => {
               await ipc.snippetPackageDelete(id);
               if (currentPkg === id) setPkgFilter(ALL);
-              return "Package deleted";
+              return tr("Package deleted");
             });
           }}
         >
-          Snippets inside <b>{dialog.pkg.label}</b> are kept and become unpackaged.
+          {trx("Snippets inside {package} are kept and become unpackaged.", {
+            package: <b>{dialog.pkg.label}</b>,
+          })}
         </ConfirmDialog>
       )}
     </Page>

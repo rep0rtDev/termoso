@@ -1,4 +1,5 @@
 import type { PfKind, PfRuleCard, PfRuleForm, Uuid } from "@/ipc/types";
+import { tr } from "@/i18n";
 
 export const KIND_NAME: Record<PfKind, string> = {
   local: "Local",
@@ -53,13 +54,30 @@ export function routeLine(r: Route): string {
   const host = r.hostLabel || "…";
   switch (r.kind) {
     case "local":
-      return `Local:${r.localPort} → ${host} → ${r.remoteHost}:${r.remotePort}`;
+      return tr("Local:{localPort} → {host} → {remoteHost}:{remotePort}", {
+        localPort: r.localPort,
+        host,
+        remoteHost: r.remoteHost,
+        remotePort: r.remotePort,
+      });
     case "remote":
-      return `Port ${r.remotePort} on ${host} → This device → ${r.remoteHost}:${r.localPort}`;
+      return tr("Port {remotePort} on {host} → This device → {remoteHost}:{localPort}", {
+        remotePort: r.remotePort,
+        host,
+        remoteHost: r.remoteHost,
+        localPort: r.localPort,
+      });
     case "dynamic":
       return bind === DEFAULT_BIND
-        ? `SOCKS proxy on local port ${r.localPort} through ${host}`
-        : `SOCKS proxy on ${bind}:${r.localPort} through ${host}`;
+        ? tr("SOCKS proxy on local port {localPort} through {host}", {
+            localPort: r.localPort,
+            host,
+          })
+        : tr("SOCKS proxy on {bind}:{localPort} through {host}", {
+            bind,
+            localPort: r.localPort,
+            host,
+          });
   }
 }
 
@@ -70,17 +88,19 @@ export function ruleTitle(r: PfRuleCard): string {
 /** What the rule form still lacks before it can be saved. */
 export function formProblem(f: PfRuleForm): string | null {
   if (!f.hostId)
-    return f.kind === "remote" ? "Remote host is required" : "Intermediate host is required";
+    return f.kind === "remote"
+      ? tr("Remote host is required")
+      : tr("Intermediate host is required");
   if (f.kind === "remote") {
-    if (f.remotePort <= 0) return "Remote port number is required";
-    if (!f.remoteHost.trim()) return "Destination address is required";
-    if (f.localPort <= 0) return "Destination port number is required";
+    if (f.remotePort <= 0) return tr("Remote port number is required");
+    if (!f.remoteHost.trim()) return tr("Destination address is required");
+    if (f.localPort <= 0) return tr("Destination port number is required");
     return null;
   }
-  if (f.localPort <= 0) return "Local port number is required";
+  if (f.localPort <= 0) return tr("Local port number is required");
   if (f.kind === "local") {
-    if (!f.remoteHost.trim()) return "Destination address is required";
-    if (f.remotePort <= 0) return "Destination port number is required";
+    if (!f.remoteHost.trim()) return tr("Destination address is required");
+    if (f.remotePort <= 0) return tr("Destination port number is required");
   }
   return null;
 }

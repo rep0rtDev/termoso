@@ -30,6 +30,7 @@ import {
 import { openTerminal } from "@/terminal/store";
 import { goHome } from "@/app/navigation";
 import { monoFontFamily } from "@/theme/theme";
+import { tr } from "@/i18n";
 
 const WIDTH = 520;
 
@@ -94,7 +95,7 @@ export function SerialPage() {
           <IconTile size={52}>
             <UsbRoundedIcon />
           </IconTile>
-          <Typography variant="h6">Serial</Typography>
+          <Typography variant="h6">{tr("Serial")}</Typography>
         </Box>
 
         <Box sx={{ display: "flex", alignItems: "center", my: 1 }}>
@@ -128,12 +129,12 @@ export function SerialPage() {
         </Box>
 
         <Field
-          label="Serial Port"
+          label={tr("Serial Port")}
           hint={
             ports.isError
               ? errorMessage(ports.error)
               : list.length === 0 && !ports.isPending
-                ? "No serial devices found — plug one in and rescan, or type the path."
+                ? tr("No serial devices found — plug one in and rescan, or type the path.")
                 : undefined
           }
         >
@@ -143,7 +144,7 @@ export function SerialPage() {
               value={path}
               onChange={(e) => setPath(e.target.value)}
               placeholder={
-                list.length > 0 ? "Pick a device or type a path" : "/dev/ttyUSB0 or COM3"
+                list.length > 0 ? tr("Pick a device or type a path") : "/dev/ttyUSB0 or COM3"
               }
               sx={{ flex: 1 }}
               slotProps={{
@@ -155,7 +156,7 @@ export function SerialPage() {
                         <IconButton
                           size="small"
                           edge="end"
-                          aria-label="Pick a device"
+                          aria-label={tr("Pick a device")}
                           onClick={(e) => setAnchor(e.currentTarget)}
                         >
                           <ExpandMoreRoundedIcon fontSize="small" />
@@ -166,7 +167,7 @@ export function SerialPage() {
               }}
             />
             <ToolIconButton
-              title="Rescan devices"
+              title={tr("Rescan devices")}
               disabled={ports.isFetching}
               onClick={() => void ports.refetch()}
             >
@@ -206,7 +207,7 @@ export function SerialPage() {
           </Menu>
         </Field>
 
-        <Field label="Baud rate">
+        <Field label={tr("Baud rate")}>
           <TextField
             select
             value={line.baudRate}
@@ -241,7 +242,7 @@ export function SerialPage() {
             }}
           >
             <Typography variant="subtitle2" sx={{ flex: 1, fontWeight: 600 }}>
-              Advanced
+              {tr("Advanced")}
             </Typography>
             <ExpandMoreRoundedIcon
               sx={{
@@ -253,7 +254,7 @@ export function SerialPage() {
           </Box>
           <Collapse in={advanced}>
             <Box sx={{ px: 2, pb: 2, display: "flex", flexDirection: "column", gap: 1.5 }}>
-              <Field label="Charset">
+              <Field label={tr("Charset")}>
                 <TextField
                   select
                   value={line.charset}
@@ -266,7 +267,7 @@ export function SerialPage() {
                   ))}
                 </TextField>
               </Field>
-              <Field label="Data bits">
+              <Field label={tr("Data bits")}>
                 <ToggleButtonGroup
                   exclusive
                   fullWidth
@@ -282,7 +283,7 @@ export function SerialPage() {
                   ))}
                 </ToggleButtonGroup>
               </Field>
-              <Field label="Stop bits">
+              <Field label={tr("Stop bits")}>
                 <ToggleButtonGroup
                   exclusive
                   fullWidth
@@ -298,7 +299,7 @@ export function SerialPage() {
                   ))}
                 </ToggleButtonGroup>
               </Field>
-              <Field label="Flow Control">
+              <Field label={tr("Flow Control")}>
                 <ToggleButtonGroup
                   exclusive
                   fullWidth
@@ -307,12 +308,12 @@ export function SerialPage() {
                     if (v) set("flowControl", v);
                   }}
                 >
-                  <ToggleButton value="none">None</ToggleButton>
+                  <ToggleButton value="none">{tr("None")}</ToggleButton>
                   <ToggleButton value="software">XON/XOFF</ToggleButton>
                   <ToggleButton value="hardware">RTS/CTS</ToggleButton>
                 </ToggleButtonGroup>
               </Field>
-              <Field label="Parity">
+              <Field label={tr("Parity")}>
                 <ToggleButtonGroup
                   exclusive
                   fullWidth
@@ -321,9 +322,9 @@ export function SerialPage() {
                     if (v) set("parity", v);
                   }}
                 >
-                  <ToggleButton value="none">None</ToggleButton>
-                  <ToggleButton value="even">Even</ToggleButton>
-                  <ToggleButton value="odd">Odd</ToggleButton>
+                  <ToggleButton value="none">{tr("None")}</ToggleButton>
+                  <ToggleButton value="even">{tr("Even")}</ToggleButton>
+                  <ToggleButton value="odd">{tr("Odd")}</ToggleButton>
                 </ToggleButtonGroup>
               </Field>
             </Box>
@@ -332,10 +333,10 @@ export function SerialPage() {
 
         <Box sx={{ display: "flex", justifyContent: "space-between", mt: 1 }}>
           <Button variant="tonal" onClick={goHome} sx={{ minWidth: 88 }}>
-            Close
+            {tr("Close")}
           </Button>
           <Button type="submit" variant="contained" disabled={!canConnect} sx={{ minWidth: 112 }}>
-            Connect
+            {tr("Connect")}
           </Button>
         </Box>
       </Box>

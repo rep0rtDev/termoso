@@ -39,29 +39,32 @@ import {
 } from "@/ipc/types";
 import { PendingForm, SignInForm, invalidateAll, pendingTitle, usePendingLogin } from "./SignIn";
 import { BackupDialog, pickBackupFile, type BackupMode } from "./BackupDialog";
+import { tr, trn, trx } from "@/i18n";
 
 // ───────────────────────────── backup ─────────────────────────────
 
 function BackupCard() {
   const [mode, setMode] = useState<BackupMode | null>(null);
   return (
-    <SectionCard title="Backup">
+    <SectionCard title={tr("Backup")}>
       <SettingRow
-        label="Export encrypted backup"
-        hint="All unlocked vaults in one password-protected .termoso file. Works offline, no account needed."
+        label={tr("Export encrypted backup")}
+        hint={tr(
+          "All unlocked vaults in one password-protected .termoso file. Works offline, no account needed.",
+        )}
         control={
           <Button
             variant="tonal"
             startIcon={<BackupRoundedIcon />}
             onClick={() => setMode("export")}
           >
-            Export…
+            {tr("Export…")}
           </Button>
         }
       />
       <SettingRow
-        label="Restore from backup"
-        hint="Merges a .termoso file into a vault of this device; nothing is deleted."
+        label={tr("Restore from backup")}
+        hint={tr("Merges a .termoso file into a vault of this device; nothing is deleted.")}
         last
         control={
           <Button
@@ -73,7 +76,7 @@ function BackupCard() {
               })
             }
           >
-            Restore…
+            {tr("Restore…")}
           </Button>
         }
       />
@@ -90,10 +93,11 @@ function BackupCard() {
 
 function SignInCard({ onOutcome }: { onOutcome: (o: LoginOutcome) => void }) {
   return (
-    <SectionCard title="Sign in to sync" sx={{ maxWidth: 480 }}>
+    <SectionCard title={tr("Sign in to sync")} sx={{ maxWidth: 480 }}>
       <Typography variant="body2" color="text.secondary">
-        Sync is optional. When you sign in, your vaults are encrypted on this device before they
-        leave it — the server only ever sees ciphertext.
+        {tr(
+          "Sync is optional. When you sign in, your vaults are encrypted on this device before they leave it — the server only ever sees ciphertext.",
+        )}
       </Typography>
       <SignInForm onOutcome={onOutcome} />
     </SectionCard>
@@ -121,14 +125,19 @@ function PendingCard({
 function SyncChip({ s }: { s: SyncStatus }) {
   switch (s.state) {
     case "syncing":
-      return <Chip size="small" color="primary" icon={<SyncRoundedIcon />} label="Syncing" />;
+      return <Chip size="small" color="primary" icon={<SyncRoundedIcon />} label={tr("Syncing")} />;
     case "offline":
-      return <Chip size="small" icon={<CloudOffRoundedIcon />} label="Offline" />;
+      return <Chip size="small" icon={<CloudOffRoundedIcon />} label={tr("Offline")} />;
     case "error":
-      return <Chip size="small" color="error" label="Error" />;
+      return <Chip size="small" color="error" label={tr("Error")} />;
     case "idle":
       return (
-        <Chip size="small" color="success" icon={<CloudDoneRoundedIcon />} label="Up to date" />
+        <Chip
+          size="small"
+          color="success"
+          icon={<CloudDoneRoundedIcon />}
+          label={tr("Up to date")}
+        />
       );
   }
 }
@@ -173,10 +182,10 @@ function SignedIn({
       qc.setQueryData(keys.account, st);
       void qc.invalidateQueries({ queryKey: keys.settings });
       return on
-        ? "Keys and identities are synced again"
+        ? tr("Keys and identities are synced again")
         : st.localCredentials > 0
           ? `${st.localCredentials} credential${st.localCredentials === 1 ? "" : "s"} now stay on this device only`
-          : "Keys and identities now stay on this device";
+          : tr("Keys and identities now stay on this device");
     });
 
   return (
@@ -190,8 +199,8 @@ function SignedIn({
               {a.isAdmin && <Chip size="small" label="admin" sx={{ ml: 1 }} />}
             </Typography>
             <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-              {a.email} · <Mono>{a.serverUrl.replace(/\/+$/, "")}</Mono> · signed in{" "}
-              {new Date(a.signedInAt).toLocaleDateString()}
+              {a.email} · <Mono>{a.serverUrl.replace(/\/+$/, "")}</Mono> ·{" "}
+              {tr("signed in {date}", { date: new Date(a.signedInAt).toLocaleDateString() })}
             </Typography>
           </Box>
           <Button
@@ -199,18 +208,22 @@ function SignedIn({
             startIcon={<LogoutRoundedIcon />}
             onClick={() => setConfirm({ kind: "signOut" })}
           >
-            Sign out
+            {tr("Sign out")}
           </Button>
         </Box>
       </SectionCard>
 
       <SectionCard
-        title="Sync"
+        title={tr("Sync")}
         action={
           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
             <SyncChip s={s} />
             {s.realtime && (
-              <Tooltip title="Realtime channel connected: changes from other devices arrive instantly">
+              <Tooltip
+                title={tr(
+                  "Realtime channel connected: changes from other devices arrive instantly",
+                )}
+              >
                 <BoltRoundedIcon fontSize="small" color="primary" />
               </Tooltip>
             )}
@@ -221,30 +234,38 @@ function SignedIn({
               onClick={() =>
                 op.mutate(async () => {
                   const r = await ipc.accountSyncNow();
-                  return r.lastError ?? `Synced: ${r.pushed} pushed, ${r.pulled} pulled`;
+                  return (
+                    r.lastError ??
+                    tr("Synced: {pushed} pushed, {pulled} pulled", {
+                      pushed: r.pushed,
+                      pulled: r.pulled,
+                    })
+                  );
                 })
               }
             >
-              Sync now
+              {tr("Sync now")}
             </Button>
           </Stack>
         }
       >
         {s.lastError && <Alert severity="error">{s.lastError}</Alert>}
         <SettingRow
-          label="Last sync"
+          label={tr("Last sync")}
           control={
-            <Value>{s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString() : "never"}</Value>
+            <Value>{s.lastSyncAt ? new Date(s.lastSyncAt).toLocaleString() : tr("never")}</Value>
           }
         />
-        <SettingRow label="Pushed" control={<Value>{String(s.pushed)}</Value>} />
-        <SettingRow label="Pulled" control={<Value>{String(s.pulled)}</Value>} />
-        <SettingRow label="Conflicts" control={<Value>{String(s.conflicts)}</Value>} />
+        <SettingRow label={tr("Pushed")} control={<Value>{String(s.pushed)}</Value>} />
+        <SettingRow label={tr("Pulled")} control={<Value>{String(s.pulled)}</Value>} />
+        <SettingRow label={tr("Conflicts")} control={<Value>{String(s.conflicts)}</Value>} />
         <SettingRow
-          label="Sync keys and identities"
+          label={tr("Sync keys and identities")}
           hint={
             syncCredentials
-              ? "Identities, keys and certificates of your Personal vault are encrypted and synced like everything else."
+              ? tr(
+                  "Identities, keys and certificates of your Personal vault are encrypted and synced like everything else.",
+                )
               : `Identities, keys and certificates of your Personal vault stay on this device${
                   status.localCredentials > 0 ? ` (${status.localCredentials} here)` : ""
                 }; hosts, snippets and settings still sync. They are removed when you sign out.`
@@ -261,15 +282,17 @@ function SignedIn({
       </SectionCard>
 
       <SectionCard
-        title="Privacy"
-        description="Teammates in team vaults can see which hosts you are connected to when their team enables it. Nothing about the session itself is shared."
+        title={tr("Privacy")}
+        description={tr(
+          "Teammates in team vaults can see which hosts you are connected to when their team enables it. Nothing about the session itself is shared.",
+        )}
       >
         <SettingRow
-          label="Show me as connected"
+          label={tr("Show me as connected")}
           hint={
             profile.data?.presence_hidden
-              ? "You are hidden: nobody sees your connections."
-              : "Visible to teammates on the hosts you are connected to."
+              ? tr("You are hidden: nobody sees your connections.")
+              : tr("Visible to teammates on the hosts you are connected to.")
           }
           last
           control={
@@ -281,8 +304,8 @@ function SignedIn({
                   const p = await ipc.accountSetPresenceHidden(!e.target.checked);
                   qc.setQueryData(keys.profile, p);
                   return p.presence_hidden
-                    ? "You are now hidden from teammates"
-                    : "Teammates can see your connections again";
+                    ? tr("You are now hidden from teammates")
+                    : tr("Teammates can see your connections again");
                 })
               }
             />
@@ -291,27 +314,40 @@ function SignedIn({
       </SectionCard>
 
       <SectionCard
-        title="AI command suggestions"
-        description="Ask AI in the terminal side panel (Ctrl+Shift+A) turns a short request into one command for you to review. Off until you turn it on."
+        title={tr("AI command suggestions")}
+        description={tr(
+          "Ask AI in the terminal side panel (Ctrl+Shift+A) turns a short request into one command for you to review. Off until you turn it on.",
+        )}
       >
         {ai.data && !ai.data.available ? (
           <Typography variant="body2" color="text.secondary">
-            This server has no AI provider configured. Self-hosted: set{" "}
-            <Mono>TERMOSO_AI__API_KEY</Mono> (your own Chutes key or any OpenAI-compatible endpoint
-            via <Mono>TERMOSO_AI__URL</Mono>).
+            {trx(
+              "This server has no AI provider configured. Self-hosted: set {key} (your own Chutes key or any OpenAI-compatible endpoint via {url}).",
+              { key: <Mono>TERMOSO_AI__API_KEY</Mono>, url: <Mono>TERMOSO_AI__URL</Mono> },
+            )}
           </Typography>
         ) : (
           <>
             <SettingRow
-              label="Ask AI"
+              label={tr("Ask AI")}
               hint={
                 ai.data
                   ? ai.data.enabled
-                    ? `${providerLabel(ai.data)} · ${remainingToday(ai.data)} of ${ai.data.daily_quota} requests left today`
-                    : `Off. ${providerLabel(ai.data)}, ${ai.data.daily_quota} requests per day once enabled.`
+                    ? tr(
+                        "{providerLabel} · {remainingToday} of {daily_quota} requests left today",
+                        {
+                          providerLabel: providerLabel(ai.data),
+                          remainingToday: remainingToday(ai.data),
+                          daily_quota: ai.data.daily_quota,
+                        },
+                      )
+                    : tr("Off. {providerLabel}, {daily_quota} requests per day once enabled.", {
+                        providerLabel: providerLabel(ai.data),
+                        daily_quota: ai.data.daily_quota,
+                      })
                   : ai.isError
                     ? errorMessage(ai.error)
-                    : "Loading…"
+                    : tr("Loading…")
               }
               last={!ai.data}
               control={
@@ -323,8 +359,8 @@ function SignedIn({
                       const st = await ipc.aiSetEnabled(e.target.checked);
                       qc.setQueryData(keys.ai, st);
                       return st.enabled
-                        ? "AI suggestions are on for this account"
-                        : "AI suggestions are off";
+                        ? tr("AI suggestions are on for this account")
+                        : tr("AI suggestions are off");
                     })
                   }
                 />
@@ -339,7 +375,7 @@ function SignedIn({
         )}
       </SectionCard>
 
-      <SectionCard title="Vaults on this device">
+      <SectionCard title={tr("Vaults on this device")}>
         <Stack spacing={1}>
           {status.vaults.map((v) => (
             <EntityCard
@@ -353,13 +389,13 @@ function SignedIn({
               }
               title={v.name}
               subtitle={`${v.kind} · ${v.role}`}
-              trailing={!v.unlocked && <Chip size="small" color="warning" label="Locked" />}
+              trailing={!v.unlocked && <Chip size="small" color="warning" label={tr("Locked")} />}
             />
           ))}
         </Stack>
       </SectionCard>
 
-      <SectionCard title="Devices">
+      <SectionCard title={tr("Devices")}>
         {devices.isPending ? (
           <Loading pt={2} />
         ) : devices.error ? (
@@ -381,13 +417,13 @@ function SignedIn({
                 title={
                   <>
                     {d.name}
-                    {d.current && <Chip size="small" label="this device" sx={{ ml: 1 }} />}
+                    {d.current && <Chip size="small" label={tr("this device")} sx={{ ml: 1 }} />}
                   </>
                 }
                 subtitle={
                   <>
-                    {d.platform} · v{d.app_version} · seen{" "}
-                    {new Date(d.last_seen_at).toLocaleString()}
+                    {d.platform} · v{d.app_version} ·{" "}
+                    {tr("seen {date}", { date: new Date(d.last_seen_at).toLocaleString() })}
                     {d.last_ip && (
                       <>
                         {" · "}
@@ -399,7 +435,7 @@ function SignedIn({
                 actions={
                   !d.current && (
                     <ToolIconButton
-                      title="Revoke this device"
+                      title={tr("Revoke this device")}
                       onClick={() => setConfirm({ kind: "revoke", device: d })}
                     >
                       <DeleteOutlineRoundedIcon fontSize="small" />
@@ -415,25 +451,28 @@ function SignedIn({
       {confirm.kind === "signOut" && (
         <ConfirmDialog
           open
-          title="Sign out?"
-          confirmLabel="Sign out"
+          title={tr("Sign out?")}
+          confirmLabel={tr("Sign out")}
           danger
           busy={op.isPending}
           onCancel={() => setConfirm({ kind: "none" })}
           onConfirm={() =>
             op.mutate(async () => {
               await ipc.accountSignOut();
-              return "Signed out";
+              return tr("Signed out");
             })
           }
         >
-          Synced vaults and their keys are removed from this device; your local vault stays. Data on
-          the server is untouched and comes back when you sign in again.
+          {tr(
+            "Synced vaults and their keys are removed from this device; your local vault stays. Data on the server is untouched and comes back when you sign in again.",
+          )}
           {status.localCredentials > 0 && (
             <Alert severity="warning" sx={{ mt: 1.5 }}>
-              Sync of keys and identities is off: {status.localCredentials} of them exist only on
-              this device and will be deleted with the account. Export them or turn the sync on
-              first if you want to keep them.
+              {trn(
+                status.localCredentials,
+                "Sync of keys and identities is off: {count} of them exists only on this device and will be deleted with the account. Export it or turn the sync on first if you want to keep it.",
+                "Sync of keys and identities is off: {count} of them exist only on this device and will be deleted with the account. Export them or turn the sync on first if you want to keep them.",
+              )}
             </Alert>
           )}
         </ConfirmDialog>
@@ -441,23 +480,29 @@ function SignedIn({
       {confirm.kind === "credentials" && (
         <ConfirmDialog
           open
-          title={confirm.on ? "Sync keys and identities?" : "Keep keys and identities local?"}
-          confirmLabel={confirm.on ? "Sync" : "Keep local"}
+          title={
+            confirm.on ? tr("Sync keys and identities?") : tr("Keep keys and identities local?")
+          }
+          confirmLabel={confirm.on ? tr("Sync") : tr("Keep local")}
           danger={!confirm.on}
           busy={op.isPending}
           onCancel={() => setConfirm({ kind: "none" })}
           onConfirm={() => setCredentialSync(confirm.on)}
         >
           {confirm.on
-            ? "Identities, keys and certificates of your Personal vault are uploaded encrypted with your vault key and pulled from your other devices. The server never sees them in the clear."
-            : "Identities, keys and certificates of your Personal vault are deleted from the server and your other devices; the copies on this device stay and keep working. Hosts, groups, snippets and settings continue to sync. Keys added later stay here too, and everything local is deleted when you sign out."}
+            ? tr(
+                "Identities, keys and certificates of your Personal vault are uploaded encrypted with your vault key and pulled from your other devices. The server never sees them in the clear.",
+              )
+            : tr(
+                "Identities, keys and certificates of your Personal vault are deleted from the server and your other devices; the copies on this device stay and keep working. Hosts, groups, snippets and settings continue to sync. Keys added later stay here too, and everything local is deleted when you sign out.",
+              )}
         </ConfirmDialog>
       )}
       {confirm.kind === "revoke" && (
         <ConfirmDialog
           open
-          title="Revoke device?"
-          confirmLabel="Revoke"
+          title={tr("Revoke device?")}
+          confirmLabel={tr("Revoke")}
           danger
           busy={op.isPending}
           onCancel={() => setConfirm({ kind: "none" })}
@@ -465,11 +510,13 @@ function SignedIn({
             const id = confirm.device.id;
             op.mutate(async () => {
               await ipc.accountDeviceRevoke(id);
-              return "Device revoked";
+              return tr("Device revoked");
             });
           }}
         >
-          <b>{confirm.device.name}</b> will be signed out and must log in again to sync.
+          {trx("{device} will be signed out and must log in again to sync.", {
+            device: <b>{confirm.device.name}</b>,
+          })}
         </ConfirmDialog>
       )}
     </>

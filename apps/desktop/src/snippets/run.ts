@@ -12,6 +12,7 @@ import {
   terminalStore,
   type Pane,
 } from "@/terminal/store";
+import { tr } from "@/i18n";
 
 export type TargetState = "pending" | "connecting" | "running" | "done" | "failed";
 
@@ -77,7 +78,7 @@ export function summarize(run: SnippetRun): string {
   const total = run.targets.length;
   if (run.finishedAt === null) return `Running on ${total} ${total === 1 ? "target" : "targets"}…`;
   if (failed === 0) return `Done on ${ok} of ${total} ${total === 1 ? "target" : "targets"}`;
-  return `${ok} succeeded, ${failed} failed`;
+  return tr("{ok} succeeded, {failed} failed", { ok, failed });
 }
 
 /** Call `cb` once every target of the run has settled. */
@@ -118,7 +119,7 @@ function hostTarget(
   host: HostCard | undefined,
   hostId: Uuid,
 ): Pick<RunTarget, "label" | "subtitle"> {
-  if (!host) return { label: "Removed host", subtitle: hostId };
+  if (!host) return { label: tr("Removed host"), subtitle: hostId };
   const port = host.port === (host.protocol === "telnet" ? 23 : 22) ? "" : `:${host.port}`;
   return {
     label: host.label,
@@ -146,7 +147,7 @@ function buildTargets(req: RunRequest): RunTarget[] {
       opened: false,
       state: pane.status === "connected" ? "pending" : "failed",
       exit: null,
-      message: pane.status === "connected" ? null : "Terminal is not connected",
+      message: pane.status === "connected" ? null : tr("Terminal is not connected"),
     });
   }
 
@@ -184,7 +185,7 @@ function buildTargets(req: RunRequest): RunTarget[] {
       opened: paneId !== null,
       state: paneId ? "connecting" : "failed",
       exit: null,
-      message: paneId ? null : "Could not open a terminal",
+      message: paneId ? null : tr("Could not open a terminal"),
     });
   }
   return targets;
@@ -219,7 +220,7 @@ async function drive(runId: string, target: RunTarget, req: RunRequest, expected
       await waitPane(paneId, (p) => p.status !== "connecting");
       const pane = terminalStore.get().panes[paneId];
       if (pane?.status !== "connected") {
-        fail(pane?.message ?? "Connection failed");
+        fail(pane?.message ?? tr("Connection failed"));
         return;
       }
       await Promise.race([
@@ -228,7 +229,7 @@ async function drive(runId: string, target: RunTarget, req: RunRequest, expected
       ]);
     }
     if (terminalStore.get().panes[paneId]?.status !== "connected") {
-      fail("Terminal is not connected");
+      fail(tr("Terminal is not connected"));
       return;
     }
     patchTarget(runId, target.key, { state: "running" });
@@ -237,7 +238,7 @@ async function drive(runId: string, target: RunTarget, req: RunRequest, expected
       : watchCommands(paneId, expected, terminalStore.get().panes[paneId]?.integration ?? false);
     const res = await ipc.snippetRun(req.snippet.id, [paneId], req.vars, req.paste ?? false);
     if (outcome === null) {
-      patchTarget(runId, target.key, { state: "done", message: "Pasted" });
+      patchTarget(runId, target.key, { state: "done", message: tr("Pasted") });
       return;
     }
     const exit = await outcome;
@@ -245,7 +246,7 @@ async function drive(runId: string, target: RunTarget, req: RunRequest, expected
     patchTarget(runId, target.key, {
       state: failed ? "failed" : "done",
       exit,
-      message: failed ? `Exit code ${exit}` : exit === null ? "Sent" : null,
+      message: failed ? tr("Exit code {exit}", { exit }) : exit === null ? tr("Sent") : null,
     });
     if (res.closeAfterRun) void closePane(paneId);
   } catch (e) {

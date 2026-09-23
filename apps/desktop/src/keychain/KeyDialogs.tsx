@@ -16,6 +16,7 @@ import {
 import type { HostCard, KeyCard } from "@/ipc/types";
 import { Field, Mono } from "@/components/ui";
 import { HostAvatar } from "@/hosts/HostAvatar";
+import { tr, trx } from "@/i18n";
 
 interface Base {
   open: boolean;
@@ -42,12 +43,14 @@ export function PassphraseDialog({
 
   return (
     <Dialog open={open} onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle>Change passphrase</DialogTitle>
+      <DialogTitle>{tr("Change passphrase")}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           {card.encrypted && (
             <Field
-              label={needCurrent ? "Current passphrase" : "Current passphrase (stored, optional)"}
+              label={
+                needCurrent ? tr("Current passphrase") : tr("Current passphrase (stored, optional)")
+              }
             >
               <TextField
                 autoFocus
@@ -57,7 +60,7 @@ export function PassphraseDialog({
               />
             </Field>
           )}
-          <Field label="New passphrase (empty removes it)">
+          <Field label={tr("New passphrase (empty removes it)")}>
             <TextField
               autoFocus={!card.encrypted}
               type="password"
@@ -65,13 +68,13 @@ export function PassphraseDialog({
               onChange={(e) => setNext(e.target.value)}
             />
           </Field>
-          <Field label="Confirm">
+          <Field label={tr("Confirm")}>
             <TextField
               type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               error={mismatch}
-              helperText={mismatch ? "Passphrases differ" : undefined}
+              helperText={mismatch ? tr("Passphrases differ") : undefined}
             />
           </Field>
           {next.length > 0 && (
@@ -79,14 +82,14 @@ export function PassphraseDialog({
               control={
                 <Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)} />
               }
-              label="Remember the new passphrase"
+              label={tr("Remember the new passphrase")}
             />
           )}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onCancel} disabled={busy} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           variant="contained"
@@ -99,7 +102,7 @@ export function PassphraseDialog({
             })
           }
         >
-          Save
+          {tr("Save")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -133,15 +136,16 @@ export function ExportKeyDialog({
 
   return (
     <Dialog open={open} onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle>Export private key</DialogTitle>
+      <DialogTitle>{tr("Export private key")}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           <Alert severity="warning" variant="outlined">
-            The private key leaves the encrypted vault. Protect the exported copy with a passphrase
-            unless you have a good reason not to.
+            {tr(
+              "The private key leaves the encrypted vault. Protect the exported copy with a passphrase unless you have a good reason not to.",
+            )}
           </Alert>
           {needCurrent && (
-            <Field label="Current passphrase">
+            <Field label={tr("Current passphrase")}>
               <TextField
                 autoFocus
                 type="password"
@@ -150,14 +154,14 @@ export function ExportKeyDialog({
               />
             </Field>
           )}
-          <Field label="Passphrase for the exported copy">
+          <Field label={tr("Passphrase for the exported copy")}>
             <TextField
               type="password"
               value={exportPass}
               onChange={(e) => setExportPass(e.target.value)}
             />
           </Field>
-          <Field label="Confirm">
+          <Field label={tr("Confirm")}>
             <TextField
               type="password"
               value={confirm}
@@ -165,9 +169,9 @@ export function ExportKeyDialog({
               error={mismatch}
               helperText={
                 mismatch
-                  ? "Passphrases differ"
+                  ? tr("Passphrases differ")
                   : exportPass.length === 0
-                    ? "Empty = unencrypted export"
+                    ? tr("Empty = unencrypted export")
                     : undefined
               }
             />
@@ -176,20 +180,20 @@ export function ExportKeyDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onCancel} disabled={busy} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           disabled={mismatch || busy || (needCurrent && current.length === 0)}
           onClick={() => onConfirm(args("clipboard"))}
         >
-          Copy
+          {tr("Copy")}
         </Button>
         <Button
           variant="contained"
           disabled={mismatch || busy || (needCurrent && current.length === 0)}
           onClick={() => onConfirm(args("file"))}
         >
-          Save to file…
+          {tr("Save to file…")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -219,15 +223,16 @@ export function ExportToHostDialog({
 
   return (
     <Dialog open={open} onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle>Export key to host</DialogTitle>
+      <DialogTitle>{tr("Export key to host")}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           <Typography variant="body2" color="text.secondary">
-            Adds the public half of <b>{card.label}</b> to <Mono>~/.ssh/authorized_keys</Mono> on
-            the selected host, connecting with the host&apos;s current credentials. Nothing else is
-            changed; an already present key is left as is.
+            {trx(
+              "Adds the public half of {key} to {file} on the selected host, connecting with the host's current credentials. Nothing else is changed; an already present key is left as is.",
+              { key: <b>{card.label}</b>, file: <Mono>~/.ssh/authorized_keys</Mono> },
+            )}
           </Typography>
-          <Field label="Host">
+          <Field label={tr("Host")}>
             <Autocomplete
               autoFocus
               options={sshHosts}
@@ -235,7 +240,7 @@ export function ExportToHostDialog({
               onChange={(_, v) => setHost(v)}
               getOptionLabel={(h) => h.label}
               isOptionEqualToValue={(a, b) => a.id === b.id}
-              noOptionsText="No SSH hosts"
+              noOptionsText={tr("No SSH hosts")}
               renderOption={(props, h) => {
                 const { key, ...rest } = props;
                 return (
@@ -260,26 +265,28 @@ export function ExportToHostDialog({
                   </li>
                 );
               }}
-              renderInput={(params) => <TextField {...params} placeholder="Choose a host" />}
+              renderInput={(params) => <TextField {...params} placeholder={tr("Choose a host")} />}
             />
           </Field>
           {where && (
             <Alert severity="info" variant="outlined">
-              You may be asked for the password or to trust the host key of <Mono>{where}</Mono>.
+              {trx("You may be asked for the password or to trust the host key of {host}.", {
+                host: <Mono>{where}</Mono>,
+              })}
             </Alert>
           )}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onCancel} disabled={busy} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           variant="contained"
           disabled={host === null || busy}
           onClick={() => host && onConfirm(host)}
         >
-          {busy ? "Connecting…" : "Export"}
+          {busy ? tr("Connecting…") : tr("Export")}
         </Button>
       </DialogActions>
     </Dialog>

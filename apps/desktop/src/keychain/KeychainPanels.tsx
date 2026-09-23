@@ -85,6 +85,7 @@ import {
   keyTypeLabel,
   labelFromPath,
 } from "./model";
+import { tr, trx } from "@/i18n";
 
 /* ---------------------------------------------------------------- tiles */
 
@@ -183,7 +184,7 @@ function PanelMenuButton({ items }: { items: MenuAction[] }) {
   if (items.length === 0) return null;
   return (
     <>
-      <IconButton aria-label="More" onClick={(e) => setAnchor(e.currentTarget)}>
+      <IconButton aria-label={tr("More")} onClick={(e) => setAnchor(e.currentTarget)}>
         <MoreHorizRoundedIcon fontSize="small" />
       </IconButton>
       <ActionMenu anchor={anchor} onClose={() => setAnchor(null)} items={items} />
@@ -204,7 +205,7 @@ function CertificateFacts({
   if (state === "unreadable" || !cert) {
     return (
       <Typography variant="caption" color="warning.main">
-        The attached certificate cannot be parsed.
+        {tr("The attached certificate cannot be parsed.")}
       </Typography>
     );
   }
@@ -215,10 +216,22 @@ function CertificateFacts({
           size="small"
           color={state === "valid" ? "success" : "warning"}
           variant="outlined"
-          label={state === "valid" ? "Valid" : state === "expired" ? "Expired" : "Not yet valid"}
+          label={
+            state === "valid"
+              ? tr("Valid")
+              : state === "expired"
+                ? tr("Expired")
+                : tr("Not yet valid")
+          }
         />
-        <Chip size="small" variant="outlined" label={cert.kind === "host" ? "Host" : "User"} />
-        {cert.keyId && <Chip size="small" variant="outlined" label={`ID ${cert.keyId}`} />}
+        <Chip
+          size="small"
+          variant="outlined"
+          label={cert.kind === "host" ? tr("Host") : tr("User")}
+        />
+        {cert.keyId && (
+          <Chip size="small" variant="outlined" label={tr("ID {keyId}", { keyId: cert.keyId })} />
+        )}
         {cert.serial > 0 && <Chip size="small" variant="outlined" label={`#${cert.serial}`} />}
       </Stack>
       <Typography variant="caption" color="text.secondary">
@@ -265,17 +278,20 @@ function CertificateField({
         multiline
         minRows={3}
         maxRows={6}
-        placeholder="Certificate"
+        placeholder={tr("Certificate")}
         error={error !== null || mismatch}
         helperText={
-          error ?? (mismatch ? `Issued for a different key (${preview.fingerprint})` : undefined)
+          error ??
+          (mismatch
+            ? tr("Issued for a different key ({fingerprint})", { fingerprint: preview.fingerprint })
+            : undefined)
         }
         slotProps={{
-          htmlInput: { ...mono, "aria-label": "Certificate" },
+          htmlInput: { ...mono, "aria-label": tr("Certificate") },
           input: {
             endAdornment: (
               <InputAdornment position="end" sx={{ alignSelf: "flex-start", mt: 1 }}>
-                <ToolIconButton title="Certificate file (*-cert.pub)…" onClick={onPickFile}>
+                <ToolIconButton title={tr("Certificate file (*-cert.pub)…")} onClick={onPickFile}>
                   <FolderOpenOutlinedIcon fontSize="small" />
                 </ToolIconButton>
               </InputAdornment>
@@ -374,7 +390,9 @@ export function NewKeyPanel({
           break;
         case "public":
           setDropNote(
-            "That is a public key (.pub); drop the private key file instead, or add it under New key → From SSH agent.",
+            tr(
+              "That is a public key (.pub); drop the private key file instead, or add it under New key → From SSH agent.",
+            ),
           );
           break;
         case "private":
@@ -386,14 +404,18 @@ export function NewKeyPanel({
   useFileDrop(takePaths);
 
   const pickPrivate = async () => {
-    const picked = await openFile({ multiple: false, directory: false, title: "Private key file" });
+    const picked = await openFile({
+      multiple: false,
+      directory: false,
+      title: tr("Private key file"),
+    });
     if (typeof picked === "string") takePaths([picked]);
   };
   const pickCert = async () => {
     const picked = await openFile({
       multiple: false,
       directory: false,
-      title: "Certificate (*-cert.pub)",
+      title: tr("Certificate (*-cert.pub)"),
     });
     if (typeof picked === "string") takeCertFile(picked);
   };
@@ -442,7 +464,7 @@ export function NewKeyPanel({
           bits: preview.bits,
           unreadable: false,
         })}${preview.encrypted ? " · passphrase-protected" : ""}`
-      : "Read on save; the file contents never leave the app core."
+      : tr("Read on save; the file contents never leave the app core.")
     : preview
       ? `${preview.putty ? "PuTTY .ppk, converted to OpenSSH on save" : "OpenSSH / PEM"} · ${keyTypeLabel(
           {
@@ -451,20 +473,20 @@ export function NewKeyPanel({
             unreadable: false,
           },
         )}${preview.encrypted ? " · passphrase-protected" : ""}`
-      : "OpenSSH, PEM / PKCS#8 or PuTTY .ppk (v2 / v3)";
+      : tr("OpenSSH, PEM / PKCS#8 or PuTTY .ppk (v2 / v3)");
 
   return (
     <SidePanel
-      title="New Key"
+      title={tr("New Key")}
       subtitle={vaultName}
       onClose={onClose}
       footer={
         <>
           <Button variant="text" color="inherit" onClick={onClose} disabled={busy}>
-            Cancel
+            {tr("Cancel")}
           </Button>
           <Button variant="contained" onClick={submit} disabled={!valid || busy}>
-            {busy ? "Saving…" : "Save"}
+            {busy ? tr("Saving…") : tr("Save")}
           </Button>
         </>
       }
@@ -474,8 +496,8 @@ export function NewKeyPanel({
           autoFocus={!focusCertificate}
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          placeholder="Label"
-          slotProps={{ htmlInput: { "aria-label": "Label" } }}
+          placeholder={tr("Label")}
+          slotProps={{ htmlInput: { "aria-label": tr("Label") } }}
         />
         {path === null ? (
           <TextField
@@ -485,10 +507,10 @@ export function NewKeyPanel({
             minRows={4}
             maxRows={10}
             required
-            placeholder="Private key *"
+            placeholder={tr("Private key *")}
             error={previewError !== null}
             helperText={previewError ?? privateHint}
-            slotProps={{ htmlInput: { ...mono, "aria-label": "Private key" } }}
+            slotProps={{ htmlInput: { ...mono, "aria-label": tr("Private key") } }}
           />
         ) : (
           <TextField
@@ -497,14 +519,14 @@ export function NewKeyPanel({
             error={previewError !== null}
             helperText={previewError ?? privateHint}
             slotProps={{
-              htmlInput: { "aria-label": "Private key file" },
+              htmlInput: { "aria-label": tr("Private key file") },
               input: {
                 startAdornment: adornment(<KeyOutlinedIcon fontSize="small" />),
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
                       size="small"
-                      aria-label="Remove file"
+                      aria-label={tr("Remove file")}
                       onClick={() => {
                         setPath(null);
                         setFilePreview({ value: null, error: null });
@@ -524,20 +546,22 @@ export function NewKeyPanel({
               type="password"
               value={passphrase}
               onChange={(e) => setPassphrase(e.target.value)}
-              placeholder="Passphrase *"
+              placeholder={tr("Passphrase *")}
               autoComplete="off"
               autoFocus={encrypted}
               slotProps={{
-                htmlInput: { "aria-label": "Passphrase" },
+                htmlInput: { "aria-label": tr("Passphrase") },
                 input: { startAdornment: adornment(<LockOutlinedIcon fontSize="small" />) },
               }}
-              helperText="The key is passphrase-protected; it is needed once to import."
+              helperText={tr("The key is passphrase-protected; it is needed once to import.")}
             />
             <FormControlLabel
               control={
                 <Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)} />
               }
-              label={<Typography variant="body2">Remember passphrase in the vault</Typography>}
+              label={
+                <Typography variant="body2">{tr("Remember passphrase in the vault")}</Typography>
+              }
             />
           </Stack>
         )}
@@ -546,21 +570,23 @@ export function NewKeyPanel({
           multiline
           minRows={3}
           maxRows={5}
-          placeholder="Public key"
+          placeholder={tr("Public key")}
           helperText={
             preview ? (
               <>
-                Derived from the private key · <Mono>{preview.fingerprint}</Mono>
+                {trx("Derived from the private key · {fingerprint}", {
+                  fingerprint: <Mono>{preview.fingerprint}</Mono>,
+                })}
               </>
             ) : undefined
           }
           slotProps={{
-            htmlInput: { ...mono, readOnly: true, "aria-label": "Public key" },
+            htmlInput: { ...mono, readOnly: true, "aria-label": tr("Public key") },
             input: {
               endAdornment: preview ? (
                 <InputAdornment position="end" sx={{ alignSelf: "flex-start", mt: 1 }}>
                   <ToolIconButton
-                    title="Copy public key"
+                    title={tr("Copy public key")}
                     onClick={() => void navigator.clipboard.writeText(preview.publicKey)}
                   >
                     <ContentCopyRoundedIcon fontSize="small" />
@@ -586,17 +612,21 @@ export function NewKeyPanel({
               error={certFileError !== null || certMismatch}
               helperText={
                 certFileError ??
-                (certMismatch ? `Issued for a different key (${certFile.fingerprint})` : undefined)
+                (certMismatch
+                  ? tr("Issued for a different key ({fingerprint})", {
+                      fingerprint: certFile.fingerprint,
+                    })
+                  : undefined)
               }
               slotProps={{
-                htmlInput: { "aria-label": "Certificate file" },
+                htmlInput: { "aria-label": tr("Certificate file") },
                 input: {
                   startAdornment: adornment(<WorkspacePremiumOutlinedIcon fontSize="small" />),
                   endAdornment: (
                     <InputAdornment position="end">
                       <IconButton
                         size="small"
-                        aria-label="Remove certificate file"
+                        aria-label={tr("Remove certificate file")}
                         onClick={() => {
                           setCertPath(null);
                           setCertFile(null);
@@ -634,9 +664,11 @@ export function NewKeyPanel({
           }}
         >
           <NoteAddOutlinedIcon sx={{ fontSize: 32, mb: 1, opacity: 0.7 }} />
-          <Typography variant="body2">Drag and drop a private key file to import</Typography>
+          <Typography variant="body2">
+            {tr("Drag and drop a private key file to import")}
+          </Typography>
           <Typography variant="caption" color="text.disabled">
-            .ppk, id_ed25519, *.pem — a *-cert.pub next to it attaches as certificate
+            {tr(".ppk, id_ed25519, *.pem — a *-cert.pub next to it attaches as certificate")}
           </Typography>
           {dropNote && (
             <Typography variant="caption" color="warning.main" sx={{ display: "block", mt: 1 }}>
@@ -645,7 +677,7 @@ export function NewKeyPanel({
           )}
         </Box>
         <Button variant="contained" fullWidth onClick={() => void pickPrivate()} disabled={busy}>
-          Import from key file
+          {tr("Import from key file")}
         </Button>
       </SectionCard>
     </SidePanel>
@@ -699,7 +731,7 @@ export function AgentKeyPanel({
   const takeCertFile = (p: string) => {
     if (path === null) {
       setDropNote(
-        "Pick the .pub file first to attach a certificate file, or paste the certificate.",
+        tr("Pick the .pub file first to attach a certificate file, or paste the certificate."),
       );
       return;
     }
@@ -716,7 +748,9 @@ export function AgentKeyPanel({
           takePublicFile(p);
           break;
         case "private":
-          setDropNote("That looks like a private key; only the public half (.pub) is stored here.");
+          setDropNote(
+            tr("That looks like a private key; only the public half (.pub) is stored here."),
+          );
           break;
       }
     }
@@ -727,7 +761,7 @@ export function AgentKeyPanel({
     const picked = await openFile({
       multiple: false,
       directory: false,
-      title: "Public key (*.pub)",
+      title: tr("Public key (*.pub)"),
     });
     if (typeof picked === "string") takePaths([picked]);
   };
@@ -735,7 +769,7 @@ export function AgentKeyPanel({
     const picked = await openFile({
       multiple: false,
       directory: false,
-      title: "Certificate (*-cert.pub)",
+      title: tr("Certificate (*-cert.pub)"),
     });
     if (typeof picked === "string") takeCertFile(picked);
   };
@@ -756,34 +790,34 @@ export function AgentKeyPanel({
 
   const a = agent.data;
   const agentStatus = agent.isPending
-    ? "Looking for an agent…"
+    ? tr("Looking for an agent…")
     : a?.available
       ? a.keys.length === 0
-        ? "Agent reachable, no keys loaded (ssh-add or unlock your key manager)."
+        ? tr("Agent reachable, no keys loaded (ssh-add or unlock your key manager).")
         : `Agent reachable · ${a.keys.length} key${a.keys.length === 1 ? "" : "s"}`
-      : `No agent: ${a?.error ?? errorMessage(agent.error)}`;
+      : tr("No agent: {value}", { value: a?.error ?? errorMessage(agent.error) });
 
   return (
     <SidePanel
-      title="From SSH agent"
+      title={tr("From SSH agent")}
       subtitle={vaultName}
       onClose={onClose}
       footer={
         <>
           <Button variant="text" color="inherit" onClick={onClose} disabled={busy}>
-            Cancel
+            {tr("Cancel")}
           </Button>
           <Button variant="contained" onClick={submit} disabled={!valid || busy}>
-            {busy ? "Saving…" : "Save"}
+            {busy ? tr("Saving…") : tr("Save")}
           </Button>
         </>
       }
     >
       <SectionCard
-        title="Keys in the agent"
+        title={tr("Keys in the agent")}
         action={
           <ToolIconButton
-            title="Refresh"
+            title={tr("Refresh")}
             onClick={() => void agent.refetch()}
             disabled={agent.isFetching}
           >
@@ -813,7 +847,7 @@ export function AgentKeyPanel({
                   sx={{ display: "block" }}
                 >
                   {k.keyType}
-                  {k.certificate ? " · certificate" : ""} · <Mono>{k.fingerprint}</Mono>
+                  {k.certificate ? " · " + tr("certificate") : ""} · <Mono>{k.fingerprint}</Mono>
                 </Typography>
               </Box>
               {added ? (
@@ -822,7 +856,7 @@ export function AgentKeyPanel({
                   variant="outlined"
                   color="success"
                   icon={<CheckRoundedIcon />}
-                  label="In vault"
+                  label={tr("In vault")}
                 />
               ) : (
                 <Button
@@ -830,26 +864,27 @@ export function AgentKeyPanel({
                   variant="tonal"
                   onClick={() => addFromAgent(k)}
                   disabled={busy}
-                  aria-label={`Add ${k.comment.trim() || k.fingerprint}`}
+                  aria-label={tr("Add {value}", { value: k.comment.trim() || k.fingerprint })}
                 >
-                  Add
+                  {tr("Add")}
                 </Button>
               )}
             </Box>
           );
         })}
         <Typography variant="caption" color="text.disabled">
-          Only the public key is saved. On connect the agent signs with the matching private key; if
-          it is not loaded there, the connection fails instead of falling back to other keys.
+          {tr(
+            "Only the public key is saved. On connect the agent signs with the matching private key; if it is not loaded there, the connection fails instead of falling back to other keys.",
+          )}
         </Typography>
       </SectionCard>
 
-      <SectionCard title="Public key file">
+      <SectionCard title={tr("Public key file")}>
         <TextField
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          placeholder="Label (defaults to the key comment)"
-          slotProps={{ htmlInput: { "aria-label": "Label" } }}
+          placeholder={tr("Label (defaults to the key comment)")}
+          slotProps={{ htmlInput: { "aria-label": tr("Label") } }}
         />
         {path === null ? (
           <TextField
@@ -858,23 +893,23 @@ export function AgentKeyPanel({
             multiline
             minRows={3}
             maxRows={6}
-            placeholder="Public key (ssh-ed25519 AAAA… comment)"
-            helperText="Paste the contents of id_*.pub, or pick the file below."
-            slotProps={{ htmlInput: { ...mono, "aria-label": "Public key" } }}
+            placeholder={tr("Public key (ssh-ed25519 AAAA… comment)")}
+            helperText={tr("Paste the contents of id_*.pub, or pick the file below.")}
+            slotProps={{ htmlInput: { ...mono, "aria-label": tr("Public key") } }}
           />
         ) : (
           <TextField
             value={path}
             disabled
             slotProps={{
-              htmlInput: { "aria-label": "Public key file" },
+              htmlInput: { "aria-label": tr("Public key file") },
               input: {
                 startAdornment: adornment(<VpnKeyOutlinedIcon fontSize="small" />),
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
                       size="small"
-                      aria-label="Remove file"
+                      aria-label={tr("Remove file")}
                       onClick={() => {
                         setPath(null);
                         setCertPath(null);
@@ -890,7 +925,7 @@ export function AgentKeyPanel({
         )}
         {path !== null && certPath === null ? (
           <Button variant="text" color="inherit" onClick={() => void pickCert()} disabled={busy}>
-            Attach certificate file (*-cert.pub)…
+            {tr("Attach certificate file (*-cert.pub)…")}
           </Button>
         ) : path === null ? (
           <CertificateField
@@ -904,14 +939,14 @@ export function AgentKeyPanel({
             value={certPath}
             disabled
             slotProps={{
-              htmlInput: { "aria-label": "Certificate file" },
+              htmlInput: { "aria-label": tr("Certificate file") },
               input: {
                 startAdornment: adornment(<WorkspacePremiumOutlinedIcon fontSize="small" />),
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
                       size="small"
-                      aria-label="Remove certificate file"
+                      aria-label={tr("Remove certificate file")}
                       onClick={() => setCertPath(null)}
                     >
                       <CloseRoundedIcon fontSize="small" />
@@ -933,7 +968,7 @@ export function AgentKeyPanel({
           </Alert>
         )}
         <Button variant="tonal" fullWidth onClick={() => void pickPublic()} disabled={busy}>
-          Pick a .pub file
+          {tr("Pick a .pub file")}
         </Button>
       </SectionCard>
     </SidePanel>
@@ -985,7 +1020,7 @@ function StoredCertificateEditor({
               disabled={busy}
               onClick={() => onSetCertificate(null)}
             >
-              Remove certificate
+              {tr("Remove certificate")}
             </Button>
           )}
           {dirty && cert.trim().length > 0 && (
@@ -995,7 +1030,7 @@ function StoredCertificateEditor({
               disabled={busy}
               onClick={() => onSetCertificate(cert)}
             >
-              {hasCert ? "Replace certificate" : "Attach certificate"}
+              {hasCert ? tr("Replace certificate") : tr("Attach certificate")}
             </Button>
           )}
         </Stack>
@@ -1060,7 +1095,7 @@ export function EditKeyPanel({
     const picked = await openFile({
       multiple: false,
       directory: false,
-      title: "Certificate (*-cert.pub)",
+      title: tr("Certificate (*-cert.pub)"),
     });
     if (typeof picked === "string") onSetCertificateFile(picked);
   };
@@ -1071,7 +1106,7 @@ export function EditKeyPanel({
 
   return (
     <SidePanel
-      title="Edit Key"
+      title={tr("Edit Key")}
       subtitle={vaultName}
       onClose={onClose}
       actions={<PanelMenuButton items={menu} />}
@@ -1085,8 +1120,8 @@ export function EditKeyPanel({
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           }}
           required
-          placeholder="Label *"
-          slotProps={{ htmlInput: { "aria-label": "Label", readOnly } }}
+          placeholder={tr("Label *")}
+          slotProps={{ htmlInput: { "aria-label": tr("Label"), readOnly } }}
         />
         <Box
           sx={{
@@ -1104,19 +1139,19 @@ export function EditKeyPanel({
               <LockOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
             )}
             <Typography variant="body2" noWrap sx={{ flex: 1, minWidth: 0 }}>
-              Private key
+              {tr("Private key")}
             </Typography>
             {!card.agentBacked && (
               <>
                 <ToolIconButton
-                  title="Change passphrase"
+                  title={tr("Change passphrase")}
                   onClick={onChangePassphrase}
                   disabled={card.unreadable || readOnly}
                 >
                   <PasswordRoundedIcon fontSize="small" />
                 </ToolIconButton>
                 <ToolIconButton
-                  title="Export private key…"
+                  title={tr("Export private key…")}
                   onClick={onExportPrivate}
                   disabled={card.unreadable}
                 >
@@ -1132,9 +1167,11 @@ export function EditKeyPanel({
             noWrap
           >
             {card.unreadable
-              ? "Stored, but could not be parsed"
+              ? tr("Stored, but could not be parsed")
               : card.agentBacked
-                ? `${keyTypeLabel(card)} · in the system SSH agent · not stored in the vault`
+                ? tr("{keyTypeLabel} · in the system SSH agent · not stored in the vault", {
+                    keyTypeLabel: keyTypeLabel(card),
+                  })
                 : card.securityKey
                   ? `${keyTypeLabel(card)} · private key stays on the security key${
                       card.securityKey.flags?.resident ? " · resident" : ""
@@ -1155,15 +1192,15 @@ export function EditKeyPanel({
           multiline
           minRows={3}
           maxRows={6}
-          placeholder="Public key"
+          placeholder={tr("Public key")}
           helperText={card.fingerprint ? <Mono>{card.fingerprint}</Mono> : undefined}
           slotProps={{
-            htmlInput: { ...mono, readOnly: true, "aria-label": "Public key" },
+            htmlInput: { ...mono, readOnly: true, "aria-label": tr("Public key") },
             input: {
               endAdornment: card.publicKey ? (
                 <InputAdornment position="end" sx={{ alignSelf: "flex-start", mt: 1 }}>
                   <ToolIconButton
-                    title="Copy public key"
+                    title={tr("Copy public key")}
                     onClick={() => void navigator.clipboard.writeText(card.publicKey)}
                   >
                     <ContentCopyRoundedIcon fontSize="small" />
@@ -1189,17 +1226,19 @@ export function EditKeyPanel({
         )}
       </SectionCard>
 
-      <SectionCard title="Key export">
+      <SectionCard title={tr("Key export")}>
         <Button
           variant="contained"
           fullWidth
           onClick={onExportToHost}
           disabled={busy || card.unreadable}
         >
-          Export to host
+          {tr("Export to host")}
         </Button>
         <Typography variant="caption" color="text.secondary">
-          Adds the public key to <Mono>~/.ssh/authorized_keys</Mono> on a saved host.
+          {trx("Adds the public key to {file} on a saved host.", {
+            file: <Mono>~/.ssh/authorized_keys</Mono>,
+          })}
         </Typography>
       </SectionCard>
     </SidePanel>
@@ -1247,13 +1286,13 @@ export function GenerateKeyPanel({
 
   return (
     <SidePanel
-      title="Generate Key"
+      title={tr("Generate Key")}
       subtitle={vaultName}
       onClose={onClose}
       footer={
         <>
           <Button variant="text" color="inherit" onClick={onClose} disabled={busy}>
-            Cancel
+            {tr("Cancel")}
           </Button>
           <Button
             variant="contained"
@@ -1269,7 +1308,7 @@ export function GenerateKeyPanel({
               })
             }
           >
-            {busy ? "Generating…" : "Generate & Save"}
+            {busy ? tr("Generating…") : tr("Generate & Save")}
           </Button>
         </>
       }
@@ -1280,17 +1319,17 @@ export function GenerateKeyPanel({
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           required
-          placeholder="Label *"
-          slotProps={{ htmlInput: { "aria-label": "Label" } }}
+          placeholder={tr("Label *")}
+          slotProps={{ htmlInput: { "aria-label": tr("Label") } }}
         />
         <TextField
           type={show ? "text" : "password"}
           value={passphrase}
           onChange={(e) => setPassphrase(e.target.value)}
-          placeholder="Passphrase"
+          placeholder={tr("Passphrase")}
           autoComplete="new-password"
           slotProps={{
-            htmlInput: { "aria-label": "Passphrase" },
+            htmlInput: { "aria-label": tr("Passphrase") },
             input: {
               startAdornment: adornment(<LockOutlinedIcon fontSize="small" />),
               endAdornment: (
@@ -1298,7 +1337,7 @@ export function GenerateKeyPanel({
                   <IconButton
                     size="small"
                     onClick={() => setShow((v) => !v)}
-                    aria-label="Toggle passphrase visibility"
+                    aria-label={tr("Toggle passphrase visibility")}
                   >
                     {show ? (
                       <VisibilityOffRoundedIcon fontSize="small" />
@@ -1317,12 +1356,12 @@ export function GenerateKeyPanel({
               type={show ? "text" : "password"}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              placeholder="Confirm passphrase"
+              placeholder={tr("Confirm passphrase")}
               autoComplete="new-password"
               error={mismatch}
-              helperText={mismatch ? "Passphrases differ" : undefined}
+              helperText={mismatch ? tr("Passphrases differ") : undefined}
               slotProps={{
-                htmlInput: { "aria-label": "Confirm passphrase" },
+                htmlInput: { "aria-label": tr("Confirm passphrase") },
                 input: { startAdornment: adornment(<LockOutlinedIcon fontSize="small" />) },
               }}
             />
@@ -1330,7 +1369,9 @@ export function GenerateKeyPanel({
               control={
                 <Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)} />
               }
-              label={<Typography variant="body2">Remember passphrase in the vault</Typography>}
+              label={
+                <Typography variant="body2">{tr("Remember passphrase in the vault")}</Typography>
+              }
             />
           </>
         )}
@@ -1340,11 +1381,11 @@ export function GenerateKeyPanel({
         <Stack direction="row" spacing={1.5}>
           <TextField
             select
-            label="Key type"
+            label={tr("Key type")}
             value={family}
             onChange={(e) => setFamily(e.target.value as Family)}
             sx={{ flex: 1 }}
-            slotProps={{ htmlInput: { "aria-label": "Key type" } }}
+            slotProps={{ htmlInput: { "aria-label": tr("Key type") } }}
           >
             <MenuItem value="ed25519">ED25519</MenuItem>
             <MenuItem value="rsa">RSA</MenuItem>
@@ -1353,7 +1394,7 @@ export function GenerateKeyPanel({
           {family === "rsa" && (
             <TextField
               select
-              label="Key size"
+              label={tr("Key size")}
               value={rsaBits}
               onChange={(e) => setRsaBits(Number(e.target.value))}
               sx={{ width: 120 }}
@@ -1368,7 +1409,7 @@ export function GenerateKeyPanel({
           {family === "ecdsa" && (
             <TextField
               select
-              label="Curve"
+              label={tr("Curve")}
               value={ecdsaBits}
               onChange={(e) => setEcdsaBits(Number(e.target.value))}
               sx={{ width: 120 }}
@@ -1384,14 +1425,15 @@ export function GenerateKeyPanel({
         <TextField
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          placeholder="Comment"
-          helperText="Appended to the public key, e.g. you@laptop"
-          slotProps={{ htmlInput: { "aria-label": "Comment" } }}
+          placeholder={tr("Comment")}
+          helperText={tr("Appended to the public key, e.g. you@laptop")}
+          slotProps={{ htmlInput: { "aria-label": tr("Comment") } }}
         />
         {family === "ed25519" && (
           <Typography variant="caption" color="text.secondary">
-            ED25519 is small, fast and the recommended default. Use RSA only for servers that do not
-            accept it.
+            {tr(
+              "ED25519 is small, fast and the recommended default. Use RSA only for servers that do not accept it.",
+            )}
           </Typography>
         )}
         {error && (
@@ -1520,7 +1562,7 @@ export function IdentityPanel({
   const lock = { readOnly, disabled: readOnly };
 
   const rowTitle: Record<AuthRow, string> = {
-    sshid: "SSH ID",
+    sshid: tr("SSH ID"),
     key: "Key",
     certificate: "Certificate",
     fido2: "FIDO2",
@@ -1534,14 +1576,14 @@ export function IdentityPanel({
 
   return (
     <SidePanel
-      title={readOnly ? "Identity" : initial ? "Edit Identity" : "New Identity"}
+      title={readOnly ? tr("Identity") : initial ? tr("Edit Identity") : tr("New Identity")}
       subtitle={vaultName}
       onClose={onClose}
       actions={<PanelMenuButton items={menu} />}
       footer={
         <>
           <Button variant="text" color="inherit" onClick={onClose} disabled={busy}>
-            {readOnly ? "Close" : "Cancel"}
+            {readOnly ? tr("Close") : tr("Cancel")}
           </Button>
           <Button
             variant="contained"
@@ -1560,7 +1602,7 @@ export function IdentityPanel({
               })
             }
           >
-            {busy && !readOnly ? "Saving…" : "Save"}
+            {busy && !readOnly ? tr("Saving…") : tr("Save")}
           </Button>
         </>
       }
@@ -1572,9 +1614,9 @@ export function IdentityPanel({
             autoFocus={!readOnly}
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="Label"
+            placeholder={tr("Label")}
             sx={{ flex: 1 }}
-            slotProps={{ htmlInput: { "aria-label": "Label", readOnly } }}
+            slotProps={{ htmlInput: { "aria-label": tr("Label"), readOnly } }}
           />
         </Stack>
         <TextField
@@ -1582,9 +1624,9 @@ export function IdentityPanel({
           onChange={(e) => setUsername(e.target.value)}
           autoComplete="off"
           required={!sshId}
-          placeholder={sshId ? "Username (defaults to your SSH ID handle)" : "Username *"}
+          placeholder={sshId ? tr("Username (defaults to your SSH ID handle)") : tr("Username *")}
           slotProps={{
-            htmlInput: { "aria-label": "Username", readOnly },
+            htmlInput: { "aria-label": tr("Username"), readOnly },
             input: { startAdornment: adornment(<PersonOutlineRoundedIcon fontSize="small" />) },
           }}
         />
@@ -1593,29 +1635,29 @@ export function IdentityPanel({
           value={password ?? ""}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="new-password"
-          placeholder={initial?.hasPassword && password === null ? "••••••••••••" : "Password"}
+          placeholder={initial?.hasPassword && password === null ? "••••••••••••" : tr("Password")}
           helperText={
             initial?.hasPassword && password === null
               ? readOnly
-                ? "A password is stored."
-                : "A password is stored. Type to replace it or clear it to remove."
+                ? tr("A password is stored.")
+                : tr("A password is stored. Type to replace it or clear it to remove.")
               : undefined
           }
           slotProps={{
-            htmlInput: { "aria-label": "Password", readOnly },
+            htmlInput: { "aria-label": tr("Password"), readOnly },
             input: {
               startAdornment: adornment(<PasswordRoundedIcon fontSize="small" />),
               endAdornment: (
                 <InputAdornment position="end">
                   {initial?.hasPassword && password === null && !readOnly && (
                     <Button size="small" color="inherit" onClick={() => setPassword("")}>
-                      Clear
+                      {tr("Clear")}
                     </Button>
                   )}
                   <IconButton
                     size="small"
                     onClick={() => setShowPassword((v) => !v)}
-                    aria-label="Toggle password visibility"
+                    aria-label={tr("Toggle password visibility")}
                     disabled={readOnly}
                   >
                     {showPassword ? (
@@ -1638,16 +1680,18 @@ export function IdentityPanel({
             onChange={(e) =>
               setSshIdType(e.target.value === "" ? null : (e.target.value as SshIdKeyType))
             }
-            helperText="Signs in with this account's passkeys (Settings → SSH ID). Pick which one to offer first."
+            helperText={tr(
+              "Signs in with this account's passkeys (Settings → SSH ID). Pick which one to offer first.",
+            )}
             slotProps={{
-              htmlInput: { "aria-label": "SSH ID key type" },
+              htmlInput: { "aria-label": tr("SSH ID key type") },
               input: {
                 startAdornment: adornment(rowIcon.sshid),
                 endAdornment: (
                   <InputAdornment position="end" sx={{ mr: 2 }}>
                     <IconButton
                       size="small"
-                      aria-label="Remove SSH ID"
+                      aria-label={tr("Remove SSH ID")}
                       onClick={() => removeRow("sshid")}
                       disabled={readOnly}
                     >
@@ -1661,7 +1705,7 @@ export function IdentityPanel({
             <MenuItem value="">
               {sshIdTypeLabel(SSH_ID_DEFAULT_TYPE)}
               <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                Default
+                {tr("Default")}
               </Typography>
             </MenuItem>
             {SSH_ID_KEY_TYPES.filter((t) => t.value !== SSH_ID_DEFAULT_TYPE).map((t) => (
@@ -1696,19 +1740,19 @@ export function IdentityPanel({
             helperText={
               selectedKey
                 ? keyCertId && !certId
-                  ? "This key carries a certificate; it is used automatically."
+                  ? tr("This key carries a certificate; it is used automatically.")
                   : keyTypeLabel(selectedKey)
                 : undefined
             }
             slotProps={{
-              htmlInput: { "aria-label": "Key" },
+              htmlInput: { "aria-label": tr("Key") },
               input: {
                 startAdornment: adornment(rowIcon.key),
                 endAdornment: (
                   <InputAdornment position="end" sx={{ mr: 2 }}>
                     <IconButton
                       size="small"
-                      aria-label="Remove key"
+                      aria-label={tr("Remove key")}
                       onClick={() => removeRow("key")}
                       disabled={readOnly}
                     >
@@ -1720,7 +1764,7 @@ export function IdentityPanel({
             }}
           >
             <MenuItem value="">
-              <em>Choose a key</em>
+              <em>{tr("Choose a key")}</em>
             </MenuItem>
             {softwareKeys.map((k) => (
               <MenuItem key={k.id} value={k.id}>
@@ -1732,13 +1776,13 @@ export function IdentityPanel({
                   sx={{ ml: 1 }}
                 >
                   {keyTypeLabel(k).replace(/^Type /, "")}
-                  {k.certificate ? " · cert" : ""}
+                  {k.certificate ? " · " + tr("cert") : ""}
                 </Typography>
               </MenuItem>
             ))}
             <MenuItem value="__new" sx={{ color: "primary.main" }}>
               <AddRoundedIcon fontSize="small" sx={{ mr: 1.25 }} />
-              New key…
+              {tr("New key…")}
             </MenuItem>
           </TextField>
         )}
@@ -1753,18 +1797,18 @@ export function IdentityPanel({
               certKey?.certificate
                 ? certificateSummary(certKey.certificate)
                 : certified.length === 0
-                  ? "No key has a certificate yet — attach one in Edit Key."
-                  : "Selecting a certificate also selects its key."
+                  ? tr("No key has a certificate yet — attach one in Edit Key.")
+                  : tr("Selecting a certificate also selects its key.")
             }
             slotProps={{
-              htmlInput: { "aria-label": "Certificate" },
+              htmlInput: { "aria-label": tr("Certificate") },
               input: {
                 startAdornment: adornment(rowIcon.certificate),
                 endAdornment: (
                   <InputAdornment position="end" sx={{ mr: 2 }}>
                     <IconButton
                       size="small"
-                      aria-label="Remove certificate"
+                      aria-label={tr("Remove certificate")}
                       onClick={() => removeRow("certificate")}
                       disabled={readOnly}
                     >
@@ -1776,7 +1820,7 @@ export function IdentityPanel({
             }}
           >
             <MenuItem value="">
-              <em>Choose a certificate</em>
+              <em>{tr("Choose a certificate")}</em>
             </MenuItem>
             {certified.map((k) => (
               <MenuItem key={k.id} value={k.certificate?.id ?? ""}>
@@ -1809,20 +1853,20 @@ export function IdentityPanel({
             }}
             helperText={
               selectedKey
-                ? "The token must be plugged in to connect; you will be asked to touch it."
+                ? tr("The token must be plugged in to connect; you will be asked to touch it.")
                 : hardwareKeys.length === 0
-                  ? "No FIDO2 key in this vault yet — generate one on your security key."
+                  ? tr("No FIDO2 key in this vault yet — generate one on your security key.")
                   : undefined
             }
             slotProps={{
-              htmlInput: { "aria-label": "FIDO2 key" },
+              htmlInput: { "aria-label": tr("FIDO2 key") },
               input: {
                 startAdornment: adornment(rowIcon.fido2),
                 endAdornment: (
                   <InputAdornment position="end" sx={{ mr: 2 }}>
                     <IconButton
                       size="small"
-                      aria-label="Remove FIDO2"
+                      aria-label={tr("Remove FIDO2")}
                       onClick={() => removeRow("fido2")}
                       disabled={readOnly}
                     >
@@ -1834,7 +1878,7 @@ export function IdentityPanel({
             }}
           >
             <MenuItem value="">
-              <em>Choose a FIDO2 key</em>
+              <em>{tr("Choose a FIDO2 key")}</em>
             </MenuItem>
             {hardwareKeys.map((k) => (
               <MenuItem key={k.id} value={k.id}>
@@ -1851,7 +1895,7 @@ export function IdentityPanel({
             ))}
             <MenuItem value="__new" sx={{ color: "primary.main" }}>
               <AddRoundedIcon fontSize="small" sx={{ mr: 1.25 }} />
-              Generate FIDO2 key…
+              {tr("Generate FIDO2 key…")}
             </MenuItem>
           </TextField>
         )}
@@ -1963,16 +2007,18 @@ export function Fido2Panel({
       type={showPin ? "text" : "password"}
       value={pin}
       onChange={(e) => setPin(e.target.value)}
-      placeholder="PIN"
+      placeholder={tr("PIN")}
       autoComplete="off"
       inputMode="numeric"
       helperText={
         device?.pinSet === false
-          ? "This token has no PIN yet; set one with your vendor tool or ssh-keygen -O verify-required."
+          ? tr(
+              "This token has no PIN yet; set one with your vendor tool or ssh-keygen -O verify-required.",
+            )
           : undefined
       }
       slotProps={{
-        htmlInput: { "aria-label": "PIN" },
+        htmlInput: { "aria-label": tr("PIN") },
         input: {
           startAdornment: adornment(<PasswordRoundedIcon fontSize="small" />),
           endAdornment: (
@@ -1980,7 +2026,7 @@ export function Fido2Panel({
               <IconButton
                 size="small"
                 onClick={() => setShowPin((v) => !v)}
-                aria-label="Toggle PIN visibility"
+                aria-label={tr("Toggle PIN visibility")}
               >
                 {showPin ? (
                   <VisibilityOffRoundedIcon fontSize="small" />
@@ -2001,11 +2047,11 @@ export function Fido2Panel({
         type={show ? "text" : "password"}
         value={passphrase}
         onChange={(e) => setPassphrase(e.target.value)}
-        placeholder="Passphrase"
+        placeholder={tr("Passphrase")}
         autoComplete="new-password"
-        helperText="Protects the stored key handle, like OpenSSH does. Optional."
+        helperText={tr("Protects the stored key handle, like OpenSSH does. Optional.")}
         slotProps={{
-          htmlInput: { "aria-label": "Passphrase" },
+          htmlInput: { "aria-label": tr("Passphrase") },
           input: {
             startAdornment: adornment(<LockOutlinedIcon fontSize="small" />),
             endAdornment: (
@@ -2013,7 +2059,7 @@ export function Fido2Panel({
                 <IconButton
                   size="small"
                   onClick={() => setShow((v) => !v)}
-                  aria-label="Toggle passphrase visibility"
+                  aria-label={tr("Toggle passphrase visibility")}
                 >
                   {show ? (
                     <VisibilityOffRoundedIcon fontSize="small" />
@@ -2032,12 +2078,12 @@ export function Fido2Panel({
             type={show ? "text" : "password"}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            placeholder="Confirm passphrase"
+            placeholder={tr("Confirm passphrase")}
             autoComplete="new-password"
             error={mismatch}
-            helperText={mismatch ? "Passphrases differ" : undefined}
+            helperText={mismatch ? tr("Passphrases differ") : undefined}
             slotProps={{
-              htmlInput: { "aria-label": "Confirm passphrase" },
+              htmlInput: { "aria-label": tr("Confirm passphrase") },
               input: { startAdornment: adornment(<LockOutlinedIcon fontSize="small" />) },
             }}
           />
@@ -2045,7 +2091,7 @@ export function Fido2Panel({
             control={
               <Checkbox checked={remember} onChange={(e) => setRemember(e.target.checked)} />
             }
-            label={<Typography variant="body2">Save passphrase in the vault</Typography>}
+            label={<Typography variant="body2">{tr("Save passphrase in the vault")}</Typography>}
           />
         </>
       )}
@@ -2083,7 +2129,7 @@ export function Fido2Panel({
 
   return (
     <SidePanel
-      title={mode === "load" ? "Load FIDO2 Keys" : "Generate FIDO2 Key"}
+      title={mode === "load" ? tr("Load FIDO2 Keys") : tr("Generate FIDO2 Key")}
       subtitle={vaultName}
       onClose={onClose}
       footer={
@@ -2095,10 +2141,14 @@ export function Fido2Panel({
               onClick={() => (mode === "load" ? setMode("generate") : onClose())}
               disabled={busy}
             >
-              {mode === "load" ? "Back" : "Cancel"}
+              {mode === "load" ? tr("Back") : tr("Cancel")}
             </Button>
             <Button variant="contained" disabled={!valid || busy} onClick={submit}>
-              {busy ? "Touch your security key…" : mode === "load" ? "Load" : "Generate"}
+              {busy
+                ? tr("Touch your security key…")
+                : mode === "load"
+                  ? tr("Load")
+                  : tr("Generate")}
             </Button>
           </>
         ) : undefined
@@ -2111,12 +2161,12 @@ export function Fido2Panel({
               <UsbRoundedIcon />
             </IconTile>
             <Typography variant="subtitle1" color="text.primary" sx={{ mt: 2 }}>
-              Insert FIDO2 device
+              {tr("Insert FIDO2 device")}
             </Typography>
             <Typography variant="body2" sx={{ mt: 0.5 }}>
               {devices.isError
                 ? errorMessage(devices.error)
-                : "Connect your FIDO2 device to show here."}
+                : tr("Connect your FIDO2 device to show here.")}
             </Typography>
           </Box>
         </Box>
@@ -2125,10 +2175,10 @@ export function Fido2Panel({
           <SectionCard>
             <TextField
               select
-              label="Security key"
+              label={tr("Security key")}
               value={device.path}
               onChange={(e) => setDevicePath(e.target.value)}
-              slotProps={{ htmlInput: { "aria-label": "Security key" } }}
+              slotProps={{ htmlInput: { "aria-label": tr("Security key") } }}
             >
               {list.map((d) => (
                 <MenuItem key={d.path} value={d.path}>
@@ -2140,9 +2190,11 @@ export function Fido2Panel({
               {device.versions.map((v) => (
                 <Chip key={v} size="small" variant="outlined" label={v} />
               ))}
-              {device.pinSet === true && <Chip size="small" variant="outlined" label="PIN set" />}
+              {device.pinSet === true && (
+                <Chip size="small" variant="outlined" label={tr("PIN set")} />
+              )}
               {device.residentKeys && (
-                <Chip size="small" variant="outlined" label="Resident keys" />
+                <Chip size="small" variant="outlined" label={tr("Resident keys")} />
               )}
             </Stack>
             {mode === "generate" && canResident && (
@@ -2152,7 +2204,7 @@ export function Fido2Panel({
                 sx={{ alignSelf: "flex-start" }}
                 onClick={() => setMode("load")}
               >
-                Load resident keys from this device…
+                {tr("Load resident keys from this device…")}
               </Button>
             )}
           </SectionCard>
@@ -2165,15 +2217,15 @@ export function Fido2Panel({
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
                   required
-                  placeholder="Label *"
-                  slotProps={{ htmlInput: { "aria-label": "Label" } }}
+                  placeholder={tr("Label *")}
+                  slotProps={{ htmlInput: { "aria-label": tr("Label") } }}
                 />
                 <TextField
                   select
-                  label="Key type"
+                  label={tr("Key type")}
                   value={algorithm}
                   onChange={(e) => setAlgorithm(e.target.value as SkAlgorithm)}
-                  slotProps={{ htmlInput: { "aria-label": "Key type" } }}
+                  slotProps={{ htmlInput: { "aria-label": tr("Key type") } }}
                 >
                   {SK_ALGORITHMS.map((a) => (
                     <MenuItem
@@ -2186,33 +2238,35 @@ export function Fido2Panel({
                   ))}
                 </TextField>
                 <SettingRow
-                  label="Require User Presence"
-                  hint="Touch the key for every connection"
+                  label={tr("Require User Presence")}
+                  hint={tr("Touch the key for every connection")}
                   control={
                     <Switch
                       checked={userPresence}
                       onChange={(e) => setUserPresence(e.target.checked)}
-                      slotProps={{ input: { "aria-label": "Require User Presence" } }}
+                      slotProps={{ input: { "aria-label": tr("Require User Presence") } }}
                     />
                   }
                 />
                 <SettingRow
-                  label="Require PIN Code"
-                  hint="Ask for the PIN for every connection"
+                  label={tr("Require PIN Code")}
+                  hint={tr("Ask for the PIN for every connection")}
                   control={
                     <Switch
                       checked={userVerification}
                       onChange={(e) => setUserVerification(e.target.checked)}
-                      slotProps={{ input: { "aria-label": "Require PIN Code" } }}
+                      slotProps={{ input: { "aria-label": tr("Require PIN Code") } }}
                     />
                   }
                 />
                 <SettingRow
-                  label="Resident key"
+                  label={tr("Resident key")}
                   hint={
                     canResident
-                      ? "Store the credential on the token so it can be loaded on another machine"
-                      : "This token cannot store resident credentials"
+                      ? tr(
+                          "Store the credential on the token so it can be loaded on another machine",
+                        )
+                      : tr("This token cannot store resident credentials")
                   }
                   last
                   control={
@@ -2220,7 +2274,7 @@ export function Fido2Panel({
                       checked={resident && canResident}
                       disabled={!canResident}
                       onChange={(e) => setResident(e.target.checked)}
-                      slotProps={{ input: { "aria-label": "Resident key" } }}
+                      slotProps={{ input: { "aria-label": tr("Resident key") } }}
                     />
                   }
                 />
@@ -2231,8 +2285,10 @@ export function Fido2Panel({
           ) : (
             <SectionCard>
               <Typography variant="body2" color="text.secondary">
-                Resident SSH credentials on this token are imported into <b>{vaultName}</b>. The PIN
-                is required to list them.
+                {trx(
+                  "Resident SSH credentials on this token are imported into {vault}. The PIN is required to list them.",
+                  { vault: <b>{vaultName}</b> },
+                )}
               </Typography>
               {pinField}
               {passphraseFields}

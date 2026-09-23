@@ -265,6 +265,8 @@ impl AppState {
 pub struct Settings {
     /// `dark` | `light` | `system`.
     pub theme: String,
+    /// UI language: `system` (follow the OS) or a locale from [`LANGUAGES`].
+    pub language: String,
     /// `grid` | `list`.
     pub hosts_view: String,
     /// `grid` | `list` for the Port Forwarding page.
@@ -363,6 +365,9 @@ pub const TERM_TYPES: &[&str] = &[
     "tmux-256color",
 ];
 
+/// Values accepted for [`Settings::language`]; `system` plus every bundled UI locale.
+pub const LANGUAGES: &[&str] = &["system", "en", "ru"];
+
 const MAX_SHORTCUTS: usize = 256;
 const MAX_SHORTCUT_LEN: usize = 48;
 const MAX_OPEN_WITH: usize = 256;
@@ -371,6 +376,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme: "dark".into(),
+            language: "system".into(),
             hosts_view: "grid".into(),
             forwarding_view: "grid".into(),
             keychain_view: "grid".into(),
@@ -419,6 +425,12 @@ impl Settings {
     fn validate(&self) -> Result<()> {
         if !matches!(self.theme.as_str(), "dark" | "light" | "system") {
             return Err(DesktopError::invalid("theme must be dark, light or system"));
+        }
+        if !LANGUAGES.contains(&self.language.as_str()) {
+            return Err(DesktopError::invalid(format!(
+                "language must be one of {}",
+                LANGUAGES.join(", ")
+            )));
         }
         if !matches!(self.hosts_view.as_str(), "grid" | "list") {
             return Err(DesktopError::invalid("hostsView must be grid or list"));

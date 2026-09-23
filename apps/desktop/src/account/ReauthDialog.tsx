@@ -20,6 +20,7 @@ import { useStore } from "@/lib/store";
 import { errorMessage, type MfaMethod, type ReauthOutcome } from "@/ipc/types";
 import { MFA_LABEL } from "./SignIn";
 import { reauthStore } from "./reauth";
+import { tr, trx } from "@/i18n";
 
 /**
  * Asks for the account password (and second factor) before a sensitive
@@ -62,19 +63,23 @@ function Body({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }
 
   return (
     <Dialog open onClose={busy ? undefined : () => cancel.mutate()} maxWidth="xs" fullWidth>
-      <DialogTitle>Confirm it’s you</DialogTitle>
+      <DialogTitle>{tr("Confirm it’s you")}</DialogTitle>
       <DialogContent>
         {pending ? (
           <SecondStep pending={pending} onOutcome={finish} onCancel={() => cancel.mutate()} />
         ) : (
           <Stack spacing={1.5}>
             <Typography variant="body2" color="text.secondary">
-              This change affects the security of your account. Enter the password for{" "}
-              <b>{account?.email ?? "your account"}</b> to continue.
+              {trx(
+                "This change affects the security of your account. Enter the password for {account} to continue.",
+                { account: <b>{account?.email ?? tr("your account")}</b> },
+              )}
             </Typography>
             <Field
-              label="Password"
-              hint="Signed in through SSO without a password? Leave it empty to get a code by email."
+              label={tr("Password")}
+              hint={tr(
+                "Signed in through SSO without a password? Leave it empty to get a code by email.",
+              )}
             >
               <TextField
                 autoFocus
@@ -93,10 +98,10 @@ function Body({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }
       {!pending && (
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button color="inherit" disabled={busy} onClick={() => cancel.mutate()}>
-            Cancel
+            {tr("Cancel")}
           </Button>
           <Button variant="contained" disabled={busy} onClick={() => start.mutate()}>
-            Continue
+            {tr("Continue")}
           </Button>
         </DialogActions>
       )}
@@ -133,7 +138,7 @@ function SecondStep({
         case "email":
           return ipc.accountReauthMfa({ method: "email", code: c });
         case "webauthn":
-          throw new Error("Security keys are not available in the desktop app yet");
+          throw new Error(tr("Security keys are not available in the desktop app yet"));
       }
     },
     onSuccess: (o) => {
@@ -153,12 +158,12 @@ function SecondStep({
     <Stack spacing={1.5}>
       {pending.step === "emailCodeRequired" ? (
         <Typography variant="body2" color="text.secondary">
-          A confirmation code was sent to <b>{pending.emailHint}</b>.
+          {trx("A confirmation code was sent to {email}.", { email: <b>{pending.emailHint}</b> })}
         </Typography>
       ) : (
         <>
           <Typography variant="body2" color="text.secondary">
-            Enter your second factor to continue.
+            {tr("Enter your second factor to continue.")}
           </Typography>
           {methods.length > 1 && (
             <ToggleButtonGroup
@@ -169,15 +174,16 @@ function SecondStep({
             >
               {methods.map((m) => (
                 <ToggleButton key={m} value={m} disabled={m === "webauthn"}>
-                  {MFA_LABEL[m]}
+                  {tr(MFA_LABEL[m])}
                 </ToggleButton>
               ))}
             </ToggleButtonGroup>
           )}
           {methods.includes("webauthn") && (
             <Typography variant="caption" color="text.secondary">
-              Security keys need a browser origin and are not available inside the desktop app yet —
-              use another method.
+              {tr(
+                "Security keys need a browser origin and are not available inside the desktop app yet — use another method.",
+              )}
             </Typography>
           )}
           {method === "email" && (
@@ -188,17 +194,21 @@ function SecondStep({
                 side.mutate(async () => {
                   await ipc.accountReauthMfaEmailSend();
                   setEmailSent(true);
-                  return "Code sent";
+                  return tr("Code sent");
                 })
               }
             >
-              {emailSent ? "Send again" : "Send code to my email"}
+              {emailSent ? tr("Send again") : tr("Send code to my email")}
             </Button>
           )}
         </>
       )}
       <Field
-        label={method === "backup_code" && pending.step === "mfaRequired" ? "Backup code" : "Code"}
+        label={
+          method === "backup_code" && pending.step === "mfaRequired"
+            ? tr("Backup code")
+            : tr("Code")
+        }
       >
         <TextField
           autoFocus
@@ -213,10 +223,10 @@ function SecondStep({
       </Field>
       <Stack direction="row" spacing={1} sx={{ justifyContent: "space-between", pb: 0.5 }}>
         <Button color="inherit" disabled={busy} onClick={onCancel}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button variant="contained" disabled={!code.trim() || busy} onClick={() => submit.mutate()}>
-          Verify
+          {tr("Verify")}
         </Button>
       </Stack>
     </Stack>

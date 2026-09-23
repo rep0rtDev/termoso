@@ -52,20 +52,21 @@ import {
   type TermType,
   type ThemeMode,
 } from "@/ipc/types";
+import { tr, msg, LOCALE_NAMES, type Language } from "@/i18n";
 
 const PAGES: { id: PageId; label: string; icon: ReactNode }[] = [
-  { id: "account", label: "Account & sync", icon: <PersonRoundedIcon /> },
-  { id: "team", label: "Team", icon: <GroupsRoundedIcon /> },
-  { id: "vaults", label: "Vaults", icon: <LockRoundedIcon /> },
-  { id: "sshid", label: "SSH ID", icon: <FingerprintRoundedIcon /> },
-  { id: "security", label: "Security", icon: <ShieldRoundedIcon /> },
-  { id: "general", label: "General", icon: <TuneRoundedIcon /> },
-  { id: "terminal", label: "Terminal", icon: <TerminalRoundedIcon /> },
-  { id: "keyboard", label: "Keyboard", icon: <KeyboardRoundedIcon /> },
-  { id: "sftp", label: "SFTP", icon: <FolderCopyRoundedIcon /> },
-  { id: "logs", label: "Session logs", icon: <ArticleRoundedIcon /> },
-  { id: "updates", label: "Updates", icon: <SystemUpdateAltRoundedIcon /> },
-  { id: "about", label: "About", icon: <InfoOutlinedIcon /> },
+  { id: "account", label: msg("Account & sync"), icon: <PersonRoundedIcon /> },
+  { id: "team", label: msg("Team"), icon: <GroupsRoundedIcon /> },
+  { id: "vaults", label: msg("Vaults"), icon: <LockRoundedIcon /> },
+  { id: "sshid", label: msg("SSH ID"), icon: <FingerprintRoundedIcon /> },
+  { id: "security", label: msg("Security"), icon: <ShieldRoundedIcon /> },
+  { id: "general", label: msg("General"), icon: <TuneRoundedIcon /> },
+  { id: "terminal", label: msg("Terminal"), icon: <TerminalRoundedIcon /> },
+  { id: "keyboard", label: msg("Keyboard"), icon: <KeyboardRoundedIcon /> },
+  { id: "sftp", label: msg("SFTP"), icon: <FolderCopyRoundedIcon /> },
+  { id: "logs", label: msg("Session logs"), icon: <ArticleRoundedIcon /> },
+  { id: "updates", label: msg("Updates"), icon: <SystemUpdateAltRoundedIcon /> },
+  { id: "about", label: msg("About"), icon: <InfoOutlinedIcon /> },
 ];
 
 export function SettingsPage() {
@@ -92,7 +93,7 @@ export function SettingsPage() {
               sx={{ "& .MuiListItemIcon-root": { minWidth: 32, "& svg": { fontSize: 18 } } }}
             >
               <ListItemIcon>{p.icon}</ListItemIcon>
-              <ListItemText primary={p.label} />
+              <ListItemText primary={tr(p.label)} />
             </ListItemButton>
           ))}
         </List>
@@ -129,7 +130,9 @@ function PreferencesPage({
 
   if (settings.isPending) return <Loading />;
   if (settings.error)
-    return <EmptyState title="Settings unavailable" description={errorMessage(settings.error)} />;
+    return (
+      <EmptyState title={tr("Settings unavailable")} description={errorMessage(settings.error)} />
+    );
   const s = settings.data;
 
   return (
@@ -191,14 +194,16 @@ function DeepLinksRow() {
       snackbar.notify(
         schemes.length
           ? `Termoso now opens ${schemes.map((s) => `${s}://`).join(", ")} links`
-          : "Registration ran, but the system reports no handler — check your desktop settings",
+          : tr("Registration ran, but the system reports no handler — check your desktop settings"),
       ),
     onError: (e) => snackbar.error(errorMessage(e)),
   });
   return (
     <SettingRow
-      label="Open ssh://, telnet:// and termoso:// links"
-      hint="Installers register the handler already; use this for AppImage or portable builds. Links open a saved host or a quick connection — passwords in URLs are ignored."
+      label={tr("Open ssh://, telnet:// and termoso:// links")}
+      hint={tr(
+        "Installers register the handler already; use this for AppImage or portable builds. Links open a saved host or a quick connection — passwords in URLs are ignored.",
+      )}
       last
       control={
         <Button
@@ -207,7 +212,7 @@ function DeepLinksRow() {
           onClick={() => register.mutate()}
           disabled={register.isPending}
         >
-          Register as handler
+          {tr("Register as handler")}
         </Button>
       }
     />
@@ -217,10 +222,9 @@ function DeepLinksRow() {
 function General({ s, update }: SectionProps) {
   return (
     <>
-      <SectionCard title="Appearance">
+      <SectionCard title={tr("Appearance")}>
         <SettingRow
-          label="Theme"
-          last
+          label={tr("Theme")}
           control={
             <TextField
               select
@@ -228,18 +232,34 @@ function General({ s, update }: SectionProps) {
               onChange={(e) => update({ theme: e.target.value as ThemeMode })}
               sx={{ width: 200 }}
             >
-              <MenuItem value="dark">Dark</MenuItem>
-              <MenuItem value="light">Light</MenuItem>
-              <MenuItem value="system">Follow system</MenuItem>
+              <MenuItem value="dark">{tr("Dark")}</MenuItem>
+              <MenuItem value="light">{tr("Light")}</MenuItem>
+              <MenuItem value="system">{tr("Follow system")}</MenuItem>
+            </TextField>
+          }
+        />
+        <SettingRow
+          label={tr("Language")}
+          last
+          control={
+            <TextField
+              select
+              value={s.language}
+              onChange={(e) => update({ language: e.target.value as Language })}
+              sx={{ width: 200 }}
+            >
+              <MenuItem value="system">{tr("Follow system")}</MenuItem>
+              <MenuItem value="en">{LOCALE_NAMES.en}</MenuItem>
+              <MenuItem value="ru">{LOCALE_NAMES.ru}</MenuItem>
             </TextField>
           }
         />
       </SectionCard>
 
-      <SectionCard title="Connections">
+      <SectionCard title={tr("Connections")}>
         <SettingRow
-          label="Keep-alive interval"
-          hint="Seconds between SSH keep-alive packets. 0 turns it off."
+          label={tr("Keep-alive interval")}
+          hint={tr("Seconds between SSH keep-alive packets. 0 turns it off.")}
           control={
             <NumberInput
               value={s.keepAliveSeconds}
@@ -250,8 +270,8 @@ function General({ s, update }: SectionProps) {
           }
         />
         <SettingRow
-          label="Start forwarding rules on launch"
-          hint="Rules marked auto-start are brought up when the app opens."
+          label={tr("Start forwarding rules on launch")}
+          hint={tr("Rules marked auto-start are brought up when the app opens.")}
           control={
             <Toggle
               checked={s.autostartForwarding}
@@ -260,13 +280,17 @@ function General({ s, update }: SectionProps) {
           }
         />
         <SettingRow
-          label="Detect OS on first connection"
-          hint="Reads /etc/os-release once after connecting to pick the host's icon. Nothing leaves the SSH session."
+          label={tr("Detect OS on first connection")}
+          hint={tr(
+            "Reads /etc/os-release once after connecting to pick the host's icon. Nothing leaves the SSH session.",
+          )}
           control={<Toggle checked={s.detectOs} onChange={(v) => update({ detectOs: v })} />}
         />
         <SettingRow
-          label="Post-quantum key exchange"
-          hint="Offers hybrid ML-KEM-768 + X25519 (mlkem768x25519-sha256) first; servers without it negotiate a classical exchange."
+          label={tr("Post-quantum key exchange")}
+          hint={tr(
+            "Offers hybrid ML-KEM-768 + X25519 (mlkem768x25519-sha256) first; servers without it negotiate a classical exchange.",
+          )}
           last={IS_MAC}
           control={
             <Toggle checked={s.postQuantumKex} onChange={(v) => update({ postQuantumKex: v })} />
@@ -275,20 +299,22 @@ function General({ s, update }: SectionProps) {
         {!IS_MAC && <DeepLinksRow />}
       </SectionCard>
 
-      <SectionCard title="SSH agent">
+      <SectionCard title={tr("SSH agent")}>
         <SettingRow
-          label="Use the system SSH agent"
-          hint="Offers keys held by ssh-agent (SSH_AUTH_SOCK), the Windows OpenSSH agent or Pageant after the host's own key. Private keys never leave the agent."
+          label={tr("Use the system SSH agent")}
+          hint={tr(
+            "Offers keys held by ssh-agent (SSH_AUTH_SOCK), the Windows OpenSSH agent or Pageant after the host's own key. Private keys never leave the agent.",
+          )}
           last={!s.useSshAgent}
           control={<Toggle checked={s.useSshAgent} onChange={(v) => update({ useSshAgent: v })} />}
         />
         {s.useSshAgent && <AgentKeyList />}
       </SectionCard>
 
-      <SectionCard title="Sync">
+      <SectionCard title={tr("Sync")}>
         <SettingRow
-          label="On conflict"
-          hint="Which copy wins when the same item changed on two devices."
+          label={tr("On conflict")}
+          hint={tr("Which copy wins when the same item changed on two devices.")}
           control={
             <TextField
               select
@@ -296,15 +322,15 @@ function General({ s, update }: SectionProps) {
               onChange={(e) => update({ syncConflict: e.target.value as SyncConflict })}
               sx={{ width: 200 }}
             >
-              <MenuItem value="newest_wins">Newest change wins</MenuItem>
-              <MenuItem value="local_wins">This device wins</MenuItem>
-              <MenuItem value="server_wins">Server wins</MenuItem>
+              <MenuItem value="newest_wins">{tr("Newest change wins")}</MenuItem>
+              <MenuItem value="local_wins">{tr("This device wins")}</MenuItem>
+              <MenuItem value="server_wins">{tr("Server wins")}</MenuItem>
             </TextField>
           }
         />
         <SettingRow
-          label="Background sync interval"
-          hint="Seconds. 0 syncs only when something changes or the server signals an update."
+          label={tr("Background sync interval")}
+          hint={tr("Seconds. 0 syncs only when something changes or the server signals an update.")}
           last
           control={
             <NumberInput
@@ -329,12 +355,12 @@ function AgentKeyList() {
       <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: a?.keys.length ? 0.75 : 0 }}>
         <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
           {q.isPending
-            ? "Looking for an agent…"
+            ? tr("Looking for an agent…")
             : a?.available
               ? a.keys.length === 0
-                ? "Agent reachable, no keys loaded (ssh-add to add one)."
+                ? tr("Agent reachable, no keys loaded (ssh-add to add one).")
                 : `Agent reachable · ${a.keys.length} key${a.keys.length === 1 ? "" : "s"}`
-              : `No agent: ${a?.error ?? errorMessage(q.error)}`}
+              : tr("No agent: {value}", { value: a?.error ?? errorMessage(q.error) })}
         </Typography>
         <Button
           size="small"
@@ -342,7 +368,7 @@ function AgentKeyList() {
           onClick={() => void q.refetch()}
           disabled={q.isFetching}
         >
-          Refresh
+          {tr("Refresh")}
         </Button>
       </Box>
       {a?.keys.map((k) => (
@@ -372,10 +398,12 @@ function Terminal({ s, update }: SectionProps) {
     <>
       <ThemeGallery value={s.terminalTheme} onChange={(id) => update({ terminalTheme: id })} />
 
-      <SectionCard title="Text">
+      <SectionCard title={tr("Text")}>
         <SettingRow
-          label="Font family"
-          hint="Bundled faces ship with the app; Nerd Font symbols are always available as a fallback."
+          label={tr("Font family")}
+          hint={tr(
+            "Bundled faces ship with the app; Nerd Font symbols are always available as a fallback.",
+          )}
           control={
             <FontPicker
               value={s.terminalFontFamily}
@@ -384,7 +412,7 @@ function Terminal({ s, update }: SectionProps) {
           }
         />
         <SettingRow
-          label="Font size"
+          label={tr("Font size")}
           control={
             <NumberInput
               value={s.terminalFontSize}
@@ -396,8 +424,8 @@ function Terminal({ s, update }: SectionProps) {
           }
         />
         <SettingRow
-          label="Line height"
-          hint="Multiplier of the font's natural height."
+          label={tr("Line height")}
+          hint={tr("Multiplier of the font's natural height.")}
           control={
             <NumberInput
               value={s.terminalLineHeight}
@@ -415,7 +443,7 @@ function Terminal({ s, update }: SectionProps) {
           lineHeight={s.terminalLineHeight}
         />
         <SettingRow
-          label="Scrollback lines"
+          label={tr("Scrollback lines")}
           last
           control={
             <NumberInput
@@ -429,15 +457,17 @@ function Terminal({ s, update }: SectionProps) {
         />
       </SectionCard>
 
-      <SectionCard title="Colors">
+      <SectionCard title={tr("Colors")}>
         <SettingRow
-          label="Bright bold colors"
-          hint="Draw bold text in the bright variant of its color, as classic terminals do."
+          label={tr("Bright bold colors")}
+          hint={tr("Draw bold text in the bright variant of its color, as classic terminals do.")}
           control={<Toggle checked={s.brightBold} onChange={(v) => update({ brightBold: v })} />}
         />
         <SettingRow
-          label="Keyword highlighting"
-          hint="Colors Error, Warning, OK, Info and Debug words plus IP and MAC addresses in the output. Applied locally while rendering; nothing is sent to the host."
+          label={tr("Keyword highlighting")}
+          hint={tr(
+            "Colors Error, Warning, OK, Info and Debug words plus IP and MAC addresses in the output. Applied locally while rendering; nothing is sent to the host.",
+          )}
           last
           control={
             <Toggle
@@ -448,9 +478,9 @@ function Terminal({ s, update }: SectionProps) {
         />
       </SectionCard>
 
-      <SectionCard title="Cursor">
+      <SectionCard title={tr("Cursor")}>
         <SettingRow
-          label="Style"
+          label={tr("Style")}
           control={
             <TextField
               select
@@ -458,30 +488,34 @@ function Terminal({ s, update }: SectionProps) {
               onChange={(e) => update({ cursorStyle: e.target.value as CursorStyle })}
               sx={{ width: 160 }}
             >
-              <MenuItem value="bar">Bar</MenuItem>
-              <MenuItem value="block">Block</MenuItem>
-              <MenuItem value="underline">Underline</MenuItem>
+              <MenuItem value="bar">{tr("Bar")}</MenuItem>
+              <MenuItem value="block">{tr("Block")}</MenuItem>
+              <MenuItem value="underline">{tr("Underline")}</MenuItem>
             </TextField>
           }
         />
         <SettingRow
-          label="Blinking"
+          label={tr("Blinking")}
           last
           control={<Toggle checked={s.cursorBlink} onChange={(v) => update({ cursorBlink: v })} />}
         />
       </SectionCard>
 
-      <SectionCard title="Connection">
+      <SectionCard title={tr("Connection")}>
         <SettingRow
-          label="Autoreconnect"
-          hint="When an SSH or Telnet session drops, retry up to 6 times (30–60 s apart) while keeping the terminal contents. Sessions you close yourself are left alone."
+          label={tr("Autoreconnect")}
+          hint={tr(
+            "When an SSH or Telnet session drops, retry up to 6 times (30–60 s apart) while keeping the terminal contents. Sessions you close yourself are left alone.",
+          )}
           control={
             <Toggle checked={s.autoReconnect} onChange={(v) => update({ autoReconnect: v })} />
           }
         />
         <SettingRow
-          label="Terminal type"
-          hint="Sent as TERM to the remote side and to the local shell. Takes effect for new sessions."
+          label={tr("Terminal type")}
+          hint={tr(
+            "Sent as TERM to the remote side and to the local shell. Takes effect for new sessions.",
+          )}
           control={
             <TextField
               select
@@ -500,21 +534,21 @@ function Terminal({ s, update }: SectionProps) {
         <LocalShellRow value={s.localShell} onChange={(v) => update({ localShell: v })} />
       </SectionCard>
 
-      <SectionCard title="Behaviour">
+      <SectionCard title={tr("Behaviour")}>
         <SettingRow
-          label="Audible bell"
+          label={tr("Audible bell")}
           control={
             <Toggle checked={s.terminalBell} onChange={(v) => update({ terminalBell: v })} />
           }
         />
         <SettingRow
-          label="Copy on select"
+          label={tr("Copy on select")}
           control={
             <Toggle checked={s.copyOnSelect} onChange={(v) => update({ copyOnSelect: v })} />
           }
         />
         <SettingRow
-          label="Paste on right click"
+          label={tr("Paste on right click")}
           control={
             <Toggle
               checked={s.pasteOnRightClick}
@@ -523,7 +557,7 @@ function Terminal({ s, update }: SectionProps) {
           }
         />
         <SettingRow
-          label="Confirm before pasting multiple lines"
+          label={tr("Confirm before pasting multiple lines")}
           control={
             <Toggle
               checked={s.confirmPasteMultiline}
@@ -532,14 +566,16 @@ function Terminal({ s, update }: SectionProps) {
           }
         />
         <SettingRow
-          label="Confirm before closing a connected tab"
+          label={tr("Confirm before closing a connected tab")}
           control={
             <Toggle checked={s.confirmCloseTab} onChange={(v) => update({ confirmCloseTab: v })} />
           }
         />
         <SettingRow
-          label="Shell integration"
-          hint="Marks prompts and commands in bash, zsh and fish (OSC 133) so history, exit codes and the working directory are tracked. Nothing is written to your dotfiles."
+          label={tr("Shell integration")}
+          hint={tr(
+            "Marks prompts and commands in bash, zsh and fish (OSC 133) so history, exit codes and the working directory are tracked. Nothing is written to your dotfiles.",
+          )}
           control={
             <Toggle
               checked={s.shellIntegration}
@@ -548,8 +584,10 @@ function Terminal({ s, update }: SectionProps) {
           }
         />
         <SettingRow
-          label="Restore running commands"
-          hint="Workspaces and the previous session remember each pane's working directory and the command it was running. Reopening always returns to the directory; the command can be placed on the prompt for you to confirm, run right away, or dropped."
+          label={tr("Restore running commands")}
+          hint={tr(
+            "Workspaces and the previous session remember each pane's working directory and the command it was running. Reopening always returns to the directory; the command can be placed on the prompt for you to confirm, run right away, or dropped.",
+          )}
           control={
             <TextField
               select
@@ -557,15 +595,17 @@ function Terminal({ s, update }: SectionProps) {
               onChange={(e) => update({ restoreCommands: e.target.value as RestoreCommands })}
               sx={{ width: 200 }}
             >
-              <MenuItem value="type">Type, don't run</MenuItem>
-              <MenuItem value="run">Run automatically</MenuItem>
-              <MenuItem value="never">Directory only</MenuItem>
+              <MenuItem value="type">{tr("Type, don't run")}</MenuItem>
+              <MenuItem value="run">{tr("Run automatically")}</MenuItem>
+              <MenuItem value="never">{tr("Directory only")}</MenuItem>
             </TextField>
           }
         />
         <SettingRow
-          label="Command autocomplete"
-          hint="Offline suggestions from ~500 commands, their options, paths, snippets and your encrypted history. Tab inserts, Esc dismisses. Can be paused per session from the terminal menu."
+          label={tr("Command autocomplete")}
+          hint={tr(
+            "Offline suggestions from ~500 commands, their options, paths, snippets and your encrypted history. Tab inserts, Esc dismisses. Can be paused per session from the terminal menu.",
+          )}
           last
           control={
             <Toggle checked={s.autocomplete} onChange={(v) => update({ autocomplete: v })} />
@@ -596,8 +636,10 @@ function LocalShellRow({ value, onChange }: { value: string; onChange: (v: strin
   };
   return (
     <SettingRow
-      label="Local terminal shell"
-      hint='Program started by Local Terminal, optionally with arguments. Default is your login shell (or PowerShell on Windows). Quote a path that contains spaces: "C:\Program Files\PowerShell\7\pwsh.exe" -NoLogo.'
+      label={tr("Local terminal shell")}
+      hint={tr(
+        'Program started by Local Terminal, optionally with arguments. Default is your login shell (or PowerShell on Windows). Quote a path that contains spaces: "C:\\Program Files\\PowerShell\\7\\pwsh.exe" -NoLogo.',
+      )}
       last
       control={
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-end" }}>
@@ -615,13 +657,13 @@ function LocalShellRow({ value, onChange }: { value: string; onChange: (v: strin
             }}
             sx={{ width: 280 }}
           >
-            <MenuItem value="">Default shell</MenuItem>
+            <MenuItem value="">{tr("Default shell")}</MenuItem>
             {found.map((sh) => (
               <MenuItem key={sh} value={sh} sx={{ fontFamily: "monospace", fontSize: 13 }}>
                 {sh}
               </MenuItem>
             ))}
-            <MenuItem value={CUSTOM_SHELL}>Custom command…</MenuItem>
+            <MenuItem value={CUSTOM_SHELL}>{tr("Custom command…")}</MenuItem>
           </TextField>
           {(custom || !listed) && (
             <TextField
@@ -647,17 +689,17 @@ function LocalShellRow({ value, onChange }: { value: string; onChange: (v: strin
 
 function Logs({ s, update }: SectionProps) {
   return (
-    <SectionCard title="Session recording">
+    <SectionCard title={tr("Session recording")}>
       <SettingRow
-        label="Record terminal sessions"
-        hint="Recordings are encrypted with your master key and stay on this device."
+        label={tr("Record terminal sessions")}
+        hint={tr("Recordings are encrypted with your master key and stay on this device.")}
         control={
           <Toggle checked={s.recordSessions} onChange={(v) => update({ recordSessions: v })} />
         }
       />
       <SettingRow
-        label="Keep recordings for"
-        hint="Days. 0 keeps them forever."
+        label={tr("Keep recordings for")}
+        hint={tr("Days. 0 keeps them forever.")}
         control={
           <NumberInput
             value={s.logRetentionDays}
@@ -668,8 +710,10 @@ function Logs({ s, update }: SectionProps) {
         }
       />
       <SettingRow
-        label="Upload to the account server"
-        hint="Encrypted with your vault key before leaving the device; requires being signed in. Team vaults with session recording turned on by a manager always share their recordings."
+        label={tr("Upload to the account server")}
+        hint={tr(
+          "Encrypted with your vault key before leaving the device; requires being signed in. Team vaults with session recording turned on by a manager always share their recordings.",
+        )}
         last
         control={<Toggle checked={s.uploadLogs} onChange={(v) => update({ uploadLogs: v })} />}
       />
@@ -683,11 +727,11 @@ function About() {
 
   return (
     <>
-      <SectionCard title="Termoso">
-        <SettingRow label="Version" control={<Value>{d ? d.version : "…"}</Value>} />
-        <SettingRow label="Platform" control={<Value>{d?.platform ?? "…"}</Value>} />
+      <SectionCard title={tr("Termoso")}>
+        <SettingRow label={tr("Version")} control={<Value>{d ? d.version : "…"}</Value>} />
+        <SettingRow label={tr("Platform")} control={<Value>{d?.platform ?? "…"}</Value>} />
         <SettingRow
-          label="Profile"
+          label={tr("Profile")}
           last
           control={
             <Value>
@@ -697,10 +741,11 @@ function About() {
         />
       </SectionCard>
 
-      <SectionCard title="Privacy">
+      <SectionCard title={tr("Privacy")}>
         <Typography variant="body2" color="text.secondary">
-          Termoso sends nothing anywhere unless you sign in to a server you chose or ask it to check
-          for updates. No analytics, no crash reports, no background pings.
+          {tr(
+            "Termoso sends nothing anywhere unless you sign in to a server you chose or ask it to check for updates. No analytics, no crash reports, no background pings.",
+          )}
         </Typography>
       </SectionCard>
     </>

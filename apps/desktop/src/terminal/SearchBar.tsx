@@ -7,6 +7,7 @@ import type { ISearchOptions } from "@xterm/addon-search";
 import type { Uuid } from "@/ipc/types";
 import { emerald, monoFontFamily } from "@/theme/theme";
 import { focusPane, getRuntime } from "./store";
+import { tr } from "@/i18n";
 
 interface Props {
   paneId: Uuid;
@@ -110,36 +111,48 @@ export function SearchBar({ paneId, onClose }: Props) {
               focusPane(paneId);
             }
           }}
-          placeholder="Search"
+          placeholder={tr("Search")}
           sx={{ flex: 1, minWidth: 0, fontSize: 13 }}
-          inputProps={{ "aria-label": "Search in terminal" }}
+          inputProps={{ "aria-label": tr("Search in terminal") }}
         />
-        <IconButton size="small" onClick={() => void prev()} aria-label="Previous match">
+        <IconButton size="small" onClick={() => void prev()} aria-label={tr("Previous match")}>
           <KeyboardArrowUpRoundedIcon sx={{ fontSize: 18 }} />
         </IconButton>
-        <IconButton size="small" onClick={() => void next()} aria-label="Next match">
+        <IconButton size="small" onClick={() => void next()} aria-label={tr("Next match")}>
           <KeyboardArrowDownRoundedIcon sx={{ fontSize: 18 }} />
         </IconButton>
       </Stack>
       <Stack direction="row" sx={{ alignItems: "center", gap: 0.25, px: 0.5 }}>
         <SearchToggle
-          title="Match case"
+          title={tr("Match case")}
           on={caseSensitive}
           onClick={() => setCaseSensitive((v) => !v)}
         >
-          Aa
+          {tr("Aa")}
         </SearchToggle>
-        <SearchToggle title="Whole word" on={wholeWord} onClick={() => setWholeWord((v) => !v)}>
+        <SearchToggle
+          title={tr("Whole word")}
+          on={wholeWord}
+          onClick={() => setWholeWord((v) => !v)}
+        >
           <Box component="span" sx={{ textDecoration: "underline" }}>
-            ab
+            {"ab"}
           </Box>
         </SearchToggle>
-        <SearchToggle title="Regular expression" on={regex} onClick={() => setRegex((v) => !v)}>
+        <SearchToggle
+          title={tr("Regular expression")}
+          on={regex}
+          onClick={() => setRegex((v) => !v)}
+        >
           .*
         </SearchToggle>
         <Box sx={{ flex: 1 }} />
         <Typography variant="caption" color="text.secondary">
-          {query ? (results ? `${results.index} of ${results.count}` : "No results") : ""}
+          {query
+            ? results
+              ? tr("{index} of {count}", { index: results.index, count: results.count })
+              : tr("No results")
+            : ""}
         </Typography>
       </Stack>
     </Stack>

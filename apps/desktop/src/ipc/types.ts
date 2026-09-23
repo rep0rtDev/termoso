@@ -1,3 +1,4 @@
+import { msg, type Language } from "@/i18n";
 // Mirrors of the Rust IPC types (apps/desktop/src-tauri/src/*.rs). These are
 // shapes only; all validation and domain logic lives in Rust.
 
@@ -66,6 +67,8 @@ export type SyncConflict = "newest_wins" | "local_wins" | "server_wins";
 
 export interface Settings {
   theme: ThemeMode;
+  /** UI language; `system` follows the OS locale. */
+  language: Language;
   hostsView: HostsView;
   forwardingView: HostsView;
   keychainView: HostsView;
@@ -526,8 +529,8 @@ export const SERIAL_CHARSETS: readonly { value: string; label: string }[] = [
   { value: "koi8-u", label: "KOI8-U" },
   { value: "gbk", label: "GBK" },
   { value: "gb18030", label: "GB18030" },
-  { value: "big5", label: "Big5" },
-  { value: "shift_jis", label: "Shift_JIS" },
+  { value: "big5", label: msg("Big5") },
+  { value: "shift_jis", label: msg("Shift_JIS") },
   { value: "euc-jp", label: "EUC-JP" },
   { value: "euc-kr", label: "EUC-KR" },
 ];
@@ -930,8 +933,8 @@ export const SSH_ID_KEY_TYPES: {
   { value: "ecdsa_sk", label: "ECDSA-SK", hint: "OpenSSH 8.4+", hardware: true },
   { value: "ed25519_sk", label: "ED25519-SK", hint: "OpenSSH 8.2+", hardware: true },
   { value: "ed25519", label: "ED25519", hint: "OpenSSH 6.5+", hardware: false },
-  { value: "ecdsa", label: "ECDSA", hint: "OpenSSH 5.7+", hardware: false },
-  { value: "rsa", label: "RSA", hint: "Legacy devices", hardware: false },
+  { value: "ecdsa", label: "ECDSA", hint: msg("OpenSSH 5.7+"), hardware: false },
+  { value: "rsa", label: "RSA", hint: msg("Legacy devices"), hardware: false },
 ];
 
 export const SSH_ID_DEFAULT_TYPE: SshIdKeyType = "ed25519";

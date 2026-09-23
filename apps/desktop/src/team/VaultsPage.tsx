@@ -60,6 +60,7 @@ import { vaultHint, vaultIcon } from "@/app/vault";
 import { PersonAvatar, initialsOf } from "./PersonAvatar";
 import { SecurityRow } from "./TeamPage";
 import { VAULT_ROLES, isTeamAdmin, vaultRoleHint, vaultRoleLabel } from "./roles";
+import { tr } from "@/i18n";
 
 type Panel = { kind: "vault"; id: Uuid } | { kind: "new"; teamId: Uuid | null };
 
@@ -114,7 +115,7 @@ export function VaultsPage() {
                     icon={<GroupsOutlinedIcon fontSize="small" />}
                     title={
                       <Typography variant="body2" color="text.disabled">
-                        Enter vault name, e.g. Production…
+                        {tr("Enter vault name, e.g. Production…")}
                       </Typography>
                     }
                   />
@@ -122,9 +123,9 @@ export function VaultsPage() {
                 <Tooltip
                   title={
                     !signedIn
-                      ? "Sign in to create shared vaults"
+                      ? tr("Sign in to create shared vaults")
                       : adminTeams.length === 0
-                        ? "Only team admins create vaults — create a team first"
+                        ? tr("Only team admins create vaults — create a team first")
                         : ""
                   }
                   placement="bottom-start"
@@ -132,7 +133,7 @@ export function VaultsPage() {
                   <Box sx={{ mt: 0.5 }}>
                     <ListRow
                       icon={<AddBoxRoundedIcon fontSize="small" />}
-                      title="Add vault"
+                      title={tr("Add vault")}
                       disabled={adminTeams.length === 0}
                       onClick={() => setPanel({ kind: "new", teamId: adminTeams[0]?.id ?? null })}
                     />
@@ -141,8 +142,9 @@ export function VaultsPage() {
               </SectionCard>
               {!signedIn && (
                 <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
-                  Sign in under Account & sync to get a Personal vault that follows you across
-                  devices and to share vaults with a team.
+                  {tr(
+                    "Sign in under Account & sync to get a Personal vault that follows you across devices and to share vaults with a team.",
+                  )}
                 </Typography>
               )}
             </Stack>
@@ -258,8 +260,8 @@ function VaultRow({
           ? `${count} ${count === 1 ? "person" : "people"}`
           : (team?.name ?? "Team")
       : v.kind === "personal"
-        ? "Only you"
-        : "This device";
+        ? tr("Only you")
+        : tr("This device");
   const whoIcon =
     v.kind === "team" ? (
       <GroupsOutlinedIcon sx={{ fontSize: 15 }} />
@@ -349,7 +351,7 @@ function VaultDetails({
 
   const menuItems: MenuAction[] = [
     {
-      label: "Rotate vault key",
+      label: tr("Rotate vault key"),
       icon: <RefreshRoundedIcon fontSize="small" />,
       disabled: !manager,
       onClick: () => setConfirm("rotate"),
@@ -359,7 +361,7 @@ function VaultDetails({
       ? []
       : [
           {
-            label: "Delete vault",
+            label: tr("Delete vault"),
             icon: <DeleteOutlineRoundedIcon fontSize="small" />,
             danger: true,
             disabled: !manager,
@@ -374,17 +376,17 @@ function VaultDetails({
       setName(v.name);
       return;
     }
-    op.mutate(() => ipc.teamVaultRename(v.id, n).then(() => "Vault renamed"));
+    op.mutate(() => ipc.teamVaultRename(v.id, n).then(() => tr("Vault renamed")));
   };
 
   return (
     <SidePanel
-      title="Vault details"
+      title={tr("Vault details")}
       subtitle={team ? team.name : vaultHint(v)}
       onClose={onClose}
       actions={
         isTeam ? (
-          <IconButton onClick={(e) => setMenu(e.currentTarget)} aria-label="Vault actions">
+          <IconButton onClick={(e) => setMenu(e.currentTarget)} aria-label={tr("Vault actions")}>
             <MoreHorizRoundedIcon fontSize="small" />
           </IconButton>
         ) : undefined
@@ -416,17 +418,21 @@ function VaultDetails({
         <SectionCard>
           <Typography variant="caption" color="text.secondary">
             {v.kind === "personal"
-              ? "Your Personal vault is encrypted with a key only your devices hold. Nobody else can be given access — copy items to a team vault to share them."
-              : "Local is stored on this computer only. Sign in to sync a Personal vault or share with a team."}
+              ? tr(
+                  "Your Personal vault is encrypted with a key only your devices hold. Nobody else can be given access — copy items to a team vault to share them.",
+                )
+              : tr(
+                  "Local is stored on this computer only. Sign in to sync a Personal vault or share with a team.",
+                )}
           </Typography>
         </SectionCard>
       )}
 
       {isTeam && (
-        <SectionCard title="People with access to this vault">
+        <SectionCard title={tr("People with access to this vault")}>
           {!v.unlocked && (
             <Alert severity="info" icon={<KeyRoundedIcon fontSize="small" />}>
-              Locked on this device until a manager hands you the key.
+              {tr("Locked on this device until a manager hands you the key.")}
             </Alert>
           )}
           {manager && candidates.length === 0 && (
@@ -439,13 +445,13 @@ function VaultDetails({
                 color: "text.secondary",
               }}
             >
-              Everyone in the team has access to this vault.{" "}
+              {tr("Everyone in the team has access to this vault.")}{" "}
               <Button
                 size="small"
                 onClick={() => goToSettingsWith({ kind: "invite" })}
                 sx={{ p: 0, minWidth: 0, fontSize: "inherit", verticalAlign: "baseline" }}
               >
-                Invite members
+                {tr("Invite members")}
               </Button>
             </Box>
           )}
@@ -455,11 +461,11 @@ function VaultDetails({
               disabled={op.isPending}
               onPick={(m) =>
                 op.mutate(() =>
-                  ipc
-                    .teamVaultSetAccess(v.id, m.user_id, "editor")
-                    .then(
-                      () => `${m.display_name ?? m.email} can edit — key sealed to their account`,
-                    ),
+                  ipc.teamVaultSetAccess(v.id, m.user_id, "editor").then(() =>
+                    tr("{value} can edit — key sealed to their account", {
+                      value: m.display_name ?? m.email,
+                    }),
+                  ),
                 )
               }
             />
@@ -478,7 +484,7 @@ function VaultDetails({
                         variant="subtitle2"
                         sx={{ mt: 1, mb: 0.5, pt: 1.5, borderTop: 1, borderColor: "border.light" }}
                       >
-                        Pending
+                        {tr("Pending")}
                       </Typography>
                     )}
                     {rows.map((m) => (
@@ -495,18 +501,20 @@ function VaultDetails({
                           op.mutate(() =>
                             ipc
                               .teamVaultSetAccess(v.id, m.user_id, role)
-                              .then(() => (m.pending ? "Key handed over" : "Access updated")),
+                              .then(() =>
+                                m.pending ? tr("Key handed over") : tr("Access updated"),
+                              ),
                           )
                         }
                         onRemove={() =>
                           op.mutate(() =>
-                            ipc
-                              .teamVaultRemoveAccess(v.id, m.user_id)
-                              .then(() =>
-                                m.user_id === myId
-                                  ? `You left ${v.name}`
-                                  : `${m.display_name ?? m.email} removed · key rotated`,
-                              ),
+                            ipc.teamVaultRemoveAccess(v.id, m.user_id).then(() =>
+                              m.user_id === myId
+                                ? tr("You left {name}", { name: v.name })
+                                : tr("{value} removed · key rotated", {
+                                    value: m.display_name ?? m.email,
+                                  }),
+                            ),
                           )
                         }
                       />
@@ -520,10 +528,12 @@ function VaultDetails({
       )}
 
       {isTeam && (
-        <SectionCard title="Session logs">
+        <SectionCard title={tr("Session logs")}>
           <SecurityRow
-            label="Record members' sessions"
-            hint="Every terminal session to a host of this vault is recorded on the member's device, encrypted with the vault key and shared with the vault. Members can read each other's recordings; editors can pin and comment on them. Only vault managers change this."
+            label={tr("Record members' sessions")}
+            hint={tr(
+              "Every terminal session to a host of this vault is recorded on the member's device, encrypted with the vault key and shared with the vault. Members can read each other's recordings; editors can pin and comment on them. Only vault managers change this.",
+            )}
             enabled={v.session_logging}
             canChange={manager}
             onChange={(on) =>
@@ -531,28 +541,33 @@ function VaultDetails({
                 ipc
                   .vaultSessionLoggingSet(v.id, on)
                   .then(() =>
-                    on ? "Sessions in this vault are now recorded" : "Session recording turned off",
+                    on
+                      ? tr("Sessions in this vault are now recorded")
+                      : tr("Session recording turned off"),
                   ),
               )
             }
           />
           <Typography variant="caption" color="text.secondary">
-            Recordings never leave a device unencrypted; the server stores ciphertext only.
+            {tr("Recordings never leave a device unencrypted; the server stores ciphertext only.")}
           </Typography>
         </SectionCard>
       )}
 
       {isTeam && (
-        <SectionCard title="Encryption">
+        <SectionCard title={tr("Encryption")}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
             <IconTile tone="neutral" size={32}>
               <KeyRoundedIcon />
             </IconTile>
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="body2">Key version {v.key_version}</Typography>
+              <Typography variant="body2">
+                {tr("Key version")} {v.key_version}
+              </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                Sealed separately to each member's account. Rotating re-encrypts everything under a
-                fresh key and re-seals it to the current members.
+                {tr(
+                  "Sealed separately to each member's account. Rotating re-encrypts everything under a fresh key and re-seals it to the current members.",
+                )}
               </Typography>
             </Box>
           </Box>
@@ -562,23 +577,23 @@ function VaultDetails({
       <ActionMenu anchor={menu} onClose={() => setMenu(null)} items={menuItems} />
       <ConfirmDialog
         open={confirm === "rotate"}
-        title={`Rotate the key of ${v.name}?`}
-        confirmLabel="Rotate key"
+        title={tr("Rotate the key of {name}?", { name: v.name })}
+        confirmLabel={tr("Rotate key")}
         busy={op.isPending}
         onCancel={() => setConfirm(null)}
         onConfirm={() =>
-          op.mutate(() => ipc.teamVaultRotateKey(v.id).then(() => "Vault key rotated"))
+          op.mutate(() => ipc.teamVaultRotateKey(v.id).then(() => tr("Vault key rotated")))
         }
       >
-        Everything in the vault is re-encrypted with a new key on this device and re-sealed to the{" "}
-        {memberList.filter((m) => !m.pending).length} current members. Old copies of the key stop
-        working. Do this after removing someone by other means or if you suspect a device was
-        compromised.
+        {tr(
+          "Everything in the vault is re-encrypted with a new key on this device and re-sealed to the {count} current members. Old copies of the key stop working. Do this after removing someone by other means or if you suspect a device was compromised.",
+          { count: memberList.filter((m) => !m.pending).length },
+        )}
       </ConfirmDialog>
       <ConfirmDialog
         open={confirm === "delete"}
-        title={`Delete ${v.name}?`}
-        confirmLabel="Delete vault"
+        title={tr("Delete {name}?", { name: v.name })}
+        confirmLabel={tr("Delete vault")}
         danger
         busy={op.isPending}
         onCancel={() => setConfirm(null)}
@@ -591,8 +606,9 @@ function VaultDetails({
           )
         }
       >
-        All hosts, keys, snippets and rules inside disappear for every member. This cannot be undone
-        — export a backup first if you need one.
+        {tr(
+          "All hosts, keys, snippets and rules inside disappear for every member. This cannot be undone — export a backup first if you need one.",
+        )}
       </ConfirmDialog>
     </SidePanel>
   );
@@ -617,7 +633,7 @@ function MemberPicker({
       value={null}
       blurOnSelect
       clearOnBlur
-      noOptionsText="Everyone is already listed"
+      noOptionsText={tr("Everyone is already listed")}
       onChange={(_, m) => {
         if (m) onPick(m);
       }}
@@ -647,7 +663,9 @@ function MemberPicker({
           </li>
         );
       }}
-      renderInput={(params) => <TextField {...params} placeholder="Add members by name or email" />}
+      renderInput={(params) => (
+        <TextField {...params} placeholder={tr("Add members by name or email")} />
+      )}
     />
   );
 }
@@ -673,13 +691,13 @@ function RoleMenuButton({
   const items: MenuAction[] = [...VAULT_ROLES]
     .sort((a, b) => (a === "editor" ? -1 : b === "editor" ? 1 : 0))
     .map((r) => ({
-      label: vaultRoleLabel[r],
+      label: tr(vaultRoleLabel[r]),
       icon: value === r ? <CheckRoundedIcon fontSize="small" /> : <Box sx={{ width: 20 }} />,
       onClick: () => onChange(r),
     }));
   if (onRemove) {
     items.push({
-      label: removeLabel ?? "remove access",
+      label: removeLabel ?? tr("remove access"),
       danger: true,
       divider: true,
       onClick: onRemove,
@@ -695,7 +713,7 @@ function RoleMenuButton({
         onClick={(e) => setAnchor(e.currentTarget)}
         sx={{ color: "text.secondary", minWidth: 0, px: 0.75, fontWeight: 400, flexShrink: 0 }}
       >
-        {value ? vaultRoleLabel[value] : "no access"}
+        {value ? tr(vaultRoleLabel[value]) : tr("no access")}
       </Button>
       <ActionMenu anchor={anchor} onClose={() => setAnchor(null)} items={items} />
     </>
@@ -768,18 +786,20 @@ function VaultMemberRow({
           {name}
         </Typography>
         {me && <YouChip />}
-        {m.role === "manager" && <ManagerCrown title="Manages this vault" />}
+        {m.role === "manager" && <ManagerCrown title={tr("Manages this vault")} />}
       </Box>
       {editable ? (
         m.pending ? (
-          <Tooltip title="Has access on paper but no key yet — seal the vault key to their account">
+          <Tooltip
+            title={tr("Has access on paper but no key yet — seal the vault key to their account")}
+          >
             <Button
               size="small"
               startIcon={<KeyRoundedIcon />}
               onClick={() => onRole(m.role)}
               sx={{ flexShrink: 0 }}
             >
-              Hand over key
+              {tr("Hand over key")}
             </Button>
           </Tooltip>
         ) : (
@@ -787,28 +807,28 @@ function VaultMemberRow({
             value={m.role}
             onChange={onRole}
             onRemove={() => setConfirmRemove(true)}
-            removeLabel={me ? "leave vault" : "remove access"}
+            removeLabel={me ? tr("leave vault") : tr("remove access")}
           />
         )
       ) : (
         <Tooltip
           title={
             onlyManager && manager
-              ? "The only manager — add another before changing this"
+              ? tr("The only manager — add another before changing this")
               : m.pending
-                ? "Waiting for a manager to hand over the key"
-                : vaultRoleHint[m.role]
+                ? tr("Waiting for a manager to hand over the key")
+                : tr(vaultRoleHint[m.role])
           }
         >
           <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0, px: 0.75 }}>
-            {vaultRoleLabel[m.role]}
+            {tr(vaultRoleLabel[m.role])}
           </Typography>
         </Tooltip>
       )}
       <ConfirmDialog
         open={confirmRemove}
-        title={me ? "Leave this vault?" : `Remove ${name}?`}
-        confirmLabel={me ? "Leave" : "Remove"}
+        title={me ? tr("Leave this vault?") : tr("Remove {name}?", { name })}
+        confirmLabel={me ? tr("Leave") : tr("Remove")}
         danger
         onCancel={() => setConfirmRemove(false)}
         onConfirm={() => {
@@ -817,8 +837,10 @@ function VaultMemberRow({
         }}
       >
         {me
-          ? "The vault disappears from your devices. Another manager can let you back in."
-          : "They can no longer open the vault. Its key is rotated so a copy they may still hold is useless."}
+          ? tr("The vault disappears from your devices. Another manager can let you back in.")
+          : tr(
+              "They can no longer open the vault. Its key is rotated so a copy they may still hold is useless.",
+            )}
       </ConfirmDialog>
     </Box>
   );
@@ -852,13 +874,13 @@ function NewVaultPanel({
 
   const create = useMutation({
     mutationFn: () => {
-      if (!teamId) throw new Error("Pick a team");
+      if (!teamId) throw new Error(tr("Pick a team"));
       const list: VaultAccess[] = [...access].map(([userId, role]) => ({ userId, role }));
       return ipc.teamVaultCreate(teamId, name.trim(), list);
     },
     onSuccess: () => {
       invalidate();
-      snackbar.notify(`${name.trim()} created`);
+      snackbar.notify(tr("{trim} created", { trim: name.trim() }));
       onCreated();
     },
     onError: (e) => snackbar.error(errorMessage(e)),
@@ -866,12 +888,12 @@ function NewVaultPanel({
 
   if (teams.length === 0) {
     return (
-      <SidePanel title="New vault" onClose={onClose}>
+      <SidePanel title={tr("New vault")} onClose={onClose}>
         <Alert severity="info">
-          Shared vaults belong to a team. Create one under Settings → Team first.
+          {tr("Shared vaults belong to a team. Create one under Settings → Team first.")}
         </Alert>
         <Button variant="tonal" onClick={() => goToSettings("team")}>
-          Go to Team
+          {tr("Go to Team")}
         </Button>
       </SidePanel>
     );
@@ -881,20 +903,20 @@ function NewVaultPanel({
 
   return (
     <SidePanel
-      title="New vault"
-      subtitle={team ? `In ${team.name}` : undefined}
+      title={tr("New vault")}
+      subtitle={team ? tr("In {name}", { name: team.name }) : undefined}
       onClose={onClose}
       footer={
         <>
           <Button color="inherit" onClick={onClose} disabled={create.isPending}>
-            Cancel
+            {tr("Cancel")}
           </Button>
           <Button
             variant="contained"
             disabled={!name.trim() || !teamId || create.isPending}
             onClick={() => create.mutate()}
           >
-            {create.isPending ? "Creating…" : "Create vault"}
+            {create.isPending ? tr("Creating…") : tr("Create vault")}
           </Button>
         </>
       }
@@ -908,13 +930,13 @@ function NewVaultPanel({
           fullWidth
           size="small"
           value={name}
-          placeholder="Vault name"
+          placeholder={tr("Vault name")}
           onChange={(e) => setName(e.target.value)}
         />
       </SectionCard>
       {teams.length > 1 && (
         <SectionCard>
-          <Field label="Team">
+          <Field label={tr("Team")}>
             <TextField
               select
               fullWidth
@@ -933,14 +955,16 @@ function NewVaultPanel({
           </Field>
         </SectionCard>
       )}
-      <SectionCard title="People with access to this vault">
+      <SectionCard title={tr("People with access to this vault")}>
         {members.isPending ? (
           <Loading pt={1} />
         ) : (
           <Stack spacing={0.5}>
             {others.length === 0 ? (
               <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
-                Nobody else in {team?.name ?? "the team"} yet — invite people from the Team page.
+                {tr("Nobody else in {team} yet — invite people from the Team page.", {
+                  team: team?.name ?? tr("the team"),
+                })}
               </Typography>
             ) : (
               <MemberPicker
@@ -963,13 +987,13 @@ function NewVaultPanel({
               />
               <Box sx={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 0.75 }}>
                 <Typography variant="body2" noWrap sx={{ minWidth: 0 }}>
-                  {me?.displayName ?? me?.email ?? "You"}
+                  {me?.displayName ?? me?.email ?? tr("You")}
                 </Typography>
                 <YouChip />
-                <ManagerCrown title="You manage this vault" />
+                <ManagerCrown title={tr("You manage this vault")} />
               </Box>
               <Typography variant="body2" color="text.secondary" sx={{ px: 0.75 }}>
-                can manage
+                {tr("can manage")}
               </Typography>
             </Box>
             {others
@@ -1007,8 +1031,9 @@ function NewVaultPanel({
           </Stack>
         )}
         <Typography variant="caption" color="text.secondary">
-          The vault key is sealed to each listed account on this device; you can change access
-          later.
+          {tr(
+            "The vault key is sealed to each listed account on this device; you can change access later.",
+          )}
         </Typography>
       </SectionCard>
     </SidePanel>

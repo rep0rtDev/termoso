@@ -25,6 +25,7 @@ import {
   type TerminalState,
   type TerminalTab,
 } from "./store";
+import { tr, msg } from "@/i18n";
 
 export interface WorkspacesUiState {
   loaded: boolean;
@@ -45,7 +46,7 @@ export const workspacesStore = createStore<WorkspacesUiState>({
 export const useWorkspaces = <S>(selector: (s: WorkspacesUiState) => S) =>
   useStore(workspacesStore, selector);
 
-export const DEFAULT_WORKSPACE_NAME = "New Workspace";
+export const DEFAULT_WORKSPACE_NAME = msg("New Workspace");
 const SAVE_DEBOUNCE_MS = 400;
 
 const uuid = () => crypto.randomUUID();
@@ -60,7 +61,7 @@ function update(fn: (s: WorkspacesUiState) => WorkspacesUiState) {
 /** Leaves of a layout in reading order. */
 function nameOrDefault(name: string | undefined): string {
   const trimmed = name?.trim() ?? "";
-  return trimmed === "" ? DEFAULT_WORKSPACE_NAME : trimmed;
+  return trimmed === "" ? tr(DEFAULT_WORKSPACE_NAME) : trimmed;
 }
 
 export function layoutTargets(node: LayoutTemplate): OpenTarget[] {
@@ -278,7 +279,7 @@ export function addToWorkspace(
   if (targets.length === 0) return null;
   if (choice === null) {
     const layout = layoutFromTargets(targets);
-    return layout ? openLayout(layout, { name: DEFAULT_WORKSPACE_NAME, background }) : null;
+    return layout ? openLayout(layout, { name: tr(DEFAULT_WORKSPACE_NAME), background }) : null;
   }
   let tabId: string | null = choice.id;
   if (choice.kind === "template") tabId = openTemplate(choice.id, background);

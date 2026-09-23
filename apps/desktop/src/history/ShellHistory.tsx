@@ -31,6 +31,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { useSnackbar } from "@/components/Snackbar";
 import { Loading, SearchField, SidePanel } from "@/components/ui";
 import { copyText, dropHistoryCache, openTerminal } from "@/terminal/store";
+import { tr } from "@/i18n";
 
 export type HostFilter = { kind: "all" } | { kind: "local" } | { kind: "host"; id: Uuid };
 
@@ -114,13 +115,13 @@ export function CommandHistoryList({
     onSuccess: async () => {
       setConfirmClear(false);
       await refresh();
-      snackbar.notify("Shell history cleared");
+      snackbar.notify(tr("Shell history cleared"));
     },
     onError: (e) => snackbar.error(errorMessage(e)),
   });
   const save = useMutation({
     mutationFn: (form: { label: string; script: string }) => {
-      if (!vault.data) throw new Error("No vault available");
+      if (!vault.data) throw new Error(tr("No vault available"));
       return ipc.snippetSave({
         id: null,
         vaultId: vault.data.id,
@@ -134,7 +135,7 @@ export function CommandHistoryList({
     onSuccess: async () => {
       setSaving(null);
       await qc.invalidateQueries({ queryKey: ["snippets"] });
-      snackbar.notify("Saved as snippet");
+      snackbar.notify(tr("Saved as snippet"));
     },
     onError: (e) => snackbar.error(errorMessage(e)),
   });
@@ -180,7 +181,7 @@ export function CommandHistoryList({
               onClick={() => setConfirmClear(true)}
               sx={{ flexShrink: 0, whiteSpace: "nowrap" }}
             >
-              Delete all
+              {tr("Delete all")}
             </Button>
           )}
         </Stack>
@@ -190,24 +191,26 @@ export function CommandHistoryList({
       ) : history.error ? (
         <EmptyState
           compact
-          title="Could not load history"
+          title={tr("Could not load history")}
           description={errorMessage(history.error)}
         />
       ) : rows.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ px: 0.5 }}>
           {q
-            ? `Nothing matches “${query}”.`
+            ? tr("Nothing matches “{query}”.", { query })
             : (emptyHint ??
               (host.kind !== "all"
-                ? "No commands recorded here yet."
-                : "No commands yet. Bash, zsh and fish sessions record commands as you run them."))}
+                ? tr("No commands recorded here yet.")
+                : tr(
+                    "No commands yet. Bash, zsh and fish sessions record commands as you run them.",
+                  )))}
         </Typography>
       ) : (
         <List dense disablePadding>
           {rows.map(({ latest, ids }) => {
             const command = latest.data.command;
             const where = latest.data.host_id
-              ? (hostLabel.get(latest.data.host_id) ?? "Removed host")
+              ? (hostLabel.get(latest.data.host_id) ?? tr("Removed host"))
               : "Local";
             if (saving?.id === latest.id) {
               return (
@@ -231,7 +234,7 @@ export function CommandHistoryList({
                   <Stack direction="row" spacing={0.75} sx={{ alignItems: "center" }}>
                     <TextField
                       autoFocus
-                      placeholder="Set a label"
+                      placeholder={tr("Set a label")}
                       value={saving.label}
                       onChange={(e) => setSaving({ id: latest.id, label: e.target.value })}
                       onKeyDown={(e) => {
@@ -245,7 +248,7 @@ export function CommandHistoryList({
                       variant="contained"
                       disabled={save.isPending}
                     >
-                      Done
+                      {tr("Done")}
                     </Button>
                   </Stack>
                 </Stack>
@@ -289,7 +292,7 @@ export function CommandHistoryList({
                   />
                 </ListItemButton>
                 <Stack direction="row" className="row-actions" sx={{ opacity: 0, flexShrink: 0 }}>
-                  <Tooltip title="Save as snippet">
+                  <Tooltip title={tr("Save as snippet")}>
                     <IconButton
                       size="small"
                       onClick={() => setSaving({ id: latest.id, label: "" })}
@@ -297,18 +300,18 @@ export function CommandHistoryList({
                       <DataObjectRoundedIcon sx={{ fontSize: 16 }} />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Copy">
+                  <Tooltip title={tr("Copy")}>
                     <IconButton
                       size="small"
                       onClick={() => {
                         void copyText(command);
-                        snackbar.notify("Copied");
+                        snackbar.notify(tr("Copied"));
                       }}
                     >
                       <ContentCopyRoundedIcon sx={{ fontSize: 16 }} />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Delete">
+                  <Tooltip title={tr("Delete")}>
                     <IconButton
                       size="small"
                       disabled={remove.isPending}
@@ -324,19 +327,20 @@ export function CommandHistoryList({
         </List>
       )}
       <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
-        Stored encrypted on this device; lines that look like they contain a password or token are
-        never recorded.
+        {tr(
+          "Stored encrypted on this device; lines that look like they contain a password or token are never recorded.",
+        )}
       </Typography>
       <ConfirmDialog
         open={confirmClear}
-        title="Delete all shell history?"
-        confirmLabel="Delete all"
+        title={tr("Delete all shell history?")}
+        confirmLabel={tr("Delete all")}
         danger
         busy={clear.isPending}
         onCancel={() => setConfirmClear(false)}
         onConfirm={() => clear.mutate()}
       >
-        Removes every recorded command from this device (and from sync, if enabled).
+        {tr("Removes every recorded command from this device (and from sync, if enabled).")}
       </ConfirmDialog>
     </>
   );
@@ -362,7 +366,7 @@ export function ConnectionHistoryList({
     onSuccess: async () => {
       setConfirmClear(false);
       await qc.invalidateQueries({ queryKey: keys.history });
-      snackbar.notify("Connection history cleared");
+      snackbar.notify(tr("Connection history cleared"));
     },
     onError: (e) => snackbar.error(errorMessage(e)),
   });
@@ -382,7 +386,7 @@ export function ConnectionHistoryList({
             disabled={(history.data ?? []).length === 0}
             onClick={() => setConfirmClear(true)}
           >
-            Delete all
+            {tr("Delete all")}
           </Button>
         </Stack>
       )}
@@ -391,12 +395,12 @@ export function ConnectionHistoryList({
       ) : history.error ? (
         <EmptyState
           compact
-          title="Could not load history"
+          title={tr("Could not load history")}
           description={errorMessage(history.error)}
         />
       ) : items.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ px: 0.5 }}>
-          {q ? `Nothing matches “${query}”.` : "No connections yet."}
+          {q ? tr("Nothing matches “{query}”.", { query }) : tr("No connections yet.")}
         </Typography>
       ) : (
         <List dense disablePadding>
@@ -435,7 +439,7 @@ export function ConnectionHistoryList({
                   size="small"
                   variant="outlined"
                   color={item.data.error ? "error" : "default"}
-                  label={item.data.error ? "Failed" : item.data.protocol.toUpperCase()}
+                  label={item.data.error ? tr("Failed") : item.data.protocol.toUpperCase()}
                 />
               </ListItemButton>
             </Tooltip>
@@ -444,14 +448,14 @@ export function ConnectionHistoryList({
       )}
       <ConfirmDialog
         open={confirmClear}
-        title="Delete all connection history?"
-        confirmLabel="Delete all"
+        title={tr("Delete all connection history?")}
+        confirmLabel={tr("Delete all")}
         danger
         busy={clear.isPending}
         onCancel={() => setConfirmClear(false)}
         onConfirm={() => clear.mutate()}
       >
-        Removes every recorded connection from this device (and from sync, if enabled).
+        {tr("Removes every recorded connection from this device (and from sync, if enabled).")}
       </ConfirmDialog>
     </>
   );
@@ -471,7 +475,7 @@ export function ShellHistoryPanel({ onClose }: { onClose: () => void }) {
     setHost(v === "all" ? ALL_HOSTS : v === "local" ? LOCAL_ONLY : { kind: "host", id: v });
 
   return (
-    <SidePanel title="Shell History" onClose={onClose}>
+    <SidePanel title={tr("Shell History")} onClose={onClose}>
       <Stack sx={{ p: 1.5, gap: 1.5 }}>
         <ToggleButtonGroup
           exclusive
@@ -480,18 +484,18 @@ export function ShellHistoryPanel({ onClose }: { onClose: () => void }) {
           value={mode}
           onChange={(_, v: "commands" | "connections" | null) => v && setMode(v)}
         >
-          <ToggleButton value="commands">Commands</ToggleButton>
-          <ToggleButton value="connections">Connections</ToggleButton>
+          <ToggleButton value="commands">{tr("Commands")}</ToggleButton>
+          <ToggleButton value="connections">{tr("Connections")}</ToggleButton>
         </ToggleButtonGroup>
         <SearchField
           value={query}
           onChange={setQuery}
-          placeholder={mode === "commands" ? "Search commands" : "Search connections"}
+          placeholder={mode === "commands" ? tr("Search commands") : tr("Search connections")}
           width="100%"
         />
         <TextField select value={hostValue} onChange={(e) => pickHost(e.target.value)} fullWidth>
-          <MenuItem value="all">All hosts</MenuItem>
-          <MenuItem value="local">Local terminal</MenuItem>
+          <MenuItem value="all">{tr("All hosts")}</MenuItem>
+          <MenuItem value="local">{tr("Local terminal")}</MenuItem>
           {(hosts.data ?? []).map((h) => (
             <MenuItem key={h.id} value={h.id}>
               {h.label}
@@ -504,7 +508,7 @@ export function ShellHistoryPanel({ onClose }: { onClose: () => void }) {
             host={host}
             leading={
               <Typography variant="caption" color="text.secondary">
-                Hover a command to save it as a snippet
+                {tr("Hover a command to save it as a snippet")}
               </Typography>
             }
           />

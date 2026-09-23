@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { Alert, Snackbar, type AlertColor } from "@mui/material";
+import { tr } from "@/i18n";
 
 interface Toast {
   message: string;
@@ -64,6 +65,6 @@ export function SnackbarProvider({ children }: { children: ReactNode }) {
 
 export function useSnackbar(): SnackbarApi {
   const api = useContext(Ctx);
-  if (!api) throw new Error("SnackbarProvider missing");
+  if (!api) throw new Error(tr("SnackbarProvider missing"));
   return api;
 }

@@ -58,6 +58,7 @@ import {
   type SshIdView,
 } from "@/ipc/types";
 import { copyToClipboard } from "@/lib/clipboard";
+import { tr, trx } from "@/i18n";
 
 /** Settings → SSH ID: the account's device-bound passkeys, published under
  *  `<sshid base>/<handle>` so `curl … >> authorized_keys` provisions a box.
@@ -75,7 +76,7 @@ export function SshIdPage() {
   if (view.isError) {
     return (
       <Page>
-        <EmptyState title="SSH ID unavailable" description={errorMessage(view.error)} />
+        <EmptyState title={tr("SSH ID unavailable")} description={errorMessage(view.error)} />
       </Page>
     );
   }
@@ -117,8 +118,9 @@ function useSshIdMutation<A>(fn: (arg: A) => Promise<SshIdView>) {
 function Intro() {
   return (
     <Typography variant="body2" color="text.secondary">
-      SSH ID is a public page with your passkeys. Each signed-in device keeps its own private key
-      and publishes only the public half; hosts fetch the list once and let every device in.
+      {tr(
+        "SSH ID is a public page with your passkeys. Each signed-in device keeps its own private key and publishes only the public half; hosts fetch the list once and let every device in.",
+      )}
     </Typography>
   );
 }
@@ -129,13 +131,14 @@ function SignedOut() {
       <IconTile size={56} tone="purple">
         <FingerprintRoundedIcon />
       </IconTile>
-      <Typography variant="subtitle1">Sign in to set up SSH ID</Typography>
+      <Typography variant="subtitle1">{tr("Sign in to set up SSH ID")}</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 420 }}>
-        SSH ID lives on your account server so every device you sign in on can publish its passkey.
-        Local-only mode has no account to publish under.
+        {tr(
+          "SSH ID lives on your account server so every device you sign in on can publish its passkey. Local-only mode has no account to publish under.",
+        )}
       </Typography>
       <Button variant="contained" onClick={() => goToSettings("account")} sx={{ mt: 1 }}>
-        Go to Account
+        {tr("Go to Account")}
       </Button>
     </SectionCard>
   );
@@ -154,13 +157,20 @@ function Setup({ view }: { view: SshIdView }) {
         <IconTile size={56} tone="purple">
           <FingerprintRoundedIcon />
         </IconTile>
-        <Typography variant="subtitle1">Set up your SSH ID</Typography>
+        <Typography variant="subtitle1">{tr("Set up your SSH ID")}</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 460 }}>
-          Pick a handle — your public keys will be served at{" "}
-          <Mono>
-            {base}/{normalized || "<handle>"}
-          </Mono>
-          . Handles are 3–32 characters: letters, digits, <Mono>-</Mono> and <Mono>_</Mono>.
+          {trx(
+            "Pick a handle — your public keys will be served at {url}. Handles are 3–32 characters: letters, digits, {dash} and {underscore}.",
+            {
+              url: (
+                <Mono>
+                  {base}/{normalized || "<handle>"}
+                </Mono>
+              ),
+              dash: <Mono>-</Mono>,
+              underscore: <Mono>_</Mono>,
+            },
+          )}
         </Typography>
         <Box
           component="form"
@@ -179,7 +189,7 @@ function Setup({ view }: { view: SshIdView }) {
             autoComplete="off"
             error={handle.length > 0 && !valid}
             slotProps={{
-              htmlInput: { "aria-label": "SSH ID handle", spellCheck: false },
+              htmlInput: { "aria-label": tr("SSH ID handle"), spellCheck: false },
               input: { startAdornment: <InputAdornment position="start">@</InputAdornment> },
             }}
           />
@@ -189,7 +199,7 @@ function Setup({ view }: { view: SshIdView }) {
             disabled={!valid || create.isPending}
             sx={{ flexShrink: 0 }}
           >
-            {create.isPending ? "Creating…" : "Create"}
+            {create.isPending ? tr("Creating…") : tr("Create")}
           </Button>
         </Box>
       </SectionCard>
@@ -243,7 +253,7 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
 
   const copy = (text: string, what: string) =>
     copyToClipboard(text).then(
-      () => snackbar.notify(`${what} copied`),
+      () => snackbar.notify(tr("{what} copied", { what })),
       (e: unknown) => snackbar.error(errorMessage(e)),
     );
 
@@ -256,15 +266,19 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
         <Typography variant="subtitle2" noWrap sx={{ flex: 1 }} title={typeUrl}>
           {typeUrl}
         </Typography>
-        <Tooltip title="Copy URL">
-          <IconButton size="small" onClick={() => void copy(typeUrl, "URL")} aria-label="Copy URL">
+        <Tooltip title={tr("Copy URL")}>
+          <IconButton
+            size="small"
+            onClick={() => void copy(typeUrl, "URL")}
+            aria-label={tr("Copy URL")}
+          >
             <ContentCopyRoundedIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <IconButton
           size="small"
           onClick={(e) => setMenu(e.currentTarget)}
-          aria-label="SSH ID actions"
+          aria-label={tr("SSH ID actions")}
         >
           <MoreHorizRoundedIcon fontSize="small" />
         </IconButton>
@@ -276,7 +290,7 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
             }}
           >
             <RefreshRoundedIcon fontSize="small" sx={{ mr: 1 }} />
-            Rotate this device's keys
+            {tr("Rotate this device's keys")}
           </MenuItem>
           <MenuItem
             onClick={() => {
@@ -286,13 +300,13 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
             sx={{ color: "error.main" }}
           >
             <DeleteOutlineRoundedIcon fontSize="small" sx={{ mr: 1 }} />
-            Delete SSH ID
+            {tr("Delete SSH ID")}
           </MenuItem>
         </Menu>
       </SectionCard>
 
       <Typography variant="subtitle2" sx={{ mt: 0.5 }}>
-        Passkeys
+        {tr("Passkeys")}
       </Typography>
       <SectionCard sx={{ gap: 1 }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -303,13 +317,13 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
             onClick={(e) => setTypeMenu(e.currentTarget)}
             endIcon={<ExpandMoreRoundedIcon />}
             sx={{ fontWeight: 600 }}
-            aria-label="Passkey type"
+            aria-label={tr("Passkey type")}
           >
             {sshIdTypeLabel(type)}
             {hardware && <UsbRoundedIcon sx={{ fontSize: 16, ml: 0.75, opacity: 0.7 }} />}
           </Button>
           <Menu open={typeMenu !== null} anchorEl={typeMenu} onClose={() => setTypeMenu(null)}>
-            <TypeGroup label="Hardware" hint="FIDO2 security keys" />
+            <TypeGroup label={tr("Hardware")} hint={tr("FIDO2 security keys")} />
             {SSH_ID_KEY_TYPES.filter((k) => k.hardware).map((k) => (
               <TypeItem
                 key={k.value}
@@ -322,7 +336,7 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
               />
             ))}
             <Divider />
-            <TypeGroup label="Software" />
+            <TypeGroup label={tr("Software")} />
             {SSH_ID_KEY_TYPES.filter((k) => !k.hardware).map((k) => (
               <TypeItem
                 key={k.value}
@@ -336,11 +350,11 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
             ))}
           </Menu>
           <Box sx={{ flex: 1 }} />
-          <Tooltip title="Copy provisioning command">
+          <Tooltip title={tr("Copy provisioning command")}>
             <IconButton
               size="small"
               onClick={() => void copy(provision, "Command")}
-              aria-label="Copy provisioning command"
+              aria-label={tr("Copy provisioning command")}
             >
               <ContentCopyRoundedIcon fontSize="small" />
             </IconButton>
@@ -352,16 +366,17 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
             {hardware ? (
               <>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  Add a FIDO2 key to use {sshIdTypeLabel(type)} passkeys
+                  {tr("Add a FIDO2 key to use {type} passkeys", { type: sshIdTypeLabel(type) })}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  A hardware credential works from any signed-in device that has the token plugged
-                  in.
+                  {tr(
+                    "A hardware credential works from any signed-in device that has the token plugged in.",
+                  )}
                 </Typography>
               </>
             ) : (
               <Typography variant="body2" color="text.secondary">
-                No {sshIdTypeLabel(type)} key is published yet.
+                {tr("No {type} key is published yet.", { type: sshIdTypeLabel(type) })}
               </Typography>
             )}
           </Box>
@@ -370,7 +385,7 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
             <KeyRow
               key={k.id}
               k={k}
-              onCopy={() => void copy(k.public_key, "Public key")}
+              onCopy={() => void copy(k.public_key, tr("Public key"))}
               onRemove={k.current_device ? undefined : () => setRemoveKey(k)}
             />
           ))
@@ -384,15 +399,17 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
             onClick={() => setFido2Open(true)}
             sx={{ alignSelf: "flex-start" }}
           >
-            Add FIDO2 Key
+            {tr("Add FIDO2 Key")}
           </Button>
         )}
       </SectionCard>
 
-      <SectionCard title="Provision a host">
+      <SectionCard title={tr("Provision a host")}>
         <Typography variant="body2" color="text.secondary">
-          Run this once on the server; it appends the current {sshIdTypeLabel(type)} keys to{" "}
-          <Mono>~/.ssh/authorized_keys</Mono>. Re-run after adding a device or rotating.
+          {trx(
+            "Run this once on the server; it appends the current {type} keys to {file}. Re-run after adding a device or rotating.",
+            { type: sshIdTypeLabel(type), file: <Mono>~/.ssh/authorized_keys</Mono> },
+          )}
         </Typography>
         <Box
           sx={{
@@ -407,7 +424,7 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
         >
           <Mono sx={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{provision}</Mono>
           <Button size="small" variant="outlined" onClick={() => void copy(provision, "Command")}>
-            Copy
+            {tr("Copy")}
           </Button>
         </Box>
       </SectionCard>
@@ -415,9 +432,13 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
       {unpublished.length > 0 && (
         <Alert severity="warning" icon={<WarningAmberRoundedIcon fontSize="inherit" />}>
           {unpublished.length === 1
-            ? `This device's ${sshIdTypeLabel(unpublished[0]?.keyType ?? SSH_ID_DEFAULT_TYPE)} key is not published yet`
-            : `${unpublished.length} of this device's keys are not published yet`}{" "}
-          — publishing needs a confirmation of your account.
+            ? tr("This device's {sshIdTypeLabel} key is not published yet", {
+                sshIdTypeLabel: sshIdTypeLabel(unpublished[0]?.keyType ?? SSH_ID_DEFAULT_TYPE),
+              })
+            : tr("{length} of this device's keys are not published yet", {
+                length: unpublished.length,
+              })}{" "}
+          — {tr("publishing needs a confirmation of your account.")}
           <Box sx={{ mt: 1 }}>
             <Button
               size="small"
@@ -426,7 +447,7 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
               disabled={publish.isPending}
               onClick={() => publish.mutate(undefined)}
             >
-              Publish now
+              {tr("Publish now")}
             </Button>
           </Box>
         </Alert>
@@ -434,19 +455,21 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
       {deviceCount < 2 && (
         <Alert severity="warning" icon={<WarningAmberRoundedIcon fontSize="inherit" />}>
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            It is recommended to use at least two devices
+            {tr("It is recommended to use at least two devices")}
           </Typography>
           <Typography variant="body2">
-            Sign in on another device or add a FIDO2 key so you keep access if this one is lost.
+            {tr(
+              "Sign in on another device or add a FIDO2 key so you keep access if this one is lost.",
+            )}
           </Typography>
         </Alert>
       )}
 
       <ConfirmDialog
         open={confirmDelete}
-        title="Delete SSH ID?"
+        title={tr("Delete SSH ID?")}
         danger
-        confirmLabel="Delete"
+        confirmLabel={tr("Delete")}
         busy={del.isPending}
         onCancel={() => setConfirmDelete(false)}
         onConfirm={() =>
@@ -456,16 +479,21 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
         }
       >
         <Typography variant="body2">
-          <Mono>@{profile.handle}</Mono> and every published key are removed from{" "}
-          {hostOf(base) || "the server"}. Hosts already provisioned keep the old public keys until
-          you edit their <Mono>authorized_keys</Mono>. This device's private keys are deleted.
+          {trx(
+            "{handle} and every published key are removed from {server}. Hosts already provisioned keep the old public keys until you edit their {file}. This device's private keys are deleted.",
+            {
+              handle: <Mono>@{profile.handle}</Mono>,
+              server: hostOf(base) || tr("the server"),
+              file: <Mono>authorized_keys</Mono>,
+            },
+          )}
         </Typography>
       </ConfirmDialog>
 
       <ConfirmDialog
         open={confirmRotate}
-        title="Rotate this device's keys?"
-        confirmLabel="Rotate"
+        title={tr("Rotate this device's keys?")}
+        confirmLabel={tr("Rotate")}
         busy={rotate.isPending}
         onCancel={() => setConfirmRotate(false)}
         onConfirm={() =>
@@ -475,16 +503,19 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
         }
       >
         <Typography variant="body2">
-          New ED25519, ECDSA and RSA passkeys are generated for this device and published in place
-          of the old ones. Re-run the provisioning command on your hosts afterwards.
+          {tr(
+            "New ED25519, ECDSA and RSA passkeys are generated for this device and published in place of the old ones. Re-run the provisioning command on your hosts afterwards.",
+          )}
         </Typography>
       </ConfirmDialog>
 
       <ConfirmDialog
         open={removeKey !== null}
-        title={removeKey?.device_id === null ? "Remove FIDO2 key?" : "Sign out this device?"}
+        title={
+          removeKey?.device_id === null ? tr("Remove FIDO2 key?") : tr("Sign out this device?")
+        }
         danger
-        confirmLabel={removeKey?.device_id === null ? "Remove" : "Sign out"}
+        confirmLabel={removeKey?.device_id === null ? tr("Remove") : tr("Sign out")}
         busy={remove.isPending || removeDevice.isPending}
         onCancel={() => setRemoveKey(null)}
         onConfirm={() => {
@@ -496,14 +527,17 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
       >
         {removeKey?.device_id === null ? (
           <Typography variant="body2">
-            <b>{removeKey.label}</b> is unpublished and the local credential handle is deleted. The
-            token itself is not modified.
+            {trx(
+              "{key} is unpublished and the local credential handle is deleted. The token itself is not modified.",
+              { key: <b>{removeKey.label}</b> },
+            )}
           </Typography>
         ) : (
           <Typography variant="body2">
-            <b>{removeKey?.label}</b> is signed out of your account and all of its passkeys are
-            unpublished. Its private keys stay on that device, so remove them from{" "}
-            <Mono>authorized_keys</Mono> on hosts you provisioned if the device was lost.
+            {trx(
+              "{device} is signed out of your account and all of its passkeys are unpublished. Its private keys stay on that device, so remove them from {file} on hosts you provisioned if the device was lost.",
+              { device: <b>{removeKey?.label}</b>, file: <Mono>authorized_keys</Mono> },
+            )}
           </Typography>
         )}
       </ConfirmDialog>
@@ -550,7 +584,7 @@ function TypeItem({
         primary={
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
             {sshIdTypeLabel(value)}
-            {value === SSH_ID_DEFAULT_TYPE && <Chip size="small" label="Default" />}
+            {value === SSH_ID_DEFAULT_TYPE && <Chip size="small" label={tr("Default")} />}
           </Box>
         }
         secondary={t?.hint}
@@ -580,18 +614,26 @@ function KeyRow({
         <Typography variant="body2" sx={{ fontWeight: 600, flex: 1 }} noWrap>
           {k.label}
         </Typography>
-        {k.current_device && <Chip size="small" label="This device" />}
+        {k.current_device && <Chip size="small" label={tr("This device")} />}
         <Typography variant="caption" color="text.secondary">
           {relativeTime(k.updated_at)}
         </Typography>
-        <Tooltip title="Copy public key">
-          <IconButton size="small" onClick={onCopy} aria-label={`Copy ${k.label} public key`}>
+        <Tooltip title={tr("Copy public key")}>
+          <IconButton
+            size="small"
+            onClick={onCopy}
+            aria-label={tr("Copy {label} public key", { label: k.label })}
+          >
             <ContentCopyRoundedIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </Tooltip>
         {onRemove && (
-          <Tooltip title={hardware ? "Remove key" : "Sign out device"}>
-            <IconButton size="small" onClick={onRemove} aria-label={`Remove ${k.label}`}>
+          <Tooltip title={hardware ? tr("Remove key") : tr("Sign out device")}>
+            <IconButton
+              size="small"
+              onClick={onRemove}
+              aria-label={tr("Remove {label}", { label: k.label })}
+            >
               <DeleteOutlineRoundedIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
@@ -663,14 +705,14 @@ function AddFido2Dialog({
       userVerification,
       pin: pin.length > 0 ? pin : null,
       user: null,
-      comment: `SSH ID - @${handle}`,
+      comment: tr("SSH ID - @{handle}", { handle }),
     };
     add.mutate(form, { onSuccess: onClose });
   };
 
   return (
     <Dialog open onClose={add.isPending ? undefined : onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Add FIDO2 Key</DialogTitle>
+      <DialogTitle>{tr("Add FIDO2 Key")}</DialogTitle>
       <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
         {!device ? (
           <Box sx={{ textAlign: "center", color: "text.secondary", py: 3 }}>
@@ -678,22 +720,22 @@ function AddFido2Dialog({
               <UsbRoundedIcon />
             </IconTile>
             <Typography variant="subtitle1" color="text.primary" sx={{ mt: 2 }}>
-              Insert FIDO2 device
+              {tr("Insert FIDO2 device")}
             </Typography>
             <Typography variant="body2" sx={{ mt: 0.5 }}>
               {devices.isError
                 ? errorMessage(devices.error)
-                : "Connect your FIDO2 device to show here."}
+                : tr("Connect your FIDO2 device to show here.")}
             </Typography>
           </Box>
         ) : (
           <>
             <TextField
               select
-              label="Security key"
+              label={tr("Security key")}
               value={device.path}
               onChange={(e) => setDevicePath(e.target.value)}
-              slotProps={{ htmlInput: { "aria-label": "Security key" } }}
+              slotProps={{ htmlInput: { "aria-label": tr("Security key") } }}
             >
               {list.map((d) => (
                 <MenuItem key={d.path} value={d.path}>
@@ -703,17 +745,18 @@ function AddFido2Dialog({
             </TextField>
             {!supported && (
               <Alert severity="warning">
-                This token does not support{" "}
-                {algorithm === "ed25519" ? "sk-ssh-ed25519" : "sk-ecdsa-sha2-nistp256"}.
+                {tr("This token does not support {algorithm}.", {
+                  algorithm: algorithm === "ed25519" ? "sk-ssh-ed25519" : "sk-ecdsa-sha2-nistp256",
+                })}
               </Alert>
             )}
             <TextField
               autoFocus
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="Label"
+              placeholder={tr("Label")}
               autoComplete="off"
-              slotProps={{ htmlInput: { "aria-label": "Label" } }}
+              slotProps={{ htmlInput: { "aria-label": tr("Label") } }}
             />
             <Stack spacing={0}>
               <FormControlLabel
@@ -723,7 +766,7 @@ function AddFido2Dialog({
                     onChange={(e) => setUserPresence(e.target.checked)}
                   />
                 }
-                label={<Typography variant="body2">Require User Presence</Typography>}
+                label={<Typography variant="body2">{tr("Require User Presence")}</Typography>}
               />
               <FormControlLabel
                 control={
@@ -732,13 +775,15 @@ function AddFido2Dialog({
                     onChange={(e) => setUserVerification(e.target.checked)}
                   />
                 }
-                label={<Typography variant="body2">Require PIN Code</Typography>}
+                label={<Typography variant="body2">{tr("Require PIN Code")}</Typography>}
               />
               <Tooltip
                 title={
                   canResident
-                    ? "Store the credential on the token so it can be loaded on another computer"
-                    : "This token cannot store resident credentials"
+                    ? tr(
+                        "Store the credential on the token so it can be loaded on another computer",
+                      )
+                    : tr("This token cannot store resident credentials")
                 }
                 placement="left"
               >
@@ -750,7 +795,7 @@ function AddFido2Dialog({
                       onChange={(e) => setResident(e.target.checked)}
                     />
                   }
-                  label={<Typography variant="body2">Resident key</Typography>}
+                  label={<Typography variant="body2">{tr("Resident key")}</Typography>}
                 />
               </Tooltip>
             </Stack>
@@ -759,18 +804,18 @@ function AddFido2Dialog({
                 type={showPin ? "text" : "password"}
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
-                placeholder="PIN"
+                placeholder={tr("PIN")}
                 autoComplete="off"
                 inputMode="numeric"
                 slotProps={{
-                  htmlInput: { "aria-label": "PIN" },
+                  htmlInput: { "aria-label": tr("PIN") },
                   input: {
                     endAdornment: (
                       <InputAdornment position="end">
                         <IconButton
                           size="small"
                           onClick={() => setShowPin((v) => !v)}
-                          aria-label="Toggle PIN visibility"
+                          aria-label={tr("Toggle PIN visibility")}
                         >
                           {showPin ? (
                             <VisibilityOffRoundedIcon fontSize="small" />
@@ -789,11 +834,11 @@ function AddFido2Dialog({
       </DialogContent>
       <DialogActions>
         <Button variant="text" color="inherit" onClick={onClose} disabled={add.isPending}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         {device && (
           <Button variant="contained" disabled={!valid || add.isPending} onClick={submit}>
-            {add.isPending ? "Touch your security key…" : "Add"}
+            {add.isPending ? tr("Touch your security key…") : tr("Add")}
           </Button>
         )}
       </DialogActions>

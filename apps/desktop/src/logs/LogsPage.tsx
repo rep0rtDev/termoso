@@ -45,6 +45,7 @@ import { PersonAvatar, initialsOf } from "@/team/PersonAvatar";
 import { sizes } from "@/theme/theme";
 import { LogViewer, type ViewerHandle } from "./LogViewer";
 import { authorName, authorsOf, recordingState, visibleLogs } from "./team";
+import { tr, trn, trx } from "@/i18n";
 
 function duration(secs: number | null): string {
   if (secs === null) return "—";
@@ -68,9 +69,11 @@ function BookmarkDialog({
   const [note, setNote] = useState("");
   return (
     <Dialog open onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle>Bookmark line {line + 1}</DialogTitle>
+      <DialogTitle>
+        {tr("Bookmark line")} {line + 1}
+      </DialogTitle>
       <DialogContent>
-        <Field label="Note">
+        <Field label={tr("Note")}>
           <TextField
             autoFocus
             fullWidth
@@ -85,14 +88,14 @@ function BookmarkDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onCancel} disabled={busy} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           variant="contained"
           disabled={busy || note.trim().length === 0}
           onClick={() => onConfirm(note.trim())}
         >
-          Add
+          {tr("Add")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -121,7 +124,7 @@ function NoteBar({
           onClick={() => setDraft("")}
           sx={{ color: "text.secondary", fontWeight: 400 }}
         >
-          Add a comment for the team
+          {tr("Add a comment for the team")}
         </Button>
       </Box>
     );
@@ -146,7 +149,7 @@ function NoteBar({
           minRows={1}
           maxRows={6}
           size="small"
-          placeholder="What happened in this session?"
+          placeholder={tr("What happened in this session?")}
           value={draft}
           disabled={busy}
           onChange={(e) => setDraft(e.target.value)}
@@ -157,7 +160,7 @@ function NoteBar({
           slotProps={{ htmlInput: { maxLength: 2000 } }}
         />
         <Button size="small" color="inherit" disabled={busy} onClick={() => setDraft(null)}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           size="small"
@@ -165,7 +168,7 @@ function NoteBar({
           disabled={busy || draft.trim() === log.note}
           onClick={() => onSave(draft.trim())}
         >
-          Save
+          {tr("Save")}
         </Button>
       </Box>
     );
@@ -195,7 +198,7 @@ function NoteBar({
           onClick={() => setDraft(log.note)}
           sx={{ color: "text.secondary", fontWeight: 400 }}
         >
-          Edit
+          {tr("Edit")}
         </Button>
       )}
     </Box>
@@ -236,12 +239,12 @@ function Viewer({
   const exportLog = async () => {
     const stamp = log.startedAt.replace(/[:.]/g, "-");
     const path = await saveFile({
-      title: "Export recording",
+      title: tr("Export recording"),
       defaultPath: `${log.label.replace(/[^\w.-]+/g, "_")}-${stamp}.log`,
     });
     if (path === null) return null;
     const n = await ipc.logExport(log.id, path);
-    return `Exported ${formatSize(n)} to ${path}`;
+    return tr("Exported {formatSize} to {path}", { formatSize: formatSize(n), path });
   };
 
   const annotate = (patch: { pinned?: boolean; note?: string }, msg: string | null) =>
@@ -291,17 +294,17 @@ function Viewer({
             {who && `${who} · `}
             {new Date(log.startedAt).toLocaleString()} · {duration(log.durationSecs)} ·{" "}
             {formatSize(log.sizeBytes)} · {log.cols}×{log.rows}
-            {!log.completed && " · in progress"}
+            {!log.completed && " · " + tr("in progress")}
           </Typography>
         </Box>
         {log.team && (
           <ToolIconButton
             title={
               !log.canAnnotate
-                ? "Editors can pin recordings for the team"
+                ? tr("Editors can pin recordings for the team")
                 : log.pinned
-                  ? "Unpin"
-                  : "Pin for the team"
+                  ? tr("Unpin")
+                  : tr("Pin for the team")
             }
             disabled={!log.canAnnotate || op.isPending}
             onClick={() => annotate({ pinned: !log.pinned }, log.pinned ? "Unpinned" : "Pinned")}
@@ -314,27 +317,27 @@ function Viewer({
           </ToolIconButton>
         )}
         <ToolIconButton
-          title="Bookmark the line at the top of the view"
+          title={tr("Bookmark the line at the top of the view")}
           disabled={!handle}
           onClick={() => handle && setDialog({ kind: "bookmark", line: handle.topLine() })}
         >
           <BookmarkAddRoundedIcon fontSize="small" />
         </ToolIconButton>
-        <ToolIconButton title="Export as plain file" onClick={() => op.mutate(exportLog)}>
+        <ToolIconButton title={tr("Export as plain file")} onClick={() => op.mutate(exportLog)}>
           <FileDownloadRoundedIcon fontSize="small" />
         </ToolIconButton>
         <ToolIconButton
           title={
             log.canDelete
-              ? "Delete recording"
-              : "Only the author or a vault manager can delete this recording"
+              ? tr("Delete recording")
+              : tr("Only the author or a vault manager can delete this recording")
           }
           disabled={!log.canDelete}
           onClick={() => setDialog({ kind: "delete" })}
         >
           <DeleteOutlineRoundedIcon fontSize="small" />
         </ToolIconButton>
-        <ToolIconButton title="Close" onClick={onClose}>
+        <ToolIconButton title={tr("Close")} onClick={onClose}>
           <CloseRoundedIcon fontSize="small" />
         </ToolIconButton>
       </Box>
@@ -342,7 +345,7 @@ function Viewer({
         key={log.note}
         log={log}
         busy={op.isPending}
-        onSave={(note) => annotate({ note }, note ? "Comment saved" : "Comment removed")}
+        onSave={(note) => annotate({ note }, note ? tr("Comment saved") : tr("Comment removed"))}
       />
       <Box sx={{ flex: 1, minHeight: 0, display: "flex" }}>
         {body.isPending || settings.isPending ? (
@@ -352,18 +355,26 @@ function Viewer({
             ) : (
               <EmptyState
                 icon={<CloudDownloadOutlinedIcon />}
-                title="Downloading recording"
-                description="Fetching the encrypted recording from the server; it is decrypted on this device only."
+                title={tr("Downloading recording")}
+                description={tr(
+                  "Fetching the encrypted recording from the server; it is decrypted on this device only.",
+                )}
               />
             )}
           </Box>
         ) : body.error ? (
           <Box sx={{ flex: 1 }}>
-            <EmptyState title="Could not read recording" description={errorMessage(body.error)} />
+            <EmptyState
+              title={tr("Could not read recording")}
+              description={errorMessage(body.error)}
+            />
           </Box>
         ) : settings.error ? (
           <Box sx={{ flex: 1 }}>
-            <EmptyState title="Settings unavailable" description={errorMessage(settings.error)} />
+            <EmptyState
+              title={tr("Settings unavailable")}
+              description={errorMessage(settings.error)}
+            />
           </Box>
         ) : (
           <LogViewer
@@ -384,7 +395,7 @@ function Viewer({
             }}
           >
             <Typography variant="subtitle2" sx={{ px: 2, pt: 1.5, pb: 0.5, display: "block" }}>
-              Bookmarks
+              {tr("Bookmarks")}
             </Typography>
             <List dense disablePadding>
               {(bookmarks.data ?? []).map((b) => (
@@ -398,7 +409,7 @@ function Viewer({
                   />
                   <ListItemText
                     primary={b.note}
-                    secondary={`line ${b.offset + 1}`}
+                    secondary={tr("line {line}", { line: b.offset + 1 })}
                     slotProps={{ primary: { noWrap: true, variant: "body2" } }}
                   />
                   <IconButton
@@ -439,8 +450,8 @@ function Viewer({
       {dialog.kind === "delete" && (
         <ConfirmDialog
           open
-          title="Delete recording?"
-          confirmLabel="Delete"
+          title={tr("Delete recording?")}
+          confirmLabel={tr("Delete")}
           danger
           busy={op.isPending}
           onCancel={() => setDialog({ kind: "none" })}
@@ -448,25 +459,30 @@ function Viewer({
             op.mutate(async () => {
               await ipc.logDelete(log.id);
               onDeleted();
-              return "Recording deleted";
+              return tr("Recording deleted");
             })
           }
         >
           {log.team ? (
             <>
-              The recording of <b>{log.label}</b>
-              {who && (
-                <>
-                  {" "}
-                  by <b>{who}</b>
-                </>
-              )}{" "}
-              will be removed for everyone in the vault, together with your bookmarks.
+              {who
+                ? trx(
+                    "The recording of {label} by {who} will be removed for everyone in the vault, together with your bookmarks.",
+                    { label: <b>{log.label}</b>, who: <b>{who}</b> },
+                  )
+                : trx(
+                    "The recording of {label} will be removed for everyone in the vault, together with your bookmarks.",
+                    { label: <b>{log.label}</b> },
+                  )}
             </>
           ) : (
             <>
-              The recording of <b>{log.label}</b> and its bookmarks will be removed from this device
-              {log.uploaded && " and your other devices"}.
+              {trx(
+                log.uploaded
+                  ? "The recording of {label} and its bookmarks will be removed from this device and your other devices."
+                  : "The recording of {label} and its bookmarks will be removed from this device.",
+                { label: <b>{log.label}</b> },
+              )}
             </>
           )}
         </ConfirmDialog>
@@ -491,7 +507,7 @@ function AuthorFilter({
     <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap", pb: 1.5 }}>
       <Chip
         size="small"
-        label={`Everyone · ${list.length}`}
+        label={tr("Everyone · {length}", { length: list.length })}
         color={value === null ? "primary" : "default"}
         variant={value === null ? "filled" : "outlined"}
         onClick={() => onChange(null)}
@@ -551,7 +567,9 @@ export function LogsPage() {
     mutationFn: (on: boolean) => ipc.vaultSessionLoggingSet(vaultId ?? "", on),
     onSuccess: (_r, on) => {
       void qc.invalidateQueries({ queryKey: keys.vaults });
-      snackbar.notify(on ? "Sessions in this vault are now recorded" : "Team recording turned off");
+      snackbar.notify(
+        on ? tr("Sessions in this vault are now recorded") : tr("Team recording turned off"),
+      );
     },
     onError: (e) => snackbar.error(errorMessage(e)),
   });
@@ -561,8 +579,10 @@ export function LogsPage() {
       <Chip
         size="small"
         icon={<GroupsRoundedIcon />}
-        label="Recording for the team"
-        title="A vault manager turned on session logging: every member's sessions to this vault's hosts are recorded and shared with the vault."
+        label={tr("Recording for the team")}
+        title={tr(
+          "A vault manager turned on session logging: every member's sessions to this vault's hosts are recorded and shared with the vault.",
+        )}
         onClick={() => vault.data && goToSettingsWith({ kind: "vault", id: vault.data.id })}
         sx={{ "& .MuiChip-icon": { color: "error.main", fontSize: 14 } }}
       />
@@ -573,7 +593,7 @@ export function LogsPage() {
         disabled={teamToggle.isPending}
         onClick={() => teamToggle.mutate(true)}
       >
-        Record for the team
+        {tr("Record for the team")}
       </Button>
     ) : recordingOff ? (
       <Button
@@ -581,13 +601,13 @@ export function LogsPage() {
         startIcon={<FiberManualRecordRoundedIcon color="error" />}
         onClick={() => goToSettings("logs")}
       >
-        Enable recording
+        {tr("Enable recording")}
       </Button>
     ) : (
       <Chip
         size="small"
         icon={<FiberManualRecordRoundedIcon />}
-        label="Recording new sessions"
+        label={tr("Recording new sessions")}
         sx={{ "& .MuiChip-icon": { color: "error.main", fontSize: 12 } }}
       />
     );
@@ -599,11 +619,11 @@ export function LogsPage() {
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             {headerAction}
             {state !== "team" && manager && vaultId && !recordingOff && (
-              <Tooltip title="Sessions are recorded for you only until team recording is on">
+              <Tooltip title={tr("Sessions are recorded for you only until team recording is on")}>
                 <Chip
                   size="small"
                   icon={<FiberManualRecordRoundedIcon />}
-                  label="Recording for you"
+                  label={tr("Recording for you")}
                   sx={{ "& .MuiChip-icon": { color: "error.main", fontSize: 12 } }}
                 />
               </Tooltip>
@@ -614,7 +634,7 @@ export function LogsPage() {
           inVault.length > 0 && (
             <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
               {isTeam && vault.data ? `${vault.data.name} · ` : ""}
-              {inVault.length} {inVault.length === 1 ? "recording" : "recordings"} ·{" "}
+              {trn(inVault.length, "{count} recording", "{count} recordings")} ·{" "}
               {formatSize(inVault.reduce((n, l) => n + l.sizeBytes, 0))}
             </Typography>
           )
@@ -637,11 +657,11 @@ export function LogsPage() {
               <InfoBar
                 action={
                   <Button size="small" onClick={() => goToSettings("logs")}>
-                    Settings
+                    {tr("Settings")}
                   </Button>
                 }
               >
-                Session recording is off — new terminals are not captured.
+                {tr("Session recording is off — new terminals are not captured.")}
               </InfoBar>
             )}
             {isTeam && !selected && (
@@ -655,19 +675,30 @@ export function LogsPage() {
             {logs.isPending || vault.isPending ? (
               <Loading />
             ) : logs.error ? (
-              <EmptyState title="Could not load logs" description={errorMessage(logs.error)} />
+              <EmptyState
+                title={tr("Could not load logs")}
+                description={errorMessage(logs.error)}
+              />
             ) : list.length === 0 ? (
               <EmptyState
                 icon={isTeam ? <GroupsRoundedIcon /> : <ArticleRoundedIcon />}
-                title={isTeam ? "No team recordings yet" : "No recordings"}
+                title={isTeam ? tr("No team recordings yet") : tr("No recordings")}
                 description={
                   isTeam
                     ? state === "team"
-                      ? "Sessions to this vault's hosts are recorded on each member's device and shared here, encrypted with the vault key."
+                      ? tr(
+                          "Sessions to this vault's hosts are recorded on each member's device and shared here, encrypted with the vault key.",
+                        )
                       : manager
-                        ? "Turn on session logging for this vault and every member's sessions to its hosts will be captured here, readable by the whole vault."
-                        : "A vault manager can turn on session logging so the whole vault sees each other's recordings. Your own recordings appear here when recording is on in Settings."
-                    : "Turn on session recording in Settings and every terminal session will be captured here, encrypted and stored locally."
+                        ? tr(
+                            "Turn on session logging for this vault and every member's sessions to its hosts will be captured here, readable by the whole vault.",
+                          )
+                        : tr(
+                            "A vault manager can turn on session logging so the whole vault sees each other's recordings. Your own recordings appear here when recording is on in Settings.",
+                          )
+                    : tr(
+                        "Turn on session recording in Settings and every terminal session will be captured here, encrypted and stored locally.",
+                      )
                 }
                 action={
                   isTeam && manager && state !== "team" ? (
@@ -676,12 +707,12 @@ export function LogsPage() {
                       disabled={teamToggle.isPending}
                       onClick={() => teamToggle.mutate(true)}
                     >
-                      Record for the team
+                      {tr("Record for the team")}
                     </Button>
                   ) : (
                     recordingOff && (
                       <Button variant="contained" onClick={() => goToSettings("logs")}>
-                        Open settings
+                        {tr("Open settings")}
                       </Button>
                     )
                   )
@@ -728,7 +759,7 @@ export function LogsPage() {
                             color="error.main"
                             sx={{ ml: 1 }}
                           >
-                            recording
+                            {tr("recording")}
                           </Typography>
                         )}
                       </>
@@ -761,13 +792,13 @@ export function LogsPage() {
                         {l.pinned && (
                           <PushPinRoundedIcon
                             sx={{ fontSize: 16, color: "primary.main" }}
-                            titleAccess="Pinned"
+                            titleAccess={tr("Pinned")}
                           />
                         )}
                         {!l.cached && l.uploaded && (
                           <CloudDownloadOutlinedIcon
                             sx={{ fontSize: 16, color: "text.disabled" }}
-                            titleAccess="Not downloaded yet"
+                            titleAccess={tr("Not downloaded yet")}
                           />
                         )}
                         {l.bookmarks > 0 && (

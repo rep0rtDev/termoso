@@ -74,6 +74,7 @@ import {
   enqueueReconnect,
   type ReconnectQueue,
 } from "./reconnect";
+import { tr } from "@/i18n";
 
 export type { SplitDirection, SplitNode } from "./layout";
 
@@ -137,24 +138,27 @@ export interface ConnectLogLine {
 }
 
 function phaseLine(p: ConnectProgress): string {
-  const where = p.hop ? ` (jump host ${p.hop})` : "";
+  const where = p.hop ? ` (${tr("jump host {hop}", { hop: p.hop })})` : "";
   switch (p.phase.kind) {
     case "resolving":
-      return `Resolving address${where}`;
+      return tr("Resolving address{where}", { where });
     case "connecting":
-      return `Connecting via ${p.phase.via}${where}`;
+      return tr("Connecting via {via}{where}", { via: p.phase.via, where });
     case "handshake":
-      return `Negotiating keys${where}`;
+      return tr("Negotiating keys{where}", { where });
     case "host_key":
-      return `Verifying host key${where}`;
+      return tr("Verifying host key{where}", { where });
     case "auth":
-      return `Authenticating with ${p.phase.method}${where}`;
+      return tr("Authenticating with {method}{where}", { method: p.phase.method, where });
     case "security_key_touch":
-      return `Waiting for a touch on the security key (${p.phase.key})${where}`;
+      return tr("Waiting for a touch on the security key ({key}){where}", {
+        key: p.phase.key,
+        where,
+      });
     case "authenticated":
-      return `Authenticated, opening shell${where}`;
+      return tr("Authenticated, opening shell{where}", { where });
     case "mosh_server":
-      return "Starting mosh-server over SSH, then switching to UDP";
+      return tr("Starting mosh-server over SSH, then switching to UDP");
   }
 }
 
@@ -1253,7 +1257,7 @@ function offerIdentity(paneId: Uuid, rt: Runtime) {
     {
       kind: "identity",
       label: `Password · ${rt.identityLabel ?? ""}`,
-      desc: "from Keychain — Tab to insert",
+      desc: tr("from Keychain — Tab to insert"),
       insert: "",
     },
   ]);
@@ -1395,15 +1399,15 @@ async function sendInput(paneId: Uuid, data: string) {
 function describe(target: OpenTarget): { title: string; subtitle: string } {
   switch (target.kind) {
     case "local":
-      return { title: "Local", subtitle: "local shell" };
+      return { title: tr("Local"), subtitle: tr("local shell") };
     case "quick":
       return { title: target.address, subtitle: target.address };
     case "serial":
       return { title: target.path.replace(/^\/dev\//, ""), subtitle: target.path };
     case "host":
-      return { title: "Connecting…", subtitle: "" };
+      return { title: tr("Connecting…"), subtitle: "" };
     case "live":
-      return { title: "Multiplayer", subtitle: "joining…" };
+      return { title: tr("Multiplayer"), subtitle: tr("joining…") };
   }
 }
 
@@ -1435,7 +1439,7 @@ function startSession(paneId: Uuid, target: OpenTarget) {
         reconnecting: false,
       });
       retries.delete(paneId);
-      appendLog(paneId, "Session opened");
+      appendLog(paneId, tr("Session opened"));
       applyPaneLook(paneId);
       if (info.protocol === "multiplayer") {
         void viewerJoined(paneId);
@@ -1459,7 +1463,7 @@ function startSession(paneId: Uuid, target: OpenTarget) {
       if (!pane || pane.status === "closed" || pane.status === "error") return;
       const message = errorMessage(e);
       if (message.startsWith("cancelled") || /cancel/i.test(message)) {
-        patchPane(paneId, { status: "closed", message: "Cancelled" });
+        patchPane(paneId, { status: "closed", message: tr("Cancelled") });
       } else {
         patchPane(paneId, { status: "error", message });
         appendLog(paneId, message, "error");
@@ -1854,7 +1858,7 @@ export async function reconnectPane(paneId: Uuid) {
     shell: null,
     reconnecting: pane.startedAt !== null || pane.reconnecting,
   });
-  writeSystemLine(paneId, "Reconnecting…");
+  writeSystemLine(paneId, tr("Reconnecting…"));
   await ipc.terminalClose(paneId).catch(() => undefined);
   if (terminalStore.get().panes[paneId]?.status !== "connecting") return;
   startSession(paneId, pane.target);
@@ -2036,7 +2040,7 @@ function onSessionEvent(ev: SessionEvent) {
         hostId: ev.info.hostId,
         hostTheme: ev.info.colorScheme,
       });
-      appendLog(ev.id, `Connecting to ${ev.info.target || ev.info.title}`);
+      appendLog(ev.id, tr("Connecting to {value}", { value: ev.info.target || ev.info.title }));
       applyPaneLook(ev.id);
       break;
     case "connected":
@@ -2083,8 +2087,8 @@ function onSessionEvent(ev: SessionEvent) {
     case "closed":
       if (pane.status === "connected" || pane.status === "connecting") {
         const wasLive = pane.status === "connected";
-        patchPane(ev.id, { status: "exited", message: "Connection closed" });
-        writeSystemLine(ev.id, "[connection closed]");
+        patchPane(ev.id, { status: "exited", message: tr("Connection closed") });
+        writeSystemLine(ev.id, tr("[connection closed]"));
         if (wasLive && autoReconnects(pane)) queueReconnect(ev.id);
       }
       break;

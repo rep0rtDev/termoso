@@ -8,6 +8,7 @@
 
 import { createStore } from "@/lib/store";
 import { isReauthRequired } from "@/ipc/types";
+import { tr } from "@/i18n";
 
 interface Request {
   resolve: (confirmed: boolean) => void;
@@ -22,7 +23,7 @@ export const reauthStore = createStore<State>({ request: null });
 /** Thrown by `withReauth` when the user dismisses the confirmation. */
 export class ReauthCancelled extends Error {
   constructor() {
-    super("Re-authentication cancelled");
+    super(tr("Re-authentication cancelled"));
     this.name = "ReauthCancelled";
   }
 }

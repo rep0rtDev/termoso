@@ -24,10 +24,11 @@ import { webdavClientIdentityInspect, webdavPemFile } from "@/ipc/commands";
 import { errorMessage, type Uuid, type WebDavAuth, type WebDavForm } from "@/ipc/types";
 import { monoFontFamily } from "@/theme/theme";
 import { CredentialsFields } from "./CredentialsFields";
+import { tr, msg } from "@/i18n";
 
 const AUTH_MODES: { value: WebDavAuth; label: string }[] = [
-  { value: "password", label: "Password" },
-  { value: "token", label: "Token" },
+  { value: "password", label: msg("Password") },
+  { value: "token", label: msg("Token") },
 ];
 
 const pemSx = { fontFamily: monoFontFamily, fontSize: 12 } as const;
@@ -71,7 +72,7 @@ export function WebDavAuthFields({
     const picked = await openFile({
       multiple: false,
       directory: false,
-      title: "Client certificate / key (PEM)",
+      title: tr("Client certificate / key (PEM)"),
       filters: [{ name: "PEM", extensions: ["pem", "crt", "cer", "key"] }],
     });
     if (typeof picked !== "string") return;
@@ -91,17 +92,17 @@ export function WebDavAuthFields({
 
   return (
     <>
-      <Field label="Authentication">
+      <Field label={tr("Authentication")}>
         <ToggleButtonGroup
           exclusive
           size="small"
           value={value.auth}
           onChange={(_, v: WebDavAuth | null) => v && onChange({ auth: v })}
-          aria-label="Authentication"
+          aria-label={tr("Authentication")}
         >
           {AUTH_MODES.map((o) => (
             <ToggleButton key={o.value} value={o.value} sx={{ px: 1.5 }}>
-              {o.label}
+              {tr(o.label)}
             </ToggleButton>
           ))}
         </ToggleButtonGroup>
@@ -111,7 +112,7 @@ export function WebDavAuthFields({
         <CredentialsFields
           vaultId={vaultId}
           ssh={false}
-          inlineLabel="Set on this host"
+          inlineLabel={tr("Set on this host")}
           value={{
             identityId: value.identityId,
             username: value.username,
@@ -133,22 +134,24 @@ export function WebDavAuthFields({
         />
       ) : (
         <Field
-          label="Bearer token"
-          hint="Sent as Authorization: Bearer on every request; stored encrypted in the vault."
+          label={tr("Bearer token")}
+          hint={tr(
+            "Sent as Authorization: Bearer on every request; stored encrypted in the vault.",
+          )}
         >
           <TextField
             type={showToken ? "text" : "password"}
             value={value.bearerToken ?? ""}
             onChange={(e) => onChange({ bearerToken: e.target.value })}
             autoComplete="off"
-            placeholder={tokenStored ? "••••••••••••" : "Token"}
+            placeholder={tokenStored ? "••••••••••••" : tr("Token")}
             helperText={
               tokenStored
-                ? "A token is stored. Type to replace it or clear it to remove."
+                ? tr("A token is stored. Type to replace it or clear it to remove.")
                 : undefined
             }
             slotProps={{
-              htmlInput: { "aria-label": "Bearer token", sx: pemSx },
+              htmlInput: { "aria-label": tr("Bearer token"), sx: pemSx },
               input: {
                 startAdornment: (
                   <InputAdornment position="start">
@@ -163,13 +166,13 @@ export function WebDavAuthFields({
                         color="inherit"
                         onClick={() => onChange({ bearerToken: "" })}
                       >
-                        Clear
+                        {tr("Clear")}
                       </Button>
                     )}
                     <IconButton
                       size="small"
                       onClick={() => setShowToken((v) => !v)}
-                      aria-label="Toggle token visibility"
+                      aria-label={tr("Toggle token visibility")}
                     >
                       {showToken ? (
                         <VisibilityOffRoundedIcon fontSize="small" />
@@ -188,8 +191,10 @@ export function WebDavAuthFields({
       <Divider />
 
       <Field
-        label="Client certificate"
-        hint="Optional mutual TLS: a PEM certificate (chain, leaf first) and its unencrypted private key. Both are stored encrypted in the vault."
+        label={tr("Client certificate")}
+        hint={tr(
+          "Optional mutual TLS: a PEM certificate (chain, leaf first) and its unencrypted private key. Both are stored encrypted in the vault.",
+        )}
       >
         {storedCert ? (
           <Stack direction="row" spacing={1} sx={{ alignItems: "center", minWidth: 0 }}>
@@ -201,14 +206,14 @@ export function WebDavAuthFields({
               {value.clientCertificateFingerprint}
             </Typography>
             <Button size="small" onClick={() => setReplacingCert(true)}>
-              Replace
+              {tr("Replace")}
             </Button>
             <Button
               size="small"
               color="error"
               onClick={() => onChange({ clientCertificate: "", clientKey: "" })}
             >
-              Remove
+              {tr("Remove")}
             </Button>
           </Stack>
         ) : (
@@ -220,7 +225,7 @@ export function WebDavAuthFields({
                 startIcon={<FileOpenOutlinedIcon />}
                 onClick={() => void pickPem()}
               >
-                Open PEM file…
+                {tr("Open PEM file…")}
               </Button>
             </Box>
             <TextField
@@ -232,11 +237,15 @@ export function WebDavAuthFields({
               placeholder={"-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----"}
               helperText={
                 value.clientCertificate === "" && value.clientCertificateFingerprint !== null
-                  ? "The stored certificate will be removed on save."
+                  ? tr("The stored certificate will be removed on save.")
                   : undefined
               }
               slotProps={{
-                htmlInput: { "aria-label": "Client certificate", spellCheck: false, sx: pemSx },
+                htmlInput: {
+                  "aria-label": tr("Client certificate"),
+                  spellCheck: false,
+                  sx: pemSx,
+                },
               }}
             />
             <TextField
@@ -247,14 +256,17 @@ export function WebDavAuthFields({
               onChange={(e) => onChange({ clientKey: e.target.value })}
               placeholder={
                 value.clientCertificateFingerprint !== null && value.clientCertificate !== ""
-                  ? "Leave empty to keep the stored private key"
+                  ? tr("Leave empty to keep the stored private key")
                   : "-----BEGIN PRIVATE KEY-----\n…\n-----END PRIVATE KEY-----"
               }
               error={pemError !== undefined}
-              helperText={pemError ?? (pemCheck.data ? `Certificate ${pemCheck.data}` : undefined)}
+              helperText={
+                pemError ??
+                (pemCheck.data ? tr("Certificate {data}", { data: pemCheck.data }) : undefined)
+              }
               slotProps={{
                 htmlInput: {
-                  "aria-label": "Client private key",
+                  "aria-label": tr("Client private key"),
                   spellCheck: false,
                   sx: pemSx,
                 },
@@ -273,8 +285,8 @@ export function WebDavAuthFields({
                   }}
                 >
                   {value.clientCertificateFingerprint !== null
-                    ? "Keep stored certificate"
-                    : "Clear"}
+                    ? tr("Keep stored certificate")
+                    : tr("Clear")}
                 </Button>
               </Box>
             ) : null}

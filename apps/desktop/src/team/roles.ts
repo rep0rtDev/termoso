@@ -1,29 +1,30 @@
 import type { TeamRole, VaultRole } from "@/ipc/types";
+import { msg } from "@/i18n";
 
 export const vaultRoleLabel: Record<VaultRole, string> = {
-  viewer: "can view",
-  editor: "can edit",
-  manager: "can manage",
+  viewer: msg("can view"),
+  editor: msg("can edit"),
+  manager: msg("can manage"),
 };
 
 export const vaultRoleHint: Record<VaultRole, string> = {
-  viewer: "Connects and reads hosts, keys and snippets",
-  editor: "Also adds, changes and removes items",
-  manager: "Also decides who has access and rotates the key",
+  viewer: msg("Connects and reads hosts, keys and snippets"),
+  editor: msg("Also adds, changes and removes items"),
+  manager: msg("Also decides who has access and rotates the key"),
 };
 
 export const VAULT_ROLES: VaultRole[] = ["viewer", "editor", "manager"];
 
 export const teamRoleLabel: Record<TeamRole, string> = {
-  member: "Member",
-  admin: "Admin",
-  owner: "Owner",
+  member: msg("Member"),
+  admin: msg("Admin"),
+  owner: msg("Owner"),
 };
 
 export const teamRoleHint: Record<TeamRole, string> = {
-  member: "Uses the vaults they were given access to",
-  admin: "Also invites, removes members and creates vaults",
-  owner: "Everything, including deleting the team",
+  member: msg("Uses the vaults they were given access to"),
+  admin: msg("Also invites, removes members and creates vaults"),
+  owner: msg("Everything, including deleting the team"),
 };
 
 export const isTeamAdmin = (r: TeamRole) => r === "admin" || r === "owner";

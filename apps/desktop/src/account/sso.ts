@@ -6,6 +6,7 @@ import * as ipc from "@/ipc/commands";
 import { errorMessage, type SsoOutcome, type SsoProvider } from "@/ipc/types";
 import { createStore } from "@/lib/store";
 import { parseSsoLink } from "./ssoLink";
+import { tr } from "@/i18n";
 
 export { parseSsoLink } from "./ssoLink";
 
@@ -60,7 +61,7 @@ async function tick(flowId: string) {
   if (s.phase !== "waiting" || s.flowId !== flowId) return;
   if (Date.now() > deadline) {
     void cancelSso();
-    onFailed?.("Sign-in timed out — the browser did not finish in time");
+    onFailed?.(tr("Sign-in timed out — the browser did not finish in time"));
     return;
   }
   try {
@@ -118,7 +119,7 @@ export async function handleSsoLink(url: string): Promise<boolean> {
   if (!flowId) return false;
   const s = ssoStore.get();
   if (s.phase !== "waiting" || s.flowId !== flowId) {
-    throw new Error("This sign-in link does not belong to a sign-in started here");
+    throw new Error(tr("This sign-in link does not belong to a sign-in started here"));
   }
   settle(await ipc.accountSsoCallback(flowId), flowId);
   return true;

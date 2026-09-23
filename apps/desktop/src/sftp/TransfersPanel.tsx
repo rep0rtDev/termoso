@@ -32,6 +32,7 @@ import {
   type Edit,
   type Transfer,
 } from "./store";
+import { tr } from "@/i18n";
 
 export function TransfersPanel() {
   const order = useSftp((s) => s.transferOrder);
@@ -57,7 +58,7 @@ export function TransfersPanel() {
 
   const summary =
     staging !== null
-      ? `Preparing dropped files… ${staging}`
+      ? tr("Preparing dropped files… {staging}", { staging })
       : running.length > 0
         ? [
             `${running.length} active`,
@@ -120,7 +121,7 @@ export function TransfersPanel() {
         sx={{ alignItems: "center", pl: 1.5, pr: 0.75, height: 36, flexShrink: 0 }}
       >
         <Typography variant="subtitle2" color="text.secondary">
-          Transfers
+          {tr("Transfers")}
         </Typography>
         <Typography variant="caption" color="text.disabled" noWrap sx={{ flex: 1 }}>
           {summary}
@@ -131,10 +132,10 @@ export function TransfersPanel() {
           disabled={pending === all.length}
           sx={{ visibility: all.length > 0 ? "visible" : "hidden" }}
         >
-          Clear finished
+          {tr("Clear finished")}
         </Button>
         <ToolIconButton
-          title={collapsed ? "Show transfers" : "Hide transfers"}
+          title={collapsed ? tr("Show transfers") : tr("Hide transfers")}
           onClick={() => setCollapsed((v) => !v)}
         >
           {collapsed ? (
@@ -163,20 +164,24 @@ function detail(t: Transfer): string {
     case "failed":
       return t.message ?? "Failed";
     case "cancelled":
-      return `Cancelled · ${formatSize(t.done)}`;
+      return tr("Cancelled · {formatSize}", { formatSize: formatSize(t.done) });
     case "queued":
-      return t.cancelling ? "Cancelling…" : "Waiting…";
+      return t.cancelling ? tr("Cancelling…") : tr("Waiting…");
     case "paused":
       return `Paused · ${formatSize(t.done)}${t.total !== null ? ` / ${formatSize(t.total)}` : ""}`;
     case "done": {
       const secs = ((t.finishedAt ?? Date.now()) - t.startedAt) / 1000;
       const avg = secs > 0.5 ? ` · ${formatSpeed(t.done / secs)}` : "";
-      const skipped = t.filesSkipped > 0 ? ` · ${t.filesSkipped} skipped` : "";
-      if (t.filesSkipped > 0 && t.filesSkipped === t.filesTotal) return "Skipped · already exists";
+      const skipped =
+        t.filesSkipped > 0
+          ? " · " + tr("{filesSkipped} skipped", { filesSkipped: t.filesSkipped })
+          : "";
+      if (t.filesSkipped > 0 && t.filesSkipped === t.filesTotal)
+        return tr("Skipped · already exists");
       return `${formatSize(t.done)} · ${formatDuration(secs)}${avg}${skipped}`;
     }
     case "running": {
-      if (t.cancelling) return "Cancelling…";
+      if (t.cancelling) return tr("Cancelling…");
       const parts = [`${formatSize(t.done)}${t.total !== null ? ` / ${formatSize(t.total)}` : ""}`];
       if (t.speed !== null && t.speed > 0) {
         parts.push(formatSpeed(t.speed));
@@ -264,7 +269,7 @@ function TransferRow({ t }: { t: Transfer }) {
         )}
         {running && (
           <ToolIconButton
-            title="Pause"
+            title={tr("Pause")}
             disabled={t.cancelling}
             onClick={() => void pauseTransfer(t.id)}
           >
@@ -273,7 +278,7 @@ function TransferRow({ t }: { t: Transfer }) {
         )}
         {resumable && (
           <ToolIconButton
-            title={t.status === "paused" ? "Resume" : "Retry"}
+            title={t.status === "paused" ? tr("Resume") : tr("Retry")}
             onClick={() => void resumeTransfer(t.id).catch(() => undefined)}
           >
             {t.status === "paused" ? (
@@ -285,7 +290,7 @@ function TransferRow({ t }: { t: Transfer }) {
         )}
         {active || resumable ? (
           <ToolIconButton
-            title={active ? "Cancel" : "Discard"}
+            title={active ? tr("Cancel") : tr("Discard")}
             disabled={t.cancelling}
             onClick={() =>
               void (active ? cancelTransfer(t.id) : discardTransfer(t.id)).catch(() => undefined)
@@ -312,9 +317,9 @@ function TransferRow({ t }: { t: Transfer }) {
 function editDetail(e: Edit): string {
   switch (e.status) {
     case "uploading":
-      return "Uploading changes…";
+      return tr("Uploading changes…");
     case "failed":
-      return e.message ?? "Upload failed";
+      return e.message ?? tr("Upload failed");
     case "watching":
       return e.uploadedAt !== null
         ? `Saved ${formatSize(e.uploadedBytes)} · uploaded ${new Date(e.uploadedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
@@ -355,17 +360,17 @@ function EditRow({ e }: { e: Edit }) {
             <CircularProgress size={14} />
           </Box>
         ) : (
-          <ToolIconButton title="Upload now" onClick={() => void uploadEditNow(e.info.id)}>
+          <ToolIconButton title={tr("Upload now")} onClick={() => void uploadEditNow(e.info.id)}>
             <CloudUploadRoundedIcon fontSize="small" />
           </ToolIconButton>
         )}
         <ToolIconButton
-          title="Open again"
+          title={tr("Open again")}
           onClick={() => void ipc.localOpen(e.info.local, e.info.app)}
         >
           <OpenInNewRoundedIcon fontSize="small" />
         </ToolIconButton>
-        <ToolIconButton title="Stop watching" onClick={() => void closeEdit(e.info.id)}>
+        <ToolIconButton title={tr("Stop watching")} onClick={() => void closeEdit(e.info.id)}>
           <CloseRoundedIcon fontSize="small" />
         </ToolIconButton>
       </Stack>

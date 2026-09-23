@@ -15,6 +15,7 @@ import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
 import type { Conflict, Direction, FsEntry } from "@/ipc/types";
 import { formatMtime, formatSize } from "./format";
+import { tr, trn } from "@/i18n";
 
 export interface ConflictDecision {
   conflict: Conflict;
@@ -60,22 +61,29 @@ export function ConflictDialog({ prompt }: { prompt: ConflictPrompt | null }) {
     prompt.resolve(null);
     setAll(false);
   };
-  const where = prompt.direction === "upload" ? "on the server" : "on this computer";
 
   return (
     <Dialog open onClose={cancel} maxWidth="sm" fullWidth>
       <DialogTitle>
-        {folder ? "Folder" : "File"} already exists {where}
+        {prompt.direction === "upload"
+          ? folder
+            ? tr("Folder already exists on the server")
+            : tr("File already exists on the server")
+          : folder
+            ? tr("Folder already exists on this computer")
+            : tr("File already exists on this computer")}
       </DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {folder
-            ? "Files that exist in both folders will be handled the way you choose; new files are always copied."
-            : "Choose what to do with the existing file."}
+            ? tr(
+                "Files that exist in both folders will be handled the way you choose; new files are always copied.",
+              )
+            : tr("Choose what to do with the existing file.")}
         </Typography>
         <Stack direction="row" spacing={1.5}>
-          <Side title="Existing" entry={existing} dest={prompt.dest} />
-          <Side title="Incoming" entry={incoming} dest={null} />
+          <Side title={tr("Existing")} entry={existing} dest={prompt.dest} />
+          <Side title={tr("Incoming")} entry={incoming} dest={null} />
         </Stack>
         {remaining > 0 && (
           <FormControlLabel
@@ -85,7 +93,11 @@ export function ConflictDialog({ prompt }: { prompt: ConflictPrompt | null }) {
             }
             label={
               <Typography variant="body2">
-                Apply to all ({remaining} more {remaining === 1 ? "conflict" : "conflicts"})
+                {trn(
+                  remaining,
+                  "Apply to all ({count} more conflict)",
+                  "Apply to all ({count} more conflicts)",
+                )}
               </Typography>
             }
           />
@@ -93,21 +105,21 @@ export function ConflictDialog({ prompt }: { prompt: ConflictPrompt | null }) {
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2, flexWrap: "wrap", gap: 0.5 }}>
         <Button color="inherit" onClick={cancel} sx={{ mr: "auto" }}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         {canResume && (
           <Button color="inherit" onClick={() => answer("resume")}>
-            Resume
+            {tr("Resume")}
           </Button>
         )}
         <Button color="inherit" onClick={() => answer("skip")}>
-          Skip
+          {tr("Skip")}
         </Button>
         <Button color="inherit" onClick={() => answer("rename")}>
-          {folder ? "Keep both" : "Rename"}
+          {folder ? tr("Keep both") : tr("Rename")}
         </Button>
         <Button variant="contained" onClick={() => answer("replace")} autoFocus>
-          Replace
+          {tr("Replace")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -140,7 +152,7 @@ function Side({ title, entry, dest }: { title: string; entry: FsEntry; dest: str
         color="text.secondary"
         sx={{ display: "block", mt: 0.75, fontVariantNumeric: "tabular-nums" }}
       >
-        {entry.kind === "dir" ? "Folder" : formatSize(entry.size)}
+        {entry.kind === "dir" ? tr("Folder") : formatSize(entry.size)}
         {entry.mtime !== null ? ` · ${formatMtime(entry.mtime)}` : ""}
       </Typography>
       {dest && (

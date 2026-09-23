@@ -22,6 +22,7 @@ import { useCopyHostsToVault, useGroups, useMoveHosts, useVaults } from "@/ipc/h
 import { errorMessage, type HostCard, type Uuid } from "@/ipc/types";
 import { vaultHint, vaultIcon } from "@/app/vault";
 import { groupPathLabel } from "./GroupPanel";
+import { tr, trn } from "@/i18n";
 
 export type MoveCopyRequest =
   | { kind: "group"; hosts: HostCard[] }
@@ -78,7 +79,10 @@ function Body({
 
   const ids = request.hosts.map((h) => h.id);
   const count = ids.length;
-  const what = count === 1 ? `“${request.hosts[0]?.label ?? ""}”` : `${count} hosts`;
+  const what =
+    count === 1
+      ? `“${request.hosts[0]?.label ?? ""}”`
+      : trn(count, "{count} host", "{count} hosts");
   const busy = moveHosts.isPending || copyToVault.isPending;
 
   const commonGroup = request.hosts.every((h) => h.groupId === request.hosts[0]?.groupId)
@@ -103,10 +107,10 @@ function Body({
     const fail = (e: unknown) => snackbar.error(errorMessage(e));
     if (request.kind === "group") {
       const groupId = target === "" ? null : target;
-      const name = groupId ? groupPathLabel(groups.data ?? [], groupId) : "All hosts";
+      const name = groupId ? groupPathLabel(groups.data ?? [], groupId) : tr("All hosts");
       moveHosts.mutate(
         { ids, groupId, vaultId },
-        { onSuccess: () => done(`Moved ${what} to ${name}`), onError: fail },
+        { onSuccess: () => done(tr("Moved {what} to {name}", { what, name })), onError: fail },
       );
     } else if (target !== "") {
       const name = (vaults.data ?? []).find((v) => v.id === target)?.name ?? "vault";
@@ -128,10 +132,10 @@ function Body({
 
   const title =
     request.kind === "group"
-      ? `Move ${what} to…`
+      ? tr("Move {what} to…", { what })
       : move
-        ? `Move ${what} to vault…`
-        : `Copy ${what} to vault…`;
+        ? tr("Move {what} to vault…", { what })
+        : tr("Copy {what} to vault…", { what });
 
   const otherVaults = (vaults.data ?? []).filter((v) => v.id !== vaultId);
 
@@ -140,27 +144,41 @@ function Body({
     return (
       <>
         <DialogTitle>
-          {move ? "Move" : "Copy"} {what} to {targetVault.name}
+          {move
+            ? tr("Move {what} to {vault}", { what, vault: targetVault.name })
+            : tr("Copy {what} to {vault}", { what, vault: targetVault.name })}
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            Everyone with access to {targetVault.name} will see{" "}
-            {count === 1 ? "this host" : "these hosts"}. How should they connect?
+            {count === 1
+              ? tr("Everyone with access to {vault} will see this host. How should they connect?", {
+                  vault: targetVault.name,
+                })
+              : tr(
+                  "Everyone with access to {vault} will see these hosts. How should they connect?",
+                  {
+                    vault: targetVault.name,
+                  },
+                )}
           </Typography>
           <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
             <CredentialsChoice
               selected={shared}
               onSelect={() => setShared(true)}
               icon={<GroupsRoundedIcon fontSize="small" />}
-              title="Members share one set of credentials"
-              text="Your username, password and keys are copied into the team vault, re-encrypted for its members."
+              title={tr("Members share one set of credentials")}
+              text={tr(
+                "Your username, password and keys are copied into the team vault, re-encrypted for its members.",
+              )}
             />
             <CredentialsChoice
               selected={!shared}
               onSelect={() => setShared(false)}
               icon={<PersonRoundedIcon fontSize="small" />}
-              title="Members use their own credentials"
-              text="Hosts arrive without a username, password or key; each member connects with credentials from their personal vault."
+              title={tr("Members use their own credentials")}
+              text={tr(
+                "Hosts arrive without a username, password or key; each member connects with credentials from their personal vault.",
+              )}
             />
           </Box>
         </DialogContent>
@@ -170,10 +188,10 @@ function Body({
             onClick={() => (preset ? onClose() : setCredStep(false))}
             disabled={busy}
           >
-            {preset ? "Cancel" : "Back"}
+            {preset ? tr("Cancel") : tr("Back")}
           </Button>
           <Button variant="contained" onClick={run} disabled={busy}>
-            {busy ? "Working…" : move ? "Move" : "Copy"}
+            {busy ? tr("Working…") : move ? tr("Move") : tr("Copy")}
           </Button>
         </DialogActions>
       </>
@@ -195,7 +213,7 @@ function Body({
               <ListItemIcon sx={{ minWidth: 32 }}>
                 <HomeRoundedIcon fontSize="small" />
               </ListItemIcon>
-              <ListItemText primary="All hosts" secondary="Top level" />
+              <ListItemText primary={tr("All hosts")} secondary={tr("Top level")} />
             </ListItemButton>
             {(groups.data ?? [])
               .map((g) => ({ g, path: groupPathLabel(groups.data ?? [], g.id) }))
@@ -220,8 +238,9 @@ function Body({
           </List>
         ) : otherVaults.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ px: 1.5, py: 1 }}>
-            No other vaults on this device. Sign in and enable sync to get a personal vault, or join
-            a team to share hosts.
+            {tr(
+              "No other vaults on this device. Sign in and enable sync to get a personal vault, or join a team to share hosts.",
+            )}
           </Typography>
         ) : (
           <List dense disablePadding>
@@ -245,24 +264,24 @@ function Body({
             color="text.secondary"
             sx={{ display: "block", px: 1.5, pt: 1 }}
           >
-            Inline credentials, keys, tags and group defaults travel with the hosts. Shared
-            identities, proxies and jump hosts from this vault are copied as inline settings or
-            dropped when they cannot be shared.
+            {tr(
+              "Inline credentials, keys, tags and group defaults travel with the hosts. Shared identities, proxies and jump hosts from this vault are copied as inline settings or dropped when they cannot be shared.",
+            )}
           </Typography>
         )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button color="inherit" onClick={onClose} disabled={busy}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button variant="contained" onClick={run} disabled={busy || target === null}>
           {busy
-            ? "Working…"
+            ? tr("Working…")
             : toTeam
-              ? "Next"
+              ? tr("Next")
               : request.kind === "group" || request.move
-                ? "Move"
-                : "Copy"}
+                ? tr("Move")
+                : tr("Copy")}
         </Button>
       </DialogActions>
     </>

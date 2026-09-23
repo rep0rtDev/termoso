@@ -5,6 +5,7 @@ import {
   type LocalDevice,
   type Uuid,
 } from "@/ipc/types";
+import { tr } from "@/i18n";
 
 export type LanAddressMode = "hostname" | "ip";
 
@@ -27,7 +28,7 @@ export function lanLabel(d: LocalDevice): string {
   if (name) return name;
   const host = lanHostname(d);
   if (host) return host.replace(/\.local$/i, "");
-  return d.addresses[0] ?? "Local device";
+  return d.addresses[0] ?? tr("Local device");
 }
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\.$/, "");
@@ -81,6 +82,11 @@ export function lanHostForm(
 
 /** Primary button text: `Add 3 hosts`, `Add host`, or with a skipped-duplicates note. */
 export function addLabel(fresh: number, skipped: number): string {
-  const base = fresh === 0 ? "Add hosts" : fresh === 1 ? "Add host" : `Add ${fresh} hosts`;
-  return skipped > 0 ? `${base} (${skipped} already added)` : base;
+  const base =
+    fresh === 0
+      ? tr("Add hosts")
+      : fresh === 1
+        ? tr("Add host")
+        : tr("Add {fresh} hosts", { fresh });
+  return skipped > 0 ? tr("{base} ({skipped} already added)", { base, skipped }) : base;
 }

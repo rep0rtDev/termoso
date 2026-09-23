@@ -19,6 +19,7 @@ import type {
 } from "@/ipc/types";
 import { SFTP_CAPABILITIES, errorMessage } from "@/ipc/types";
 import { createStore, omit, useStore } from "@/lib/store";
+import { tr } from "@/i18n";
 
 export type ConnStatus = "connecting" | "open" | "error" | "closed";
 
@@ -402,7 +403,7 @@ function onSftpEvent(ev: SftpEvent) {
     case "closed": {
       const c = sftpStore.get().conns[ev.id];
       if (c && c.status !== "closed") {
-        patchConn(ev.id, { status: "closed", message: "Connection closed" });
+        patchConn(ev.id, { status: "closed", message: tr("Connection closed") });
       }
       break;
     }

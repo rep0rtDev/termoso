@@ -67,6 +67,7 @@ import { VaultMenu, useActiveVault } from "./vault";
 import { IS_MAC, MAC_TRAFFIC_LIGHTS_WIDTH } from "@/lib/platform";
 import { withHint } from "./shortcuts";
 import { useEffect, useState } from "react";
+import { tr } from "@/i18n";
 
 /**
  * Persistent top strip, doubling as the window title bar (the native frame is
@@ -108,12 +109,16 @@ export function TopBar() {
         active={activeTabId === HOME_TAB}
         onClick={() => setActiveTab(HOME_TAB)}
         icon={<LockRoundedIcon sx={{ fontSize: 16 }} />}
-        label="Vaults"
+        label={tr("Vaults")}
         trailing={
           multiVault ? (
-            <Tooltip title={vault.data ? `Vault: ${vault.data.name}` : "Switch vault"}>
+            <Tooltip
+              title={
+                vault.data ? tr("Vault: {name}", { name: vault.data.name }) : tr("Switch vault")
+              }
+            >
               <IconButton
-                aria-label="Switch vault"
+                aria-label={tr("Switch vault")}
                 aria-haspopup="menu"
                 aria-expanded={vaultMenu !== null}
                 onClick={(e) => {
@@ -139,7 +144,7 @@ export function TopBar() {
         active={activeTabId === SFTP_TAB}
         onClick={goToSftp}
         icon={<FolderCopyRoundedIcon sx={{ fontSize: 16 }} />}
-        label={sftpCount > 0 ? `SFTP (${sftpCount})` : "SFTP"}
+        label={sftpCount > 0 ? tr("SFTP ({sftpCount})", { sftpCount }) : "SFTP"}
       />
       {tabs.length > 0 && <Divider orientation="vertical" flexItem sx={{ my: 1.25, mx: 0.5 }} />}
       <Box
@@ -168,7 +173,7 @@ export function TopBar() {
             onClick={goToNewTab}
             onClose={goHome}
             icon={<AddBoxRoundedIcon sx={{ fontSize: 16 }} />}
-            label="New Tab"
+            label={tr("New Tab")}
           />
         )}
         {activeTabId === SERIAL_TAB && (
@@ -177,7 +182,7 @@ export function TopBar() {
             onClick={goToSerial}
             onClose={goHome}
             icon={<UsbRoundedIcon sx={{ fontSize: 16 }} />}
-            label="Serial"
+            label={tr("Serial")}
           />
         )}
         <Box
@@ -192,8 +197,12 @@ export function TopBar() {
             bgcolor: newWorkspaceOver ? "action.selected" : undefined,
           }}
         >
-          <Tooltip title="New tab">
-            <IconButton onClick={goToNewTab} sx={{ width: 28, height: 28 }} aria-label="New tab">
+          <Tooltip title={tr("New tab")}>
+            <IconButton
+              onClick={goToNewTab}
+              sx={{ width: 28, height: 28 }}
+              aria-label={tr("New tab")}
+            >
               <AddRoundedIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -252,8 +261,8 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
       <Tooltip
         title={
           tab.viewMode === "split"
-            ? withHint("Show terminals as a list", "ws.viewMode")
-            : withHint("Show terminals side by side", "ws.viewMode")
+            ? withHint(tr("Show terminals as a list"), "ws.viewMode")
+            : withHint(tr("Show terminals side by side"), "ws.viewMode")
         }
       >
         <span>
@@ -270,7 +279,9 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
           </IconButton>
         </span>
       </Tooltip>
-      <Tooltip title={tab.broadcast ? "Broadcast input: on" : "Broadcast input to all panes"}>
+      <Tooltip
+        title={tab.broadcast ? tr("Broadcast input: on") : tr("Broadcast input to all panes")}
+      >
         <span>
           <IconButton
             disabled={tab.paneIds.length < 2}
@@ -294,7 +305,7 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
           <DeleteSweepRoundedIcon fontSize="small" />
         </IconButton>
       </Tooltip>
-      <Tooltip title="Open SFTP for this connection">
+      <Tooltip title={tr("Open SFTP for this connection")}>
         <span>
           <IconButton
             disabled={!canSftp}
@@ -361,12 +372,12 @@ function TerminalTopTab({
 
   const menuItems: MenuAction[] = [
     {
-      label: "Rename",
+      label: tr("Rename"),
       icon: <DriveFileRenameOutlineRoundedIcon fontSize="small" />,
       onClick: () => setRenaming(true),
     },
     {
-      label: tab.viewMode === "split" ? "Show as list" : "Show side by side",
+      label: tab.viewMode === "split" ? tr("Show as list") : tr("Show side by side"),
       icon:
         tab.viewMode === "split" ? (
           <ViewListRoundedIcon fontSize="small" />
@@ -376,21 +387,23 @@ function TerminalTopTab({
       onClick: () => toggleTabViewMode(tab.id),
     },
     {
-      label: templateName ? `Save to “${templateName}”` : "Save as workspace template",
+      label: templateName
+        ? tr("Save to “{templateName}”", { templateName })
+        : tr("Save as workspace template"),
       icon: <BookmarkAddedRoundedIcon fontSize="small" />,
       onClick: () => {
         const tpl = saveTabAsTemplate(tab.id);
-        if (tpl) snackbar.notify(`Workspace “${tpl.name}” saved`);
+        if (tpl) snackbar.notify(tr("Workspace “{name}” saved", { name: tpl.name }));
       },
     },
     {
-      label: "Duplicate session",
+      label: tr("Duplicate session"),
       icon: <ContentCopyRoundedIcon fontSize="small" />,
       divider: true,
       onClick: () => openTerminal(pane.target),
     },
     {
-      label: workspace ? "Close workspace" : "Close",
+      label: workspace ? tr("Close workspace") : tr("Close"),
       icon: <CloseRoundedIcon fontSize="small" />,
       onClick: () => closeTab(tab.id),
     },
@@ -442,8 +455,8 @@ function TerminalTopTab({
           const where = workspace ? `“${tab.name}”` : title;
           snackbar.notify(
             targets.length === 1
-              ? `Opened in ${where}`
-              : `Opened ${targets.length} hosts in ${where}`,
+              ? tr("Opened in {where}", { where })
+              : tr("Opened {length} hosts in {where}", { length: targets.length, where }),
           );
         }
         return;
@@ -487,7 +500,7 @@ function TerminalTopTab({
           renaming ? (
             <InlineName
               value={tab.name ?? title}
-              placeholder="Workspace name"
+              placeholder={tr("Workspace name")}
               onCommit={(name) => {
                 setRenaming(false);
                 renameTab(tab.id, name.trim() ? name : tab.name);
@@ -573,8 +586,8 @@ function useHostDropNewWorkspace() {
       if (targets.length > 0 && addToWorkspace(null, targets)) {
         snackbar.notify(
           targets.length === 1
-            ? "Opened in a new workspace"
-            : `Opened ${targets.length} hosts in a new workspace`,
+            ? tr("Opened in a new workspace")
+            : tr("Opened {length} hosts in a new workspace", { length: targets.length }),
         );
       }
     };
@@ -664,7 +677,7 @@ function TopTab({
             onClose();
           }}
           sx={{ opacity: active ? 0.7 : 0, width: 20, height: 20, ml: 0.25 }}
-          aria-label={`Close ${label}`}
+          aria-label={tr("Close {label}", { label })}
         >
           <CloseRoundedIcon sx={{ fontSize: 14 }} />
         </IconButton>

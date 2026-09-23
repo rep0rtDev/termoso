@@ -55,6 +55,7 @@ import {
 } from "@/ipc/types";
 import { KIND_NAME, emptyRuleForm, routeLine, ruleTitle, ruleToForm } from "./model";
 import { RuleEditor, RuleTile, RuleWizard } from "./ForwardingPanels";
+import { tr, trx, msg } from "@/i18n";
 
 type Panel =
   | { mode: "closed" }
@@ -67,8 +68,8 @@ type SortKey = "az" | "za" | "newest" | "oldest";
 const sortLabel: Record<SortKey, string> = {
   az: "A-Z",
   za: "Z-A",
-  newest: "Newest to oldest",
-  oldest: "Oldest to newest",
+  newest: msg("Newest to oldest"),
+  oldest: msg("Oldest to newest"),
 };
 
 const comparators: Record<SortKey, (a: PfRuleCard, b: PfRuleCard) => number> = {
@@ -90,7 +91,7 @@ function RuleStatus({ r }: { r: PfRuleCard }) {
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
           <CircularProgress size={16} color="warning" />
           <Typography variant="caption" color="warning.main">
-            Reconnecting…
+            {tr("Reconnecting…")}
           </Typography>
         </Box>
       </Tooltip>
@@ -251,7 +252,7 @@ export function ForwardingPage() {
 
   const vaultTargets = (r: PfRuleCard, move: boolean): MenuAction[] => {
     const others = (vaults.data ?? []).filter((v) => v.id !== r.vaultId);
-    if (others.length === 0) return [{ label: "No other vaults", disabled: true }];
+    if (others.length === 0) return [{ label: tr("No other vaults"), disabled: true }];
     return others.map((v) => ({
       label: v.name,
       icon: v.unlocked ? undefined : <LockOutlinedIcon fontSize="small" />,
@@ -264,7 +265,7 @@ export function ForwardingPage() {
     const running = r.runtime.state !== "stopped";
     return [
       {
-        label: running ? "Disconnect" : "Connect",
+        label: running ? tr("Disconnect") : tr("Connect"),
         icon: running ? (
           <StopRoundedIcon fontSize="small" />
         ) : (
@@ -273,35 +274,35 @@ export function ForwardingPage() {
         onClick: () => toggle(r),
       },
       {
-        label: "Edit",
+        label: tr("Edit"),
         icon: <EditOutlinedIcon fontSize="small" />,
         onClick: () => openEdit(r),
       },
       {
-        label: "Collaborate",
+        label: tr("Collaborate"),
         icon: <GroupAddRoundedIcon fontSize="small" />,
         disabled: vault.data?.kind !== "team",
         onClick: () => openCollaboration(vault.data),
       },
       {
-        label: "Move to",
+        label: tr("Move to"),
         icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
         disabled: readOnly,
         items: vaultTargets(r, true),
       },
       {
-        label: "Copy to",
+        label: tr("Copy to"),
         icon: <LibraryAddOutlinedIcon fontSize="small" />,
         items: vaultTargets(r, false),
       },
       {
-        label: "Duplicate",
+        label: tr("Duplicate"),
         icon: <ContentCopyRoundedIcon fontSize="small" />,
         disabled: readOnly,
         onClick: () => duplicate(r),
       },
       {
-        label: "Remove",
+        label: tr("Remove"),
         icon: <DeleteOutlineRoundedIcon fontSize="small" />,
         disabled: readOnly,
         onClick: () => setConfirmRemove(r),
@@ -333,7 +334,7 @@ export function ForwardingPage() {
         trailing={busyId === r.id ? <CircularProgress size={16} /> : <RuleStatus r={r} />}
         actions={
           <ToolIconButton
-            title="Edit"
+            title={tr("Edit")}
             onClick={(e) => {
               e.stopPropagation();
               openEdit(r);
@@ -354,7 +355,7 @@ export function ForwardingPage() {
   };
 
   const newItems: MenuAction[] = (["local", "remote", "dynamic"] as PfKind[]).map((k) => ({
-    label: `${KIND_NAME[k]} Forwarding`,
+    label: tr("{value} Forwarding", { value: KIND_NAME[k] }),
     icon: <RuleTile kind={k} size={20} />,
     onClick: () => openNew(k),
   }));
@@ -370,10 +371,10 @@ export function ForwardingPage() {
                 value={view}
                 onChange={(_e, v: HostsView | null) => setView(v)}
               >
-                <ToggleButton value="grid" aria-label="Grid view">
+                <ToggleButton value="grid" aria-label={tr("Grid view")}>
                   <GridViewRoundedIcon sx={{ fontSize: 18 }} />
                 </ToggleButton>
-                <ToggleButton value="list" aria-label="List view">
+                <ToggleButton value="list" aria-label={tr("List view")}>
                   <ViewListRoundedIcon sx={{ fontSize: 18 }} />
                 </ToggleButton>
               </ToggleButtonGroup>
@@ -384,13 +385,13 @@ export function ForwardingPage() {
                 onClick={(e) => setSortAnchor(e.currentTarget)}
                 sx={{ color: "text.secondary" }}
               >
-                {sortLabel[sort]}
+                {tr(sortLabel[sort])}
               </Button>
             </>
           }
         >
           <SplitButton
-            label="New forwarding"
+            label={tr("New forwarding")}
             icon={<AddRoundedIcon />}
             disabled={!vaultId || readOnly}
             onClick={() => openWizard()}
@@ -407,8 +408,10 @@ export function ForwardingPage() {
           ) : sorted.length === 0 ? (
             <EmptyState
               icon={<SwapHorizRoundedIcon />}
-              title="No port forwarding rules"
-              description="Forward a local port through an SSH host, expose a local service on the remote side, or run a SOCKS5 proxy."
+              title={tr("No port forwarding rules")}
+              description={tr(
+                "Forward a local port through an SSH host, expose a local service on the remote side, or run a SOCKS5 proxy.",
+              )}
               action={
                 vaultId && (
                   <Button
@@ -416,7 +419,7 @@ export function ForwardingPage() {
                     startIcon={<AddRoundedIcon />}
                     onClick={() => openWizard()}
                   >
-                    New forwarding
+                    {tr("New forwarding")}
                   </Button>
                 )
               }
@@ -424,7 +427,7 @@ export function ForwardingPage() {
           ) : (
             <Box>
               <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-                Port Forwarding
+                {tr("Port Forwarding")}
               </Typography>
               {view === "grid" ? (
                 <CardGrid min={260}>{sorted.map(card)}</CardGrid>
@@ -486,15 +489,15 @@ export function ForwardingPage() {
               setSortAnchor(null);
             }}
           >
-            {sortLabel[k]}
+            {tr(sortLabel[k])}
           </MenuItem>
         ))}
       </Menu>
 
       <ConfirmDialog
         open={confirmRemove !== null}
-        title="Remove Port Forwarding rule"
-        confirmLabel="Remove"
+        title={tr("Remove Port Forwarding rule")}
+        confirmLabel={tr("Remove")}
         danger
         busy={op.isPending}
         onCancel={() => setConfirmRemove(null)}
@@ -502,9 +505,12 @@ export function ForwardingPage() {
       >
         {confirmRemove && (
           <>
-            <b>{ruleTitle(confirmRemove)}</b> will be removed
-            {confirmRemove.runtime.state !== "stopped" ? " and stopped" : ""}. This cannot be
-            undone.
+            {trx(
+              confirmRemove.runtime.state !== "stopped"
+                ? "{rule} will be removed and stopped. This cannot be undone."
+                : "{rule} will be removed. This cannot be undone.",
+              { rule: <b>{ruleTitle(confirmRemove)}</b> },
+            )}
           </>
         )}
       </ConfirmDialog>

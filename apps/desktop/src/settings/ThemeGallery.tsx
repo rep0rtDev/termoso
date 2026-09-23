@@ -9,6 +9,7 @@ import {
   terminalThemes,
   type TerminalTheme,
 } from "@/terminal/themes";
+import { tr } from "@/i18n";
 
 type Filter = "all" | "dark" | "light";
 
@@ -30,7 +31,7 @@ export function ThemeGallery({
 
   return (
     <SectionCard
-      title="Colour scheme"
+      title={tr("Colour scheme")}
       action={
         <ToggleButtonGroup
           exclusive
@@ -38,9 +39,9 @@ export function ThemeGallery({
           value={filter}
           onChange={(_, v: Filter | null) => v && setFilter(v)}
         >
-          <ToggleButton value="all">All</ToggleButton>
-          <ToggleButton value="dark">Dark</ToggleButton>
-          <ToggleButton value="light">Light</ToggleButton>
+          <ToggleButton value="all">{tr("All")}</ToggleButton>
+          <ToggleButton value="dark">{tr("Dark")}</ToggleButton>
+          <ToggleButton value="light">{tr("Light")}</ToggleButton>
         </ToggleButtonGroup>
       }
     >
@@ -54,8 +55,8 @@ export function ThemeGallery({
         {filter === "all" && (
           <ThemeCard
             theme={auto}
-            label="Auto"
-            hint="Follows app theme"
+            label={tr("Auto")}
+            hint={tr("Follows app theme")}
             selected={value === AUTO_THEME}
             onClick={() => onChange(AUTO_THEME)}
           />
@@ -158,7 +159,7 @@ export function ThemeCard({
             {label}
           </Typography>
           <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-            {hint ?? (theme.dark ? "Dark" : "Light")}
+            {hint ?? (theme.dark ? tr("Dark") : tr("Light"))}
           </Typography>
         </Box>
         {selected && <CheckRoundedIcon sx={{ fontSize: 18, color: "primary.main", mr: 0.5 }} />}
@@ -239,7 +240,7 @@ export function ThemeCard({
           {label}
         </Typography>
         <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-          {hint ?? (theme.dark ? "Dark" : "Light")}
+          {hint ?? (theme.dark ? tr("Dark") : tr("Light"))}
         </Typography>
       </Box>
     </ButtonBase>

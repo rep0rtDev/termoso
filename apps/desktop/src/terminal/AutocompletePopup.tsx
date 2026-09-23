@@ -11,6 +11,7 @@ import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
 import type { Uuid } from "@/ipc/types";
 import type { Suggestion } from "./autocomplete";
 import { acceptSuggest, selectSuggest, useTerminal } from "./store";
+import { tr } from "@/i18n";
 
 const WIDTH = 360;
 
@@ -128,13 +129,13 @@ export function AutocompletePopup({ paneId }: { paneId: Uuid }) {
         }}
       >
         <Typography variant="caption" color="text.disabled">
-          ↑↓ select
+          {tr("↑↓ select")}
         </Typography>
         <Typography variant="caption" color="text.disabled">
-          Tab insert
+          {tr("Tab insert")}
         </Typography>
         <Typography variant="caption" color="text.disabled">
-          Esc dismiss
+          {tr("Esc dismiss")}
         </Typography>
       </Box>
     </Box>

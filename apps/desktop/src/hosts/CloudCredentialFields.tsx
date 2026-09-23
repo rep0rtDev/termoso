@@ -13,6 +13,7 @@ import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import { Field } from "@/components/ui";
 import type { CloudProvider } from "@/ipc/types";
 import { AWS_REGIONS, type Draft } from "./cloud";
+import { tr } from "@/i18n";
 
 interface Props {
   provider: CloudProvider;
@@ -42,7 +43,7 @@ export function CloudCredentialFields({
     <>
       {provider === "aws" && (
         <>
-          <Field label="Region">
+          <Field label={tr("Region")}>
             <Autocomplete
               freeSolo
               size="small"
@@ -55,7 +56,7 @@ export function CloudCredentialFields({
               )}
             />
           </Field>
-          <Field label="Access Key ID">
+          <Field label={tr("Access Key ID")}>
             <TextField
               fullWidth
               size="small"
@@ -69,7 +70,7 @@ export function CloudCredentialFields({
               slotProps={{ input: { spellCheck: false } }}
             />
           </Field>
-          <Field label="Secret Access Key">
+          <Field label={tr("Secret Access Key")}>
             <SecretField
               value={draft.aws.secretAccessKey}
               reveal={reveal}
@@ -80,7 +81,7 @@ export function CloudCredentialFields({
             />
           </Field>
           <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
-            <Field label="Service">
+            <Field label={tr("Service")}>
               <Select
                 fullWidth
                 size="small"
@@ -91,10 +92,10 @@ export function CloudCredentialFields({
                 }
               >
                 <MenuItem value="ec2">EC2</MenuItem>
-                <MenuItem value="lightsail">Lightsail</MenuItem>
+                <MenuItem value="lightsail">{tr("Lightsail")}</MenuItem>
               </Select>
             </Field>
-            <Field label="IP address type">
+            <Field label={tr("IP address type")}>
               <Select
                 fullWidth
                 size="small"
@@ -104,8 +105,8 @@ export function CloudCredentialFields({
                   setDraft((d) => ({ ...d, aws: { ...d.aws, addressType: e.target.value } }))
                 }
               >
-                <MenuItem value="public">Public</MenuItem>
-                <MenuItem value="private">Private</MenuItem>
+                <MenuItem value="public">{tr("Public")}</MenuItem>
+                <MenuItem value="private">{tr("Private")}</MenuItem>
               </Select>
             </Field>
           </Box>
@@ -113,8 +114,10 @@ export function CloudCredentialFields({
       )}
       {provider === "digital_ocean" && (
         <Field
-          label="Token"
-          hint="A personal access token with read scope is enough (API → Tokens in the DigitalOcean control panel)."
+          label={tr("Token")}
+          hint={tr(
+            "A personal access token with read scope is enough (API → Tokens in the DigitalOcean control panel).",
+          )}
         >
           <SecretField
             value={draft.digitalOcean.token}
@@ -128,7 +131,7 @@ export function CloudCredentialFields({
       )}
       {provider === "azure" && (
         <>
-          <Field label="Tenant ID">
+          <Field label={tr("Tenant ID")}>
             <TextField
               fullWidth
               size="small"
@@ -141,7 +144,7 @@ export function CloudCredentialFields({
               slotProps={{ input: { spellCheck: false } }}
             />
           </Field>
-          <Field label="Client ID">
+          <Field label={tr("Client ID")}>
             <TextField
               fullWidth
               size="small"
@@ -155,8 +158,10 @@ export function CloudCredentialFields({
             />
           </Field>
           <Field
-            label="Client Secret"
-            hint="An app registration with the Reader role on the subscriptions you want to list."
+            label={tr("Client Secret")}
+            hint={tr(
+              "An app registration with the Reader role on the subscriptions you want to list.",
+            )}
           >
             <SecretField
               value={draft.azure.clientSecret}
@@ -207,7 +212,7 @@ export function SecretField({
                 size="small"
                 edge="end"
                 onClick={onReveal}
-                aria-label={reveal ? "Hide" : "Show"}
+                aria-label={reveal ? tr("Hide") : tr("Show")}
               >
                 {reveal ? (
                   <VisibilityOffOutlinedIcon fontSize="small" />

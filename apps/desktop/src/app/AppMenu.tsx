@@ -4,13 +4,14 @@ import { ActionMenu, type MenuAction } from "@/components/ui";
 import { LogoMark } from "@/components/Logo";
 import { Keys } from "./Keys";
 import { bindingsOf, useShortcuts, type Command } from "./shortcuts";
+import { tr, msg } from "@/i18n";
 
 /** `null` = separator before the next entry. */
 type Entry = string | null;
 
 const MENU: { label: string; entries: Entry[] }[] = [
   {
-    label: "File",
+    label: msg("File"),
     entries: [
       "new.host",
       "new.group",
@@ -26,11 +27,11 @@ const MENU: { label: string; entries: Entry[] }[] = [
     ],
   },
   {
-    label: "Edit",
+    label: msg("Edit"),
     entries: ["term.copy", "term.paste", "term.selectAll", null, "term.find", "term.clear"],
   },
   {
-    label: "View",
+    label: msg("View"),
     entries: [
       "palette.commands",
       "palette.jump",
@@ -53,7 +54,7 @@ const MENU: { label: string; entries: Entry[] }[] = [
     ],
   },
   {
-    label: "Window",
+    label: msg("Window"),
     entries: [
       "pane.splitRight",
       "pane.splitDown",
@@ -73,7 +74,7 @@ const MENU: { label: string; entries: Entry[] }[] = [
     ],
   },
   {
-    label: "Help",
+    label: msg("Help"),
     entries: ["nav.docs", "nav.keyboard", "nav.themes", "nav.about"],
   },
 ];
@@ -82,7 +83,7 @@ function Label({ cmd, keys }: { cmd: Command; keys: string[] }): ReactNode {
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 3, width: "100%" }}>
       <Box component="span" sx={{ flex: 1 }}>
-        {cmd.title}
+        {tr(cmd.title)}
       </Box>
       {keys[0] && <Keys chord={keys[0]} />}
     </Box>
@@ -119,14 +120,14 @@ export function AppMenuButton() {
         onClick: cmd.run,
       });
     }
-    return { label: menu.label, items: list };
+    return { label: tr(menu.label), items: list };
   });
 
   return (
     <>
       <Box
         component="button"
-        aria-label="Application menu"
+        aria-label={tr("Application menu")}
         aria-haspopup="menu"
         onClick={(e) => setAnchor(e.currentTarget)}
         sx={{

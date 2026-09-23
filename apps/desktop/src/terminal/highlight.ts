@@ -1,3 +1,4 @@
+import { msg } from "@/i18n";
 /**
  * Keyword highlighting: colours error / warning / ok / info / debug words and
  * IP / MAC addresses in terminal output before it reaches xterm. Works on the
@@ -20,22 +21,27 @@ const word = (alts: string) => new RegExp(`\\b(?:${alts})\\b`, "gi");
 export const KEYWORD_CATEGORIES: readonly KeywordCategory[] = [
   {
     kind: "error",
-    label: "Error",
+    label: msg("Error"),
     sgr: 31,
     pattern: word("errors?|err|fail(?:ed|ure|s)?|fatal|critical|crit|panic|exception|denied"),
   },
   {
     kind: "warning",
-    label: "Warning",
+    label: msg("Warning"),
     sgr: 33,
     pattern: word("warnings?|warn|deprecated|caution"),
   },
-  { kind: "ok", label: "OK", sgr: 32, pattern: word("ok|okay|success(?:ful|fully)?|passed|done") },
-  { kind: "info", label: "Info", sgr: 34, pattern: word("info|information|notice") },
-  { kind: "debug", label: "Debug", sgr: 35, pattern: word("debug|trace|verbose") },
+  {
+    kind: "ok",
+    label: msg("OK"),
+    sgr: 32,
+    pattern: word("ok|okay|success(?:ful|fully)?|passed|done"),
+  },
+  { kind: "info", label: msg("Info"), sgr: 34, pattern: word("info|information|notice") },
+  { kind: "debug", label: msg("Debug"), sgr: 35, pattern: word("debug|trace|verbose") },
   {
     kind: "address",
-    label: "IP address & MAC",
+    label: msg("IP address & MAC"),
     sgr: 95,
     pattern:
       /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}(?::\d{1,5})?|(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2})\b/gi,

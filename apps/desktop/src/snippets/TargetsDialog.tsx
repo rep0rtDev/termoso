@@ -16,6 +16,7 @@ import { CheckTile, IconTile, SearchField } from "@/components/ui";
 import { HostAvatar } from "@/hosts/HostAvatar";
 import type { GroupNode, HostCard, Uuid } from "@/ipc/types";
 import { sizes } from "@/theme/theme";
+import { tr } from "@/i18n";
 
 /** Ids of `group` and every group nested inside it. */
 function subtree(groups: readonly GroupNode[], group: Uuid): Set<Uuid> {
@@ -115,25 +116,25 @@ export function TargetsDialog({
 
   return (
     <Dialog open onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle>Add targets</DialogTitle>
+      <DialogTitle>{tr("Add targets")}</DialogTitle>
       <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 1.5, pb: 0 }}>
         <SearchField
           value={query}
           onChange={setQuery}
-          placeholder="Search hosts and groups"
+          placeholder={tr("Search hosts and groups")}
           width="100%"
           autoFocus
         />
         {hosts.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-            No hosts yet. Add hosts first, then pick them here.
+            {tr("No hosts yet. Add hosts first, then pick them here.")}
           </Typography>
         ) : (
           <Stack sx={{ maxHeight: 380, overflowY: "auto", mx: -1 }}>
             {visibleGroups.length > 0 && (
               <>
                 <Typography variant="caption" color="text.secondary" sx={{ px: 1, pt: 0.5 }}>
-                  Groups
+                  {tr("Groups")}
                 </Typography>
                 <List dense disablePadding>
                   {visibleGroups.map(({ group, members }) => {
@@ -166,11 +167,11 @@ export function TargetsDialog({
               </>
             )}
             <Typography variant="caption" color="text.secondary" sx={{ px: 1, pt: 0.5 }}>
-              Hosts
+              {tr("Hosts")}
             </Typography>
             {visibleHosts.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 1 }}>
-                Nothing matches “{query}”.
+                {tr("Nothing matches “{query}”.", { query })}
               </Typography>
             ) : (
               <List dense disablePadding>
@@ -202,13 +203,13 @@ export function TargetsDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2, pt: 1.5 }}>
         <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
-          {selected.size} selected
+          {tr("{count} selected", { count: selected.size })}
         </Typography>
         <Button onClick={onCancel} disabled={busy} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button variant="contained" disabled={busy} onClick={() => onConfirm(result())}>
-          Save targets
+          {tr("Save targets")}
         </Button>
       </DialogActions>
     </Dialog>

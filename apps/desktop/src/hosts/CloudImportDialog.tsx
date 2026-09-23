@@ -53,6 +53,7 @@ import {
   toConfig,
   type Draft,
 } from "./cloud";
+import { tr, trn } from "@/i18n";
 
 export { CLOUD_PROVIDERS } from "./cloud";
 
@@ -183,7 +184,7 @@ function Body({
     if (step.kind !== "preview") return;
     const portNum = port.trim() === "" ? null : Number(port);
     if (portNum !== null && (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535)) {
-      snackbar.error("Port must be between 1 and 65535");
+      snackbar.error(tr("Port must be between 1 and 65535"));
       return;
     }
     setApplying(true);
@@ -228,10 +229,10 @@ function Body({
           </IconTile>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography component="div" variant="h6" noWrap>
-              {meta.name} integration
+              {tr("{provider} integration", { provider: meta.name })}
             </Typography>
             <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-              Add the machines from your account as hosts
+              {tr("Add the machines from your account as hosts")}
             </Typography>
           </Box>
         </DialogTitle>
@@ -295,26 +296,26 @@ function Body({
           >
             <LockOutlinedIcon fontSize="small" color="success" sx={{ mt: "1px" }} />
             <Typography variant="caption" color="text.secondary">
-              {PRIVACY_NOTE}
+              {tr(PRIVACY_NOTE)}
             </Typography>
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2, gap: 1.5 }}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, mr: "auto", minWidth: 0 }}>
             <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
-              Import into
+              {tr("Import into")}
             </Typography>
             <VaultSelect vaults={vaults.data ?? []} value={target} onChange={changeTarget} />
           </Box>
           <Button color="inherit" onClick={onClose} disabled={step.busy}>
-            Cancel
+            {tr("Cancel")}
           </Button>
           <Button
             variant="contained"
             onClick={() => void discover()}
             disabled={!config || step.busy || !vaultOk}
           >
-            {step.busy ? "Connecting…" : "Load machines"}
+            {step.busy ? tr("Connecting…") : tr("Load machines")}
           </Button>
         </DialogActions>
       </>
@@ -337,11 +338,14 @@ function Body({
         : r.updated > 0
           ? `${n(r.updated)} updated from ${step.providerName}`
           : r.removed > 0
-            ? `${n(r.removed)} removed — no longer on ${step.providerName}`
-            : "Hosts are already up to date";
+            ? tr("{n} removed — no longer on {providerName}", {
+                n: n(r.removed),
+                providerName: step.providerName,
+              })
+            : tr("Hosts are already up to date");
     return (
       <>
-        <DialogTitle>Import complete</DialogTitle>
+        <DialogTitle>{tr("Import complete")}</DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
             <IconTile tone="accent" size={48}>
@@ -350,8 +354,9 @@ function Body({
             <Box>
               <Typography variant="subtitle1">{headline}</Typography>
               <Typography variant="body2" color="text.secondary">
-                Run the integration again any time to pick up new machines and address changes; your
-                SSH settings on the hosts are kept.
+                {tr(
+                  "Run the integration again any time to pick up new machines and address changes; your SSH settings on the hosts are kept.",
+                )}
               </Typography>
             </Box>
           </Box>
@@ -376,11 +381,11 @@ function Body({
               </Box>
             ))}
           </Box>
-          {r.warnings.length > 0 && <WarningList warnings={r.warnings} title="Notes" open />}
+          {r.warnings.length > 0 && <WarningList warnings={r.warnings} title={tr("Notes")} open />}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button variant="contained" onClick={onClose}>
-            Done
+            {tr("Done")}
           </Button>
         </DialogActions>
       </>
@@ -400,7 +405,7 @@ function Body({
         <IconButton
           size="small"
           onClick={() => setStep({ kind: "credentials", busy: false, error: null })}
-          aria-label="Back to credentials"
+          aria-label={tr("Back to credentials")}
         >
           <ArrowBackRoundedIcon fontSize="small" />
         </IconButton>
@@ -410,11 +415,9 @@ function Body({
             {preview.service ? ` · ${preview.service === "ec2" ? "EC2" : "Lightsail"}` : ""}
           </Typography>
           <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
-            {preview.instances.length === 1
-              ? "1 machine found"
-              : `${preview.instances.length} machines found`}
-            {linked > 0 && ` · ${linked} already imported`}
-            {preview.addressType === "private" && " · private addresses"}
+            {trn(preview.instances.length, "{count} machine found", "{count} machines found")}
+            {linked > 0 && " · " + tr("{linked} already imported", { linked })}
+            {preview.addressType === "private" && " · " + tr("private addresses")}
           </Typography>
         </Box>
         <Button
@@ -422,22 +425,31 @@ function Body({
           color="inherit"
           onClick={() => setSelected(selected.length < usable.length ? usable : [])}
         >
-          {selected.length < usable.length ? "Select all" : "Select none"}
+          {selected.length < usable.length ? tr("Select all") : tr("Select none")}
         </Button>
       </DialogTitle>
       <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 1.5, pt: 0 }}>
         {preview.instances.length === 0 ? (
           <Alert severity="info" variant="outlined">
-            No machines were found in this account
-            {preview.provider === "aws" ? " and region" : ""}.
+            {preview.provider === "aws"
+              ? tr("No machines were found in this account and region.")
+              : tr("No machines were found in this account.")}
           </Alert>
         ) : (
           <>
             {noAddress > 0 && (
               <Alert severity="info" variant="outlined" sx={{ py: 0.25 }}>
-                {noAddress === 1 ? "1 machine has" : `${noAddress} machines have`} no{" "}
-                {preview.addressType ?? "public"} address right now (stopped or not exposed) and
-                can't be imported.
+                {preview.addressType === "private"
+                  ? trn(
+                      noAddress,
+                      "{count} machine has no private address right now (stopped or not exposed) and can't be imported.",
+                      "{count} machines have no private address right now (stopped or not exposed) and can't be imported.",
+                    )
+                  : trn(
+                      noAddress,
+                      "{count} machine has no public address right now (stopped or not exposed) and can't be imported.",
+                      "{count} machines have no public address right now (stopped or not exposed) and can't be imported.",
+                    )}
               </Alert>
             )}
             <Box
@@ -472,7 +484,7 @@ function Body({
                 borderColor: "divider",
               }}
             >
-              <Field label="Group">
+              <Field label={tr("Group")}>
                 <GroupSelect
                   groups={groups.data ?? []}
                   value={groupId}
@@ -480,7 +492,7 @@ function Body({
                   disabled={!vaultOk}
                 />
               </Field>
-              <Field label="Tags">
+              <Field label={tr("Tags")}>
                 <Autocomplete
                   multiple
                   size="small"
@@ -496,12 +508,15 @@ function Body({
                     })
                   }
                   renderInput={(params) => (
-                    <TextField {...params} placeholder={tagIds.length ? "" : "No tags"} />
+                    <TextField {...params} placeholder={tagIds.length ? "" : tr("No tags")} />
                   )}
                   disabled={!vaultOk}
                 />
               </Field>
-              <Field label="Username" hint="Set on new hosts only; imported hosts keep theirs.">
+              <Field
+                label={tr("Username")}
+                hint={tr("Set on new hosts only; imported hosts keep theirs.")}
+              >
                 <TextField
                   fullWidth
                   size="small"
@@ -517,7 +532,7 @@ function Body({
                   autoComplete="off"
                 />
               </Field>
-              <Field label="Port">
+              <Field label={tr("Port")}>
                 <TextField
                   fullWidth
                   size="small"
@@ -540,7 +555,9 @@ function Body({
                 }
                 label={
                   <Typography variant="body2">
-                    Remove hosts imported from {preview.providerName} earlier that no longer exist
+                    {tr("Remove hosts imported from {provider} earlier that no longer exist", {
+                      provider: preview.providerName,
+                    })}
                   </Typography>
                 }
               />
@@ -551,12 +568,12 @@ function Body({
       <DialogActions sx={{ px: 3, pb: 2, gap: 1.5 }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, mr: "auto", minWidth: 0 }}>
           <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
-            Import into
+            {tr("Import into")}
           </Typography>
           <VaultSelect vaults={vaults.data ?? []} value={target} onChange={changeTarget} />
         </Box>
         <Button color="inherit" onClick={onClose} disabled={applying}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           variant="contained"
@@ -564,14 +581,14 @@ function Body({
           disabled={applying || !vaultOk || (selected.length === 0 && !removeMissing)}
         >
           {applying
-            ? "Importing…"
+            ? tr("Importing…")
             : selected.length === 0
-              ? "Import"
+              ? tr("Import")
               : updCount === 0
                 ? `Add ${newCount} host${newCount === 1 ? "" : "s"}`
                 : newCount === 0
                   ? `Update ${updCount} host${updCount === 1 ? "" : "s"}`
-                  : `Add ${newCount}, update ${updCount}`}
+                  : tr("Add {newCount}, update {updCount}", { newCount, updCount })}
         </Button>
       </DialogActions>
     </>
@@ -602,7 +619,7 @@ function InstanceRow({
       title={inst.label}
       subtitle={
         <>
-          <Mono secondary>{inst.address ?? "no address"}</Mono>
+          <Mono secondary>{inst.address ?? tr("no address")}</Mono>
           {details.length > 0 && ` · ${details.join(" · ")}`}
         </>
       }
@@ -612,7 +629,9 @@ function InstanceRow({
           {inst.os && (
             <Chip size="small" variant="outlined" label={inst.os} sx={{ maxWidth: 260 }} />
           )}
-          {inst.action === "update" && <Chip size="small" color="info" label="Already imported" />}
+          {inst.action === "update" && (
+            <Chip size="small" color="info" label={tr("Already imported")} />
+          )}
         </>
       }
       checked={checked}
@@ -621,7 +640,9 @@ function InstanceRow({
   );
   if (!disabled) return row;
   return (
-    <Tooltip title="No address of the selected type; start the machine or switch the address type.">
+    <Tooltip
+      title={tr("No address of the selected type; start the machine or switch the address type.")}
+    >
       <Box sx={{ opacity: 0.45, pointerEvents: "none" }}>{row}</Box>
     </Tooltip>
   );
@@ -662,13 +683,13 @@ export function GroupSelect({
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
             <FolderOpenRoundedIcon fontSize="small" color={p ? "inherit" : "disabled"} />
             <Typography variant="body2" noWrap>
-              {p?.path ?? "No group"}
+              {p?.path ?? tr("No group")}
             </Typography>
           </Box>
         );
       }}
     >
-      <MenuItem value="">No group</MenuItem>
+      <MenuItem value="">{tr("No group")}</MenuItem>
       {paths.map((p) => (
         <MenuItem key={p.id} value={p.id}>
           {p.path}

@@ -41,6 +41,7 @@ import { useSnackbar } from "@/components/Snackbar";
 import { AVATAR as BLOCK, PersonAvatar, initialsOf } from "@/team/PersonAvatar";
 import { isTeamAdmin, teamRoleLabel } from "@/team/roles";
 import { goToSettings, goToSettingsWith } from "./navigation";
+import { tr, trn } from "@/i18n";
 
 const serverBase = (url: string) => url.replace(/\/+$/, "");
 
@@ -62,15 +63,15 @@ function syncLine(a: AccountStatus): string {
   const s = a.sync;
   switch (s.state) {
     case "syncing":
-      return "Syncing…";
+      return tr("Syncing…");
     case "offline":
-      return "Server unreachable · working offline";
+      return tr("Server unreachable · working offline");
     case "error":
-      return s.lastError ?? "Sync error";
+      return s.lastError ?? tr("Sync error");
     case "idle":
       return s.lastSyncAt
         ? `Synced ${new Date(s.lastSyncAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}${s.realtime ? " · live" : ""}`
-        : "Signed in";
+        : tr("Signed in");
   }
 }
 
@@ -147,10 +148,12 @@ function AccountAvatar() {
 
   return (
     <>
-      <Tooltip title={account && data ? `${account.email} · ${syncLine(data)}` : "Not signed in"}>
+      <Tooltip
+        title={account && data ? `${account.email} · ${syncLine(data)}` : tr("Not signed in")}
+      >
         <ButtonBase
           onClick={(e) => setAnchor(e.currentTarget)}
-          aria-label="Account"
+          aria-label={tr("Account")}
           sx={{
             position: "relative",
             zIndex: 10,
@@ -215,29 +218,29 @@ function AccountAvatar() {
                 <ListItemIcon>
                   <SyncIcon a={data} />
                 </ListItemIcon>
-                <ListItemText primary="Sync now" secondary={syncLine(data)} />
+                <ListItemText primary={tr("Sync now")} secondary={syncLine(data)} />
               </MenuItem>,
               <MenuItem key="settings" onClick={go(() => goToSettings("account"))}>
                 <ListItemIcon>
                   <ManageAccountsRoundedIcon fontSize="small" />
                 </ListItemIcon>
-                <ListItemText primary="Account settings" />
+                <ListItemText primary={tr("Account settings")} />
               </MenuItem>,
               <Divider key="d2" />,
               <MenuItem key="out" onClick={go(() => setConfirmOut(true))}>
                 <ListItemIcon>
                   <LogoutRoundedIcon fontSize="small" />
                 </ListItemIcon>
-                <ListItemText primary="Sign out" />
+                <ListItemText primary={tr("Sign out")} />
               </MenuItem>,
             ]
           : [
               <Box key="who" sx={{ px: 2, pt: 1, pb: 1.25 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  Not signed in
+                  {tr("Not signed in")}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-                  Everything is stored in the local vault on this device.
+                  {tr("Everything is stored in the local vault on this device.")}
                 </Typography>
               </Box>,
               <Divider key="d1" />,
@@ -245,31 +248,37 @@ function AccountAvatar() {
                 <ListItemIcon>
                   <LoginRoundedIcon fontSize="small" />
                 </ListItemIcon>
-                <ListItemText primary="Sign in" secondary="Termoso Cloud or your own server" />
+                <ListItemText
+                  primary={tr("Sign in")}
+                  secondary={tr("Termoso Cloud or your own server")}
+                />
               </MenuItem>,
             ]}
       </Menu>
       <ConfirmDialog
         open={confirmOut}
-        title="Sign out?"
-        confirmLabel="Sign out"
+        title={tr("Sign out?")}
+        confirmLabel={tr("Sign out")}
         danger
         busy={op.isPending}
         onCancel={() => setConfirmOut(false)}
         onConfirm={() =>
           op.mutate(async () => {
             await ipc.accountSignOut();
-            return "Signed out";
+            return tr("Signed out");
           })
         }
       >
-        Synced vaults and their keys are removed from this device; your local vault stays. Data on
-        the server is untouched and comes back when you sign in again.
+        {tr(
+          "Synced vaults and their keys are removed from this device; your local vault stays. Data on the server is untouched and comes back when you sign in again.",
+        )}
         {localCredentials > 0 && (
           <Alert severity="warning" sx={{ mt: 1.5 }}>
-            Sync of keys and identities is off: {localCredentials} of them exist only on this device
-            and will be deleted with the account. Export them or turn the sync on first if you want
-            to keep them.
+            {trn(
+              localCredentials,
+              "Sync of keys and identities is off: {count} of them exists only on this device and will be deleted with the account. Export it or turn the sync on first if you want to keep it.",
+              "Sync of keys and identities is off: {count} of them exist only on this device and will be deleted with the account. Export them or turn the sync on first if you want to keep them.",
+            )}
           </Alert>
         )}
       </ConfirmDialog>
@@ -320,10 +329,10 @@ function TeamButton() {
 
   return (
     <>
-      <Tooltip title={team ? team.name : "Team"}>
+      <Tooltip title={team ? team.name : tr("Team")}>
         <ButtonBase
           onClick={(e) => setAnchor(e.currentTarget)}
-          aria-label="Team"
+          aria-label={tr("Team")}
           sx={{
             display: "flex",
             alignItems: "center",
@@ -394,7 +403,7 @@ function TeamButton() {
                 <PersonAvatar size={28} kind="guest" label="" />
               </ListItemIcon>
               <ListItemText
-                primary="Invite team members"
+                primary={tr("Invite team members")}
                 slotProps={{ primary: { variant: "body2", sx: { fontWeight: 500 } } }}
               />
             </ListItemButton>
@@ -406,7 +415,7 @@ function TeamButton() {
               trailing={
                 team ? (
                   <Typography variant="caption" color="text.secondary">
-                    {teamRoleLabel[team.my_role]}
+                    {tr(teamRoleLabel[team.my_role])}
                   </Typography>
                 ) : undefined
               }
@@ -422,7 +431,7 @@ function TeamButton() {
                   <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
                     {team && <MfaBadge m={m} required={team.require_mfa} />}
                     <Typography variant="caption" color="text.secondary">
-                      {teamRoleLabel[m.role]}
+                      {tr(teamRoleLabel[m.role])}
                     </Typography>
                   </Box>
                 }
@@ -440,7 +449,7 @@ function TeamButton() {
                   color="text.secondary"
                   sx={{ display: "block", px: 1, pt: 1, pb: 0.5 }}
                 >
-                  Pending invites:
+                  {tr("Pending invites:")}
                 </Typography>
                 {pending.map((i) => (
                   <MemberRow key={i.id} name={null} email={i.email} invite />
@@ -459,8 +468,8 @@ function TeamButton() {
                   <CreateNewFolderOutlinedIcon fontSize="small" />
                 </ListItemIcon>
                 <ListItemText
-                  primary="New team vault"
-                  secondary={`Shared with ${team.name}, access per member`}
+                  primary={tr("New team vault")}
+                  secondary={tr("Shared with {name}, access per member", { name: team.name })}
                   slotProps={{ primary: { variant: "body2", sx: { fontWeight: 500 } } }}
                 />
               </ListItemButton>
@@ -477,8 +486,8 @@ function TeamButton() {
                   <GroupsRoundedIcon fontSize="small" />
                 </ListItemIcon>
                 <ListItemText
-                  primary="Create a team"
-                  secondary="Share encrypted vaults with colleagues"
+                  primary={tr("Create a team")}
+                  secondary={tr("Share encrypted vaults with colleagues")}
                   slotProps={{ primary: { variant: "body2", sx: { fontWeight: 500 } } }}
                 />
               </ListItemButton>
@@ -489,12 +498,13 @@ function TeamButton() {
             <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.75 }}>
               <LockOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                Share with your team
+                {tr("Share with your team")}
               </Typography>
             </Box>
             <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-              Sign in to invite people and share encrypted vaults — end-to-end, the server never
-              sees your hosts or keys.
+              {tr(
+                "Sign in to invite people and share encrypted vaults — end-to-end, the server never sees your hosts or keys.",
+              )}
             </Typography>
             <ListItemButton
               onClick={() => {
@@ -507,7 +517,7 @@ function TeamButton() {
                 <LoginRoundedIcon fontSize="small" />
               </ListItemIcon>
               <ListItemText
-                primary="Sign in"
+                primary={tr("Sign in")}
                 slotProps={{ primary: { variant: "body2", sx: { fontWeight: 600 } } }}
               />
             </ListItemButton>

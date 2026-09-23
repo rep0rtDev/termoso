@@ -34,6 +34,7 @@ import {
   type SshIdKeyType,
   type Uuid,
 } from "@/ipc/types";
+import { tr } from "@/i18n";
 
 /** The credential slice shared by the host and group editors. */
 export interface CredentialValues {
@@ -127,7 +128,7 @@ export function CredentialsFields({
             : shownKeyRow === null,
       );
   const rowTitle: Record<AuthRow, string> = {
-    sshid: "SSH ID",
+    sshid: tr("SSH ID"),
     key: "Key",
     certificate: "Certificate",
     fido2: "FIDO2",
@@ -165,7 +166,7 @@ export function CredentialsFields({
   };
 
   const sourceLabel = usingIdentity
-    ? (identity?.label ?? (identities.data ? "Unknown identity" : "Loading…"))
+    ? (identity?.label ?? (identities.data ? tr("Unknown identity") : tr("Loading…")))
     : null;
   // Nothing set here and the group provides something → the group is the source.
   const ownEmpty =
@@ -192,7 +193,7 @@ export function CredentialsFields({
     <>
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, minHeight: 28 }}>
         <Typography variant="subtitle2" noWrap>
-          {usingIdentity || inheritedFrom ? "Credentials from" : "Credentials"}
+          {usingIdentity || inheritedFrom ? tr("Credentials from") : tr("Credentials")}
         </Typography>
         {inheritedFrom && (
           <Typography
@@ -212,7 +213,7 @@ export function CredentialsFields({
           onClick={(e) => setSourceAnchor(e.currentTarget)}
           sx={{ color: "text.secondary", ml: usingIdentity ? 0 : "auto", px: 0.75, flexShrink: 0 }}
         >
-          {sourceLabel ?? "Identity"}
+          {sourceLabel ?? tr("Identity")}
         </Button>
       </Box>
       <Menu
@@ -254,7 +255,7 @@ export function CredentialsFields({
           sx={{ color: "primary.main" }}
         >
           <AddRoundedIcon fontSize="small" sx={{ mr: 1.25 }} />
-          Open Keychain…
+          {tr("Open Keychain…")}
         </MenuItem>
       </Menu>
 
@@ -262,13 +263,13 @@ export function CredentialsFields({
         <>
           <TextField
             value={identity?.username ?? ""}
-            placeholder={identities.data ? "No username" : ""}
+            placeholder={identities.data ? tr("No username") : ""}
             disabled
             slotProps={{ input: { startAdornment: adornment(<PersonOutlineRoundedIcon />) } }}
           />
           <TextField
             value={identity?.hasPassword ? "••••••••••••" : ""}
-            placeholder="No password"
+            placeholder={tr("No password")}
             disabled
             slotProps={{ input: { startAdornment: adornment(<PasswordRoundedIcon />) } }}
           />
@@ -304,15 +305,19 @@ export function CredentialsFields({
             autoComplete="off"
             placeholder={
               inherited?.username
-                ? `${inherited.username} (inherited)`
+                ? tr("{username} (inherited)", { username: inherited.username })
                 : showSshId
-                  ? "Username (defaults to your SSH ID handle)"
-                  : "Username"
+                  ? tr("Username (defaults to your SSH ID handle)")
+                  : tr("Username")
             }
-            helperText={!value.username && inherited?.username && from ? `From ${from}` : undefined}
+            helperText={
+              !value.username && inherited?.username && from
+                ? tr("From {from}", { from })
+                : undefined
+            }
             slotProps={{
               input: { startAdornment: adornment(<PersonOutlineRoundedIcon />) },
-              htmlInput: { "aria-label": "Username" },
+              htmlInput: { "aria-label": tr("Username") },
             }}
           />
           <TextField
@@ -324,18 +329,18 @@ export function CredentialsFields({
               value.hasPassword && value.password === null
                 ? "••••••••••••"
                 : inherited?.hasPassword
-                  ? "•••••••• (inherited)"
-                  : "Password"
+                  ? tr("•••••••• (inherited)")
+                  : tr("Password")
             }
             helperText={
               value.hasPassword && value.password === null
-                ? "A password is stored. Type to replace it or clear it to remove."
+                ? tr("A password is stored. Type to replace it or clear it to remove.")
                 : !value.hasPassword && value.password === null && inherited?.hasPassword && from
-                  ? `From ${from}`
+                  ? tr("From {from}", { from })
                   : undefined
             }
             slotProps={{
-              htmlInput: { "aria-label": "Password" },
+              htmlInput: { "aria-label": tr("Password") },
               input: {
                 startAdornment: adornment(<PasswordRoundedIcon />),
                 endAdornment: (
@@ -346,13 +351,13 @@ export function CredentialsFields({
                         color="inherit"
                         onClick={() => onChange({ password: "" })}
                       >
-                        Clear
+                        {tr("Clear")}
                       </Button>
                     )}
                     <IconButton
                       size="small"
                       onClick={() => setShowPassword((v) => !v)}
-                      aria-label="Toggle password visibility"
+                      aria-label={tr("Toggle password visibility")}
                     >
                       {showPassword ? (
                         <VisibilityOffRoundedIcon fontSize="small" />
@@ -374,16 +379,18 @@ export function CredentialsFields({
                   sshIdKeyType: e.target.value === "" ? null : (e.target.value as SshIdKeyType),
                 })
               }
-              helperText="Signs in with this account's passkeys (Settings → SSH ID). Pick which one to offer first."
+              helperText={tr(
+                "Signs in with this account's passkeys (Settings → SSH ID). Pick which one to offer first.",
+              )}
               slotProps={{
-                htmlInput: { "aria-label": "SSH ID key type" },
+                htmlInput: { "aria-label": tr("SSH ID key type") },
                 input: {
                   startAdornment: adornment(rowIcon.sshid),
                   endAdornment: (
                     <InputAdornment position="end" sx={{ mr: 2 }}>
                       <IconButton
                         size="small"
-                        aria-label="Remove SSH ID"
+                        aria-label={tr("Remove SSH ID")}
                         onClick={() => onChange({ sshId: false, sshIdKeyType: null })}
                       >
                         <CloseRoundedIcon fontSize="small" />
@@ -401,7 +408,7 @@ export function CredentialsFields({
                   color="text.secondary"
                   sx={{ ml: 1 }}
                 >
-                  Default
+                  {tr("Default")}
                 </Typography>
               </MenuItem>
               {SSH_ID_KEY_TYPES.filter((t) => t.value !== SSH_ID_DEFAULT_TYPE).map((t) => (
@@ -434,25 +441,32 @@ export function CredentialsFields({
               helperText={
                 shownKeyRow === "fido2"
                   ? selectedKey
-                    ? "The token must be plugged in to connect; you will be asked to touch it."
+                    ? tr("The token must be plugged in to connect; you will be asked to touch it.")
                     : allKeys.filter(isHardwareKey).length === 0
-                      ? "No FIDO2 key in this vault yet — generate one in Keychain → FIDO2."
+                      ? tr("No FIDO2 key in this vault yet — generate one in Keychain → FIDO2.")
                       : undefined
                   : selectedKey?.agentBacked
-                    ? "Signed by the system SSH agent; it must hold this key when you connect."
+                    ? tr("Signed by the system SSH agent; it must hold this key when you connect.")
                     : value.sshKeyId === null && inheritedKey && from
-                      ? `Without a key here “${inheritedKey}” from ${from} is used.`
+                      ? tr("Without a key here “{inheritedKey}” from {from} is used.", {
+                          inheritedKey,
+                          from,
+                        })
                       : undefined
               }
               slotProps={{
-                htmlInput: { "aria-label": shownKeyRow === "fido2" ? "FIDO2 key" : "SSH key" },
+                htmlInput: {
+                  "aria-label": shownKeyRow === "fido2" ? tr("FIDO2 key") : tr("SSH key"),
+                },
                 input: {
                   startAdornment: adornment(rowIcon[shownKeyRow]),
                   endAdornment: (
                     <InputAdornment position="end" sx={{ mr: 2 }}>
                       <IconButton
                         size="small"
-                        aria-label={shownKeyRow === "fido2" ? "Remove FIDO2" : "Remove SSH key"}
+                        aria-label={
+                          shownKeyRow === "fido2" ? tr("Remove FIDO2") : tr("Remove SSH key")
+                        }
                         onClick={() => {
                           onChange({ sshKeyId: null, sshCertificateId: null });
                           setKeyRow(null);
@@ -466,11 +480,11 @@ export function CredentialsFields({
               }}
             >
               <MenuItem value="">
-                <em>{shownKeyRow === "fido2" ? "Choose a FIDO2 key" : "Choose a key"}</em>
+                <em>{shownKeyRow === "fido2" ? tr("Choose a FIDO2 key") : tr("Choose a key")}</em>
               </MenuItem>
               {!keyKnown && value.sshKeyId && (
                 <MenuItem value={value.sshKeyId}>
-                  <em>{sshKeys.data ? "Unknown key" : "Loading…"}</em>
+                  <em>{sshKeys.data ? tr("Unknown key") : tr("Loading…")}</em>
                 </MenuItem>
               )}
               {allKeys
@@ -485,15 +499,15 @@ export function CredentialsFields({
                       sx={{ ml: 1 }}
                     >
                       {k.keyType}
-                      {k.agentBacked && " · SSH agent"}
+                      {k.agentBacked && " · " + tr("SSH agent")}
                     </Typography>
                   </MenuItem>
                 ))}
               <MenuItem value="__new" sx={{ color: "primary.main" }}>
                 <AddRoundedIcon fontSize="small" sx={{ mr: 1.25 }} />
                 {shownKeyRow === "fido2"
-                  ? "Generate FIDO2 key in Keychain…"
-                  : "New key in Keychain…"}
+                  ? tr("Generate FIDO2 key in Keychain…")
+                  : tr("New key in Keychain…")}
               </MenuItem>
             </TextField>
           )}
@@ -506,18 +520,18 @@ export function CredentialsFields({
                 certKey?.certificate
                   ? certificateSummary(certKey.certificate)
                   : certified.length === 0
-                    ? "No key has a certificate yet — attach one in Keychain → Edit Key."
-                    : "Selecting a certificate also selects its key."
+                    ? tr("No key has a certificate yet — attach one in Keychain → Edit Key.")
+                    : tr("Selecting a certificate also selects its key.")
               }
               slotProps={{
-                htmlInput: { "aria-label": "Certificate" },
+                htmlInput: { "aria-label": tr("Certificate") },
                 input: {
                   startAdornment: adornment(rowIcon.certificate),
                   endAdornment: (
                     <InputAdornment position="end" sx={{ mr: 2 }}>
                       <IconButton
                         size="small"
-                        aria-label="Remove certificate"
+                        aria-label={tr("Remove certificate")}
                         onClick={() => {
                           onChange({ sshCertificateId: null });
                           setCertRow(false);
@@ -531,7 +545,7 @@ export function CredentialsFields({
               }}
             >
               <MenuItem value="">
-                <em>Choose a certificate</em>
+                <em>{tr("Choose a certificate")}</em>
               </MenuItem>
               {certified.map((k) => (
                 <MenuItem key={k.id} value={k.certificate?.id ?? ""}>
@@ -566,7 +580,7 @@ export function CredentialsFields({
                     color="text.disabled"
                     sx={{ ml: 1 }}
                   >
-                    using “{inheritedKey}” from {from}
+                    {tr("using “{key}” from {from}", { key: inheritedKey, from })}
                   </Typography>
                 )}
               </Button>
@@ -607,11 +621,11 @@ export function AgentForwardingRow({
   const from = inherited && inherited.groupPath.length > 0 ? inherited.groupPath.join(" / ") : null;
   return (
     <SettingRow
-      label="Agent forwarding"
+      label={tr("Agent forwarding")}
       hint={
         !value.agentForwarding && inherited?.agentForwarding && from
-          ? `Enabled by ${from}; turning it on here changes nothing.`
-          : "Expose the local SSH agent on the remote side."
+          ? tr("Enabled by {from}; turning it on here changes nothing.", { from })
+          : tr("Expose the local SSH agent on the remote side.")
       }
       last
       control={

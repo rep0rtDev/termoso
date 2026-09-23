@@ -16,6 +16,7 @@ import {
   Typography,
 } from "@mui/material";
 import { Field } from "@/components/ui";
+import { tr, msg } from "@/i18n";
 
 interface NameDialogProps {
   open: boolean;
@@ -68,7 +69,7 @@ export function NameDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button color="inherit" onClick={onCancel} disabled={busy}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           variant="contained"
@@ -92,14 +93,14 @@ interface ChmodProps {
 }
 
 const rows = [
-  { label: "Owner", shift: 6 },
-  { label: "Group", shift: 3 },
-  { label: "Others", shift: 0 },
+  { label: msg("Owner"), shift: 6 },
+  { label: msg("Group"), shift: 3 },
+  { label: msg("Others"), shift: 0 },
 ];
 const cols = [
-  { label: "Read", bit: 4 },
-  { label: "Write", bit: 2 },
-  { label: "Execute", bit: 1 },
+  { label: msg("Read"), bit: 4 },
+  { label: msg("Write"), bit: 2 },
+  { label: msg("Execute"), bit: 1 },
 ];
 
 export function ChmodDialog({ open, name, mode: initial, busy, onCancel, onConfirm }: ChmodProps) {
@@ -115,7 +116,7 @@ export function ChmodDialog({ open, name, mode: initial, busy, onCancel, onConfi
   };
   return (
     <Dialog open={open} onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle>Permissions</DialogTitle>
+      <DialogTitle>{tr("Permissions")}</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" noWrap sx={{ mb: 1.5 }}>
           {name}
@@ -126,7 +127,7 @@ export function ChmodDialog({ open, name, mode: initial, busy, onCancel, onConfi
               <TableCell />
               {cols.map((c) => (
                 <TableCell key={c.label} align="center">
-                  {c.label}
+                  {tr(c.label)}
                 </TableCell>
               ))}
             </TableRow>
@@ -134,7 +135,7 @@ export function ChmodDialog({ open, name, mode: initial, busy, onCancel, onConfi
           <TableBody>
             {rows.map((r) => (
               <TableRow key={r.label}>
-                <TableCell>{r.label}</TableCell>
+                <TableCell>{tr(r.label)}</TableCell>
                 {cols.map((c) => {
                   const bit = c.bit << r.shift;
                   return (
@@ -151,7 +152,7 @@ export function ChmodDialog({ open, name, mode: initial, busy, onCancel, onConfi
             ))}
           </TableBody>
         </Table>
-        <Field label="Octal">
+        <Field label={tr("Octal")}>
           <TextField
             value={octal}
             onChange={(e) => onOctal(e.target.value)}
@@ -164,10 +165,10 @@ export function ChmodDialog({ open, name, mode: initial, busy, onCancel, onConfi
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button color="inherit" onClick={onCancel} disabled={busy}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button variant="contained" disabled={busy} onClick={() => onConfirm(mode)}>
-          Apply
+          {tr("Apply")}
         </Button>
       </DialogActions>
     </Dialog>

@@ -43,6 +43,7 @@ import {
 import { formatSize } from "@/sftp/format";
 import { sizes } from "@/theme/theme";
 import { KIND_LETTER, KIND_NAME, KIND_ORDER, formProblem, parsePort } from "./model";
+import { tr, msg } from "@/i18n";
 
 /* ------------------------------------------------------------- pieces */
 
@@ -65,12 +66,15 @@ export function RuleTile({
 }
 
 const KIND_BLURB: Record<PfKind, string> = {
-  local:
+  local: msg(
     "Local port forwarding exposes a port of a remote server as a port on this device: connections to the local port travel through the intermediate host to the destination.",
-  remote:
+  ),
+  remote: msg(
     "Remote port forwarding opens a port on the remote host and forwards connections made to it back through this device to the destination.",
-  dynamic:
+  ),
+  dynamic: msg(
     "Dynamic port forwarding turns Termoso into a SOCKS proxy server. SOCKS proxy server is a protocol to request any connection via a remote host.",
+  ),
 };
 
 function Node({ icon, label, lit }: { icon: ReactNode; label: string; lit?: boolean }) {
@@ -123,29 +127,29 @@ export function KindDiagram({ kind }: { kind: PfKind }) {
     >
       {kind === "local" && (
         <>
-          <Node icon={device} label="This device" lit />
+          <Node icon={device} label={tr("This device")} lit />
           <Arrow />
-          <Node icon={server} label="Intermediate host" />
+          <Node icon={server} label={tr("Intermediate host")} />
           <Arrow />
-          <Node icon={dest} label="Destination" />
+          <Node icon={dest} label={tr("Destination")} />
         </>
       )}
       {kind === "remote" && (
         <>
-          <Node icon={server} label="Remote host" lit />
+          <Node icon={server} label={tr("Remote host")} lit />
           <Arrow />
-          <Node icon={device} label="This device" />
+          <Node icon={device} label={tr("This device")} />
           <Arrow />
-          <Node icon={dest} label="Destination" />
+          <Node icon={dest} label={tr("Destination")} />
         </>
       )}
       {kind === "dynamic" && (
         <>
-          <Node icon={device} label="SOCKS proxy" lit />
+          <Node icon={device} label={tr("SOCKS proxy")} lit />
           <Arrow />
-          <Node icon={server} label="Intermediate host" />
+          <Node icon={server} label={tr("Intermediate host")} />
           <Arrow />
-          <Node icon={anywhere} label="Any host" />
+          <Node icon={anywhere} label={tr("Any host")} />
         </>
       )}
     </Box>
@@ -218,7 +222,7 @@ function HostField({
         <TextField
           fullWidth
           value={host?.label ?? ""}
-          placeholder="Select a host"
+          placeholder={tr("Select a host")}
           onClick={readOnly ? undefined : onPick}
           slotProps={{
             input: { readOnly: true, sx: readOnly ? undefined : { cursor: "pointer" } },
@@ -232,11 +236,11 @@ function HostField({
             onClick={onClear}
             sx={{ flexShrink: 0 }}
           >
-            Remove Host
+            {tr("Remove Host")}
           </Button>
         ) : (
           <Button variant="text" size="small" onClick={onPick} sx={{ flexShrink: 0 }}>
-            Hosts
+            {tr("Hosts")}
           </Button>
         )}
       </Box>
@@ -253,7 +257,7 @@ function BackLink({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       sx={{ alignSelf: "flex-start", ml: -1 }}
     >
-      Back
+      {tr("Back")}
     </Button>
   );
 }
@@ -290,7 +294,7 @@ export function HostPicker({
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [hosts, q]);
   return (
-    <SidePanel title="Select Host" subtitle={vaultName} onBack={onBack} onClose={onClose}>
+    <SidePanel title={tr("Select Host")} subtitle={vaultName} onBack={onBack} onClose={onClose}>
       <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
         <Button
           variant="tonal"
@@ -298,16 +302,22 @@ export function HostPicker({
           onClick={() => requestCreate("host")}
           sx={{ flexShrink: 0 }}
         >
-          New Host
+          {tr("New Host")}
         </Button>
-        <SearchField value={q} onChange={setQ} placeholder="Search hosts" width="100%" autoFocus />
+        <SearchField
+          value={q}
+          onChange={setQ}
+          placeholder={tr("Search hosts")}
+          width="100%"
+          autoFocus
+        />
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
-        Hosts
+        {tr("Hosts")}
       </Typography>
       {list.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          {q ? "No SSH hosts match the search." : "No SSH hosts in this vault yet."}
+          {q ? tr("No SSH hosts match the search.") : tr("No SSH hosts in this vault yet.")}
         </Typography>
       ) : (
         <Stack spacing={1}>
@@ -335,21 +345,22 @@ function RuntimeLine({ rule }: { rule: PfRuleCard }) {
   if (rt.state === "stopped") {
     return rt.lastError ? (
       <Typography variant="caption" color="error.main">
-        Last error: {rt.lastError}
+        {tr("Last error:")} {rt.lastError}
       </Typography>
     ) : null;
   }
   if (rt.state === "starting") {
     return (
       <Typography variant="caption" color="text.secondary">
-        Starting…
+        {tr("Starting…")}
       </Typography>
     );
   }
   if (rt.state === "reconnecting") {
     return (
       <Typography variant="caption" color="warning.main">
-        Reconnecting (attempt {rt.attempt}){rt.lastError ? ` — ${rt.lastError}` : ""}
+        {tr("Reconnecting (attempt {attempt})", { attempt: rt.attempt })}
+        {rt.lastError ? ` — ${rt.lastError}` : ""}
       </Typography>
     );
   }
@@ -357,12 +368,12 @@ function RuntimeLine({ rule }: { rule: PfRuleCard }) {
     <Stack spacing={0}>
       {rt.bound && (
         <Typography variant="caption" color="text.secondary" noWrap>
-          Listening on {rt.bound}
+          {tr("Listening on")} {rt.bound}
         </Typography>
       )}
       <Typography variant="caption" color="text.secondary" noWrap>
-        {rt.active} active · {rt.connections} total · ↓ {formatSize(rt.bytesIn)} ↑{" "}
-        {formatSize(rt.bytesOut)}
+        {tr("{active} active · {total} total", { active: rt.active, total: rt.connections })} · ↓{" "}
+        {formatSize(rt.bytesIn)} ↑ {formatSize(rt.bytesOut)}
       </Typography>
     </Stack>
   );
@@ -419,7 +430,7 @@ export function RuleEditor({
 
   const hostField = (
     <HostField
-      label={form.kind === "remote" ? "Remote host" : "Intermediate host"}
+      label={form.kind === "remote" ? tr("Remote host") : tr("Intermediate host")}
       host={host}
       onPick={() => setPicking(true)}
       onClear={() => set({ hostId: "" })}
@@ -429,12 +440,18 @@ export function RuleEditor({
 
   return (
     <SidePanel
-      title={readOnly ? "Port Forwarding" : rule ? "Edit Port Forwarding" : "New Port Forwarding"}
+      title={
+        readOnly
+          ? tr("Port Forwarding")
+          : rule
+            ? tr("Edit Port Forwarding")
+            : tr("New Port Forwarding")
+      }
       subtitle={vaultName}
       onClose={onClose}
       actions={
         rule && (
-          <ToolIconButton title="More" onClick={(e) => setMenuAnchor(e.currentTarget)}>
+          <ToolIconButton title={tr("More")} onClick={(e) => setMenuAnchor(e.currentTarget)}>
             <MoreHorizRoundedIcon fontSize="small" />
           </ToolIconButton>
         )
@@ -450,7 +467,7 @@ export function RuleEditor({
               onClick={onSave}
               sx={{ height: 40, borderRadius: 2.5 }}
             >
-              {saving ? "Saving…" : rule ? "Save" : "Create"}
+              {saving ? tr("Saving…") : rule ? tr("Save") : tr("Create")}
             </Button>
           </span>
         </Tooltip>
@@ -474,12 +491,12 @@ export function RuleEditor({
             active={rule?.runtime.state === "running"}
             size={sizes.tileSmall}
           />
-          <Field label="Label" sx={{ flex: 1 }}>
+          <Field label={tr("Label")} sx={{ flex: 1 }}>
             <TextField
               fullWidth
               value={form.label}
               onChange={(e) => set({ label: e.target.value })}
-              placeholder="Label"
+              placeholder={tr("Label")}
               slotProps={{ htmlInput: { readOnly } }}
             />
           </Field>
@@ -489,13 +506,13 @@ export function RuleEditor({
           <>
             {hostField}
             <PortField
-              label="Remote port number"
+              label={tr("Remote port number")}
               required
               value={form.remotePort}
               onChange={(remotePort) => set({ remotePort })}
               readOnly={readOnly}
             />
-            <Field label="Bind address">
+            <Field label={tr("Bind address")}>
               <TextField
                 fullWidth
                 value={form.boundAddress}
@@ -504,7 +521,7 @@ export function RuleEditor({
                 slotProps={{ htmlInput: { readOnly } }}
               />
             </Field>
-            <Field label="Destination address *">
+            <Field label={tr("Destination address *")}>
               <TextField
                 fullWidth
                 value={form.remoteHost}
@@ -514,7 +531,7 @@ export function RuleEditor({
               />
             </Field>
             <PortField
-              label="Destination port number"
+              label={tr("Destination port number")}
               required
               value={form.localPort}
               onChange={(localPort) => set({ localPort })}
@@ -524,13 +541,13 @@ export function RuleEditor({
         ) : (
           <>
             <PortField
-              label="Local port number"
+              label={tr("Local port number")}
               required
               value={form.localPort}
               onChange={(localPort) => set({ localPort })}
               readOnly={readOnly}
             />
-            <Field label="Bind address">
+            <Field label={tr("Bind address")}>
               <TextField
                 fullWidth
                 value={form.boundAddress}
@@ -542,7 +559,7 @@ export function RuleEditor({
             {hostField}
             {form.kind === "local" && (
               <>
-                <Field label="Destination address *">
+                <Field label={tr("Destination address *")}>
                   <TextField
                     fullWidth
                     value={form.remoteHost}
@@ -552,7 +569,7 @@ export function RuleEditor({
                   />
                 </Field>
                 <PortField
-                  label="Destination port number"
+                  label={tr("Destination port number")}
                   required
                   value={form.remotePort}
                   onChange={(remotePort) => set({ remotePort })}
@@ -571,14 +588,14 @@ export function RuleEditor({
               disabled={readOnly}
             />
           }
-          label="Start automatically when Termoso launches"
+          label={tr("Start automatically when Termoso launches")}
         />
 
         {!rule && (
           <Typography variant="body2" color="text.secondary">
-            Need help configuring the port forwarding rule?{" "}
+            {tr("Need help configuring the port forwarding rule?")}{" "}
             <Link component="button" type="button" onClick={onOpenWizard}>
-              Open Port Forwarding Wizard
+              {tr("Open Port Forwarding Wizard")}
             </Link>
           </Typography>
         )}
@@ -600,41 +617,54 @@ const STEPS: Record<PfKind, Step[]> = {
 
 const LISTEN_TEXT: Record<PfKind, { title: string; text: string; port: string }> = {
   local: {
-    title: "Set the local port and binding address:",
-    text: "This port will be open on the local (current) device, and traffic sent to it will be forwarded to the destination through the intermediate host.",
-    port: "Local port number",
+    title: msg("Set the local port and binding address:"),
+    text: msg(
+      "This port will be open on the local (current) device, and traffic sent to it will be forwarded to the destination through the intermediate host.",
+    ),
+    port: msg("Local port number"),
   },
   remote: {
-    title: "Set the port and binding address:",
-    text: "We will forward traffic from specified port and interface address of the selected host.",
-    port: "Remote port number",
+    title: msg("Set the port and binding address:"),
+    text: msg(
+      "We will forward traffic from specified port and interface address of the selected host.",
+    ),
+    port: msg("Remote port number"),
   },
   dynamic: {
-    title: "Set the local port and binding address:",
-    text: "This port will be open on the local (current) device, and it will receive the traffic.",
-    port: "Local port number",
+    title: msg("Set the local port and binding address:"),
+    text: msg(
+      "This port will be open on the local (current) device, and it will receive the traffic.",
+    ),
+    port: msg("Local port number"),
   },
 };
 
 const HOST_TEXT: Record<PfKind, { title: string; text: string }> = {
   local: {
-    title: "Select the intermediate host:",
-    text: "The intermediate host will receive the traffic and forward it to the destination host.",
+    title: msg("Select the intermediate host:"),
+    text: msg(
+      "The intermediate host will receive the traffic and forward it to the destination host.",
+    ),
   },
   remote: {
-    title: "Select the remote host:",
-    text: "Select a host where the port will be open. The traffic from this port will be forwarded to the destination host.",
+    title: msg("Select the remote host:"),
+    text: msg(
+      "Select a host where the port will be open. The traffic from this port will be forwarded to the destination host.",
+    ),
   },
   dynamic: {
-    title: "Select the intermediate host:",
-    text: "The intermediate host will receive the traffic that will be forwarded to the local (current) host.",
+    title: msg("Select the intermediate host:"),
+    text: msg(
+      "The intermediate host will receive the traffic that will be forwarded to the local (current) host.",
+    ),
   },
 };
 
 const DESTINATION_TEXT: Record<PfKind, string> = {
-  local:
+  local: msg(
     "IP address or hostname and the port number of the remote host where the intermediate host will direct the traffic.",
-  remote: "The destination address and port on this side where the traffic will be forwarded.",
+  ),
+  remote: msg("The destination address and port on this side where the traffic will be forwarded."),
   dynamic: "",
 };
 
@@ -716,7 +746,11 @@ export function RuleWizard({
 
   return (
     <SidePanel
-      title={step === "type" ? "New Port Forwarding" : `${KIND_NAME[form.kind]} Port Forwarding`}
+      title={
+        step === "type"
+          ? tr("New Port Forwarding")
+          : tr("{value} Port Forwarding", { value: KIND_NAME[form.kind] })
+      }
       subtitle={vaultName}
       onClose={onClose}
     >
@@ -734,11 +768,11 @@ export function RuleWizard({
 
         {step === "type" && (
           <>
-            {heading("Select the port forwarding type:")}
+            {heading(tr("Select the port forwarding type:"))}
             <KindTabs value={form.kind} onChange={(kind) => set({ kind })} />
             <KindDiagram kind={form.kind} />
-            {blurb(KIND_BLURB[form.kind])}
-            {primary("Continue", false, next)}
+            {blurb(tr(KIND_BLURB[form.kind]))}
+            {primary(tr("Continue"), false, next)}
             <Button
               variant="tonal"
               size="large"
@@ -746,24 +780,24 @@ export function RuleWizard({
               onClick={onSkip}
               sx={{ height: 40, borderRadius: 2.5 }}
             >
-              Skip wizard
+              {tr("Skip wizard")}
             </Button>
           </>
         )}
 
         {step === "listen" && (
           <>
-            {heading(LISTEN_TEXT[form.kind].title)}
+            {heading(tr(LISTEN_TEXT[form.kind].title))}
             <KindDiagram kind={form.kind} />
-            {blurb(LISTEN_TEXT[form.kind].text)}
+            {blurb(tr(LISTEN_TEXT[form.kind].text))}
             <PortField
-              label={LISTEN_TEXT[form.kind].port}
+              label={tr(LISTEN_TEXT[form.kind].port)}
               required
               autoFocus
               value={listenPort}
               onChange={setListenPort}
             />
-            <Field label="Bind address">
+            <Field label={tr("Bind address")}>
               <TextField
                 fullWidth
                 value={form.boundAddress}
@@ -771,15 +805,15 @@ export function RuleWizard({
                 placeholder="127.0.0.1"
               />
             </Field>
-            {primary("Continue", listenPort <= 0, next)}
+            {primary(tr("Continue"), listenPort <= 0, next)}
           </>
         )}
 
         {step === "host" && (
           <>
-            {heading(HOST_TEXT[form.kind].title)}
+            {heading(tr(HOST_TEXT[form.kind].title))}
             <KindDiagram kind={form.kind} />
-            {blurb(HOST_TEXT[form.kind].text)}
+            {blurb(tr(HOST_TEXT[form.kind].text))}
             {host && (
               <EntityCard
                 dense
@@ -790,17 +824,17 @@ export function RuleWizard({
                 onClick={() => setPicking(true)}
               />
             )}
-            {primary(host ? "Change host" : "Select a host", false, () => setPicking(true))}
-            {host && primary("Continue", false, next)}
+            {primary(host ? tr("Change host") : tr("Select a host"), false, () => setPicking(true))}
+            {host && primary(tr("Continue"), false, next)}
           </>
         )}
 
         {step === "destination" && (
           <>
-            {heading("Select the destination host:")}
+            {heading(tr("Select the destination host:"))}
             <KindDiagram kind={form.kind} />
-            {blurb(DESTINATION_TEXT[form.kind])}
-            <Field label="Destination address *">
+            {blurb(tr(DESTINATION_TEXT[form.kind]))}
+            <Field label={tr("Destination address *")}>
               <TextField
                 fullWidth
                 autoFocus
@@ -810,29 +844,29 @@ export function RuleWizard({
               />
             </Field>
             <PortField
-              label="Destination port number"
+              label={tr("Destination port number")}
               required
               value={destPort}
               onChange={setDestPort}
             />
-            {primary("Continue", !destOk, next)}
+            {primary(tr("Continue"), !destOk, next)}
           </>
         )}
 
         {step === "label" && (
           <>
-            {heading("Select the label:")}
+            {heading(tr("Select the label:"))}
             <KindDiagram kind={form.kind} />
-            <Field label="Label">
+            <Field label={tr("Label")}>
               <TextField
                 fullWidth
                 autoFocus
                 value={form.label}
                 onChange={(e) => set({ label: e.target.value })}
-                placeholder="Label"
+                placeholder={tr("Label")}
               />
             </Field>
-            {primary(saving ? "Saving…" : "Done", saving, onSave)}
+            {primary(saving ? tr("Saving…") : tr("Done"), saving, onSave)}
           </>
         )}
       </Box>

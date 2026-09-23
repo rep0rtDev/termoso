@@ -5,6 +5,7 @@ import KeyboardReturnRoundedIcon from "@mui/icons-material/KeyboardReturnRounded
 import { closeDisconnected, dismissReconnect, reconnectNow, useTerminal } from "./store";
 import { useAppInfo } from "@/ipc/hooks";
 import { disconnectedLabel } from "./reconnect";
+import { tr, trx } from "@/i18n";
 
 const RING = 34;
 const STROKE = 3;
@@ -107,7 +108,7 @@ export function ReconnectSnackbar() {
           <Typography variant="body2" sx={{ fontSize: 12, lineHeight: 1.45 }}>
             {disconnectedLabel(n)}
             <br />
-            Initiating reconnection…
+            {tr("Initiating reconnection…")}
           </Typography>
           <Stack direction="row" spacing={1} sx={{ mt: 1.25 }}>
             <Button
@@ -116,14 +117,19 @@ export function ReconnectSnackbar() {
               onClick={reconnectNow}
               endIcon={<KeyboardReturnRoundedIcon sx={{ fontSize: 14 }} />}
             >
-              Reconnect
+              {tr("Reconnect")}
             </Button>
             <Button size="small" variant="outlined" color="inherit" onClick={closeDisconnected}>
-              Close terminal
+              {tr("Close terminal")}
             </Button>
           </Stack>
         </Box>
-        <IconButton size="small" aria-label="Dismiss" onClick={dismissReconnect} sx={{ mt: -0.5 }}>
+        <IconButton
+          size="small"
+          aria-label={tr("Dismiss")}
+          onClick={dismissReconnect}
+          sx={{ mt: -0.5 }}
+        >
           <CloseRoundedIcon sx={{ fontSize: 16 }} />
         </IconButton>
       </Stack>
@@ -160,10 +166,13 @@ export function LinkHoverHint() {
         {mod}
       </Box>{" "}
       +{" "}
-      <Box component="kbd" sx={kbdSx}>
-        Click
-      </Box>{" "}
-      to open the link
+      {trx("{click} to open the link", {
+        click: (
+          <Box component="kbd" sx={kbdSx}>
+            {tr("Click")}
+          </Box>
+        ),
+      })}
     </Paper>
   );
 }

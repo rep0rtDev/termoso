@@ -22,6 +22,7 @@ import { useSnackbar } from "@/components/Snackbar";
 import { Loading, Mono } from "@/components/ui";
 import { monoFontFamily } from "@/theme/theme";
 import { copyText, focusPane, pasteText, type Pane } from "./store";
+import { tr, trx } from "@/i18n";
 
 export function AskAiPanel({ pane }: { pane: Pane }) {
   const account = useAccount();
@@ -34,11 +35,13 @@ export function AskAiPanel({ pane }: { pane: Pane }) {
       <EmptyState
         compact
         icon={<AutoAwesomeOutlinedIcon />}
-        title="Sign in to ask AI"
-        description="Suggestions come from your Termoso account's server, so it needs an account. Nothing else changes: no telemetry, off until you turn it on."
+        title={tr("Sign in to ask AI")}
+        description={tr(
+          "Suggestions come from your Termoso account's server, so it needs an account. Nothing else changes: no telemetry, off until you turn it on.",
+        )}
         action={
           <Button variant="tonal" onClick={() => goToSettings("account")}>
-            Open account
+            {tr("Open account")}
           </Button>
         }
       />
@@ -58,8 +61,10 @@ export function AskAiPanel({ pane }: { pane: Pane }) {
       <EmptyState
         compact
         icon={<AutoAwesomeOutlinedIcon />}
-        title="No AI provider on this server"
-        description="Self-hosted servers enable suggestions with TERMOSO_AI__API_KEY: your own Chutes key or any OpenAI-compatible endpoint."
+        title={tr("No AI provider on this server")}
+        description={tr(
+          "Self-hosted servers enable suggestions with TERMOSO_AI__API_KEY: your own Chutes key or any OpenAI-compatible endpoint.",
+        )}
       />
     );
   }
@@ -78,10 +83,11 @@ function OptIn({ status }: { status: AiStatus }) {
   });
   return (
     <Stack sx={{ p: 1.5, gap: 1.25 }}>
-      <Typography variant="subtitle2">Ask AI for a command</Typography>
+      <Typography variant="subtitle2">{tr("Ask AI for a command")}</Typography>
       <Typography variant="body2" color="text.secondary">
-        Describe what you want in plain words and get one shell command back, with a short
-        explanation. It is inserted into the terminal for you to review — never run for you.
+        {tr(
+          "Describe what you want in plain words and get one shell command back, with a short explanation. It is inserted into the terminal for you to review — never run for you.",
+        )}
       </Typography>
       <Disclosure status={status} />
       <Button
@@ -90,10 +96,10 @@ function OptIn({ status }: { status: AiStatus }) {
         onClick={() => enable.mutate()}
         sx={{ alignSelf: "flex-start" }}
       >
-        Turn on for my account
+        {tr("Turn on for my account")}
       </Button>
       <Typography variant="caption" color="text.secondary">
-        Off by default. Turn it off any time in Settings → Account.
+        {tr("Off by default. Turn it off any time in Settings → Account.")}
       </Typography>
     </Stack>
   );
@@ -107,16 +113,19 @@ export function Disclosure({ status }: { status: AiStatus }) {
       sx={{ "& .MuiAlert-message": { width: "100%" } }}
     >
       <Typography variant="body2" sx={{ mb: 0.5 }}>
-        What leaves this computer: your request text plus two labels — the OS family and the shell
-        (like <Mono>linux · bash</Mono>). Nothing from the terminal: no output, no history, no host
-        name or address, no credentials, no vault contents.
+        {trx(
+          "What leaves this computer: your request text plus two labels — the OS family and the shell (like {example}). Nothing from the terminal: no output, no history, no host name or address, no credentials, no vault contents.",
+          { example: <Mono>linux · bash</Mono> },
+        )}
       </Typography>
       <Typography variant="body2" color="text.secondary">
-        Provider: {providerLabel(status)}.{" "}
+        {tr("Provider: {provider}.", { provider: providerLabel(status) })}{" "}
         {status.confidential
-          ? "Runs in confidential compute (TEE): the operator cannot read your request, though the model itself does. This is not end-to-end encryption."
-          : "The provider sees your request in plain text."}{" "}
-        {status.daily_quota} requests per day.
+          ? tr(
+              "Runs in confidential compute (TEE): the operator cannot read your request, though the model itself does. This is not end-to-end encryption.",
+            )
+          : tr("The provider sees your request in plain text.")}{" "}
+        {tr("{count} requests per day.", { count: status.daily_quota })}
       </Typography>
     </Alert>
   );
@@ -169,13 +178,15 @@ function Ask({ pane, status }: { pane: Pane; status: AiStatus }) {
     <Stack sx={{ p: 1.5, gap: 1.25 }}>
       <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}>
         <Typography variant="subtitle2" sx={{ flex: 1 }}>
-          Ask AI
+          {tr("Ask AI")}
         </Typography>
         <Tooltip
           title={
             status.confidential
-              ? "Confidential compute (TEE): the operator cannot read requests; the model does. Not end-to-end encryption."
-              : "The provider sees requests in plain text."
+              ? tr(
+                  "Confidential compute (TEE): the operator cannot read requests; the model does. Not end-to-end encryption.",
+                )
+              : tr("The provider sees requests in plain text.")
           }
         >
           <Chip
@@ -193,7 +204,7 @@ function Ask({ pane, status }: { pane: Pane; status: AiStatus }) {
         minRows={2}
         maxRows={5}
         size="small"
-        placeholder="e.g. find files over 100 MB modified this week"
+        placeholder={tr("e.g. find files over 100 MB modified this week")}
         value={prompt}
         onChange={(e) => setPrompt(e.target.value.slice(0, MAX_PROMPT_CHARS))}
         onKeyDown={(e) => {
@@ -202,11 +213,11 @@ function Ask({ pane, status }: { pane: Pane; status: AiStatus }) {
             submit();
           }
         }}
-        slotProps={{ htmlInput: { maxLength: MAX_PROMPT_CHARS, "aria-label": "Request" } }}
+        slotProps={{ htmlInput: { maxLength: MAX_PROMPT_CHARS, "aria-label": tr("Request") } }}
       />
       <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}>
         <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }} noWrap>
-          Sends: request · {contextLabel(pane)}
+          {tr("Sends: request · {context}", { context: contextLabel(pane) })}
         </Typography>
         <Button
           variant="contained"
@@ -214,7 +225,7 @@ function Ask({ pane, status }: { pane: Pane; status: AiStatus }) {
           disabled={!prompt.trim() || ask.isPending}
           onClick={submit}
         >
-          {ask.isPending ? "Asking…" : "Suggest"}
+          {ask.isPending ? tr("Asking…") : tr("Suggest")}
         </Button>
       </Stack>
 
@@ -224,7 +235,7 @@ function Ask({ pane, status }: { pane: Pane; status: AiStatus }) {
           action={
             err.retry ? (
               <Button color="inherit" size="small" onClick={submit}>
-                Retry
+                {tr("Retry")}
               </Button>
             ) : undefined
           }
@@ -252,7 +263,7 @@ function Ask({ pane, status }: { pane: Pane; status: AiStatus }) {
               {answer.command}
             </Box>
           ) : (
-            <Alert severity="info">No command for that request.</Alert>
+            <Alert severity="info">{tr("No command for that request.")}</Alert>
           )}
           {answer.explanation && (
             <Typography variant="body2" color="text.secondary">
@@ -264,8 +275,8 @@ function Ask({ pane, status }: { pane: Pane; status: AiStatus }) {
               <Tooltip
                 title={
                   connected
-                    ? "Types the command at the prompt. You press Enter."
-                    : "Connect the session to insert"
+                    ? tr("Types the command at the prompt. You press Enter.")
+                    : tr("Connect the session to insert")
                 }
               >
                 <span>
@@ -276,7 +287,7 @@ function Ask({ pane, status }: { pane: Pane; status: AiStatus }) {
                     disabled={!connected}
                     onClick={insert}
                   >
-                    Insert
+                    {tr("Insert")}
                   </Button>
                 </span>
               </Tooltip>
@@ -286,10 +297,10 @@ function Ask({ pane, status }: { pane: Pane; status: AiStatus }) {
                 startIcon={<ContentCopyRoundedIcon />}
                 onClick={() => {
                   void copyText(answer.command);
-                  snackbar.notify("Command copied");
+                  snackbar.notify(tr("Command copied"));
                 }}
               >
-                Copy
+                {tr("Copy")}
               </Button>
             </Stack>
           )}
@@ -297,8 +308,8 @@ function Ask({ pane, status }: { pane: Pane; status: AiStatus }) {
       )}
 
       <Typography variant="caption" color="text.secondary">
-        Review before you run it: the model can be wrong. Nothing is executed for you. {remaining}{" "}
-        of {status.daily_quota} left today.
+        {tr("Review before you run it: the model can be wrong. Nothing is executed for you.")}{" "}
+        {tr("{remaining} of {quota} left today.", { remaining, quota: status.daily_quota })}
       </Typography>
     </Stack>
   );

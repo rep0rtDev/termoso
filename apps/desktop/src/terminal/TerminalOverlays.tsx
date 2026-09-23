@@ -35,6 +35,7 @@ import {
   splitActivePane,
   useTerminal,
 } from "./store";
+import { tr, trn } from "@/i18n";
 
 /** App-wide terminal dialogs and the pane context menu; mount once. */
 export function TerminalOverlays() {
@@ -61,35 +62,35 @@ export function TerminalOverlays() {
     const full = tab.paneIds.length >= MAX_PANES;
     items.push(
       {
-        label: "Copy",
+        label: tr("Copy"),
         icon: <ContentCopyRoundedIcon fontSize="small" />,
         disabled: !paneHasSelection(id),
         onClick: () => copySelection(id),
       },
       {
-        label: "Paste",
+        label: tr("Paste"),
         icon: <ContentPasteRoundedIcon fontSize="small" />,
         onClick: () => pasteClipboard(id),
       },
       {
-        label: "Select all",
+        label: tr("Select all"),
         icon: <SelectAllRoundedIcon fontSize="small" />,
         onClick: () => selectAll(id),
       },
       {
-        label: "Clear buffer",
+        label: tr("Clear buffer"),
         icon: <DeleteSweepRoundedIcon fontSize="small" />,
         divider: true,
         onClick: () => clearBuffer(id),
       },
       {
-        label: "Split right",
+        label: tr("Split right"),
         icon: <VerticalSplitRoundedIcon fontSize="small" />,
         disabled: full,
         onClick: () => splitActivePane(tab.id, "row"),
       },
       {
-        label: "Split down",
+        label: tr("Split down"),
         icon: <HorizontalSplitRoundedIcon fontSize="small" />,
         disabled: full,
         divider: tab.paneIds.length === 1,
@@ -98,7 +99,7 @@ export function TerminalOverlays() {
     );
     if (tab.paneIds.length > 1) {
       items.push({
-        label: "Move to new tab",
+        label: tr("Move to new tab"),
         icon: <OpenInNewRoundedIcon fontSize="small" />,
         divider: true,
         onClick: () => movePaneToNewTab(id),
@@ -106,34 +107,36 @@ export function TerminalOverlays() {
     }
     items.push(
       {
-        label: "Search",
+        label: tr("Search"),
         icon: <SearchRoundedIcon fontSize="small" />,
         onClick: () => setSearchOpen(true),
       },
       {
-        label: "Themes",
+        label: tr("Themes"),
         icon: <PaletteRoundedIcon fontSize="small" />,
         onClick: () => setSidePanel("themes"),
       },
       {
-        label: "Session info",
+        label: tr("Session info"),
         icon: <InfoOutlinedIcon fontSize="small" />,
         divider: true,
         onClick: () => setSidePanel("info"),
       },
       {
-        label: paneSuggest ? "Turn off suggestions here" : "Turn on suggestions here",
+        label: paneSuggest ? tr("Turn off suggestions here") : tr("Turn on suggestions here"),
         icon: <AutoAwesomeOutlinedIcon fontSize="small" />,
         onClick: () => setPaneAutocomplete(id, !paneSuggest),
       },
       {
-        label: paused ? "Resume suggestions everywhere" : "Pause suggestions until tomorrow",
+        label: paused
+          ? tr("Resume suggestions everywhere")
+          : tr("Pause suggestions until tomorrow"),
         icon: <SnoozeRoundedIcon fontSize="small" />,
         divider: true,
         onClick: () => pauseSuggestions(paused ? null : endOfToday()),
       },
       {
-        label: "Close pane",
+        label: tr("Close pane"),
         icon: <CloseRoundedIcon fontSize="small" />,
         danger: true,
         onClick: () => requestClosePane(id),
@@ -154,14 +157,16 @@ export function TerminalOverlays() {
 
       <ConfirmDialog
         open={pendingPaste !== null}
-        title="Paste multiple lines?"
-        confirmLabel="Paste"
+        title={tr("Paste multiple lines?")}
+        confirmLabel={tr("Paste")}
         onCancel={() => confirmPendingPaste(false)}
         onConfirm={() => confirmPendingPaste(true)}
       >
-        The clipboard contains{" "}
-        {pendingPaste ? pendingPaste.text.trimEnd().split(/\r?\n/).length : 0} lines. Each line will
-        be executed as it is pasted.
+        {trn(
+          pendingPaste ? pendingPaste.text.trimEnd().split(/\r?\n/).length : 0,
+          "The clipboard contains {count} line. It will be executed as it is pasted.",
+          "The clipboard contains {count} lines. Each line will be executed as it is pasted.",
+        )}
         <Box
           component="pre"
           sx={{
@@ -184,16 +189,18 @@ export function TerminalOverlays() {
       <ConfirmDialog
         open={pendingClose !== null}
         title={
-          liveClose > 1 ? `Close ${liveClose} connected sessions?` : "Close connected session?"
+          liveClose > 1
+            ? tr("Close {liveClose} connected sessions?", { liveClose })
+            : tr("Close connected session?")
         }
-        confirmLabel="Close"
+        confirmLabel={tr("Close")}
         danger
         onCancel={() => confirmPendingClose(false)}
         onConfirm={() => confirmPendingClose(true)}
       >
         {liveClose > 1
-          ? "These sessions are still connected. Running processes in them will be terminated."
-          : "The session is still connected. Running processes in it will be terminated."}
+          ? tr("These sessions are still connected. Running processes in them will be terminated.")
+          : tr("The session is still connected. Running processes in it will be terminated.")}
       </ConfirmDialog>
     </>
   );

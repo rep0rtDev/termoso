@@ -58,11 +58,12 @@ import { terminalThemes } from "@/terminal/themes";
 import { monoFontFamily, sizes } from "@/theme/theme";
 import { ChainDialog, ProxyDialog } from "./HostAdvancedDialogs";
 import { ConnectedNowCard, useVaultPresence } from "./PresenceViews";
+import { tr, trn, msg } from "@/i18n";
 
 const IP_VERSIONS: { value: IpVersion; label: string }[] = [
-  { value: "auto", label: "Auto" },
-  { value: "4", label: "IPv4" },
-  { value: "6", label: "IPv6" },
+  { value: "auto", label: msg("Auto") },
+  { value: "4", label: msg("IPv4") },
+  { value: "6", label: msg("IPv6") },
 ];
 
 const emptyTelnet = (): TelnetForm => ({
@@ -108,7 +109,7 @@ export function HostEditPanel({ vaultId, hostId, initialGroupId, onClose }: Prop
   const blank = useMemo(() => emptyHostForm(vaultId, initialGroupId), [vaultId, initialGroupId]);
   if (hostId !== null && loaded.data === undefined) {
     return (
-      <SidePanel title="Host Details" onClose={onClose} width={sizes.panel}>
+      <SidePanel title={tr("Host Details")} onClose={onClose} width={sizes.panel}>
         {loaded.error ? (
           <Typography color="error">{errorMessage(loaded.error)}</Typography>
         ) : (
@@ -245,7 +246,9 @@ function HostEditor({
   const onSave = (thenConnect: ConnectTarget | null) => {
     save.mutate(form, {
       onSuccess: (card) => {
-        snackbar.notify(hostId ? "Host saved" : `Host “${card.label}” added`);
+        snackbar.notify(
+          hostId ? tr("Host saved") : tr("Host “{label}” added", { label: card.label }),
+        );
         if (thenConnect) connectTo(card, thenConnect);
         onClose();
       },
@@ -259,7 +262,7 @@ function HostEditor({
       { id: hostId, vaultId },
       {
         onSuccess: () => {
-          snackbar.notify("Host deleted");
+          snackbar.notify(tr("Host deleted"));
           setConfirmDelete(false);
           onClose();
         },
@@ -285,7 +288,7 @@ function HostEditor({
           onClick={() => onSave(null)}
           sx={{ height: 40, borderRadius: 2.5, flex: "0 0 auto !important", px: 2.5 }}
         >
-          {save.isPending ? "Saving…" : "Save"}
+          {save.isPending ? tr("Saving…") : tr("Save")}
         </Button>
         <ConnectButton
           hostId={hostId}
@@ -299,13 +302,17 @@ function HostEditor({
 
   return (
     <SidePanel
-      title="Host Details"
-      subtitle={hostId ? form.label || form.address : "New host"}
+      title={tr("Host Details")}
+      subtitle={hostId ? form.label || form.address : tr("New host")}
       onClose={onClose}
       width={sizes.panel}
       actions={
         hostId && (
-          <ToolIconButton title="Delete host" color="error" onClick={() => setConfirmDelete(true)}>
+          <ToolIconButton
+            title={tr("Delete host")}
+            color="error"
+            onClick={() => setConfirmDelete(true)}
+          >
             <DeleteOutlineRoundedIcon fontSize="small" />
           </ToolIconButton>
         )
@@ -321,7 +328,7 @@ function HostEditor({
         sx={{ display: "contents" }}
       >
         {hostId && <ConnectedNowCard viewers={presence.get(hostId) ?? []} />}
-        <SectionCard title="Address">
+        <SectionCard title={tr("Address")}>
           <Box sx={{ display: "flex", gap: 1.5, alignItems: "center" }}>
             <IconTile size={sizes.tile} color={icon?.color}>
               {icon ? <DistroGlyph icon={icon} /> : <ProtocolGlyph protocol={glyphProtocol} />}
@@ -331,7 +338,9 @@ function HostEditor({
               autoFocus={!hostId}
               value={form.address}
               onChange={(e) => set("address", e.target.value)}
-              placeholder={needsAddress(form) ? "IP or Hostname" : "IP or Hostname (optional)"}
+              placeholder={
+                needsAddress(form) ? tr("IP or Hostname") : tr("IP or Hostname (optional)")
+              }
               slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
               error={touched && needsAddress(form) && form.address.trim().length === 0}
               sx={{ flex: 1 }}
@@ -339,7 +348,7 @@ function HostEditor({
           </Box>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
             <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-              IP version
+              {tr("IP version")}
             </Typography>
             <ToggleButtonGroup
               exclusive
@@ -351,18 +360,18 @@ function HostEditor({
             >
               {IP_VERSIONS.map((o) => (
                 <ToggleButton key={o.value} value={o.value} sx={{ px: 1.5 }}>
-                  {o.label}
+                  {tr(o.label)}
                 </ToggleButton>
               ))}
             </ToggleButtonGroup>
           </Box>
         </SectionCard>
 
-        <SectionCard title="General">
+        <SectionCard title={tr("General")}>
           <TextField
             value={form.label}
             onChange={(e) => set("label", e.target.value)}
-            placeholder="Label"
+            placeholder={tr("Label")}
           />
           <TextField
             select
@@ -377,7 +386,7 @@ function HostEditor({
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
                       <FolderOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
                       <Box component="span" sx={{ color: g ? "text.primary" : "text.disabled" }}>
-                        {g?.label ?? "Parent Group"}
+                        {g?.label ?? tr("Parent Group")}
                       </Box>
                     </Box>
                   );
@@ -386,7 +395,7 @@ function HostEditor({
             }}
           >
             <MenuItem value="">
-              <em>No group</em>
+              <em>{tr("No group")}</em>
             </MenuItem>
             {(groups.data ?? []).map((g) => (
               <MenuItem key={g.id} value={g.id}>
@@ -402,14 +411,16 @@ function HostEditor({
               inh.identityId !== null ||
               inh.port !== null) && (
               <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-                Inherits credentials and connection defaults from {inheritedFrom}.
+                {tr("Inherits credentials and connection defaults from {group}.", {
+                  group: inheritedFrom,
+                })}
               </Typography>
             )}
           <Box
             component="button"
             type="button"
             onClick={(e) => setTagAnchor(e.currentTarget)}
-            aria-label="Tags"
+            aria-label={tr("Tags")}
             sx={{
               all: "unset",
               boxSizing: "border-box",
@@ -430,7 +441,7 @@ function HostEditor({
             <LabelOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
             {selectedTags.length === 0 ? (
               <Typography variant="body1" sx={{ color: "text.disabled" }}>
-                Tags
+                {tr("Tags")}
               </Typography>
             ) : (
               <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, flex: 1 }}>
@@ -460,7 +471,7 @@ function HostEditor({
             maxRows={6}
             value={form.notes}
             onChange={(e) => set("notes", e.target.value)}
-            placeholder="Notes"
+            placeholder={tr("Notes")}
           />
         </SectionCard>
 
@@ -476,10 +487,10 @@ function HostEditor({
             }
             action={
               (form.telnet !== null || form.webdav !== null) && (
-                <Tooltip title="Remove SSH">
+                <Tooltip title={tr("Remove SSH")}>
                   <IconButton
                     size="small"
-                    aria-label="Remove SSH"
+                    aria-label={tr("Remove SSH")}
                     onClick={() => set("ssh", false)}
                   >
                     <CloseRoundedIcon fontSize="small" />
@@ -494,7 +505,7 @@ function HostEditor({
               ssh
               agentForwarding={false}
               inherited={inh}
-              inlineLabel="Set on this host"
+              inlineLabel={tr("Set on this host")}
               value={form}
               onChange={patch}
             />
@@ -506,13 +517,13 @@ function HostEditor({
               endIcon={more ? <ExpandLessRoundedIcon /> : <ExpandMoreRoundedIcon />}
               sx={{ alignSelf: "flex-start", color: "text.secondary", ml: -1 }}
             >
-              {more ? "Show less" : "Show more"}
+              {more ? tr("Show less") : tr("Show more")}
             </Button>
 
             {more && (
               <>
                 <AgentForwardingRow value={form} onChange={patch} inherited={inh} />
-                <Field label="Startup snippet" hint="Runs right after the shell opens.">
+                <Field label={tr("Startup snippet")} hint={tr("Runs right after the shell opens.")}>
                   <TextField
                     select
                     value={form.startupSnippetId ?? ""}
@@ -521,7 +532,7 @@ function HostEditor({
                     }
                   >
                     <MenuItem value="">
-                      <em>None</em>
+                      <em>{tr("None")}</em>
                     </MenuItem>
                     {(snippets.data ?? []).map((s) => (
                       <MenuItem key={s.id} value={s.id}>
@@ -530,7 +541,7 @@ function HostEditor({
                     ))}
                   </TextField>
                 </Field>
-                <Field label="Host Chaining">
+                <Field label={tr("Host Chaining")}>
                   <TextField
                     select
                     value={form.hostChainId ?? ""}
@@ -543,8 +554,8 @@ function HostEditor({
                     <MenuItem value="">
                       <em>
                         {inh?.hostChainId && chainName(inh.hostChainId)
-                          ? `Inherited — ${chainName(inh.hostChainId)}`
-                          : "Direct connection"}
+                          ? tr("Inherited — {name}", { name: chainName(inh.hostChainId) ?? "" })
+                          : tr("Direct connection")}
                       </em>
                     </MenuItem>
                     {(chains.data ?? []).map((c) => (
@@ -556,17 +567,17 @@ function HostEditor({
                           color="text.secondary"
                           sx={{ ml: 1 }}
                         >
-                          {c.data.host_ids.length} hop{c.data.host_ids.length === 1 ? "" : "s"}
+                          {trn(c.data.host_ids.length, "{count} hop", "{count} hops")}
                         </Typography>
                       </MenuItem>
                     ))}
                     <MenuItem value="__new" sx={{ color: "primary.main" }}>
                       <AddRoundedIcon fontSize="small" sx={{ mr: 1 }} />
-                      New host chain…
+                      {tr("New host chain…")}
                     </MenuItem>
                   </TextField>
                 </Field>
-                <Field label="Proxy">
+                <Field label={tr("Proxy")}>
                   <TextField
                     select
                     value={form.proxyId ?? ""}
@@ -579,8 +590,8 @@ function HostEditor({
                     <MenuItem value="">
                       <em>
                         {inh?.proxyId && proxyName(inh.proxyId)
-                          ? `Inherited — ${proxyName(inh.proxyId)}`
-                          : "None"}
+                          ? tr("Inherited — {name}", { name: proxyName(inh.proxyId) ?? "" })
+                          : tr("None")}
                       </em>
                     </MenuItem>
                     {(proxies.data ?? []).map((p) => (
@@ -598,16 +609,16 @@ function HostEditor({
                     ))}
                     <MenuItem value="__new" sx={{ color: "primary.main" }}>
                       <AddRoundedIcon fontSize="small" sx={{ mr: 1 }} />
-                      New proxy…
+                      {tr("New proxy…")}
                     </MenuItem>
                   </TextField>
                 </Field>
                 <Field
-                  label="Environment Variables"
+                  label={tr("Environment Variables")}
                   hint={
                     inh && inh.envVariables.length > 0 && inheritedFrom
                       ? `From ${inheritedFrom}: ${inh.envVariables.map(([k, v]) => `${k}=${v}`).join(", ")}`
-                      : "Sent with the session; the server must accept them (AcceptEnv)."
+                      : tr("Sent with the session; the server must accept them (AcceptEnv).")
                   }
                 >
                   <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -643,7 +654,7 @@ function HostEditor({
                         />
                         <IconButton
                           size="small"
-                          aria-label="Remove variable"
+                          aria-label={tr("Remove variable")}
                           onClick={() =>
                             set(
                               "envVariables",
@@ -662,26 +673,26 @@ function HostEditor({
                       onClick={() => set("envVariables", [...form.envVariables, ["", ""]])}
                       sx={{ alignSelf: "flex-start", color: "text.secondary" }}
                     >
-                      Add variable
+                      {tr("Add variable")}
                     </Button>
                   </Box>
                 </Field>
                 <Box sx={{ display: "flex", gap: 1.5 }}>
-                  <Field label="Keep-alive, s" sx={{ flex: 1 }}>
+                  <Field label={tr("Keep-alive, s")} sx={{ flex: 1 }}>
                     <TextField
                       type="number"
                       value={form.keepAliveInterval ?? ""}
                       onChange={(e) => set("keepAliveInterval", clampSeconds(e.target.value))}
-                      placeholder={inh?.keepAliveInterval?.toString() ?? "default"}
+                      placeholder={inh?.keepAliveInterval?.toString() ?? tr("default")}
                       slotProps={{ htmlInput: { min: 0, max: 86400 } }}
                     />
                   </Field>
-                  <Field label="Timeout, s" sx={{ flex: 1 }}>
+                  <Field label={tr("Timeout, s")} sx={{ flex: 1 }}>
                     <TextField
                       type="number"
                       value={form.timeout ?? ""}
                       onChange={(e) => set("timeout", clampSeconds(e.target.value))}
-                      placeholder={inh?.timeout?.toString() ?? "default"}
+                      placeholder={inh?.timeout?.toString() ?? tr("default")}
                       slotProps={{ htmlInput: { min: 0, max: 86400 } }}
                     />
                   </Field>
@@ -693,10 +704,12 @@ function HostEditor({
                   readOnly={readOnly}
                 />
                 <Field
-                  label="Mosh"
+                  label={tr("Mosh")}
                   hint={
                     form.useMosh
-                      ? "Connect runs mosh-server over SSH, then hands the session to a local mosh-client (UDP). Needs Mosh on both ends."
+                      ? tr(
+                          "Connect runs mosh-server over SSH, then hands the session to a local mosh-client (UDP). Needs Mosh on both ends.",
+                        )
                       : undefined
                   }
                 >
@@ -705,12 +718,12 @@ function HostEditor({
                     value={form.useMosh ? "on" : "off"}
                     onChange={(e) => set("useMosh", e.target.value === "on")}
                   >
-                    <MenuItem value="off">Disabled</MenuItem>
-                    <MenuItem value="on">Enabled</MenuItem>
+                    <MenuItem value="off">{tr("Disabled")}</MenuItem>
+                    <MenuItem value="on">{tr("Enabled")}</MenuItem>
                   </TextField>
                 </Field>
                 {form.useMosh && (
-                  <Field label="Mosh server command">
+                  <Field label={tr("Mosh server command")}>
                     <TextField
                       value={form.moshServerCommand ?? ""}
                       onChange={(e) => set("moshServerCommand", e.target.value || null)}
@@ -724,7 +737,7 @@ function HostEditor({
             )}
           </SectionCard>
         ) : (
-          <AddSectionButton label="Add SSH" onClick={() => set("ssh", true)} />
+          <AddSectionButton label={tr("Add SSH")} onClick={() => set("ssh", true)} />
         )}
 
         {form.telnet ? (
@@ -738,10 +751,10 @@ function HostEditor({
               />
             }
             action={
-              <Tooltip title="Remove Telnet">
+              <Tooltip title={tr("Remove Telnet")}>
                 <IconButton
                   size="small"
-                  aria-label="Remove Telnet"
+                  aria-label={tr("Remove Telnet")}
                   onClick={() => set("telnet", null)}
                 >
                   <CloseRoundedIcon fontSize="small" />
@@ -753,7 +766,7 @@ function HostEditor({
             <CredentialsFields
               vaultId={vaultId}
               ssh={false}
-              inlineLabel="Set on this host"
+              inlineLabel={tr("Set on this host")}
               value={{
                 identityId: form.telnet.identityId,
                 username: form.telnet.username,
@@ -779,17 +792,17 @@ function HostEditor({
             />
           </SectionCard>
         ) : (
-          <AddSectionButton label="Add Telnet" onClick={() => set("telnet", emptyTelnet())} />
+          <AddSectionButton label={tr("Add Telnet")} onClick={() => set("telnet", emptyTelnet())} />
         )}
 
         {form.webdav ? (
           <SectionCard
             title="WebDAV"
             action={
-              <Tooltip title="Remove WebDAV">
+              <Tooltip title={tr("Remove WebDAV")}>
                 <IconButton
                   size="small"
-                  aria-label="Remove WebDAV"
+                  aria-label={tr("Remove WebDAV")}
                   onClick={() => set("webdav", null)}
                 >
                   <CloseRoundedIcon fontSize="small" />
@@ -808,7 +821,7 @@ function HostEditor({
                 }
                 helperText={
                   touched && form.webdav.url.trim().length > 0 && !isWebDavUrl(form.webdav.url)
-                    ? "Enter an http:// or https:// URL"
+                    ? tr("Enter an http:// or https:// URL")
                     : undefined
                 }
                 slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
@@ -818,8 +831,10 @@ function HostEditor({
             <WebDavAuthFields vaultId={vaultId} value={form.webdav} onChange={patchWebDav} />
             <Divider />
             <Field
-              label="Server certificate fingerprint"
-              hint="SHA-256 of the server certificate; pins self-signed or private-CA servers. Left empty, the system trust store decides and an unknown certificate is offered on first connect."
+              label={tr("Server certificate fingerprint")}
+              hint={tr(
+                "SHA-256 of the server certificate; pins self-signed or private-CA servers. Left empty, the system trust store decides and an unknown certificate is offered on first connect.",
+              )}
             >
               <TextField
                 value={form.webdav.certificateFingerprint ?? ""}
@@ -837,7 +852,7 @@ function HostEditor({
             </Field>
           </SectionCard>
         ) : (
-          <AddSectionButton label="Add WebDAV" onClick={() => set("webdav", emptyWebDav())} />
+          <AddSectionButton label={tr("Add WebDAV")} onClick={() => set("webdav", emptyWebDav())} />
         )}
       </Box>
 
@@ -870,14 +885,16 @@ function HostEditor({
 
       <ConfirmDialog
         open={confirmDelete}
-        title="Delete host?"
+        title={tr("Delete host?")}
         danger
-        confirmLabel="Delete"
+        confirmLabel={tr("Delete")}
         busy={del.isPending}
         onCancel={() => setConfirmDelete(false)}
         onConfirm={onDelete}
       >
-        “{form.label || form.address}” and its inline credentials will be removed from this device.
+        {tr("“{name}” and its inline credentials will be removed from this device.", {
+          name: form.label || form.address,
+        })}
       </ConfirmDialog>
     </SidePanel>
   );
@@ -897,21 +914,23 @@ function PortTitle({
 }) {
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-      <Typography variant="subtitle2">{name} on</Typography>
+      <Typography variant="subtitle2">
+        {name} {tr("on")}
+      </Typography>
       <TextField
         type="number"
         size="small"
         value={value ?? ""}
         onChange={(e) => onChange(clampPort(e.target.value))}
         placeholder={placeholder}
-        aria-label={`${name} port`}
+        aria-label={tr("{name} port", { name })}
         slotProps={{
           htmlInput: { min: 1, max: 65535, sx: { textAlign: "center", px: 0.5 } },
           input: { sx: { fontFamily: monoFontFamily, height: 28 } },
         }}
         sx={{ width: 72 }}
       />
-      <Typography variant="subtitle2">port</Typography>
+      <Typography variant="subtitle2">{tr("port")}</Typography>
     </Box>
   );
 }
@@ -959,7 +978,7 @@ function ThemeField({
                 </>
               ) : (
                 <Box component="span" sx={{ color: "text.disabled" }}>
-                  Terminal theme · app default
+                  {tr("Terminal theme · app default")}
                 </Box>
               )}
             </Box>
@@ -968,16 +987,16 @@ function ThemeField({
       }}
     >
       <MenuItem value="">
-        <em>App default</em>
+        <em>{tr("App default")}</em>
       </MenuItem>
-      <ListSubheader disableSticky>Dark</ListSubheader>
+      <ListSubheader disableSticky>{tr("Dark")}</ListSubheader>
       {dark.map((t) => (
         <MenuItem key={t.id} value={t.id}>
           <ThemeSwatch background={t.background} ansi={t.ansi} />
           {t.name}
         </MenuItem>
       ))}
-      <ListSubheader disableSticky>Light</ListSubheader>
+      <ListSubheader disableSticky>{tr("Light")}</ListSubheader>
       {light.map((t) => (
         <MenuItem key={t.id} value={t.id}>
           <ThemeSwatch background={t.background} ansi={t.ansi} />

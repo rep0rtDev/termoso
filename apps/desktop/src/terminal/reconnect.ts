@@ -1,4 +1,5 @@
 import type { Uuid } from "@/ipc/types";
+import { trn } from "@/i18n";
 
 /** Automatic attempts per drop before giving up (Termius counts down from 6). */
 export const RECONNECT_ATTEMPTS = 6;
@@ -55,5 +56,5 @@ export function dequeueReconnect(
 
 /** Snackbar headline, singular/plural like Termius. */
 export function disconnectedLabel(count: number): string {
-  return count === 1 ? "1 session is disconnected." : `${count} sessions are disconnected.`;
+  return trn(count, "{count} session is disconnected.", "{count} sessions are disconnected.");
 }

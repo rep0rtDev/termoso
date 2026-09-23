@@ -17,6 +17,7 @@ import { onPrompt, onPromptClosed, promptAnswer } from "@/ipc/commands";
 import type { HostKeyInfo, PromptAnswer, PromptEvent } from "@/ipc/types";
 import { setActiveTab, terminalStore } from "@/terminal/store";
 import { Field } from "@/components/ui";
+import { tr, trx } from "@/i18n";
 
 /**
  * Renders the queue of prompts raised by Rust while connecting (host key,
@@ -67,11 +68,11 @@ function PromptDialog({
     case "username":
       return (
         <SecretPrompt
-          title={`Username for ${prompt.host}`}
+          title={tr("Username for {host}", { host: prompt.host })}
           target={prompt.target}
-          label="Username"
+          label={tr("Username")}
           visible
-          rememberLabel="Save to this host in the vault"
+          rememberLabel={tr("Save to this host in the vault")}
           warning={prompt.retry ? "Enter a username to continue." : null}
           onAnswer={onAnswer}
           onCancel={cancel}
@@ -80,9 +81,9 @@ function PromptDialog({
     case "password":
       return (
         <SecretPrompt
-          title={`Password for ${prompt.username}`}
+          title={tr("Password for {username}", { username: prompt.username })}
           target={prompt.target}
-          label="Password"
+          label={tr("Password")}
           warning={prompt.retry ? "Authentication failed. Try again." : null}
           onAnswer={onAnswer}
           onCancel={cancel}
@@ -91,9 +92,9 @@ function PromptDialog({
     case "passphrase":
       return (
         <SecretPrompt
-          title="Key passphrase"
+          title={tr("Key passphrase")}
           target={prompt.target}
-          label={`Passphrase for ${prompt.key_label}`}
+          label={tr("Passphrase for {key_label}", { key_label: prompt.key_label })}
           onAnswer={onAnswer}
           onCancel={cancel}
         />
@@ -101,9 +102,9 @@ function PromptDialog({
     case "pin":
       return (
         <SecretPrompt
-          title="Please enter PIN for key"
+          title={tr("Please enter PIN for key")}
           target={prompt.target}
-          label={`PIN for ${prompt.key_label}`}
+          label={tr("PIN for {key_label}", { key_label: prompt.key_label })}
           numeric
           rememberLabel={null}
           warning={
@@ -138,7 +139,11 @@ function KeyBlock({ info, tone }: { info: HostKeyInfo; tone?: "old" | "new" }) {
       }}
     >
       <Typography sx={{ display: "block" }} variant="caption" color="text.secondary">
-        {tone === "old" ? "Previously trusted" : tone === "new" ? "Presented now" : info.key_type}
+        {tone === "old"
+          ? tr("Previously trusted")
+          : tone === "new"
+            ? tr("Presented now")
+            : info.key_type}
         {tone ? ` · ${info.key_type}` : ""}
       </Typography>
       {info.fingerprint}
@@ -160,18 +165,22 @@ function HostKeyPrompt({
     onAnswer({ kind: "host_key", decision });
   return (
     <Dialog open onClose={() => decide("reject")} maxWidth="sm" fullWidth>
-      <DialogTitle>{changed ? "Host key has changed" : "Unknown host"}</DialogTitle>
+      <DialogTitle>{changed ? tr("Host key has changed") : tr("Unknown host")}</DialogTitle>
       <DialogContent>
         <Stack spacing={1.5}>
           {changed ? (
             <Alert severity="error" variant="outlined">
-              The identity of <b>{prompt.target}</b> differs from the key saved earlier. This can
-              mean the server was reinstalled — or that someone is intercepting the connection.
+              {trx(
+                "The identity of {target} differs from the key saved earlier. This can mean the server was reinstalled — or that someone is intercepting the connection.",
+                { target: <b>{prompt.target}</b> },
+              )}
             </Alert>
           ) : (
             <Typography variant="body2">
-              The authenticity of <b>{prompt.target}</b> cannot be established. Verify the
-              fingerprint with the server owner before trusting it.
+              {trx(
+                "The authenticity of {target} cannot be established. Verify the fingerprint with the server owner before trusting it.",
+                { target: <b>{prompt.target}</b> },
+              )}
             </Typography>
           )}
           {v.status === "unknown" && <KeyBlock info={v.key} />}
@@ -189,7 +198,7 @@ function HostKeyPrompt({
                 }
                 label={
                   <Typography variant="body2">
-                    I verified the new fingerprint with the server owner
+                    {tr("I verified the new fingerprint with the server owner")}
                   </Typography>
                 }
               />
@@ -199,11 +208,11 @@ function HostKeyPrompt({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button color="inherit" onClick={() => decide("reject")}>
-          Reject
+          {tr("Reject")}
         </Button>
         <Box sx={{ flex: 1 }} />
         <Button color={changed ? "error" : "primary"} onClick={() => decide("accept_once")}>
-          Connect once
+          {tr("Connect once")}
         </Button>
         <Button
           variant="contained"
@@ -211,7 +220,7 @@ function HostKeyPrompt({
           disabled={changed && !verified}
           onClick={() => decide("accept_and_save")}
         >
-          {changed ? "Replace & connect" : "Trust & connect"}
+          {changed ? tr("Replace & connect") : tr("Trust & connect")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -229,13 +238,14 @@ function CertificatePrompt({
     onAnswer({ kind: "host_key", decision });
   return (
     <Dialog open onClose={() => decide("reject")} maxWidth="sm" fullWidth>
-      <DialogTitle>Untrusted certificate</DialogTitle>
+      <DialogTitle>{tr("Untrusted certificate")}</DialogTitle>
       <DialogContent>
         <Stack spacing={1.5}>
           <Typography variant="body2">
-            The certificate presented by <b>{prompt.host}</b> is not signed by a trusted authority
-            (self-signed or private CA). Verify the fingerprint with the server owner before
-            trusting it.
+            {trx(
+              "The certificate presented by {host} is not signed by a trusted authority (self-signed or private CA). Verify the fingerprint with the server owner before trusting it.",
+              { host: <b>{prompt.host}</b> },
+            )}
           </Typography>
           <KeyBlock
             info={{
@@ -249,12 +259,12 @@ function CertificatePrompt({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button color="inherit" onClick={() => decide("reject")}>
-          Reject
+          {tr("Reject")}
         </Button>
         <Box sx={{ flex: 1 }} />
-        <Button onClick={() => decide("accept_once")}>Connect once</Button>
+        <Button onClick={() => decide("accept_once")}>{tr("Connect once")}</Button>
         <Button variant="contained" onClick={() => decide("accept_and_save")}>
-          Trust & connect
+          {tr("Trust & connect")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -326,10 +336,10 @@ function SecretPrompt({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button color="inherit" onClick={onCancel}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button variant="contained" onClick={submit}>
-          Continue
+          {tr("Continue")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -348,7 +358,7 @@ function InteractivePrompt({
   const cancel = () => onAnswer({ kind: "cancel" });
   return (
     <Dialog open onClose={cancel} maxWidth="xs" fullWidth>
-      <DialogTitle>{prompt.name || "Authentication"}</DialogTitle>
+      <DialogTitle>{prompt.name || tr("Authentication")}</DialogTitle>
       <DialogContent>
         <Stack
           component="form"
@@ -383,10 +393,10 @@ function InteractivePrompt({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button color="inherit" onClick={cancel}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button variant="contained" onClick={submit}>
-          Continue
+          {tr("Continue")}
         </Button>
       </DialogActions>
     </Dialog>

@@ -5,6 +5,7 @@ import FilterNoneRoundedIcon from "@mui/icons-material/FilterNoneRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useState, type ReactNode } from "react";
+import { tr } from "@/i18n";
 
 const win = getCurrentWindow();
 
@@ -32,11 +33,11 @@ export function WindowControls() {
 
   return (
     <Box sx={{ display: "flex", alignItems: "stretch", flexShrink: 0, ml: 0.5 }}>
-      <WindowButton label="Minimize" onClick={() => void win.minimize()}>
+      <WindowButton label={tr("Minimize")} onClick={() => void win.minimize()}>
         <MinimizeRoundedIcon sx={{ fontSize: 18, mt: "-6px" }} />
       </WindowButton>
       <WindowButton
-        label={maximized ? "Restore" : "Maximize"}
+        label={maximized ? tr("Restore") : tr("Maximize")}
         onClick={() => void win.toggleMaximize()}
       >
         {maximized ? (
@@ -45,7 +46,7 @@ export function WindowControls() {
           <CropSquareRoundedIcon sx={{ fontSize: 15 }} />
         )}
       </WindowButton>
-      <WindowButton label="Close" onClick={() => void win.close()} danger>
+      <WindowButton label={tr("Close")} onClick={() => void win.close()} danger>
         <CloseRoundedIcon sx={{ fontSize: 17 }} />
       </WindowButton>
     </Box>

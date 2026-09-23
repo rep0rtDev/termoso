@@ -25,6 +25,7 @@ import { SearchField, SectionCard } from "@/components/ui";
 import { omit } from "@/lib/store";
 import type { Settings } from "@/ipc/types";
 import { IS_MAC } from "@/lib/platform";
+import { tr } from "@/i18n";
 
 const MOD = IS_MAC ? "Cmd" : "Ctrl";
 const ALT = IS_MAC ? "Option" : "Alt";
@@ -52,7 +53,7 @@ export function KeyboardPage({ s, update }: Props) {
     const q = filter.trim().toLowerCase();
     const out = new Map<string, Command[]>();
     for (const c of commands) {
-      if (q && !`${c.title} ${c.keywords ?? ""}`.toLowerCase().includes(q)) continue;
+      if (q && !`${c.title} ${tr(c.title)} ${c.keywords ?? ""}`.toLowerCase().includes(q)) continue;
       out.set(c.group, [...(out.get(c.group) ?? []), c]);
     }
     return GROUP_ORDER.filter((g) => out.has(g)).map((g) => [g, out.get(g) ?? []] as const);
@@ -69,25 +70,31 @@ export function KeyboardPage({ s, update }: Props) {
   return (
     <>
       <SectionCard
-        title="Keyboard shortcuts"
+        title={tr("Keyboard shortcuts")}
         action={
           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <SearchField value={filter} onChange={setFilter} placeholder="Filter" width={200} />
+            <SearchField
+              value={filter}
+              onChange={setFilter}
+              placeholder={tr("Filter")}
+              width={200}
+            />
             <Button
               variant="text"
               size="small"
               disabled={changed === 0}
               onClick={() => update({ shortcuts: {} })}
             >
-              Reset all
+              {tr("Reset all")}
             </Button>
           </Box>
         }
       >
         <Typography variant="body2" color="text.secondary">
-          Click a shortcut to change it. Shortcuts need {MOD}, {ALT} or {SUPER} (or an F-key) so
-          they never swallow what you type into a terminal. {MOD}+1 … {MOD}+9 always switch to the
-          tab in that position.
+          {tr(
+            "Click a shortcut to change it. Shortcuts need {mod}, {alt} or {super} (or an F-key) so they never swallow what you type into a terminal. {mod}+1 … {mod}+9 always switch to the tab in that position.",
+            { mod: MOD, alt: ALT, super: SUPER },
+          )}
         </Typography>
         {groups.map(([group, list]) => (
           <Box key={group}>
@@ -95,7 +102,7 @@ export function KeyboardPage({ s, update }: Props) {
               variant="caption"
               sx={{ display: "block", color: "text.secondary", fontWeight: 600, mb: 0.5 }}
             >
-              {group}
+              {tr(group)}
             </Typography>
             {list.map((c) => (
               <ShortcutRow
@@ -112,7 +119,7 @@ export function KeyboardPage({ s, update }: Props) {
         ))}
         {groups.length === 0 && (
           <Typography variant="body2" color="text.secondary">
-            No commands match “{filter}”.
+            {tr("No commands match “{query}”.", { query: filter })}
           </Typography>
         )}
       </SectionCard>
@@ -161,12 +168,12 @@ function ShortcutRow({
       }}
     >
       <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} noWrap>
-        {command.title}
+        {tr(command.title)}
       </Typography>
       <Box
         component="button"
         onClick={onEdit}
-        aria-label={`Change shortcut for ${command.title}`}
+        aria-label={tr("Change shortcut for {title}", { title: tr(command.title) })}
         sx={{
           all: "unset",
           cursor: "pointer",
@@ -183,21 +190,21 @@ function ShortcutRow({
       >
         {bindings.length === 0 ? (
           <Typography variant="caption" color="text.disabled">
-            Not bound
+            {tr("Not bound")}
           </Typography>
         ) : (
           bindings.map((b) => <Keys key={b} chord={b} />)
         )}
       </Box>
       <Box className="row-actions" sx={{ display: "flex", opacity: 0, width: 56 }}>
-        <Tooltip title="Unbind">
+        <Tooltip title={tr("Unbind")}>
           <span>
             <IconButton size="small" disabled={bindings.length === 0} onClick={onUnbind}>
               <LinkOffRoundedIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </span>
         </Tooltip>
-        <Tooltip title="Reset to default">
+        <Tooltip title={tr("Reset to default")}>
           <span>
             <IconButton size="small" disabled={!overridden} onClick={onReset}>
               <RestartAltRoundedIcon sx={{ fontSize: 16 }} />
@@ -263,7 +270,7 @@ function RecordDialog({
       fullWidth
       slotProps={{ transition: { onEntered: () => box.current?.focus() } }}
     >
-      <DialogTitle>{command.title}</DialogTitle>
+      <DialogTitle>{tr(command.title)}</DialogTitle>
       <DialogContent>
         <Box
           ref={box}
@@ -285,7 +292,7 @@ function RecordDialog({
             <Keys chord={chord} />
           ) : (
             <Typography variant="body2" color="text.secondary">
-              Press the new shortcut…
+              {tr("Press the new shortcut…")}
             </Typography>
           )}
         </Box>
@@ -294,14 +301,20 @@ function RecordDialog({
           sx={{ display: "block", mt: 1, color: rejected ? "warning.main" : "text.secondary" }}
         >
           {rejected
-            ? `Add ${MOD}, ${ALT} or ${SUPER} — plain keys would be typed into the terminal.`
+            ? tr("Add {MOD}, {ALT} or {SUPER} — plain keys would be typed into the terminal.", {
+                MOD,
+                ALT,
+                SUPER,
+              })
             : conflicts.length > 0
-              ? `Already used by ${conflicts.map((c) => `“${c.title}”`).join(", ")} — saving will unbind it.`
-              : "Enter saves, Esc cancels."}
+              ? tr("Already used by {commands} — saving will unbind it.", {
+                  commands: conflicts.map((c) => `“${tr(c.title)}”`).join(", "),
+                })
+              : tr("Enter saves, Esc cancels.")}
         </Typography>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>{tr("Cancel")}</Button>
         <Button
           variant="contained"
           disabled={!chord}
@@ -313,7 +326,7 @@ function RecordDialog({
             )
           }
         >
-          {conflicts.length > 0 ? "Replace" : "Save"}
+          {conflicts.length > 0 ? tr("Replace") : tr("Save")}
         </Button>
       </DialogActions>
     </Dialog>
