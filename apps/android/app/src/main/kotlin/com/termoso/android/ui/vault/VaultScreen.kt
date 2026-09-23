@@ -18,22 +18,19 @@ import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Fingerprint
-import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,7 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -74,10 +70,9 @@ private data class VaultCounts(
 )
 
 /**
- * Vaults tab: every vault on the device (local, personal, teams) with its
- * sections — Hosts, Keychain, Port forwarding, Snippets, History, Recordings —
- * plus the device-wide Known hosts. Opening a section makes that vault the
- * current one for the host screens.
+ * Vaults tab: the current vault's sections — Hosts, Keychain, Port forwarding,
+ * Snippets, History, Recordings — plus the device-wide Known hosts. The vault
+ * is switched from the centred title, like in Termius.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,25 +90,27 @@ fun VaultScreen(
     onOpenLogs: () -> Unit,
 ) {
     val vaults by shell.vaults.collectAsStateWithLifecycle()
+    val selectedVaultId by shell.selectedVaultId.collectAsStateWithLifecycle()
+    val vault = vaults.firstOrNull { it.id == selectedVaultId }
     val revision by shell.repo.revision.collectAsStateWithLifecycle()
     val accountStatus by account.status.collectAsStateWithLifecycle()
 
-    var counts by remember { mutableStateOf<Map<String, VaultCounts>>(emptyMap()) }
+    var counts by remember { mutableStateOf(VaultCounts()) }
     var known by remember { mutableStateOf(0) }
-    LaunchedEffect(vaults, revision) {
+    LaunchedEffect(vault, revision) {
         val loaded = runCatching {
             shell.repo.read {
-                val history = history(200u)
-                val logs = sessionLogs()
-                val perVault = vaults.filter { !it.locked }.associate { v ->
-                    v.id to VaultCounts(
-                        hosts = hosts(v.id).size,
-                        keys = keys(v.id).size,
-                        identities = identities(v.id).size,
-                        forwards = pfRules(v.id).size,
-                        snippets = snippets(v.id).size,
-                        history = history.count { it.belongsTo(v) },
-                        logs = logs.count { it.vaultId == v.id },
+                val perVault = if (vault == null || vault.locked) {
+                    VaultCounts()
+                } else {
+                    VaultCounts(
+                        hosts = hosts(vault.id).size,
+                        keys = keys(vault.id).size,
+                        identities = identities(vault.id).size,
+                        forwards = pfRules(vault.id).size,
+                        snippets = snippets(vault.id).size,
+                        history = history(200u).count { it.belongsTo(vault) },
+                        logs = sessionLogs().count { it.vaultId == vault.id },
                     )
                 }
                 knownHosts().size to perVault
@@ -125,8 +122,8 @@ fun VaultScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(if (vaults.size > 1) R.string.all_vaults else R.string.vault)) },
+            CenterAlignedTopAppBar(
+                title = { VaultPickerTitle(vaults, selectedVaultId, shell::selectVault) },
                 actions = {
                     val signedIn = accountStatus.account != null
                     val sync = accountStatus.sync
@@ -163,12 +160,11 @@ fun VaultScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
         ) {
-            vaults.forEach { v ->
-                VaultHeader(shell, v)
+            if (vault != null) {
+                VaultHeader(shell, vault)
                 VaultSections(
-                    vault = v,
-                    counts = counts[v.id] ?: VaultCounts(),
-                    open = { section -> shell.selectVault(v.id); section() },
+                    vault = vault,
+                    counts = counts,
                     onOpenHosts = onOpenHosts,
                     onOpenKeychain = onOpenKeychain,
                     onOpenForwarding = onOpenForwarding,
@@ -176,9 +172,8 @@ fun VaultScreen(
                     onOpenHistory = onOpenHistory,
                     onOpenLogs = onOpenLogs,
                 )
-                Spacer(Modifier.height(8.dp))
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(16.dp))
             SectionCard {
                 ChevronRow(
                     title = stringResource(R.string.known_hosts),
@@ -193,7 +188,7 @@ fun VaultScreen(
     }
 }
 
-/** Vault name with its kind icon and, for team vaults, who is connected right now. */
+/** What kind of vault this is and, for team vaults, who is connected right now. */
 @Composable
 private fun VaultHeader(shell: ShellViewModel, v: VaultInfo) {
     val presence = rememberVaultPresence(shell, v)
@@ -201,35 +196,18 @@ private fun VaultHeader(shell: ShellViewModel, v: VaultInfo) {
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(start = 4.dp, end = 4.dp, top = 20.dp, bottom = 10.dp),
+            .padding(start = 4.dp, end = 4.dp, top = 12.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            when (v.kind) {
-                VaultKind.LOCAL -> Icons.Filled.PhoneAndroid
-                VaultKind.PERSONAL -> Icons.Filled.Person
-                VaultKind.TEAM -> Icons.Filled.Groups
-            },
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+        Text(
+            if (v.locked) stringResource(R.string.waiting_for_a_key) else vaultHint(v),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                vaultLabel(v),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                if (v.locked) stringResource(R.string.waiting_for_a_key) else vaultHint(v),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
         if (v.locked) {
             Icon(Icons.Filled.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
@@ -242,7 +220,6 @@ private fun VaultHeader(shell: ShellViewModel, v: VaultInfo) {
 private fun VaultSections(
     vault: VaultInfo,
     counts: VaultCounts,
-    open: (() -> Unit) -> Unit,
     onOpenHosts: () -> Unit,
     onOpenKeychain: () -> Unit,
     onOpenForwarding: () -> Unit,
@@ -250,8 +227,7 @@ private fun VaultSections(
     onOpenHistory: () -> Unit,
     onOpenLogs: () -> Unit,
 ) {
-    val enabled = !vault.locked
-    fun Modifier.section(cb: () -> Unit) = clickable(enabled = enabled) { open(cb) }
+    fun Modifier.section(cb: () -> Unit) = clickable(enabled = !vault.locked, onClick = cb)
     SectionCard {
         ChevronRow(
             title = stringResource(R.string.hosts),

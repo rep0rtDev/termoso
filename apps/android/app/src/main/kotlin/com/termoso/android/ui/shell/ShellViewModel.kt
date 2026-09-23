@@ -69,15 +69,6 @@ class ShellViewModel(
         }
     }
 
-    private var landed = false
-
-    /** True exactly once per shell: the first composition decides where to start. */
-    fun takeFirstLanding(): Boolean {
-        if (landed) return false
-        landed = true
-        return true
-    }
-
     fun selectVault(id: String) {
         if (_selectedVaultId.value == id) return
         _selectedVaultId.value = id

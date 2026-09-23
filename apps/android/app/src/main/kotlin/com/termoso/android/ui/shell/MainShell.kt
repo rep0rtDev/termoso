@@ -186,11 +186,6 @@ fun MainShell(
     val showBar = vaultsTabRoute || tabs.any { it.route == currentRoute }
     val snackbar = remember { SnackbarHostState() }
 
-    // Like Termius: start in the hosts of the vault used last; “All vaults” is one step back.
-    LaunchedEffect(Unit) {
-        if (shell.takeFirstLanding()) nav.navigate(Routes.hosts(null)) { launchSingleTop = true }
-    }
-
     val notice by shell.notice.collectAsStateWithLifecycle()
     LaunchedEffect(notice) {
         val text = notice ?: return@LaunchedEffect
@@ -439,7 +434,11 @@ fun MainShell(
                     account = account,
                     mode = mode,
                     onBack = { nav.popBackStack() },
-                    onDone = { nav.navigate(Routes.ACCOUNT) { popUpTo(Routes.SETTINGS) } },
+                    onDone = {
+                        if (!nav.popBackStack(Routes.ACCOUNT, inclusive = false)) {
+                            nav.navigate(Routes.ACCOUNT) { popUpTo(Routes.SIGN_IN) { inclusive = true } }
+                        }
+                    },
                 )
             }
             composable(Routes.HOSTS, arguments = listOf(groupArg)) { entry ->

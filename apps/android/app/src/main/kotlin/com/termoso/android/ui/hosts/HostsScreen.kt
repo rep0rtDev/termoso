@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -87,6 +89,7 @@ import com.termoso.android.ui.components.SectionCard
 import com.termoso.android.ui.components.SectionLabel
 import com.termoso.android.ui.components.TermosoSwitch
 import com.termoso.android.ui.shell.ShellViewModel
+import com.termoso.android.ui.vault.VaultPickerTitle
 import com.termoso.android.ui.vault.vaultLabel
 import com.termoso.core.GroupItem
 import com.termoso.core.HostItem
@@ -171,11 +174,33 @@ fun HostsScreen(
                     onDelete = { dialog = HostsDialog.Delete(state.selected.toList()) },
                 )
             } else {
-                TopAppBar(
-                    title = {
-                        if (searching) {
-                            SearchField(state.query, vm::setQuery)
-                        } else {
+                val navigationIcon: @Composable () -> Unit = {
+                    IconButton(onClick = { if (searching) { searching = false; vm.setQuery("") } else onBack() }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                    }
+                }
+                val actions: @Composable RowScope.() -> Unit = {
+                    if (!searching) {
+                        IconButton(onClick = { searching = true }) {
+                            Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.search))
+                        }
+                    }
+                    SortMenu(state.sort, vm::setSort)
+                }
+                when {
+                    searching -> TopAppBar(
+                        title = { SearchField(state.query, vm::setQuery) },
+                        navigationIcon = navigationIcon,
+                        actions = actions,
+                    )
+                    // Vault root: the vault itself is the title and switches vaults, like Termius.
+                    groupId == null -> CenterAlignedTopAppBar(
+                        title = { VaultPickerTitle(vaults, selectedVaultId, shell::selectVault) },
+                        navigationIcon = navigationIcon,
+                        actions = actions,
+                    )
+                    else -> TopAppBar(
+                        title = {
                             Column {
                                 Text(state.group?.label ?: stringResource(R.string.hosts))
                                 if (vault != null && vaults.size > 1) {
@@ -188,22 +213,11 @@ fun HostsScreen(
                                     )
                                 }
                             }
-                        }
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { if (searching) { searching = false; vm.setQuery("") } else onBack() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                        }
-                    },
-                    actions = {
-                        if (!searching) {
-                            IconButton(onClick = { searching = true }) {
-                                Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.search))
-                            }
-                        }
-                        SortMenu(state.sort, vm::setSort)
-                    },
-                )
+                        },
+                        navigationIcon = navigationIcon,
+                        actions = actions,
+                    )
+                }
             }
         },
         floatingActionButton = {
