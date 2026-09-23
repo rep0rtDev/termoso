@@ -60,6 +60,7 @@ pub fn run() {
         // its arguments to the running instance instead of starting another.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
                 let _ = w.unminimize();
                 let _ = w.set_focus();
             }
@@ -95,6 +96,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             smoke::smoke_report,
             commands::app_info,
+            commands::app_quit,
             commands::deep_links_register,
             commands::settings_get,
             commands::settings_set,

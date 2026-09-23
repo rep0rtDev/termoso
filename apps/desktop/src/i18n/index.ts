@@ -92,6 +92,9 @@ function subscribe(listener: () => void) {
   };
 }
 
+/** Runs `listener` after every language change; for text living outside React (tray menu). */
+export const onLanguageChange = subscribe;
+
 /** Re-renders the caller when the language changes; the root uses it so the
  *  whole tree picks up new strings. */
 export function useLanguage(): Language {

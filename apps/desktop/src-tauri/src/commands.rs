@@ -46,6 +46,12 @@ pub fn app_info(state: State<'_, AppState>) -> Result<AppInfo> {
     })
 }
 
+/// Leave for real, bypassing the close-to-tray behaviour of the window.
+#[tauri::command]
+pub fn app_quit<R: Runtime>(app: AppHandle<R>) {
+    app.exit(0);
+}
+
 /// Register this binary as the handler for the `termoso://`, `ssh://` and
 /// `telnet://` schemes for the current user. Installers do this already; the command
 /// covers AppImage / portable builds. Returns the schemes now registered.

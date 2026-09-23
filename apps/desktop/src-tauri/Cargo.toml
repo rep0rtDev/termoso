@@ -21,7 +21,7 @@ termoso-client = { workspace = true, features = ["fido2"] }
 termoso-crypto = { workspace = true }
 termoso-proto = { workspace = true }
 
-tauri = { version = "2.11", features = [] }
+tauri = { version = "2.11", features = ["tray-icon"] }
 tauri-plugin-dialog = "2.7"
 tauri-plugin-opener = "2.5"
 tauri-plugin-clipboard-manager = "2.3"

@@ -121,6 +121,7 @@ import type {
 } from "./types";
 
 export const appInfo = () => invoke<AppInfo>("app_info");
+export const appQuit = () => invoke<null>("app_quit");
 
 export const settingsGet = () => invoke<Settings>("settings_get");
 
