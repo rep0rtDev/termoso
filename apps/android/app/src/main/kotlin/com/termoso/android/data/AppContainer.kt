@@ -97,6 +97,22 @@ class AppContainer(context: Context) {
     }
 
     /**
+     * Flow id from a `termoso://sso?flow=<id>` callback the browser sent us back
+     * with. Carries no secret (the result is fetched from the server by Rust and
+     * only for a flow this app started); held until the sign-in screen picks it up.
+     */
+    private val _pendingSso = MutableStateFlow<String?>(null)
+    val pendingSso: StateFlow<String?> = _pendingSso.asStateFlow()
+
+    fun offerSso(flowId: String) {
+        _pendingSso.value = flowId
+    }
+
+    fun consumeSso(flowId: String) {
+        _pendingSso.compareAndSet(flowId, null)
+    }
+
+    /**
      * Files shared into the app (`ACTION_SEND[_MULTIPLE]`), waiting for the
      * terminal to offer sending them to the active session. Content URIs stay
      * on the Kotlin side; Rust only ever sees app-owned scratch copies.

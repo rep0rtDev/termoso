@@ -20,7 +20,9 @@ use termoso_core::fido2::webauthn;
 use termoso_core::store::{EntityFilter, Store, StoredAccount};
 use termoso_core::sync::{SyncEngine, SyncEvent, SyncOptions, SyncReport};
 use termoso_proto::account::ServerInfo;
-use termoso_proto::auth::{Device, MfaCredential, MfaStatus, WebauthnCredentialInfo};
+use termoso_proto::auth::{
+    Device, MfaCredential, MfaStatus, SsoKind, SsoResult, WebauthnCredentialInfo,
+};
 use termoso_proto::entities::is_credential_kind;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -71,6 +73,10 @@ pub struct ServerCard {
     pub registration_open: bool,
     /// The server can send email (device approval / email MFA work).
     pub email: bool,
+    /// A closed registration still lets identities verified by SSO sign up.
+    pub sso_registration: bool,
+    /// Single sign-on providers to offer on the sign-in screen.
+    pub sso_providers: Vec<SsoProviderCard>,
 }
 
 impl ServerCard {
@@ -81,8 +87,68 @@ impl ServerCard {
             version: info.version,
             registration_open: info.registration_open,
             email: info.features.email,
+            sso_registration: info.sso_registration,
+            sso_providers: info
+                .sso_providers
+                .into_iter()
+                .map(|p| SsoProviderCard {
+                    id: p.id,
+                    name: p.name,
+                    saml: p.kind == SsoKind::Saml,
+                })
+                .collect(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SsoProviderCard {
+    /// Slug used in `sso_start`.
+    pub id: String,
+    pub name: String,
+    /// SAML 2.0 rather than OpenID Connect.
+    pub saml: bool,
+}
+
+/// Deep link the server sends the browser back to once the IdP is done.
+pub const SSO_CALLBACK: &str = "termoso://sso";
+
+/// What [`AccountRuntime::sso_start`] hands the UI: the page to open in a
+/// Custom Tab and the flow the callback must name.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SsoStarted {
+    pub flow_id: String,
+    pub authorization_url: String,
+}
+
+/// Where a browser-based SSO sign-in stands. The verified `sso_session`
+/// itself never crosses the FFI: it stays in Rust until `login` /
+/// `register` bind it.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum SsoOutcome {
+    /// Browser round trip not finished yet.
+    Pending,
+    /// Known account: unlock with the Termoso password.
+    LoginRequired {
+        email: String,
+    },
+    /// New identity: create an account (and its keys) with a password.
+    RegistrationRequired {
+        email: String,
+        display_name: Option<String>,
+    },
+    Failed {
+        message: String,
+    },
+}
+
+struct SsoFlow {
+    api: Arc<ApiClient>,
+    server_url: String,
+    flow_id: String,
+    /// Terminal outcome once collected — the server hands it out only once.
+    outcome: Option<SsoOutcome>,
+    session: Option<Zeroizing<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -314,6 +380,11 @@ pub struct LoginForm {
     pub server_url: String,
     pub email: String,
     pub password: String,
+    /// Bind the identity verified by the SSO round trip started with
+    /// [`AccountRuntime::sso_start`] (the server then skips new-device
+    /// approval).
+    #[uniffi(default = false)]
+    pub sso: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -323,6 +394,10 @@ pub struct RegisterForm {
     pub password: String,
     pub display_name: Option<String>,
     pub invite_token: Option<String>,
+    /// Bind the identity verified by the SSO round trip started with
+    /// [`AccountRuntime::sso_start`].
+    #[uniffi(default = false)]
+    pub sso: bool,
 }
 
 const MIN_PASSWORD_CHARS: usize = 12;
@@ -342,6 +417,40 @@ pub fn normalize_server_url(url: &str) -> Result<String> {
         return Err(MobileError::invalid("server URL has no host"));
     }
     Ok(url.to_string())
+}
+
+/// Hand the verified SSO session to a login / registration on the same
+/// server for the same email. One-shot: the flow is dropped either way.
+fn take_sso_session(
+    inner: &mut Inner,
+    server_url: &str,
+    email: &str,
+) -> Result<(Arc<ApiClient>, Option<Zeroizing<String>>)> {
+    let flow = inner
+        .sso
+        .take()
+        .ok_or_else(|| MobileError::invalid("no single sign-on in progress"))?;
+    if flow.server_url != server_url {
+        return Err(MobileError::invalid(
+            "single sign-on was started against a different server",
+        ));
+    }
+    let verified = match &flow.outcome {
+        Some(SsoOutcome::LoginRequired { email: e })
+        | Some(SsoOutcome::RegistrationRequired { email: e, .. }) => e,
+        _ => {
+            return Err(MobileError::invalid("single sign-on has not completed yet"));
+        }
+    };
+    if !verified.eq_ignore_ascii_case(email.trim()) {
+        return Err(MobileError::invalid(
+            "email does not match the single sign-on identity",
+        ));
+    }
+    let session = flow
+        .session
+        .ok_or_else(|| MobileError::invalid("single sign-on session is missing"))?;
+    Ok((flow.api, Some(session)))
 }
 
 struct Engine {
@@ -365,6 +474,7 @@ struct Inner {
     flow: Option<LoginFlow>,
     pending: Option<LoginOutcome>,
     reauth: Option<ReauthFlow>,
+    sso: Option<SsoFlow>,
     engine: Option<Engine>,
 }
 
@@ -376,6 +486,9 @@ pub struct AccountRuntime {
     logs_dir: PathBuf,
     device_name: Mutex<String>,
     inner: tokio::sync::Mutex<Inner>,
+    /// Serialises SSO polls: the server hands a terminal result out once, so
+    /// two concurrent polls must not both go to the network.
+    sso_poll: tokio::sync::Mutex<()>,
     status: Mutex<SyncStatus>,
     listener: Mutex<Option<Arc<dyn SyncListener>>>,
 }
@@ -398,6 +511,7 @@ impl AccountRuntime {
             logs_dir,
             device_name: Mutex::new(DEFAULT_DEVICE_NAME.into()),
             inner: tokio::sync::Mutex::new(Inner::default()),
+            sso_poll: tokio::sync::Mutex::new(()),
             status: Mutex::new(SyncStatus::default()),
             listener: Mutex::new(None),
         })
@@ -534,20 +648,152 @@ impl AccountRuntime {
         if form.password.is_empty() {
             return Err(MobileError::invalid("password is required"));
         }
-        let api = Arc::new(ApiClient::new(&normalize_server_url(&form.server_url)?)?);
+        let server_url = normalize_server_url(&form.server_url)?;
         let device = self.device()?;
         let mut inner = self.inner.lock().await;
+        let (api, sso_session) = if form.sso {
+            take_sso_session(&mut inner, &server_url, &form.email)?
+        } else {
+            (Arc::new(ApiClient::new(&server_url)?), None)
+        };
         let (flow, step) = LoginFlow::start(
             api.clone(),
             self.store.clone(),
             form.email.trim(),
             &form.password,
             device,
-            None,
+            sso_session.map(|s| s.to_string()),
         )
         .await?;
         inner.api = Some(api);
         self.finish_step(&mut inner, flow, step)
+    }
+
+    // ---- single sign-on -----------------------------------------------
+
+    /// Ask the server for the IdP authorization URL. The UI opens it in a
+    /// Custom Tab; the browser is sent back to [`SSO_CALLBACK`] and the
+    /// result is collected with [`Self::sso_poll`]. Replaces any earlier
+    /// unfinished SSO attempt.
+    pub async fn sso_start(&self, server_url: &str, provider: &str) -> Result<SsoStarted> {
+        if self.store.account()?.is_some() {
+            return Err(MobileError::invalid("already signed in"));
+        }
+        let provider = provider.trim();
+        if provider.is_empty() {
+            return Err(MobileError::invalid("provider is required"));
+        }
+        let server_url = normalize_server_url(server_url)?;
+        let api = Arc::new(ApiClient::new(&server_url)?);
+        if !api
+            .server_info()
+            .await?
+            .sso_providers
+            .iter()
+            .any(|p| p.id == provider)
+        {
+            return Err(MobileError::invalid(
+                "this server has no such sign-in provider",
+            ));
+        }
+        let started = api.sso_start(provider, Some(SSO_CALLBACK)).await?;
+        if !(started.authorization_url.starts_with("https://")
+            || started.authorization_url.starts_with("http://"))
+        {
+            return Err(MobileError::invalid(
+                "server returned a non-web authorization URL",
+            ));
+        }
+        if started.flow_id.is_empty() {
+            return Err(MobileError::invalid("server returned an empty SSO flow"));
+        }
+        let mut inner = self.inner.lock().await;
+        if inner.flow.is_some() {
+            return Err(MobileError::invalid(
+                "another sign-in is in progress; cancel it first",
+            ));
+        }
+        inner.sso = Some(SsoFlow {
+            api,
+            server_url,
+            flow_id: started.flow_id.clone(),
+            outcome: None,
+            session: None,
+        });
+        Ok(SsoStarted {
+            flow_id: started.flow_id,
+            authorization_url: started.authorization_url,
+        })
+    }
+
+    /// Where the SSO round trip stands. Terminal outcomes are fetched from
+    /// the server once and then answered from memory, so the deep-link
+    /// callback and the UI's polling may both call this freely.
+    pub async fn sso_poll(&self) -> Result<SsoOutcome> {
+        let _serial = self.sso_poll.lock().await;
+        // The account lock is not held across the network round trip so
+        // that cancelling or a stuck server never blocks the rest of the UI.
+        let (api, flow_id) = {
+            let inner = self.inner.lock().await;
+            let flow = inner
+                .sso
+                .as_ref()
+                .ok_or_else(|| MobileError::invalid("no single sign-on in progress"))?;
+            if let Some(out) = &flow.outcome {
+                return Ok(out.clone());
+            }
+            (flow.api.clone(), flow.flow_id.clone())
+        };
+        let result = api.sso_poll(&flow_id).await?;
+        let mut inner = self.inner.lock().await;
+        let flow = inner
+            .sso
+            .as_mut()
+            .filter(|f| f.flow_id == flow_id)
+            .ok_or_else(|| MobileError::invalid("single sign-on was cancelled"))?;
+        let out = match result {
+            SsoResult::Pending => return Ok(SsoOutcome::Pending),
+            SsoResult::LoginRequired { sso_session, email } => {
+                flow.session = Some(Zeroizing::new(sso_session));
+                SsoOutcome::LoginRequired { email }
+            }
+            SsoResult::RegistrationRequired {
+                sso_session,
+                email,
+                display_name,
+            } => {
+                flow.session = Some(Zeroizing::new(sso_session));
+                SsoOutcome::RegistrationRequired {
+                    email,
+                    display_name,
+                }
+            }
+            SsoResult::Failed { message } => SsoOutcome::Failed { message },
+        };
+        flow.outcome = Some(out.clone());
+        Ok(out)
+    }
+
+    /// The browser came back through the `termoso://sso` deep link. Only
+    /// the flow this app started is accepted; the link carries no secrets,
+    /// the result is still fetched from the server.
+    pub async fn sso_callback(&self, flow_id: &str) -> Result<SsoOutcome> {
+        let inner = self.inner.lock().await;
+        match &inner.sso {
+            Some(f) if f.flow_id == flow_id => {}
+            _ => {
+                return Err(MobileError::invalid(
+                    "this sign-in link does not belong to a sign-in started here",
+                ));
+            }
+        }
+        drop(inner);
+        self.sso_poll().await
+    }
+
+    pub async fn sso_cancel(&self) -> Result<()> {
+        self.inner.lock().await.sso = None;
+        Ok(())
     }
 
     fn finish_step(
@@ -717,6 +963,7 @@ impl AccountRuntime {
         let mut inner = self.inner.lock().await;
         inner.flow = None;
         inner.pending = None;
+        inner.sso = None;
         if self.store.account()?.is_none() {
             inner.api = None;
         }
@@ -859,9 +1106,14 @@ impl AccountRuntime {
                 "password must be at least {MIN_PASSWORD_CHARS} characters"
             )));
         }
-        let api = Arc::new(ApiClient::new(&normalize_server_url(&form.server_url)?)?);
+        let server_url = normalize_server_url(&form.server_url)?;
         let device = self.device()?;
         let mut inner = self.inner.lock().await;
+        let (api, sso_session) = if form.sso {
+            take_sso_session(&mut inner, &server_url, &form.email)?
+        } else {
+            (Arc::new(ApiClient::new(&server_url)?), None)
+        };
         let registered = core::register(
             api.clone(),
             self.store.clone(),
@@ -877,7 +1129,7 @@ impl AccountRuntime {
                     .invite_token
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty()),
-                sso_session: None,
+                sso_session: sso_session.map(|s| s.to_string()),
             },
         )
         .await?;
@@ -942,6 +1194,7 @@ impl AccountRuntime {
         }
         inner.flow = None;
         inner.pending = None;
+        inner.sso = None;
         let api = match inner.api.take() {
             Some(api) => api,
             None => match self.store.account()? {
@@ -1329,5 +1582,83 @@ mod tests {
         apply_report(&mut s, &SyncReport::default());
         assert_eq!(s.state, SyncState::Offline);
         assert_eq!(s.last_error, None);
+    }
+
+    const SERVER: &str = "https://termoso.example";
+
+    fn sso_inner(outcome: Option<SsoOutcome>, session: Option<&str>) -> Inner {
+        Inner {
+            sso: Some(SsoFlow {
+                api: Arc::new(ApiClient::new(SERVER).unwrap()),
+                server_url: SERVER.to_string(),
+                flow_id: "flow".to_string(),
+                outcome,
+                session: session.map(|s| Zeroizing::new(s.to_string())),
+            }),
+            ..Inner::default()
+        }
+    }
+
+    fn verified(email: &str) -> Option<SsoOutcome> {
+        Some(SsoOutcome::LoginRequired {
+            email: email.to_string(),
+        })
+    }
+
+    #[test]
+    fn sso_session_is_handed_over_once() {
+        let mut inner = sso_inner(verified("ann@example.com"), Some("sess"));
+        let (_, session) = take_sso_session(&mut inner, SERVER, " Ann@Example.com ").unwrap();
+        assert_eq!(session.as_deref().map(String::as_str), Some("sess"));
+        assert!(inner.sso.is_none());
+        assert!(take_sso_session(&mut inner, SERVER, "ann@example.com").is_err());
+    }
+
+    #[test]
+    fn sso_session_refuses_other_server_or_email() {
+        let mut inner = sso_inner(verified("ann@example.com"), Some("sess"));
+        assert!(take_sso_session(&mut inner, "https://other.example", "ann@example.com").is_err());
+        assert!(inner.sso.is_none(), "a rejected hand-over drops the flow");
+
+        let mut inner = sso_inner(verified("ann@example.com"), Some("sess"));
+        assert!(take_sso_session(&mut inner, SERVER, "bob@example.com").is_err());
+    }
+
+    #[test]
+    fn sso_session_requires_a_verified_result() {
+        for outcome in [
+            None,
+            Some(SsoOutcome::Pending),
+            Some(SsoOutcome::Failed {
+                message: "nope".into(),
+            }),
+        ] {
+            let mut inner = sso_inner(outcome, Some("sess"));
+            assert!(take_sso_session(&mut inner, SERVER, "ann@example.com").is_err());
+        }
+        let mut inner = sso_inner(verified("ann@example.com"), None);
+        assert!(take_sso_session(&mut inner, SERVER, "ann@example.com").is_err());
+    }
+
+    #[test]
+    fn server_card_lists_sso_providers() {
+        let info: ServerInfo = serde_json::from_value(serde_json::json!({
+            "name": "t", "version": "1", "registration_open": false,
+            "sso_registration": true,
+            "sso_providers": [{"id": "okta", "name": "Okta", "kind": "saml"}],
+            "features": {"session_logs": false, "email": false, "webauthn": false, "teams": false},
+            "max_entity_bytes": 1, "max_log_bytes": 1,
+        }))
+        .unwrap();
+        let card = ServerCard::new(SERVER.into(), info);
+        assert!(card.sso_registration);
+        assert_eq!(
+            card.sso_providers,
+            vec![SsoProviderCard {
+                id: "okta".into(),
+                name: "Okta".into(),
+                saml: true,
+            }]
+        );
     }
 }

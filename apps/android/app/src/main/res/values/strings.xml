@@ -1350,4 +1350,17 @@
     <string name="stage_opening_sftp">Opening SFTP…</string>
     <string name="stage_opening_tunnel">Opening tunnel…</string>
     <string name="stage_via_hop">%1$s: %2$s</string>
+    <string name="or">or</string>
+    <string name="continue_with">Continue with %1$s</string>
+    <string name="sso_finish_in_browser">Finish signing in with %1$s in your browser.</string>
+    <string name="sso_waiting_hint">Termoso picks up automatically when the browser comes back. Nothing from the provider is stored on this device.</string>
+    <string name="open_browser_again">Open browser again</string>
+    <string name="sso_verified_with">Verified with %1$s</string>
+    <string name="change">Change</string>
+    <string name="termoso_password">Termoso password</string>
+    <string name="sso_password_hint_sign_in">Your Termoso password unlocks the encrypted vaults; it is separate from the identity provider.</string>
+    <string name="sso_password_hint_register">Choose a password for Termoso, at least 12 characters. It encrypts your vaults and never leaves this device — your identity provider never sees it.</string>
+    <string name="sso_timed_out">Single sign-on timed out. Try again.</string>
+    <string name="sso_expired">This single sign-on link is no longer valid. Start again.</string>
+    <string name="no_browser_available">No browser is available to open the sign-in page.</string>
 </resources>

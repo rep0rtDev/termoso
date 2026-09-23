@@ -19,7 +19,7 @@ use zeroize::Zeroizing;
 use crate::account::{
     AccountCard, AccountRuntime, AccountStatus, DeviceCard, LoginForm, LoginOutcome, MfaCard,
     MfaMethod, ReauthOutcome, RegisterForm, Registered, SecurityKeyCredential, SecurityKeyRequest,
-    ServerCard, SyncListener, SyncStatus,
+    ServerCard, SsoOutcome, SsoStarted, SyncListener, SyncStatus,
 };
 use crate::ai::{AiStatusCard, AiSuggestionCard, AiTarget};
 use crate::connect::SecretCache;
@@ -851,6 +851,25 @@ impl TermosoApp {
 
     pub fn account_cancel_login(&self) -> Result<()> {
         RUNTIME.block_on(self.account.cancel_login())
+    }
+
+    /// Start a browser-based single sign-on; the UI opens
+    /// `authorization_url` in a Custom Tab.
+    pub fn account_sso_start(&self, server_url: String, provider: String) -> Result<SsoStarted> {
+        RUNTIME.block_on(self.account.sso_start(&server_url, &provider))
+    }
+
+    pub fn account_sso_poll(&self) -> Result<SsoOutcome> {
+        RUNTIME.block_on(self.account.sso_poll())
+    }
+
+    /// `termoso://sso?flow=<id>` came back from the browser.
+    pub fn account_sso_callback(&self, flow_id: String) -> Result<SsoOutcome> {
+        RUNTIME.block_on(self.account.sso_callback(&flow_id))
+    }
+
+    pub fn account_sso_cancel(&self) -> Result<()> {
+        RUNTIME.block_on(self.account.sso_cancel())
     }
 
     /// Step-up for sensitive account changes: prove the password again

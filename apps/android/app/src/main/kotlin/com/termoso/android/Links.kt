@@ -42,3 +42,30 @@ fun classifyLink(link: String): LinkKind {
         else -> LinkKind.Other
     }
 }
+
+private val SSO_FLOW_ID = Regex("^[A-Za-z0-9_-]{16,128}$")
+
+/**
+ * Flow id from a single sign-on callback, or null for anything else.
+ *
+ * The only accepted shape is `termoso://sso?flow=<id>`: nothing but the flow id may ride along
+ * (no path, no fragment, no second parameter), so a provider or a page that tries to hand the app
+ * a token or a session through the callback is dropped here before Rust ever sees it. The id
+ * itself is opaque — Rust only accepts one that matches the flow this app started.
+ */
+fun parseSsoLink(link: String): String? {
+    val uri = try {
+        URI(link.trim())
+    } catch (_: URISyntaxException) {
+        return null
+    }
+    if (uri.scheme?.lowercase() != "termoso" || uri.host?.lowercase() != "sso") return null
+    if (uri.rawPath.orEmpty().trimEnd('/').isNotEmpty() || uri.rawFragment != null) return null
+    if (uri.rawUserInfo != null || uri.port != -1) return null
+    val query = uri.rawQuery ?: return null
+    val params = query.split('&')
+    if (params.size != 1) return null
+    val (key, value) = params[0].split('=', limit = 2).let { it[0] to it.getOrNull(1) }
+    if (key != "flow" || value == null) return null
+    return value.takeIf { SSO_FLOW_ID.matches(it) }
+}

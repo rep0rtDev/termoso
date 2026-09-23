@@ -16,6 +16,8 @@ import com.termoso.core.RegisterForm
 import com.termoso.core.Registered
 import com.termoso.core.SecurityKeyCredential
 import com.termoso.core.SecurityKeyRequest
+import com.termoso.core.SsoOutcome
+import com.termoso.core.SsoStarted
 import com.termoso.core.SyncChange
 import com.termoso.core.SyncListener
 import com.termoso.core.SyncState
@@ -111,15 +113,48 @@ class AccountManager(
     suspend fun refresh(): AccountStatus =
         repo.read { accountStatus() }.also { _status.value = it }
 
-    suspend fun login(server: String, email: String, password: String): LoginOutcome =
-        repo.read { accountLogin(LoginForm(serverUrl = server, email = email, password = password)) }.also { done(it) }
+    /**
+     * OPAQUE login with the Termoso password. With [sso] the identity was just
+     * verified by a provider ([ssoStart] … [ssoPoll]): Rust attaches the one-time
+     * SSO session it kept and the server skips the email-based device approval.
+     */
+    suspend fun login(server: String, email: String, password: String, sso: Boolean = false): LoginOutcome =
+        repo.read { accountLogin(LoginForm(serverUrl = server, email = email, password = password, sso = sso)) }.also { done(it) }
 
-    suspend fun register(server: String, email: String, password: String, displayName: String?, invite: String?): Registered =
+    suspend fun register(
+        server: String,
+        email: String,
+        password: String,
+        displayName: String?,
+        invite: String?,
+        sso: Boolean = false,
+    ): Registered =
         repo.read {
             accountRegister(
-                RegisterForm(serverUrl = server, email = email, password = password, displayName = displayName, inviteToken = invite),
+                RegisterForm(
+                    serverUrl = server,
+                    email = email,
+                    password = password,
+                    displayName = displayName,
+                    inviteToken = invite,
+                    sso = sso,
+                ),
             )
         }.also { afterSignIn() }
+
+    /**
+     * Begin a browser-based single sign-on. Only the flow id and the URL to
+     * open come back; the provider's tokens and the resulting SSO session stay
+     * on the server / in Rust and never reach Kotlin.
+     */
+    suspend fun ssoStart(server: String, provider: String): SsoStarted = repo.read { accountSsoStart(server, provider) }
+
+    suspend fun ssoPoll(): SsoOutcome = repo.read { accountSsoPoll() }
+
+    /** The `termoso://sso?flow=<id>` callback arrived; errors unless [flowId] is the flow started here. */
+    suspend fun ssoCallback(flowId: String): SsoOutcome = repo.read { accountSsoCallback(flowId) }
+
+    suspend fun ssoCancel() = repo.read { accountSsoCancel() }
 
     suspend fun mfa(method: MfaMethod, code: String): LoginOutcome =
         repo.read { accountMfa(method, code) }.also { done(it) }

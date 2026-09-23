@@ -16,13 +16,22 @@ import com.termoso.core.LoginOutcome
 import com.termoso.core.MfaMethod
 import com.termoso.core.MobileException
 import com.termoso.core.ServerCard
+import com.termoso.core.SsoOutcome
+import com.termoso.core.SsoProviderCard
 import com.termoso.core.serverInfo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+
+/** How often the server is asked whether the browser finished, and for how long. */
+private const val SSO_POLL_MS = 2_000L
+private const val SSO_TIMEOUT_MS = 10 * 60_000L
 
 enum class AuthMode { SignIn, Register }
 
@@ -32,6 +41,21 @@ sealed interface AuthStep {
     data class Mfa(val methods: List<MfaMethod>) : AuthStep
     data class DeviceApproval(val emailHint: String) : AuthStep
     data class Recovery(val phrase: String) : AuthStep
+}
+
+/**
+ * Where a single sign-on stands. Only public facts live here: the provider,
+ * the flow id (also visible in the browser's history) and the verified email /
+ * name the server reported. The SSO session itself stays in Rust.
+ */
+sealed interface SsoState {
+    data object Idle : SsoState
+
+    /** The browser is open; [url] is what the sign-in screen launches. */
+    data class Waiting(val provider: SsoProviderCard, val flowId: String, val url: String) : SsoState
+
+    /** Identity verified; the Termoso password finishes the login / sign-up. */
+    data class Verified(val provider: SsoProviderCard, val email: String, val displayName: String?, val newAccount: Boolean) : SsoState
 }
 
 /** Outcome of probing the server behind the URL field. */
@@ -46,7 +70,13 @@ sealed interface ServerProbe {
  * Sign-in / sign-up form state. All credential handling happens in Rust:
  * the password only ever goes into `accountLogin` / `accountRegister`.
  */
-class SignInViewModel(private val account: AccountManager, initialMode: AuthMode) : ViewModel() {
+class SignInViewModel(
+    private val account: AccountManager,
+    initialMode: AuthMode,
+    /** `termoso://sso?flow=<id>` callbacks routed by the activity; consumed via [consumeSso]. */
+    private val ssoCallbacks: StateFlow<String?>,
+    private val consumeSso: (String) -> Unit,
+) : ViewModel() {
     var mode by mutableStateOf(initialMode)
     var server by mutableStateOf(ServerChoice.Cloud)
     var serverUrl by mutableStateOf("https://")
@@ -70,7 +100,13 @@ class SignInViewModel(private val account: AccountManager, initialMode: AuthMode
     var skPin by mutableStateOf("")
     var skTouch by mutableStateOf(false)
 
+    var sso by mutableStateOf<SsoState>(SsoState.Idle)
+
+    /** Set when the sign-in screen should open [SsoState.Waiting.url]; cleared by [browserOpened]. */
+    var openBrowser by mutableStateOf<String?>(null)
+
     private var probeJob: Job? = null
+    private var ssoJob: Job? = null
 
     init {
         // A login interrupted mid-MFA / mid-approval is still pending in Rust.
@@ -78,6 +114,13 @@ class SignInViewModel(private val account: AccountManager, initialMode: AuthMode
             is LoginOutcome.MfaRequired -> enterMfa(pending.methods)
             is LoginOutcome.DeviceApprovalRequired -> step = AuthStep.DeviceApproval(pending.emailHint)
             else -> {}
+        }
+        if (server == ServerChoice.Cloud) scheduleProbe()
+        viewModelScope.launch {
+            ssoCallbacks.filterNotNull().collect { flowId ->
+                consumeSso(flowId)
+                onSsoCallback(flowId)
+            }
         }
     }
 
@@ -89,23 +132,30 @@ class SignInViewModel(private val account: AccountManager, initialMode: AuthMode
         server = choice
         probe = ServerProbe.Idle
         error = null
-        if (choice == ServerChoice.SelfHosted) scheduleProbe()
+        cancelSso()
+        scheduleProbe()
     }
 
     fun editServerUrl(url: String) {
         serverUrl = url
         probe = ServerProbe.Idle
+        cancelSso()
         scheduleProbe()
     }
 
-    /** Probe the self-hosted URL a moment after the user stops typing. */
+    /**
+     * Probe the server a moment after the user stops typing (or at once for the
+     * cloud): the result tells whether registration is open and which SSO
+     * providers to offer.
+     */
     private fun scheduleProbe() {
         probeJob?.cancel()
-        val url = serverUrl.trim()
-        val hostPart = url.substringAfter("://", "")
-        if (server != ServerChoice.SelfHosted || hostPart.isBlank() || !hostPart.any { it.isLetterOrDigit() }) return
+        if (server == ServerChoice.SelfHosted) {
+            val hostPart = serverUrl.trim().substringAfter("://", "")
+            if (hostPart.isBlank() || !hostPart.any { it.isLetterOrDigit() }) return
+        }
         probeJob = viewModelScope.launch {
-            delay(600)
+            if (server == ServerChoice.SelfHosted) delay(600)
             probeNow()
         }
     }
@@ -121,10 +171,22 @@ class SignInViewModel(private val account: AccountManager, initialMode: AuthMode
 
     val serverCard: ServerCard? get() = (probe as? ServerProbe.Ok)?.card
 
+    /** Providers the probed server advertises; empty while unknown. */
+    val ssoProviders: List<SsoProviderCard> get() = serverCard?.ssoProviders.orEmpty()
+
+    /** Sign-up needs an invitation: registration is closed and this is not an SSO identity the server lets in. */
+    val needsInvite: Boolean
+        get() {
+            val card = serverCard ?: return false
+            val verified = sso as? SsoState.Verified
+            return !card.registrationOpen && !(verified?.newAccount == true && card.ssoRegistration)
+        }
+
     fun submit(onDone: () -> Unit) {
         if (busy) return
         val url = effectiveUrl
         val mail = email.trim()
+        val viaSso = sso is SsoState.Verified
         error = when {
             server == ServerChoice.SelfHosted && url.substringAfter("://", "").isBlank() -> str(R.string.enter_your_server_address)
             mail.isEmpty() || !mail.contains('@') -> str(R.string.enter_a_valid_email_address)
@@ -135,22 +197,143 @@ class SignInViewModel(private val account: AccountManager, initialMode: AuthMode
         }
         if (error != null) return
         run {
-            when (mode) {
-                AuthMode.SignIn -> handle(account.login(url, mail, password), onDone)
-                AuthMode.Register -> {
-                    val reg = account.register(
-                        url,
-                        mail,
-                        password,
-                        displayName.trim().ifEmpty { null },
-                        invite.trim().ifEmpty { null },
-                    )
-                    password = ""
-                    confirm = ""
-                    step = AuthStep.Recovery(reg.recoveryPhrase)
+            try {
+                when (mode) {
+                    AuthMode.SignIn -> handle(account.login(url, mail, password, sso = viaSso), onDone)
+                    AuthMode.Register -> {
+                        val reg = account.register(
+                            url,
+                            mail,
+                            password,
+                            displayName.trim().ifEmpty { null },
+                            invite.trim().ifEmpty { null },
+                            sso = viaSso,
+                        )
+                        password = ""
+                        confirm = ""
+                        step = AuthStep.Recovery(reg.recoveryPhrase)
+                    }
                 }
+            } finally {
+                // Rust hands the SSO session over exactly once, whatever the outcome.
+                if (viaSso) sso = SsoState.Idle
             }
         }
+    }
+
+    /**
+     * "Continue with <provider>": Rust starts the flow against the chosen server
+     * and the screen opens the returned URL in a Custom Tab. Polling runs in
+     * the background so a user who lands back in the app without the deep link
+     * (browser closed, tab switched) still gets the result.
+     */
+    fun startSso(provider: SsoProviderCard) {
+        if (busy) return
+        val url = effectiveUrl
+        if (server == ServerChoice.SelfHosted && url.substringAfter("://", "").isBlank()) {
+            error = str(R.string.enter_your_server_address)
+            return
+        }
+        cancelSso()
+        run {
+            val started = account.ssoStart(url, provider.id)
+            sso = SsoState.Waiting(provider, started.flowId, started.authorizationUrl)
+            openBrowser = started.authorizationUrl
+            ssoJob = viewModelScope.launch { pollSso(provider, started.flowId) }
+        }
+    }
+
+    fun browserOpened() {
+        openBrowser = null
+    }
+
+    fun reopenBrowser() {
+        openBrowser = (sso as? SsoState.Waiting)?.url
+    }
+
+    fun browserUnavailable() {
+        val waiting = sso as? SsoState.Waiting ?: return
+        settleSso(waiting.provider, waiting.flowId, str(R.string.no_browser_available))
+    }
+
+    private fun waitingFor(flowId: String): SsoState.Waiting? = (sso as? SsoState.Waiting)?.takeIf { it.flowId == flowId }
+
+    private suspend fun pollSso(provider: SsoProviderCard, flowId: String) {
+        val settled = withTimeoutOrNull(SSO_TIMEOUT_MS) {
+            while (waitingFor(flowId) != null) {
+                delay(SSO_POLL_MS)
+                val outcome = try {
+                    account.ssoPoll()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    settleSso(provider, flowId, e.userMessage())
+                    return@withTimeoutOrNull
+                }
+                applySso(provider, flowId, outcome)
+            }
+        }
+        if (settled == null) settleSso(provider, flowId, str(R.string.sso_timed_out))
+    }
+
+    private suspend fun onSsoCallback(flowId: String) {
+        val waiting = waitingFor(flowId)
+        if (waiting == null) {
+            // Not the flow this screen is waiting for (stale callback, app restarted): nothing to hand over.
+            if (sso == SsoState.Idle) error = str(R.string.sso_expired)
+            return
+        }
+        val outcome = try {
+            account.ssoCallback(flowId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            settleSso(waiting.provider, flowId, e.userMessage())
+            return
+        }
+        applySso(waiting.provider, flowId, outcome)
+    }
+
+    /** Move the screen on once the server reports a terminal [outcome]. */
+    private fun applySso(provider: SsoProviderCard, flowId: String, outcome: SsoOutcome) {
+        if (waitingFor(flowId) == null) return
+        when (outcome) {
+            SsoOutcome.Pending -> return
+            is SsoOutcome.LoginRequired -> {
+                sso = SsoState.Verified(provider, outcome.email, null, newAccount = false)
+                mode = AuthMode.SignIn
+                email = outcome.email
+                error = null
+            }
+            is SsoOutcome.RegistrationRequired -> {
+                sso = SsoState.Verified(provider, outcome.email, outcome.displayName, newAccount = true)
+                mode = AuthMode.Register
+                email = outcome.email
+                if (displayName.isBlank()) displayName = outcome.displayName.orEmpty()
+                error = null
+            }
+            is SsoOutcome.Failed -> settleSso(provider, flowId, outcome.message)
+        }
+        ssoJob?.cancel()
+        ssoJob = null
+    }
+
+    private fun settleSso(provider: SsoProviderCard, flowId: String, message: String) {
+        if (waitingFor(flowId)?.provider != provider) return
+        sso = SsoState.Idle
+        error = message
+        viewModelScope.launch { runCatching { account.ssoCancel() } }
+    }
+
+    /** Drop the current SSO attempt (browser abandoned, or the user wants the password form back). */
+    fun cancelSso() {
+        ssoJob?.cancel()
+        ssoJob = null
+        openBrowser = null
+        if (sso == SsoState.Idle) return
+        sso = SsoState.Idle
+        error = null
+        viewModelScope.launch { runCatching { account.ssoCancel() } }
     }
 
     fun submitMfa(onDone: () -> Unit) {
@@ -219,6 +402,7 @@ class SignInViewModel(private val account: AccountManager, initialMode: AuthMode
 
     /** Back out of MFA / device approval; the pending Rust flow is dropped. */
     fun cancelPending() {
+        cancelSso()
         viewModelScope.launch {
             runCatching { account.cancelLogin() }
             step = AuthStep.Form
@@ -256,8 +440,10 @@ class SignInViewModel(private val account: AccountManager, initialMode: AuthMode
     }
 
     fun switchMode(next: AuthMode) {
+        if (mode == next) return
         mode = next
         error = null
+        cancelSso()
     }
 
     private fun run(block: suspend () -> Unit) {

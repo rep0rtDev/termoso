@@ -87,6 +87,12 @@ class MainActivity : FragmentActivity() {
             else -> return
         }
         val link = intent.dataString ?: return
+        parseSsoLink(link)?.let {
+            container.offerSso(it)
+            // Consumed: a rotation must not replay the callback.
+            intent.action = Intent.ACTION_MAIN
+            return
+        }
         when (classifyLink(link)) {
             LinkKind.Invite -> container.offerInvite(link)
             LinkKind.Join -> container.offerJoin(link)

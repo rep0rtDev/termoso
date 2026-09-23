@@ -126,6 +126,7 @@ fun TermosoRoot(container: AppContainer, vault: VaultState) {
                         !settings.welcomeSeen && restoring -> LockedScreen(error = null, manual = false, authRequired = false, onRetry = {})
                         !settings.welcomeSeen && accountStatus.account != null -> LaunchedEffect(Unit) { finishWelcome() }
                         !settings.welcomeSeen && welcomeAuth != null -> SignInScreen(
+                            container = container,
                             account = vault.account,
                             mode = welcomeAuth ?: AuthMode.SignIn,
                             onBack = { welcomeAuth = null },
