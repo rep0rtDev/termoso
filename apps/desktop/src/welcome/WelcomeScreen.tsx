@@ -8,6 +8,7 @@ import { useAccount, useSaveSettings } from "@/ipc/hooks";
 import { errorMessage, type LoginOutcome, type Settings } from "@/ipc/types";
 import { sizes } from "@/theme/theme";
 import { WindowControls } from "@/app/WindowControls";
+import { tr, trx } from "@/i18n";
 
 const REPO_URL = "https://github.com/rep0rtDev/termoso";
 
@@ -65,12 +66,13 @@ export function WelcomeScreen({ settings }: { settings: Settings }) {
           <Stack spacing={1.5} sx={{ alignItems: "center", textAlign: "center" }}>
             <LogoMark size={52} />
             <Typography variant="h5" sx={{ fontWeight: 600, letterSpacing: "-0.01em" }}>
-              {pending ? pendingTitle(pending) : "Welcome to Termoso"}
+              {pending ? pendingTitle(pending) : tr("Welcome to Termoso")}
             </Typography>
             {!pending && (
               <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 340 }}>
-                Sign in to keep hosts, keys and snippets in sync across your devices — encrypted
-                before they leave this one.
+                {tr(
+                  "Sign in to keep hosts, keys and snippets in sync across your devices — encrypted before they leave this one.",
+                )}
               </Typography>
             )}
           </Stack>
@@ -87,7 +89,7 @@ export function WelcomeScreen({ settings }: { settings: Settings }) {
             <>
               <Divider>
                 <Typography variant="caption" color="text.disabled">
-                  or
+                  {tr("or")}
                 </Typography>
               </Divider>
               <Stack spacing={0.75} sx={{ alignItems: "center" }}>
@@ -98,32 +100,35 @@ export function WelcomeScreen({ settings }: { settings: Settings }) {
                   disabled={dismiss.isPending}
                   onClick={() => dismiss.mutate()}
                 >
-                  Continue offline
+                  {tr("Continue offline")}
                 </Button>
                 <Typography
                   variant="caption"
                   color="text.secondary"
                   sx={{ textAlign: "center", maxWidth: 340 }}
                 >
-                  No account needed. Everything stays in the encrypted vault on this device; you can
-                  sign in later from the account menu.
+                  {tr(
+                    "No account needed. Everything stays in the encrypted vault on this device; you can sign in later from the account menu.",
+                  )}
                 </Typography>
               </Stack>
             </>
           )}
 
           <Typography variant="caption" color="text.disabled" sx={{ textAlign: "center" }}>
-            Free forever · Open source ·{" "}
-            <Link
-              component="button"
-              type="button"
-              color="inherit"
-              underline="hover"
-              onClick={() => void openUrl(REPO_URL)}
-            >
-              AGPL-3.0 on GitHub
-            </Link>
-            {" · "}No telemetry
+            {trx("Free forever · Open source · {license} · No telemetry", {
+              license: (
+                <Link
+                  component="button"
+                  type="button"
+                  color="inherit"
+                  underline="hover"
+                  onClick={() => void openUrl(REPO_URL)}
+                >
+                  {tr("AGPL-3.0 on GitHub")}
+                </Link>
+              ),
+            })}
           </Typography>
         </Stack>
       </Box>

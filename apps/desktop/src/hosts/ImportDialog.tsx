@@ -50,6 +50,7 @@ import {
   type Uuid,
 } from "@/ipc/types";
 import { vaultHint, vaultIcon } from "@/app/vault";
+import { tr, trn, msg } from "@/i18n";
 
 type Section = keyof ImportSelection;
 
@@ -59,16 +60,16 @@ type Step =
   | { kind: "done"; report: ImportApplyReport; vaultName: string };
 
 const SECTIONS: { key: Section; label: string }[] = [
-  { key: "hosts", label: "Hosts" },
-  { key: "keys", label: "Keys" },
-  { key: "knownHosts", label: "Known hosts" },
-  { key: "pfRules", label: "Forwarding" },
+  { key: "hosts", label: msg("Hosts") },
+  { key: "keys", label: msg("Keys") },
+  { key: "knownHosts", label: msg("Known hosts") },
+  { key: "pfRules", label: msg("Forwarding") },
 ];
 
 const SOURCE_LABEL: Record<ImportSource, string> = {
   ssh_config: "OpenSSH",
   putty: "PuTTY",
-  csv: "Termius / CSV",
+  csv: msg("Termius / CSV"),
 };
 
 const all = (n: number) => Array.from({ length: n }, (_, i) => i);
@@ -89,7 +90,7 @@ function skippedSummary(r: ImportApplyReport) {
     r.skippedHosts > 0 && plural(r.skippedHosts, "host"),
     r.skippedKeys > 0 && plural(r.skippedKeys, "key"),
   ].filter((p): p is string => typeof p === "string");
-  if (parts.length === 0) return "Everything selected was new.";
+  if (parts.length === 0) return tr("Everything selected was new.");
   const verb = r.skippedHosts + r.skippedKeys === 1 ? "was" : "were";
   return `${parts.join(" and ")} already existed and ${verb} reused.`;
 }
@@ -190,39 +191,43 @@ function Body({
     return typeof picked === "string" ? picked : null;
   };
 
-  const scanSshDefault = () => load("Scanning ~/.ssh…", () => ipc.importScanSsh(null));
+  const scanSshDefault = () => load(tr("Scanning ~/.ssh…"), () => ipc.importScanSsh(null));
   const scanSshDir = async () => {
-    const picked = await openFile({ directory: true, multiple: false, title: "OpenSSH directory" });
-    if (typeof picked === "string") void load("Scanning…", () => ipc.importScanSsh(picked));
+    const picked = await openFile({
+      directory: true,
+      multiple: false,
+      title: tr("OpenSSH directory"),
+    });
+    if (typeof picked === "string") void load(tr("Scanning…"), () => ipc.importScanSsh(picked));
   };
   const parseSshConfig = async () => {
-    const path = await pickFile("OpenSSH config");
-    if (path) void load("Parsing…", () => ipc.importParseFile("ssh_config", path));
+    const path = await pickFile(tr("OpenSSH config"));
+    if (path) void load(tr("Parsing…"), () => ipc.importParseFile("ssh_config", path));
   };
   const scanPuttyRegistry = () =>
-    load("Reading PuTTY registry…", () => ipc.importScanPuttyRegistry());
+    load(tr("Reading PuTTY registry…"), () => ipc.importScanPuttyRegistry());
   const parsePuttyReg = async () => {
-    const path = await pickFile("PuTTY registry export", [
+    const path = await pickFile(tr("PuTTY registry export"), [
       { name: "Registry export", extensions: ["reg"] },
     ]);
-    if (path) void load("Parsing…", () => ipc.importParseFile("putty", path));
+    if (path) void load(tr("Parsing…"), () => ipc.importParseFile("putty", path));
   };
   const parseCsv = async () => {
-    const path = await pickFile("Termius CSV export", [
+    const path = await pickFile(tr("Termius CSV export"), [
       { name: "CSV", extensions: ["csv", "txt", "tsv"] },
     ]);
-    if (path) void load("Parsing…", () => ipc.importParseFile("csv", path));
+    if (path) void load(tr("Parsing…"), () => ipc.importParseFile("csv", path));
   };
   const saveTemplate = async () => {
     const path = await saveFile({
-      title: "Save CSV template",
+      title: tr("Save CSV template"),
       defaultPath: "termoso-hosts.csv",
       filters: [{ name: "CSV", extensions: ["csv"] }],
     });
     if (!path) return;
     try {
       await ipc.importCsvTemplateSave(path);
-      snackbar.notify("Template saved");
+      snackbar.notify(tr("Template saved"));
     } catch (e) {
       snackbar.error(errorMessage(e));
     }
@@ -281,11 +286,12 @@ function Body({
   if (step.kind === "source") {
     return (
       <>
-        <DialogTitle>Import hosts</DialogTitle>
+        <DialogTitle>{tr("Import hosts")}</DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
           <Typography variant="body2" color="text.secondary">
-            Pick where your hosts live today. Files are parsed locally and nothing is saved until
-            you review the preview and confirm.
+            {tr(
+              "Pick where your hosts live today. Files are parsed locally and nothing is saved until you review the preview and confirm.",
+            )}
           </Typography>
           {step.busy ? (
             <Box sx={{ flex: 1, display: "grid", placeItems: "center" }}>
@@ -302,7 +308,9 @@ function Body({
                 icon={<TerminalRoundedIcon />}
                 tone="accent"
                 title="OpenSSH"
-                description="~/.ssh/config hosts, ProxyJump chains, port forwards, referenced keys and known_hosts."
+                description={tr(
+                  "~/.ssh/config hosts, ProxyJump chains, port forwards, referenced keys and known_hosts.",
+                )}
                 actions={
                   <>
                     <Button
@@ -311,13 +319,13 @@ function Body({
                       startIcon={<FolderOpenRoundedIcon />}
                       onClick={() => void scanSshDefault()}
                     >
-                      Scan ~/.ssh
+                      {tr("Scan ~/.ssh")}
                     </Button>
                     <Button size="small" color="inherit" onClick={() => void scanSshDir()}>
-                      Other folder…
+                      {tr("Other folder…")}
                     </Button>
                     <Button size="small" color="inherit" onClick={() => void parseSshConfig()}>
-                      Config file…
+                      {tr("Config file…")}
                     </Button>
                   </>
                 }
@@ -328,8 +336,12 @@ function Body({
                 title="PuTTY"
                 description={
                   info.data?.platform === "windows"
-                    ? "Saved sessions from the Windows registry or a .reg export: SSH/Telnet, proxy, tunnels, key files."
-                    : "A .reg export of HKEY_CURRENT_USER\\Software\\SimonTatham\\PuTTY\\Sessions (run `reg export` on the Windows machine)."
+                    ? tr(
+                        "Saved sessions from the Windows registry or a .reg export: SSH/Telnet, proxy, tunnels, key files.",
+                      )
+                    : tr(
+                        "A .reg export of HKEY_CURRENT_USER\\Software\\SimonTatham\\PuTTY\\Sessions (run `reg export` on the Windows machine).",
+                      )
                 }
                 actions={
                   <>
@@ -339,7 +351,7 @@ function Body({
                         variant="contained"
                         onClick={() => void scanPuttyRegistry()}
                       >
-                        Read registry
+                        {tr("Read registry")}
                       </Button>
                     )}
                     <Button
@@ -349,7 +361,7 @@ function Body({
                       startIcon={<DescriptionOutlinedIcon />}
                       onClick={() => void parsePuttyReg()}
                     >
-                      .reg export…
+                      {tr(".reg export…")}
                     </Button>
                   </>
                 }
@@ -357,8 +369,10 @@ function Body({
               <SourceCard
                 icon={<TableChartOutlinedIcon />}
                 tone="purple"
-                title="Termius / CSV"
-                description="Termius CSV export (Groups, Label, Tags, Hostname/IP, Protocol, Port, Username, Password) or any sheet with the same columns."
+                title={tr("Termius / CSV")}
+                description={tr(
+                  "Termius CSV export (Groups, Label, Tags, Hostname/IP, Protocol, Port, Username, Password) or any sheet with the same columns.",
+                )}
                 actions={
                   <>
                     <Button
@@ -367,7 +381,7 @@ function Body({
                       startIcon={<DescriptionOutlinedIcon />}
                       onClick={() => void parseCsv()}
                     >
-                      CSV file…
+                      {tr("CSV file…")}
                     </Button>
                     <Button
                       size="small"
@@ -375,7 +389,7 @@ function Body({
                       startIcon={<DownloadRoundedIcon />}
                       onClick={() => void saveTemplate()}
                     >
-                      Template
+                      {tr("Template")}
                     </Button>
                   </>
                 }
@@ -385,7 +399,7 @@ function Body({
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button color="inherit" onClick={onClose}>
-            Cancel
+            {tr("Cancel")}
           </Button>
         </DialogActions>
       </>
@@ -400,13 +414,13 @@ function Body({
       ["Tags", r.tags],
       ["Keys", r.keys],
       ["Proxies", r.proxies],
-      ["Host chains", r.hostChains],
-      ["Forwarding rules", r.pfRules],
-      ["Known hosts", r.knownHosts],
+      [tr("Host chains"), r.hostChains],
+      [tr("Forwarding rules"), r.pfRules],
+      [tr("Known hosts"), r.knownHosts],
     ];
     return (
       <>
-        <DialogTitle>Import complete</DialogTitle>
+        <DialogTitle>{tr("Import complete")}</DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
             <IconTile tone="accent" size={48}>
@@ -414,7 +428,9 @@ function Body({
             </IconTile>
             <Box>
               <Typography variant="subtitle1">
-                {r.hosts === 1 ? "1 host" : `${r.hosts} hosts`} added to {step.vaultName}
+                {trn(r.hosts, "{count} host added to {vault}", "{count} hosts added to {vault}", {
+                  vault: step.vaultName,
+                })}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 {skippedSummary(r)}
@@ -448,7 +464,7 @@ function Body({
               </Box>
             ))}
           </Box>
-          {r.warnings.length > 0 && <WarningList warnings={r.warnings} title="Notes" open />}
+          {r.warnings.length > 0 && <WarningList warnings={r.warnings} title={tr("Notes")} open />}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button
@@ -456,10 +472,10 @@ function Body({
             onClick={() => setStep({ kind: "source", busy: null })}
             sx={{ mr: "auto" }}
           >
-            Import more
+            {tr("Import more")}
           </Button>
           <Button variant="contained" onClick={onClose}>
-            Done
+            {tr("Done")}
           </Button>
         </DialogActions>
       </>
@@ -477,13 +493,13 @@ function Body({
         <IconButton
           size="small"
           onClick={() => setStep({ kind: "source", busy: null })}
-          aria-label="Back to sources"
+          aria-label={tr("Back to sources")}
         >
           <ArrowBackRoundedIcon fontSize="small" />
         </IconButton>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography component="div" variant="h6" noWrap>
-            Import from {SOURCE_LABEL[preview.source]}
+            {tr("Import from {source}", { source: tr(SOURCE_LABEL[preview.source]) })}
           </Typography>
           <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
             {preview.origin}
@@ -506,7 +522,7 @@ function Body({
         </Collapse>
         {empty ? (
           <Alert severity="info" variant="outlined">
-            Nothing importable was found in this source.
+            {tr("Nothing importable was found in this source.")}
           </Alert>
         ) : (
           <>
@@ -523,7 +539,7 @@ function Body({
                     disabled={count(preview, s.key) === 0}
                     label={
                       <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-                        {s.label}
+                        {tr(s.label)}
                         <Chip
                           size="small"
                           label={`${selection[s.key].length}/${count(preview, s.key)}`}
@@ -540,7 +556,7 @@ function Body({
                 color="inherit"
                 onClick={() => setAll(section, selectedIn < totalIn)}
               >
-                {selectedIn < totalIn ? "Select all" : "Select none"}
+                {selectedIn < totalIn ? tr("Select all") : tr("Select none")}
               </Button>
             </Box>
             <Box
@@ -583,7 +599,7 @@ function Body({
                           <Chip
                             size="small"
                             icon={<LockOutlinedIcon />}
-                            label="Passphrase asked on connect"
+                            label={tr("Passphrase asked on connect")}
                           />
                         )}
                       </>
@@ -635,18 +651,18 @@ function Body({
       <DialogActions sx={{ px: 3, pb: 2, gap: 1.5 }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, mr: "auto", minWidth: 0 }}>
           <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
-            Import into
+            {tr("Import into")}
           </Typography>
           <VaultSelect vaults={vaults.data ?? []} value={target} onChange={setTarget} />
         </Box>
         <Button color="inherit" onClick={onClose} disabled={applying}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button variant="contained" onClick={() => void apply()} disabled={!canApply}>
           {applying
-            ? "Importing…"
+            ? tr("Importing…")
             : totalSelected === 0
-              ? "Import"
+              ? tr("Import")
               : `Import ${totalSelected} item${totalSelected === 1 ? "" : "s"}`}
         </Button>
       </DialogActions>
@@ -810,7 +826,7 @@ function HostRow({
       subtitle={
         <>
           <Mono secondary>{target}</Mono>
-          {telnet && " · Telnet"}
+          {telnet && " · " + tr("Telnet")}
         </>
       }
       meta={
@@ -826,7 +842,9 @@ function HostRow({
             <Chip key={t} size="small" variant="outlined" label={t} />
           ))}
           {keyName && <Chip size="small" icon={<KeyRoundedIcon />} label={keyName} />}
-          {host.hasPassword && <Chip size="small" icon={<LockOutlinedIcon />} label="Password" />}
+          {host.hasPassword && (
+            <Chip size="small" icon={<LockOutlinedIcon />} label={tr("Password")} />
+          )}
           {host.jumpHosts.length > 0 && (
             <Chip size="small" label={`via ${host.jumpHosts.join(" → ")}`} />
           )}
@@ -836,7 +854,7 @@ function HostRow({
               label={`${host.proxy.kind.toUpperCase()} ${host.proxy.host}:${host.proxy.port}`}
             />
           )}
-          {host.agentForwarding && <Chip size="small" label="Agent forwarding" />}
+          {host.agentForwarding && <Chip size="small" label={tr("Agent forwarding")} />}
         </>
       }
       warnings={host.warnings}
@@ -907,7 +925,7 @@ export function VaultSelect({
           return (
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               {v && vaultIcon(v)}
-              <span>{v?.name ?? "Vault"}</span>
+              <span>{v?.name ?? tr("Vault")}</span>
             </Box>
           );
         }}

@@ -11,6 +11,7 @@ import { HostAvatar } from "./HostAvatar";
 import type { HostDnd } from "./dnd";
 import type { HostViewer } from "./presence";
 import { PresenceStack } from "./PresenceViews";
+import { tr } from "@/i18n";
 
 export interface HostCollectionProps {
   groups: GroupNode[];
@@ -83,7 +84,7 @@ export function SelectableTile({
     <Box
       role="checkbox"
       aria-checked={checked}
-      aria-label="Select"
+      aria-label={tr("Select")}
       tabIndex={-1}
       onClick={(e) => {
         e.stopPropagation();
@@ -102,7 +103,7 @@ export function GroupTile({ g, size, cloud }: { g: GroupNode; size?: number; clo
     <IconTile size={size} sx={{ position: "relative" }}>
       <FolderRoundedIcon />
       {cloud ? (
-        <Tooltip title="Synced with a cloud account">
+        <Tooltip title={tr("Synced with a cloud account")}>
           <CloudSyncOutlinedIcon
             sx={{
               position: "absolute",
@@ -118,7 +119,7 @@ export function GroupTile({ g, size, cloud }: { g: GroupNode; size?: number; clo
         </Tooltip>
       ) : (
         g.hasConfig && (
-          <Tooltip title="Hosts inherit credentials from this group">
+          <Tooltip title={tr("Hosts inherit credentials from this group")}>
             <KeyRoundedIcon
               sx={{
                 position: "absolute",
@@ -143,7 +144,7 @@ export function HostGrid(p: HostCollectionProps) {
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
       {p.groups.length > 0 && (
         <Box>
-          <SectionTitle>Groups</SectionTitle>
+          <SectionTitle>{tr("Groups")}</SectionTitle>
           <CardGrid min={240}>
             {p.groups.map((g) => (
               <EntityCard
@@ -158,7 +159,7 @@ export function HostGrid(p: HostCollectionProps) {
                 dropping={p.dnd?.dropping === g.id}
                 actions={
                   <IconButton
-                    aria-label="Group options"
+                    aria-label={tr("Group options")}
                     onClick={(e) => {
                       e.stopPropagation();
                       p.onGroupContext(g, e);
@@ -174,7 +175,7 @@ export function HostGrid(p: HostCollectionProps) {
       )}
       {p.hosts.length > 0 && (
         <Box>
-          {p.groups.length > 0 && <SectionTitle>Hosts</SectionTitle>}
+          {p.groups.length > 0 && <SectionTitle>{tr("Hosts")}</SectionTitle>}
           <CardGrid min={280}>
             {p.hosts.map((h) => {
               const isChecked = p.checked.has(h.id);
@@ -207,9 +208,9 @@ export function HostGrid(p: HostCollectionProps) {
                   }
                   actions={
                     <>
-                      <Tooltip title="Connect">
+                      <Tooltip title={tr("Connect")}>
                         <IconButton
-                          aria-label={`Connect to ${h.label}`}
+                          aria-label={tr("Connect to {label}", { label: h.label })}
                           onClick={(e) => {
                             e.stopPropagation();
                             p.onConnectHost(h);
@@ -219,7 +220,7 @@ export function HostGrid(p: HostCollectionProps) {
                         </IconButton>
                       </Tooltip>
                       <IconButton
-                        aria-label="Host options"
+                        aria-label={tr("Host options")}
                         onClick={(e) => {
                           e.stopPropagation();
                           p.onHostContext(h, e);

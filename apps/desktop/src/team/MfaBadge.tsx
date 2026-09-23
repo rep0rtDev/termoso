@@ -2,12 +2,13 @@ import { Chip, Tooltip } from "@mui/material";
 import VerifiedUserRoundedIcon from "@mui/icons-material/VerifiedUserRounded";
 import GppMaybeRoundedIcon from "@mui/icons-material/GppMaybeRounded";
 import type { TeamMember } from "@/ipc/types";
+import { tr } from "@/i18n";
 
 /** Second-factor state of a member as admins see it; hidden when the server did not tell us. */
 export function MfaBadge({ m, required }: { m: TeamMember; required: boolean }) {
   if (m.mfa_enabled === true) {
     return (
-      <Tooltip title="Two-factor authentication enabled">
+      <Tooltip title={tr("Two-factor authentication enabled")}>
         <VerifiedUserRoundedIcon sx={{ fontSize: 16, color: "success.main" }} />
       </Tooltip>
     );
@@ -17,13 +18,15 @@ export function MfaBadge({ m, required }: { m: TeamMember; required: boolean }) 
       <Tooltip
         title={
           required
-            ? "No two-factor authentication: this member cannot open team vaults until they enable it"
-            : "No two-factor authentication"
+            ? tr(
+                "No two-factor authentication: this member cannot open team vaults until they enable it",
+              )
+            : tr("No two-factor authentication")
         }
       >
         <Chip
           size="small"
-          label="No 2FA"
+          label={tr("No 2FA")}
           color={required ? "error" : "warning"}
           variant="outlined"
           icon={<GppMaybeRoundedIcon />}

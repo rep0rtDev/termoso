@@ -30,6 +30,7 @@ import {
   useShare,
 } from "./multiplayer";
 import { closePane, useTerminal } from "./store";
+import { tr } from "@/i18n";
 
 /**
  * Multiplayer control on a terminal tab, like Termius: a small screen icon
@@ -42,10 +43,10 @@ export function MultiplayerTabButton({ paneId }: { paneId: Uuid }) {
   const live = share !== null;
   return (
     <>
-      <Tooltip title={live ? "Multiplayer" : "Share this terminal"}>
+      <Tooltip title={live ? tr("Multiplayer") : tr("Share this terminal")}>
         <IconButton
           className="tab-multiplayer"
-          aria-label="Multiplayer"
+          aria-label={tr("Multiplayer")}
           onClick={(e: MouseEvent<HTMLElement>) => {
             e.stopPropagation();
             setAnchor(e.currentTarget);
@@ -94,8 +95,8 @@ export function MultiplayerPopover({
 
   const copy = (link: string) =>
     copyToClipboard(link)
-      .then(() => snackbar.notify("Link copied"))
-      .catch(() => snackbar.error("Clipboard is not available"));
+      .then(() => snackbar.notify(tr("Link copied")))
+      .catch(() => snackbar.error(tr("Clipboard is not available")));
 
   const copyLink = async () => {
     if (share?.link) {
@@ -144,7 +145,7 @@ export function MultiplayerPopover({
       <Stack direction="row" spacing={1} sx={{ alignItems: "center", px: 0.5, minHeight: 32 }}>
         <ScreenShareRoundedIcon sx={{ fontSize: 16, color: "text.secondary" }} />
         <Typography variant="body2" sx={{ flex: 1, fontWeight: 500 }}>
-          Multiplayer
+          {tr("Multiplayer")}
         </Typography>
         {share?.role === "viewer" ? (
           <Button
@@ -157,7 +158,7 @@ export function MultiplayerPopover({
             }}
             sx={{ bgcolor: "action.selected" }}
           >
-            Leave
+            {tr("Leave")}
           </Button>
         ) : (
           <>
@@ -169,7 +170,7 @@ export function MultiplayerPopover({
               onClick={() => void copyLink()}
               sx={{ bgcolor: "action.selected" }}
             >
-              Copy link
+              {tr("Copy link")}
             </Button>
             {share && (
               <Button
@@ -182,7 +183,7 @@ export function MultiplayerPopover({
                   "&:hover": { bgcolor: (t) => alpha(t.palette.error.main, 0.26) },
                 }}
               >
-                Stop multiplayer
+                {tr("Stop multiplayer")}
               </Button>
             )}
           </>
@@ -193,8 +194,8 @@ export function MultiplayerPopover({
         <Participants share={share} paneId={paneId} />
       ) : reason === "signin" ? (
         <Hint
-          text="Sign in to a Termoso account to share this terminal session."
-          action="Sign in"
+          text={tr("Sign in to a Termoso account to share this terminal session.")}
+          action={tr("Sign in")}
           onAction={() => {
             onClose();
             goToSettings("account");
@@ -206,7 +207,7 @@ export function MultiplayerPopover({
           action={
             blockedByTeam &&
             (blockedByTeam.my_role === "owner" || blockedByTeam.my_role === "admin")
-              ? "Team settings"
+              ? tr("Team settings")
               : undefined
           }
           onAction={() => {
@@ -215,10 +216,12 @@ export function MultiplayerPopover({
           }}
         />
       ) : !connected ? (
-        <Hint text="Connect first — a live session is needed to share this terminal." />
+        <Hint text={tr("Connect first — a live session is needed to share this terminal.")} />
       ) : (
         <Hint
-          text={"Copy link to share this terminal session.\nPeople who join will be visible here"}
+          text={tr(
+            "Copy link to share this terminal session.\nPeople who join will be visible here",
+          )}
         />
       )}
     </Popover>
@@ -261,7 +264,7 @@ function Participants({ share, paneId }: { share: ShareInfo; paneId: Uuid }) {
   return (
     <Box sx={{ px: 0.5, pb: 0.5 }}>
       <Typography variant="body2" color="text.secondary" sx={{ px: 0.5, mb: 0.75 }}>
-        Participants:
+        {tr("Participants:")}
       </Typography>
       <Stack spacing={0.25}>
         {share.participants.map((p) => (
@@ -274,7 +277,7 @@ function Participants({ share, paneId }: { share: ShareInfo; paneId: Uuid }) {
         ))}
         {share.participants.length <= 1 && (
           <Typography variant="caption" color="text.secondary" sx={{ px: 0.5, pt: 0.5 }}>
-            People who join will be visible here
+            {tr("People who join will be visible here")}
           </Typography>
         )}
       </Stack>
@@ -298,14 +301,14 @@ function ParticipantRow({
 }) {
   const label = displayLabel(p);
   const controlTitle = p.isHost
-    ? "Host — has control"
+    ? tr("Host — has control")
     : p.canWrite
       ? hostView
-        ? "Has remote control — click to take it back"
-        : "Has remote control"
+        ? tr("Has remote control — click to take it back")
+        : tr("Has remote control")
       : hostView
-        ? "Watching — click to give remote control"
-        : "Watching";
+        ? tr("Watching — click to give remote control")
+        : tr("Watching");
   const icon = p.canWrite ? (
     <KeyboardAltRoundedIcon sx={{ fontSize: 15 }} />
   ) : (
@@ -350,7 +353,7 @@ function ParticipantRow({
         )}
       </Box>
       {p.isMe && (
-        <Chip label="You" size="small" sx={{ height: 20, fontSize: 11, fontWeight: 600 }} />
+        <Chip label={tr("You")} size="small" sx={{ height: 20, fontSize: 11, fontWeight: 600 }} />
       )}
       <Tooltip title={controlTitle}>
         <span>

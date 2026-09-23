@@ -36,6 +36,7 @@ import * as ipc from "@/ipc/commands";
 import { keys, useKnownHosts } from "@/ipc/hooks";
 import { errorMessage, type KnownHostCard } from "@/ipc/types";
 import { sizes } from "@/theme/theme";
+import { tr, trn, trx } from "@/i18n";
 
 type DialogState =
   | { kind: "none" }
@@ -55,7 +56,7 @@ function PasteDialog({
   const [text, setText] = useState("");
   return (
     <Dialog open onClose={busy ? undefined : onCancel} maxWidth="sm" fullWidth>
-      <DialogTitle>Import known_hosts entries</DialogTitle>
+      <DialogTitle>{tr("Import known_hosts entries")}</DialogTitle>
       <DialogContent>
         <TextField
           autoFocus
@@ -66,21 +67,23 @@ function PasteDialog({
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="example.com ssh-ed25519 AAAA…"
-          helperText="OpenSSH known_hosts format, one entry per line. Hashed entries are skipped."
+          helperText={tr(
+            "OpenSSH known_hosts format, one entry per line. Hashed entries are skipped.",
+          )}
           slotProps={{ htmlInput: { spellCheck: false, style: { fontFamily: "monospace" } } }}
           sx={{ mt: 0.5 }}
         />
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onCancel} disabled={busy} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           variant="contained"
           disabled={busy || text.trim().length === 0}
           onClick={() => onConfirm(text)}
         >
-          Import
+          {tr("Import")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -124,18 +127,21 @@ export function KnownHostsPage() {
     const picked = await openFile({
       multiple: false,
       directory: false,
-      title: "Import known_hosts",
+      title: tr("Import known_hosts"),
       defaultPath: def ?? undefined,
     });
     if (typeof picked !== "string") return null;
     const rep = await ipc.knownHostsImportFile(picked);
-    return `Imported ${rep.added} new host key(s)`;
+    return tr("Imported {added} new host key(s)", { added: rep.added });
   };
   const exportFile = async () => {
-    const path = await saveFile({ title: "Export known_hosts", defaultPath: "known_hosts" });
+    const path = await saveFile({
+      title: tr("Export known_hosts"),
+      defaultPath: "known_hosts",
+    });
     if (path === null) return null;
     const n = await ipc.knownHostsExportFile(path);
-    return `Exported ${n} entries to ${path}`;
+    return tr("Exported {n} entries to {path}", { n, path });
   };
 
   const total = (hosts.data ?? []).length;
@@ -146,17 +152,17 @@ export function KnownHostsPage() {
         actions={
           <>
             <SplitButton
-              label="Import"
+              label={tr("Import")}
               icon={<UploadFileRoundedIcon />}
               onClick={() => op.mutate(importFile)}
               items={[
                 {
-                  label: "Import known_hosts file…",
+                  label: tr("Import known_hosts file…"),
                   icon: <UploadFileRoundedIcon fontSize="small" />,
                   onClick: () => op.mutate(importFile),
                 },
                 {
-                  label: "Paste entries…",
+                  label: tr("Paste entries…"),
                   icon: <ContentPasteRoundedIcon fontSize="small" />,
                   onClick: () => setDialog({ kind: "paste" }),
                 },
@@ -167,7 +173,7 @@ export function KnownHostsPage() {
               disabled={total === 0}
               onClick={() => op.mutate(exportFile)}
             >
-              Export
+              {tr("Export")}
             </Button>
           </>
         }
@@ -175,7 +181,7 @@ export function KnownHostsPage() {
           <SearchField
             value={filter}
             onChange={setFilter}
-            placeholder="Filter by host, type or fingerprint"
+            placeholder={tr("Filter by host, type or fingerprint")}
             width={280}
           />
         }
@@ -184,12 +190,17 @@ export function KnownHostsPage() {
         {hosts.isPending ? (
           <Loading />
         ) : hosts.error ? (
-          <EmptyState title="Could not load known hosts" description={errorMessage(hosts.error)} />
+          <EmptyState
+            title={tr("Could not load known hosts")}
+            description={errorMessage(hosts.error)}
+          />
         ) : visible.length === 0 ? (
           <EmptyState
             icon={<VerifiedUserRoundedIcon />}
-            title={filter ? "No matches" : "No trusted host keys yet"}
-            description="Keys are recorded when you accept a host's fingerprint on first connect, or import ~/.ssh/known_hosts. A changed key is always re-prompted, never accepted silently."
+            title={filter ? tr("No matches") : tr("No trusted host keys yet")}
+            description={tr(
+              "Keys are recorded when you accept a host's fingerprint on first connect, or import ~/.ssh/known_hosts. A changed key is always re-prompted, never accepted silently.",
+            )}
           />
         ) : (
           <Stack spacing={1}>
@@ -214,13 +225,13 @@ export function KnownHostsPage() {
                   }
                   trailing={
                     <Typography variant="caption" color="text.secondary" noWrap sx={{ px: 0.5 }}>
-                      Trusted {new Date(h.updatedAt).toLocaleDateString()}
+                      {tr("Trusted")} {new Date(h.updatedAt).toLocaleDateString()}
                     </Typography>
                   }
                   actions={
                     <>
                       <ToolIconButton
-                        title="Copy public key line"
+                        title={tr("Copy public key line")}
                         onClick={() =>
                           op.mutate(async () => {
                             await copyToClipboard(`${h.hostname} ${h.keyType} ${h.publicKey}`);
@@ -232,7 +243,7 @@ export function KnownHostsPage() {
                       </ToolIconButton>
                       {siblings > 1 && (
                         <ToolIconButton
-                          title={`Forget all ${siblings} keys for this host`}
+                          title={tr("Forget all {siblings} keys for this host", { siblings })}
                           onClick={() =>
                             setDialog({ kind: "forgetHost", hostname: h.hostname, count: siblings })
                           }
@@ -241,7 +252,7 @@ export function KnownHostsPage() {
                         </ToolIconButton>
                       )}
                       <ToolIconButton
-                        title="Forget this key"
+                        title={tr("Forget this key")}
                         onClick={() => setDialog({ kind: "forget", card: h })}
                       >
                         <DeleteOutlineRoundedIcon fontSize="small" />
@@ -262,7 +273,7 @@ export function KnownHostsPage() {
           onConfirm={(text) =>
             op.mutate(async () => {
               const rep = await ipc.knownHostsImportText(text);
-              return `Imported ${rep.added} new host key(s)`;
+              return tr("Imported {added} new host key(s)", { added: rep.added });
             })
           }
         />
@@ -270,8 +281,8 @@ export function KnownHostsPage() {
       {dialog.kind === "forget" && (
         <ConfirmDialog
           open
-          title="Forget host key?"
-          confirmLabel="Forget"
+          title={tr("Forget host key?")}
+          confirmLabel={tr("Forget")}
           danger
           busy={op.isPending}
           onCancel={() => setDialog({ kind: "none" })}
@@ -285,8 +296,10 @@ export function KnownHostsPage() {
         >
           <Stack spacing={0.5}>
             <span>
-              The {dialog.card.keyType} key for <b>{dialog.card.hostname}</b> will be forgotten. You
-              will be asked to verify the fingerprint on the next connection.
+              {trx(
+                "The {keyType} key for {host} will be forgotten. You will be asked to verify the fingerprint on the next connection.",
+                { keyType: dialog.card.keyType, host: <b>{dialog.card.hostname}</b> },
+              )}
             </span>
             <Typography variant="caption" sx={{ fontFamily: "monospace" }}>
               {dialog.card.fingerprint}
@@ -297,8 +310,8 @@ export function KnownHostsPage() {
       {dialog.kind === "forgetHost" && (
         <ConfirmDialog
           open
-          title="Forget all keys for host?"
-          confirmLabel="Forget all"
+          title={tr("Forget all keys for host?")}
+          confirmLabel={tr("Forget all")}
           danger
           busy={op.isPending}
           onCancel={() => setDialog({ kind: "none" })}
@@ -306,11 +319,18 @@ export function KnownHostsPage() {
             const hostname = dialog.hostname;
             op.mutate(async () => {
               const n = await ipc.knownHostForgetHost(hostname);
-              return `Forgot ${n} key(s)`;
+              return tr("Forgot {n} key(s)", { n });
             });
           }}
         >
-          {dialog.count} key(s) recorded for <b>{dialog.hostname}</b> will be forgotten.
+          {trx(
+            trn(
+              dialog.count,
+              "{count} key recorded for {host} will be forgotten.",
+              "{count} keys recorded for {host} will be forgotten.",
+            ),
+            { host: <b>{dialog.hostname}</b> },
+          )}
         </ConfirmDialog>
       )}
     </Page>

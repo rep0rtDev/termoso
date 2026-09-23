@@ -1,4 +1,5 @@
 import type { PresenceEntry, PresenceSession, TeamPresence, Uuid } from "@/ipc/types";
+import { tr, msg } from "@/i18n";
 
 /** One teammate's device on one host: the sessions it has open there. */
 export interface HostViewer {
@@ -92,11 +93,11 @@ const PROTOCOL_LABEL: Record<string, string> = {
   mosh: "Mosh",
   telnet: "Telnet",
   sftp: "SFTP",
-  forward: "Port forwarding",
+  forward: msg("Port forwarding"),
   serial: "Serial",
 };
 
-export const protocolLabel = (p: string) => PROTOCOL_LABEL[p] ?? p.toUpperCase();
+export const protocolLabel = (p: string) => tr(PROTOCOL_LABEL[p] ?? p.toUpperCase());
 
 const PLATFORM_LABEL: Record<string, string> = {
   windows: "Windows",

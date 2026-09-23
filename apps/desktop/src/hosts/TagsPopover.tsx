@@ -19,6 +19,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
 import { useCreateTag, useDeleteTag, useTags, useUpdateTag } from "@/ipc/hooks";
 import { errorMessage, type TagInfo, type Uuid } from "@/ipc/types";
+import { tr } from "@/i18n";
 
 const hostsLabel = (n: number) => `${n} host${n === 1 ? "" : "s"}`;
 
@@ -143,7 +144,7 @@ export function TagsPopover({
       {
         onSuccess: (t) => {
           onRenamed?.(tag, t.label);
-          if (t.id !== tag.id) snackbar.notify(`Merged into “${t.label}”`);
+          if (t.id !== tag.id) snackbar.notify(tr("Merged into “{label}”", { label: t.label }));
         },
         onError: (e) => snackbar.error(errorMessage(e)),
       },
@@ -157,7 +158,7 @@ export function TagsPopover({
       onSuccess: () => {
         onDeleted?.(tag);
         setConfirm(null);
-        snackbar.notify(`Removed “${tag.label}”`, "info");
+        snackbar.notify(tr("Removed “{label}”", { label: tag.label }), "info");
       },
       onError: (e) => snackbar.error(errorMessage(e)),
     });
@@ -188,7 +189,7 @@ export function TagsPopover({
             size="small"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={allowCreate ? "Search or add a tag" : "Search tags"}
+            placeholder={allowCreate ? tr("Search or add a tag") : tr("Search tags")}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -231,7 +232,7 @@ export function TagsPopover({
             >
               <AddRoundedIcon fontSize="small" />
               <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
-                Create “{query.trim()}”
+                {tr("Create “{tag}”", { tag: query.trim() })}
               </Typography>
             </Box>
           )}
@@ -239,9 +240,9 @@ export function TagsPopover({
             <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 1.5 }}>
               {all.length === 0
                 ? allowCreate
-                  ? "No tags yet — type a name and press Enter."
-                  : "No tags yet — add them in Host Details."
-                : "Nothing matches."}
+                  ? tr("No tags yet — type a name and press Enter.")
+                  : tr("No tags yet — add them in Host Details.")
+                : tr("Nothing matches.")}
             </Typography>
           ) : (
             list.map((t) => {
@@ -319,20 +320,20 @@ export function TagsPopover({
                         transition: "opacity 80ms",
                       }}
                     >
-                      <Tooltip title="Rename">
+                      <Tooltip title={tr("Rename")}>
                         <IconButton
                           size="small"
-                          aria-label={`Rename ${t.label}`}
+                          aria-label={tr("Rename {label}", { label: t.label })}
                           onClick={() => setEditing({ id: t.id, label: t.label })}
                           sx={{ width: 28, height: 28 }}
                         >
                           <EditOutlinedIcon sx={{ fontSize: 16 }} />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Delete">
+                      <Tooltip title={tr("Delete")}>
                         <IconButton
                           size="small"
-                          aria-label={`Delete ${t.label}`}
+                          aria-label={tr("Delete {label}", { label: t.label })}
                           onClick={() => setConfirm(t)}
                           sx={{ width: 28, height: 28 }}
                         >
@@ -360,7 +361,7 @@ export function TagsPopover({
               }}
               sx={{ justifyContent: "flex-start", color: "text.secondary" }}
             >
-              Manage tags
+              {tr("Manage tags")}
             </Button>
           </Box>
         )}
@@ -368,16 +369,18 @@ export function TagsPopover({
 
       <ConfirmDialog
         open={confirm !== null}
-        title={confirm ? `Delete tag “${confirm.label}”?` : ""}
+        title={confirm ? tr("Delete tag “{label}”?", { label: confirm.label }) : ""}
         danger
-        confirmLabel="Delete"
+        confirmLabel={tr("Delete")}
         busy={remove.isPending}
         onCancel={() => setConfirm(null)}
         onConfirm={runDelete}
       >
         {confirm && confirm.hosts > 0
-          ? `The tag is removed from ${hostsLabel(confirm.hosts)}. The hosts themselves stay.`
-          : "No host carries this tag."}
+          ? tr("The tag is removed from {hostsLabel}. The hosts themselves stay.", {
+              hostsLabel: hostsLabel(confirm.hosts),
+            })
+          : tr("No host carries this tag.")}
       </ConfirmDialog>
     </>
   );

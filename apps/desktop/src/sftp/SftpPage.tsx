@@ -50,6 +50,7 @@ import {
   startTransfer,
   useSftp,
 } from "./store";
+import { tr } from "@/i18n";
 
 interface Planned {
   entry: FsEntry;
@@ -250,7 +251,7 @@ export function SftpPage() {
         }
       >
         <Button variant="tonal" startIcon={<AddRoundedIcon />} onClick={() => setPicker(true)}>
-          Connect
+          {tr("Connect")}
         </Button>
       </Toolbar>
 
@@ -258,7 +259,7 @@ export function SftpPage() {
         <PaneFrame>
           <FilePane
             side="local"
-            title="Local"
+            title={tr("Local")}
             sftpId={null}
             initialPath={null}
             oppositePath={remoteReady ? remotePath : null}
@@ -269,7 +270,7 @@ export function SftpPage() {
           />
         </PaneFrame>
         <Box sx={{ width: "1px", bgcolor: "border.light", flexShrink: 0 }} />
-        <PaneFrame title={active && remoteReady ? undefined : (active?.title ?? "Remote")}>
+        <PaneFrame title={active && remoteReady ? undefined : (active?.title ?? tr("Remote"))}>
           {active && remoteReady ? (
             <FilePane
               key={active.id}
@@ -355,7 +356,7 @@ function RemotePlaceholder({
         <>
           <CircularProgress size={24} />
           <Typography variant="body2" color="text.secondary">
-            {webdav ? "Connecting to the WebDAV share…" : "Opening SFTP channel…"}
+            {webdav ? tr("Connecting to the WebDAV share…") : tr("Opening SFTP channel…")}
           </Typography>
         </>
       ) : (
@@ -368,16 +369,17 @@ function RemotePlaceholder({
             color={status === "error" ? "error" : "text.secondary"}
             align="center"
           >
-            {message ?? "Pick a host, a WebDAV share or an open SSH session to browse its files."}
+            {message ??
+              tr("Pick a host, a WebDAV share or an open SSH session to browse its files.")}
           </Typography>
           <Stack direction="row" spacing={1}>
             {onRetry && (status === "error" || status === "closed") && (
               <Button startIcon={<ReplayRoundedIcon />} onClick={onRetry}>
-                Retry
+                {tr("Retry")}
               </Button>
             )}
             <Button variant="contained" onClick={onConnect}>
-              Connect
+              {tr("Connect")}
             </Button>
           </Stack>
         </>
@@ -414,12 +416,12 @@ function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }
   };
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Open files</DialogTitle>
+      <DialogTitle>{tr("Open files")}</DialogTitle>
       <DialogContent sx={{ p: 0 }}>
         <Box sx={{ px: 3, pb: 1 }}>
           <TextField
             autoFocus
-            placeholder="Search hosts"
+            placeholder={tr("Search hosts")}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             slotProps={{
@@ -436,7 +438,7 @@ function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }
         <List dense sx={{ maxHeight: 360, overflow: "auto" }}>
           {sessions.length > 0 && !q && (
             <>
-              <ListSubheader disableSticky>Open sessions</ListSubheader>
+              <ListSubheader disableSticky>{tr("Open sessions")}</ListSubheader>
               {sessions.map((p) => (
                 <ListItemButton key={p.id} onClick={() => pickSession(p.id, p.title, p.hostId)}>
                   <ListItemText primary={p.title} secondary={p.subtitle} />
@@ -453,7 +455,7 @@ function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }
               <ListItemText primary={h.label} secondary={`${h.username}@${h.address}:${h.port}`} />
             </ListItemButton>
           ))}
-          {davHosts.length > 0 && <ListSubheader disableSticky>WebDAV</ListSubheader>}
+          {davHosts.length > 0 && <ListSubheader disableSticky>{tr("WebDAV")}</ListSubheader>}
           {davHosts.map((h) => (
             <ListItemButton key={`dav-${h.id}`} onClick={() => pickHost(h, "webdav")}>
               <Box sx={{ mr: 1.5 }}>
@@ -464,7 +466,7 @@ function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }
           ))}
           {sshHosts.length === 0 && davHosts.length === 0 && (
             <Typography variant="body2" color="text.disabled" sx={{ px: 3, py: 2 }}>
-              No SSH or WebDAV hosts saved yet.
+              {tr("No SSH or WebDAV hosts saved yet.")}
             </Typography>
           )}
         </List>

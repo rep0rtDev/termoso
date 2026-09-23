@@ -1,11 +1,12 @@
 import type { CertificateCard, IdentityCard, KeyCard } from "@/ipc/types";
+import { tr } from "@/i18n";
 
 /** Card subtitle as Termius prints it: `Type ED25519`, `Type RSA 4096`. */
 /** FIDO2-backed keys (`sk-*`) are picked through the FIDO2 row, not Key. */
 export const isHardwareKey = (k: Pick<KeyCard, "keyType">) => k.keyType.startsWith("sk-");
 
 export function keyTypeLabel(k: Pick<KeyCard, "keyType" | "bits" | "unreadable">): string {
-  if (k.unreadable || !k.keyType) return "Type unknown";
+  if (k.unreadable || !k.keyType) return tr("Type unknown");
   const t = k.keyType.toLowerCase();
   const sk = t.startsWith("sk-");
   const base = t.includes("ed25519")
@@ -16,7 +17,9 @@ export function keyTypeLabel(k: Pick<KeyCard, "keyType" | "bits" | "unreadable">
         ? "ECDSA"
         : k.keyType.toUpperCase();
   const name = sk ? `${base}-SK` : base;
-  return sk || base === "ED25519" || k.bits === 0 ? `Type ${name}` : `Type ${name} ${k.bits}`;
+  return sk || base === "ED25519" || k.bits === 0
+    ? tr("Type {name}", { name })
+    : tr("Type {name} {bits}", { name, bits: k.bits });
 }
 
 export type CertificateState = "valid" | "not_yet" | "expired" | "unreadable";
@@ -46,9 +49,9 @@ export function certificateSummary(c: CertificateCard, now: Date = new Date()): 
   const state = certificateState(c, false, now);
   const until = c.validBefore
     ? state === "expired"
-      ? `expired ${new Date(c.validBefore).toLocaleDateString()}`
-      : `until ${new Date(c.validBefore).toLocaleDateString()}`
-    : "no expiry";
+      ? tr("expired {date}", { date: new Date(c.validBefore).toLocaleDateString() })
+      : tr("until {date}", { date: new Date(c.validBefore).toLocaleDateString() })
+    : tr("no expiry");
   const from =
     state === "not_yet" && c.validAfter
       ? `from ${new Date(c.validAfter).toLocaleDateString()}`
@@ -106,11 +109,11 @@ export function identitySubtitle(i: IdentityCard): string {
   const auth = [
     i.sshKeyLabel
       ? i.hasCertificate
-        ? `Certificate · ${i.sshKeyLabel}`
-        : `Key · ${i.sshKeyLabel}`
+        ? tr("Certificate · {sshKeyLabel}", { sshKeyLabel: i.sshKeyLabel })
+        : tr("Key · {sshKeyLabel}", { sshKeyLabel: i.sshKeyLabel })
       : null,
     i.hasPassword ? "Password" : null,
   ].filter((s): s is string => s !== null);
-  const via = auth.length > 0 ? auth.join(" + ") : "No auth method";
+  const via = auth.length > 0 ? auth.join(" + ") : tr("No auth method");
   return i.username ? `${i.username} · ${via}` : via;
 }

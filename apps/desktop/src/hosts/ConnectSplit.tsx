@@ -9,6 +9,7 @@ import { goToSftp, requestForwardingRule } from "@/app/navigation";
 import { openSftpForHost, openWebDavForHost } from "@/sftp/store";
 import { openTerminal } from "@/terminal/store";
 import type { ConnectProtocol, HostCard, Uuid } from "@/ipc/types";
+import { tr } from "@/i18n";
 
 /** The bits of a saved host an open needs: its id, the vault it came from, a title. */
 export type HostRef = Pick<HostCard, "id" | "vaultId" | "label">;
@@ -45,16 +46,15 @@ export function connectActions(
   webdav = false,
 ): MenuAction[] {
   const ssh = protocols.includes("ssh");
-  const needsSsh = ssh ? "" : " (needs an SSH section)";
   return [
     ...protocols.map((p) => ({
-      label: `with ${PROTOCOL_NAME[p]}`,
+      label: tr("with {value}", { value: PROTOCOL_NAME[p] }),
       icon: <TerminalRoundedIcon fontSize="small" />,
       onClick: () =>
         openTerminal({ kind: "host", host_id: h.id, vault_id: h.vaultId, protocol: p }),
     })),
     {
-      label: `with SFTP${needsSsh}`,
+      label: ssh ? tr("with SFTP") : tr("with SFTP (needs an SSH section)"),
       icon: <FolderCopyRoundedIcon fontSize="small" />,
       disabled: !ssh,
       divider: protocols.length > 0,
@@ -66,14 +66,14 @@ export function connectActions(
     ...(webdav
       ? [
           {
-            label: "with WebDAV",
+            label: tr("with WebDAV"),
             icon: <CloudRoundedIcon fontSize="small" />,
             onClick: () => openWebDav(h),
           },
         ]
       : []),
     {
-      label: `Port forwarding${needsSsh}`,
+      label: ssh ? tr("Port forwarding") : tr("Port forwarding (needs an SSH section)"),
       icon: <SwapHorizRoundedIcon fontSize="small" />,
       disabled: !ssh,
       onClick: () => requestForwardingRule(h.id),
@@ -115,7 +115,7 @@ export function ConnectButton({
       }
       sx={{ height: 40, borderRadius: 2.5, fontWeight: 600 }}
     >
-      {webdav ? "Open Files" : "Connect"}
+      {webdav ? tr("Open Files") : tr("Connect")}
     </Button>
   );
 }

@@ -85,6 +85,7 @@ import {
   identitySubtitle,
   keyTypeLabel,
 } from "./model";
+import { tr, trn, trx } from "@/i18n";
 
 type Panel =
   | { kind: "none" }
@@ -197,10 +198,10 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
         exportPassphrase: args.exportPassphrase,
       });
       await copy(text);
-      return "Private key copied to clipboard";
+      return tr("Private key copied to clipboard");
     }
     const path = await saveFile({
-      title: "Export private key",
+      title: tr("Export private key"),
       defaultPath: card.label.replace(/[^\w.-]+/g, "_"),
     });
     if (path === null) return null;
@@ -210,7 +211,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       passphrase: args.passphrase,
       exportPassphrase: args.exportPassphrase,
     });
-    return `Saved to ${path}`;
+    return tr("Saved to {path}", { path });
   };
 
   const loading = vault.isPending || sshKeys.isPending || identities.isPending;
@@ -233,7 +234,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
     panelKind: "editKey" | "identity",
   ): MenuAction[] => {
     const others = (vaults.data ?? []).filter((v) => v.id !== card.vaultId);
-    if (others.length === 0) return [{ label: "No other vaults", disabled: true }];
+    if (others.length === 0) return [{ label: tr("No other vaults"), disabled: true }];
     return others.map((v) => ({
       label: v.name,
       icon: v.unlocked ? undefined : <LockOutlinedIcon fontSize="small" />,
@@ -252,23 +253,23 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       ? []
       : [
           {
-            label: "Edit",
+            label: tr("Edit"),
             icon: <EditOutlinedIcon fontSize="small" />,
             onClick: () => openPanel({ kind: "editKey", id: card.id }),
           },
         ]),
     {
-      label: "Copy public key",
+      label: tr("Copy public key"),
       icon: <ContentCopyRoundedIcon fontSize="small" />,
       disabled: card.unreadable,
       onClick: () =>
         run(async () => {
           await copy(await ipc.keyPublic(card.id));
-          return "Public key copied";
+          return tr("Public key copied");
         }),
     },
     {
-      label: "Export to host…",
+      label: tr("Export to host…"),
       icon: <DnsRoundedIcon fontSize="small" />,
       disabled: card.unreadable,
       onClick: () => setDialog({ kind: "exportToHost", card }),
@@ -278,13 +279,13 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       ? []
       : [
           {
-            label: "Export private key…",
+            label: tr("Export private key…"),
             icon: <FileDownloadRoundedIcon fontSize="small" />,
             disabled: card.unreadable,
             onClick: () => setDialog({ kind: "export", card }),
           },
           {
-            label: "Change passphrase…",
+            label: tr("Change passphrase…"),
             icon: <LockResetRoundedIcon fontSize="small" />,
             disabled: card.unreadable || readOnly,
             onClick: () => setDialog({ kind: "passphrase", card }),
@@ -292,24 +293,24 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           },
         ]),
     {
-      label: "Collaborate",
+      label: tr("Collaborate"),
       icon: <GroupAddRoundedIcon fontSize="small" />,
       disabled: vault.data?.kind !== "team",
       onClick: () => openCollaboration(vault.data),
     },
     {
-      label: "Move to",
+      label: tr("Move to"),
       icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
       disabled: readOnly,
       items: vaultTargets(card, true, ipc.keyCopyToVault, "editKey"),
     },
     {
-      label: "Copy to",
+      label: tr("Copy to"),
       icon: <LibraryAddOutlinedIcon fontSize="small" />,
       items: vaultTargets(card, false, ipc.keyCopyToVault, "editKey"),
     },
     {
-      label: "Remove",
+      label: tr("Remove"),
       icon: <DeleteOutlineRoundedIcon fontSize="small" />,
       danger: true,
       disabled: readOnly,
@@ -322,31 +323,31 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       ? []
       : [
           {
-            label: "Edit",
+            label: tr("Edit"),
             icon: <EditOutlinedIcon fontSize="small" />,
             onClick: () => openPanel({ kind: "identity", id: card.id }),
             divider: true,
           },
         ]),
     {
-      label: "Collaborate",
+      label: tr("Collaborate"),
       icon: <GroupAddRoundedIcon fontSize="small" />,
       disabled: vault.data?.kind !== "team",
       onClick: () => openCollaboration(vault.data),
     },
     {
-      label: "Move to",
+      label: tr("Move to"),
       icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
       disabled: readOnly,
       items: vaultTargets(card, true, ipc.identityCopyToVault, "identity"),
     },
     {
-      label: "Copy to",
+      label: tr("Copy to"),
       icon: <LibraryAddOutlinedIcon fontSize="small" />,
       items: vaultTargets(card, false, ipc.identityCopyToVault, "identity"),
     },
     {
-      label: "Remove",
+      label: tr("Remove"),
       icon: <DeleteOutlineRoundedIcon fontSize="small" />,
       danger: true,
       disabled: readOnly,
@@ -369,10 +370,10 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       cs === "valid"
         ? "Certificate"
         : cs === "expired"
-          ? "Certificate expired"
+          ? tr("Certificate expired")
           : cs === "not_yet"
-            ? "Certificate not yet valid"
-            : "Certificate unreadable";
+            ? tr("Certificate not yet valid")
+            : tr("Certificate unreadable");
     return (
       <>
         {k.unreadable && <WarningAmberRoundedIcon fontSize="small" color="warning" />}
@@ -396,7 +397,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           <LockOutlinedIcon
             fontSize="small"
             sx={{ color: "text.disabled" }}
-            titleAccess={k.hasPassphrase ? "Passphrase remembered" : "Asks for passphrase"}
+            titleAccess={k.hasPassphrase ? tr("Passphrase remembered") : tr("Asks for passphrase")}
           />
         )}
       </>
@@ -412,7 +413,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       subtitle={
         <>
           {keyTypeLabel(k)}
-          {k.agentBacked && " · SSH agent"}
+          {k.agentBacked && " · " + tr("SSH agent")}
           {k.comment && view === "list" && (
             <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
               {k.comment}
@@ -423,7 +424,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       trailing={keyTrailing(k)}
       actions={
         <ToolIconButton
-          title="Edit"
+          title={tr("Edit")}
           onClick={(e) => {
             e.stopPropagation();
             openPanel({ kind: "editKey", id: k.id });
@@ -447,7 +448,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       subtitle={identitySubtitle(i)}
       actions={
         <ToolIconButton
-          title="Edit"
+          title={tr("Edit")}
           onClick={(e) => {
             e.stopPropagation();
             openPanel({ kind: "identity", id: i.id });
@@ -467,17 +468,17 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
 
   const newItems: MenuAction[] = [
     {
-      label: "Generate key",
+      label: tr("Generate key"),
       icon: <AutoFixHighRoundedIcon fontSize="small" />,
       onClick: () => openPanel({ kind: "generate" }),
     },
     {
-      label: "From SSH agent",
+      label: tr("From SSH agent"),
       icon: <VpnKeyOutlinedIcon fontSize="small" />,
       onClick: () => openPanel({ kind: "agent" }),
     },
     {
-      label: "New identity",
+      label: tr("New identity"),
       icon: <BadgeOutlinedIcon fontSize="small" />,
       onClick: () => openPanel({ kind: "identity", id: null }),
     },
@@ -496,11 +497,11 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
                   autoFocus
                   value={query}
                   onChange={setQuery}
-                  placeholder="Search keys and identities"
+                  placeholder={tr("Search keys and identities")}
                 />
               ) : null}
               <ToolIconButton
-                title="Search"
+                title={tr("Search")}
                 active={searchOpen}
                 onClick={() => {
                   if (searchOpen) setQuery("");
@@ -514,10 +515,10 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
                 value={view}
                 onChange={(_e, v: HostsView | null) => setView(v)}
               >
-                <ToggleButton value="grid" aria-label="Grid view">
+                <ToggleButton value="grid" aria-label={tr("Grid view")}>
                   <GridViewRoundedIcon sx={{ fontSize: 18 }} />
                 </ToggleButton>
-                <ToggleButton value="list" aria-label="List view">
+                <ToggleButton value="list" aria-label={tr("List view")}>
                   <ViewListRoundedIcon sx={{ fontSize: 18 }} />
                 </ToggleButton>
               </ToggleButtonGroup>
@@ -525,7 +526,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           }
         >
           <SplitButton
-            label="New key"
+            label={tr("New key")}
             icon={<AddRoundedIcon />}
             disabled={!vaultId || readOnly}
             onClick={() => openPanel({ kind: "newKey", certificate: false })}
@@ -537,7 +538,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
             disabled={!vaultId || readOnly}
             onClick={() => openPanel({ kind: "newKey", certificate: true })}
           >
-            Certificate
+            {tr("Certificate")}
           </Button>
           <Button
             variant="text"
@@ -559,33 +560,39 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
               sx={{ mb: 2 }}
               action={
                 <Button size="small" color="inherit" onClick={() => goToSettings("account")}>
-                  Change
+                  {tr("Change")}
                 </Button>
               }
             >
-              Keys and identities in this vault stay on this device: sync of keys and identities is
-              off, so they are not uploaded and are deleted when you sign out.
+              {tr(
+                "Keys and identities in this vault stay on this device: sync of keys and identities is off, so they are not uploaded and are deleted when you sign out.",
+              )}
             </Alert>
           )}
           {loading ? (
             <Loading />
           ) : loadError ? (
-            <EmptyState title="Could not open the keychain" description={errorMessage(loadError)} />
+            <EmptyState
+              title={tr("Could not open the keychain")}
+              description={errorMessage(loadError)}
+            />
           ) : empty ? (
             <EmptyState
               icon={<KeyRoundedIcon />}
-              title="No keys yet"
-              description="Paste or drop a private key (OpenSSH, PEM, PuTTY .ppk), generate a new one, or attach a certificate. Everything is stored encrypted with your master key."
+              title={tr("No keys yet")}
+              description={tr(
+                "Paste or drop a private key (OpenSSH, PEM, PuTTY .ppk), generate a new one, or attach a certificate. Everything is stored encrypted with your master key.",
+              )}
               action={
                 <Stack direction="row" spacing={1}>
                   <Button
                     variant="contained"
                     onClick={() => openPanel({ kind: "newKey", certificate: false })}
                   >
-                    New key
+                    {tr("New key")}
                   </Button>
                   <Button variant="tonal" onClick={() => openPanel({ kind: "generate" })}>
-                    Generate key
+                    {tr("Generate key")}
                   </Button>
                 </Stack>
               }
@@ -594,10 +601,10 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
             <Stack spacing={3}>
               {(shownKeys.length > 0 || !query) && (
                 <Box>
-                  <SectionTitle>Keys</SectionTitle>
+                  <SectionTitle>{tr("Keys")}</SectionTitle>
                   {shownKeys.length === 0 ? (
                     <Typography variant="body2" color="text.secondary">
-                      No keys yet — use New key or Generate key above.
+                      {tr("No keys yet — use New key or Generate key above.")}
                     </Typography>
                   ) : (
                     wrap(shownKeys.map(keyCard))
@@ -606,17 +613,18 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
               )}
               {(shownIds.length > 0 || !query) && (
                 <Box>
-                  <SectionTitle>Identities</SectionTitle>
+                  <SectionTitle>{tr("Identities")}</SectionTitle>
                   {shownIds.length === 0 ? (
                     <Typography variant="body2" color="text.secondary">
-                      An identity bundles a username with a password, key or certificate so several
-                      hosts can share it.{" "}
+                      {tr(
+                        "An identity bundles a username with a password, key or certificate so several hosts can share it.",
+                      )}{" "}
                       <Button
                         size="small"
                         variant="text"
                         onClick={() => openPanel({ kind: "identity", id: null })}
                       >
-                        New identity
+                        {tr("New identity")}
                       </Button>
                     </Typography>
                   ) : (
@@ -627,8 +635,8 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
               {query && shownKeys.length === 0 && shownIds.length === 0 && (
                 <EmptyState
                   compact
-                  title="Nothing matches"
-                  description={`No key or identity matches “${query}”.`}
+                  title={tr("Nothing matches")}
+                  description={tr("No key or identity matches “{query}”.", { query })}
                 />
               )}
             </Stack>
@@ -648,13 +656,19 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           onImport={(form) =>
             runPanel(async () => {
               const k = await ipc.keyImport(form);
-              return { msg: `Imported ${k.label}`, next: { kind: "editKey", id: k.id } };
+              return {
+                msg: tr("Imported {label}", { label: k.label }),
+                next: { kind: "editKey", id: k.id },
+              };
             })
           }
           onImportFile={(args) =>
             runPanel(async () => {
               const k = await ipc.keyImportFile(args);
-              return { msg: `Imported ${k.label}`, next: { kind: "editKey", id: k.id } };
+              return {
+                msg: tr("Imported {label}", { label: k.label }),
+                next: { kind: "editKey", id: k.id },
+              };
             })
           }
         />
@@ -670,13 +684,19 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           onImport={(form) =>
             runPanel(async () => {
               const k = await ipc.keyImportAgent(form);
-              return { msg: `Added ${k.label}`, next: { kind: "editKey", id: k.id } };
+              return {
+                msg: tr("Added {label}", { label: k.label }),
+                next: { kind: "editKey", id: k.id },
+              };
             })
           }
           onImportFile={(form) =>
             runPanel(async () => {
               const k = await ipc.keyImportAgentFile(form);
-              return { msg: `Added ${k.label}`, next: { kind: "editKey", id: k.id } };
+              return {
+                msg: tr("Added {label}", { label: k.label }),
+                next: { kind: "editKey", id: k.id },
+              };
             })
           }
         />
@@ -691,7 +711,10 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           onGenerate={(form) =>
             runPanel(async () => {
               const k = await ipc.keyGenerate(form);
-              return { msg: `Generated ${k.label}`, next: { kind: "editKey", id: k.id } };
+              return {
+                msg: tr("Generated {label}", { label: k.label }),
+                next: { kind: "editKey", id: k.id },
+              };
             })
           }
         />
@@ -716,7 +739,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
             runPanel(async () => {
               await ipc.keySetCertificate(editing.id, text);
               return {
-                msg: text === null ? "Certificate removed" : "Certificate attached",
+                msg: text === null ? tr("Certificate removed") : tr("Certificate attached"),
                 next: panel,
               };
             })
@@ -724,7 +747,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           onSetCertificateFile={(path) =>
             runPanel(async () => {
               await ipc.keySetCertificateFile(editing.id, path);
-              return { msg: "Certificate attached", next: panel };
+              return { msg: tr("Certificate attached"), next: panel };
             })
           }
           onExportToHost={() => setDialog({ kind: "exportToHost", card: editing })}
@@ -750,7 +773,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
             runPanel(async () => {
               const saved = await ipc.identitySave(form);
               return {
-                msg: form.id ? null : `Identity ${saved.label} created`,
+                msg: form.id ? null : tr("Identity {label} created", { label: saved.label }),
                 next: { kind: "identity", id: saved.id },
               };
             })
@@ -767,7 +790,10 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           onGenerate={(form) =>
             runPanel(async () => {
               const k = await ipc.fido2Generate(form);
-              return { msg: `Generated ${k.label}`, next: { kind: "editKey", id: k.id } };
+              return {
+                msg: tr("Generated {label}", { label: k.label }),
+                next: { kind: "editKey", id: k.id },
+              };
             })
           }
           onLoadResident={(form) =>
@@ -777,7 +803,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
               return {
                 msg:
                   keys.length === 0
-                    ? "No new resident keys on this device"
+                    ? tr("No new resident keys on this device")
                     : `Loaded ${keys.length} ${keys.length === 1 ? "key" : "keys"}`,
                 next: first ? { kind: "editKey", id: first.id } : { kind: "none" },
               };
@@ -809,7 +835,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
             const id = dialog.card.id;
             run(async () => {
               await ipc.keyChangePassphrase({ id, ...args });
-              return "Passphrase updated";
+              return tr("Passphrase updated");
             });
           }}
         />
@@ -838,8 +864,14 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
             run(async () => {
               const r = await ipc.keyExportToHost(card.id, host.id);
               return r.outcome === "added"
-                ? `${card.label} added to authorized_keys on ${r.target}`
-                : `${card.label} is already authorized on ${r.target}`;
+                ? tr("{label} added to authorized_keys on {target}", {
+                    label: card.label,
+                    target: r.target,
+                  })
+                : tr("{label} is already authorized on {target}", {
+                    label: card.label,
+                    target: r.target,
+                  });
             });
           }}
         />
@@ -847,8 +879,8 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       {dialog.kind === "deleteKey" && (
         <ConfirmDialog
           open
-          title="Remove key?"
-          confirmLabel="Remove"
+          title={tr("Remove key?")}
+          confirmLabel={tr("Remove")}
           danger
           busy={op.isPending}
           onCancel={closeDialog}
@@ -857,22 +889,31 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
             run(async () => {
               await ipc.keyDelete(card.id);
               if (panel.kind === "editKey" && panel.id === card.id) closePanel();
-              return `Removed ${card.label}`;
+              return tr("Removed {label}", { label: card.label });
             });
           }}
         >
-          <b>{dialog.card.label}</b>
-          {dialog.card.certificate ? " and its certificate" : ""} will be removed from the vault
+          {trx(
+            dialog.card.certificate
+              ? "{key} and its certificate will be removed from the vault"
+              : "{key} will be removed from the vault",
+            { key: <b>{dialog.card.label}</b> },
+          )}
           {dialog.card.usedBy > 0 &&
-            ` and detached from ${dialog.card.usedBy} host(s) / identit(ies)`}
-          . This cannot be undone.
+            " " +
+              trn(
+                dialog.card.usedBy,
+                "and detached from {count} host / identity",
+                "and detached from {count} hosts / identities",
+              )}
+          . {tr("This cannot be undone.")}
         </ConfirmDialog>
       )}
       {dialog.kind === "deleteIdentity" && (
         <ConfirmDialog
           open
-          title="Remove identity?"
-          confirmLabel="Remove"
+          title={tr("Remove identity?")}
+          confirmLabel={tr("Remove")}
           danger
           busy={op.isPending}
           onCancel={closeDialog}
@@ -881,11 +922,13 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
             run(async () => {
               await ipc.identityDelete(card.id);
               if (panel.kind === "identity" && panel.id === card.id) closePanel();
-              return `Removed ${card.label}`;
+              return tr("Removed {label}", { label: card.label });
             });
           }}
         >
-          Hosts using <b>{dialog.card.label}</b> will fall back to inline credentials.
+          {trx("Hosts using {identity} will fall back to inline credentials.", {
+            identity: <b>{dialog.card.label}</b>,
+          })}
         </ConfirmDialog>
       )}
     </Box>

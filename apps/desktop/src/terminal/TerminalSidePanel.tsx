@@ -69,16 +69,17 @@ import {
   type SidePanelTab,
   type TerminalTab,
 } from "./store";
+import { tr, trx, msg } from "@/i18n";
 
 export const SIDE_PANEL_WIDTH = 300;
 
 const TABS: { id: SidePanelTab; label: string; icon: React.ReactNode }[] = [
-  { id: "search", label: "Terminal", icon: <RocketLaunchOutlinedIcon /> },
-  { id: "snippets", label: "Snippets", icon: <DataObjectRoundedIcon /> },
-  { id: "history", label: "History", icon: <HistoryRoundedIcon /> },
-  { id: "themes", label: "Themes", icon: <PaletteRoundedIcon /> },
-  { id: "ask", label: "Ask AI", icon: <AutoAwesomeOutlinedIcon /> },
-  { id: "info", label: "Session info", icon: <InfoOutlinedIcon /> },
+  { id: "search", label: msg("Terminal"), icon: <RocketLaunchOutlinedIcon /> },
+  { id: "snippets", label: msg("Snippets"), icon: <DataObjectRoundedIcon /> },
+  { id: "history", label: msg("History"), icon: <HistoryRoundedIcon /> },
+  { id: "themes", label: msg("Themes"), icon: <PaletteRoundedIcon /> },
+  { id: "ask", label: msg("Ask AI"), icon: <AutoAwesomeOutlinedIcon /> },
+  { id: "info", label: msg("Session info"), icon: <InfoOutlinedIcon /> },
 ];
 
 export function TerminalSidePanel({ tab }: { tab: TerminalTab }) {
@@ -102,10 +103,10 @@ export function TerminalSidePanel({ tab }: { tab: TerminalTab }) {
           {TABS.map((t) => {
             const active = panel === t.id;
             return (
-              <Tooltip key={t.id} title={t.label} enterDelay={600}>
+              <Tooltip key={t.id} title={tr(t.label)} enterDelay={600}>
                 <IconButton
                   size="small"
-                  aria-label={t.label}
+                  aria-label={tr(t.label)}
                   aria-pressed={active}
                   onClick={() => setSidePanel(t.id)}
                   sx={{
@@ -127,7 +128,7 @@ export function TerminalSidePanel({ tab }: { tab: TerminalTab }) {
           <IconButton
             size="small"
             onClick={() => setSidePanel(null)}
-            aria-label="Close panel"
+            aria-label={tr("Close panel")}
             sx={{ width: 32, height: 32, borderRadius: 1.5, color: "text.secondary" }}
           >
             <CloseRoundedIcon sx={{ fontSize: 18 }} />
@@ -162,10 +163,10 @@ function TerminalPanel({ pane }: { pane: Pane }) {
   const label = globalOff
     ? "Disabled"
     : paused
-      ? "Paused today"
+      ? tr("Paused today")
       : pane.autocomplete
-        ? "Enabled"
-        : "Off in this tab";
+        ? tr("Enabled")
+        : tr("Off in this tab");
 
   const setGlobal = (autocomplete: boolean) => {
     if (!settings.data) return;
@@ -181,7 +182,7 @@ function TerminalPanel({ pane }: { pane: Pane }) {
       <Divider />
       <Stack direction="row" sx={{ alignItems: "center", gap: 1, px: 0.5 }}>
         <Typography variant="subtitle2" sx={{ flex: 1 }}>
-          Autocomplete
+          {tr("Autocomplete")}
         </Typography>
         <Button
           size="small"
@@ -189,7 +190,7 @@ function TerminalPanel({ pane }: { pane: Pane }) {
           endIcon={<ExpandMoreRoundedIcon />}
           onClick={(e) => setAnchor(e.currentTarget)}
           sx={{ color: on ? "text.primary" : "text.secondary", fontWeight: 500 }}
-          aria-label={`Autocomplete: ${label}`}
+          aria-label={tr("Autocomplete: {label}", { label })}
         >
           {label}
         </Button>
@@ -203,7 +204,7 @@ function TerminalPanel({ pane }: { pane: Pane }) {
               setPaneAutocomplete(pane.id, true);
             }}
           >
-            Enabled
+            {tr("Enabled")}
           </MenuItem>
           <MenuItem
             selected={!globalOff && !paused && !pane.autocomplete}
@@ -212,7 +213,7 @@ function TerminalPanel({ pane }: { pane: Pane }) {
               setPaneAutocomplete(pane.id, false);
             }}
           >
-            Off in this tab
+            {tr("Off in this tab")}
           </MenuItem>
           <MenuItem
             selected={paused}
@@ -221,7 +222,7 @@ function TerminalPanel({ pane }: { pane: Pane }) {
               pauseSuggestions(endOfToday());
             }}
           >
-            Pause until tomorrow
+            {tr("Pause until tomorrow")}
           </MenuItem>
           <MenuItem
             selected={globalOff}
@@ -230,13 +231,14 @@ function TerminalPanel({ pane }: { pane: Pane }) {
               setGlobal(false);
             }}
           >
-            Disabled everywhere
+            {tr("Disabled everywhere")}
           </MenuItem>
         </Menu>
       </Stack>
       <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
-        Offline suggestions from commands, paths, snippets and your history. Tab inserts, Esc
-        dismisses.
+        {tr(
+          "Offline suggestions from commands, paths, snippets and your history. Tab inserts, Esc dismisses.",
+        )}
       </Typography>
     </Stack>
   );
@@ -247,10 +249,10 @@ function TerminalPanel({ pane }: { pane: Pane }) {
 type SnippetAction = "run" | "paste" | "all" | "targets";
 
 const ACTION_LABEL: Record<SnippetAction, string> = {
-  run: "Run in this terminal",
-  paste: "Paste into this terminal",
-  all: "Run in all tabs",
-  targets: "Run on configured targets",
+  run: msg("Run in this terminal"),
+  paste: msg("Paste into this terminal"),
+  all: msg("Run in all tabs"),
+  targets: msg("Run on configured targets"),
 };
 
 function SnippetsPanel({ pane }: { pane: Pane }) {
@@ -277,7 +279,7 @@ function SnippetsPanel({ pane }: { pane: Pane }) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["snippets"] });
       setRemove(null);
-      snackbar.notify("Snippet deleted");
+      snackbar.notify(tr("Snippet deleted"));
     },
     onError: (e) => snackbar.error(errorMessage(e)),
   });
@@ -311,7 +313,7 @@ function SnippetsPanel({ pane }: { pane: Pane }) {
       paste: action === "paste",
     });
     if (started.targets.length === 0) {
-      snackbar.error("Nothing to run on");
+      snackbar.error(tr("Nothing to run on"));
       return;
     }
     setRunId(started.id);
@@ -328,19 +330,20 @@ function SnippetsPanel({ pane }: { pane: Pane }) {
 
   const menuItems = (s: SnippetCard): MenuAction[] => [
     {
-      label: "Run",
+      label: tr("Run"),
       icon: <PlayArrowRoundedIcon fontSize="small" />,
       disabled: !connected,
       onClick: () => trigger(s, "run"),
     },
     {
-      label: "Paste",
+      label: tr("Paste"),
       icon: <ContentPasteRoundedIcon fontSize="small" />,
       disabled: !connected,
       onClick: () => trigger(s, "paste"),
     },
     {
-      label: openCount > 1 ? `Run in all tabs (${openCount})` : "Run in all tabs",
+      label:
+        openCount > 1 ? tr("Run in all tabs ({openCount})", { openCount }) : tr("Run in all tabs"),
       icon: <TabRoundedIcon fontSize="small" />,
       disabled: openCount === 0,
       onClick: () => trigger(s, "all"),
@@ -348,26 +351,26 @@ function SnippetsPanel({ pane }: { pane: Pane }) {
     {
       label:
         s.targetHostIds.length > 0
-          ? `Run on targets (${s.targetHostIds.length})`
-          : "Run on targets",
+          ? tr("Run on targets ({length})", { length: s.targetHostIds.length })
+          : tr("Run on targets"),
       icon: <DnsRoundedIcon fontSize="small" />,
       disabled: s.targetHostIds.length === 0,
       divider: true,
       onClick: () => trigger(s, "targets"),
     },
     {
-      label: "Copy script",
+      label: tr("Copy script"),
       icon: <ContentCopyRoundedIcon fontSize="small" />,
-      onClick: () => void copyText(s.script).then(() => snackbar.notify("Copied")),
+      onClick: () => void copyText(s.script).then(() => snackbar.notify(tr("Copied"))),
     },
     {
-      label: "Open in Snippets",
+      label: tr("Open in Snippets"),
       icon: <OpenInNewRoundedIcon fontSize="small" />,
       divider: true,
       onClick: () => goToSection("snippets"),
     },
     {
-      label: "Remove",
+      label: tr("Remove"),
       icon: <DeleteOutlineRoundedIcon fontSize="small" />,
       danger: true,
       onClick: () => setRemove(s),
@@ -384,23 +387,23 @@ function SnippetsPanel({ pane }: { pane: Pane }) {
           onClick={() => requestCreate("snippet")}
           sx={{ flexShrink: 0 }}
         >
-          New snippet
+          {tr("New snippet")}
         </Button>
-        <SearchField value={query} onChange={setQuery} placeholder="Search" width="100%" />
+        <SearchField value={query} onChange={setQuery} placeholder={tr("Search")} width="100%" />
       </Stack>
       {snippets.isPending ? (
         <Loading pt={4} />
       ) : snippets.error ? (
         <EmptyState
           compact
-          title="Could not load snippets"
+          title={tr("Could not load snippets")}
           description={errorMessage(snippets.error)}
         />
       ) : items.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ px: 0.5 }}>
           {q
-            ? `Nothing matches “${query}”.`
-            : "No snippets yet — add them in the Snippets section."}
+            ? tr("Nothing matches “{query}”.", { query })
+            : tr("No snippets yet — add them in the Snippets section.")}
         </Typography>
       ) : (
         <List dense disablePadding>
@@ -438,7 +441,9 @@ function SnippetsPanel({ pane }: { pane: Pane }) {
                 }}
               />
               {s.targetHostIds.length > 0 && (
-                <Tooltip title={`${s.targetHostIds.length} configured targets`}>
+                <Tooltip
+                  title={tr("{length} configured targets", { length: s.targetHostIds.length })}
+                >
                   <Chip
                     size="small"
                     variant="outlined"
@@ -451,7 +456,7 @@ function SnippetsPanel({ pane }: { pane: Pane }) {
               <IconButton
                 className="snippet-more"
                 size="small"
-                aria-label="Snippet actions"
+                aria-label={tr("Snippet actions")}
                 onClick={(e) => {
                   e.stopPropagation();
                   setMenu({ snippet: s, anchor: e.currentTarget, position: null });
@@ -466,7 +471,7 @@ function SnippetsPanel({ pane }: { pane: Pane }) {
       )}
       {!connected && (
         <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
-          Snippets run once the terminal is connected. Right-click for more actions.
+          {tr("Snippets run once the terminal is connected. Right-click for more actions.")}
         </Typography>
       )}
       {run && (
@@ -489,7 +494,7 @@ function SnippetsPanel({ pane }: { pane: Pane }) {
                 {summarize(run)}
               </Typography>
             </Box>
-            <IconButton size="small" aria-label="Dismiss" onClick={() => setRunId(null)}>
+            <IconButton size="small" aria-label={tr("Dismiss")} onClick={() => setRunId(null)}>
               <CloseRoundedIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Box>
@@ -507,7 +512,7 @@ function SnippetsPanel({ pane }: { pane: Pane }) {
       {pending && (
         <VariablesDialog
           snippet={pending.snippet}
-          description={ACTION_LABEL[pending.action]}
+          description={tr(ACTION_LABEL[pending.action])}
           onCancel={() => setPending(null)}
           onConfirm={(vars) => {
             execute(pending.snippet, pending.action, vars);
@@ -518,14 +523,16 @@ function SnippetsPanel({ pane }: { pane: Pane }) {
       {remove && (
         <ConfirmDialog
           open
-          title="Delete snippet?"
-          confirmLabel="Delete"
+          title={tr("Delete snippet?")}
+          confirmLabel={tr("Delete")}
           danger
           busy={del.isPending}
           onCancel={() => setRemove(null)}
           onConfirm={() => del.mutate(remove.id)}
         >
-          <b>{remove.label}</b> will be removed, including its targets and host bindings.
+          {trx("{snippet} will be removed, including its targets and host bindings.", {
+            snippet: <b>{remove.label}</b>,
+          })}
         </ConfirmDialog>
       )}
     </Stack>
@@ -558,13 +565,13 @@ function HistoryPanel({ pane }: { pane: Pane }) {
         value={mode}
         onChange={(_, v: "commands" | "connections" | null) => v && setMode(v)}
       >
-        <ToggleButton value="commands">Commands</ToggleButton>
-        <ToggleButton value="connections">Connections</ToggleButton>
+        <ToggleButton value="commands">{tr("Commands")}</ToggleButton>
+        <ToggleButton value="connections">{tr("Connections")}</ToggleButton>
       </ToggleButtonGroup>
       <SearchField
         value={query}
         onChange={setQuery}
-        placeholder={mode === "commands" ? "Search commands" : "Search connections"}
+        placeholder={mode === "commands" ? tr("Search commands") : tr("Search connections")}
         width={SIDE_PANEL_WIDTH - 24}
       />
       {mode === "commands" ? (
@@ -572,13 +579,13 @@ function HistoryPanel({ pane }: { pane: Pane }) {
           query={query}
           host={filterHost && pane.hostId ? { kind: "host", id: pane.hostId } : ALL_HOSTS}
           onRun={connected ? (cmd) => runCommand(pane.id, cmd) : undefined}
-          emptyHint={filterHost ? "No commands recorded on this host yet." : undefined}
+          emptyHint={filterHost ? tr("No commands recorded on this host yet.") : undefined}
           leading={
             <Chip
               size="small"
               variant={filterHost ? "filled" : "outlined"}
               color={filterHost ? "primary" : "default"}
-              label={pane.hostId ? "This host" : "All hosts"}
+              label={pane.hostId ? tr("This host") : tr("All hosts")}
               disabled={pane.hostId === null}
               onClick={() => setThisHost((v) => !v)}
             />
@@ -615,7 +622,7 @@ function ThemesPanel({ tab, pane }: { tab: TerminalTab; pane: Pane }) {
   const inherited = pane.hostTheme ?? settings.data?.terminalTheme ?? AUTO_THEME;
   const inheritedName =
     inherited === AUTO_THEME
-      ? "Auto (follows app theme)"
+      ? tr("Auto (follows app theme)")
       : (terminalThemeById(inherited)?.name ?? inherited);
   const current = tab.themeOverride ?? inherited;
 
@@ -623,7 +630,7 @@ function ThemesPanel({ tab, pane }: { tab: TerminalTab; pane: Pane }) {
     <Stack sx={{ p: 1.5, gap: 1.5 }}>
       <Stack sx={{ gap: 1 }}>
         <Typography variant="subtitle2" sx={{ color: "primary.main", px: 0.5 }}>
-          Font
+          {tr("Font")}
         </Typography>
         <FontPicker
           value={s?.terminalFontFamily ?? ""}
@@ -632,11 +639,11 @@ function ThemesPanel({ tab, pane }: { tab: TerminalTab; pane: Pane }) {
         />
         <Stack direction="row" sx={{ alignItems: "center", gap: 0.5, px: 0.5 }}>
           <Typography variant="body2" sx={{ flex: 1 }}>
-            Text Size
+            {tr("Text Size")}
           </Typography>
           <IconButton
             size="small"
-            aria-label="Smaller text"
+            aria-label={tr("Smaller text")}
             disabled={!s || size <= TEXT_SIZE_MIN}
             onClick={() => updateText({ terminalFontSize: size - 1 })}
             sx={{ width: 32, height: 32, borderRadius: 1.5, bgcolor: "surface.highest" }}
@@ -654,13 +661,13 @@ function ThemesPanel({ tab, pane }: { tab: TerminalTab; pane: Pane }) {
               fontSize: 13,
               fontVariantNumeric: "tabular-nums",
             }}
-            aria-label="Text size"
+            aria-label={tr("Text size")}
           >
             {size}
           </Box>
           <IconButton
             size="small"
-            aria-label="Larger text"
+            aria-label={tr("Larger text")}
             disabled={!s || size >= TEXT_SIZE_MAX}
             onClick={() => updateText({ terminalFontSize: size + 1 })}
             sx={{ width: 32, height: 32, borderRadius: 1.5, bgcolor: "surface.highest" }}
@@ -672,7 +679,7 @@ function ThemesPanel({ tab, pane }: { tab: TerminalTab; pane: Pane }) {
       <Divider />
       <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 1 }}>
         <Typography variant="subtitle2" sx={{ px: 0.5 }}>
-          Themes
+          {tr("Themes")}
         </Typography>
         <ToggleButtonGroup
           exclusive
@@ -680,9 +687,9 @@ function ThemesPanel({ tab, pane }: { tab: TerminalTab; pane: Pane }) {
           value={filter}
           onChange={(_, v: "all" | "dark" | "light" | null) => v && setFilter(v)}
         >
-          <ToggleButton value="all">All</ToggleButton>
-          <ToggleButton value="dark">Dark</ToggleButton>
-          <ToggleButton value="light">Light</ToggleButton>
+          <ToggleButton value="all">{tr("All")}</ToggleButton>
+          <ToggleButton value="dark">{tr("Dark")}</ToggleButton>
+          <ToggleButton value="light">{tr("Light")}</ToggleButton>
         </ToggleButtonGroup>
         <Button
           size="small"
@@ -690,15 +697,22 @@ function ThemesPanel({ tab, pane }: { tab: TerminalTab; pane: Pane }) {
           disabled={tab.themeOverride === null}
           onClick={() => setTabTheme(tab.id, null)}
         >
-          Reset
+          {tr("Reset")}
         </Button>
       </Stack>
       <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
-        Applies to this tab only. Default for this session:{" "}
-        <Box component="span" sx={{ color: "text.primary" }}>
-          {inheritedName}
-        </Box>
-        {pane.hostTheme ? " (from host)" : ""}.
+        {trx(
+          pane.hostTheme
+            ? "Applies to this tab only. Default for this session: {theme} (from host)."
+            : "Applies to this tab only. Default for this session: {theme}.",
+          {
+            theme: (
+              <Box component="span" sx={{ color: "text.primary" }}>
+                {inheritedName}
+              </Box>
+            ),
+          },
+        )}
       </Typography>
       <Stack spacing={0.25} sx={{ mx: -0.75 }}>
         {list.map((t) => (
@@ -721,81 +735,81 @@ function ThemesPanel({ tab, pane }: { tab: TerminalTab; pane: Pane }) {
 function InfoPanel({ pane, tab }: { pane: Pane; tab: TerminalTab }) {
   const a = pane.algorithms;
   const rows: [string, React.ReactNode][] = [
-    ["Name", pane.title],
-    ["Target", <Mono key="t">{pane.subtitle || "—"}</Mono>],
-    ["Protocol", pane.protocol ? pane.protocol.toUpperCase() : "—"],
-    ["State", <StateChip key="s" status={pane.status} message={pane.message} />],
-    ["Started", pane.startedAt ? new Date(pane.startedAt).toLocaleString() : "—"],
+    [tr("Name"), pane.title],
+    [tr("Target"), <Mono key="t">{pane.subtitle || "—"}</Mono>],
+    [tr("Protocol"), pane.protocol ? pane.protocol.toUpperCase() : "—"],
+    [tr("State"), <StateChip key="s" status={pane.status} message={pane.message} />],
+    [tr("Started"), pane.startedAt ? new Date(pane.startedAt).toLocaleString() : "—"],
   ];
   if (pane.via.length > 0) {
-    rows.push(["Via", <Mono key="v">{pane.via.join(" → ")}</Mono>]);
+    rows.push([tr("Via"), <Mono key="v">{pane.via.join(" → ")}</Mono>]);
   }
   if (tab.paneIds.length > 1) {
-    rows.push(["Panes in tab", String(tab.paneIds.length)]);
+    rows.push([tr("Panes in tab"), String(tab.paneIds.length)]);
   }
-  rows.push(["Zoom", `${Math.round(tab.zoom * 100)}%`]);
+  rows.push([tr("Zoom"), `${Math.round(tab.zoom * 100)}%`]);
 
   const shellRows: [string, React.ReactNode][] = [
-    ["Shell", pane.shell ? <Mono key="sh">{pane.shell}</Mono> : "unknown"],
+    [tr("Shell"), pane.shell ? <Mono key="sh">{pane.shell}</Mono> : tr("unknown")],
     [
-      "Integration",
+      tr("Integration"),
       pane.integration ? (
         <Chip
           key="i"
           size="small"
           color="success"
           variant="outlined"
-          label="active"
+          label={tr("active")}
           sx={{ height: 20 }}
         />
       ) : pane.shell && ["bash", "zsh", "fish"].includes(pane.shell) ? (
-        "waiting for prompt"
+        tr("waiting for prompt")
       ) : (
-        "not available"
+        tr("not available")
       ),
     ],
-    ["Directory", pane.cwd ? <Mono key="cwd">{pane.cwd}</Mono> : "—"],
-    ["Last exit", pane.lastExit === null ? "—" : String(pane.lastExit)],
-    ["Suggestions", suggestionsState(pane)],
+    [tr("Directory"), pane.cwd ? <Mono key="cwd">{pane.cwd}</Mono> : "—"],
+    [tr("Last exit"), pane.lastExit === null ? "—" : String(pane.lastExit)],
+    [tr("Suggestions"), suggestionsState(pane)],
   ];
 
   return (
     <Stack sx={{ p: 1.5, gap: 1.5 }}>
-      <Section title="Session">
+      <Section title={tr("Session")}>
         {rows.map(([k, v]) => (
           <Row key={k} label={k} value={v} />
         ))}
       </Section>
-      <Section title="Shell">
+      <Section title={tr("Shell")}>
         {shellRows.map(([k, v]) => (
           <Row key={k} label={k} value={v} />
         ))}
       </Section>
       {a && (
         <Section
-          title="Encryption"
+          title={tr("Encryption")}
           action={
             isPostQuantumKex(a) ? (
-              <Chip size="small" color="primary" variant="outlined" label="Quantum-safe" />
+              <Chip size="small" color="primary" variant="outlined" label={tr("Quantum-safe")} />
             ) : null
           }
         >
-          <Row label="Key exchange" value={<Mono>{a.kex}</Mono>} />
-          <Row label="Host key" value={<Mono>{a.hostKey}</Mono>} />
-          <Row label="Cipher" value={<Mono>{a.cipher}</Mono>} />
+          <Row label={tr("Key exchange")} value={<Mono>{a.kex}</Mono>} />
+          <Row label={tr("Host key")} value={<Mono>{a.hostKey}</Mono>} />
+          <Row label={tr("Cipher")} value={<Mono>{a.cipher}</Mono>} />
           <Row label="MAC" value={<Mono>{a.mac}</Mono>} />
         </Section>
       )}
       <Typography variant="caption" color="text.secondary" sx={{ px: 0.5 }}>
-        Credentials and keys are never shown here.
+        {tr("Credentials and keys are never shown here.")}
       </Typography>
     </Stack>
   );
 }
 
 function suggestionsState(pane: Pane): string {
-  if (!pane.autocomplete) return "off for this session";
-  return autocompleteOn(pane.id) ? "on" : "paused";
+  if (!pane.autocomplete) return tr("off for this session");
+  return autocompleteOn(pane.id) ? tr("on") : tr("paused");
 }
 
 function Section({

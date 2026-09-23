@@ -33,6 +33,7 @@ import {
   useState,
 } from "react";
 import { monoFontFamily, sizes } from "@/theme/theme";
+import { tr } from "@/i18n";
 
 /** Normalises an optional `sx` prop so it can be spread after base styles. */
 type SxItem = Exclude<SxProps<Theme>, readonly unknown[]>;
@@ -580,7 +581,7 @@ export function SplitButton({
         <Button
           variant={variant}
           size="small"
-          aria-label="More options"
+          aria-label={tr("More options")}
           onClick={(e) => setAnchor(e.currentTarget)}
           sx={{ px: 0.5, minWidth: 28 }}
         >
@@ -771,7 +772,7 @@ export function InlineName({
       onKeyDown={onKeyDown}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
-      inputProps={{ "aria-label": "Name", maxLength: 120 }}
+      inputProps={{ "aria-label": tr("Name"), maxLength: 120 }}
       sx={[
         {
           font: "inherit",
@@ -871,7 +872,7 @@ export function SidePanel({
         }}
       >
         {onBack && (
-          <IconButton onClick={onBack} aria-label="Back" sx={{ ml: -1 }}>
+          <IconButton onClick={onBack} aria-label={tr("Back")} sx={{ ml: -1 }}>
             <ArrowBackRoundedIcon fontSize="small" />
           </IconButton>
         )}
@@ -887,7 +888,7 @@ export function SidePanel({
         </Box>
         {actions}
         {onClose && (
-          <IconButton onClick={onClose} aria-label="Close panel" sx={{ mr: -1 }}>
+          <IconButton onClick={onClose} aria-label={tr("Close panel")} sx={{ mr: -1 }}>
             <CloseRoundedIcon fontSize="small" />
           </IconButton>
         )}

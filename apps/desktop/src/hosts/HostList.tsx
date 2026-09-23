@@ -15,6 +15,7 @@ import { PROTOCOL_NAME } from "./ConnectSplit";
 import { HostAvatar } from "./HostAvatar";
 import { GroupTile, groupSubtitle, SelectableTile, type HostCollectionProps } from "./HostGrid";
 import { PresenceStack } from "./PresenceViews";
+import { tr } from "@/i18n";
 
 const rowSx = {
   "& td": { py: 0.5 },
@@ -49,13 +50,13 @@ export function HostList(p: HostCollectionProps) {
       <TableHead>
         <TableRow>
           <TableCell sx={{ width: 48 }} />
-          <TableCell>Name</TableCell>
-          <TableCell>Address</TableCell>
-          <TableCell>Protocol</TableCell>
-          <TableCell>User</TableCell>
-          <TableCell align="right">Port</TableCell>
-          <TableCell>Tags</TableCell>
-          <TableCell sx={{ width: 130, whiteSpace: "nowrap" }}>Last connected</TableCell>
+          <TableCell>{tr("Name")}</TableCell>
+          <TableCell>{tr("Address")}</TableCell>
+          <TableCell>{tr("Protocol")}</TableCell>
+          <TableCell>{tr("User")}</TableCell>
+          <TableCell align="right">{tr("Port")}</TableCell>
+          <TableCell>{tr("Tags")}</TableCell>
+          <TableCell sx={{ width: 130, whiteSpace: "nowrap" }}>{tr("Last connected")}</TableCell>
           <TableCell sx={{ width: 40 }} />
         </TableRow>
       </TableHead>
@@ -85,7 +86,7 @@ export function HostList(p: HostCollectionProps) {
             <TableCell align="right">
               <IconButton
                 className="row-actions"
-                aria-label="Group options"
+                aria-label={tr("Group options")}
                 onClick={(e) => {
                   e.stopPropagation();
                   p.onGroupContext(g, e);
@@ -177,7 +178,7 @@ export function HostList(p: HostCollectionProps) {
               <TableCell align="right">
                 <IconButton
                   className="row-actions"
-                  aria-label="Host options"
+                  aria-label={tr("Host options")}
                   onClick={(e) => {
                     e.stopPropagation();
                     p.onHostContext(h, e);

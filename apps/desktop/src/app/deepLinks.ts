@@ -7,6 +7,7 @@ import { parseLink, quickLabel } from "@/hosts/links";
 import { handleSsoLink } from "@/account/sso";
 import { isSsoLink, parseSsoLink } from "@/account/ssoLink";
 import { openTerminal } from "@/terminal/store";
+import { tr } from "@/i18n";
 
 /** URLs already handled — the launch batch can be reported twice on some platforms. */
 const seen = new Set<string>();
@@ -20,7 +21,7 @@ async function openLink(url: string) {
     const win = getCurrentWindow();
     void win.unminimize().then(() => win.setFocus());
     if (!parseSsoLink(url)) {
-      toast("Ignored a malformed sign-in link", "warning");
+      toast(tr("Ignored a malformed sign-in link"), "warning");
       return;
     }
     try {
@@ -32,25 +33,25 @@ async function openLink(url: string) {
   }
   const link = parseLink(url);
   if (link.kind === "unsupported") {
-    toast(`Can't open link: ${url}`, "warning");
+    toast(tr("Can't open link: {url}", { url }), "warning");
     return;
   }
   const win = getCurrentWindow();
   void win.unminimize().then(() => win.setFocus());
   if (link.kind === "quick") {
     openTerminal(link.target);
-    toast(`Connecting to ${quickLabel(link.target)}`, "info");
+    toast(tr("Connecting to {quickLabel}", { quickLabel: quickLabel(link.target) }), "info");
     return;
   }
   if (link.kind === "live") {
     openTerminal({ kind: "live", link: link.link });
-    toast("Joining multiplayer session", "info");
+    toast(tr("Joining multiplayer session"), "info");
     return;
   }
   try {
     const host = (await hostsList(null)).find((h) => h.id === link.hostId);
     if (!host) {
-      toast("This link points to a host that isn't in your vaults", "warning");
+      toast(tr("This link points to a host that isn't in your vaults"), "warning");
       return;
     }
     openTerminal({ kind: "host", host_id: host.id, vault_id: host.vaultId });

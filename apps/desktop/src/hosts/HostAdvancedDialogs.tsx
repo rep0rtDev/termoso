@@ -20,6 +20,7 @@ import { useSnackbar } from "@/components/Snackbar";
 import { useHosts, useIdentities, useSaveHostChain, useSaveProxy } from "@/ipc/hooks";
 import { errorMessage, type HostChainData, type ProxyData, type Uuid } from "@/ipc/types";
 import { monoFontFamily } from "@/theme/theme";
+import { tr } from "@/i18n";
 
 /** Create a SOCKS/HTTP proxy entity and hand its id back. */
 export function ProxyDialog({
@@ -59,10 +60,10 @@ export function ProxyDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>New proxy</DialogTitle>
+      <DialogTitle>{tr("New proxy")}</DialogTitle>
       <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
         <Box sx={{ display: "flex", gap: 1.5 }}>
-          <Field label="Type" sx={{ width: 130, flexShrink: 0 }}>
+          <Field label={tr("Type")} sx={{ width: 130, flexShrink: 0 }}>
             <TextField
               select
               value={data.kind}
@@ -73,7 +74,7 @@ export function ProxyDialog({
               <MenuItem value="http">HTTP</MenuItem>
             </TextField>
           </Field>
-          <Field label="Host" sx={{ flex: 1 }}>
+          <Field label={tr("Host")} sx={{ flex: 1 }}>
             <TextField
               autoFocus
               value={data.host}
@@ -82,7 +83,7 @@ export function ProxyDialog({
               slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
             />
           </Field>
-          <Field label="Port" sx={{ width: 96, flexShrink: 0 }}>
+          <Field label={tr("Port")} sx={{ width: 96, flexShrink: 0 }}>
             <TextField
               type="number"
               value={data.port}
@@ -91,7 +92,10 @@ export function ProxyDialog({
             />
           </Field>
         </Box>
-        <Field label="Credentials" hint="Optional identity used to authenticate with the proxy.">
+        <Field
+          label={tr("Credentials")}
+          hint={tr("Optional identity used to authenticate with the proxy.")}
+        >
           <TextField
             select
             value={data.identity_id ?? ""}
@@ -100,7 +104,7 @@ export function ProxyDialog({
             }
           >
             <MenuItem value="">
-              <em>None</em>
+              <em>{tr("None")}</em>
             </MenuItem>
             {(identities.data ?? []).map((i) => (
               <MenuItem key={i.id} value={i.id}>
@@ -112,10 +116,10 @@ export function ProxyDialog({
       </DialogContent>
       <DialogActions>
         <Button color="inherit" onClick={onClose}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button variant="contained" disabled={!valid || save.isPending} onClick={submit}>
-          Create
+          {tr("Create")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -148,7 +152,7 @@ export function ChainDialog({
 
   const submit = () => {
     const data: HostChainData = {
-      label: label.trim() || (candidates.find((h) => h.id === ids[0])?.label ?? "Chain"),
+      label: label.trim() || (candidates.find((h) => h.id === ids[0])?.label ?? tr("Chain")),
       host_ids: ids,
     };
     save.mutate(
@@ -165,23 +169,23 @@ export function ChainDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>New host chain</DialogTitle>
+      <DialogTitle>{tr("New host chain")}</DialogTitle>
       <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-        <Field label="Label">
+        <Field label={tr("Label")}>
           <TextField
             autoFocus
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="Bastion → internal"
+            placeholder={tr("Bastion → internal")}
           />
         </Field>
         <Field
-          label="Jump hosts"
-          hint="Connections go through the selected hosts in the order they are ticked."
+          label={tr("Jump hosts")}
+          hint={tr("Connections go through the selected hosts in the order they are ticked.")}
         >
           {candidates.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              Add another host first — a chain needs at least one intermediate host.
+              {tr("Add another host first — a chain needs at least one intermediate host.")}
             </Typography>
           ) : (
             <List
@@ -224,10 +228,10 @@ export function ChainDialog({
       </DialogContent>
       <DialogActions>
         <Button color="inherit" onClick={onClose}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button variant="contained" disabled={ids.length === 0 || save.isPending} onClick={submit}>
-          Create
+          {tr("Create")}
         </Button>
       </DialogActions>
     </Dialog>

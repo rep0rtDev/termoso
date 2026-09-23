@@ -19,6 +19,7 @@ import { ConnectionView } from "./ConnectionView";
 import { usePaneTheme } from "./useTerminalTheme";
 import { dismissControlHint, useMultiplayer } from "./multiplayer";
 import type { TerminalTheme } from "./themes";
+import { tr } from "@/i18n";
 
 interface Props {
   paneId: Uuid;
@@ -115,7 +116,7 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
             color={pane.status === "error" ? "error" : "inherit"}
             sx={{ opacity: pane.status === "error" ? 1 : 0.8 }}
           >
-            {pane.message ?? "Session ended"}
+            {pane.message ?? tr("Session ended")}
           </Typography>
           <Stack direction="row" spacing={1}>
             {pane.target.kind !== "live" && (
@@ -125,7 +126,7 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
                 startIcon={<ReplayRoundedIcon />}
                 onClick={() => void reconnectPane(paneId)}
               >
-                Reconnect
+                {tr("Reconnect")}
               </Button>
             )}
             <Button
@@ -134,7 +135,7 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
               startIcon={<CloseRoundedIcon />}
               onClick={() => void closePane(paneId)}
             >
-              Close
+              {tr("Close")}
             </Button>
           </Stack>
         </Overlay>
@@ -176,7 +177,7 @@ function RemoteControlHint({ paneId }: { paneId: Uuid }) {
     >
       <KeyboardAltRoundedIcon sx={{ fontSize: 16 }} />
       <Typography variant="body2" sx={{ fontWeight: 500 }}>
-        You&apos;ve got remote control. Start typing.
+        {tr("You've got remote control. Start typing.")}
       </Typography>
     </Stack>
   );
@@ -214,7 +215,12 @@ function Overlay({
 }
 
 export function algorithmsSummary(a: SshAlgorithms): string {
-  return `KEX ${a.kex}\nHost key ${a.hostKey}\nCipher ${a.cipher}\nMAC ${a.mac}`;
+  return tr("KEX {kex}\nHost key {hostKey}\nCipher {cipher}\nMAC {mac}", {
+    kex: a.kex,
+    hostKey: a.hostKey,
+    cipher: a.cipher,
+    mac: a.mac,
+  });
 }
 
 /** Shield shown when the session negotiated a post-quantum key exchange. */
@@ -224,7 +230,7 @@ export function PqBadge({ algorithms, size }: { algorithms: SshAlgorithms | null
     <Tooltip
       title={
         <Box sx={{ whiteSpace: "pre-line" }}>
-          {"Quantum-safe key exchange\n" + algorithmsSummary(algorithms)}
+          {tr("Quantum-safe key exchange") + "\n" + algorithmsSummary(algorithms)}
         </Box>
       }
     >

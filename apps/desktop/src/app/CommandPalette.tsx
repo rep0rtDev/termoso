@@ -22,6 +22,7 @@ import { sizes } from "@/theme/theme";
 import { Keys } from "./Keys";
 import { bindingsOf, useShortcuts } from "./shortcuts";
 import { closePalette, usePalette, type PaletteMode } from "./commands";
+import { tr, msg } from "@/i18n";
 
 interface Item {
   key: string;
@@ -70,8 +71,8 @@ function rank(items: Item[], q: string): Item[] {
 }
 
 const PLACEHOLDER: Record<PaletteMode, string> = {
-  commands: "Type a command…",
-  jump: "Jump to a host, tab or workspace…  (type > for commands)",
+  commands: msg("Type a command…"),
+  jump: msg("Jump to a host, tab or workspace…  (type > for commands)"),
 };
 
 /**
@@ -173,10 +174,10 @@ function PaletteDialog({ mode: initial }: { mode: PaletteMode }) {
           inputRef={inputRef}
           fullWidth
           value={query}
-          placeholder={PLACEHOLDER[initial]}
+          placeholder={tr(PLACEHOLDER[initial])}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKey}
-          inputProps={{ "aria-label": PLACEHOLDER[initial], spellCheck: false }}
+          inputProps={{ "aria-label": tr(PLACEHOLDER[initial]), spellCheck: false }}
           sx={{ fontSize: 14, "& input": { p: 0, height: "100%" } }}
         />
       </Box>
@@ -187,11 +188,11 @@ function PaletteDialog({ mode: initial }: { mode: PaletteMode }) {
             color="text.secondary"
             sx={{ px: 2, py: 2.5, textAlign: "center" }}
           >
-            {mode === "commands" ? "No matching commands" : "Nothing matches"}
+            {mode === "commands" ? tr("No matching commands") : tr("Nothing matches")}
           </Typography>
         )}
         {items.map((it, i) => {
-          const header = it.group !== items[i - 1]?.group ? it.group : null;
+          const header = it.group !== items[i - 1]?.group ? tr(it.group) : null;
           return (
             <Box key={it.key}>
               {header && (
@@ -285,8 +286,8 @@ function useCommandItems(): Item[] {
         .map((c) => ({
           key: c.id,
           group: c.group,
-          title: c.title,
-          keywords: c.keywords,
+          title: tr(c.title),
+          keywords: `${c.title} ${c.keywords ?? ""}`,
           icon: <GroupIcon group={c.group} />,
           keys: bindingsOf(c, overrides),
           run: c.run,
@@ -335,9 +336,9 @@ function useJumpItems(q: string): Item[] {
       const extra = t.paneIds.length > 1 ? ` (+${t.paneIds.length - 1})` : "";
       out.push({
         key: `tab:${t.id}`,
-        group: "Open tabs",
+        group: tr("Open tabs"),
         title: t.name === null ? `${title}${extra}` : title,
-        subtitle: t.name !== null ? "Workspace" : pane?.subtitle,
+        subtitle: t.name !== null ? tr("Workspace") : pane?.subtitle,
         icon: host ? (
           <HostAvatar host={host} size={sizes.tileSmall} />
         ) : (
@@ -354,7 +355,7 @@ function useJumpItems(q: string): Item[] {
         key: `tpl:${tpl.id}`,
         group: "Workspaces",
         title: tpl.name,
-        subtitle: "Workspace template",
+        subtitle: tr("Workspace template"),
         icon: <DashboardCustomizeRoundedIcon sx={{ fontSize: 18 }} />,
         run: () => void openTemplate(tpl.id),
       });
@@ -370,7 +371,7 @@ function useJumpItems(q: string): Item[] {
         key: `recent:${it.data.target}`,
         group: "Recent",
         title: quickLabel(target),
-        subtitle: "Quick connect",
+        subtitle: tr("Quick connect"),
         icon: <HistoryRoundedIcon sx={{ fontSize: 18 }} />,
         run: () => openTerminal(target),
       });
@@ -382,7 +383,8 @@ function useJumpItems(q: string): Item[] {
         key: "quick",
         group: "Connect",
         title: quickLabel(quick),
-        subtitle: quick.protocol === "telnet" ? "Quick connect · Telnet" : "Quick connect · SSH",
+        subtitle:
+          quick.protocol === "telnet" ? tr("Quick connect · Telnet") : tr("Quick connect · SSH"),
         icon: <BoltRoundedIcon sx={{ fontSize: 18 }} />,
         run: () => openTerminal(quick),
       });
@@ -390,8 +392,8 @@ function useJumpItems(q: string): Item[] {
     out.push({
       key: "local",
       group: "Local",
-      title: "Local terminal",
-      subtitle: "New shell on this machine",
+      title: tr("Local terminal"),
+      subtitle: tr("New shell on this machine"),
       icon: <TerminalRoundedIcon sx={{ fontSize: 18 }} />,
       run: () => openTerminal({ kind: "local" }),
     });

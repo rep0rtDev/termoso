@@ -6,6 +6,7 @@ import { useAccount, useHosts, useTeamInvites, useTeams } from "@/ipc/hooks";
 import type { LocalVault, Team } from "@/ipc/types";
 import { goToSettingsWith } from "@/app/navigation";
 import { ShareDataDialog } from "./ShareDataDialog";
+import { tr } from "@/i18n";
 
 const HIDE_KEY = "termoso.teamSteps.hidden";
 
@@ -48,34 +49,34 @@ function Steps({ team, vaults, onHide }: { team: Team; vaults: LocalVault[]; onH
     <Box sx={{ mb: 2.5 }}>
       <Box sx={{ display: "flex", alignItems: "center", mb: 1.25 }}>
         <Typography variant="body2" sx={{ fontWeight: 600, flex: 1 }}>
-          Team steps{" "}
+          {tr("Team steps")}{" "}
           <Box component="span" sx={{ color: "text.secondary", fontWeight: 400 }}>
-            - {done} of 3 done
+            - {tr("{done} of 3 done", { done })}
           </Box>
         </Typography>
         <Button size="small" color="inherit" onClick={onHide} sx={{ opacity: 0.7 }}>
-          Hide
+          {tr("Hide")}
         </Button>
       </Box>
       <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 2.5 }}>
         <StepCard
-          title="Enable team vault"
-          text="Set up a team vault to share data easily and securely."
+          title={tr("Enable team vault")}
+          text={tr("Set up a team vault to share data easily and securely.")}
           done={vaultDone}
           active={current === 0}
           onClick={() => goToSettingsWith({ kind: "newVault", teamId: team.id })}
         />
         <StepCard
-          title="Share data"
-          text="Select the information you want your team to access."
+          title={tr("Share data")}
+          text={tr("Select the information you want your team to access.")}
           done={shareDone}
           active={current === 1}
           disabled={!teamVault?.unlocked || !personal}
           onClick={() => setShare(true)}
         />
         <StepCard
-          title="Invite team members"
-          text="Grant access to the shared vault to your teammates."
+          title={tr("Invite team members")}
+          text={tr("Grant access to the shared vault to your teammates.")}
           done={inviteDone}
           active={current === 2}
           onClick={() => goToSettingsWith({ kind: "invite" })}

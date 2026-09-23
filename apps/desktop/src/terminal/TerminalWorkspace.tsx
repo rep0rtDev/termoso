@@ -11,6 +11,7 @@ import { HostAvatar } from "@/hosts/HostAvatar";
 import { IconTile } from "@/components/ui";
 import { useHosts } from "@/ipc/hooks";
 import type { Uuid } from "@/ipc/types";
+import { tr } from "@/i18n";
 
 interface Props {
   tabId: string;
@@ -59,7 +60,7 @@ function SessionList({ paneIds, activePaneId }: { paneIds: Uuid[]; activePaneId:
   return (
     <Box
       component="nav"
-      aria-label="Sessions"
+      aria-label={tr("Sessions")}
       sx={{
         width: 224,
         flexShrink: 0,
@@ -88,7 +89,7 @@ function SessionRow({ paneId, active }: { paneId: Uuid; active: boolean }) {
   const host = pane.hostId ? hosts.data?.find((h) => h.id === pane.hostId) : undefined;
   const subtitle =
     pane.protocol === "local"
-      ? "Local terminal"
+      ? tr("Local terminal")
       : (host?.address ?? (pane.target.kind === "quick" ? pane.target.address : ""));
   return (
     <Box
@@ -131,7 +132,7 @@ function SessionRow({ paneId, active }: { paneId: Uuid; active: boolean }) {
         </Typography>
       </Box>
       <StatusDot status={pane.status} />
-      <Tooltip title="Close session">
+      <Tooltip title={tr("Close session")}>
         <IconButton
           className="row-close"
           onClick={(e) => {
@@ -139,7 +140,7 @@ function SessionRow({ paneId, active }: { paneId: Uuid; active: boolean }) {
             void closePane(paneId);
           }}
           sx={{ width: 22, height: 22, opacity: 0, ml: 0.25 }}
-          aria-label={`Close ${pane.title}`}
+          aria-label={tr("Close {title}", { title: pane.title })}
         >
           <CloseRoundedIcon sx={{ fontSize: 14 }} />
         </IconButton>

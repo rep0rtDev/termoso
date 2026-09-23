@@ -9,6 +9,7 @@ import {
 } from "@/ipc/types";
 import { createStore, omit, useStore } from "@/lib/store";
 import { setPaneFixedSize, terminalStore, writeSystemLine } from "./store";
+import { tr } from "@/i18n";
 
 /** Shared (host) and watched (viewer) panes, by pane id. */
 export interface MultiplayerState {
@@ -67,7 +68,12 @@ export async function setControl(paneId: Uuid, userId: Uuid, enabled: boolean) {
   await ipc.multiplayerSetControl(paneId, userId, enabled);
   const who = multiplayerStore.get().shares[paneId]?.participants.find((p) => p.userId === userId);
   const name = who?.displayName ?? who?.email ?? "Participant";
-  toast(enabled ? `${name} has remote control` : `Remote control taken back from ${name}`, "info");
+  toast(
+    enabled
+      ? tr("{name} has remote control", { name })
+      : tr("Remote control taken back from {name}", { name }),
+    "info",
+  );
   update((s) => {
     const share = s.shares[paneId];
     if (!share) return s;
@@ -97,12 +103,12 @@ export async function viewerJoined(paneId: Uuid) {
     if (info) {
       put(info);
       const host = info.participants.find((p) => p.isHost);
-      const who = host?.displayName ?? host?.email ?? "the host";
+      const who = host?.displayName ?? host?.email ?? tr("the host");
       writeSystemLine(
         paneId,
         info.canWrite
-          ? `Multiplayer: you are watching ${who}'s terminal`
-          : `Multiplayer: you are watching ${who}'s terminal (view only)`,
+          ? tr("Multiplayer: you are watching {who}'s terminal", { who })
+          : tr("Multiplayer: you are watching {who}'s terminal (view only)", { who }),
       );
     }
   } catch (e) {
@@ -121,7 +127,7 @@ function onLiveEvent(ev: LiveEvent) {
       if (share) put({ ...share, canWrite: ev.canWrite });
       if (share?.role === "viewer") {
         update((st) => ({ ...st, controlHint: ev.canWrite ? ev.id : null }));
-        if (!ev.canWrite) writeSystemLine(ev.id, "Multiplayer: remote control revoked");
+        if (!ev.canWrite) writeSystemLine(ev.id, tr("Multiplayer: remote control revoked"));
       }
       break;
     case "resize":
@@ -140,7 +146,7 @@ function onLiveEvent(ev: LiveEvent) {
           toast(`Multiplayer for ${pane?.title ?? "terminal"} ended: ${ev.message}`, "warning");
         }
       } else if (role === "viewer") {
-        writeSystemLine(ev.id, `Multiplayer: ${ev.message}`);
+        writeSystemLine(ev.id, tr("Multiplayer: {message}", { message: ev.message }));
       }
       break;
     }

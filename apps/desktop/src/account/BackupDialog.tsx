@@ -31,28 +31,29 @@ import {
 import { vaultHint, vaultIcon } from "@/app/vault";
 import { sizes } from "@/theme/theme";
 import { invalidateAll } from "./SignIn";
+import { tr, trn, trx, msg } from "@/i18n";
 
 export type BackupMode = "export" | { kind: "restore"; path: string };
 
 const MIN_PASSWORD = 8;
 const EXT = "termoso";
 
-const KIND_LABEL: Record<string, string> = {
-  host: "hosts",
-  group: "groups",
-  identity: "identities",
-  ssh_key: "keys",
-  ssh_certificate: "certificates",
-  snippet: "snippets",
-  snippet_package: "packages",
-  pf_rule: "forwarding rules",
-  known_host: "known hosts",
-  proxy: "proxies",
-  tag: "tags",
-  host_chain: "chains",
-  ssh_config: "SSH configs",
-  telnet_config: "Telnet configs",
-  webdav_config: "WebDAV configs",
+const KIND_LABEL: Record<string, [string, string]> = {
+  host: [msg("{count} host"), msg("{count} hosts")],
+  group: [msg("{count} group"), msg("{count} groups")],
+  identity: [msg("{count} identity"), msg("{count} identities")],
+  ssh_key: [msg("{count} key"), msg("{count} keys")],
+  ssh_certificate: [msg("{count} certificate"), msg("{count} certificates")],
+  snippet: [msg("{count} snippet"), msg("{count} snippets")],
+  snippet_package: [msg("{count} package"), msg("{count} packages")],
+  pf_rule: [msg("{count} forwarding rule"), msg("{count} forwarding rules")],
+  known_host: [msg("{count} known host"), msg("{count} known hosts")],
+  proxy: [msg("{count} proxy"), msg("{count} proxies")],
+  tag: [msg("{count} tag"), msg("{count} tags")],
+  host_chain: [msg("{count} chain"), msg("{count} chains")],
+  ssh_config: [msg("{count} SSH config"), msg("{count} SSH configs")],
+  telnet_config: [msg("{count} Telnet config"), msg("{count} Telnet configs")],
+  webdav_config: [msg("{count} WebDAV config"), msg("{count} WebDAV configs")],
 };
 
 function countsLine(v: BackupVaultSummary) {
@@ -60,8 +61,11 @@ function countsLine(v: BackupVaultSummary) {
     .filter(([k]) => k in KIND_LABEL)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
-    .map(([k, n]) => `${n} ${KIND_LABEL[k]}`);
-  return parts.length ? parts.join(" · ") : `${v.entities} items`;
+    .map(([k, n]) => {
+      const [one, other] = KIND_LABEL[k] ?? ["{count}", "{count}"];
+      return trn(n, one, other);
+    });
+  return parts.length ? parts.join(" · ") : trn(v.entities, "{count} item", "{count} items");
 }
 
 function fileStamp() {
@@ -73,7 +77,7 @@ function fileStamp() {
 /** Native picker for a `.termoso` file; `null` when the user cancels. */
 export async function pickBackupFile(): Promise<string | null> {
   const path = await openFile({
-    title: "Open Termoso backup",
+    title: tr("Open Termoso backup"),
     multiple: false,
     filters: [{ name: "Termoso backup", extensions: [EXT] }],
   });
@@ -111,7 +115,10 @@ function PasswordFields({
   const mismatch = withConfirm && confirm.length > 0 && confirm !== password;
   return (
     <Stack spacing={1.25}>
-      <Field label="Backup password" hint={`At least ${MIN_PASSWORD} characters.`}>
+      <Field
+        label={tr("Backup password")}
+        hint={tr("At least {MIN_PASSWORD} characters.", { MIN_PASSWORD })}
+      >
         <TextField
           type="password"
           value={password}
@@ -123,14 +130,14 @@ function PasswordFields({
         />
       </Field>
       {withConfirm && (
-        <Field label="Repeat password">
+        <Field label={tr("Repeat password")}>
           <TextField
             type="password"
             value={confirm}
             onChange={(e) => onConfirm(e.target.value)}
             autoComplete="new-password"
             error={mismatch}
-            helperText={mismatch ? "Passwords do not match" : undefined}
+            helperText={mismatch ? tr("Passwords do not match") : undefined}
             fullWidth
           />
         </Field>
@@ -190,7 +197,7 @@ function ExportBody({ onClose }: { onClose: () => void }) {
 
   const run = async () => {
     const path = await saveFile({
-      title: "Save encrypted backup",
+      title: tr("Save encrypted backup"),
       defaultPath: `termoso-backup-${fileStamp()}.${EXT}`,
       filters: [{ name: "Termoso backup", extensions: [EXT] }],
     });
@@ -208,18 +215,19 @@ function ExportBody({ onClose }: { onClose: () => void }) {
   if (done) {
     return (
       <>
-        <DialogTitle>Backup saved</DialogTitle>
+        <DialogTitle>{tr("Backup saved")}</DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
           <Alert severity="success" variant="outlined">
-            Encrypted with your password. Nothing in the file is readable without it — keep the
-            password somewhere safe, it cannot be recovered.
+            {tr(
+              "Encrypted with your password. Nothing in the file is readable without it — keep the password somewhere safe, it cannot be recovered.",
+            )}
           </Alert>
           <Summary summary={done} />
           {done.path && <Mono secondary>{done.path}</Mono>}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button variant="contained" onClick={onClose}>
-            Done
+            {tr("Done")}
           </Button>
         </DialogActions>
       </>
@@ -228,18 +236,18 @@ function ExportBody({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <DialogTitle>Export encrypted backup</DialogTitle>
+      <DialogTitle>{tr("Export encrypted backup")}</DialogTitle>
       <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <Typography variant="body2" color="text.secondary">
-          Everything in the chosen vaults — hosts, groups, identities, keys, certificates, snippets,
-          forwarding rules, known hosts — is written to one <Mono>.{EXT}</Mono> file encrypted with
-          a password of your choice (Argon2id + XChaCha20-Poly1305). The file works offline and
-          without an account.
+          {trx(
+            "Everything in the chosen vaults — hosts, groups, identities, keys, certificates, snippets, forwarding rules, known hosts — is written to one {ext} file encrypted with a password of your choice (Argon2id + XChaCha20-Poly1305). The file works offline and without an account.",
+            { ext: <Mono>.{EXT}</Mono> },
+          )}
         </Typography>
-        <Field label="Vaults">
+        <Field label={tr("Vaults")}>
           {unlocked.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              No unlocked vault on this device.
+              {tr("No unlocked vault on this device.")}
             </Typography>
           ) : (
             <Stack spacing={0.75}>
@@ -263,14 +271,14 @@ function ExportBody({ onClose }: { onClose: () => void }) {
         />
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>{tr("Cancel")}</Button>
         <Button
           variant="contained"
           startIcon={<LockOutlinedIcon />}
           disabled={!ready}
           onClick={run}
         >
-          Save backup…
+          {tr("Save backup…")}
         </Button>
       </DialogActions>
     </>
@@ -281,7 +289,10 @@ function Summary({ summary }: { summary: BackupSummary }) {
   return (
     <Stack spacing={0.75}>
       <Typography variant="caption" color="text.secondary">
-        Created {new Date(summary.createdAt).toLocaleString()} · Termoso {summary.appVersion}
+        {tr("Created {date} · Termoso {version}", {
+          date: new Date(summary.createdAt).toLocaleString(),
+          version: summary.appVersion,
+        })}
       </Typography>
       {summary.vaults.map((v) => (
         <EntityCard
@@ -390,7 +401,7 @@ function RestoreBody({ path, onClose }: { path: string; onClose: () => void }) {
   if (step.kind === "password") {
     return (
       <>
-        <DialogTitle>Restore from backup</DialogTitle>
+        <DialogTitle>{tr("Restore from backup")}</DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <Mono secondary>{step.path}</Mono>
           <Box
@@ -411,13 +422,13 @@ function RestoreBody({ path, onClose }: { path: string; onClose: () => void }) {
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{tr("Cancel")}</Button>
           <Button
             variant="contained"
             disabled={password.length === 0 || busy}
             onClick={() => void inspect()}
           >
-            {busy ? "Decrypting…" : "Unlock"}
+            {busy ? tr("Decrypting…") : tr("Unlock")}
           </Button>
         </DialogActions>
       </>
@@ -428,14 +439,16 @@ function RestoreBody({ path, onClose }: { path: string; onClose: () => void }) {
     const anyTarget = Object.values(targets).some((t) => t !== "");
     return (
       <>
-        <DialogTitle>Restore from backup</DialogTitle>
+        <DialogTitle>{tr("Restore from backup")}</DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <Typography variant="caption" color="text.secondary">
-            Created {new Date(step.summary.createdAt).toLocaleString()} · Termoso{" "}
-            {step.summary.appVersion}
+            {tr("Created {date} · Termoso {version}", {
+              date: new Date(step.summary.createdAt).toLocaleString(),
+              version: step.summary.appVersion,
+            })}
           </Typography>
           {writable.length === 0 && (
-            <Alert severity="warning">No unlocked, writable vault to restore into.</Alert>
+            <Alert severity="warning">{tr("No unlocked, writable vault to restore into.")}</Alert>
           )}
           <Stack spacing={1.25}>
             {step.summary.vaults.map((v, i) => (
@@ -466,10 +479,10 @@ function RestoreBody({ path, onClose }: { path: string; onClose: () => void }) {
                   sx={{ width: 180, flexShrink: 0 }}
                   disabled={writable.length === 0}
                 >
-                  <MenuItem value="">Skip</MenuItem>
+                  <MenuItem value="">{tr("Skip")}</MenuItem>
                   {writable.map((w) => (
                     <MenuItem key={w.id} value={w.id}>
-                      Into {w.name}
+                      {tr("Into")} {w.name}
                     </MenuItem>
                   ))}
                 </TextField>
@@ -477,14 +490,15 @@ function RestoreBody({ path, onClose }: { path: string; onClose: () => void }) {
             ))}
           </Stack>
           <Typography variant="body2" color="text.secondary">
-            Items keep their identity: one already in the target vault is replaced by the backup
-            copy, everything else is added. Nothing is deleted.
+            {tr(
+              "Items keep their identity: one already in the target vault is replaced by the backup copy, everything else is added. Nothing is deleted.",
+            )}
           </Typography>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{tr("Cancel")}</Button>
           <Button variant="contained" disabled={!anyTarget || busy} onClick={() => void restore()}>
-            {busy ? "Restoring…" : "Restore"}
+            {busy ? tr("Restoring…") : tr("Restore")}
           </Button>
         </DialogActions>
       </>
@@ -502,12 +516,14 @@ function RestoreBody({ path, onClose }: { path: string; onClose: () => void }) {
   const warnings = step.reports.flatMap((r) => r.report.warnings);
   return (
     <>
-      <DialogTitle>Restore complete</DialogTitle>
+      <DialogTitle>{tr("Restore complete")}</DialogTitle>
       <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
         <Stack direction="row" spacing={1}>
-          <Chip size="small" color="success" label={`${total.added} added`} />
-          <Chip size="small" label={`${total.replaced} replaced`} />
-          {total.skipped > 0 && <Chip size="small" label={`${total.skipped} skipped`} />}
+          <Chip size="small" color="success" label={tr("{added} added", { added: total.added })} />
+          <Chip size="small" label={tr("{replaced} replaced", { replaced: total.replaced })} />
+          {total.skipped > 0 && (
+            <Chip size="small" label={tr("{skipped} skipped", { skipped: total.skipped })} />
+          )}
         </Stack>
         {warnings.length > 0 && (
           <Alert severity="warning" variant="outlined">
@@ -521,7 +537,7 @@ function RestoreBody({ path, onClose }: { path: string; onClose: () => void }) {
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button variant="contained" onClick={onClose}>
-          Done
+          {tr("Done")}
         </Button>
       </DialogActions>
     </>

@@ -39,6 +39,7 @@ import { monoFontFamily, sizes } from "@/theme/theme";
 import { AgentForwardingRow, CredentialsFields } from "./CredentialsFields";
 import { ChainDialog, ProxyDialog } from "./HostAdvancedDialogs";
 import { CloudSyncSection } from "./CloudSyncSection";
+import { tr, trn } from "@/i18n";
 
 interface Props {
   vaultId: Uuid;
@@ -62,7 +63,7 @@ export function GroupPanel({
   const loaded = useGroupForm(groupId);
   if (groupId !== null && loaded.data === undefined) {
     return (
-      <SidePanel title="Group details" onClose={onClose} width={sizes.panel}>
+      <SidePanel title={tr("Group details")} onClose={onClose} width={sizes.panel}>
         {loaded.error ? (
           <Typography color="error">{errorMessage(loaded.error)}</Typography>
         ) : (
@@ -159,7 +160,9 @@ function GroupEditor({
       { ...form, label: form.label.trim() },
       {
         onSuccess: (g) => {
-          snackbar.notify(groupId ? "Group saved" : `Group “${g.label}” created`);
+          snackbar.notify(
+            groupId ? tr("Group saved") : tr("Group “{label}” created", { label: g.label }),
+          );
           onClose();
         },
         onError: (e) => snackbar.error(errorMessage(e)),
@@ -170,7 +173,7 @@ function GroupEditor({
     if (!groupId) return;
     duplicate.mutate(groupId, {
       onSuccess: (g) => {
-        snackbar.notify(`Duplicated as “${g.label}”`);
+        snackbar.notify(tr("Duplicated as “{label}”", { label: g.label }));
         onDuplicated(g);
       },
       onError: (e) => snackbar.error(errorMessage(e)),
@@ -181,7 +184,7 @@ function GroupEditor({
 
   return (
     <SidePanel
-      title={groupId ? form.label || "Group details" : "New group"}
+      title={groupId ? form.label || tr("Group details") : tr("New group")}
       subtitle={groupId ? ["Group", contents].filter(Boolean).join(" · ") : undefined}
       onClose={onClose}
       width={sizes.panel}
@@ -189,14 +192,14 @@ function GroupEditor({
         groupId && (
           <>
             <ToolIconButton
-              title="Duplicate group"
+              title={tr("Duplicate group")}
               disabled={duplicate.isPending}
               onClick={onDuplicate}
             >
               <ContentCopyRoundedIcon fontSize="small" />
             </ToolIconButton>
             <ToolIconButton
-              title="Delete group"
+              title={tr("Delete group")}
               color="error"
               onClick={() => setConfirmDelete(true)}
             >
@@ -208,14 +211,14 @@ function GroupEditor({
       footer={
         <>
           <Button color="inherit" onClick={onClose} disabled={save.isPending}>
-            {groupId && !touched ? "Close" : "Cancel"}
+            {groupId && !touched ? tr("Close") : tr("Cancel")}
           </Button>
           <Button
             variant="contained"
             disabled={!canSave || (!!groupId && !touched)}
             onClick={onSave}
           >
-            {save.isPending ? "Saving…" : "Save"}
+            {save.isPending ? tr("Saving…") : tr("Save")}
           </Button>
         </>
       }
@@ -228,22 +231,22 @@ function GroupEditor({
         }}
         sx={{ display: "contents" }}
       >
-        <SectionCard title="Group">
-          <Field label="Name">
+        <SectionCard title={tr("Group")}>
+          <Field label={tr("Name")}>
             <TextField
               required
               autoFocus={!groupId}
               value={form.label}
               onChange={(e) => set("label", e.target.value)}
-              placeholder="Production, Staging, Home lab…"
+              placeholder={tr("Production, Staging, Home lab…")}
               error={touched && form.label.trim().length === 0}
             />
           </Field>
           <Field
-            label="Parent group"
+            label={tr("Parent group")}
             hint={
               inheritedFrom
-                ? `Defaults not set here are inherited from ${inheritedFrom}.`
+                ? tr("Defaults not set here are inherited from {inheritedFrom}.", { inheritedFrom })
                 : undefined
             }
           >
@@ -253,7 +256,7 @@ function GroupEditor({
               onChange={(e) => set("parentId", e.target.value === "" ? null : e.target.value)}
             >
               <MenuItem value="">
-                <em>Top level</em>
+                <em>{tr("Top level")}</em>
               </MenuItem>
               {parentCandidates(groups.data ?? [], groupId).map((g) => (
                 <MenuItem key={g.id} value={g.id}>
@@ -270,18 +273,18 @@ function GroupEditor({
             ssh
             agentForwarding={false}
             inherited={inh}
-            inlineLabel="Set on this group"
+            inlineLabel={tr("Set on this group")}
             value={form}
             onChange={patch}
           />
           <Typography variant="caption" color="text.secondary">
-            Hosts in this group use these when their own credentials are left empty.
+            {tr("Hosts in this group use these when their own credentials are left empty.")}
           </Typography>
         </SectionCard>
 
-        <SectionCard title="Connection">
+        <SectionCard title={tr("Connection")}>
           <AgentForwardingRow value={form} onChange={patch} inherited={inh} />
-          <Field label="Port" sx={{ width: 140 }}>
+          <Field label={tr("Port")} sx={{ width: 140 }}>
             <TextField
               type="number"
               value={form.port ?? ""}
@@ -290,7 +293,7 @@ function GroupEditor({
               slotProps={{ htmlInput: { min: 1, max: 65535 } }}
             />
           </Field>
-          <Field label="Jump host">
+          <Field label={tr("Jump host")}>
             <TextField
               select
               value={form.hostChainId ?? ""}
@@ -301,7 +304,7 @@ function GroupEditor({
               }}
             >
               <MenuItem value="">
-                <em>Direct connection</em>
+                <em>{tr("Direct connection")}</em>
               </MenuItem>
               {(chains.data ?? []).map((c) => (
                 <MenuItem key={c.id} value={c.id}>
@@ -312,17 +315,17 @@ function GroupEditor({
                     color="text.secondary"
                     sx={{ ml: 1 }}
                   >
-                    {c.data.host_ids.length} hop{c.data.host_ids.length === 1 ? "" : "s"}
+                    {trn(c.data.host_ids.length, "{count} hop", "{count} hops")}
                   </Typography>
                 </MenuItem>
               ))}
               <MenuItem value="__new" sx={{ color: "primary.main" }}>
                 <AddRoundedIcon fontSize="small" sx={{ mr: 1 }} />
-                New host chain…
+                {tr("New host chain…")}
               </MenuItem>
             </TextField>
           </Field>
-          <Field label="Proxy">
+          <Field label={tr("Proxy")}>
             <TextField
               select
               value={form.proxyId ?? ""}
@@ -333,7 +336,7 @@ function GroupEditor({
               }}
             >
               <MenuItem value="">
-                <em>None</em>
+                <em>{tr("None")}</em>
               </MenuItem>
               {(proxies.data ?? []).map((p) => (
                 <MenuItem key={p.id} value={p.id}>
@@ -350,26 +353,26 @@ function GroupEditor({
               ))}
               <MenuItem value="__new" sx={{ color: "primary.main" }}>
                 <AddRoundedIcon fontSize="small" sx={{ mr: 1 }} />
-                New proxy…
+                {tr("New proxy…")}
               </MenuItem>
             </TextField>
           </Field>
           <Box sx={{ display: "flex", gap: 1.5 }}>
-            <Field label="Keep-alive, s" sx={{ flex: 1 }}>
+            <Field label={tr("Keep-alive, s")} sx={{ flex: 1 }}>
               <TextField
                 type="number"
                 value={form.keepAliveInterval ?? ""}
                 onChange={(e) => set("keepAliveInterval", clampSeconds(e.target.value))}
-                placeholder={inh?.keepAliveInterval?.toString() ?? "default"}
+                placeholder={inh?.keepAliveInterval?.toString() ?? tr("default")}
                 slotProps={{ htmlInput: { min: 0, max: 86400 } }}
               />
             </Field>
-            <Field label="Timeout, s" sx={{ flex: 1 }}>
+            <Field label={tr("Timeout, s")} sx={{ flex: 1 }}>
               <TextField
                 type="number"
                 value={form.timeout ?? ""}
                 onChange={(e) => set("timeout", clampSeconds(e.target.value))}
-                placeholder={inh?.timeout?.toString() ?? "default"}
+                placeholder={inh?.timeout?.toString() ?? tr("default")}
                 slotProps={{ htmlInput: { min: 0, max: 86400 } }}
               />
             </Field>
@@ -377,7 +380,7 @@ function GroupEditor({
         </SectionCard>
 
         <SectionCard
-          title="Environment variables"
+          title={tr("Environment variables")}
           action={
             <Button
               size="small"
@@ -385,13 +388,13 @@ function GroupEditor({
               startIcon={<AddRoundedIcon />}
               onClick={() => set("envVariables", [...form.envVariables, ["", ""]])}
             >
-              Add
+              {tr("Add")}
             </Button>
           }
         >
           {form.envVariables.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              Sent with every session to hosts in this group.
+              {tr("Sent with every session to hosts in this group.")}
             </Typography>
           ) : (
             form.envVariables.map(([k, v], i) => (
@@ -422,7 +425,7 @@ function GroupEditor({
                 />
                 <IconButton
                   size="small"
-                  aria-label="Remove variable"
+                  aria-label={tr("Remove variable")}
                   onClick={() =>
                     set(
                       "envVariables",
@@ -500,10 +503,10 @@ export function DeleteGroupDialog({
         onSuccess: () => {
           snackbar.notify(
             empty
-              ? `Removed “${group.label}”`
+              ? tr("Removed “{label}”", { label: group.label })
               : recursive
-                ? "Group and everything inside removed"
-                : "Group removed; its contents moved up one level",
+                ? tr("Group and everything inside removed")
+                : tr("Group removed; its contents moved up one level"),
             "info",
           );
           onClose();
@@ -516,9 +519,9 @@ export function DeleteGroupDialog({
   return (
     <ConfirmDialog
       open={group !== null}
-      title={empty ? "Remove group?" : "Delete group?"}
+      title={empty ? tr("Remove group?") : tr("Delete group?")}
       danger
-      confirmLabel={empty ? "Remove" : "Delete"}
+      confirmLabel={empty ? tr("Remove") : tr("Delete")}
       busy={del.isPending}
       onCancel={onClose}
       onConfirm={onConfirm}
@@ -527,20 +530,23 @@ export function DeleteGroupDialog({
         <>
           <Typography variant="body2" sx={{ mb: empty ? 0 : 1.5 }}>
             {empty
-              ? `“${group.label}” is empty.`
-              : `“${group.label}” contains ${groupContents(group)}.`}
+              ? tr("“{label}” is empty.", { label: group.label })
+              : tr("“{label}” contains {groupContents}.", {
+                  label: group.label,
+                  groupContents: groupContents(group),
+                })}
           </Typography>
           {!empty && (
             <RadioGroup value={mode} onChange={(e) => setMode(e.target.value as "lift" | "all")}>
               <FormControlLabel
                 value="lift"
                 control={<Radio size="small" />}
-                label="Keep the contents — move them up one level"
+                label={tr("Keep the contents — move them up one level")}
               />
               <FormControlLabel
                 value="all"
                 control={<Radio size="small" />}
-                label="Delete the group with all its hosts and sub-groups"
+                label={tr("Delete the group with all its hosts and sub-groups")}
               />
             </RadioGroup>
           )}

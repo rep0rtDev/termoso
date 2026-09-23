@@ -59,6 +59,7 @@ import { looksLikeTarget, parseQuickConnect, quickFromHistory, quickLabel } from
 import { relativeTime } from "@/hosts/HostList";
 import { sizes } from "@/theme/theme";
 import { goHome, requestCreate } from "./navigation";
+import { tr, trn } from "@/i18n";
 
 const RECENT_MAX = 8;
 
@@ -85,7 +86,8 @@ function hostMatches(h: HostCard, q: string) {
   );
 }
 
-const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+const connectionsN = (n: number) => trn(n, "{count} connection", "{count} connections");
+const tabsN = (n: number) => trn(n, "{count} tab", "{count} tabs");
 
 const rowText = {
   primary: { variant: "body2" as const, noWrap: true, sx: { fontWeight: 600 } },
@@ -148,7 +150,7 @@ export function NewTabPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKey}
-            placeholder="Search hosts or type user@host:port to connect"
+            placeholder={tr("Search hosts or type user@host:port to connect")}
             slotProps={{
               input: {
                 startAdornment: (
@@ -182,7 +184,7 @@ export function NewTabPage() {
                       <BoltRoundedIcon />
                     </IconTile>
                     <ListItemText
-                      primary={`Connect to ${quickLabel(quick)}`}
+                      primary={tr("Connect to {quickLabel}", { quickLabel: quickLabel(quick) })}
                       secondary={`Quick connect · ${quick.protocol === "telnet" ? "Telnet" : "SSH"} · not saved`}
                       slotProps={rowText}
                     />
@@ -199,7 +201,7 @@ export function NewTabPage() {
             startIcon={<TerminalRoundedIcon />}
             onClick={() => openTerminal({ kind: "local" })}
           >
-            Local terminal
+            {tr("Local terminal")}
           </Button>
           <Button
             variant="text"
@@ -207,7 +209,7 @@ export function NewTabPage() {
             startIcon={<DnsRoundedIcon />}
             onClick={() => requestCreate("host")}
           >
-            New host
+            {tr("New host")}
           </Button>
         </Stack>
 
@@ -250,7 +252,7 @@ export function PreviousSession() {
   if (!previous) return null;
   const connections = snapshotConnections(previous);
   const names = previous.tabs
-    .map((t) => t.name ?? plural(layoutTargets(t.layout).length, "connection"))
+    .map((t) => t.name ?? connectionsN(layoutTargets(t.layout).length))
     .slice(0, 3);
   return (
     <SectionCard sx={{ flexDirection: "row", alignItems: "center", gap: 1.5, p: 1.5 }}>
@@ -259,26 +261,30 @@ export function PreviousSession() {
       </IconTile>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          Previous session · {plural(connections, "connection")} in{" "}
-          {plural(previous.tabs.length, "tab")}
+          {tr("Previous session · {connections} in {tabs}", {
+            connections: connectionsN(connections),
+            tabs: tabsN(previous.tabs.length),
+          })}
         </Typography>
         <Typography variant="caption" color="text.secondary" noWrap sx={{ display: "block" }}>
           {names.join(" · ")}
-          {previous.tabs.length > 3 ? ` · +${previous.tabs.length - 3} more` : ""} · saved{" "}
-          {relativeTime(previous.savedAt)}
+          {previous.tabs.length > 3
+            ? " · " + tr("+{value} more", { value: previous.tabs.length - 3 })
+            : ""}{" "}
+          · {tr("saved {when}", { when: relativeTime(previous.savedAt) })}
         </Typography>
       </Box>
       <Button variant="text" color="inherit" onClick={dismissPrevious}>
-        Dismiss
+        {tr("Dismiss")}
       </Button>
       <Button
         variant="contained"
         onClick={() => {
           const n = restorePrevious();
-          snackbar.notify(`Restoring ${plural(n, "connection")}`);
+          snackbar.notify(tr("Restoring {connections}", { connections: connectionsN(n) }));
         }}
       >
-        Restore
+        {tr("Restore")}
       </Button>
     </SectionCard>
   );
@@ -295,17 +301,17 @@ function WorkspaceTemplates() {
 
   const menuItems = (tpl: WorkspaceTemplate): MenuAction[] => [
     {
-      label: "Open",
+      label: tr("Open"),
       icon: <GridViewRoundedIcon fontSize="small" />,
       onClick: () => openTemplate(tpl.id),
     },
     {
-      label: "Rename",
+      label: tr("Rename"),
       icon: <DriveFileRenameOutlineRoundedIcon fontSize="small" />,
       onClick: () => setEditingTemplate(tpl.id),
     },
     {
-      label: "Delete",
+      label: tr("Delete"),
       icon: <DeleteOutlineRoundedIcon fontSize="small" />,
       danger: true,
       onClick: () => setConfirm(tpl),
@@ -315,7 +321,7 @@ function WorkspaceTemplates() {
   return (
     <Box>
       <SectionHeading icon={<GridViewRoundedIcon sx={{ fontSize: 16 }} />}>
-        Workspace templates
+        {tr("Workspace templates")}
       </SectionHeading>
       <SectionCard sx={{ p: 0.5 }}>
         <List dense disablePadding>
@@ -346,7 +352,7 @@ function WorkspaceTemplates() {
                   <Box sx={{ flex: 1, minWidth: 0, py: 0.5 }}>
                     <InlineName
                       value={tpl.name}
-                      placeholder="Workspace name"
+                      placeholder={tr("Workspace name")}
                       onCommit={(name) => renameTemplate(tpl.id, name)}
                       onCancel={() => setEditingTemplate(null)}
                       sx={{ width: "100%" }}
@@ -355,7 +361,7 @@ function WorkspaceTemplates() {
                 ) : (
                   <ListItemText
                     primary={tpl.name}
-                    secondary={`${plural(targets.length, "connection")} · ${
+                    secondary={`${connectionsN(targets.length)} · ${
                       tpl.viewMode === "list" ? "list" : "side by side"
                     }`}
                     slotProps={rowText}
@@ -370,10 +376,10 @@ function WorkspaceTemplates() {
                     display: editing ? "none" : "flex",
                   }}
                 >
-                  <Tooltip title="Rename">
+                  <Tooltip title={tr("Rename")}>
                     <IconButton
                       size="small"
-                      aria-label={`Rename ${tpl.name}`}
+                      aria-label={tr("Rename {name}", { name: tpl.name })}
                       onClick={(e) => {
                         e.stopPropagation();
                         setEditingTemplate(tpl.id);
@@ -382,10 +388,10 @@ function WorkspaceTemplates() {
                       <DriveFileRenameOutlineRoundedIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Delete">
+                  <Tooltip title={tr("Delete")}>
                     <IconButton
                       size="small"
-                      aria-label={`Delete ${tpl.name}`}
+                      aria-label={tr("Delete {name}", { name: tpl.name })}
                       onClick={(e) => {
                         e.stopPropagation();
                         setConfirm(tpl);
@@ -408,8 +414,8 @@ function WorkspaceTemplates() {
       />
       <ConfirmDialog
         open={confirm !== null}
-        title="Delete workspace template?"
-        confirmLabel="Delete"
+        title={tr("Delete workspace template?")}
+        confirmLabel={tr("Delete")}
         danger
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
@@ -418,7 +424,9 @@ function WorkspaceTemplates() {
         }}
       >
         {confirm
-          ? `“${confirm.name}” will be removed from this list. Open tabs are not affected.`
+          ? tr("“{name}” will be removed from this list. Open tabs are not affected.", {
+              name: confirm.name,
+            })
           : ""}
       </ConfirmDialog>
     </Box>
@@ -485,7 +493,7 @@ function RecentConnections({
                 startIcon={<AddBoxOutlinedIcon />}
                 onClick={createWorkspace}
               >
-                Create a workspace
+                {tr("Create a workspace")}
               </Button>
               <Button
                 size="small"
@@ -493,17 +501,17 @@ function RecentConnections({
                 startIcon={<RestoreRoundedIcon />}
                 onClick={restoreSelected}
               >
-                Restore {selected.length > 1 ? `(${selected.length})` : ""}
+                {tr("Restore")} {selected.length > 1 ? `(${selected.length})` : ""}
               </Button>
             </Stack>
           ) : null
         }
       >
-        Recent connections
+        {tr("Recent connections")}
       </SectionHeading>
       {rows.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          {pending ? "Loading…" : "Hosts you connect to will show up here."}
+          {pending ? tr("Loading…") : tr("Hosts you connect to will show up here.")}
         </Typography>
       ) : (
         <SectionCard sx={{ p: 0.5 }}>
@@ -524,7 +532,7 @@ function RecentConnections({
                   <Box
                     role="checkbox"
                     aria-checked={isChecked}
-                    aria-label={`Select ${host?.label ?? it.data.label}`}
+                    aria-label={tr("Select {value}", { value: host?.label ?? it.data.label })}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (target) toggle(it.id);

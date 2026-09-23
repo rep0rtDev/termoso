@@ -1,5 +1,6 @@
 import { Alert, Button } from "@mui/material";
 import { dismissBanner, useUpdate } from "./store";
+import { tr } from "@/i18n";
 
 /** One-line notice after an opt-in startup check found a newer release. */
 export function UpdateBanner({ onOpenSettings }: { onOpenSettings: () => void }) {
@@ -15,15 +16,15 @@ export function UpdateBanner({ onOpenSettings }: { onOpenSettings: () => void })
       action={
         <>
           <Button size="small" onClick={onOpenSettings}>
-            View
+            {tr("View")}
           </Button>
           <Button size="small" onClick={dismissBanner}>
-            Later
+            {tr("Later")}
           </Button>
         </>
       }
     >
-      Termoso {phase.info.version} is available.
+      {tr("Termoso {version} is available.", { version: phase.info.version })}
     </Alert>
   );
 }

@@ -32,6 +32,7 @@ import {
   lanSubtitle,
   type LanAddressMode,
 } from "./lan";
+import { tr, trx } from "@/i18n";
 
 /** How long one browse listens for announcements; devices answer within a second or two. */
 export const LAN_BROWSE_MS = 3000;
@@ -160,10 +161,10 @@ function Body({ vaultId, onClose, onImported }: Omit<Props, "open">) {
         </IconTile>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="h6" component="div">
-            Discover on local network
+            {tr("Discover on local network")}
           </Typography>
           <Typography variant="body2" color="text.secondary" noWrap>
-            Machines announcing SSH or SFTP over mDNS (Bonjour / Avahi)
+            {tr("Machines announcing SSH or SFTP over mDNS (Bonjour / Avahi)")}
           </Typography>
         </Box>
         <Button
@@ -179,7 +180,7 @@ function Body({ vaultId, onClose, onImported }: Omit<Props, "open">) {
             )
           }
         >
-          {scanning ? "Listening…" : "Scan again"}
+          {scanning ? tr("Listening…") : tr("Scan again")}
         </Button>
       </DialogTitle>
       <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 1.5, pt: 0 }}>
@@ -190,9 +191,10 @@ function Body({ vaultId, onClose, onImported }: Omit<Props, "open">) {
         )}
         {scan.kind === "done" && !scan.error && scan.devices.length === 0 && (
           <Alert severity="info" variant="outlined" data-testid="lan-empty">
-            Nothing answered. Devices show up here when their SSH server is advertised over mDNS
-            (macOS “Remote Login”, Avahi with an <code>_ssh._tcp</code> service, many NAS boxes).
-            Firewalls and VPNs often block multicast.
+            {trx(
+              "Nothing answered. Devices show up here when their SSH server is advertised over mDNS (macOS “Remote Login”, Avahi with an {service} service, many NAS boxes). Firewalls and VPNs often block multicast.",
+              { service: <code>_ssh._tcp</code> },
+            )}
           </Alert>
         )}
         {scan.devices.length > 0 && (
@@ -221,7 +223,10 @@ function Body({ vaultId, onClose, onImported }: Omit<Props, "open">) {
           </Box>
         )}
         <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5, mt: 0.5 }}>
-          <Field label="Connect by" hint="Names keep working when DHCP hands out a new address.">
+          <Field
+            label={tr("Connect by")}
+            hint={tr("Names keep working when DHCP hands out a new address.")}
+          >
             <ToggleButtonGroup
               exclusive
               fullWidth
@@ -232,11 +237,11 @@ function Body({ vaultId, onClose, onImported }: Omit<Props, "open">) {
               }}
               disabled={busy}
             >
-              <ToggleButton value="hostname">.local name</ToggleButton>
-              <ToggleButton value="ip">IP address</ToggleButton>
+              <ToggleButton value="hostname">{tr(".local name")}</ToggleButton>
+              <ToggleButton value="ip">{tr("IP address")}</ToggleButton>
             </ToggleButtonGroup>
           </Field>
-          <Field label="Username" hint="Optional; asked on connect when empty.">
+          <Field label={tr("Username")} hint={tr("Optional; asked on connect when empty.")}>
             <TextField
               fullWidth
               size="small"
@@ -246,7 +251,7 @@ function Body({ vaultId, onClose, onImported }: Omit<Props, "open">) {
               autoComplete="off"
             />
           </Field>
-          <Field label="Group" sx={{ gridColumn: "1 / -1" }}>
+          <Field label={tr("Group")} sx={{ gridColumn: "1 / -1" }}>
             <GroupSelect
               groups={groups.data ?? []}
               value={groupId}
@@ -259,7 +264,7 @@ function Body({ vaultId, onClose, onImported }: Omit<Props, "open">) {
       <DialogActions sx={{ px: 3, pb: 2, gap: 1.5 }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1, mr: "auto", minWidth: 0 }}>
           <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
-            Add to
+            {tr("Add to")}
           </Typography>
           <VaultSelect
             vaults={vaults.data ?? []}
@@ -271,7 +276,7 @@ function Body({ vaultId, onClose, onImported }: Omit<Props, "open">) {
           />
         </Box>
         <Button color="inherit" onClick={onClose} disabled={adding}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           variant="contained"
@@ -279,7 +284,7 @@ function Body({ vaultId, onClose, onImported }: Omit<Props, "open">) {
           disabled={busy || !vaultOk || fresh.length === 0}
           data-testid="lan-add"
         >
-          {adding ? "Adding…" : addLabel(fresh.length, skipped)}
+          {adding ? tr("Adding…") : addLabel(fresh.length, skipped)}
         </Button>
       </DialogActions>
     </>

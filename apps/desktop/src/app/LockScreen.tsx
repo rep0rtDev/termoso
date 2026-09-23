@@ -7,6 +7,7 @@ import * as ipc from "@/ipc/commands";
 import { errorMessage, isDesktopError } from "@/ipc/types";
 import { sizes } from "@/theme/theme";
 import { WindowControls } from "./WindowControls";
+import { tr } from "@/i18n";
 
 export const RECOVERY_DOC_URL =
   "https://github.com/rep0rtDev/termoso/blob/main/docs/ARCHITECTURE.md#desktop-master-password-and-app-lock";
@@ -68,10 +69,10 @@ export function LockScreen() {
           <Stack spacing={1.5} sx={{ alignItems: "center", textAlign: "center" }}>
             <LogoMark size={52} />
             <Typography variant="h5" sx={{ fontWeight: 600, letterSpacing: "-0.01em" }}>
-              Vault locked
+              {tr("Vault locked")}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Enter your master password to open hosts, keys and snippets.
+              {tr("Enter your master password to open hosts, keys and snippets.")}
             </Typography>
           </Stack>
 
@@ -81,12 +82,12 @@ export function LockScreen() {
                 autoFocus
                 fullWidth
                 type="password"
-                label="Master password"
+                label={tr("Master password")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 error={unlock.isError}
                 helperText={
-                  unlock.isError ? (wrong ? "Wrong password" : errorMessage(unlock.error)) : " "
+                  unlock.isError ? (wrong ? tr("Wrong password") : errorMessage(unlock.error)) : " "
                 }
                 disabled={unlock.isPending}
                 slotProps={{ htmlInput: { autoComplete: "current-password", spellCheck: false } }}
@@ -97,20 +98,22 @@ export function LockScreen() {
                 fullWidth
                 disabled={password.length === 0 || unlock.isPending}
               >
-                {unlock.isPending ? "Unlocking…" : "Unlock"}
+                {unlock.isPending ? tr("Unlocking…") : tr("Unlock")}
               </Button>
             </Stack>
           </Box>
 
           <Typography variant="caption" color="text.secondary" sx={{ textAlign: "center" }}>
-            Forgot it? The password cannot be reset — restore an encrypted vault backup instead.{" "}
+            {tr(
+              "Forgot it? The password cannot be reset — restore an encrypted vault backup instead.",
+            )}{" "}
             <Link
               component="button"
               type="button"
               variant="caption"
               onClick={() => void openUrl(RECOVERY_DOC_URL)}
             >
-              Learn more
+              {tr("Learn more")}
             </Link>
           </Typography>
         </Stack>

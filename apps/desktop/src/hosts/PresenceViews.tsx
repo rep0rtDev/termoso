@@ -15,6 +15,7 @@ import {
   viewersSummary,
   type HostViewer,
 } from "./presence";
+import { tr, trn } from "@/i18n";
 
 const EMPTY: ReadonlyMap<Uuid, HostViewer[]> = new Map();
 
@@ -52,9 +53,12 @@ export function PresenceStack({ viewers, size = 20 }: { viewers: HostViewer[]; s
   const shown = people.slice(0, MAX_FACES);
   const more = people.length - shown.length;
   return (
-    <Tooltip title={`Connected now: ${viewersSummary(viewers)}`} placement="top">
+    <Tooltip
+      title={tr("Connected now: {viewersSummary}", { viewersSummary: viewersSummary(viewers) })}
+      placement="top"
+    >
       <Box
-        aria-label={`${people.length} connected`}
+        aria-label={tr("{length} connected", { length: people.length })}
         sx={{ display: "flex", alignItems: "center", flexShrink: 0, pl: `${size * 0.3}px` }}
       >
         {shown.map((v) => (
@@ -101,10 +105,11 @@ export function ConnectedNowCard({ viewers }: { viewers: HostViewer[] }) {
       title={
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <SensorsRoundedIcon fontSize="small" color="primary" />
-          Connected now
+          {tr("Connected now")}
           <Typography variant="caption" color="text.secondary">
-            {people} {people === 1 ? "person" : "people"}
-            {viewers.length !== people && ` · ${viewers.length} devices`}
+            {trn(people, "{count} person", "{count} people")}
+            {viewers.length !== people &&
+              ` · ${trn(viewers.length, "{count} device", "{count} devices")}`}
           </Typography>
         </Box>
       }
@@ -125,7 +130,7 @@ export function ConnectedNowCard({ viewers }: { viewers: HostViewer[] }) {
           />
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
-              {v.me ? "You" : viewerName(v)}
+              {v.me ? tr("You") : viewerName(v)}
               {v.me && v.displayName && (
                 <Typography component="span" variant="caption" color="text.secondary">
                   {" "}

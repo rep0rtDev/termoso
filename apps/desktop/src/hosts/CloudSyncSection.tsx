@@ -7,6 +7,7 @@ import { useCloudSyncGroups, useRunCloudSync } from "@/ipc/hooks";
 import { errorMessage, type GroupNode } from "@/ipc/types";
 import { CloudSyncDialog } from "./CloudSyncDialog";
 import { reportLine, syncSummary } from "./cloudSync";
+import { tr } from "@/i18n";
 
 const TONE_COLOR = {
   ok: "text.secondary",
@@ -38,7 +39,7 @@ export function CloudSyncSection({ group, readOnly }: { group: GroupNode; readOn
 
   return (
     <SectionCard
-      title="Cloud sync"
+      title={tr("Cloud sync")}
       tone={summary?.tone === "error" ? "warning" : undefined}
       action={
         existing ? (
@@ -56,15 +57,15 @@ export function CloudSyncSection({ group, readOnly }: { group: GroupNode; readOn
                 )
               }
             >
-              Sync now
+              {tr("Sync now")}
             </Button>
             <Button size="small" color="inherit" onClick={() => setOpen(true)}>
-              Settings
+              {tr("Settings")}
             </Button>
           </Box>
         ) : (
           <Button size="small" color="inherit" disabled={readOnly} onClick={() => setOpen(true)}>
-            Set up…
+            {tr("Set up…")}
           </Button>
         )
       }
@@ -82,8 +83,9 @@ export function CloudSyncSection({ group, readOnly }: { group: GroupNode; readOn
         </Box>
       ) : (
         <Typography variant="body2" color="text.secondary">
-          Mirror the machines of an AWS, DigitalOcean or Azure account into this group, on a
-          schedule. Credentials stay encrypted on this device.
+          {tr(
+            "Mirror the machines of an AWS, DigitalOcean or Azure account into this group, on a schedule. Credentials stay encrypted on this device.",
+          )}
         </Typography>
       )}
       <CloudSyncDialog

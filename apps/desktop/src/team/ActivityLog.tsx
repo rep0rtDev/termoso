@@ -11,6 +11,7 @@ import { useTeamMembers, useVaults } from "@/ipc/hooks";
 import { errorMessage, type AuditEvent, type AuditFilter, type Team, type Uuid } from "@/ipc/types";
 import { PersonAvatar, initialsOf } from "./PersonAvatar";
 import { ACTIVITY_GROUPS, describeEvent, formatWhen, type ActivityContext } from "./activity";
+import { tr, trx } from "@/i18n";
 
 const PAGE = 50;
 
@@ -67,10 +68,14 @@ function EventRow({ ev, ctx, dense }: { ev: AuditEvent; ctx: ActivityContext; de
           {line.text}
           {line.vault && (
             <>
-              {" in "}
-              <Box component="span" sx={{ fontWeight: 600 }}>
-                {line.vault}
-              </Box>
+              {" "}
+              {trx("in {vault}", {
+                vault: (
+                  <Box component="span" sx={{ fontWeight: 600 }}>
+                    {line.vault}
+                  </Box>
+                ),
+              })}
             </>
           )}
         </Typography>
@@ -102,7 +107,7 @@ export function ActivityCard({ team, onOpen }: { team: Team; onOpen: () => void 
     <SectionCard sx={{ p: 2.5, gap: 0.5 }}>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
         <Typography variant="subtitle1" sx={{ flex: 1, fontWeight: 600 }}>
-          Activity
+          {tr("Activity")}
         </Typography>
         <Button
           size="small"
@@ -110,7 +115,7 @@ export function ActivityCard({ team, onOpen }: { team: Team; onOpen: () => void 
           onClick={onOpen}
           sx={{ minWidth: 0, px: 0.75 }}
         >
-          View all
+          {tr("View all")}
         </Button>
       </Box>
       {q.isPending ? (
@@ -121,7 +126,7 @@ export function ActivityCard({ team, onOpen }: { team: Team; onOpen: () => void 
         </Typography>
       ) : events.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          Nothing has happened in this team yet.
+          {tr("Nothing has happened in this team yet.")}
         </Typography>
       ) : (
         events.map((ev) => <EventRow key={ev.id} ev={ev} ctx={ctx} dense />)
@@ -190,15 +195,21 @@ export function ActivityLog({ team }: { team: Team }) {
         }}
       >
         <Typography variant="subtitle1" sx={{ fontWeight: 600, mr: 1 }}>
-          Activity log
+          {tr("Activity log")}
         </Typography>
-        {select(group, setGroup, "Kind", [...ACTIVITY_GROUPS], 160)}
+        {select(
+          group,
+          setGroup,
+          tr("Kind"),
+          ACTIVITY_GROUPS.map((g) => ({ ...g, label: tr(g.label) })),
+          160,
+        )}
         {select(
           actor,
           setActor,
-          "Member",
+          tr("Member"),
           [
-            { value: "", label: "Everyone" },
+            { value: "", label: tr("Everyone") },
             ...(members.data ?? []).map((m) => ({
               value: m.user_id,
               label: m.display_name ?? m.email,
@@ -209,15 +220,19 @@ export function ActivityLog({ team }: { team: Team }) {
         {select(
           vault,
           setVault,
-          "Vault",
+          tr("Vault"),
           [
-            { value: "", label: "All vaults" },
+            { value: "", label: tr("All vaults") },
             ...teamVaults.map((v) => ({ value: v.id, label: v.name })),
           ],
           160,
         )}
         <Box sx={{ flex: 1 }} />
-        <ToolIconButton title="Refresh" onClick={() => void q.refetch()} disabled={q.isFetching}>
+        <ToolIconButton
+          title={tr("Refresh")}
+          onClick={() => void q.refetch()}
+          disabled={q.isFetching}
+        >
           <RefreshRoundedIcon fontSize="small" />
         </ToolIconButton>
       </Box>
@@ -232,11 +247,11 @@ export function ActivityLog({ team }: { team: Team }) {
         <EmptyState
           compact
           icon={<HistoryRoundedIcon />}
-          title="No activity"
+          title={tr("No activity")}
           description={
             group || actor || vault
-              ? "Nothing matches these filters."
-              : "Team changes, vault access and shared data edits will show up here."
+              ? tr("Nothing matches these filters.")
+              : tr("Team changes, vault access and shared data edits will show up here.")
           }
         />
       ) : (
@@ -271,7 +286,7 @@ export function ActivityLog({ team }: { team: Team }) {
               onClick={() => void q.fetchNextPage()}
               disabled={q.isFetchingNextPage}
             >
-              {q.isFetchingNextPage ? "Loading…" : "Load older"}
+              {q.isFetchingNextPage ? tr("Loading…") : tr("Load older")}
             </Button>
           )}
         </Box>

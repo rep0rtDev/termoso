@@ -30,12 +30,13 @@ import { createStore, useStore } from "@/lib/store";
 import { CLOUD_HOST, CLOUD_URL, normalizeServerUrl } from "@/lib/cloud";
 import { errorMessage, type LoginOutcome, type MfaMethod, type SsoProvider } from "@/ipc/types";
 import { cancelSso, clearSso, ssoStore, startSso } from "./sso";
+import { tr, trx, msg } from "@/i18n";
 
 export const MFA_LABEL: Record<MfaMethod, string> = {
-  totp: "Authenticator app",
-  webauthn: "Security key",
-  email: "Email code",
-  backup_code: "Backup code",
+  totp: msg("Authenticator app"),
+  webauthn: msg("Security key"),
+  email: msg("Email code"),
+  backup_code: msg("Backup code"),
 };
 
 /** Everything that may differ after signing in / out. */
@@ -55,8 +56,8 @@ export function invalidateAll(qc: ReturnType<typeof useQueryClient>) {
 
 export function pendingTitle(pending: LoginOutcome): string {
   return pending.step === "deviceApprovalRequired"
-    ? "Approve this device"
-    : "Two-factor verification";
+    ? tr("Approve this device")
+    : tr("Two-factor verification");
 }
 
 type Where = "cloud" | "custom";
@@ -196,10 +197,10 @@ export function SignInForm({
     : info.data
       ? `${info.data.name} · v${info.data.version}${registrationClosed ? " · invite only" : ""}`
       : info.isFetching
-        ? "Checking server…"
+        ? tr("Checking server…")
         : where === "cloud"
           ? " "
-          : "Enter the address of your Termoso server";
+          : tr("Enter the address of your Termoso server");
 
   return (
     <Stack spacing={2}>
@@ -215,16 +216,16 @@ export function SignInForm({
       >
         <ToggleButton value="cloud">
           <CloudOutlinedIcon sx={{ fontSize: 16, mr: 0.75 }} />
-          Termoso Cloud
+          {tr("Termoso Cloud")}
         </ToggleButton>
         <ToggleButton value="custom">
           <DnsOutlinedIcon sx={{ fontSize: 16, mr: 0.75 }} />
-          Own server
+          {tr("Own server")}
         </ToggleButton>
       </ToggleButtonGroup>
 
       {where === "custom" ? (
-        <Field label="Server URL">
+        <Field label={tr("Server URL")}>
           <TextField
             autoFocus={autoFocus}
             placeholder="https://termoso.example.com"
@@ -259,8 +260,9 @@ export function SignInForm({
               {CLOUD_HOST}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-              Completely free for everyone — no limits, no plans, no strings attached. End-to-end
-              encrypted, no telemetry.
+              {tr(
+                "Completely free for everyone — no limits, no plans, no strings attached. End-to-end encrypted, no telemetry.",
+              )}
             </Typography>
             {(info.data !== undefined || info.isError || info.isFetching) && (
               <Typography
@@ -291,7 +293,7 @@ export function SignInForm({
               }}
             />
           ) : (
-            <Field label="Email">
+            <Field label={tr("Email")}>
               <TextField
                 autoFocus={autoFocus && where === "cloud"}
                 type="email"
@@ -306,7 +308,7 @@ export function SignInForm({
             </Field>
           )}
           {mode === "register" && (
-            <Field label="Display name" hint="Optional">
+            <Field label={tr("Display name")} hint={tr("Optional")}>
               <TextField
                 value={displayName}
                 placeholder={
@@ -321,14 +323,18 @@ export function SignInForm({
           )}
           {
             <Field
-              label={verified ? "Termoso password" : "Password"}
+              label={verified ? tr("Termoso password") : tr("Password")}
               hint={
                 mode === "register"
                   ? verified
-                    ? "Choose a password for Termoso, at least 12 characters. It encrypts your vaults and never leaves this device — your identity provider never sees it."
-                    : "At least 12 characters. It never leaves this device."
+                    ? tr(
+                        "Choose a password for Termoso, at least 12 characters. It encrypts your vaults and never leaves this device — your identity provider never sees it.",
+                      )
+                    : tr("At least 12 characters. It never leaves this device.")
                   : verified
-                    ? "Your Termoso password unlocks the encrypted vaults; it is separate from the identity provider."
+                    ? tr(
+                        "Your Termoso password unlocks the encrypted vaults; it is separate from the identity provider.",
+                      )
                     : null
               }
             >
@@ -345,7 +351,7 @@ export function SignInForm({
             </Field>
           }
           {mode === "register" && needsInvite && (
-            <Field label="Invite token" hint="This server only accepts invited users.">
+            <Field label={tr("Invite token")} hint={tr("This server only accepts invited users.")}>
               <TextField value={invite} onChange={(e) => setInvite(e.target.value)} />
             </Field>
           )}
@@ -355,9 +361,9 @@ export function SignInForm({
               {busy ? (
                 <CircularProgress size={18} color="inherit" />
               ) : mode === "login" ? (
-                "Sign in"
+                tr("Sign in")
               ) : (
-                "Create account"
+                tr("Create account")
               )}
             </Button>
           }
@@ -368,7 +374,7 @@ export function SignInForm({
         <>
           <Divider>
             <Typography variant="caption" color="text.secondary">
-              or
+              {tr("or")}
             </Typography>
           </Divider>
           <Stack spacing={1}>
@@ -380,7 +386,7 @@ export function SignInForm({
                 disabled={ssoStart.isPending || busy}
                 onClick={() => ssoStart.mutate(p)}
               >
-                Continue with {p.name}
+                {tr("Continue with")} {p.name}
               </Button>
             ))}
           </Stack>
@@ -389,14 +395,14 @@ export function SignInForm({
 
       {!waiting && !verified && (
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
-          {mode === "login" ? "New here? " : "Already have an account? "}
+          {mode === "login" ? tr("New here?") : tr("Already have an account?")}{" "}
           <Link
             component="button"
             type="button"
             underline="hover"
             onClick={() => setMode(mode === "login" ? "register" : "login")}
           >
-            {mode === "login" ? "Create a free account" : "Sign in"}
+            {mode === "login" ? tr("Create a free account") : tr("Sign in")}
           </Link>
         </Typography>
       )}
@@ -418,14 +424,15 @@ function SsoWaiting({ provider, onCancel }: { provider: SsoProvider; onCancel: (
     >
       <CircularProgress size={22} />
       <Typography variant="body2">
-        Finish signing in with {provider.name} in your browser.
+        {tr("Finish signing in with {provider} in your browser.", { provider: provider.name })}
       </Typography>
       <Typography variant="caption" color="text.secondary">
-        Termoso picks up automatically when the browser comes back. Nothing from the provider is
-        stored on this device.
+        {tr(
+          "Termoso picks up automatically when the browser comes back. Nothing from the provider is stored on this device.",
+        )}
       </Typography>
       <Button color="inherit" size="small" onClick={onCancel}>
-        Cancel
+        {tr("Cancel")}
       </Button>
     </Stack>
   );
@@ -458,11 +465,11 @@ function SsoVerifiedBanner({
           {email}
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
-          Verified with {provider.name}
+          {tr("Verified with {provider}", { provider: provider.name })}
         </Typography>
       </Box>
       <Button color="inherit" size="small" onClick={onReset}>
-        Change
+        {tr("Change")}
       </Button>
     </Box>
   );
@@ -473,11 +480,12 @@ export function RecoveryDialog({ phrase, onDone }: { phrase: string; onDone: () 
   const [ack, setAck] = useState(false);
   return (
     <Dialog open maxWidth="sm" fullWidth>
-      <DialogTitle>Save your recovery phrase</DialogTitle>
+      <DialogTitle>{tr("Save your recovery phrase")}</DialogTitle>
       <DialogContent>
         <Alert severity="warning" sx={{ mb: 2 }}>
-          This is the only way to regain access if you forget your password. Termoso does not keep a
-          copy anywhere — not on this device, not on the server.
+          {tr(
+            "This is the only way to regain access if you forget your password. Termoso does not keep a copy anywhere — not on this device, not on the server.",
+          )}
         </Alert>
         <Box
           sx={{
@@ -498,19 +506,19 @@ export function RecoveryDialog({ phrase, onDone }: { phrase: string; onDone: () 
           sx={{ mt: 1 }}
           onClick={() => {
             void copyToClipboard(phrase)
-              .then(() => snackbar.notify("Copied"))
-              .catch(() => snackbar.error("Clipboard is not available"));
+              .then(() => snackbar.notify(tr("Copied")))
+              .catch(() => snackbar.error(tr("Clipboard is not available")));
           }}
         >
-          Copy to clipboard
+          {tr("Copy to clipboard")}
         </Button>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2, justifyContent: "space-between" }}>
         <Button color={ack ? "primary" : "inherit"} onClick={() => setAck(!ack)}>
-          {ack ? "✓ I have stored it safely" : "I have stored it safely"}
+          {ack ? tr("✓ I have stored it safely") : tr("I have stored it safely")}
         </Button>
         <Button variant="contained" disabled={!ack} onClick={onDone}>
-          Continue
+          {tr("Continue")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -544,7 +552,7 @@ export function PendingForm({
         case "email":
           return ipc.accountMfa({ method: "email", code: c });
         case "webauthn":
-          throw new Error("Security keys are not available in the desktop app yet");
+          throw new Error(tr("Security keys are not available in the desktop app yet"));
       }
     },
     onSuccess: (o) => {
@@ -569,7 +577,9 @@ export function PendingForm({
     <Stack spacing={1.5}>
       {pending.step === "deviceApprovalRequired" ? (
         <Typography variant="body2" color="text.secondary">
-          A confirmation code was sent to <b>{pending.emailHint}</b>. Enter it to trust this device.
+          {trx("A confirmation code was sent to {email}. Enter it to trust this device.", {
+            email: <b>{pending.emailHint}</b>,
+          })}
         </Typography>
       ) : (
         <>
@@ -582,15 +592,16 @@ export function PendingForm({
             >
               {methods.map((m) => (
                 <ToggleButton key={m} value={m} disabled={m === "webauthn"}>
-                  {MFA_LABEL[m]}
+                  {tr(MFA_LABEL[m])}
                 </ToggleButton>
               ))}
             </ToggleButtonGroup>
           )}
           {methods.includes("webauthn") && (
             <Typography variant="caption" color="text.secondary">
-              Security keys need a browser origin and are not available inside the desktop app yet —
-              use another method.
+              {tr(
+                "Security keys need a browser origin and are not available inside the desktop app yet — use another method.",
+              )}
             </Typography>
           )}
           {method === "email" && (
@@ -601,17 +612,21 @@ export function PendingForm({
                 side.mutate(async () => {
                   await ipc.accountMfaEmailSend();
                   setEmailSent(true);
-                  return "Code sent";
+                  return tr("Code sent");
                 })
               }
             >
-              {emailSent ? "Send again" : "Send code to my email"}
+              {emailSent ? tr("Send again") : tr("Send code to my email")}
             </Button>
           )}
         </>
       )}
       <Field
-        label={method === "backup_code" && pending.step === "mfaRequired" ? "Backup code" : "Code"}
+        label={
+          method === "backup_code" && pending.step === "mfaRequired"
+            ? tr("Backup code")
+            : tr("Code")
+        }
       >
         <TextField
           autoFocus
@@ -627,7 +642,7 @@ export function PendingForm({
       <Stack direction="row" spacing={1} sx={{ justifyContent: "space-between" }}>
         <Stack direction="row" spacing={1}>
           <Button color="inherit" disabled={busy} onClick={() => cancel.mutate()}>
-            Cancel
+            {tr("Cancel")}
           </Button>
           {pending.step === "deviceApprovalRequired" && (
             <Button
@@ -635,16 +650,16 @@ export function PendingForm({
               onClick={() =>
                 side.mutate(async () => {
                   await ipc.accountDeviceResend();
-                  return "Code sent again";
+                  return tr("Code sent again");
                 })
               }
             >
-              Resend
+              {tr("Resend")}
             </Button>
           )}
         </Stack>
         <Button variant="contained" disabled={!code.trim() || busy} onClick={() => submit.mutate()}>
-          Verify
+          {tr("Verify")}
         </Button>
       </Stack>
     </Stack>

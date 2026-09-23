@@ -26,6 +26,7 @@ import type { AccountStatus } from "@/ipc/types";
 import { sizes } from "@/theme/theme";
 import { useTerminal } from "@/terminal/store";
 import { goToSection, goToSettings, goToSftp, isSftpTab, useNav, type Section } from "./navigation";
+import { tr, msg } from "@/i18n";
 
 interface Item {
   id: Section | "sftp";
@@ -34,13 +35,21 @@ interface Item {
 }
 
 const items: Item[] = [
-  { id: "hosts", label: "Hosts", icon: <DnsRoundedIcon fontSize="small" /> },
-  { id: "sftp", label: "SFTP", icon: <FolderRoundedIcon fontSize="small" /> },
-  { id: "keychain", label: "Keychain", icon: <KeyRoundedIcon fontSize="small" /> },
-  { id: "forwarding", label: "Port Forwarding", icon: <SwapHorizRoundedIcon fontSize="small" /> },
-  { id: "snippets", label: "Snippets", icon: <CodeRoundedIcon fontSize="small" /> },
-  { id: "knownHosts", label: "Known Hosts", icon: <VerifiedUserRoundedIcon fontSize="small" /> },
-  { id: "logs", label: "Logs", icon: <ArticleRoundedIcon fontSize="small" /> },
+  { id: "hosts", label: msg("Hosts"), icon: <DnsRoundedIcon fontSize="small" /> },
+  { id: "sftp", label: msg("SFTP"), icon: <FolderRoundedIcon fontSize="small" /> },
+  { id: "keychain", label: msg("Keychain"), icon: <KeyRoundedIcon fontSize="small" /> },
+  {
+    id: "forwarding",
+    label: msg("Port Forwarding"),
+    icon: <SwapHorizRoundedIcon fontSize="small" />,
+  },
+  { id: "snippets", label: msg("Snippets"), icon: <CodeRoundedIcon fontSize="small" /> },
+  {
+    id: "knownHosts",
+    label: msg("Known Hosts"),
+    icon: <VerifiedUserRoundedIcon fontSize="small" />,
+  },
+  { id: "logs", label: msg("Logs"), icon: <ArticleRoundedIcon fontSize="small" /> },
 ];
 
 export function Sidebar() {
@@ -76,7 +85,7 @@ export function Sidebar() {
         <NavItem
           item={{
             id: "settings",
-            label: "Settings",
+            label: tr("Settings"),
             icon: <SettingsRoundedIcon fontSize="small" />,
           }}
           selected={!sftp && section === "settings"}
@@ -90,7 +99,7 @@ export function Sidebar() {
             <FooterIcon account={account} />
             <Box sx={{ minWidth: 0 }}>
               <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
-                {account?.account ? account.account.email : "Local vault"}
+                {account?.account ? account.account.email : tr("Local vault")}
               </Typography>
               <Typography
                 variant="caption"
@@ -123,7 +132,7 @@ function NavItem({
         {item.icon}
       </ListItemIcon>
       <ListItemText
-        primary={item.label}
+        primary={tr(item.label)}
         slotProps={{
           primary: {
             variant: "body1",
@@ -136,24 +145,26 @@ function NavItem({
 }
 
 function footerTip(a: AccountStatus | undefined): string {
-  if (!a?.account) return "Offline vault — open Settings › Account to connect to a server";
+  if (!a?.account) return tr("Offline vault — open Settings › Account to connect to a server");
   const s = a.sync;
-  if (s.state === "error") return s.lastError ?? "Sync error";
-  if (s.state === "syncing") return "Syncing…";
-  if (s.state === "offline") return "Server unreachable — working offline";
-  return s.lastSyncAt ? `Synced ${new Date(s.lastSyncAt).toLocaleString()}` : "Signed in";
+  if (s.state === "error") return s.lastError ?? tr("Sync error");
+  if (s.state === "syncing") return tr("Syncing…");
+  if (s.state === "offline") return tr("Server unreachable — working offline");
+  return s.lastSyncAt
+    ? tr("Synced {toLocaleString}", { toLocaleString: new Date(s.lastSyncAt).toLocaleString() })
+    : tr("Signed in");
 }
 
 function footerLine(a: AccountStatus | undefined, version: string | undefined): string {
   const v = version ? `v${version}` : "…";
-  if (!a?.account) return `${v} · not synced`;
+  if (!a?.account) return tr("{v} · not synced", { v });
   switch (a.sync.state) {
     case "syncing":
-      return `${v} · syncing`;
+      return tr("{v} · syncing", { v });
     case "offline":
-      return `${v} · offline`;
+      return tr("{v} · offline", { v });
     case "error":
-      return `${v} · sync error`;
+      return tr("{v} · sync error", { v });
     case "idle":
       return `${v} · ${a.sync.realtime ? "live" : "synced"}`;
   }

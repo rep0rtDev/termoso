@@ -7,6 +7,7 @@ import {
   DialogTitle,
 } from "@mui/material";
 import type { ReactNode } from "react";
+import { tr } from "@/i18n";
 
 interface Props {
   open: boolean;
@@ -37,7 +38,7 @@ export function ConfirmDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onCancel} disabled={busy} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           onClick={onConfirm}

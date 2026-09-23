@@ -7,6 +7,7 @@ import {
   type CloudPreview,
   type CloudProvider,
 } from "@/ipc/types";
+import { tr, msg } from "@/i18n";
 
 export const CLOUD_PROVIDERS: { id: CloudProvider; name: string; short: string }[] = [
   { id: "aws", name: "Amazon AWS", short: "AWS" },
@@ -47,8 +48,9 @@ export const AWS_REGIONS = [
   "sa-east-1",
 ];
 
-export const PRIVACY_NOTE =
-  "Keys and tokens are used for this request only, inside the app, and are not saved, synced or logged. Termoso never sends them anywhere but the provider's own API.";
+export const PRIVACY_NOTE = msg(
+  "Keys and tokens are used for this request only, inside the app, and are not saved, synced or logged. Termoso never sends them anywhere but the provider's own API.",
+);
 
 export interface Draft {
   aws: {
@@ -106,15 +108,31 @@ export function cloudErrorMessage(e: unknown, providerName: string): string {
   if (isDesktopError(e)) {
     switch (e.kind) {
       case "cloud_invalid_credentials":
-        return `${providerName} was not able to validate the provided access credentials.`;
+        return tr("{provider} was not able to validate the provided access credentials.", {
+          provider: providerName,
+        });
       case "cloud_forbidden":
-        return `${providerName} rejected the request: the credentials lack permission to list machines. ${e.message}`;
+        return tr(
+          "{provider} rejected the request: the credentials lack permission to list machines. {message}",
+          { provider: providerName, message: e.message },
+        );
       case "rate_limited":
-        return `${providerName} is rate limiting requests. Wait a moment and try again.`;
+        return tr("{provider} is rate limiting requests. Wait a moment and try again.", {
+          provider: providerName,
+        });
       case "cloud_unavailable":
-        return `${providerName} could not be reached. Check your connection and try again. ${e.message}`;
+        return tr(
+          "{provider} could not be reached. Check your connection and try again. {message}",
+          {
+            provider: providerName,
+            message: e.message,
+          },
+        );
       case "cloud_malformed":
-        return `${providerName} returned an unexpected response. ${e.message}`;
+        return tr("{provider} returned an unexpected response. {message}", {
+          provider: providerName,
+          message: e.message,
+        });
     }
   }
   return errorMessage(e);

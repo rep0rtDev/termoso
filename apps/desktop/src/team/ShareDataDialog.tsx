@@ -23,6 +23,7 @@ import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
 import { useHosts, usePfRules, useSshKeys } from "@/ipc/hooks";
 import { errorMessage, type LocalVault, type Uuid } from "@/ipc/types";
+import { tr, trn, trx } from "@/i18n";
 
 type Category = "hosts" | "keys" | "forwarding";
 
@@ -92,7 +93,7 @@ function Body({
     const list: { key: Category; title: string; icon: ReactNode; items: Item[] }[] = [
       {
         key: "hosts",
-        title: "Hosts",
+        title: tr("Hosts"),
         icon: <DnsRoundedIcon fontSize="small" />,
         items: (hosts.data ?? []).map((h) => ({
           id: h.id,
@@ -102,7 +103,7 @@ function Body({
       },
       {
         key: "keys",
-        title: "Keys",
+        title: tr("Keys"),
         icon: <KeyRoundedIcon fontSize="small" />,
         items: (sshKeys.data ?? []).map((k) => ({
           id: k.id,
@@ -112,7 +113,7 @@ function Body({
       },
       {
         key: "forwarding",
-        title: "Port forwarding",
+        title: tr("Port forwarding"),
         icon: <SwapHorizRoundedIcon fontSize="small" />,
         items: (rules.data ?? []).map((r) => ({
           id: r.id,
@@ -208,33 +209,38 @@ function Body({
           }}
         >
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            Share data with your team
+            {tr("Share data with your team")}
           </Typography>
           <Typography variant="body2" sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-            Move your data to the <VaultChip name={target.name} team /> to share.
+            {trx("Move your data to the {vault} to share.", {
+              vault: <VaultChip name={target.name} team />,
+            })}
           </Typography>
           <Box sx={{ borderTop: "1px solid", borderColor: "divider", my: 0.5 }} />
           <Typography variant="caption" color="text.secondary">
-            What access is used in your team?
+            {tr("What access is used in your team?")}
           </Typography>
           <AccessChoice
             selected={shared === true}
             onSelect={() => setShared(true)}
-            title="Members share one set of credentials"
+            title={tr("Members share one set of credentials")}
             text={
               <>
-                Username, passwords and keys will be shared in the{" "}
-                <VaultChip name={target.name} team />
+                {trx("Username, passwords and keys will be shared in the {vault}", {
+                  vault: <VaultChip name={target.name} team />,
+                })}
               </>
             }
           />
           <AccessChoice
             selected={shared === false}
             onSelect={() => setShared(false)}
-            title="Members use their own credentials"
+            title={tr("Members use their own credentials")}
             text={
               <>
-                Credentials are not shared and stored in <VaultChip name="Personal vaults" />
+                {trx("Credentials are not shared and stored in {vault}", {
+                  vault: <VaultChip name={tr("Personal vaults")} />,
+                })}
               </>
             }
           />
@@ -244,7 +250,7 @@ function Body({
           <InputBase
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter"
+            placeholder={tr("Filter")}
             sx={{
               px: 1.25,
               height: 36,
@@ -255,12 +261,12 @@ function Body({
             }}
           />
           <Typography variant="body2" sx={{ fontWeight: 600, py: 0.5 }}>
-            {selectedTotal} item{selectedTotal === 1 ? "" : "s"} selected
+            {trn(selectedTotal, "{count} item selected", "{count} items selected")}
           </Typography>
           <Box sx={{ borderTop: "1px solid", borderColor: "divider" }} />
           {categories.length === 0 && (
             <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-              Nothing to share yet — {source.name} is empty.
+              {tr("Nothing to share yet — {vault} is empty.", { vault: source.name })}
             </Typography>
           )}
           <Box sx={{ overflowY: "auto", maxHeight: 360 }}>
@@ -294,7 +300,7 @@ function Body({
                       {c.title}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {locked ? "kept personal" : on}
+                      {locked ? tr("kept personal") : on}
                     </Typography>
                     <Checkbox
                       size="small"
@@ -341,7 +347,7 @@ function Body({
                         color="text.secondary"
                         sx={{ display: "block", pl: 5, py: 1 }}
                       >
-                        No matches
+                        {tr("No matches")}
                       </Typography>
                     )}
                   </Collapse>
@@ -364,14 +370,14 @@ function Body({
         }}
       >
         <Button color="inherit" onClick={onClose} disabled={busy}>
-          Do it later
+          {tr("Do it later")}
         </Button>
         <Button
           variant="contained"
           onClick={() => void run()}
           disabled={busy || shared === null || selectedTotal === 0}
         >
-          {busy ? "Moving…" : `Move to ${target.name}`}
+          {busy ? tr("Moving…") : tr("Move to {name}", { name: target.name })}
         </Button>
       </Box>
     </Box>

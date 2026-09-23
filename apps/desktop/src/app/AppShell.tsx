@@ -42,6 +42,7 @@ import { startCommands } from "./commands";
 import { applyShortcutOverrides } from "./shortcuts";
 import { CommandPalette } from "./CommandPalette";
 import { startDeepLinks } from "./deepLinks";
+import { tr } from "@/i18n";
 
 /** Report user input to Rust for the inactivity timer, at most once per interval. */
 const ACTIVITY_INTERVAL_MS = 15_000;
@@ -88,7 +89,7 @@ export function AppShell() {
 
   if (status.isPending) return <Box sx={{ height: "100%", bgcolor: "surface.lowest" }} />;
   if (status.error)
-    return <EmptyState title="Vault unavailable" description={errorMessage(status.error)} />;
+    return <EmptyState title={tr("Vault unavailable")} description={errorMessage(status.error)} />;
   if (status.data.locked) return <LockScreen />;
   return <UnlockedShell />;
 }

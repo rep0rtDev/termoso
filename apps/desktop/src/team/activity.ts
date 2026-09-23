@@ -1,14 +1,15 @@
 import type { AuditEvent, Uuid } from "@/ipc/types";
+import { tr, trn, msg } from "@/i18n";
 
 /** Coarse groups for the action filter; each maps to an action prefix. */
 export const ACTIVITY_GROUPS = [
-  { value: "", label: "All activity" },
-  { value: "team.", label: "Team" },
-  { value: "member.", label: "Members" },
-  { value: "invite.", label: "Invitations" },
-  { value: "vault.", label: "Vaults & access" },
-  { value: "entity.", label: "Shared data" },
-  { value: "multiplayer.", label: "Multiplayer" },
+  { value: "", label: msg("All activity") },
+  { value: "team.", label: msg("Team") },
+  { value: "member.", label: msg("Members") },
+  { value: "invite.", label: msg("Invitations") },
+  { value: "vault.", label: msg("Vaults & access") },
+  { value: "entity.", label: msg("Shared data") },
+  { value: "multiplayer.", label: msg("Multiplayer") },
 ] as const;
 
 export interface ActivityContext {
@@ -30,38 +31,38 @@ export interface ActivityLine {
 }
 
 const KIND_LABEL: Record<string, [string, string]> = {
-  host: ["host", "hosts"],
-  group: ["group", "groups"],
-  ssh_key: ["SSH key", "SSH keys"],
-  ssh_certificate: ["certificate", "certificates"],
-  identity: ["identity", "identities"],
-  known_host: ["known host", "known hosts"],
-  snippet: ["snippet", "snippets"],
-  snippet_package: ["snippet package", "snippet packages"],
-  host_snippet: ["snippet target", "snippet targets"],
-  pf_rule: ["port forwarding rule", "port forwarding rules"],
-  proxy: ["proxy", "proxies"],
-  host_chain: ["host chain", "host chains"],
-  tag: ["tag", "tags"],
-  tag_host: ["tag link", "tag links"],
-  ssh_config: ["SSH config", "SSH configs"],
-  telnet_config: ["Telnet config", "Telnet configs"],
-  webdav_config: ["WebDAV config", "WebDAV configs"],
-  serial_config: ["serial config", "serial configs"],
-  port_knocking: ["port knocking", "port knockings"],
-  workspace: ["workspace", "workspaces"],
-  workspace_template: ["workspace template", "workspace templates"],
-  log_bookmark: ["log bookmark", "log bookmarks"],
-  cloud_import: ["cloud import", "cloud imports"],
+  host: [msg("a host"), msg("{count} hosts")],
+  group: [msg("a group"), msg("{count} groups")],
+  ssh_key: [msg("an SSH key"), msg("{count} SSH keys")],
+  ssh_certificate: [msg("a certificate"), msg("{count} certificates")],
+  identity: [msg("an identity"), msg("{count} identities")],
+  known_host: [msg("a known host"), msg("{count} known hosts")],
+  snippet: [msg("a snippet"), msg("{count} snippets")],
+  snippet_package: [msg("a snippet package"), msg("{count} snippet packages")],
+  host_snippet: [msg("a snippet target"), msg("{count} snippet targets")],
+  pf_rule: [msg("a port forwarding rule"), msg("{count} port forwarding rules")],
+  proxy: [msg("a proxy"), msg("{count} proxies")],
+  host_chain: [msg("a host chain"), msg("{count} host chains")],
+  tag: [msg("a tag"), msg("{count} tags")],
+  tag_host: [msg("a tag link"), msg("{count} tag links")],
+  ssh_config: [msg("an SSH config"), msg("{count} SSH configs")],
+  telnet_config: [msg("a Telnet config"), msg("{count} Telnet configs")],
+  webdav_config: [msg("a WebDAV config"), msg("{count} WebDAV configs")],
+  serial_config: [msg("a serial config"), msg("{count} serial configs")],
+  port_knocking: [msg("a port knocking"), msg("{count} port knockings")],
+  workspace: [msg("a workspace"), msg("{count} workspaces")],
+  workspace_template: [msg("a workspace template"), msg("{count} workspace templates")],
+  log_bookmark: [msg("a log bookmark"), msg("{count} log bookmarks")],
+  cloud_import: [msg("a cloud import"), msg("{count} cloud imports")],
 };
 
 const ROLE_LABEL: Record<string, string> = {
-  viewer: "can view",
-  editor: "can edit",
-  manager: "can manage",
-  owner: "Owner",
-  admin: "Admin",
-  member: "Member",
+  viewer: msg("can view"),
+  editor: msg("can edit"),
+  manager: msg("can manage"),
+  owner: msg("Owner"),
+  admin: msg("Admin"),
+  member: msg("Member"),
 };
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
@@ -70,122 +71,146 @@ const bool = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null)
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
 const countOf = (kind: string | null, count: number) => {
-  const [one, many] = KIND_LABEL[kind ?? ""] ?? [kind ?? "item", `${kind ?? "item"}s`];
-  const article = /^(?:[aeiou]|SSH|SFTP)/i.test(one) ? "an" : "a";
-  return count === 1 ? `${article} ${one}` : `${count} ${many}`;
+  const known = KIND_LABEL[kind ?? ""];
+  if (known) return trn(count, known[0], known[1]);
+  const k = kind ?? "item";
+  return count === 1 ? tr("a {kind}", { kind: k }) : `${count} ${k}s`;
 };
+
+const wasRole = (r: string) => tr("was {role}", { role: tr(ROLE_LABEL[r] ?? r) });
+const members = (n: number) => trn(n, "{count} member", "{count} members");
+const vaults = (n: number) => trn(n, "{count} vault", "{count} vaults");
 
 /** Turn one audit row into a readable sentence. Never echoes secrets: the
  *  server only stores metadata, and this only reads known keys from it. */
 export function describeEvent(ev: AuditEvent, ctx: ActivityContext): ActivityLine {
   const d = ev.details;
-  const actor = ev.actor_name ?? ev.actor_email ?? "Someone";
+  const actor = ev.actor_name ?? ev.actor_email ?? tr("Someone");
   const target =
     ev.target_email ??
-    (ev.target_user ? (ctx.people.get(ev.target_user) ?? "a member") : null) ??
+    (ev.target_user ? (ctx.people.get(ev.target_user) ?? tr("a member")) : null) ??
     str(d.email) ??
-    "a member";
+    tr("a member");
   const self = ev.target_user !== undefined && ev.target_user === ev.actor_id;
-  const vault = ev.vault_id ? (ctx.vaultNames.get(ev.vault_id) ?? str(d.name) ?? "a vault") : null;
+  const vault = ev.vault_id
+    ? (ctx.vaultNames.get(ev.vault_id) ?? str(d.name) ?? tr("a vault"))
+    : null;
   const role = str(d.role);
   const prev = str(d.previous_role);
-  const roleText = (r: string | null) => (r ? (ROLE_LABEL[r] ?? r) : "");
+  const roleText = (r: string | null) => (r ? tr(ROLE_LABEL[r] ?? r) : "");
+  const email = str(d.email) ?? tr("someone");
 
   let text: string;
   let meta: string | null = null;
   switch (ev.action) {
     case "team.created":
-      text = `created the team${str(d.name) ? ` “${str(d.name)}”` : ""}`;
+      text = str(d.name)
+        ? tr("created the team “{name}”", { name: str(d.name) ?? "" })
+        : tr("created the team");
       break;
     case "team.renamed":
-      text = `renamed the team to “${str(d.name) ?? "…"}”`;
+      text = tr("renamed the team to “{name}”", { name: str(d.name) ?? "…" });
       break;
     case "team.settings": {
       const mp = bool(d.multiplayer_enabled);
       const mfa = bool(d.require_mfa);
       text =
         mp !== null
-          ? `${mp ? "enabled" : "disabled"} Multiplayer`
+          ? mp
+            ? tr("enabled Multiplayer")
+            : tr("disabled Multiplayer")
           : mfa !== null
-            ? `${mfa ? "required" : "stopped requiring"} 2FA for the team`
-            : "changed team settings";
+            ? mfa
+              ? tr("required 2FA for the team")
+              : tr("stopped requiring 2FA for the team")
+            : tr("changed team settings");
       break;
     }
     case "member.role":
-      text = `changed ${self ? "their own" : `${target}'s`} role to ${roleText(role)}`;
-      if (prev) meta = `was ${roleText(prev)}`;
+      text = self
+        ? tr("changed their own role to {role}", { role: roleText(role) })
+        : tr("changed {target}'s role to {role}", { target, role: roleText(role) });
+      if (prev) meta = wasRole(prev);
       break;
     case "member.removed":
-      text = `removed ${target} from the team`;
-      if (prev) meta = `was ${roleText(prev)}`;
-      else if (str(d.account) === "converted") meta = "account converted to individual";
+      text = tr("removed {target} from the team", { target });
+      if (prev) meta = wasRole(prev);
+      else if (str(d.account) === "converted") meta = tr("account converted to individual");
       break;
     case "member.account_deleted":
-      text = `deleted ${target}'s account`;
-      if (role) meta = `was ${roleText(role)}`;
+      text = tr("deleted {target}'s account", { target });
+      if (role) meta = wasRole(role);
       break;
     case "member.left":
-      text = "left the team";
-      if (str(d.account) === "converted") meta = "account converted to individual";
+      text = tr("left the team");
+      if (str(d.account) === "converted") meta = tr("account converted to individual");
       break;
     case "invite.created":
-      text = `invited ${str(d.email) ?? "someone"}${role ? ` as ${roleText(role)}` : ""}`;
+      text = role
+        ? tr("invited {email} as {role}", { email, role: roleText(role) })
+        : tr("invited {email}", { email });
       if (list(d.vault_ids).length > 0)
-        meta = `with access to ${list(d.vault_ids).length} vault(s)`;
+        meta = tr("with access to {vaults}", { vaults: vaults(list(d.vault_ids).length) });
       break;
     case "invite.revoked":
-      text = `revoked the invitation for ${str(d.email) ?? "someone"}`;
+      text = tr("revoked the invitation for {email}", { email });
       break;
     case "invite.accepted":
-      text = `joined the team${role ? ` as ${roleText(role)}` : ""}`;
+      text = role
+        ? tr("joined the team as {role}", { role: roleText(role) })
+        : tr("joined the team");
       break;
     case "vault.created":
-      text = `created the vault “${vault ?? "…"}”`;
-      if (list(d.members).length > 0) meta = `shared with ${list(d.members).length} member(s)`;
+      text = tr("created the vault “{name}”", { name: vault ?? "…" });
+      if (list(d.members).length > 0)
+        meta = tr("shared with {members}", { members: members(list(d.members).length) });
       break;
     case "vault.renamed":
-      text = `renamed a vault to “${str(d.name) ?? "…"}”`;
+      text = tr("renamed a vault to “{name}”", { name: str(d.name) ?? "…" });
       break;
     case "vault.deleted":
-      text = `deleted the vault “${str(d.name) ?? vault ?? "…"}”`;
-      if (num(d.members) !== null) meta = `${num(d.members)} member(s) lost access`;
+      text = tr("deleted the vault “{name}”", { name: str(d.name) ?? vault ?? "…" });
+      if (num(d.members) !== null)
+        meta = tr("{members} lost access", { members: members(num(d.members) ?? 0) });
       break;
     case "vault.access_granted":
-      text = `gave ${target} access (${roleText(role)})`;
+      text = tr("gave {target} access ({role})", { target, role: roleText(role) });
       break;
     case "vault.access_changed":
-      text = `changed ${target}'s access to ${roleText(role)}`;
-      if (prev) meta = `was ${roleText(prev)}`;
+      text = tr("changed {target}'s access to {role}", { target, role: roleText(role) });
+      if (prev) meta = wasRole(prev);
       break;
     case "vault.access_revoked":
-      text = bool(d.self) ? "left the vault" : `removed ${target}'s access`;
-      if (prev) meta = `was ${roleText(prev)}`;
+      text = bool(d.self) ? tr("left the vault") : tr("removed {target}'s access", { target });
+      if (prev) meta = wasRole(prev);
       break;
     case "vault.key_rotated": {
       const dropped = list(d.access_dropped).length;
-      text = `rotated the vault key${num(d.key_version) ? ` (v${num(d.key_version)})` : ""}`;
-      meta = `re-sealed for ${list(d.resealed_for).length} member(s)${
-        dropped > 0 ? `, ${dropped} lost access` : ""
-      }`;
+      const version = num(d.key_version);
+      text = version
+        ? tr("rotated the vault key (v{version})", { version })
+        : tr("rotated the vault key");
+      meta = tr("re-sealed for {members}", { members: members(list(d.resealed_for).length) });
+      if (dropped > 0) meta += `, ${tr("{count} lost access", { count: dropped })}`;
       break;
     }
     case "entity.created":
-      text = `added ${countOf(str(d.kind), num(d.count) ?? 1)}`;
+      text = tr("added {what}", { what: countOf(str(d.kind), num(d.count) ?? 1) });
       break;
     case "entity.updated":
-      text = `updated ${countOf(str(d.kind), num(d.count) ?? 1)}`;
+      text = tr("updated {what}", { what: countOf(str(d.kind), num(d.count) ?? 1) });
       break;
     case "entity.deleted":
-      text = `removed ${countOf(str(d.kind), num(d.count) ?? 1)}`;
+      text = tr("removed {what}", { what: countOf(str(d.kind), num(d.count) ?? 1) });
       break;
     case "multiplayer.started":
-      text = "started a multiplayer session";
+      text = tr("started a multiplayer session");
       break;
     case "multiplayer.joined":
-      text = "joined a multiplayer session";
+      text = tr("joined a multiplayer session");
       break;
     case "multiplayer.stopped":
-      text = "stopped a multiplayer session";
+      text = tr("stopped a multiplayer session");
       break;
     default:
       text = ev.action.replace(".", ": ").replace(/_/g, " ");

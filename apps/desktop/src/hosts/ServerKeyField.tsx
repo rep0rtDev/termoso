@@ -9,6 +9,7 @@ import * as ipc from "@/ipc/commands";
 import { useHostKeyPins, useVaults } from "@/ipc/hooks";
 import { errorMessage, type HostKeyPin, type Uuid } from "@/ipc/types";
 import { monoFontFamily } from "@/theme/theme";
+import { tr } from "@/i18n";
 
 /**
  * Server key pins for the host's `address:port`, grouped by the vault that
@@ -65,22 +66,24 @@ export function ServerKeyField({
 
   return (
     <Field
-      label="Server key"
+      label={tr("Server key")}
       hint={
         isTeam
-          ? "Pinned keys sync to every team member: they connect without a fingerprint prompt, and a different key is refused."
-          : "Keys accepted on first connection are pinned here; a different key is refused."
+          ? tr(
+              "Pinned keys sync to every team member: they connect without a fingerprint prompt, and a different key is refused.",
+            )
+          : tr("Keys accepted on first connection are pinned here; a different key is refused.")
       }
     >
       <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
         {blank && (
           <Typography variant="body2" color="text.secondary">
-            Enter the address first.
+            {tr("Enter the address first.")}
           </Typography>
         )}
         {!blank && list.length === 0 && !pins.isPending && (
           <Typography variant="body2" color="text.secondary">
-            Not pinned yet: the fingerprint is confirmed on first connection.
+            {tr("Not pinned yet: the fingerprint is confirmed on first connection.")}
           </Typography>
         )}
         {here.map((p) => (
@@ -105,11 +108,11 @@ export function ServerKeyField({
                 disabled={busy}
                 onClick={() => pin.mutate(null)}
               >
-                {isTeam ? "Pin for the team" : "Pin in this vault"}
+                {isTeam ? tr("Pin for the team") : tr("Pin in this vault")}
               </Button>
             )}
             <Button size="small" variant="text" disabled={busy} onClick={() => setPaste((v) => !v)}>
-              {paste ? "Cancel" : "Paste public key"}
+              {paste ? tr("Cancel") : tr("Paste public key")}
             </Button>
           </Box>
         )}
@@ -120,7 +123,7 @@ export function ServerKeyField({
               multiline
               minRows={2}
               autoFocus
-              placeholder="ssh-ed25519 AAAA… (from `ssh-keyscan -p PORT HOST`)"
+              placeholder={tr("ssh-ed25519 AAAA… (from `ssh-keyscan -p PORT HOST`)")}
               value={line}
               onChange={(e) => setLine(e.target.value)}
               slotProps={{ htmlInput: { style: { fontFamily: monoFontFamily, fontSize: 12 } } }}
@@ -131,7 +134,7 @@ export function ServerKeyField({
               disabled={busy || line.trim() === ""}
               onClick={() => pin.mutate(line)}
             >
-              Pin
+              {tr("Pin")}
             </Button>
           </Box>
         )}
@@ -176,7 +179,7 @@ function PinRow({
         </Typography>
       )}
       {onRemove && (
-        <ToolIconButton title="Unpin" onClick={onRemove} disabled={disabled}>
+        <ToolIconButton title={tr("Unpin")} onClick={onRemove} disabled={disabled}>
           <DeleteOutlineRoundedIcon fontSize="small" />
         </ToolIconButton>
       )}

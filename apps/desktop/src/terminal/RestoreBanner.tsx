@@ -2,6 +2,7 @@ import { Alert, Button } from "@mui/material";
 import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
 import { useSnackbar } from "@/components/Snackbar";
 import { dismissPrevious, restorePrevious, snapshotConnections, useWorkspaces } from "./workspaces";
+import { tr, trn } from "@/i18n";
 
 /** One-line offer on the home screen to reopen the previous session's tabs. */
 export function RestoreBanner() {
@@ -26,16 +27,18 @@ export function RestoreBanner() {
               snackbar.notify(`Restoring ${n} connection${n === 1 ? "" : "s"}`);
             }}
           >
-            Restore
+            {tr("Restore")}
           </Button>
           <Button size="small" onClick={dismissPrevious}>
-            Dismiss
+            {tr("Dismiss")}
           </Button>
         </>
       }
     >
-      Your previous session had {n} connection{n === 1 ? "" : "s"} in {tabs} tab
-      {tabs === 1 ? "" : "s"}.
+      {tr("Your previous session had {connections} in {tabs}.", {
+        connections: trn(n, "{count} connection", "{count} connections"),
+        tabs: trn(tabs, "{count} tab", "{count} tabs"),
+      })}
     </Alert>
   );
 }

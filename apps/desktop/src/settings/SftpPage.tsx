@@ -16,6 +16,7 @@ import { Mono, SectionCard } from "@/components/ui";
 import { useAppInfo } from "@/ipc/hooks";
 import type { Settings } from "@/ipc/types";
 import { appSuggestions } from "@/sftp/OpenWithDialog";
+import { tr } from "@/i18n";
 
 interface Props {
   s: Settings;
@@ -63,16 +64,16 @@ export function SftpPage({ s, update }: Props) {
 
   return (
     <>
-      <SectionCard title="File associations">
+      <SectionCard title={tr("File associations")}>
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
-          Applications used by Open for files of each extension. Files are downloaded to a private
-          folder and every save is uploaded back. Extensions without an entry open in the system
-          default application.
+          {tr(
+            "Applications used by Open for files of each extension. Files are downloaded to a private folder and every save is uploaded back. Extensions without an entry open in the system default application.",
+          )}
         </Typography>
         <Stack spacing={1}>
           {rows.length === 0 && (
             <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
-              No associations yet — add one below or tick “Always use” in Open with….
+              {tr("No associations yet — add one below or tick “Always use” in Open with….")}
             </Typography>
           )}
           {rows.map(([e, app]) => (
@@ -102,9 +103,9 @@ export function SftpPage({ s, update }: Props) {
               error={newExt.length > 0 && (!validExt(ext) || ext in assoc)}
               helperText={
                 newExt.length > 0 && ext in assoc
-                  ? "Already listed"
+                  ? tr("Already listed")
                   : newExt.length > 0 && !validExt(ext)
-                    ? "Letters and digits only"
+                    ? tr("Letters and digits only")
                     : undefined
               }
               sx={{ width: 140 }}
@@ -121,7 +122,7 @@ export function SftpPage({ s, update }: Props) {
               onInputChange={(_, v) => setNewApp(v)}
               sx={{ flex: 1 }}
               renderInput={(params) => (
-                <TextField {...params} placeholder="Command, path or application name" />
+                <TextField {...params} placeholder={tr("Command, path or application name")} />
               )}
             />
             <Button
@@ -132,7 +133,7 @@ export function SftpPage({ s, update }: Props) {
               startIcon={<AddRoundedIcon />}
               sx={{ flexShrink: 0 }}
             >
-              Add
+              {tr("Add")}
             </Button>
           </Stack>
         </Stack>
@@ -166,7 +167,7 @@ function AssociationRow({
           <Mono>.{ext}</Mono>
         ) : (
           <Typography variant="body2" color="text.secondary">
-            No extension
+            {tr("No extension")}
           </Typography>
         )}
       </Box>
@@ -190,7 +191,7 @@ function AssociationRow({
           />
         )}
       />
-      <Tooltip title="Remove">
+      <Tooltip title={tr("Remove")}>
         <IconButton size="small" onClick={onRemove}>
           <DeleteOutlineRoundedIcon fontSize="small" />
         </IconButton>

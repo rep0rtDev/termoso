@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Box, MenuItem, TextField, Typography } from "@mui/material";
 import { bundledFont, bundledFonts, terminalFontStack } from "@/terminal/fonts";
 import { useTerminalTheme } from "@/terminal/useTerminalTheme";
+import { tr } from "@/i18n";
 
 const CUSTOM = "\u0000custom";
 
@@ -48,17 +49,17 @@ export function FontPicker({
             {f.name}
             {f.ligatures && (
               <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                ligatures
+                {tr("ligatures")}
               </Typography>
             )}
           </MenuItem>
         ))}
-        <MenuItem value={CUSTOM}>Installed font…</MenuItem>
+        <MenuItem value={CUSTOM}>{tr("Installed font…")}</MenuItem>
       </TextField>
       {(custom || !bundled) && (
         <TextField
           value={bundled ? "" : value}
-          placeholder="Family name, e.g. JetBrainsMono Nerd Font"
+          placeholder={tr("Family name, e.g. JetBrainsMono Nerd Font")}
           onChange={(e) => onChange(e.target.value)}
           sx={{ width }}
         />
@@ -94,8 +95,8 @@ export function FontPreview({
         overflow: "hidden",
       }}
     >
-      <span style={{ color: blue }}>{"\uF17C ~/termoso  "}</span>
-      <span style={{ color: magenta }}>{"\uE725 main  "}</span>
+      <span style={{ color: blue }}>{" ~/termoso  "}</span>
+      <span style={{ color: magenta }}>{" main  "}</span>
       <span style={{ color: green }}>{"\uF00C\n"}</span>
       <span style={{ color: green }}>{"❯ "}</span>
       {'cargo build --release && echo "done" => 0x1F 0O0 1lI |ij\n'}

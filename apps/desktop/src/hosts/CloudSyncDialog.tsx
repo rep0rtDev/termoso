@@ -41,6 +41,7 @@ import {
   type SyncDraft,
 } from "./cloudSync";
 import { TagChip } from "./TagChip";
+import { tr } from "@/i18n";
 
 interface Props {
   open: boolean;
@@ -106,7 +107,11 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
               onError: (e) => setError(errorMessage(e)),
             });
           } else {
-            snackbar.notify(existing ? "Cloud sync updated" : `“${group.label}” is now synced`);
+            snackbar.notify(
+              existing
+                ? tr("Cloud sync updated")
+                : tr("“{label}” is now synced", { label: group.label }),
+            );
             onClose();
           }
         },
@@ -121,7 +126,7 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
       {
         onSuccess: () => {
           setConfirmForget(false);
-          snackbar.notify("Cloud sync turned off; hosts were kept");
+          snackbar.notify(tr("Cloud sync turned off; hosts were kept"));
           onClose();
         },
         onError: (e) => {
@@ -143,10 +148,10 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
         </IconTile>
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="h6" component="div" noWrap>
-            Cloud sync · {group.label}
+            {tr("Cloud sync · {group}", { group: group.label })}
           </Typography>
           <Typography variant="body2" color="text.secondary" noWrap>
-            {summary ? summary.text : "Keep this group's hosts in step with a cloud account"}
+            {summary ? summary.text : tr("Keep this group's hosts in step with a cloud account")}
           </Typography>
         </Box>
       </DialogTitle>
@@ -159,13 +164,14 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
         )}
         {existing && !existing.hasSecret && (
           <Alert severity="warning" variant="outlined">
-            The credentials for this group are stored on another device. Enter them here to sync
-            from this one too.
+            {tr(
+              "The credentials for this group are stored on another device. Enter them here to sync from this one too.",
+            )}
           </Alert>
         )}
         {report && !error && (
           <Typography variant="body2" color="text.secondary" data-testid="cloud-sync-report">
-            Last result: {report}
+            {tr("Last result:")} {report}
           </Typography>
         )}
 
@@ -211,7 +217,7 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
           />
 
           <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.5 }}>
-            <Field label="Username" hint="New hosts only; existing hosts keep theirs.">
+            <Field label={tr("Username")} hint={tr("New hosts only; existing hosts keep theirs.")}>
               <TextField
                 fullWidth
                 size="small"
@@ -228,7 +234,7 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
                 autoComplete="off"
               />
             </Field>
-            <Field label="Port">
+            <Field label={tr("Port")}>
               <TextField
                 fullWidth
                 size="small"
@@ -239,7 +245,7 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
                 slotProps={{ input: { inputMode: "numeric" } }}
               />
             </Field>
-            <Field label="Tags" sx={{ gridColumn: "1 / -1" }}>
+            <Field label={tr("Tags")} sx={{ gridColumn: "1 / -1" }}>
               <Autocomplete
                 multiple
                 size="small"
@@ -261,11 +267,11 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
                   })
                 }
                 renderInput={(params) => (
-                  <TextField {...params} placeholder={draft.tagIds.length ? "" : "No tags"} />
+                  <TextField {...params} placeholder={draft.tagIds.length ? "" : tr("No tags")} />
                 )}
               />
             </Field>
-            <Field label="Refresh">
+            <Field label={tr("Refresh")}>
               <Select
                 fullWidth
                 size="small"
@@ -275,7 +281,7 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
               >
                 {SYNC_INTERVALS.map((i) => (
                   <MenuItem key={i.minutes} value={i.minutes}>
-                    {i.label}
+                    {tr(i.label)}
                   </MenuItem>
                 ))}
               </Select>
@@ -291,7 +297,7 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
                     onChange={(e) => set("enabled", e.target.checked)}
                   />
                 }
-                label="Sync in the background"
+                label={tr("Sync in the background")}
               />
             </Box>
           </Box>
@@ -308,10 +314,10 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
             label={
               <Box>
                 <Typography variant="body2">
-                  Remove hosts whose machine is gone from the provider
+                  {tr("Remove hosts whose machine is gone from the provider")}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Only hosts this sync created; hosts you added by hand are never touched.
+                  {tr("Only hosts this sync created; hosts you added by hand are never touched.")}
                 </Typography>
               </Box>
             }
@@ -332,13 +338,14 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
         >
           <LockOutlinedIcon fontSize="small" sx={{ color: "text.secondary", mt: "1px" }} />
           <Typography variant="caption" color="text.secondary">
-            {SYNC_PRIVACY_NOTE}
+            {tr(SYNC_PRIVACY_NOTE)}
           </Typography>
         </Box>
         {needsSecret && (
           <Typography variant="caption" color="warning.main" data-testid="cloud-sync-needs-secret">
-            Enter the {draft.provider === "digital_ocean" ? "token" : "secret"} for this account to
-            save.
+            {draft.provider === "digital_ocean"
+              ? tr("Enter the token for this account to save.")
+              : tr("Enter the secret for this account to save.")}
           </Typography>
         )}
       </DialogContent>
@@ -351,11 +358,11 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
             onClick={() => setConfirmForget(true)}
             sx={{ mr: "auto" }}
           >
-            Turn off
+            {tr("Turn off")}
           </Button>
         )}
         <Button onClick={onClose} color="inherit" disabled={save.isPending || run.isPending}>
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           variant="outlined"
@@ -363,24 +370,25 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
           onClick={() => onSave(true)}
           startIcon={run.isPending ? <CircularProgress size={14} color="inherit" /> : undefined}
         >
-          Save & sync now
+          {tr("Save & sync now")}
         </Button>
         <Button variant="contained" disabled={!check.ok || busy} onClick={() => onSave(false)}>
-          Save
+          {tr("Save")}
         </Button>
       </DialogActions>
 
       <ConfirmDialog
         open={confirmForget}
-        title="Turn off cloud sync?"
-        confirmLabel="Turn off"
+        title={tr("Turn off cloud sync?")}
+        confirmLabel={tr("Turn off")}
         danger
         busy={forget.isPending}
         onCancel={() => setConfirmForget(false)}
         onConfirm={onForget}
       >
-        The stored credentials are erased from this device and the group stops refreshing. Hosts
-        already in the group stay as they are.
+        {tr(
+          "The stored credentials are erased from this device and the group stops refreshing. Hosts already in the group stay as they are.",
+        )}
       </ConfirmDialog>
     </>
   );

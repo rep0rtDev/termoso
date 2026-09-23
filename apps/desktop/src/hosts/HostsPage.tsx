@@ -112,6 +112,7 @@ import {
   quickLabel,
   type KnownSuggestion,
 } from "./links";
+import { tr, trn, msg } from "@/i18n";
 
 type Panel =
   | { mode: "closed" }
@@ -137,11 +138,11 @@ const comparators: Record<SortKey, (a: HostCard, b: HostCard) => number> = {
 };
 
 const sortLabel: Record<SortKey, string> = {
-  manual: "Manual",
-  label: "Name",
-  address: "Address",
-  updated: "Recently edited",
-  lastConnected: "Recently connected",
+  manual: msg("Manual"),
+  label: msg("Name"),
+  address: msg("Address"),
+  updated: msg("Recently edited"),
+  lastConnected: msg("Recently connected"),
 };
 
 type Ctx =
@@ -362,13 +363,15 @@ export function HostsPage() {
   const onDropMove = useCallback(
     (ids: Uuid[], target: Uuid | null) => {
       if (!vaultId || readOnly) return;
-      const dest = target ? (groupById.get(target)?.label ?? "group") : "All hosts";
+      const dest = target ? (groupById.get(target)?.label ?? tr("group")) : tr("All hosts");
       moveHosts.mutate(
         { ids, groupId: target, vaultId },
         {
           onSuccess: () => {
             snackbar.notify(
-              ids.length === 1 ? `Moved to ${dest}` : `Moved ${ids.length} hosts to ${dest}`,
+              ids.length === 1
+                ? tr("Moved to {dest}", { dest })
+                : tr("Moved {length} hosts to {dest}", { length: ids.length, dest }),
             );
             setChecked(new Set());
           },
@@ -472,7 +475,7 @@ export function HostsPage() {
           snackbar.notify(
             list.length === 1
               ? `Removed ${list[0]?.label ?? "host"}`
-              : `Removed ${list.length} hosts`,
+              : tr("Removed {length} hosts", { length: list.length }),
             "info",
           );
           if (panel.mode === "edit" && list.some((h) => h.id === panel.id)) {
@@ -491,7 +494,7 @@ export function HostsPage() {
       snackbar.notify(
         list.length === 1
           ? `Duplicated ${list[0]?.label ?? "host"}`
-          : `Duplicated ${list.length} hosts`,
+          : tr("Duplicated {length} hosts", { length: list.length }),
       );
       clearSelection();
     } catch (e) {
@@ -500,8 +503,8 @@ export function HostsPage() {
   };
   const copyText = (text: string, what: string) =>
     copyToClipboard(text)
-      .then(() => snackbar.notify(`${what} copied`))
-      .catch(() => snackbar.error("Clipboard is not available"));
+      .then(() => snackbar.notify(tr("{what} copied", { what })))
+      .catch(() => snackbar.error(tr("Clipboard is not available")));
   const copyLinks = (list: HostCard[]) =>
     copyText(list.map(hostLink).join("\n"), list.length === 1 ? "Link" : "Links");
   const copyProtocolLinks = (list: HostCard[]) => {
@@ -525,7 +528,7 @@ export function HostsPage() {
     setPanel({ mode: "group", id: g.id, parentId: g.parentId });
   const onDuplicateGroup = (g: GroupNode) =>
     duplicateGroup.mutate(g.id, {
-      onSuccess: (copy) => snackbar.notify(`Duplicated as “${copy.label}”`),
+      onSuccess: (copy) => snackbar.notify(tr("Duplicated as “{label}”", { label: copy.label })),
       onError: (e) => snackbar.error(errorMessage(e)),
     });
 
@@ -541,23 +544,23 @@ export function HostsPage() {
     return [
       many
         ? {
-            label: `Connect ${n} hosts`,
+            label: tr("Connect {n} hosts", { n }),
             icon: <PlayArrowRoundedIcon fontSize="small" />,
             onClick: () => connectHosts(targets),
           }
         : {
-            label: "Connect",
+            label: tr("Connect"),
             icon: <PlayArrowRoundedIcon fontSize="small" />,
             items: connectActions(h, connectProtocols(h), hasWebDav(h)),
           },
       ...(terminalTargets > 0
         ? [
             {
-              label: "Add to Workspace",
+              label: tr("Add to Workspace"),
               icon: <TabRoundedIcon fontSize="small" />,
               items: [
                 {
-                  label: "New Workspace",
+                  label: tr("New Workspace"),
                   icon: <AddBoxOutlinedIcon fontSize="small" />,
                   divider: workspaces.length > 0,
                   onClick: () => addToWorkspace(null, hostTargets(targets)),
@@ -569,8 +572,11 @@ export function HostsPage() {
                     addToWorkspace(w, hostTargets(targets), true);
                     snackbar.notify(
                       terminalTargets > 1
-                        ? `${terminalTargets} hosts added to “${w.name}”`
-                        : `Added to “${w.name}”`,
+                        ? tr("{terminalTargets} hosts added to “{name}”", {
+                            terminalTargets,
+                            name: w.name,
+                          })
+                        : tr("Added to “{name}”", { name: w.name }),
                     );
                   },
                 })),
@@ -582,7 +588,7 @@ export function HostsPage() {
         ? []
         : [
             {
-              label: "Open SFTP",
+              label: tr("Open SFTP"),
               icon: <FolderCopyRoundedIcon fontSize="small" />,
               onClick: () => sftpHost(h),
               disabled: many || !hasSsh(h),
@@ -591,7 +597,7 @@ export function HostsPage() {
       ...(hasWebDav(h)
         ? [
             {
-              label: "Open WebDAV",
+              label: tr("Open WebDAV"),
               icon: <CloudRoundedIcon fontSize="small" />,
               onClick: () => webdavHost(h),
               disabled: many,
@@ -599,42 +605,42 @@ export function HostsPage() {
           ]
         : []),
       {
-        label: "Port forwarding",
+        label: tr("Port forwarding"),
         icon: <SwapHorizRoundedIcon fontSize="small" />,
         onClick: () => requestForwardingRule(h.id),
         disabled: many || !hasSsh(h),
         divider: true,
       },
       {
-        label: "Edit",
+        label: tr("Edit"),
         icon: <EditOutlinedIcon fontSize="small" />,
         onClick: () => setPanel({ mode: "edit", id: h.id }),
         disabled: many,
       },
       {
-        label: "Move to…",
+        label: tr("Move to…"),
         icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
         disabled: readOnly,
         onClick: () => setMoveCopy({ kind: "group", hosts: targets }),
       },
       {
-        label: "Copy to",
+        label: tr("Copy to"),
         icon: <LibraryAddOutlinedIcon fontSize="small" />,
         items: copyToItems(targets),
       },
       {
-        label: "Duplicate",
+        label: tr("Duplicate"),
         icon: <ContentCopyRoundedIcon fontSize="small" />,
         disabled: readOnly,
         onClick: () => void duplicateHosts(targets),
         divider: true,
       },
       {
-        label: many ? "Copy links" : "Copy link",
+        label: many ? tr("Copy links") : tr("Copy link"),
         icon: <LinkRoundedIcon fontSize="small" />,
         items: [
           {
-            label: "Termoso link",
+            label: tr("Termoso link"),
             icon: <LinkRoundedIcon fontSize="small" />,
             onClick: () => void copyLinks(targets),
           },
@@ -648,13 +654,13 @@ export function HostsPage() {
         ],
       },
       {
-        label: "Copy address",
+        label: tr("Copy address"),
         icon: <ContentCopyRoundedIcon fontSize="small" />,
         onClick: () => void copyText(targets.map((t) => t.address).join("\n"), "Address"),
         divider: true,
       },
       {
-        label: many ? `Remove ${n} hosts` : "Remove",
+        label: many ? tr("Remove {n} hosts", { n }) : tr("Remove"),
         icon: <DeleteOutlineRoundedIcon fontSize="small" />,
         disabled: readOnly,
         onClick: () => setConfirmRemove(targets),
@@ -674,7 +680,7 @@ export function HostsPage() {
         onClick: () => copyHostsTo(targets, v.id),
       })),
     {
-      label: "Add vault",
+      label: tr("Add vault"),
       icon: <AddRoundedIcon fontSize="small" />,
       divider: vault.vaults.length > 1,
       onClick: () => goToSettingsWith({ kind: "newVault" }),
@@ -692,7 +698,7 @@ export function HostsPage() {
     copyToVault.mutate(
       { ids: targets.map((t) => t.id), vaultId: to, move: false, withCredentials: true },
       {
-        onSuccess: () => snackbar.notify(`Copied ${what} to ${dest.name}`),
+        onSuccess: () => snackbar.notify(tr("Copied {what} to {name}", { what, name: dest.name })),
         onError: (e) => snackbar.error(errorMessage(e)),
       },
     );
@@ -700,38 +706,38 @@ export function HostsPage() {
 
   const groupMenu = (g: GroupNode): MenuAction[] => [
     {
-      label: "Open",
+      label: tr("Open"),
       icon: <FolderOpenRoundedIcon fontSize="small" />,
       onClick: () => setGroupId(g.id),
     },
     {
-      label: "Group details",
+      label: tr("Group details"),
       icon: <EditOutlinedIcon fontSize="small" />,
       onClick: () => openGroupPanel(g),
       divider: true,
     },
     {
-      label: "New host here",
+      label: tr("New host here"),
       icon: <DnsRoundedIcon fontSize="small" />,
       disabled: readOnly,
       onClick: () => setPanel({ mode: "new", groupId: g.id }),
     },
     {
-      label: "New sub-group",
+      label: tr("New sub-group"),
       icon: <CreateNewFolderRoundedIcon fontSize="small" />,
       disabled: readOnly,
       onClick: () => setPanel({ mode: "group", id: null, parentId: g.id }),
       divider: true,
     },
     {
-      label: "Duplicate",
+      label: tr("Duplicate"),
       icon: <ContentCopyRoundedIcon fontSize="small" />,
       disabled: readOnly,
       onClick: () => onDuplicateGroup(g),
       divider: true,
     },
     {
-      label: "Remove",
+      label: tr("Remove"),
       icon: <DeleteOutlineRoundedIcon fontSize="small" />,
       disabled: readOnly,
       onClick: () => setConfirmGroup(g),
@@ -784,8 +790,10 @@ export function HostsPage() {
           <TextField
             placeholder={
               groupId
-                ? "Search this group, or type user@host:port and press Enter to connect"
-                : "Search hosts, or type user@host:port / ssh:// / telnet:// and press Enter to connect"
+                ? tr("Search this group, or type user@host:port and press Enter to connect")
+                : tr(
+                    "Search hosts, or type user@host:port / ssh:// / telnet:// and press Enter to connect",
+                  )
             }
             value={search}
             onChange={(e) => updateSearch(e.target.value)}
@@ -806,7 +814,9 @@ export function HostsPage() {
                       <Chip
                         size="small"
                         icon={<PlayArrowRoundedIcon />}
-                        label={`Connect to ${quickLabel(quickTarget)}`}
+                        label={tr("Connect to {quickLabel}", {
+                          quickLabel: quickLabel(quickTarget),
+                        })}
                         onClick={onSearchEnter}
                         color="primary"
                         sx={{ "& .MuiChip-icon": { fontSize: 16 } }}
@@ -826,15 +836,15 @@ export function HostsPage() {
                 value={view}
                 onChange={(_e, v: HostsView | null) => setView(v)}
               >
-                <ToggleButton value="grid" aria-label="Grid view">
+                <ToggleButton value="grid" aria-label={tr("Grid view")}>
                   <GridViewRoundedIcon sx={{ fontSize: 18 }} />
                 </ToggleButton>
-                <ToggleButton value="list" aria-label="List view">
+                <ToggleButton value="list" aria-label={tr("List view")}>
                   <ViewListRoundedIcon sx={{ fontSize: 18 }} />
                 </ToggleButton>
               </ToggleButtonGroup>
               <ToolIconButton
-                title="Filter by tag"
+                title={tr("Filter by tag")}
                 active={tagFilter.length > 0}
                 onClick={(e) => setTagAnchor(e.currentTarget)}
               >
@@ -847,13 +857,13 @@ export function HostsPage() {
                 onClick={(e) => setSortAnchor(e.currentTarget)}
                 sx={{ color: "text.secondary" }}
               >
-                {sortLabel[sort]}
+                {tr(sortLabel[sort])}
               </Button>
             </>
           }
         >
           <SplitButton
-            label="New host"
+            label={tr("New host")}
             icon={<AddRoundedIcon />}
             disabled={!vaultId}
             onClick={() => {
@@ -861,37 +871,37 @@ export function HostsPage() {
             }}
             items={[
               {
-                label: "New host",
+                label: tr("New host"),
                 icon: <DnsRoundedIcon fontSize="small" />,
                 disabled: readOnly,
                 onClick: () => setPanel({ mode: "new", groupId }),
               },
               {
-                label: "New group",
+                label: tr("New group"),
                 icon: <CreateNewFolderRoundedIcon fontSize="small" />,
                 disabled: readOnly,
                 onClick: () => setPanel({ mode: "group", id: null, parentId: groupId }),
               },
               {
-                label: "Import…",
+                label: tr("Import…"),
                 icon: <FileDownloadOutlinedIcon fontSize="small" />,
                 disabled: readOnly,
                 onClick: () => setImportOpen(true),
               },
               {
-                label: "Export CSV…",
+                label: tr("Export CSV…"),
                 icon: <FileUploadOutlinedIcon fontSize="small" />,
                 onClick: () => setExportOpen(true),
               },
               {
-                label: "Discover on local network…",
+                label: tr("Discover on local network…"),
                 icon: <LanOutlinedIcon fontSize="small" />,
                 disabled: readOnly,
                 divider: true,
                 onClick: () => setLanOpen(true),
               },
               ...CLOUD_PROVIDERS.map((p, i) => ({
-                label: `${p.short} Integration`,
+                label: tr("{short} Integration", { short: p.short }),
                 icon: <CloudOutlinedIcon fontSize="small" />,
                 disabled: readOnly,
                 divider: i === 0,
@@ -904,10 +914,10 @@ export function HostsPage() {
             startIcon={<TerminalRoundedIcon />}
             onClick={() => openTerminal({ kind: "local" })}
           >
-            Terminal
+            {tr("Terminal")}
           </Button>
           <Button variant="tonal" startIcon={<UsbRoundedIcon />} onClick={goToSerial}>
-            Serial
+            {tr("Serial")}
           </Button>
           {readOnly && <ViewOnlyChip sx={{ ml: 1 }} />}
         </Toolbar>
@@ -916,7 +926,7 @@ export function HostsPage() {
           {knownSuggestions.length > 0 && (
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1, flexWrap: "wrap" }}>
               <Typography variant="caption" color="text.secondary">
-                Known hosts:
+                {tr("Known hosts:")}
               </Typography>
               {knownSuggestions.map((s) => (
                 <Chip
@@ -954,7 +964,7 @@ export function HostsPage() {
               }}
             >
               <Typography variant="body2" sx={{ fontWeight: 600, mr: 1 }}>
-                {visibleChecked.size} selected
+                {tr("{count} selected", { count: visibleChecked.size })}
               </Typography>
               <Button
                 size="small"
@@ -963,7 +973,7 @@ export function HostsPage() {
                 startIcon={<PlayArrowRoundedIcon />}
                 onClick={() => connectHosts(selectedHosts)}
               >
-                Connect
+                {tr("Connect")}
               </Button>
               <Button
                 size="small"
@@ -973,7 +983,7 @@ export function HostsPage() {
                 disabled={readOnly}
                 onClick={() => setMoveCopy({ kind: "group", hosts: selectedHosts })}
               >
-                Move to
+                {tr("Move to")}
               </Button>
               <Button
                 size="small"
@@ -982,7 +992,7 @@ export function HostsPage() {
                 startIcon={<LibraryAddOutlinedIcon />}
                 onClick={(e) => setCopyAnchor(e.currentTarget)}
               >
-                Copy to
+                {tr("Copy to")}
               </Button>
               <Button
                 size="small"
@@ -992,7 +1002,7 @@ export function HostsPage() {
                 disabled={readOnly}
                 onClick={() => void duplicateHosts(selectedHosts)}
               >
-                Duplicate
+                {tr("Duplicate")}
               </Button>
               <Button
                 size="small"
@@ -1002,21 +1012,25 @@ export function HostsPage() {
                 disabled={readOnly}
                 onClick={() => setConfirmRemove(selectedHosts)}
               >
-                Remove
+                {tr("Remove")}
               </Button>
               <Box sx={{ flex: 1 }} />
               <Tooltip title={`Select all (${IS_MAC ? "Cmd" : "Ctrl"}+A)`}>
                 <IconButton
                   size="small"
-                  aria-label="Select all"
+                  aria-label={tr("Select all")}
                   onClick={selectAll}
                   disabled={visibleChecked.size === visibleHosts.length}
                 >
                   <SelectAllRoundedIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Clear selection (Esc)">
-                <IconButton size="small" aria-label="Clear selection" onClick={clearSelection}>
+              <Tooltip title={tr("Clear selection (Esc)")}>
+                <IconButton
+                  size="small"
+                  aria-label={tr("Clear selection")}
+                  onClick={clearSelection}
+                >
                   <CloseRoundedIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
@@ -1026,7 +1040,7 @@ export function HostsPage() {
               {filtering ? (
                 <>
                   <Typography variant="body2" color="text.secondary">
-                    {visibleHosts.length} result{visibleHosts.length === 1 ? "" : "s"}
+                    {trn(visibleHosts.length, "{count} result", "{count} results")}
                   </Typography>
                   {subtree !== null && (
                     <Chip
@@ -1035,8 +1049,10 @@ export function HostsPage() {
                       icon={<FolderOpenRoundedIcon />}
                       label={
                         searchEverywhere
-                          ? "Everywhere"
-                          : `In ${crumbs[crumbs.length - 1]?.label ?? "group"}`
+                          ? tr("Everywhere")
+                          : tr("In {group}", {
+                              group: crumbs[crumbs.length - 1]?.label ?? tr("group"),
+                            })
                       }
                       onClick={() => setSearchEverywhere((v) => !v)}
                       sx={{ "& .MuiChip-icon": { fontSize: 16 } }}
@@ -1046,10 +1062,10 @@ export function HostsPage() {
               ) : (
                 <>
                   {groupId && (
-                    <Tooltip title="Back (Backspace)">
+                    <Tooltip title={tr("Back (Backspace)")}>
                       <IconButton
                         size="small"
-                        aria-label="Back"
+                        aria-label={tr("Back")}
                         onClick={goBack}
                         sx={{ ml: -0.75 }}
                       >
@@ -1069,7 +1085,7 @@ export function HostsPage() {
                       sx={crumbSx(dnd.dropping === "root")}
                       {...(groupId ? dnd.dropInto(null) : {})}
                     >
-                      All hosts
+                      {tr("All hosts")}
                     </Link>
                     {crumbs.map((g, i) => {
                       const last = i === crumbs.length - 1;
@@ -1096,10 +1112,10 @@ export function HostsPage() {
                 </>
               )}
               {!filtering && crumbs.length > 0 && (
-                <Tooltip title="Group details">
+                <Tooltip title={tr("Group details")}>
                   <IconButton
                     size="small"
-                    aria-label="Group details"
+                    aria-label={tr("Group details")}
                     onClick={() => {
                       const g = crumbs[crumbs.length - 1];
                       if (g) openGroupPanel(g);
@@ -1121,7 +1137,7 @@ export function HostsPage() {
               ))}
               {tagFilter.length > 0 && (
                 <Button size="small" variant="text" onClick={() => updateTagFilter(() => [])}>
-                  Clear
+                  {tr("Clear")}
                 </Button>
               )}
             </Box>
@@ -1133,23 +1149,34 @@ export function HostsPage() {
           {loading ? (
             <Loading />
           ) : loadError ? (
-            <EmptyState title="Could not open the vault" description={errorMessage(loadError)} />
+            <EmptyState
+              title={tr("Could not open the vault")}
+              description={errorMessage(loadError)}
+            />
           ) : childGroups.length === 0 && visibleHosts.length === 0 ? (
             <EmptyState
               icon={<DnsRoundedIcon />}
               title={
-                filtering ? "Nothing matches" : groupId ? "This group is empty" : "No hosts yet"
+                filtering
+                  ? tr("Nothing matches")
+                  : groupId
+                    ? tr("This group is empty")
+                    : tr("No hosts yet")
               }
               description={
                 filtering
                   ? liveLink
-                    ? "Press Enter to join this multiplayer session."
+                    ? tr("Press Enter to join this multiplayer session.")
                     : quickTarget
-                      ? `Press Enter to connect to ${quickLabel(quickTarget)}.`
+                      ? tr("Press Enter to connect to {quickLabel}.", {
+                          quickLabel: quickLabel(quickTarget),
+                        })
                       : scopedToGroup
-                        ? "Nothing in this group — switch to Everywhere to search the whole vault."
-                        : "Try a different label, address or tag."
-                  : "Add your first server — everything is stored encrypted on this device."
+                        ? tr(
+                            "Nothing in this group — switch to Everywhere to search the whole vault.",
+                          )
+                        : tr("Try a different label, address or tag.")
+                  : tr("Add your first server — everything is stored encrypted on this device.")
               }
               action={
                 filtering ? undefined : (
@@ -1158,7 +1185,7 @@ export function HostsPage() {
                     startIcon={<AddRoundedIcon />}
                     onClick={() => setPanel({ mode: "new", groupId })}
                   >
-                    New host
+                    {tr("New host")}
                   </Button>
                 )
               }
@@ -1245,11 +1272,11 @@ export function HostsPage() {
         open={confirmRemove !== null}
         title={
           confirmRemove && confirmRemove.length > 1
-            ? `Remove ${confirmRemove.length} hosts?`
+            ? tr("Remove {length} hosts?", { length: confirmRemove.length })
             : `Remove ${confirmRemove?.[0]?.label ?? "host"}?`
         }
         danger
-        confirmLabel="Remove"
+        confirmLabel={tr("Remove")}
         busy={deleteHosts.isPending}
         onCancel={() => setConfirmRemove(null)}
         onConfirm={() => confirmRemove && removeHosts(confirmRemove)}
@@ -1263,16 +1290,19 @@ export function HostsPage() {
             ))}
             {confirmRemove.length > 6 && (
               <Typography variant="body2" color="text.secondary">
-                …and {confirmRemove.length - 6} more
+                {tr("…and {count} more", { count: confirmRemove.length - 6 })}
               </Typography>
             )}
             <Typography variant="body2" sx={{ mt: 1 }}>
-              Their inline credentials are removed too. Shared identities and keys stay in the
-              Keychain.
+              {tr(
+                "Their inline credentials are removed too. Shared identities and keys stay in the Keychain.",
+              )}
             </Typography>
           </>
         ) : (
-          "The host and its inline credentials are removed. Shared identities and keys stay in the Keychain."
+          tr(
+            "The host and its inline credentials are removed. Shared identities and keys stay in the Keychain.",
+          )
         )}
       </ConfirmDialog>
 
@@ -1288,7 +1318,7 @@ export function HostsPage() {
       <TagsPopover
         anchor={tagAnchor}
         vaultId={vaultId}
-        title="Filter by tag"
+        title={tr("Filter by tag")}
         selected={tagFilterIds}
         onToggle={(t, on) =>
           updateTagFilter((f) => (on ? [...f, t.label] : f.filter((x) => x !== t.label)))
@@ -1319,7 +1349,7 @@ export function HostsPage() {
               setSortAnchor(null);
             }}
           >
-            {sortLabel[k]}
+            {tr(sortLabel[k])}
           </MenuItem>
         ))}
       </Menu>
