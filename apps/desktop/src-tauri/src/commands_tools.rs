@@ -1045,6 +1045,32 @@ pub async fn account_cancel_login<R: Runtime>(app: AppHandle<R>) -> Result<()> {
 }
 
 #[tauri::command]
+pub async fn account_sso_start<R: Runtime>(
+    app: AppHandle<R>,
+    form: account::SsoStartForm,
+) -> Result<String> {
+    account::sso_start(&app, form).await
+}
+
+#[tauri::command]
+pub async fn account_sso_poll<R: Runtime>(app: AppHandle<R>) -> Result<account::SsoOutcome> {
+    account::sso_poll(&app).await
+}
+
+#[tauri::command]
+pub async fn account_sso_callback<R: Runtime>(
+    app: AppHandle<R>,
+    flow_id: String,
+) -> Result<account::SsoOutcome> {
+    account::sso_callback(&app, &flow_id).await
+}
+
+#[tauri::command]
+pub async fn account_sso_cancel<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    account::sso_cancel(&app).await
+}
+
+#[tauri::command]
 pub async fn account_register<R: Runtime>(
     app: AppHandle<R>,
     form: RegisterForm,

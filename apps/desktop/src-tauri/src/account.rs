@@ -16,7 +16,7 @@ use termoso_core::api::ApiClient;
 use termoso_core::store::{EntityFilter, LocalVault, StoredAccount};
 use termoso_core::sync::{SyncEngine, SyncEvent, SyncOptions, SyncReport};
 use termoso_proto::account::ServerInfo;
-use termoso_proto::auth::{Device, MfaCredential, MfaMethod};
+use termoso_proto::auth::{Device, MfaCredential, MfaMethod, SsoResult};
 use termoso_proto::entities::is_credential_kind;
 use termoso_proto::vault::VaultMember;
 use tokio::task::JoinHandle;
@@ -158,6 +158,10 @@ pub struct LoginForm {
     pub server_url: String,
     pub email: String,
     pub password: String,
+    /// Bind the identity verified by the SSO round trip started with
+    /// [`sso_start`] (the server then skips new-device approval).
+    #[serde(default)]
+    pub sso: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -170,6 +174,55 @@ pub struct RegisterForm {
     pub display_name: Option<String>,
     #[serde(default)]
     pub invite_token: Option<String>,
+    /// Bind the identity verified by the SSO round trip started with
+    /// [`sso_start`].
+    #[serde(default)]
+    pub sso: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SsoStartForm {
+    pub server_url: String,
+    pub provider: String,
+}
+
+/// Deep link the server sends the browser back to once the IdP is done.
+pub const SSO_CALLBACK: &str = "termoso://sso";
+
+/// Where a browser-based SSO sign-in stands. The verified `sso_session`
+/// itself never reaches the webview: it stays in Rust until `login` /
+/// `register` bind it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(
+    tag = "step",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum SsoOutcome {
+    /// Browser round trip not finished yet.
+    Pending,
+    /// Known account: unlock with the Termoso password.
+    LoginRequired {
+        email: String,
+    },
+    /// New identity: create an account (and its keys) with a password.
+    RegistrationRequired {
+        email: String,
+        display_name: Option<String>,
+    },
+    Failed {
+        message: String,
+    },
+}
+
+struct SsoFlow {
+    api: Arc<ApiClient>,
+    server_url: String,
+    flow_id: String,
+    /// Terminal outcome once collected — the server hands it out only once.
+    outcome: Option<SsoOutcome>,
+    session: Option<Zeroizing<String>>,
 }
 
 struct Engine {
@@ -193,12 +246,16 @@ struct Inner {
     flow: Option<LoginFlow>,
     pending: Option<LoginOutcome>,
     reauth: Option<ReauthFlow>,
+    sso: Option<SsoFlow>,
     engine: Option<Engine>,
 }
 
 #[derive(Default)]
 pub struct AccountRuntime {
     inner: tokio::sync::Mutex<Inner>,
+    /// Serialises SSO polls: the server hands a terminal result out once, so
+    /// two concurrent polls must not both go to the network.
+    sso_poll: tokio::sync::Mutex<()>,
     status: Mutex<SyncStatus>,
 }
 
@@ -337,20 +394,191 @@ pub async fn login<R: Runtime>(app: &AppHandle<R>, form: LoginForm) -> Result<Lo
     if form.password.is_empty() {
         return Err(DesktopError::invalid("password is required"));
     }
-    let api = Arc::new(ApiClient::new(&normalize_url(&form.server_url)?)?);
+    let server_url = normalize_url(&form.server_url)?;
     let device = device(&state)?;
     let mut inner = state.account.inner.lock().await;
+    let (api, sso_session) = if form.sso {
+        take_sso_session(&mut inner, &server_url, &form.email)?
+    } else {
+        (Arc::new(ApiClient::new(&server_url)?), None)
+    };
     let (flow, step) = LoginFlow::start(
         api.clone(),
         state.store()?.clone(),
         &form.email,
         &form.password,
         device,
-        None,
+        sso_session.map(|s| s.to_string()),
     )
     .await?;
     inner.api = Some(api);
     finish_step(app, &state, &mut inner, flow, step).await
+}
+
+// ───────────────────────────── single sign-on ─────────────────────────────
+
+/// Ask the server for the IdP authorization URL and open it in the system
+/// browser; the browser is sent back to [`SSO_CALLBACK`] and the result is
+/// collected with [`sso_poll`]. Replaces any earlier unfinished SSO attempt.
+pub async fn sso_start<R: Runtime>(app: &AppHandle<R>, form: SsoStartForm) -> Result<String> {
+    let state = app.state::<AppState>();
+    if state.store()?.account()?.is_some() {
+        return Err(DesktopError::invalid("already signed in"));
+    }
+    let provider = form.provider.trim();
+    if provider.is_empty() {
+        return Err(DesktopError::invalid("provider is required"));
+    }
+    let server_url = normalize_url(&form.server_url)?;
+    let api = Arc::new(ApiClient::new(&server_url)?);
+    if !api
+        .server_info()
+        .await?
+        .sso_providers
+        .iter()
+        .any(|p| p.id == provider)
+    {
+        return Err(DesktopError::invalid(
+            "this server has no such sign-in provider",
+        ));
+    }
+    let started = api.sso_start(provider, Some(SSO_CALLBACK)).await?;
+    if !(started.authorization_url.starts_with("https://")
+        || started.authorization_url.starts_with("http://"))
+    {
+        return Err(DesktopError::invalid(
+            "server returned a non-web authorization URL",
+        ));
+    }
+    if started.flow_id.is_empty() {
+        return Err(DesktopError::invalid("server returned an empty SSO flow"));
+    }
+    let mut inner = state.account.inner.lock().await;
+    if inner.flow.is_some() {
+        return Err(DesktopError::invalid(
+            "another sign-in is in progress; cancel it first",
+        ));
+    }
+    inner.sso = Some(SsoFlow {
+        api,
+        server_url,
+        flow_id: started.flow_id.clone(),
+        outcome: None,
+        session: None,
+    });
+    drop(inner);
+    tauri_plugin_opener::open_url(&started.authorization_url, None::<&str>)
+        .map_err(|e| DesktopError::new("io", format!("could not open the browser: {e}")))?;
+    Ok(started.flow_id)
+}
+
+/// Where the SSO round trip stands. Terminal outcomes are fetched from the
+/// server once and then answered from memory, so the browser callback and
+/// the UI's polling may both call this freely.
+pub async fn sso_poll<R: Runtime>(app: &AppHandle<R>) -> Result<SsoOutcome> {
+    let state = app.state::<AppState>();
+    let _serial = state.account.sso_poll.lock().await;
+    // The account lock is not held across the network round trip so that
+    // cancelling or a stuck server never blocks the rest of the account UI.
+    let (api, flow_id) = {
+        let inner = state.account.inner.lock().await;
+        let flow = inner
+            .sso
+            .as_ref()
+            .ok_or_else(|| DesktopError::invalid("no single sign-on in progress"))?;
+        if let Some(out) = &flow.outcome {
+            return Ok(out.clone());
+        }
+        (flow.api.clone(), flow.flow_id.clone())
+    };
+    let result = api.sso_poll(&flow_id).await?;
+    let mut inner = state.account.inner.lock().await;
+    let flow = inner
+        .sso
+        .as_mut()
+        .filter(|f| f.flow_id == flow_id)
+        .ok_or_else(|| DesktopError::invalid("single sign-on was cancelled"))?;
+    let out = match result {
+        SsoResult::Pending => return Ok(SsoOutcome::Pending),
+        SsoResult::LoginRequired { sso_session, email } => {
+            flow.session = Some(Zeroizing::new(sso_session));
+            SsoOutcome::LoginRequired { email }
+        }
+        SsoResult::RegistrationRequired {
+            sso_session,
+            email,
+            display_name,
+        } => {
+            flow.session = Some(Zeroizing::new(sso_session));
+            SsoOutcome::RegistrationRequired {
+                email,
+                display_name,
+            }
+        }
+        SsoResult::Failed { message } => SsoOutcome::Failed { message },
+    };
+    flow.outcome = Some(out.clone());
+    Ok(out)
+}
+
+/// The browser came back through the `termoso://sso` deep link. Only the
+/// flow this app started is accepted; the link carries no secrets, the
+/// result is still fetched from the server.
+pub async fn sso_callback<R: Runtime>(app: &AppHandle<R>, flow_id: &str) -> Result<SsoOutcome> {
+    let state = app.state::<AppState>();
+    let inner = state.account.inner.lock().await;
+    match &inner.sso {
+        Some(f) if f.flow_id == flow_id => {}
+        _ => {
+            return Err(DesktopError::invalid(
+                "this sign-in link does not belong to a sign-in started here",
+            ));
+        }
+    }
+    drop(inner);
+    sso_poll(app).await
+}
+
+pub async fn sso_cancel<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
+    let state = app.state::<AppState>();
+    state.account.inner.lock().await.sso = None;
+    Ok(())
+}
+
+/// Hand the verified SSO session to a login / registration on the same
+/// server for the same email. One-shot: the flow is dropped either way.
+fn take_sso_session(
+    inner: &mut Inner,
+    server_url: &str,
+    email: &str,
+) -> Result<(Arc<ApiClient>, Option<Zeroizing<String>>)> {
+    let flow = inner
+        .sso
+        .take()
+        .ok_or_else(|| DesktopError::invalid("no single sign-on in progress"))?;
+    if flow.server_url != server_url {
+        return Err(DesktopError::invalid(
+            "single sign-on was started against a different server",
+        ));
+    }
+    let verified = match &flow.outcome {
+        Some(SsoOutcome::LoginRequired { email: e })
+        | Some(SsoOutcome::RegistrationRequired { email: e, .. }) => e,
+        _ => {
+            return Err(DesktopError::invalid(
+                "single sign-on has not completed yet",
+            ));
+        }
+    };
+    if !verified.eq_ignore_ascii_case(email.trim()) {
+        return Err(DesktopError::invalid(
+            "email does not match the single sign-on identity",
+        ));
+    }
+    let session = flow
+        .session
+        .ok_or_else(|| DesktopError::invalid("single sign-on session is missing"))?;
+    Ok((flow.api, Some(session)))
 }
 
 async fn finish_step<R: Runtime>(
@@ -445,6 +673,7 @@ pub async fn cancel_login<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
     let mut inner = state.account.inner.lock().await;
     inner.flow = None;
     inner.pending = None;
+    inner.sso = None;
     if state.store()?.account()?.is_none() {
         inner.api = None;
     }
@@ -461,9 +690,14 @@ pub async fn register<R: Runtime>(app: &AppHandle<R>, form: RegisterForm) -> Res
             "password must be at least 12 characters",
         ));
     }
-    let api = Arc::new(ApiClient::new(&normalize_url(&form.server_url)?)?);
+    let server_url = normalize_url(&form.server_url)?;
     let device = device(&state)?;
     let mut inner = state.account.inner.lock().await;
+    let (api, sso_session) = if form.sso {
+        take_sso_session(&mut inner, &server_url, &form.email)?
+    } else {
+        (Arc::new(ApiClient::new(&server_url)?), None)
+    };
     let registered = core::register(
         api.clone(),
         state.store()?.clone(),
@@ -476,7 +710,7 @@ pub async fn register<R: Runtime>(app: &AppHandle<R>, form: RegisterForm) -> Res
                 .filter(|s| !s.is_empty()),
             device,
             invite_token: form.invite_token,
-            sso_session: None,
+            sso_session: sso_session.map(|s| s.to_string()),
         },
     )
     .await?;
@@ -540,6 +774,7 @@ pub async fn suspend<R: Runtime>(app: &AppHandle<R>) {
     inner.flow = None;
     inner.pending = None;
     inner.reauth = None;
+    inner.sso = None;
     if let Some(api) = inner.api.take() {
         api.set_token(None);
     }
@@ -975,5 +1210,77 @@ mod tests {
         .unwrap();
         assert_eq!(v["step"], "mfaRequired");
         assert_eq!(v["methods"][0], "totp");
+    }
+
+    const SERVER: &str = "https://termoso.example.com";
+
+    fn sso_inner(outcome: Option<SsoOutcome>, session: Option<&str>) -> Inner {
+        Inner {
+            sso: Some(SsoFlow {
+                api: Arc::new(ApiClient::new(SERVER).unwrap()),
+                server_url: SERVER.into(),
+                flow_id: "flow-1".into(),
+                outcome,
+                session: session.map(|s| Zeroizing::new(s.to_string())),
+            }),
+            ..Inner::default()
+        }
+    }
+
+    fn verified(email: &str) -> Option<SsoOutcome> {
+        Some(SsoOutcome::LoginRequired {
+            email: email.into(),
+        })
+    }
+
+    #[test]
+    fn sso_session_is_handed_over_once() {
+        let mut inner = sso_inner(verified("ann@example.com"), Some("sess"));
+        let (_, session) = take_sso_session(&mut inner, SERVER, " Ann@Example.com ").unwrap();
+        assert_eq!(session.as_deref().map(String::as_str), Some("sess"));
+        assert!(inner.sso.is_none());
+        assert!(take_sso_session(&mut inner, SERVER, "ann@example.com").is_err());
+    }
+
+    #[test]
+    fn sso_session_refuses_other_server_or_email() {
+        let mut inner = sso_inner(verified("ann@example.com"), Some("sess"));
+        let err = take_sso_session(&mut inner, "https://other.example.com", "ann@example.com")
+            .unwrap_err();
+        assert!(err.to_string().contains("different server"), "{err}");
+        assert!(inner.sso.is_none(), "a rejected hand-over drops the flow");
+
+        let mut inner = sso_inner(verified("ann@example.com"), Some("sess"));
+        let err = take_sso_session(&mut inner, SERVER, "bob@example.com").unwrap_err();
+        assert!(err.to_string().contains("does not match"), "{err}");
+    }
+
+    #[test]
+    fn sso_session_requires_a_verified_result() {
+        for outcome in [
+            None,
+            Some(SsoOutcome::Pending),
+            Some(SsoOutcome::Failed {
+                message: "denied".into(),
+            }),
+        ] {
+            let mut inner = sso_inner(outcome, Some("sess"));
+            assert!(take_sso_session(&mut inner, SERVER, "ann@example.com").is_err());
+        }
+        let mut inner = sso_inner(verified("ann@example.com"), None);
+        assert!(take_sso_session(&mut inner, SERVER, "ann@example.com").is_err());
+    }
+
+    #[test]
+    fn sso_outcome_never_carries_the_session() {
+        let v = serde_json::to_value(SsoOutcome::RegistrationRequired {
+            email: "ann@example.com".into(),
+            display_name: None,
+        })
+        .unwrap();
+        assert_eq!(v["step"], "registrationRequired");
+        assert_eq!(v["email"], "ann@example.com");
+        assert!(v.get("ssoSession").is_none() && v.get("session").is_none());
+        assert_eq!(v.as_object().unwrap().len(), 3);
     }
 }
