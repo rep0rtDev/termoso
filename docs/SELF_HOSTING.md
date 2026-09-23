@@ -31,6 +31,10 @@ backing services with fixed passwords for `cargo run`/`cargo test`.
 | `bridge` (optional) | `ghcr.io/rep0rtdev/termoso-bridge` | none | Termius-compatible REST API for automation — see [API_BRIDGE.md](API_BRIDGE.md) |
 | `caddy` (Compose `proxy` profile) | `caddy:2-alpine` | volume (certificates) | TLS termination for the API and MinIO |
 
+The `termoso-server` and `termoso-bridge` images are multi-architecture
+(`linux/amd64` and `linux/arm64`), so the same Compose file works on x86_64
+servers and on 64-bit ARM hosts (Raspberry Pi 4+, Ampere, Graviton).
+
 Everything the server stores about vault contents is ciphertext the server
 cannot open; what it *can* read is listed in the README's
 [security model](../README.md#security-model). Losing Redis logs nobody out

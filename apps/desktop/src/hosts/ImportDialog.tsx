@@ -855,6 +855,7 @@ function HostRow({
             />
           )}
           {host.agentForwarding && <Chip size="small" label={tr("Agent forwarding")} />}
+          {host.forwardX11 && <Chip size="small" label={tr("X11 forwarding")} />}
         </>
       }
       warnings={host.warnings}

@@ -607,7 +607,7 @@ async fn ssh_connect(
     let mut jumps: Vec<Arc<SshClient>> = Vec::new();
     let mut via = jump;
     for link in chain {
-        let hop_resolved = store.resolve_host(link.id)?;
+        let hop_resolved = store.resolve_host_in(link.id, Some(link.vault_id))?;
         let hop_target = SshTarget {
             host: hop_resolved.host.data.address.clone(),
             port: hop_resolved.port(),
@@ -728,6 +728,9 @@ async fn ssh_connect(
             proxy: proxy.clone(),
             env: ssh_cfg.env_variables.clone(),
             agent_forwarding: ssh_cfg.agent_forwarding,
+            // No local X server on a phone: the flag only travels with the
+            // synced host for desktop clients.
+            x11: None,
             agent_socket: None,
             post_quantum_kex: settings.post_quantum_kex,
             progress: Some(Arc::new(Progress {

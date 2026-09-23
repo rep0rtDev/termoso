@@ -123,6 +123,7 @@ export function WebDavAuthFields({
             sshId: false,
             sshIdKeyType: null,
             agentForwarding: false,
+            forwardX11: false,
           }}
           onChange={({ identityId, username, password }) => {
             const p: Partial<WebDavForm> = {};

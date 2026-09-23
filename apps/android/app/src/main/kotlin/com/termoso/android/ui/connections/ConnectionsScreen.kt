@@ -102,7 +102,6 @@ fun ConnectionsScreen(
     onOpenTerminal: () -> Unit,
     onNewSftp: () -> Unit,
     onOpenSftp: (String) -> Unit,
-    onSftpHost: (String) -> Unit = {},
     onEditHost: (String) -> Unit = {},
     onAddHostFrom: (String) -> Unit = {},
 ) {
@@ -212,10 +211,12 @@ fun ConnectionsScreen(
                             onReconnect = { scope.launch { shell.sessions.reconnect(s.id) } },
                             onSftp = {
                                 val hostId = s.hostId
+                                val vaultId = s.vaultId
                                 val quick = s.quick
                                 when {
                                     s.local != null -> scope.launch { shell.openLocalFiles()?.let { onOpenSftp(it.id) } }
-                                    hostId != null -> onSftpHost(hostId)
+                                    hostId != null && vaultId != null ->
+                                        scope.launch { shell.openSftpHost(hostId, vaultId)?.let { onOpenSftp(it.id) } }
                                     quick != null -> scope.launch { shell.openSftpQuick(quick)?.let { onOpenSftp(it.id) } }
                                 }
                             },
@@ -239,10 +240,11 @@ fun ConnectionsScreen(
                             onOpen = { onOpenSftp(c.id) },
                             onTerminal = {
                                 val hostId = c.hostId
+                                val vaultId = c.vaultId
                                 val quick = c.quick
                                 scope.launch {
                                     val opened = when {
-                                        hostId != null -> shell.connectHost(hostId)
+                                        hostId != null && vaultId != null -> shell.connectHost(hostId, vaultId)
                                         quick != null -> shell.connectQuick(quick)
                                         else -> null
                                     }

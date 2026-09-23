@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Termoso</string>
+    <string name="no_vault_selected">Хранилище не выбрано.</string>
     <string name="the_vault_is_locked">Хранилище заблокировано.</string>
     <string name="authentication_failed">Ошибка аутентификации (%1$s).</string>
     <string name="cancelled">Отменено.</string>
@@ -389,6 +390,8 @@
     <string name="username_password_key_and_ssh_id_come_from">Имя пользователя, пароль, ключ и SSH ID берутся из идентификатора «%1$s».</string>
     <string name="username_password_and_key_come_from_the_identity">Имя пользователя, пароль и ключ берутся из идентификатора «%1$s».</string>
     <string name="agent_forwarding">Проброс агента</string>
+    <string name="forward_x11">Проброс X11</string>
+    <string name="forward_x11_mobile_hint">Работает в настольном приложении; на этом устройстве нет X-сервера.</string>
     <string name="roaming_udp_session_ssh_only_starts_mosh_server">Роуминговая UDP-сессия; SSH только запускает mosh-server на хосте</string>
     <string name="mosh_server_command">Команда mosh-server</string>
     <string name="startup_snippet">Стартовый сниппет</string>

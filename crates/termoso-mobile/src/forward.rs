@@ -330,7 +330,8 @@ async fn open_once(
     rule: &Entity<PfRule>,
     settings: &MobileSettings,
 ) -> Result<Live> {
-    let resolved = store.resolve_host(rule.data.host_id)?;
+    // A rule only ever tunnels through a host of its own vault.
+    let resolved = store.resolve_host_in(rule.data.host_id, Some(rule.vault_id))?;
     if resolved.protocol() != "ssh" {
         return Err(MobileError::invalid("telnet hosts cannot forward ports"));
     }
@@ -609,7 +610,7 @@ pub(crate) fn delete(store: &Store, id: Uuid) -> Result<()> {
 
 pub(crate) fn resolve_for_tunnel(store: &Store, id: Uuid) -> Result<Entity<PfRule>> {
     let e = store.require::<PfRule>(id)?;
-    let _: ResolvedHost = store.resolve_host(e.data.host_id)?;
+    let _: ResolvedHost = store.resolve_host_in(e.data.host_id, Some(e.vault_id))?;
     Ok(e)
 }
 

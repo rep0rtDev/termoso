@@ -315,6 +315,7 @@ pub fn apply_scoped(
                     icon: None,
                     ip_version: "auto".into(),
                     agent_forwarding: false,
+                    forward_x11: false,
                     startup_snippet_id: None,
                     host_chain_id: None,
                     proxy_id: None,

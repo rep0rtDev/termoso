@@ -8,7 +8,7 @@ GitHub Actions.
 
 | Platform | Installers | Updater artifact |
 |---|---|---|
-| Linux | `.deb`, `.rpm`, `.AppImage` | `*.AppImage` + `*.AppImage.sig` |
+| Linux | `_amd64.deb` / `.x86_64.rpm` / `_amd64.AppImage` (x86_64), `_arm64.deb` / `.aarch64.rpm` / `_aarch64.AppImage` (64-bit ARM) | `*.AppImage` + `*.AppImage.sig` per architecture |
 | Windows | NSIS `*-setup.exe`, `*.msi` | `*-setup.exe` + `.sig` (preferred), `*.msi` + `.sig` |
 | macOS | `*_aarch64.dmg` (Apple Silicon), `*_x64.dmg` (Intel) | `*_aarch64.app.tar.gz` / `*_x64.app.tar.gz` + `.sig` |
 | Android | `termoso-<version>-{arm64-v8a,armeabi-v7a,x86_64,universal}.apk` | — (no in-app updater on Android; the APKs carry the standard v2/v3 APK signature) |

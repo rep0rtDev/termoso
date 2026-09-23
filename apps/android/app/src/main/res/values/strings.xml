@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Termoso</string>
+    <string name="no_vault_selected">No vault selected.</string>
     <string name="the_vault_is_locked">The vault is locked.</string>
     <string name="authentication_failed">Authentication failed (%1$s).</string>
     <string name="cancelled">Cancelled.</string>
@@ -383,6 +384,8 @@
     <string name="username_password_key_and_ssh_id_come_from">Username, password, key and SSH ID come from the identity “%1$s”.</string>
     <string name="username_password_and_key_come_from_the_identity">Username, password and key come from the identity “%1$s”.</string>
     <string name="agent_forwarding">Agent forwarding</string>
+    <string name="forward_x11">X11 forwarding</string>
+    <string name="forward_x11_mobile_hint">Used by the desktop app; this device has no X server.</string>
     <string name="roaming_udp_session_ssh_only_starts_mosh_server">Roaming UDP session; SSH only starts mosh-server on the host</string>
     <string name="mosh_server_command">mosh-server command</string>
     <string name="startup_snippet">Startup snippet</string>

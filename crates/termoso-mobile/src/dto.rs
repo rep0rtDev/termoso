@@ -179,6 +179,9 @@ pub struct HostDraft {
     /// `auto` | `4` | `6`.
     pub ip_version: String,
     pub agent_forwarding: bool,
+    /// Trusted X11 forwarding; kept in sync for desktop, mobile has no local
+    /// X server and skips the request.
+    pub forward_x11: bool,
     /// Snippet typed into the shell right after connecting.
     pub startup_snippet_id: Option<String>,
     pub env_variables: Vec<EnvVar>,
@@ -295,6 +298,7 @@ impl HostDraft {
             icon: None,
             ip_version: "auto".into(),
             agent_forwarding: false,
+            forward_x11: false,
             startup_snippet_id: None,
             env_variables: Vec::new(),
             keep_alive_interval: None,
@@ -331,6 +335,7 @@ impl From<hosts::HostForm> for HostDraft {
             icon: f.icon,
             ip_version: f.ip_version,
             agent_forwarding: f.agent_forwarding,
+            forward_x11: f.forward_x11,
             startup_snippet_id: f.startup_snippet_id.map(|s| s.to_string()),
             env_variables: f
                 .env_variables
@@ -376,6 +381,7 @@ impl HostDraft {
         base.icon = self.icon;
         base.ip_version = self.ip_version;
         base.agent_forwarding = self.agent_forwarding;
+        base.forward_x11 = self.forward_x11;
         base.startup_snippet_id = parse_opt_id(&self.startup_snippet_id)?;
         base.env_variables = self
             .env_variables
@@ -450,6 +456,7 @@ pub(crate) fn blank_form(vault_id: Uuid) -> hosts::HostForm {
         icon: None,
         ip_version: "auto".into(),
         agent_forwarding: false,
+        forward_x11: false,
         startup_snippet_id: None,
         host_chain_id: None,
         proxy_id: None,

@@ -151,7 +151,7 @@ struct SessionRow: View {
         switch session.origin {
         case .local: "terminal"
         case .quick: "bolt.horizontal"
-        case let .host(_, _, transport): transport == .mosh ? "antenna.radiowaves.left.and.right" : "server.rack"
+        case let .host(_, _, _, transport): transport == .mosh ? "antenna.radiowaves.left.and.right" : "server.rack"
         }
     }
 

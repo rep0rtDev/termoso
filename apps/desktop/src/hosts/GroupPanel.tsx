@@ -36,7 +36,7 @@ import {
 } from "@/ipc/types";
 import { useActiveVault } from "@/app/vault";
 import { monoFontFamily, sizes } from "@/theme/theme";
-import { AgentForwardingRow, CredentialsFields } from "./CredentialsFields";
+import { AgentForwardingRow, CredentialsFields, X11ForwardingRow } from "./CredentialsFields";
 import { ChainDialog, ProxyDialog } from "./HostAdvancedDialogs";
 import { CloudSyncSection } from "./CloudSyncSection";
 import { tr, trn } from "@/i18n";
@@ -284,6 +284,7 @@ function GroupEditor({
 
         <SectionCard title={tr("Connection")}>
           <AgentForwardingRow value={form} onChange={patch} inherited={inh} />
+          <X11ForwardingRow value={form} onChange={patch} inherited={inh} />
           <Field label={tr("Port")} sx={{ width: 140 }}>
             <TextField
               type="number"

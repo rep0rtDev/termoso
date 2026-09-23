@@ -229,6 +229,7 @@ fn session_host(
         port,
         username,
         agent_forwarding: s.get("AgentFwd").and_then(RegValue::as_u32) == Some(1),
+        forward_x11: s.get("X11Forward").and_then(RegValue::as_u32) == Some(1),
         ..ImportedHost::default()
     };
     if let Some(k) = s
@@ -416,6 +417,7 @@ mod tests {
 "UserName"="deploy"
 "PublicKeyFile"="C:\\Users\\me\\keys\\prod.ppk"
 "AgentFwd"=dword:00000001
+"X11Forward"=dword:00000001
 "Environment"="LC_ALL=C.UTF-8,TERM_PROGRAM=putty"
 "ProxyMethod"=dword:00000002
 "ProxyHost"="proxy.local"
@@ -446,6 +448,7 @@ mod tests {
         assert_eq!(web.port, Some(2090));
         assert_eq!(web.username, "deploy");
         assert!(web.agent_forwarding);
+        assert!(web.forward_x11);
         assert_eq!(
             web.key_path.as_deref(),
             Some("C:\\Users\\me\\keys\\prod.ppk")

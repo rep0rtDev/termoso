@@ -20,7 +20,9 @@ use termoso_core::hostkey::{
     self, FixedPrompt, HostKeyDecision, HostKeyPrompt, HostKeyVerdict, KnownHosts, StrictPrompt,
 };
 use termoso_core::sftp::{OpenMode, Sftp, TransferOptions};
-use termoso_core::ssh::{AuthMethod, ConnectOptions, PasswordResponder, SshClient, SshTarget};
+use termoso_core::ssh::{
+    AuthMethod, ConnectOptions, PasswordResponder, SshClient, SshTarget, X11Forward,
+};
 use termoso_core::store::Store;
 use termoso_core::terminal::{TermEvent, TermSize, TerminalSession};
 use termoso_crypto::keys::SymmetricKey;
@@ -42,6 +44,8 @@ struct Observed {
     forward_requests: Mutex<Vec<(String, u32)>>,
     cancelled_forwards: AtomicBool,
     offered: std::sync::Mutex<Vec<PublicKey>>,
+    /// `x11-req`: (auth protocol, auth cookie hex, screen).
+    x11: Mutex<Option<(String, String, u32)>>,
 }
 
 #[derive(Clone)]
@@ -254,6 +258,24 @@ impl russh::server::Handler for TestHandler {
         Ok(())
     }
 
+    async fn x11_request(
+        &mut self,
+        channel: ChannelId,
+        _single_connection: bool,
+        x11_auth_protocol: &str,
+        x11_auth_cookie: &str,
+        x11_screen_number: u32,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        *self.srv.observed.x11.lock().await = Some((
+            x11_auth_protocol.to_string(),
+            x11_auth_cookie.to_string(),
+            x11_screen_number,
+        ));
+        session.channel_success(channel)?;
+        Ok(())
+    }
+
     async fn shell_request(
         &mut self,
         channel: ChannelId,
@@ -285,6 +307,32 @@ impl russh::server::Handler for TestHandler {
             "cat" => {
                 // echoes stdin until EOF; handled in `data`/`channel_eof`
                 self.shell_echo.insert(channel, ());
+                return Ok(());
+            }
+            // Acts as an X client: opens an X11 channel back to us with the
+            // cookie from `x11-req`, prints whatever the "X server" answers.
+            "xclient" => {
+                // Without an `x11-req` a misbehaving server would still try;
+                // use an all-zero cookie so the client must refuse the channel.
+                let cookie = self
+                    .srv
+                    .observed
+                    .x11
+                    .lock()
+                    .await
+                    .clone()
+                    .map_or_else(|| "00".repeat(16), |(_, c, _)| c);
+                let handle = session.handle();
+                tokio::spawn(async move {
+                    let out = match x11_roundtrip(&handle, &cookie).await {
+                        Ok(reply) => reply,
+                        Err(e) => format!("x11 error: {e}").into_bytes(),
+                    };
+                    let _ = handle.data(channel, Bytes::from(out)).await;
+                    let _ = handle.exit_status_request(channel, 0).await;
+                    let _ = handle.eof(channel).await;
+                    let _ = handle.close(channel).await;
+                });
                 return Ok(());
             }
             termoso_core::osdetect::DETECT_COMMAND => {
@@ -812,6 +860,34 @@ struct Harness {
     store: Arc<Store>,
     kh: KnownHosts,
     _echo: Option<tokio::task::JoinHandle<()>>,
+}
+
+/// X11 connection setup packet (little-endian) carrying one auth token.
+fn x11_setup(name: &[u8], data: &[u8]) -> Vec<u8> {
+    let pad = |n: usize| (4 - n % 4) % 4;
+    let mut p = vec![b'l', 0, 11, 0, 0, 0];
+    p.extend_from_slice(&(name.len() as u16).to_le_bytes());
+    p.extend_from_slice(&(data.len() as u16).to_le_bytes());
+    p.extend_from_slice(&[0, 0]);
+    p.extend_from_slice(name);
+    p.extend(std::iter::repeat_n(0, pad(name.len())));
+    p.extend_from_slice(data);
+    p.extend(std::iter::repeat_n(0, pad(data.len())));
+    p
+}
+
+async fn x11_roundtrip(
+    handle: &russh::server::Handle,
+    cookie_hex: &str,
+) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+    let cookie = hex::decode(cookie_hex)?;
+    let ch = handle.channel_open_x11("127.0.0.1", 6000).await?;
+    let mut s = ch.into_stream();
+    s.write_all(&x11_setup(b"MIT-MAGIC-COOKIE-1", &cookie))
+        .await?;
+    let mut buf = vec![0u8; 256];
+    let n = tokio::time::timeout(Duration::from_secs(5), s.read(&mut buf)).await??;
+    Ok(buf[..n].to_vec())
 }
 
 async fn echo_server() -> (u16, tokio::task::JoinHandle<()>) {
@@ -1535,6 +1611,86 @@ async fn env_is_sent_before_shell() {
         h.observed.env.lock().await.as_slice(),
         &[("LANG".to_string(), "C.UTF-8".to_string())]
     );
+}
+
+/// Fake local X server on a Unix socket: checks the cookie it receives and
+/// answers with a marker the remote "X client" prints.
+#[cfg(unix)]
+#[tokio::test]
+async fn x11_forwarding_bridges_remote_client_to_local_display_with_real_cookie() {
+    use termoso_core::ssh::x11::{DisplayTarget, LocalDisplay};
+
+    let dir = tempfile::tempdir().unwrap();
+    let sock = dir.path().join("X7");
+    let listener = tokio::net::UnixListener::bind(&sock).unwrap();
+    let seen = Arc::new(Mutex::new(Vec::<u8>::new()));
+    let seen2 = seen.clone();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut s, _)) = listener.accept().await else {
+                break;
+            };
+            let seen = seen2.clone();
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 128];
+                let n = s.read(&mut buf).await.unwrap_or(0);
+                *seen.lock().await = buf[..n].to_vec();
+                let _ = s.write_all(b"xserver-ok").await;
+            });
+        }
+    });
+
+    let display = LocalDisplay {
+        target: DisplayTarget::Unix(sock),
+        number: 7,
+        screen: 3,
+    };
+    let fwd = Arc::new(X11Forward::with_cookies(
+        display,
+        Some(b"REAL-LOCAL-COOKIE".to_vec()),
+    ));
+    let fake_hex = fwd.fake_cookie_hex();
+
+    let h = start().await;
+    let mut o = h.trusted();
+    o.auth
+        .push(AuthMethod::Password(Zeroizing::new(PASSWORD.into())));
+    o.x11 = Some(fwd);
+    let c = SshClient::connect(o).await.unwrap();
+
+    let out = c.exec("xclient", None).await.unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "xserver-ok",
+        "{out:?}"
+    );
+    assert_eq!(out.exit_code, Some(0));
+
+    let req = h.observed.x11.lock().await.clone().expect("x11-req sent");
+    assert_eq!(req.0, "MIT-MAGIC-COOKIE-1");
+    assert_eq!(req.1, fake_hex);
+    assert_eq!(req.2, 3);
+
+    // The local X server saw the real cookie, never the fake one.
+    let packet = seen.lock().await.clone();
+    let fake = hex::decode(&fake_hex).unwrap();
+    assert!(
+        packet.windows(17).any(|w| w == b"REAL-LOCAL-COOKIE"),
+        "{packet:?}"
+    );
+    assert!(!packet.windows(16).any(|w| w == fake.as_slice()));
+}
+
+/// Without forwarding configured the client sends no `x11-req` and refuses
+/// X11 channels the server tries to open.
+#[tokio::test]
+async fn x11_channel_is_refused_when_forwarding_is_off() {
+    let h = start().await;
+    let c = h.connect_password().await;
+    let out = c.exec("xclient", None).await.unwrap();
+    assert!(h.observed.x11.lock().await.is_none());
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.starts_with("x11 error:"), "{text}");
 }
 
 #[tokio::test]

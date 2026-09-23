@@ -18,8 +18,8 @@ use termoso_core::pty::{LocalShellOptions, LocalTerminal};
 use termoso_core::serial::SerialTerminal;
 use termoso_core::ssh::proxy::{ProxyConfig, ProxyKind};
 use termoso_core::ssh::{
-    Algorithms, AuthMethod, ConnectOptions, ConnectPhase, ConnectProgress, IpVersion, SshClient,
-    SshTarget,
+    Algorithms, AuthMethod, ConnectOptions, ConnectPhase, ConnectProgress, IpVersion, LocalDisplay,
+    SshClient, SshTarget, X11Forward,
 };
 use termoso_core::store::{ConnectionHistory, LocalVaultKind, LogMeta};
 use termoso_core::telnet::{TelnetOptions, TelnetTerminal};
@@ -1543,6 +1543,10 @@ async fn ssh_connect<R: Runtime>(
             proxy: proxy.clone(),
             env: ssh_cfg.env_variables.clone(),
             agent_forwarding: ssh_cfg.agent_forwarding,
+            x11: (ssh_cfg.forward_x11 && hop.is_none())
+                .then(|| LocalDisplay::detect(None))
+                .flatten()
+                .map(|d| Arc::new(X11Forward::new(d))),
             agent_socket: None,
             post_quantum_kex: state.settings().map(|s| s.post_quantum_kex).unwrap_or(true),
             progress: Some(Arc::new(UiProgress {

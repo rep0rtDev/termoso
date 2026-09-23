@@ -227,6 +227,10 @@ pub mod payload {
             /// Agent forwarding.
             #[serde(default)]
             pub agent_forwarding: bool,
+            /// X11 forwarding (trusted) to the local display; clients without
+            /// an X server ignore it.
+            #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+            pub forward_x11: bool,
             /// Use Mosh.
             #[serde(default)]
             pub use_mosh: bool,

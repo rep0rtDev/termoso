@@ -139,6 +139,7 @@ struct HostEditorView: View {
                         identifier: "hostEditor.password"
                     )
                     Toggle("Agent forwarding", isOn: binding.agentForwarding)
+                    Toggle("X11 forwarding (desktop only)", isOn: binding.forwardX11)
                     Toggle("Use Mosh", isOn: binding.useMosh)
                     if current.useMosh {
                         TextField("mosh-server command", text: Binding(

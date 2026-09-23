@@ -312,6 +312,7 @@ fn build(parsed: &Parsed, preview: &mut ImportPreview) {
                 port: eff.get("port").and_then(|p| p.parse().ok()),
                 username: eff.get("user").unwrap_or_default().to_string(),
                 agent_forwarding: yes(eff.get("forwardagent")),
+                forward_x11: yes(eff.get("forwardx11")) || yes(eff.get("forwardx11trusted")),
                 keep_alive_interval: eff
                     .get("serveraliveinterval")
                     .and_then(|v| v.parse().ok())
@@ -460,6 +461,7 @@ Host *.prod
   User deploy
   IdentityFile ~/.ssh/prod_ed25519
   ForwardAgent yes
+  ForwardX11Trusted yes
 
 Host web1.prod db.prod
   HostName 10.0.0.%h
@@ -491,6 +493,7 @@ Host *
         assert_eq!(web.username, "deploy");
         assert_eq!(web.key_path.as_deref(), Some("~/.ssh/prod_ed25519"));
         assert!(web.agent_forwarding);
+        assert!(web.forward_x11);
         assert_eq!(web.keep_alive_interval, Some(30));
 
         let bastion = &p.hosts[2];

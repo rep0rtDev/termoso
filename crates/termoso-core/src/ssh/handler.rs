@@ -11,6 +11,7 @@ use russh::{Channel, ChannelOpenFailure};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 
+use super::x11::X11Forward;
 use crate::error::CoreError;
 use crate::hostkey::{HostKeyDecision, HostKeyPrompt, HostKeyVerdict, KnownHosts};
 
@@ -63,6 +64,7 @@ pub struct ClientHandler {
     closed: watch::Sender<Option<String>>,
     prompting: watch::Sender<bool>,
     forwarded: ForwardRoutes,
+    x11: Option<Arc<X11Forward>>,
 }
 
 impl ClientHandler {
@@ -73,6 +75,7 @@ impl ClientHandler {
         prompt: Arc<dyn HostKeyPrompt>,
         closed: watch::Sender<Option<String>>,
         forwarded: ForwardRoutes,
+        x11: Option<Arc<X11Forward>>,
     ) -> Self {
         Self {
             host,
@@ -84,6 +87,7 @@ impl ClientHandler {
             closed,
             prompting: watch::Sender::new(false),
             forwarded,
+            x11,
         }
     }
 
@@ -199,6 +203,32 @@ impl russh::client::Handler for ClientHandler {
             connected_port: connected_port as u16,
             originator_address: originator_address.to_string(),
             originator_port: originator_port as u16,
+        });
+        Ok(())
+    }
+
+    async fn server_channel_open_x11(
+        &mut self,
+        channel: Channel<Msg>,
+        originator_address: &str,
+        originator_port: u32,
+        reply: russh::client::ChannelOpenHandle,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        // Only sessions that asked for X11 get channels; anything else is a
+        // server poking at our display.
+        let Some(x11) = self.x11.clone() else {
+            reply
+                .reject(ChannelOpenFailure::AdministrativelyProhibited)
+                .await;
+            return Ok(());
+        };
+        reply.accept().await;
+        let origin = format!("{originator_address}:{originator_port}");
+        tokio::spawn(async move {
+            if let Err(e) = x11.bridge(channel.into_stream()).await {
+                tracing::debug!(origin, "X11 channel ended: {e}");
+            }
         });
         Ok(())
     }

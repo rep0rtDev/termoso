@@ -4,13 +4,13 @@ import TermosoCore
 /// Where a terminal session came from — drives its title and how it can be
 /// reopened after it closes.
 enum SessionOrigin: Hashable {
-    case host(id: String, label: String, transport: Transport)
+    case host(id: String, vaultId: String, label: String, transport: Transport)
     case local
     case quick(QuickTarget)
 
     var title: String {
         switch self {
-        case let .host(_, label, _): label
+        case let .host(_, _, label, _): label
         case .local: "Local shell"
         case let .quick(target): target.username.isEmpty ? target.host : "\(target.username)@\(target.host)"
         }
@@ -227,8 +227,8 @@ final class SessionStore {
 
     @discardableResult
     func connect(host: HostItem, transport: Transport = .auto) -> TerminalSession {
-        start(origin: .host(id: host.id, label: host.label.isEmpty ? host.address : host.label, transport: transport)) { listener in
-            try repository.app.connectHost(hostId: host.id, options: Self.options(transport: transport), listener: listener)
+        start(origin: .host(id: host.id, vaultId: host.vaultId, label: host.label.isEmpty ? host.address : host.label, transport: transport)) { listener in
+            try repository.app.connectHost(hostId: host.id, vaultId: host.vaultId, options: Self.options(transport: transport), listener: listener)
         }
     }
 
@@ -256,9 +256,9 @@ final class SessionStore {
     @discardableResult
     func reopen(_ session: TerminalSession) -> TerminalSession {
         switch session.origin {
-        case let .host(id, _, transport):
+        case let .host(id, vaultId, _, transport):
             start(origin: session.origin) { listener in
-                try repository.app.connectHost(hostId: id, options: Self.options(transport: transport), listener: listener)
+                try repository.app.connectHost(hostId: id, vaultId: vaultId, options: Self.options(transport: transport), listener: listener)
             }
         case .local:
             connectLocal()

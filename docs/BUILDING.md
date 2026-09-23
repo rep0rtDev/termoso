@@ -119,9 +119,12 @@ docker rm termoso-inspect
 
 To run it for real, point the Compose file at your tag instead of the GHCR
 image (`image: termoso-server:local` in `deploy/docker-compose.yml`) and follow
-[SELF_HOSTING.md](SELF_HOSTING.md). Multi-architecture images (amd64 + arm64)
-are produced the same way with `docker buildx build --platform
-linux/amd64,linux/arm64 …`; the Dockerfile pins `wasm-pack` checksums for both.
+[SELF_HOSTING.md](SELF_HOSTING.md). The published images are multi-architecture
+(amd64 + arm64): CI builds each architecture natively on a runner of that
+architecture and joins the digests with `docker buildx imagetools create`. On a
+single machine `docker buildx build --platform linux/amd64,linux/arm64 …` gives
+the same result through QEMU, only much slower; the Dockerfile pins `wasm-pack`
+checksums for both.
 
 ## Server and bridge (native binaries)
 

@@ -141,7 +141,6 @@ fun TerminalScreen(
     /** Installs (or, with `null`, removes) the activity-level hardware-key hook while a terminal is shown. */
     onHardwareKeyHook: (((KeyEvent) -> Boolean)?) -> Unit = {},
     /** Session-menu targets: SFTP / port forwarding / editor for a saved host, new-host form for a quick target. */
-    onSftp: (String) -> Unit = {},
     /** Show an SFTP connection that is already open (quick targets connect first, then navigate). */
     onOpenSftp: (String) -> Unit = {},
     onForward: (String) -> Unit = {},
@@ -250,7 +249,6 @@ fun TerminalScreen(
             onPanel = { panelRequest++ },
             onCustomizeKeys = onCustomizeKeys,
             onNewSession = onNewSession,
-            onSftp = onSftp,
             onOpenSftp = onOpenSftp,
             onForward = onForward,
             onEditHost = onEditHost,
@@ -618,7 +616,7 @@ private fun ActiveSession(
             Hotkey.NEW_SESSION -> onNewSession()
             Hotkey.CLONE_SESSION -> scope.launch {
                 when {
-                    session.hostId != null -> shell.connectHost(session.hostId, session.transport)
+                    session.hostId != null && session.vaultId != null -> shell.connectHost(session.hostId, session.vaultId, session.transport)
                     session.quick != null -> shell.connectQuick(session.quick)
                     session.local != null -> shell.connectLocal()
                     else -> snackbar.showSnackbar(str(R.string.this_session_cannot_be_cloned))

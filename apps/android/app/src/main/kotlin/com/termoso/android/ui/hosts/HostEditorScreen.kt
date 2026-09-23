@@ -612,6 +612,13 @@ private fun SshSection(
         )
         RowDivider()
         SwitchRow(
+            title = stringResource(R.string.forward_x11),
+            subtitle = stringResource(R.string.forward_x11_mobile_hint),
+            checked = draft.forwardX11,
+            onCheckedChange = { v -> vm.update { it.copy(forwardX11 = v) } },
+        )
+        RowDivider()
+        SwitchRow(
             title = "Mosh",
             subtitle = stringResource(R.string.roaming_udp_session_ssh_only_starts_mosh_server),
             checked = draft.useMosh,

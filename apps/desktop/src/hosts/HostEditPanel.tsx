@@ -26,7 +26,7 @@ import { distroIcon } from "./distroIcons";
 import { DistroGlyph, ProtocolGlyph } from "./HostAvatar";
 import { ConnectButton, connectTo, type ConnectTarget } from "./ConnectSplit";
 import { TagsPopover } from "./TagsPopover";
-import { AgentForwardingRow, CredentialsFields } from "./CredentialsFields";
+import { AgentForwardingRow, CredentialsFields, X11ForwardingRow } from "./CredentialsFields";
 import { WebDavAuthFields } from "./WebDavAuthFields";
 import { ServerKeyField } from "./ServerKeyField";
 import { Field, IconTile, Loading, SectionCard, SidePanel, ToolIconButton } from "@/components/ui";
@@ -195,6 +195,7 @@ function HostEditor({
       initial.startupSnippetId !== null ||
       initial.envVariables.length > 0 ||
       initial.agentForwarding ||
+      initial.forwardX11 ||
       initial.keepAliveInterval !== null ||
       initial.timeout !== null ||
       initial.useMosh ||
@@ -523,6 +524,7 @@ function HostEditor({
             {more && (
               <>
                 <AgentForwardingRow value={form} onChange={patch} inherited={inh} />
+                <X11ForwardingRow value={form} onChange={patch} inherited={inh} />
                 <Field label={tr("Startup snippet")} hint={tr("Runs right after the shell opens.")}>
                   <TextField
                     select
@@ -777,6 +779,7 @@ function HostEditor({
                 sshId: false,
                 sshIdKeyType: null,
                 agentForwarding: false,
+                forwardX11: false,
               }}
               onChange={({ identityId, username, password }) => {
                 const p: Partial<TelnetForm> = {};
