@@ -1503,6 +1503,8 @@ export interface LoginForm {
   serverUrl: string;
   email: string;
   password: string;
+  /** Bind the identity verified by the SSO round trip started with `accountSsoStart`. */
+  sso?: boolean;
 }
 
 export interface RegisterForm {
@@ -1511,7 +1513,21 @@ export interface RegisterForm {
   password: string;
   displayName: string | null;
   inviteToken: string | null;
+  /** Bind the identity verified by the SSO round trip started with `accountSsoStart`. */
+  sso?: boolean;
 }
+
+export interface SsoStartForm {
+  serverUrl: string;
+  provider: string;
+}
+
+/** Where a browser-based SSO sign-in stands; the verified session itself stays in Rust. */
+export type SsoOutcome =
+  | { step: "pending" }
+  | { step: "loginRequired"; email: string }
+  | { step: "registrationRequired"; email: string; displayName: string | null }
+  | { step: "failed"; message: string };
 
 export type Platform = "windows" | "linux" | "macos" | "android" | "ios" | "web" | "cli";
 
@@ -1536,6 +1552,8 @@ export interface ServerInfo {
   name: string;
   version: string;
   registration_open: boolean;
+  /** SSO-verified users may create an account even while registration is closed. */
+  sso_registration: boolean;
   sso_providers: SsoProvider[];
   features: {
     session_logs: boolean;

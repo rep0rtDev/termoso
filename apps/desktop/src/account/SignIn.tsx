@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { copyToClipboard } from "@/lib/clipboard";
 import {
   Alert,
@@ -9,6 +9,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   Link,
   Stack,
   TextField,
@@ -19,6 +20,7 @@ import {
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import CloudOutlinedIcon from "@mui/icons-material/CloudOutlined";
 import DnsOutlinedIcon from "@mui/icons-material/DnsOutlined";
+import VerifiedUserOutlinedIcon from "@mui/icons-material/VerifiedUserOutlined";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Field } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
@@ -26,7 +28,8 @@ import * as ipc from "@/ipc/commands";
 import { keys, type useAccount } from "@/ipc/hooks";
 import { createStore, useStore } from "@/lib/store";
 import { CLOUD_HOST, CLOUD_URL, normalizeServerUrl } from "@/lib/cloud";
-import { errorMessage, type LoginOutcome, type MfaMethod } from "@/ipc/types";
+import { errorMessage, type LoginOutcome, type MfaMethod, type SsoProvider } from "@/ipc/types";
+import { cancelSso, clearSso, ssoStore, startSso } from "./sso";
 
 export const MFA_LABEL: Record<MfaMethod, string> = {
   totp: "Authenticator app",
@@ -87,14 +90,18 @@ export function SignInForm({
 }) {
   const snackbar = useSnackbar();
   const qc = useQueryClient();
-  const [where, setWhere] = useState<Where>("cloud");
-  const [mode, setMode] = useState<Mode>("login");
-  const [serverUrl, setServerUrl] = useState("");
+  // A browser sign-in that is still running (or just finished) survives
+  // remounts of this form; pick the server it was started against back up.
+  const ssoState = useStore(ssoStore, (s) => s);
+  const resumed = ssoState.phase !== "idle" ? ssoState.serverUrl : null;
+  const [where, setWhere] = useState<Where>(resumed && resumed !== CLOUD_URL ? "custom" : "cloud");
+  const [serverUrl, setServerUrl] = useState(resumed && resumed !== CLOUD_URL ? resumed : "");
+  const [touched, setTouched] = useState(resumed !== null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [invite, setInvite] = useState("");
-  const [touched, setTouched] = useState(false);
+  const [chosenMode, setMode] = useState<Mode>("login");
 
   const url = where === "cloud" ? CLOUD_URL : normalizeServerUrl(serverUrl);
   const info = useQuery({
@@ -105,39 +112,80 @@ export function SignInForm({
     staleTime: 60_000,
   });
 
+  const sso = ssoState.phase !== "idle" && ssoState.serverUrl === url ? ssoState : null;
+  const waiting = sso?.phase === "waiting";
+  const verifiedSso = sso?.phase === "verified" ? sso : null;
+  const verified = verifiedSso?.outcome ?? null;
+  const mode: Mode =
+    verified?.step === "registrationRequired"
+      ? "register"
+      : verified?.step === "loginRequired"
+        ? "login"
+        : chosenMode;
+  // Switching servers abandons a browser sign-in started against another one.
+  useEffect(() => {
+    if (ssoState.phase !== "idle" && url !== null && ssoState.serverUrl !== url) void cancelSso();
+  }, [ssoState, url]);
+
   const login = useMutation({
-    mutationFn: () => ipc.accountLogin({ serverUrl: url ?? "", email: email.trim(), password }),
+    mutationFn: () =>
+      ipc.accountLogin({
+        serverUrl: url ?? "",
+        email: (verified?.email ?? email).trim(),
+        password,
+        sso: verified !== null,
+      }),
     onSuccess: (o) => {
       setPassword("");
+      if (verified) clearSso();
       onOutcome(o);
     },
-    onError: (e) => snackbar.error(errorMessage(e)),
+    onError: (e) => {
+      if (verified) clearSso();
+      snackbar.error(errorMessage(e));
+    },
   });
   const register = useMutation({
     mutationFn: () =>
       ipc.accountRegister({
         serverUrl: url ?? "",
-        email: email.trim(),
+        email: (verified?.email ?? email).trim(),
         password,
         displayName: displayName.trim() || null,
         inviteToken: invite.trim() || null,
+        sso: verified !== null,
       }),
     onSuccess: (r) => {
       setPassword("");
+      if (verified) clearSso();
       recoveryStore.set(r.recoveryPhrase);
       invalidateAll(qc);
     },
+    onError: (e) => {
+      if (verified) clearSso();
+      snackbar.error(errorMessage(e));
+    },
+  });
+  const ssoStart = useMutation({
+    mutationFn: (provider: SsoProvider) =>
+      startSso(url ?? "", provider, (message) => snackbar.error(message)),
     onError: (e) => snackbar.error(errorMessage(e)),
   });
 
   const busy = login.isPending || register.isPending;
   const registrationClosed = info.data !== undefined && !info.data.registration_open;
+  // SSO-verified users may register on an invite-only server when the admin allows it.
+  const needsInvite =
+    info.data !== undefined &&
+    !info.data.registration_open &&
+    !(verified?.step === "registrationRequired" && info.data.sso_registration);
+  const providers = info.data?.sso_providers ?? [];
   const canSubmit =
     info.data !== undefined &&
-    email.trim().length > 0 &&
+    (verified !== null || email.trim().length > 0) &&
     (mode === "login"
       ? password.length > 0
-      : password.length >= 12 && (!registrationClosed || invite.trim().length > 0));
+      : password.length >= 12 && (!needsInvite || invite.trim().length > 0));
   const submit = () => (mode === "login" ? login.mutate() : register.mutate());
   const onEnter = (e: KeyboardEvent) => {
     if (e.key === "Enter" && canSubmit && !busy) submit();
@@ -229,71 +277,194 @@ export function SignInForm({
         </Box>
       )}
 
-      <Field label="Email">
-        <TextField
-          autoFocus={autoFocus && where === "cloud"}
-          type="email"
-          autoComplete="username"
-          value={email}
-          onChange={(e) => {
-            setEmail(e.target.value);
-            setTouched(true);
-          }}
-          onKeyDown={onEnter}
-        />
-      </Field>
-      {mode === "register" && (
-        <Field label="Display name" hint="Optional">
-          <TextField
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            onKeyDown={onEnter}
-          />
-        </Field>
-      )}
-      <Field
-        label="Password"
-        hint={mode === "register" ? "At least 12 characters. It never leaves this device." : null}
-      >
-        <TextField
-          type="password"
-          autoComplete={mode === "login" ? "current-password" : "new-password"}
-          value={password}
-          onChange={(e) => {
-            setPassword(e.target.value);
-            setTouched(true);
-          }}
-          onKeyDown={onEnter}
-        />
-      </Field>
-      {mode === "register" && registrationClosed && (
-        <Field label="Invite token" hint="This server only accepts invited users.">
-          <TextField value={invite} onChange={(e) => setInvite(e.target.value)} />
-        </Field>
+      {waiting ? (
+        <SsoWaiting provider={sso.provider} onCancel={() => void cancelSso()} />
+      ) : (
+        <>
+          {verifiedSso ? (
+            <SsoVerifiedBanner
+              provider={verifiedSso.provider}
+              email={verifiedSso.outcome.email}
+              onReset={() => {
+                clearSso();
+                setPassword("");
+              }}
+            />
+          ) : (
+            <Field label="Email">
+              <TextField
+                autoFocus={autoFocus && where === "cloud"}
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setTouched(true);
+                }}
+                onKeyDown={onEnter}
+              />
+            </Field>
+          )}
+          {mode === "register" && (
+            <Field label="Display name" hint="Optional">
+              <TextField
+                value={displayName}
+                placeholder={
+                  verified?.step === "registrationRequired"
+                    ? (verified.displayName ?? undefined)
+                    : undefined
+                }
+                onChange={(e) => setDisplayName(e.target.value)}
+                onKeyDown={onEnter}
+              />
+            </Field>
+          )}
+          {
+            <Field
+              label={verified ? "Termoso password" : "Password"}
+              hint={
+                mode === "register"
+                  ? verified
+                    ? "Choose a password for Termoso, at least 12 characters. It encrypts your vaults and never leaves this device — your identity provider never sees it."
+                    : "At least 12 characters. It never leaves this device."
+                  : verified
+                    ? "Your Termoso password unlocks the encrypted vaults; it is separate from the identity provider."
+                    : null
+              }
+            >
+              <TextField
+                type="password"
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setTouched(true);
+                }}
+                onKeyDown={onEnter}
+              />
+            </Field>
+          }
+          {mode === "register" && needsInvite && (
+            <Field label="Invite token" hint="This server only accepts invited users.">
+              <TextField value={invite} onChange={(e) => setInvite(e.target.value)} />
+            </Field>
+          )}
+
+          {
+            <Button variant="contained" size="large" disabled={!canSubmit || busy} onClick={submit}>
+              {busy ? (
+                <CircularProgress size={18} color="inherit" />
+              ) : mode === "login" ? (
+                "Sign in"
+              ) : (
+                "Create account"
+              )}
+            </Button>
+          }
+        </>
       )}
 
-      <Button variant="contained" size="large" disabled={!canSubmit || busy} onClick={submit}>
-        {busy ? (
-          <CircularProgress size={18} color="inherit" />
-        ) : mode === "login" ? (
-          "Sign in"
-        ) : (
-          "Create account"
-        )}
-      </Button>
+      {!sso && providers.length > 0 && (
+        <>
+          <Divider>
+            <Typography variant="caption" color="text.secondary">
+              or
+            </Typography>
+          </Divider>
+          <Stack spacing={1}>
+            {providers.map((p) => (
+              <Button
+                key={p.id}
+                variant="outlined"
+                size="large"
+                disabled={ssoStart.isPending || busy}
+                onClick={() => ssoStart.mutate(p)}
+              >
+                Continue with {p.name}
+              </Button>
+            ))}
+          </Stack>
+        </>
+      )}
 
-      <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
-        {mode === "login" ? "New here? " : "Already have an account? "}
-        <Link
-          component="button"
-          type="button"
-          underline="hover"
-          onClick={() => setMode(mode === "login" ? "register" : "login")}
-        >
-          {mode === "login" ? "Create a free account" : "Sign in"}
-        </Link>
-      </Typography>
+      {!waiting && !verified && (
+        <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
+          {mode === "login" ? "New here? " : "Already have an account? "}
+          <Link
+            component="button"
+            type="button"
+            underline="hover"
+            onClick={() => setMode(mode === "login" ? "register" : "login")}
+          >
+            {mode === "login" ? "Create a free account" : "Sign in"}
+          </Link>
+        </Typography>
+      )}
     </Stack>
+  );
+}
+
+function SsoWaiting({ provider, onCancel }: { provider: SsoProvider; onCancel: () => void }) {
+  return (
+    <Stack
+      spacing={1.5}
+      sx={{
+        alignItems: "center",
+        textAlign: "center",
+        p: 2,
+        borderRadius: 2,
+        bgcolor: "surface.highest",
+      }}
+    >
+      <CircularProgress size={22} />
+      <Typography variant="body2">
+        Finish signing in with {provider.name} in your browser.
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        Termoso picks up automatically when the browser comes back. Nothing from the provider is
+        stored on this device.
+      </Typography>
+      <Button color="inherit" size="small" onClick={onCancel}>
+        Cancel
+      </Button>
+    </Stack>
+  );
+}
+
+function SsoVerifiedBanner({
+  provider,
+  email,
+  onReset,
+}: {
+  provider: SsoProvider;
+  email: string;
+  onReset: () => void;
+}) {
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 1.25,
+        px: 1.5,
+        py: 1.25,
+        borderRadius: 2,
+        bgcolor: "surface.highest",
+      }}
+    >
+      <VerifiedUserOutlinedIcon color="primary" sx={{ fontSize: 20 }} />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
+          {email}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+          Verified with {provider.name}
+        </Typography>
+      </Box>
+      <Button color="inherit" size="small" onClick={onReset}>
+        Change
+      </Button>
+    </Box>
   );
 }
 

@@ -89,6 +89,8 @@ import type {
   SftpTarget,
   SnippetCard,
   SnippetForm,
+  SsoOutcome,
+  SsoStartForm,
   SyncNotice,
   SyncStatus,
   TagInfo,
@@ -567,6 +569,14 @@ export const accountDeviceApprove = (code: string) =>
   invoke<LoginOutcome>("account_device_approve", { code });
 export const accountDeviceResend = () => invoke<null>("account_device_resend");
 export const accountCancelLogin = () => invoke<null>("account_cancel_login");
+/** Opens the identity provider in the system browser; resolves with the flow id. */
+export const accountSsoStart = (form: SsoStartForm) =>
+  invoke<string>("account_sso_start", { form });
+export const accountSsoPoll = () => invoke<SsoOutcome>("account_sso_poll");
+/** The browser came back through `termoso://sso?flow=…`. */
+export const accountSsoCallback = (flowId: string) =>
+  invoke<SsoOutcome>("account_sso_callback", { flowId });
+export const accountSsoCancel = () => invoke<null>("account_sso_cancel");
 export const accountRegister = (form: RegisterForm) =>
   invoke<Registered>("account_register", { form });
 export const accountSignOut = () => invoke<null>("account_sign_out");
