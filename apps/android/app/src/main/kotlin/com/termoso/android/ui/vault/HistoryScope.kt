@@ -12,3 +12,11 @@ import com.termoso.core.VaultKind
  */
 fun HistoryItem.belongsTo(vault: VaultInfo): Boolean =
     if (vaultId != null) vaultId == vault.id else vault.kind == VaultKind.LOCAL
+
+/**
+ * The newest `max` entries that belong to `vault` (Connections tab "Recent").
+ * Nothing when no vault is selected or the vault is still waiting for its
+ * key: its hosts cannot be opened, so there is nothing to jump back into.
+ */
+fun List<HistoryItem>.recentIn(vault: VaultInfo?, max: Int): List<HistoryItem> =
+    if (vault == null || vault.locked) emptyList() else filter { it.belongsTo(vault) }.take(max)

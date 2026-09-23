@@ -54,18 +54,20 @@ import kotlinx.coroutines.launch
 /** One row of the saved-hosts list: a host over one of its file protocols. */
 private data class FileTarget(val host: HostItem, val protocol: FileProtocol)
 
-/** "New SFTP connection": pick a saved host (SFTP for SSH ones, WebDAV for shares) or type a target. */
+/** "New SFTP connection": pick a saved host of the selected vault (SFTP for SSH ones, WebDAV for shares) or type a target. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SftpPickScreen(shell: ShellViewModel, onBack: () -> Unit, onOpened: (String) -> Unit) {
     val revision by shell.repo.revision.collectAsStateWithLifecycle()
+    val vaultId by shell.selectedVaultId.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var hosts by remember { mutableStateOf<List<FileTarget>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
     var target by remember { mutableStateOf("") }
     var query by remember { mutableStateOf("") }
-    LaunchedEffect(revision) {
-        hosts = runCatching { shell.repo.read { hosts(null) } }.getOrDefault(emptyList())
+    LaunchedEffect(revision, vaultId) {
+        val id = vaultId
+        hosts = if (id == null) emptyList() else runCatching { shell.repo.read { hosts(id) } }.getOrDefault(emptyList())
             .filter { SftpManager.hasFiles(it) }
             .sortedBy { it.label.ifBlank { it.address }.lowercase() }
             .flatMap { h ->

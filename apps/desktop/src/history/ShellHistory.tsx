@@ -25,6 +25,7 @@ import { errorMessage } from "@/ipc/types";
 import * as ipc from "@/ipc/commands";
 import { keys, useCommandHistory, useHistory, useHosts } from "@/ipc/hooks";
 import { useActiveVault } from "@/app/vault";
+import { scopedTo } from "./scope";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { useSnackbar } from "@/components/Snackbar";
@@ -352,6 +353,7 @@ export function ConnectionHistoryList({
   hideClear?: boolean;
 }) {
   const history = useHistory();
+  const vault = useActiveVault();
   const qc = useQueryClient();
   const snackbar = useSnackbar();
   const [confirmClear, setConfirmClear] = useState(false);
@@ -365,7 +367,7 @@ export function ConnectionHistoryList({
     onError: (e) => snackbar.error(errorMessage(e)),
   });
   const q = query.trim().toLowerCase();
-  const items = (history.data ?? []).filter(
+  const items = scopedTo(history.data ?? [], vault.data).filter(
     (i) =>
       matchesHost(i.data.host_id, host) &&
       (!q || i.data.label.toLowerCase().includes(q) || i.data.target.toLowerCase().includes(q)),

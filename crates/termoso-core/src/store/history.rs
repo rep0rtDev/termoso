@@ -1,6 +1,8 @@
 //! Command / connection history (autocomplete, "recent" list). Stored
 //! encrypted like entities; synced through `/history/*` when signed in.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -8,8 +10,9 @@ use termoso_crypto::aead::{self, Aad};
 use termoso_proto::sync::{HistoryEntry, HistoryKind};
 use uuid::Uuid;
 
-use super::{Store, parse_time, parse_uuid};
+use super::{EntityFilter, Store, parse_time, parse_uuid};
 use crate::error::{CoreError, Result};
+use crate::model::{Host, Payload};
 
 /// A shell command the user typed.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -46,6 +49,20 @@ pub struct HistoryItem<T> {
     pub created_at: DateTime<Utc>,
     /// Payload.
     pub data: T,
+}
+
+/// A past connection attributed to the vault its saved host lives in today.
+/// History itself is device-wide, so "recent" lists must filter on this
+/// rather than show every vault's connections to whoever is looking.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultConnection {
+    /// The record.
+    #[serde(flatten)]
+    pub item: HistoryItem<ConnectionHistory>,
+    /// Vault of the saved host, locked or not. `None` for quick connects,
+    /// local shells and hosts that no longer exist: those belong to the
+    /// local vault only.
+    pub vault_id: Option<Uuid>,
 }
 
 fn kind_str(k: HistoryKind) -> &'static str {
@@ -181,6 +198,33 @@ impl Store {
     /// Most recent connections.
     pub fn connections(&self, limit: usize) -> Result<Vec<HistoryItem<ConnectionHistory>>> {
         self.list_history(HistoryKind::Connection, limit)
+    }
+
+    /// Most recent connections with the vault each belongs to. Hosts are
+    /// resolved from entity rows without decrypting, so a host in a locked
+    /// vault is still attributed to that vault instead of falling back to
+    /// local.
+    pub fn connections_by_vault(&self, limit: usize) -> Result<Vec<VaultConnection>> {
+        let host_vaults: HashMap<Uuid, Uuid> = self
+            .rows(&EntityFilter {
+                vault_id: None,
+                kind: Some(Host::KIND.to_string()),
+                include_deleted: false,
+            })?
+            .into_iter()
+            .map(|r| (r.id, r.vault_id))
+            .collect();
+        Ok(self
+            .connections(limit)?
+            .into_iter()
+            .map(|item| VaultConnection {
+                vault_id: item
+                    .data
+                    .host_id
+                    .and_then(|id| host_vaults.get(&id).copied()),
+                item,
+            })
+            .collect())
     }
 
     /// Distinct commands matching a prefix, most recent first (autocomplete).
@@ -354,6 +398,7 @@ mod tests {
     use super::*;
     use crate::store::LocalVaultKind;
     use termoso_crypto::keys::SymmetricKey;
+    use termoso_proto::entities::SyncEntity;
     use termoso_proto::vault::VaultRole;
 
     #[test]
@@ -403,6 +448,96 @@ mod tests {
         })
         .unwrap();
         assert_eq!(s.connections(5).unwrap()[0].data.target, "root@1.2.3.4:22");
+    }
+
+    #[test]
+    fn connections_are_attributed_to_the_hosts_current_vault() {
+        let s = Store::open_in_memory(SymmetricKey::generate()).unwrap();
+        let local = s.local_vault().unwrap().id;
+        let team = Uuid::new_v4();
+        s.upsert_vault(
+            team,
+            LocalVaultKind::Team,
+            "Team",
+            Some(Uuid::new_v4()),
+            VaultRole::Manager,
+            Some(&SymmetricKey::generate()),
+            1,
+        )
+        .unwrap();
+        let local_host = s.insert(local, &Host::default()).unwrap();
+        let team_host = s.insert(team, &Host::default()).unwrap();
+        let record = |host_id: Option<Uuid>| {
+            s.record_connection(&ConnectionHistory {
+                host_id,
+                label: "h".into(),
+                target: "t".into(),
+                protocol: "ssh".into(),
+                duration_secs: None,
+                error: None,
+            })
+            .unwrap()
+        };
+        record(Some(local_host));
+        record(Some(team_host));
+        record(None);
+        let gone = record(Some(Uuid::new_v4()));
+        let by_vault = |vault_id: Option<Uuid>| {
+            s.connections_by_vault(10)
+                .unwrap()
+                .into_iter()
+                .filter(|c| c.vault_id == vault_id)
+                .map(|c| c.item.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(by_vault(Some(team)).len(), 1);
+        assert_eq!(by_vault(Some(local)).len(), 1);
+        assert!(by_vault(None).contains(&gone));
+        assert_eq!(by_vault(None).len(), 2);
+    }
+
+    #[test]
+    fn connections_of_a_locked_vault_stay_in_that_vault() {
+        let s = Store::open_in_memory(SymmetricKey::generate()).unwrap();
+        let team = Uuid::new_v4();
+        s.upsert_vault(
+            team,
+            LocalVaultKind::Team,
+            "Team",
+            Some(Uuid::new_v4()),
+            VaultRole::Editor,
+            None,
+            1,
+        )
+        .unwrap();
+        let host_id = Uuid::new_v4();
+        s.apply_remote(&SyncEntity {
+            id: host_id,
+            kind: Host::KIND.into(),
+            vault_id: team,
+            version: 1,
+            seq: 1,
+            deleted: false,
+            key_version: 1,
+            data: "opaque".into(),
+            updated_at: Utc::now(),
+            updated_by_device: None,
+        })
+        .unwrap();
+        assert!(s.list::<Host>(None).unwrap().is_empty(), "vault is locked");
+        s.record_connection(&ConnectionHistory {
+            host_id: Some(host_id),
+            label: "h".into(),
+            target: "t".into(),
+            protocol: "ssh".into(),
+            duration_secs: None,
+            error: None,
+        })
+        .unwrap();
+        let all = s.connections_by_vault(10).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].vault_id, Some(team));
+        assert_eq!(all[0].item.data.host_id, Some(host_id));
     }
 
     #[test]

@@ -1557,6 +1557,15 @@ export interface ConnectionHistory {
   error: string | null;
 }
 
+/**
+ * A past connection with the vault its saved host lives in today. `vault_id`
+ * is `null` for quick connects, local shells and deleted hosts, which belong
+ * to the local vault only.
+ */
+export interface VaultConnection extends HistoryItem<ConnectionHistory> {
+  vault_id: Uuid | null;
+}
+
 /** A command line typed in a terminal (encrypted at rest; never the output). */
 export interface CommandHistory {
   host_id: Uuid | null;

@@ -35,7 +35,7 @@ use crate::error::{CoreError, Result};
 
 pub use entities::EntityFilter;
 pub use entities::EntityRow;
-pub use history::{CommandHistory, ConnectionHistory, HistoryItem};
+pub use history::{CommandHistory, ConnectionHistory, HistoryItem, VaultConnection};
 pub use logs::{LogItem, LogMeta, LogRow, MAX_CAPTURE_BYTES, Recorder};
 
 const SCHEMA: &str = include_str!("schema.sql");
