@@ -24,14 +24,9 @@ import RestoreRoundedIcon from "@mui/icons-material/RestoreRounded";
 import DriveFileRenameOutlineRoundedIcon from "@mui/icons-material/DriveFileRenameOutlineRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import AddBoxOutlinedIcon from "@mui/icons-material/AddBoxOutlined";
-import type {
-  ConnectionHistory,
-  HistoryItem,
-  HostCard,
-  OpenTarget,
-  WorkspaceTemplate,
-} from "@/ipc/types";
+import type { HostCard, OpenTarget, VaultConnection, WorkspaceTemplate } from "@/ipc/types";
 import { useHistory, useHosts } from "@/ipc/hooks";
+import { scopedTo } from "@/history/scope";
 import { useActiveVault } from "./vault";
 import { openTerminal } from "@/terminal/store";
 import {
@@ -68,9 +63,9 @@ import { goHome, requestCreate } from "./navigation";
 const RECENT_MAX = 8;
 
 /** Latest attempt per host / target, newest first. */
-function recentTargets(items: HistoryItem<ConnectionHistory>[]) {
+function recentTargets(items: VaultConnection[]) {
   const seen = new Set<string>();
-  const out: HistoryItem<ConnectionHistory>[] = [];
+  const out: VaultConnection[] = [];
   for (const it of items) {
     const key = it.data.host_id ?? `target:${it.data.target}`;
     if (seen.has(key)) continue;
@@ -115,7 +110,10 @@ export function NewTabPage() {
     [hosts.data, q],
   );
   const quick = q && looksLikeTarget(q) && matches.length !== 1 ? parseQuickConnect(q) : null;
-  const recent = useMemo(() => recentTargets(history.data ?? []), [history.data]);
+  const recent = useMemo(
+    () => recentTargets(scopedTo(history.data ?? [], vault.data)),
+    [history.data, vault.data],
+  );
 
   const connect = (h: HostCard) => openHost(h);
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -432,7 +430,7 @@ function RecentConnections({
   hosts,
   pending,
 }: {
-  recent: HistoryItem<ConnectionHistory>[];
+  recent: VaultConnection[];
   hosts: HostCard[];
   pending: boolean;
 }) {

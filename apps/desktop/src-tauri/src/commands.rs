@@ -8,7 +8,7 @@ use tauri_plugin_deep_link::DeepLinkExt;
 use termoso_core::model::AnyEntity;
 use termoso_core::secrets::MasterKeySource;
 use termoso_core::sftp::RemoteEntry;
-use termoso_core::store::{CommandHistory, ConnectionHistory, HistoryItem};
+use termoso_core::store::{CommandHistory, HistoryItem, VaultConnection};
 use termoso_core::store::{EntityFilter, LocalVault};
 use termoso_core::terminal::TermSize;
 use termoso_proto::entities::is_known_kind;
@@ -390,14 +390,16 @@ pub async fn tags_merge(
     hosts::tags_merge(&*state.store()?, &sources, target)
 }
 
+/// Past connections with the vault each saved host lives in today, so the
+/// UI can show only the active vault's share of the device-wide history.
 #[tauri::command]
 pub async fn history_connections(
     state: State<'_, AppState>,
     limit: Option<usize>,
-) -> Result<Vec<HistoryItem<ConnectionHistory>>> {
+) -> Result<Vec<VaultConnection>> {
     Ok(state
         .store()?
-        .connections(limit.unwrap_or(50).clamp(1, 1000))?)
+        .connections_by_vault(limit.unwrap_or(50).clamp(1, 1000))?)
 }
 
 /// Record a command line the user ran in a session. Called by the terminal

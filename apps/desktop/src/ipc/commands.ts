@@ -21,7 +21,6 @@ import type {
   CloudSyncSecret,
   CommandHistory,
   Conflict,
-  ConnectionHistory,
   DirEntry,
   Device,
   Direction,
@@ -97,6 +96,7 @@ import type {
   TransferInfo,
   UpdateEvent,
   UpdateInfo,
+  VaultConnection,
   VaultEvent,
   VaultStatus,
   Uuid,
@@ -200,7 +200,7 @@ export const localShells = () => invoke<string[]>("local_shells");
 export const deepLinksRegister = () => invoke<string[]>("deep_links_register");
 
 export const historyConnections = (limit = 50) =>
-  invoke<HistoryItem<ConnectionHistory>[]>("history_connections", { limit });
+  invoke<VaultConnection[]>("history_connections", { limit });
 export const historyCommands = (limit = 500) =>
   invoke<HistoryItem<CommandHistory>[]>("history_commands", { limit });
 export const historyRecordCommand = (hostId: Uuid | null, command: string) =>

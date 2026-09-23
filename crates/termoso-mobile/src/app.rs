@@ -14,7 +14,6 @@ use termoso_core::model::ResolvedHost;
 use termoso_core::ssh::{IpVersion, SshTarget};
 use termoso_core::store::Store;
 use termoso_crypto::keys::SymmetricKey;
-use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::account::{
@@ -629,26 +628,17 @@ impl TermosoApp {
     // ---- history ------------------------------------------------------
 
     /// Past connections, newest first. `vault_id` is the vault the saved
-    /// host lives in today; quick connects, local shells and deleted hosts
-    /// have none and belong to the local vault.
+    /// host lives in today (locked or not); quick connects, local shells and
+    /// deleted hosts have none and belong to the local vault.
     pub fn history(&self, limit: u32) -> Result<Vec<HistoryItem>> {
-        let host_vaults: HashMap<Uuid, Uuid> = self
-            .store
-            .list::<termoso_core::model::Host>(None)?
-            .into_iter()
-            .map(|h| (h.id, h.vault_id))
-            .collect();
         Ok(self
             .store
-            .connections(limit.clamp(1, 1000) as usize)?
+            .connections_by_vault(limit.clamp(1, 1000) as usize)?
             .into_iter()
-            .map(|h| HistoryItem {
+            .map(|c| (c.vault_id.map(|u| u.to_string()), c.item))
+            .map(|(vault_id, h)| HistoryItem {
                 id: h.id.to_string(),
-                vault_id: h
-                    .data
-                    .host_id
-                    .and_then(|id| host_vaults.get(&id))
-                    .map(|u| u.to_string()),
+                vault_id,
                 host_id: h.data.host_id.map(|u| u.to_string()),
                 label: h.data.label,
                 target: h.data.target,

@@ -123,6 +123,18 @@ class ShellViewModel(
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
 
+    /**
+     * Whether the saved host lives in the vault the UI is showing. Lists built
+     * from device-wide data (connection history) must check this before
+     * connecting: a host of another vault must not be reachable from here.
+     */
+    suspend fun inSelectedVault(hostId: String): Boolean {
+        val vaultId = selectedVaultId.value ?: return false
+        return runCatching { repo.read { host(hostId) } }
+            .map { it.vaultId == vaultId }
+            .getOrDefault(false)
+    }
+
     /** Whether "Connect" on this host means a terminal (false for WebDAV-only hosts, which open Files). */
     suspend fun hasTerminal(hostId: String): Boolean =
         runCatching { repo.read { host(hostId) } }

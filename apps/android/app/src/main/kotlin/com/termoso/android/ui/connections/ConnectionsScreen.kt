@@ -75,6 +75,7 @@ import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.JoinLiveDialog
 import com.termoso.android.ui.terminal.quickTargetText
 import com.termoso.android.ui.terminal.siblingsOf
+import com.termoso.android.ui.vault.recentIn
 import com.termoso.core.FileProtocol
 import com.termoso.core.HistoryItem
 import com.termoso.core.MobileException
@@ -85,6 +86,11 @@ import com.termoso.core.parseTarget
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.launch
+
+private const val RECENT_MAX = 10
+
+/** History is device-wide; read enough of it that the selected vault's share still fills the list. */
+private const val RECENT_SCAN = 100u
 
 /** Connections tab: quick connect, active terminals, ways to connect, recent sessions. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -103,11 +109,15 @@ fun ConnectionsScreen(
     val revision by shell.repo.revision.collectAsStateWithLifecycle()
     val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
     val sftp by shell.sftp.connections.collectAsStateWithLifecycle()
+    val vaults by shell.vaults.collectAsStateWithLifecycle()
+    val selectedVaultId by shell.selectedVaultId.collectAsStateWithLifecycle()
+    val vault = vaults.firstOrNull { it.id == selectedVaultId }
     val scope = rememberCoroutineScope()
     var target by remember { mutableStateOf("") }
     var recent by remember { mutableStateOf<List<HistoryItem>>(emptyList()) }
-    LaunchedEffect(revision) {
-        recent = runCatching { shell.repo.read { history(10u) } }.getOrDefault(emptyList())
+    LaunchedEffect(revision, vault) {
+        recent = runCatching { shell.repo.read { history(RECENT_SCAN) } }.getOrDefault(emptyList())
+            .recentIn(vault, RECENT_MAX)
     }
 
     var joinDialog by remember { mutableStateOf(false) }
@@ -296,7 +306,13 @@ fun ConnectionsScreen(
                             title = h.label.ifBlank { h.target },
                             subtitle = historySubtitle(h),
                             leading = { IconTile(Icons.Filled.History) },
-                            modifier = if (hostId != null) Modifier.clickable { onConnectHost(hostId) } else Modifier,
+                            modifier = if (hostId != null) {
+                                Modifier.clickable {
+                                    scope.launch { if (shell.inSelectedVault(hostId)) onConnectHost(hostId) }
+                                }
+                            } else {
+                                Modifier
+                            },
                             titleColor = if (h.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                         )
                     }
