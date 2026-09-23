@@ -431,6 +431,7 @@ fun MainShell(
             composable(Routes.SIGN_IN, arguments = listOf(navArgument("mode") { type = NavType.StringType })) { entry ->
                 val mode = entry.arguments?.getString("mode")?.let { m -> AuthMode.entries.firstOrNull { it.name == m } } ?: AuthMode.SignIn
                 SignInScreen(
+                    container = container,
                     account = account,
                     mode = mode,
                     onBack = { nav.popBackStack() },

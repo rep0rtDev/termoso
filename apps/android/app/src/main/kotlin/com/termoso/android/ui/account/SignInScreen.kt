@@ -1,5 +1,9 @@
 package com.termoso.android.ui.account
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -50,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.termoso.android.R
 import com.termoso.android.data.AccountManager
+import com.termoso.android.data.AppContainer
 import com.termoso.android.data.CLOUD_URL
 import com.termoso.android.data.ServerChoice
 import com.termoso.android.str
@@ -73,10 +79,19 @@ import com.termoso.core.MfaMethod
  * recovery phrase was acknowledged.
  */
 @Composable
-fun SignInScreen(account: AccountManager, mode: AuthMode, onBack: () -> Unit, onDone: () -> Unit) {
-    val vm: SignInViewModel = viewModel(key = "signIn") { SignInViewModel(account, mode) }
+fun SignInScreen(container: AppContainer, account: AccountManager, mode: AuthMode, onBack: () -> Unit, onDone: () -> Unit) {
+    val vm: SignInViewModel = viewModel(key = "signIn") {
+        SignInViewModel(account, mode, container.pendingSso, container::consumeSso)
+    }
     val status by account.status.collectAsStateWithLifecycle()
     LaunchedEffect(mode) { if (vm.step == AuthStep.Form) vm.switchMode(mode) }
+
+    val context = LocalContext.current
+    LaunchedEffect(vm.openBrowser) {
+        val url = vm.openBrowser ?: return@LaunchedEffect
+        vm.browserOpened()
+        if (!openSsoBrowser(context, url)) vm.browserUnavailable()
+    }
 
     val title = when (val step = vm.step) {
         AuthStep.Form -> if (vm.mode == AuthMode.SignIn) stringResource(R.string.sign_in) else stringResource(R.string.create_account)
@@ -120,57 +135,83 @@ fun SignInScreen(account: AccountManager, mode: AuthMode, onBack: () -> Unit, on
     }
 }
 
-@Composable
-private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
-    val modes = listOf(AuthMode.SignIn to stringResource(R.string.sign_in), AuthMode.Register to stringResource(R.string.create_account))
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-        modes.forEachIndexed { i, (m, label) ->
-            SegmentedButton(
-                selected = vm.mode == m,
-                onClick = { vm.switchMode(m) },
-                shape = SegmentedButtonDefaults.itemShape(i, modes.size),
-                enabled = !vm.busy,
-            ) { SegmentedLabel(label) }
-        }
+/** Opens [url] in a Custom Tab (falls back to the default browser); false when no browser exists. */
+private fun openSsoBrowser(context: Context, url: String): Boolean =
+    try {
+        CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(context, Uri.parse(url))
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
     }
 
-    Text(stringResource(R.string.server), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    val servers = listOf(ServerChoice.Cloud to "Termoso Cloud", ServerChoice.SelfHosted to stringResource(R.string.self_hosted))
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-        servers.forEachIndexed { i, (s, label) ->
-            SegmentedButton(
-                selected = vm.server == s,
-                onClick = { vm.chooseServer(s) },
-                shape = SegmentedButtonDefaults.itemShape(i, servers.size),
-                enabled = !vm.busy,
-            ) { SegmentedLabel(label) }
-        }
+@Composable
+private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
+    val sso = vm.sso
+    if (sso is SsoState.Waiting) {
+        SsoWaiting(sso, onReopen = { vm.reopenBrowser() }, onCancel = { vm.cancelSso() })
+        return
     }
-    when (vm.server) {
-        ServerChoice.Cloud -> Text(
-            stringResource(R.string.cloud_server_blurb, CLOUD_URL.removePrefix("https://")),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        ServerChoice.SelfHosted -> {
-            FormField(
-                value = vm.serverUrl,
-                onChange = vm::editServerUrl,
-                label = stringResource(R.string.server_address),
-                placeholder = "https://termoso.example.com",
-                keyboard = KeyboardType.Uri,
-                enabled = !vm.busy,
+    val verified = sso as? SsoState.Verified
+    // The server and mode are fixed by the verified identity; only the local password is left to enter.
+    if (verified == null) {
+        val modes = listOf(AuthMode.SignIn to stringResource(R.string.sign_in), AuthMode.Register to stringResource(R.string.create_account))
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            modes.forEachIndexed { i, (m, label) ->
+                SegmentedButton(
+                    selected = vm.mode == m,
+                    onClick = { vm.switchMode(m) },
+                    shape = SegmentedButtonDefaults.itemShape(i, modes.size),
+                    enabled = !vm.busy,
+                ) { SegmentedLabel(label) }
+            }
+        }
+
+        Text(stringResource(R.string.server), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val servers = listOf(ServerChoice.Cloud to "Termoso Cloud", ServerChoice.SelfHosted to stringResource(R.string.self_hosted))
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            servers.forEachIndexed { i, (s, label) ->
+                SegmentedButton(
+                    selected = vm.server == s,
+                    onClick = { vm.chooseServer(s) },
+                    shape = SegmentedButtonDefaults.itemShape(i, servers.size),
+                    enabled = !vm.busy,
+                ) { SegmentedLabel(label) }
+            }
+        }
+        when (vm.server) {
+            ServerChoice.Cloud -> Text(
+                stringResource(R.string.cloud_server_blurb, CLOUD_URL.removePrefix("https://")),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            ServerProbeLine(vm.probe)
+            ServerChoice.SelfHosted -> {
+                FormField(
+                    value = vm.serverUrl,
+                    onChange = vm::editServerUrl,
+                    label = stringResource(R.string.server_address),
+                    placeholder = "https://termoso.example.com",
+                    keyboard = KeyboardType.Uri,
+                    enabled = !vm.busy,
+                )
+                ServerProbeLine(vm.probe)
+            }
         }
     }
 
     Text(stringResource(R.string.account), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    FormField(value = vm.email, onChange = { vm.email = it }, label = stringResource(R.string.email), keyboard = KeyboardType.Email, enabled = !vm.busy)
+    if (verified != null) {
+        SsoVerifiedBanner(verified, onChange = { vm.cancelSso() })
+    } else {
+        FormField(value = vm.email, onChange = { vm.email = it }, label = stringResource(R.string.email), keyboard = KeyboardType.Email, enabled = !vm.busy)
+    }
     SecretField(
         value = vm.password,
         onChange = { vm.password = it },
-        label = if (vm.mode == AuthMode.Register) stringResource(R.string.master_password) else stringResource(R.string.password),
+        label = when {
+            verified != null -> stringResource(R.string.termoso_password)
+            vm.mode == AuthMode.Register -> stringResource(R.string.master_password)
+            else -> stringResource(R.string.password)
+        },
         enabled = !vm.busy,
     )
     if (vm.mode == AuthMode.Register) {
@@ -184,15 +225,18 @@ private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, autoCorrectEnabled = false),
         )
-        val registrationClosed = vm.server == ServerChoice.SelfHosted && vm.serverCard?.registrationOpen == false
-        if (registrationClosed || vm.invite.isNotEmpty()) {
+        if (vm.needsInvite || vm.invite.isNotEmpty()) {
             FormField(value = vm.invite, onChange = { vm.invite = it }, label = stringResource(R.string.invitation_token), enabled = !vm.busy)
         }
-        Text(
-            stringResource(R.string.your_master_password_protects_your_encryption_keys_and),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    }
+    val hint = when {
+        verified != null && vm.mode == AuthMode.Register -> R.string.sso_password_hint_register
+        verified != null -> R.string.sso_password_hint_sign_in
+        vm.mode == AuthMode.Register -> R.string.your_master_password_protects_your_encryption_keys_and
+        else -> null
+    }
+    if (hint != null) {
+        Text(stringResource(hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
     Spacer(Modifier.height(4.dp))
@@ -201,6 +245,74 @@ private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
         busy = vm.busy,
         onClick = { vm.submit(onDone) },
     )
+
+    val providers = vm.ssoProviders
+    if (verified == null && providers.isNotEmpty()) {
+        Text(
+            stringResource(R.string.or),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        providers.forEach { provider ->
+            OutlinedButton(
+                onClick = { vm.startSso(provider) },
+                enabled = !vm.busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.continue_with, provider.name)) }
+        }
+    }
+}
+
+@Composable
+private fun SsoWaiting(state: SsoState.Waiting, onReopen: () -> Unit, onCancel: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+        Text(stringResource(R.string.sso_finish_in_browser, state.provider.name), textAlign = TextAlign.Center)
+        Text(
+            stringResource(R.string.sso_waiting_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = onReopen) { Text(stringResource(R.string.open_browser_again)) }
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
+        }
+    }
+}
+
+@Composable
+private fun SsoVerifiedBanner(state: SsoState.Verified, onChange: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(Icons.Filled.VerifiedUser, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        Column(Modifier.weight(1f)) {
+            Text(state.email, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+            Text(
+                stringResource(R.string.sso_verified_with, state.provider.name),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        TextButton(onClick = onChange) { Text(stringResource(R.string.change)) }
+    }
 }
 
 @Composable

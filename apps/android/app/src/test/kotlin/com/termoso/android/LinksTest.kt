@@ -1,6 +1,7 @@
 package com.termoso.android
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class LinksTest {
@@ -36,5 +37,44 @@ class LinksTest {
         assertEquals(LinkKind.Other, classifyLink("termoso://vault/x"))
         assertEquals(LinkKind.Other, classifyLink("not a link"))
         assertEquals(LinkKind.Other, classifyLink("https://[bad/invite/x"))
+        assertEquals(LinkKind.Other, classifyLink("termoso://sso?flow=${"a".repeat(24)}"))
+    }
+
+    @Test
+    fun ssoCallback() {
+        val flow = "Ab0_-" + "z".repeat(19)
+        assertEquals(flow, parseSsoLink("termoso://sso?flow=$flow"))
+        assertEquals(flow, parseSsoLink(" TERMOSO://SSO/?flow=$flow "))
+        assertEquals("a".repeat(16), parseSsoLink("termoso://sso?flow=${"a".repeat(16)}"))
+        assertEquals("a".repeat(128), parseSsoLink("termoso://sso?flow=${"a".repeat(128)}"))
+    }
+
+    @Test
+    fun ssoCallbackRejectsAnythingElse() {
+        val flow = "a".repeat(24)
+        listOf(
+            "termoso://sso",
+            "termoso://sso?",
+            "termoso://sso?flow=",
+            "termoso://sso?flow",
+            "termoso://sso?flow=${"a".repeat(15)}",
+            "termoso://sso?flow=${"a".repeat(129)}",
+            "termoso://sso?flow=$flow&flow=$flow",
+            "termoso://sso?flow=$flow&access_token=x",
+            "termoso://sso?flow=$flow&sso_session=x",
+            "termoso://sso?sso_session=$flow",
+            "termoso://sso?flow=$flow#token",
+            "termoso://sso/callback?flow=$flow",
+            "termoso://sso:1?flow=$flow",
+            "termoso://user@sso?flow=$flow",
+            "termoso://ssox?flow=$flow",
+            "termoso://invite/$flow",
+            "https://sso?flow=$flow",
+            "termoso://sso?flow=a b",
+            "termoso://sso?flow=${flow}%2F",
+            "termoso://sso?flow=${flow}/",
+            "termoso://sso?flow=$flow&",
+            "termoso://[bad?flow=$flow",
+        ).forEach { assertNull(it, parseSsoLink(it)) }
     }
 }

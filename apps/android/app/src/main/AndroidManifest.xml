@@ -15,6 +15,13 @@
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
 
+    <!-- Lets Custom Tabs find a browser that supports them for single sign-on. -->
+    <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+    </queries>
+
     <application
         android:name=".TermosoApplication"
         android:allowBackup="false"
@@ -57,6 +64,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="termoso" android:host="join" />
+            </intent-filter>
+            <!-- Single sign-on callback: the browser comes back with termoso://sso?flow=<id> only. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="termoso" android:host="sso" />
             </intent-filter>
             <!-- Android App Links: https invitation / live-sharing links of the cloud server open
                  straight in the app once the OS verifies /.well-known/assetlinks.json there.

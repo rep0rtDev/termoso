@@ -1376,4 +1376,17 @@
     <string name="stage_opening_sftp">Открытие SFTP…</string>
     <string name="stage_opening_tunnel">Открытие туннеля…</string>
     <string name="stage_via_hop">%1$s: %2$s</string>
+    <string name="or">или</string>
+    <string name="continue_with">Продолжить через %1$s</string>
+    <string name="sso_finish_in_browser">Завершите вход через %1$s в браузере.</string>
+    <string name="sso_waiting_hint">Termoso продолжит автоматически, когда браузер вернёт вас в приложение. Данные провайдера на устройстве не сохраняются.</string>
+    <string name="open_browser_again">Открыть браузер снова</string>
+    <string name="sso_verified_with">Подтверждено через %1$s</string>
+    <string name="change">Изменить</string>
+    <string name="termoso_password">Пароль Termoso</string>
+    <string name="sso_password_hint_sign_in">Пароль Termoso разблокирует зашифрованные хранилища; он не связан с провайдером входа.</string>
+    <string name="sso_password_hint_register">Придумайте пароль Termoso не короче 12 символов. Он шифрует хранилища и не покидает устройство — провайдер входа его не видит.</string>
+    <string name="sso_timed_out">Время единого входа истекло. Попробуйте ещё раз.</string>
+    <string name="sso_expired">Эта ссылка единого входа больше не действует. Начните заново.</string>
+    <string name="no_browser_available">Нет браузера, чтобы открыть страницу входа.</string>
 </resources>
