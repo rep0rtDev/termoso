@@ -35,6 +35,7 @@ import { emerald, monoFontFamily } from "@/theme/theme";
 const REPO = "https://github.com/rep0rtDev/termoso";
 const RELEASES = `${REPO}/releases/latest`;
 const README = `${REPO}#readme`;
+const SPONSOR = "https://github.com/sponsors/rep0rtDev";
 
 const HEADER = 60;
 
@@ -1392,6 +1393,7 @@ export function LandingPage() {
                   links: [
                     ["GitHub", REPO],
                     ["Issues", `${REPO}/issues`],
+                    ["Sponsor", SPONSOR],
                     ["License (AGPL-3.0)", `${REPO}/blob/main/LICENSE`],
                   ],
                 },

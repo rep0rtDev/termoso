@@ -647,6 +647,8 @@
     <string name="no_telemetry_no_analytics_no_accounts_required">Без телеметрии, без аналитики, аккаунт не требуется</string>
     <string name="source_code">Исходный код</string>
     <string name="agpl_licensed_on_github">Лицензия AGPL, на GitHub</string>
+    <string name="support_the_project">Поддержать проект</string>
+    <string name="sponsor_on_github">Спонсорство на GitHub — свободное ПО без платных тарифов</string>
     <string name="open_source_licenses">Лицензии открытого ПО</string>
     <string name="termoso_reports_to_you_not_on_you_no">Termoso докладывает вам, а не на вас.\n\n• Никакой телеметрии, отчётов о сбоях и аналитических SDK — в приложении их нет.\n• Хосты, ключи, пароли и настройки живут в зашифрованной базе данных на этом устройстве; ключ обёрнут Android Keystore и никогда не записывается в открытом виде.\n• Закрытые ключи покидают устройство только тогда, когда вы сами их экспортируете.\n• При входе на сервер Termoso (Termoso Cloud или ваш собственный) синхронизируются только данные со сквозным шифрованием — сервер не может прочитать ваше хранилище.\n• Никакой рекламы, тарифов и допродаж. Свободное ПО, навсегда.</string>
     <string name="termoso_agpl_3_0_bundled_terminal_fonts_jetbrains">Termoso — AGPL-3.0.\n\nВстроенные шрифты терминала:\n• JetBrains Mono — SIL Open Font License 1.1\n• Fira Code — SIL Open Font License 1.1\n• Source Code Pro — SIL Open Font License 1.1\n• Ubuntu Mono — Ubuntu Font Licence 1.0\n\nПолные тексты находятся в apps/android/licenses в дереве исходников. Уведомления о библиотеках Rust и Android перечислены в репозитории.</string>

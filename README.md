@@ -30,6 +30,7 @@ the server's only metrics are opt-in Prometheus counters on a private listener.
 9. [Releases](#releases)
 10. [API overview](#api-overview)
 11. [Contributing](#contributing)
+12. [Support the project](#support-the-project)
 
 ## What works today
 
@@ -414,3 +415,11 @@ every project space. Security reports go through [SECURITY.md](SECURITY.md).
 
 Termoso is licensed under the [GNU AGPL v3](LICENSE): run it, change it, host
 it — and keep it free for whoever you host it for.
+
+## Support the project
+
+Termoso has no paid tier, no telemetry and no company behind it. If it saves
+you time, you can fund development through
+[GitHub Sponsors](https://github.com/sponsors/rep0rtDev). Sponsorship buys
+nothing extra — every feature stays free for everyone — it just keeps the
+build machines and the release signing certificates paid for.

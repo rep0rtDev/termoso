@@ -24,6 +24,7 @@ import SystemUpdateAltRoundedIcon from "@mui/icons-material/SystemUpdateAltRound
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { AccountPage } from "@/account/AccountPage";
 import { setSettingsPage, useNav, type SettingsPage as PageId } from "@/app/navigation";
 import { EmptyState } from "@/components/EmptyState";
@@ -677,6 +678,8 @@ function Logs({ s, update }: SectionProps) {
   );
 }
 
+const SPONSOR_URL = "https://github.com/sponsors/rep0rtDev";
+
 function About() {
   const info = useAppInfo();
   const d = info.data;
@@ -702,6 +705,16 @@ function About() {
           Termoso sends nothing anywhere unless you sign in to a server you chose or ask it to check
           for updates. No analytics, no crash reports, no background pings.
         </Typography>
+      </SectionCard>
+
+      <SectionCard title="Support the project">
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          Termoso is free software with no paid tier. Sponsorship keeps the build machines and
+          signing certificates paid for; it unlocks nothing.
+        </Typography>
+        <Button size="small" variant="outlined" onClick={() => void openUrl(SPONSOR_URL)}>
+          Sponsor on GitHub
+        </Button>
       </SectionCard>
     </>
   );

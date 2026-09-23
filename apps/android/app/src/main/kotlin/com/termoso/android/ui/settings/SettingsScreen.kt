@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Keyboard
@@ -87,6 +88,7 @@ private val languages = listOf(
 )
 
 private const val SOURCE_URL = "https://github.com/rep0rtDev/termoso"
+private const val SPONSOR_URL = "https://github.com/sponsors/rep0rtDev"
 
 /** Settings tab: account/sync, appearance, terminal, security (app lock), about. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -361,6 +363,16 @@ fun SettingsScreen(
                     modifier = Modifier.clickable {
                         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, SOURCE_URL.toUri())) }
                             .onFailure { shell.notify(SOURCE_URL) }
+                    },
+                )
+                RowDivider()
+                ChevronRow(
+                    title = stringResource(R.string.support_the_project),
+                    subtitle = stringResource(R.string.sponsor_on_github),
+                    leading = { IconTile(Icons.Filled.Favorite) },
+                    modifier = Modifier.clickable {
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, SPONSOR_URL.toUri())) }
+                            .onFailure { shell.notify(SPONSOR_URL) }
                     },
                 )
                 RowDivider()
