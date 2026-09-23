@@ -8836,7 +8836,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-awslc-rsa"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "aws-lc-rs",
  "aws-lc-sys",
@@ -8849,7 +8849,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-bridge"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "axum",
  "chrono",
@@ -8870,7 +8870,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-client"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "chrono",
  "serde",
@@ -8885,7 +8885,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-core"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "aes 0.8.4",
  "anyhow",
@@ -8948,7 +8948,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-crypto"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "argon2 0.5.3",
  "base64 0.23.1",
@@ -8970,7 +8970,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-desktop"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "axum",
  "base64 0.23.1",
@@ -9006,7 +9006,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-mobile"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "alacritty_terminal",
  "bytes",
@@ -9034,7 +9034,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-proto"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "chrono",
  "serde",
@@ -9045,7 +9045,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-server"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "aes 0.8.4",
  "aes-gcm 0.10.3",
@@ -9109,7 +9109,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-wasm"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "js-sys",
  "serde",
@@ -9838,7 +9838,7 @@ dependencies = [
 
 [[package]]
 name = "uniffi-bindgen"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "uniffi",
 ]
