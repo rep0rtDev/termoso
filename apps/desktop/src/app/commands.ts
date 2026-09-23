@@ -4,6 +4,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { createStore, useStore } from "@/lib/store";
+import { quitApp } from "@/app/tray";
 import {
   HOME_TAB,
   activeTab,
@@ -526,7 +527,7 @@ export const COMMANDS: Command[] = [
     group: "Window",
     keywords: "exit close",
     keys: ["ctrl+q"],
-    run: () => void win.close(),
+    run: quitApp,
   },
 ];
 

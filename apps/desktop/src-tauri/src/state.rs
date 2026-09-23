@@ -324,6 +324,9 @@ pub struct Settings {
     pub log_retention_days: u32,
     /// Start `auto_start` forwarding rules when the app launches.
     pub autostart_forwarding: bool,
+    /// Closing the window hides it to the system tray; sessions and
+    /// forwards keep running until Quit.
+    pub minimize_to_tray: bool,
     /// `newest_wins` | `local_wins` | `server_wins`.
     pub sync_conflict: String,
     /// Background sync period in seconds (0 = manual + realtime only).
@@ -420,6 +423,7 @@ impl Default for Settings {
             record_sessions: false,
             log_retention_days: 0,
             autostart_forwarding: true,
+            minimize_to_tray: false,
             sync_conflict: "newest_wins".into(),
             sync_interval_seconds: 300,
             upload_logs: false,

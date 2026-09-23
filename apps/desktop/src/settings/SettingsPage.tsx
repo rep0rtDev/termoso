@@ -280,6 +280,16 @@ function General({ s, update }: SectionProps) {
           }
         />
         <SettingRow
+          label={tr("Keep running in the tray")}
+          hint={tr(
+            "Closing the window hides Termoso to the system tray; sessions and port forwards stay up. Quit from the tray menu or with {keys}.",
+            { keys: IS_MAC ? "⌘Q" : "Ctrl+Q" },
+          )}
+          control={
+            <Toggle checked={s.minimizeToTray} onChange={(v) => update({ minimizeToTray: v })} />
+          }
+        />
+        <SettingRow
           label={tr("Detect OS on first connection")}
           hint={tr(
             "Reads /etc/os-release once after connecting to pick the host's icon. Nothing leaves the SSH session.",

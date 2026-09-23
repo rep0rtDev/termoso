@@ -2383,4 +2383,8 @@ export const ru: Readonly<Record<string, string>> = {
   "↑↓ select": "↑↓ выбор",
   "✓ I have stored it safely": "✓ Я надёжно сохранил",
   "{name} joined your shared terminal": "{name} присоединился к вашему общему терминалу",
+  "Keep running in the tray": "Оставлять в трее",
+  "Closing the window hides Termoso to the system tray; sessions and port forwards stay up. Quit from the tray menu or with {keys}.":
+    "Закрытие окна сворачивает Termoso в системный трей; сессии и проброс портов продолжают работать. Выход — через меню трея или {keys}.",
+  "Show Termoso": "Показать Termoso",
 };

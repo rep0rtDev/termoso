@@ -1,5 +1,5 @@
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { bringToFront } from "@/app/tray";
 import { toast } from "@/components/Snackbar";
 import { hostsList } from "@/ipc/commands";
 import { errorMessage } from "@/ipc/types";
@@ -18,8 +18,7 @@ async function openLink(url: string) {
   setTimeout(() => seen.delete(url), 2_000);
 
   if (isSsoLink(url)) {
-    const win = getCurrentWindow();
-    void win.unminimize().then(() => win.setFocus());
+    void bringToFront();
     if (!parseSsoLink(url)) {
       toast(tr("Ignored a malformed sign-in link"), "warning");
       return;
@@ -36,8 +35,7 @@ async function openLink(url: string) {
     toast(tr("Can't open link: {url}", { url }), "warning");
     return;
   }
-  const win = getCurrentWindow();
-  void win.unminimize().then(() => win.setFocus());
+  void bringToFront();
   if (link.kind === "quick") {
     openTerminal(link.target);
     toast(tr("Connecting to {quickLabel}", { quickLabel: quickLabel(link.target) }), "info");

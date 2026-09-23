@@ -109,6 +109,8 @@ export interface Settings {
   /** Relock a password-protected vault after this many idle minutes; 0 = never. */
   lockAfterMinutes: number;
   autostartForwarding: boolean;
+  /** Closing the window hides it to the tray; sessions and forwards keep running. */
+  minimizeToTray: boolean;
   syncConflict: SyncConflict;
   syncIntervalSeconds: number;
   uploadLogs: boolean;

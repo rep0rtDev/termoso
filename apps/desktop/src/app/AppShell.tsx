@@ -43,6 +43,7 @@ import { applyShortcutOverrides } from "./shortcuts";
 import { CommandPalette } from "./CommandPalette";
 import { startDeepLinks } from "./deepLinks";
 import { startNotifications } from "./notifications";
+import { startTray } from "./tray";
 import { tr } from "@/i18n";
 
 /** Report user input to Rust for the inactivity timer, at most once per interval. */
@@ -74,6 +75,8 @@ function useActivityReporter(enabled: boolean) {
 export function AppShell() {
   const status = useVaultStatus();
   useVaultEvents();
+  // Outside the lock gate: a hidden window must stay reachable while locked.
+  useEffect(startTray, []);
   useEffect(() => {
     let active = true;
     const un = ipc.onVaultEvent((e) => {
