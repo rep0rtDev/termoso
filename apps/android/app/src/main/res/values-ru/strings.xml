@@ -59,7 +59,7 @@
     <string name="sync">Синхронизация</string>
     <string name="sync_finished_with_errors">Синхронизация завершилась с ошибками: %1$s</string>
     <string name="synced_pushed_pulled">Синхронизировано · отправлено %1$s, получено %2$s</string>
-    <string name="sync_now">Синхронизировать сейчас</string>
+    <string name="sync_now">Обновить</string>
     <string name="last_error">Последняя ошибка</string>
     <string name="end_to_end_encrypted">Сквозное шифрование</string>
     <string name="the_server_stores_only_ciphertext_keys_stay_on">Сервер хранит только шифротекст; ключи остаются на ваших устройствах</string>
@@ -116,12 +116,12 @@
     <string name="sign_out_3">Выйти на %1$s?</string>
     <string name="that_device_loses_access_to_your_account_immediately">Это устройство немедленно теряет доступ к вашему аккаунту, и на нём потребуется снова войти.</string>
     <string name="signed_out_2">%1$s: выход выполнен</string>
-    <string name="up_to_date_live">Актуально · в реальном времени</string>
+    <string name="up_to_date_live">Актуально · онлайн</string>
     <string name="up_to_date">Актуально</string>
     <string name="syncing">Синхронизация…</string>
     <string name="offline">Офлайн</string>
     <string name="sync_failed">Синхронизация не удалась</string>
-    <string name="last_sync">Последняя синхронизация %1$s</string>
+    <string name="last_sync">Синхронизировано %1$s</string>
     <string name="not_synced_yet">Ещё не синхронизировано</string>
     <string name="just_now">только что</string>
     <string name="confirm_its_you">Подтвердите, что это вы</string>

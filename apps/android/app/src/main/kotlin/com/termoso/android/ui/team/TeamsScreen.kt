@@ -4,7 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -124,9 +124,11 @@ fun TeamsScreen(
                         hint = stringResource(R.string.share_hosts_keys_and_snippets_through_end_to),
                         icon = Icons.Filled.Group,
                         action = {
-                            Row(horizontalArrangement = Arrangement.Center) {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
                                 Button(onClick = { creating = true }) { Text(stringResource(R.string.create_team)) }
-                                Spacer(Modifier.size(12.dp))
                                 OutlinedButton(onClick = { joining = true }) { Text(stringResource(R.string.join_with_link)) }
                             }
                         },
