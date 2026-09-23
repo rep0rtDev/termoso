@@ -1640,6 +1640,8 @@ export type OpenTarget =
   | {
       kind: "host";
       host_id: Uuid;
+      /** Vault the host is expected to live in; the open fails if it lives elsewhere. */
+      vault_id?: Uuid | null;
       /** Which section to open; defaults to SSH (or Mosh when enabled) when the host has one. */
       protocol?: ConnectProtocol | null;
     }
@@ -1804,9 +1806,9 @@ export interface Listing {
 }
 
 export type SftpTarget =
-  | { kind: "host"; host_id: Uuid }
+  | { kind: "host"; host_id: Uuid; vault_id?: Uuid | null }
   | { kind: "session"; session_id: Uuid }
-  | { kind: "webdav"; host_id: Uuid };
+  | { kind: "webdav"; host_id: Uuid; vault_id?: Uuid | null };
 
 export type RemoteProtocol = "sftp" | "webdav";
 

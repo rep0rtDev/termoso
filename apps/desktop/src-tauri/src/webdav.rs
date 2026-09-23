@@ -47,14 +47,16 @@ fn display_of(url: &str) -> String {
 }
 
 /// Open the WebDAV section of `host_id`, asking the user for a password or
-/// a certificate decision when needed. `session_id` scopes the prompts.
+/// a certificate decision when needed. `session_id` scopes the prompts;
+/// `vault_id` is the vault the caller expects the host in.
 pub async fn connect<R: Runtime>(
     app: &AppHandle<R>,
     session_id: Uuid,
     host_id: Uuid,
+    vault_id: Option<Uuid>,
 ) -> Result<Connection> {
     let state = app.state::<AppState>();
-    let resolved = state.store()?.resolve_host(host_id)?;
+    let resolved = state.store()?.resolve_host_in(host_id, vault_id)?;
     let Some(cfg) = resolved.webdav.clone() else {
         return Err(DesktopError::invalid("this host has no WebDAV section"));
     };

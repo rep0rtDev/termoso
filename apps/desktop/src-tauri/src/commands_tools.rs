@@ -7,6 +7,7 @@ use serde::Deserialize;
 
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use termoso_client::trust::HostKeyPin;
+use termoso_core::model::SshKey;
 use termoso_core::secrets::MasterKeySource;
 use termoso_proto::account::{ServerInfo, UserProfile};
 use termoso_proto::ai::{AiCommandResponse, AiStatus};
@@ -344,8 +345,9 @@ pub async fn key_export_to_host<R: Runtime>(
     id: Uuid,
     host_id: Uuid,
 ) -> Result<ExportToHostResult> {
+    let key_vault = state.store()?.require::<SshKey>(id)?.vault_id;
     let public = keychain::public_key(&*state.store()?, id)?;
-    let conn = sessions::connect_host(&app, Uuid::new_v4(), host_id).await?;
+    let conn = sessions::connect_host(&app, Uuid::new_v4(), host_id, Some(key_vault)).await?;
     let out = conn
         .client
         .exec(

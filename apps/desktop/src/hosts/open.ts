@@ -4,11 +4,13 @@ import { openWebDavForHost } from "@/sftp/store";
 import { openTerminal } from "@/terminal/store";
 
 /** Connect a saved host the way its sections allow: a terminal, or Files for WebDAV-only hosts. */
-export function openHost(h: Pick<HostCard, "id" | "label" | "protocol" | "telnetPort">) {
+export function openHost(
+  h: Pick<HostCard, "id" | "vaultId" | "label" | "protocol" | "telnetPort">,
+) {
   if (hostProtocols(h).length === 0) {
-    openWebDavForHost(h.id, h.label);
+    openWebDavForHost(h.id, h.label, h.vaultId);
     goToSftp();
     return;
   }
-  openTerminal({ kind: "host", host_id: h.id });
+  openTerminal({ kind: "host", host_id: h.id, vault_id: h.vaultId });
 }

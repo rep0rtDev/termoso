@@ -246,7 +246,7 @@ function HostEditor({
     save.mutate(form, {
       onSuccess: (card) => {
         snackbar.notify(hostId ? "Host saved" : `Host “${card.label}” added`);
-        if (thenConnect) connectTo(card.id, card.label, thenConnect);
+        if (thenConnect) connectTo(card, thenConnect);
         onClose();
       },
       onError: (e) => snackbar.error(errorMessage(e)),
@@ -270,7 +270,12 @@ function HostEditor({
 
   const footer =
     hostId && !touched ? (
-      <ConnectButton hostId={hostId} label={form.label} target={primaryOf(form)} />
+      <ConnectButton
+        hostId={hostId}
+        vaultId={vaultId}
+        label={form.label}
+        target={primaryOf(form)}
+      />
     ) : (
       <>
         <Button
@@ -284,6 +289,7 @@ function HostEditor({
         </Button>
         <ConnectButton
           hostId={hostId}
+          vaultId={vaultId}
           target={primaryOf(form)}
           disabled={!canSave}
           onClick={() => onSave(primaryOf(form))}

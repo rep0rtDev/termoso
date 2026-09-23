@@ -96,7 +96,7 @@ pub fn hosts_csv(
     out.push('\n');
     for c in &cards {
         let password = if include_passwords {
-            let r = store.resolve_host(c.id)?;
+            let r = store.resolve_host_in(c.id, Some(c.vault_id))?;
             r.identity
                 .as_ref()
                 .and_then(|i: &Entity<Identity>| i.data.password.clone())

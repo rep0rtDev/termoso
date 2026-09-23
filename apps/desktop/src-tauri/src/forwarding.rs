@@ -556,8 +556,9 @@ pub async fn start<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<PfRuleCar
     let cancel = state.forwards.begin(id)?;
     emit(app, id);
 
+    // A rule only ever tunnels through a host of its own vault.
     let result = tokio::select! {
-        r = sessions::connect_host(app, id, e.data.host_id) => r,
+        r = sessions::connect_host(app, id, e.data.host_id, Some(e.vault_id)) => r,
         _ = cancel.cancelled() => Err(CoreError::Cancelled.into()),
     };
     state.prompts.cancel_session(id);

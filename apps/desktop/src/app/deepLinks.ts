@@ -37,7 +37,7 @@ async function openLink(url: string) {
       toast("This link points to a host that isn't in your vaults", "warning");
       return;
     }
-    openTerminal({ kind: "host", host_id: host.id });
+    openTerminal({ kind: "host", host_id: host.id, vault_id: host.vaultId });
   } catch (e) {
     toast(errorMessage(e), "error");
   }

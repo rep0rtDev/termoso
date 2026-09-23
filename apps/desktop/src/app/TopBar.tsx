@@ -328,8 +328,9 @@ type DropSide = "before" | "after" | "into" | null;
 /** Workspace tabs are terminals, so WebDAV-only hosts are left out. */
 const hostTargets = (ids: Uuid[], hosts: readonly HostCard[] | undefined) =>
   ids
-    .filter((id) => hosts?.find((h) => h.id === id)?.protocol !== "webdav")
-    .map((host_id) => ({ kind: "host" as const, host_id }));
+    .map((id) => hosts?.find((h) => h.id === id))
+    .filter((h): h is HostCard => h !== undefined && h.protocol !== "webdav")
+    .map((h) => ({ kind: "host" as const, host_id: h.id, vault_id: h.vaultId }));
 
 function TerminalTopTab({
   tab,

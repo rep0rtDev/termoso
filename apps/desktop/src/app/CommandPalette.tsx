@@ -11,6 +11,7 @@ import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import WebAssetRoundedIcon from "@mui/icons-material/WebAssetRounded";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useHistory, useHosts } from "@/ipc/hooks";
+import { useActiveVault } from "@/app/vault";
 import type { HostCard } from "@/ipc/types";
 import { HostAvatar } from "@/hosts/HostAvatar";
 import { openHost } from "@/hosts/open";
@@ -317,7 +318,9 @@ function GroupIcon({ group }: { group: string }) {
 function useJumpItems(q: string): Item[] {
   const tabs = useTerminal((s) => s.tabs);
   const panes = useTerminal((s) => s.panes);
+  const vault = useActiveVault();
   const hosts = useHosts(null);
+  const vaultHosts = useHosts(vault.data?.id ?? null);
   const templates = useWorkspaces((s) => s.templates);
   const history = useHistory();
 
@@ -344,7 +347,7 @@ function useJumpItems(q: string): Item[] {
       });
     }
 
-    for (const h of hosts.data ?? []) out.push(hostItem(h));
+    for (const h of vaultHosts.data ?? []) out.push(hostItem(h));
 
     for (const tpl of templates) {
       out.push({
@@ -393,7 +396,7 @@ function useJumpItems(q: string): Item[] {
       run: () => openTerminal({ kind: "local" }),
     });
     return out;
-  }, [tabs, panes, hosts.data, templates, history.data, q]);
+  }, [tabs, panes, hosts.data, vaultHosts.data, templates, history.data, q]);
 }
 
 function hostItem(h: HostCard): Item {

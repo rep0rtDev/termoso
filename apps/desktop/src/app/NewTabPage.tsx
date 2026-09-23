@@ -440,7 +440,7 @@ function RecentConnections({
       recent.map((it) => {
         const host = it.data.host_id ? hosts.find((h) => h.id === it.data.host_id) : undefined;
         const target: OpenTarget | null = host
-          ? { kind: "host", host_id: host.id }
+          ? { kind: "host", host_id: host.id, vault_id: host.vaultId }
           : it.data.protocol === "local"
             ? { kind: "local" }
             : quickFromHistory(it.data.target, it.data.protocol);

@@ -410,7 +410,12 @@ export function ConnectionHistoryList({
               <ListItemButton
                 disabled={!item.data.host_id}
                 onClick={() => {
-                  if (item.data.host_id) openTerminal({ kind: "host", host_id: item.data.host_id });
+                  if (item.data.host_id)
+                    openTerminal({
+                      kind: "host",
+                      host_id: item.data.host_id,
+                      vault_id: item.vault_id,
+                    });
                 }}
                 sx={{ borderRadius: 1.5, gap: 1, "&.Mui-disabled": { opacity: 1 } }}
               >
