@@ -34,12 +34,21 @@ const MAX_PARALLEL: usize = 3;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SftpTarget {
-    /// Open a fresh SSH connection to a saved host.
-    Host { host_id: Uuid },
+    /// Open a fresh SSH connection to a saved host. `vault_id` is the vault
+    /// the caller took the host from; a host living elsewhere is refused.
+    Host {
+        host_id: Uuid,
+        #[serde(default)]
+        vault_id: Option<Uuid>,
+    },
     /// Reuse the transport of a live terminal session.
     Session { session_id: Uuid },
     /// Open the WebDAV section of a saved host.
-    Webdav { host_id: Uuid },
+    Webdav {
+        host_id: Uuid,
+        #[serde(default)]
+        vault_id: Option<Uuid>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -400,8 +409,8 @@ async fn connect<R: Runtime>(
 ) -> Result<Connected> {
     let state = app.state::<AppState>();
     match target {
-        SftpTarget::Host { host_id } => {
-            let conn = sessions::connect_host(app, id, *host_id).await?;
+        SftpTarget::Host { host_id, vault_id } => {
+            let conn = sessions::connect_host(app, id, *host_id, *vault_id).await?;
             let sftp = Sftp::open(&conn.client).await?;
             let mut keepalive = conn.jumps;
             keepalive.push(conn.client);
@@ -430,8 +439,8 @@ async fn connect<R: Runtime>(
                 keepalive: vec![client],
             })
         }
-        SftpTarget::Webdav { host_id } => {
-            let conn = crate::webdav::connect(app, id, *host_id).await?;
+        SftpTarget::Webdav { host_id, vault_id } => {
+            let conn = crate::webdav::connect(app, id, *host_id, *vault_id).await?;
             Ok(Connected {
                 title: conn.label,
                 display: conn.display,

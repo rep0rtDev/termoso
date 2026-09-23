@@ -178,9 +178,13 @@ fn local_shell_name(argv: &[String]) -> Option<String> {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OpenTarget {
     /// A saved host; `protocol` picks one of its sections (`ssh` / `telnet`),
-    /// default SSH when the host has it.
+    /// default SSH when the host has it. `vault_id` is the vault the caller
+    /// took the host from: the open is refused if the host lives elsewhere,
+    /// so a stale or foreign id never reaches another vault's credentials.
     Host {
         host_id: Uuid,
+        #[serde(default)]
+        vault_id: Option<Uuid>,
         #[serde(default)]
         protocol: Option<String>,
     },
@@ -899,8 +903,12 @@ async fn connect<R: Runtime>(
                 shell: None,
             })
         }
-        OpenTarget::Host { host_id, protocol } => {
-            let resolved = state.store()?.resolve_host(*host_id)?;
+        OpenTarget::Host {
+            host_id,
+            vault_id,
+            protocol,
+        } => {
+            let resolved = state.store()?.resolve_host_in(*host_id, *vault_id)?;
             let label = resolved.host.data.label.clone();
             if host_protocol(&resolved, protocol.as_deref())? == "telnet" {
                 let telnet = resolved.telnet.clone().unwrap_or_default();
@@ -1116,14 +1124,16 @@ impl HostConnection {
 }
 
 /// Connect to a saved SSH host, asking the UI for anything missing. Prompts
-/// are routed under `session_id`.
+/// are routed under `session_id`. `vault_id` is the vault the caller expects
+/// the host in (see [`OpenTarget::Host`]).
 pub async fn connect_host<R: Runtime>(
     app: &AppHandle<R>,
     session_id: Uuid,
     host_id: Uuid,
+    vault_id: Option<Uuid>,
 ) -> Result<HostConnection> {
     let state = app.state::<AppState>();
-    let resolved = state.store()?.resolve_host(host_id)?;
+    let resolved = state.store()?.resolve_host_in(host_id, vault_id)?;
     if !has_ssh(&resolved) {
         return Err(DesktopError::invalid(
             "SFTP and port forwarding need an SSH section on the host",
@@ -1416,7 +1426,9 @@ async fn ssh_connect<R: Runtime>(
     // which also rules out cycles.
     let mut via = jump;
     for link in chain {
-        let hop_resolved = state.store()?.resolve_host(link.id)?;
+        let hop_resolved = state
+            .store()?
+            .resolve_host_in(link.id, Some(link.vault_id))?;
         let hop_target = SshTarget {
             host: hop_resolved.host.data.address.clone(),
             port: hop_resolved.port(),

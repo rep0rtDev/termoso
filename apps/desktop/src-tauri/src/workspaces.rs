@@ -217,6 +217,7 @@ mod tests {
                     template_id: None,
                     layout: leaf(OpenTarget::Host {
                         host_id: Uuid::nil(),
+                        vault_id: None,
                         protocol: None,
                     }),
                 }],

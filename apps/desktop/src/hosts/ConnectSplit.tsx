@@ -8,7 +8,10 @@ import type { MenuAction } from "@/components/ui";
 import { goToSftp, requestForwardingRule } from "@/app/navigation";
 import { openSftpForHost, openWebDavForHost } from "@/sftp/store";
 import { openTerminal } from "@/terminal/store";
-import type { ConnectProtocol, Uuid } from "@/ipc/types";
+import type { ConnectProtocol, HostCard, Uuid } from "@/ipc/types";
+
+/** The bits of a saved host an open needs: its id, the vault it came from, a title. */
+export type HostRef = Pick<HostCard, "id" | "vaultId" | "label">;
 
 export const PROTOCOL_NAME: Record<ConnectProtocol, string> = {
   ssh: "SSH",
@@ -20,15 +23,15 @@ export const PROTOCOL_NAME: Record<ConnectProtocol, string> = {
 export type ConnectTarget = ConnectProtocol | "webdav";
 
 /** Opens the host's WebDAV share in the files view. */
-export function openWebDav(hostId: Uuid, label: string) {
-  openWebDavForHost(hostId, label);
+export function openWebDav(h: HostRef) {
+  openWebDavForHost(h.id, h.label, h.vaultId);
   goToSftp();
 }
 
 /** Opens a saved host the way its primary section dictates. */
-export function connectTo(hostId: Uuid, label: string, target: ConnectTarget | null) {
-  if (target === "webdav") openWebDav(hostId, label);
-  else openTerminal({ kind: "host", host_id: hostId, protocol: target });
+export function connectTo(h: HostRef, target: ConnectTarget | null) {
+  if (target === "webdav") openWebDav(h);
+  else openTerminal({ kind: "host", host_id: h.id, vault_id: h.vaultId, protocol: target });
 }
 
 /**
@@ -37,8 +40,7 @@ export function connectTo(hostId: Uuid, label: string, target: ConnectTarget | n
  * WebDAV share when the host has one.
  */
 export function connectActions(
-  hostId: Uuid,
-  label: string,
+  h: HostRef,
   protocols: ConnectProtocol[],
   webdav = false,
 ): MenuAction[] {
@@ -48,7 +50,8 @@ export function connectActions(
     ...protocols.map((p) => ({
       label: `with ${PROTOCOL_NAME[p]}`,
       icon: <TerminalRoundedIcon fontSize="small" />,
-      onClick: () => openTerminal({ kind: "host", host_id: hostId, protocol: p }),
+      onClick: () =>
+        openTerminal({ kind: "host", host_id: h.id, vault_id: h.vaultId, protocol: p }),
     })),
     {
       label: `with SFTP${needsSsh}`,
@@ -56,7 +59,7 @@ export function connectActions(
       disabled: !ssh,
       divider: protocols.length > 0,
       onClick: () => {
-        openSftpForHost(hostId, label);
+        openSftpForHost(h.id, h.label, h.vaultId);
         goToSftp();
       },
     },
@@ -65,7 +68,7 @@ export function connectActions(
           {
             label: "with WebDAV",
             icon: <CloudRoundedIcon fontSize="small" />,
-            onClick: () => openWebDav(hostId, label),
+            onClick: () => openWebDav(h),
           },
         ]
       : []),
@@ -73,7 +76,7 @@ export function connectActions(
       label: `Port forwarding${needsSsh}`,
       icon: <SwapHorizRoundedIcon fontSize="small" />,
       disabled: !ssh,
-      onClick: () => requestForwardingRule(hostId),
+      onClick: () => requestForwardingRule(h.id),
     },
   ];
 }
@@ -81,12 +84,14 @@ export function connectActions(
 /** Full-width primary Connect at the bottom of Host Details, as in Termius. */
 export function ConnectButton({
   hostId,
+  vaultId,
   label = "",
   target,
   disabled,
   onClick,
 }: {
   hostId: Uuid | null;
+  vaultId: Uuid;
   label?: string;
   /** Section to open; `null` lets the host pick (SSH, or Mosh when enabled). */
   target?: ConnectTarget | null;
@@ -105,7 +110,7 @@ export function ConnectButton({
       onClick={
         onClick ??
         (() => {
-          if (hostId) connectTo(hostId, label, target ?? null);
+          if (hostId) connectTo({ id: hostId, vaultId, label }, target ?? null);
         })
       }
       sx={{ height: 40, borderRadius: 2.5, fontWeight: 600 }}

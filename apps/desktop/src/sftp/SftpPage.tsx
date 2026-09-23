@@ -21,6 +21,7 @@ import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import { useActiveVault } from "@/app/vault";
 import * as ipc from "@/ipc/commands";
 import type { Conflict, Direction, FsEntry, HostCard, Uuid } from "@/ipc/types";
 import { errorMessage, hasSsh, hasWebDav } from "@/ipc/types";
@@ -386,7 +387,8 @@ function RemotePlaceholder({
 }
 
 function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const hosts = useHosts(null);
+  const vault = useActiveVault();
+  const hosts = useHosts(vault.data?.id ?? null);
   const panes = useTerminal((s) => s.panes);
   const [filter, setFilter] = useState("");
   const q = filter.trim().toLowerCase();
@@ -401,15 +403,13 @@ function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }
   const sessions = Object.values(panes).filter(
     (p) => p.protocol === "ssh" && p.status === "connected",
   );
-  const pick = (
-    id: Uuid,
-    kind: "host" | "session" | "webdav",
-    title: string,
-    hostId: Uuid | null,
-  ) => {
-    if (kind === "host") openSftpForHost(id, title);
-    else if (kind === "webdav") openWebDavForHost(id, title);
-    else openSftpForSession(id, title, hostId);
+  const pickHost = (h: HostCard, kind: "host" | "webdav") => {
+    if (kind === "host") openSftpForHost(h.id, h.label, h.vaultId);
+    else openWebDavForHost(h.id, h.label, h.vaultId);
+    onClose();
+  };
+  const pickSession = (id: Uuid, title: string, hostId: Uuid | null) => {
+    openSftpForSession(id, title, hostId);
     onClose();
   };
   return (
@@ -438,7 +438,7 @@ function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }
             <>
               <ListSubheader disableSticky>Open sessions</ListSubheader>
               {sessions.map((p) => (
-                <ListItemButton key={p.id} onClick={() => pick(p.id, "session", p.title, p.hostId)}>
+                <ListItemButton key={p.id} onClick={() => pickSession(p.id, p.title, p.hostId)}>
                   <ListItemText primary={p.title} secondary={p.subtitle} />
                 </ListItemButton>
               ))}
@@ -446,7 +446,7 @@ function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }
           )}
           {sshHosts.length > 0 && <ListSubheader disableSticky>SFTP</ListSubheader>}
           {sshHosts.map((h) => (
-            <ListItemButton key={h.id} onClick={() => pick(h.id, "host", h.label, h.id)}>
+            <ListItemButton key={h.id} onClick={() => pickHost(h, "host")}>
               <Box sx={{ mr: 1.5 }}>
                 <HostAvatar host={h} size={28} />
               </Box>
@@ -455,7 +455,7 @@ function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }
           ))}
           {davHosts.length > 0 && <ListSubheader disableSticky>WebDAV</ListSubheader>}
           {davHosts.map((h) => (
-            <ListItemButton key={`dav-${h.id}`} onClick={() => pick(h.id, "webdav", h.label, h.id)}>
+            <ListItemButton key={`dav-${h.id}`} onClick={() => pickHost(h, "webdav")}>
               <Box sx={{ mr: 1.5 }}>
                 <HostAvatar host={h} size={28} />
               </Box>

@@ -396,10 +396,13 @@ export function HostsPage() {
   const connectHosts = (list: HostCard[], background = false) => {
     const terminal = list.filter((h) => hostProtocols(h).length > 0);
     terminal.forEach((h, i) =>
-      openTerminal({ kind: "host", host_id: h.id }, { background: background || i > 0 }),
+      openTerminal(
+        { kind: "host", host_id: h.id, vault_id: h.vaultId },
+        { background: background || i > 0 },
+      ),
     );
     const files = list.filter((h) => hostProtocols(h).length === 0 && hasWebDav(h));
-    files.forEach((h) => openWebDavForHost(h.id, h.label));
+    files.forEach((h) => openWebDavForHost(h.id, h.label, h.vaultId));
     if (files.length > 0 && terminal.length === 0) goToSftp();
   };
   const connectHost = (h: HostCard) => connectHosts([h]);
@@ -407,13 +410,13 @@ export function HostsPage() {
   const hostTargets = (list: HostCard[]) =>
     list
       .filter((h) => hostProtocols(h).length > 0)
-      .map((h) => ({ kind: "host" as const, host_id: h.id }));
+      .map((h) => ({ kind: "host" as const, host_id: h.id, vault_id: h.vaultId }));
   const sftpHost = (h: HostCard) => {
-    openSftpForHost(h.id, h.label);
+    openSftpForHost(h.id, h.label, h.vaultId);
     goToSftp();
   };
   const webdavHost = (h: HostCard) => {
-    openWebDavForHost(h.id, h.label);
+    openWebDavForHost(h.id, h.label, h.vaultId);
     goToSftp();
   };
   const liveLink = isLiveLink(search) ? search.trim() : null;
@@ -545,7 +548,7 @@ export function HostsPage() {
         : {
             label: "Connect",
             icon: <PlayArrowRoundedIcon fontSize="small" />,
-            items: connectActions(h.id, h.label, connectProtocols(h), hasWebDav(h)),
+            items: connectActions(h, connectProtocols(h), hasWebDav(h)),
           },
       ...(terminalTargets > 0
         ? [

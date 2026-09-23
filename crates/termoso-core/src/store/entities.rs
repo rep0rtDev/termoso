@@ -253,6 +253,41 @@ impl Store {
             .ok_or_else(|| CoreError::NotFound(format!("{} {id}", T::KIND)))
     }
 
+    /// Follow a reference held by an entity of `vault_id`. Vaults are trust
+    /// boundaries: a reference into another vault is refused, not followed,
+    /// so a record can never borrow credentials, proxies or jump hosts that
+    /// live elsewhere. The check reads plaintext metadata, so it also holds
+    /// for locked vaults.
+    pub fn get_in<T: Payload>(&self, id: Uuid, vault_id: Uuid) -> Result<Option<Entity<T>>> {
+        match self.row(id)? {
+            Some(row) if !row.deleted && row.kind == T::KIND => {
+                if row.vault_id != vault_id {
+                    return Err(CoreError::Invalid(format!(
+                        "{} {id} belongs to another vault",
+                        T::KIND
+                    )));
+                }
+                Ok(Some(self.decrypt_row(&row)?))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// [`Self::get_in`] or fail.
+    pub fn require_in<T: Payload>(&self, id: Uuid, vault_id: Uuid) -> Result<Entity<T>> {
+        self.get_in::<T>(id, vault_id)?
+            .ok_or_else(|| CoreError::NotFound(format!("{} {id}", T::KIND)))
+    }
+
+    /// Fetch a host that the caller expects to find in `vault_id`; a host
+    /// from any other vault is refused. `None` skips the check.
+    pub fn require_host_in(&self, host_id: Uuid, vault_id: Option<Uuid>) -> Result<Entity<Host>> {
+        match vault_id {
+            Some(v) => self.require_in::<Host>(host_id, v),
+            None => self.require::<Host>(host_id),
+        }
+    }
+
     /// List entities of a kind. `vault_id = None` lists across all unlocked
     /// vaults; entities in locked vaults are skipped.
     pub fn list<T: Payload>(&self, vault_id: Option<Uuid>) -> Result<Vec<Entity<T>>> {
@@ -511,17 +546,25 @@ impl Store {
         path.reverse();
         let mut ssh = SshConfig::default();
         for cid in chain.iter().rev() {
-            if let Some(c) = self.get::<SshConfig>(*cid)? {
+            if let Some(c) = self.get_in::<SshConfig>(*cid, group.vault_id)? {
                 merge_ssh(&mut ssh, &c.data);
             }
         }
         Ok((ssh, path))
     }
 
-    /// Resolve everything needed to connect to a host.
+    /// Resolve everything needed to connect to a host. Every record the host
+    /// points at (configs, identity, key, certificate, proxy, jump hosts)
+    /// must live in the host's own vault; see [`Self::get_in`].
     pub fn resolve_host(&self, host_id: Uuid) -> Result<ResolvedHost> {
-        let host = self.require::<Host>(host_id)?;
-        let groups: Vec<Entity<Group>> = self.list(Some(host.vault_id))?;
+        self.resolve_host_in(host_id, None)
+    }
+
+    /// [`Self::resolve_host`] for a host the caller expects in `vault_id`.
+    pub fn resolve_host_in(&self, host_id: Uuid, vault_id: Option<Uuid>) -> Result<ResolvedHost> {
+        let host = self.require_host_in(host_id, vault_id)?;
+        let vault = host.vault_id;
+        let groups: Vec<Entity<Group>> = self.list(Some(vault))?;
 
         // Walk the group chain root-ward collecting configs.
         let mut group_path = Vec::new();
@@ -551,7 +594,7 @@ impl Store {
         let mut ssh = SshConfig::default();
         // Apply from the root group down to the host so nearer configs win.
         for cid in chain_ssh.iter().rev().chain(host.data.ssh_config_id.iter()) {
-            if let Some(c) = self.get::<SshConfig>(*cid)? {
+            if let Some(c) = self.get_in::<SshConfig>(*cid, vault)? {
                 merge_ssh(&mut ssh, &c.data);
             }
         }
@@ -562,7 +605,7 @@ impl Store {
                 .rev()
                 .chain(host.data.telnet_config_id.iter())
             {
-                if let Some(c) = self.get::<TelnetConfig>(*cid)? {
+                if let Some(c) = self.get_in::<TelnetConfig>(*cid, vault)? {
                     if c.data.port.is_some() {
                         t.port = c.data.port;
                     }
@@ -584,17 +627,17 @@ impl Store {
 
         let serial = match host.data.serial_config_id {
             Some(cid) if host.data.ssh_config_id.is_none() => {
-                self.get::<SerialConfig>(cid)?.map(|c| c.data)
+                self.get_in::<SerialConfig>(cid, vault)?.map(|c| c.data)
             }
             _ => None,
         };
 
         let webdav = match host.data.webdav_config_id {
-            Some(cid) => self.get::<WebDavConfig>(cid)?.map(|c| c.data),
+            Some(cid) => self.get_in::<WebDavConfig>(cid, vault)?.map(|c| c.data),
             None => None,
         };
         let webdav_identity = match webdav.as_ref().and_then(|w| w.identity_id) {
-            Some(id) => self.get::<Identity>(id)?,
+            Some(id) => self.get_in::<Identity>(id, vault)?,
             None => None,
         };
 
@@ -606,20 +649,20 @@ impl Store {
             }
         });
         let identity = match identity_id {
-            Some(id) => self.get::<Identity>(id)?,
+            Some(id) => self.get_in::<Identity>(id, vault)?,
             None => None,
         };
         let key = match identity.as_ref().and_then(|i| i.data.ssh_key_id) {
-            Some(id) => self.get::<SshKey>(id)?,
+            Some(id) => self.get_in::<SshKey>(id, vault)?,
             None => None,
         };
         // Certificates live next to their key: an explicit identity reference
         // wins, otherwise the certificate attached to the key is used.
         let certificate = match identity.as_ref().and_then(|i| i.data.ssh_certificate_id) {
-            Some(id) => self.get::<SshCertificate>(id)?,
+            Some(id) => self.get_in::<SshCertificate>(id, vault)?,
             None => match &key {
                 Some(k) => self
-                    .list::<SshCertificate>(Some(k.vault_id))?
+                    .list::<SshCertificate>(Some(vault))?
                     .into_iter()
                     .find(|c| c.data.ssh_key_id == Some(k.id)),
                 None => None,
@@ -630,24 +673,24 @@ impl Store {
             _ => None,
         };
         let proxy = match ssh.proxy_id {
-            Some(id) => self.get::<Proxy>(id)?,
+            Some(id) => self.get_in::<Proxy>(id, vault)?,
             None => None,
         };
         let mut chain = Vec::new();
         if let Some(cid) = ssh.host_chain_id
-            && let Some(hc) = self.get::<crate::model::HostChain>(cid)?
+            && let Some(hc) = self.get_in::<crate::model::HostChain>(cid, vault)?
         {
             for hid in hc.data.host_ids {
                 if hid != host_id
-                    && let Some(h) = self.get::<Host>(hid)?
+                    && let Some(h) = self.get_in::<Host>(hid, vault)?
                 {
                     chain.push(h);
                 }
             }
         }
 
-        let tag_links: Vec<Entity<TagHost>> = self.list(Some(host.vault_id))?;
-        let tags_all: Vec<Entity<Tag>> = self.list(Some(host.vault_id))?;
+        let tag_links: Vec<Entity<TagHost>> = self.list(Some(vault))?;
+        let tags_all: Vec<Entity<Tag>> = self.list(Some(vault))?;
         let mut tags: Vec<String> = host
             .data
             .tag_ids
@@ -1027,5 +1070,160 @@ mod tests {
         i.data.ssh_certificate_id = Some(other);
         s.update(ident, &i.data).unwrap();
         assert_eq!(s.resolve_host(host).unwrap().certificate.unwrap().id, other);
+    }
+
+    fn personal_vault(s: &Store) -> Uuid {
+        let v = Uuid::new_v4();
+        s.upsert_vault(
+            v,
+            LocalVaultKind::Personal,
+            "P",
+            None,
+            VaultRole::Manager,
+            Some(&SymmetricKey::generate()),
+            1,
+        )
+        .unwrap();
+        v
+    }
+
+    #[test]
+    fn resolve_host_refuses_credentials_from_another_vault() {
+        let s = store();
+        let local = s.local_vault().unwrap().id;
+        let personal = personal_vault(&s);
+        let my_identity = s
+            .insert(
+                personal,
+                &Identity {
+                    label: "me".into(),
+                    username: "root".into(),
+                    password: Some("hunter2".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        // A host in another vault points at the personal identity.
+        let cfg = s
+            .insert(
+                local,
+                &SshConfig {
+                    identity_id: Some(my_identity),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let host = s
+            .insert(
+                local,
+                &Host {
+                    label: "evil".into(),
+                    address: "evil.example".into(),
+                    ssh_config_id: Some(cfg),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            s.resolve_host(host),
+            Err(CoreError::Invalid(m)) if m.contains("another vault")
+        ));
+
+        // Same for a jump host and a proxy borrowed from elsewhere.
+        let jump = s
+            .insert(
+                personal,
+                &Host {
+                    label: "bastion".into(),
+                    address: "bastion.example".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let chain = s
+            .insert(
+                local,
+                &crate::model::HostChain {
+                    host_ids: vec![jump],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        s.update(
+            cfg,
+            &SshConfig {
+                identity_id: None,
+                host_chain_id: Some(chain),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            s.resolve_host(host),
+            Err(CoreError::Invalid(m)) if m.contains("another vault")
+        ));
+
+        // The check also holds when the other vault is locked: the reference
+        // is refused before any decryption is attempted.
+        let locked = Uuid::new_v4();
+        s.upsert_vault(
+            locked,
+            LocalVaultKind::Team,
+            "T",
+            Some(Uuid::new_v4()),
+            VaultRole::Viewer,
+            None,
+            1,
+        )
+        .unwrap();
+        let locked_identity = Uuid::new_v4();
+        s.apply_remote(&SyncEntity {
+            id: locked_identity,
+            kind: Identity::KIND.into(),
+            vault_id: locked,
+            version: 1,
+            seq: 1,
+            deleted: false,
+            key_version: 1,
+            data: "AAAA".into(),
+            updated_at: Utc::now(),
+            updated_by_device: None,
+        })
+        .unwrap();
+        s.update(
+            cfg,
+            &SshConfig {
+                identity_id: Some(locked_identity),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(matches!(
+            s.resolve_host(host),
+            Err(CoreError::Invalid(m)) if m.contains("another vault")
+        ));
+    }
+
+    #[test]
+    fn resolve_host_in_checks_the_expected_vault() {
+        let s = store();
+        let local = s.local_vault().unwrap().id;
+        let personal = personal_vault(&s);
+        let host = s
+            .insert(
+                personal,
+                &Host {
+                    label: "pg".into(),
+                    address: "pg.internal".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(s.resolve_host_in(host, Some(personal)).is_ok());
+        assert!(s.resolve_host_in(host, None).is_ok());
+        assert!(matches!(
+            s.resolve_host_in(host, Some(local)),
+            Err(CoreError::Invalid(m)) if m.contains("another vault")
+        ));
     }
 }

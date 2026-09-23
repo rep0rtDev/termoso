@@ -153,10 +153,8 @@ function buildTargets(req: RunRequest): RunTarget[] {
   for (const hid of new Set(req.hostIds)) {
     if (coveredHosts.has(hid)) continue;
     coveredHosts.add(hid);
-    const base = hostTarget(
-      req.hosts.find((h) => h.id === hid),
-      hid,
-    );
+    const card = req.hosts.find((h) => h.id === hid);
+    const base = hostTarget(card, hid);
     const live = Object.values(panes).find(
       (p) => p.hostId === hid && p.status === "connected" && !usedPanes.has(p.id),
     );
@@ -174,7 +172,10 @@ function buildTargets(req: RunRequest): RunTarget[] {
       });
       continue;
     }
-    const paneId = openTerminal({ kind: "host", host_id: hid }, { background: true });
+    const paneId = openTerminal(
+      { kind: "host", host_id: hid, vault_id: card?.vaultId ?? null },
+      { background: true },
+    );
     targets.push({
       ...base,
       key: `h:${hid}`,

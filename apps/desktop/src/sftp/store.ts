@@ -162,14 +162,14 @@ export function openSftp(target: SftpTarget, title: string, hostId: Uuid | null)
   return id;
 }
 
-export const openSftpForHost = (hostId: Uuid, title: string) =>
-  openSftp({ kind: "host", host_id: hostId }, title, hostId);
+export const openSftpForHost = (hostId: Uuid, title: string, vaultId: Uuid | null = null) =>
+  openSftp({ kind: "host", host_id: hostId, vault_id: vaultId }, title, hostId);
 
 export const openSftpForSession = (sessionId: Uuid, title: string, hostId: Uuid | null) =>
   openSftp({ kind: "session", session_id: sessionId }, title, hostId);
 
-export const openWebDavForHost = (hostId: Uuid, title: string) =>
-  openSftp({ kind: "webdav", host_id: hostId }, title, hostId);
+export const openWebDavForHost = (hostId: Uuid, title: string, vaultId: Uuid | null = null) =>
+  openSftp({ kind: "webdav", host_id: hostId, vault_id: vaultId }, title, hostId);
 
 /** Capabilities of a connection; full SFTP until Rust reports otherwise. */
 export const connCapabilities = (c: SftpConn | undefined): RemoteCapabilities =>
