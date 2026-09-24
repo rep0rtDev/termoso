@@ -7,8 +7,8 @@
 # stack) then /etc/termoso/stack.env (in-stack addresses and credentials).
 [Unit]
 Description=Termoso server
-Requires=termoso-postgres.service termoso-redis.service termoso-minio.service
-After=termoso-postgres.service termoso-redis.service termoso-minio.service
+Requires=termoso-postgres.service termoso-redis.service termoso-rustfs.service
+After=termoso-postgres.service termoso-redis.service termoso-rustfs.service
 
 [Container]
 ContainerName=termoso-api

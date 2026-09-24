@@ -80,7 +80,7 @@ web/                    web cabinet (Vite + React + MUI); all cryptography runs 
 deploy/
   Dockerfile            server image (API + built cabinet), distroless, runs as nonroot
   Dockerfile.bridge     bridge image
-  docker-compose.yml    self-hosted stack (API, PostgreSQL, Redis, MinIO; optional bridge)
+  docker-compose.yml    self-hosted stack (API, PostgreSQL, Redis, RustFS; optional bridge)
   docker-compose.dev.yml  backing services for development and tests (+ Mailpit)
   quadlet/              the same stack as Podman Quadlet units for systemd
   .env.example          annotated server configuration
@@ -170,7 +170,7 @@ opening a public issue.
 Requirements: a Linux host with Docker Compose v2 *or* Podman (Quadlet),
 one public hostname with TLS (plus one for the storage endpoint if you enable
 session logs), and — recommended — an SMTP account. PostgreSQL 18, Redis 8
-and MinIO are part of the stack.
+and RustFS are part of the stack.
 
 ```bash
 git clone https://github.com/rep0rtDev/termoso.git && cd termoso
@@ -179,13 +179,13 @@ $EDITOR deploy/.env                 # TERMOSO_MASTER_KEY, passwords, public URLs
 docker compose -f deploy/docker-compose.yml up -d --wait
 ```
 
-This starts the server on `127.0.0.1:8080`, PostgreSQL, Redis and MinIO. The
+This starts the server on `127.0.0.1:8080`, PostgreSQL, Redis and RustFS. The
 image bundles the web cabinet: the API lives under `/api/v1` and everything
 else on the same origin serves the cabinet, so **one hostname is enough**
 (the landing on `/` can be switched off or moved to its own domain with
 `TERMOSO_LANDING` / `TERMOSO_LANDING_URL`). Put
 a TLS-terminating reverse proxy in front of the server and — for pre-signed
-log uploads — in front of MinIO (`--profile proxy` ships a ready Caddy with
+log uploads — in front of RustFS (`--profile proxy` ships a ready Caddy with
 automatic certificates), and set `TERMOSO_PUBLIC_URL` and
 `TERMOSO_S3__PUBLIC_ENDPOINT` accordingly. Migrations run automatically on
 start; the API is stateless and can be scaled by running more replicas behind
@@ -270,7 +270,7 @@ Prerequisites per component (all optional — work on what you touch):
 ### Server
 
 ```bash
-docker compose -f deploy/docker-compose.dev.yml up -d --wait   # postgres, redis, minio, mailpit
+docker compose -f deploy/docker-compose.dev.yml up -d --wait   # postgres, redis, rustfs, mailpit
 export TERMOSO_MASTER_KEY=$(openssl rand -base64 32)
 cargo run -p termoso-server
 # → http://localhost:8080/docs   (Mailpit UI: http://localhost:8025)
@@ -356,7 +356,7 @@ scripts/check.sh compose         # docker compose config for both stacks
 ```
 
 The Rust integration suite (`crates/termoso-server/tests`) boots a real server
-against PostgreSQL and Redis, creating a throw-away database per run. MinIO
+against PostgreSQL and Redis, creating a throw-away database per run. RustFS
 (session logs) and Mailpit (every e-mail flow) are picked up when reachable;
 SSO runs against an in-process mock OpenID Connect provider. Tests needing an
 unavailable service are skipped with a notice; `TERMOSO_TEST_REQUIRE_SERVICES=1`

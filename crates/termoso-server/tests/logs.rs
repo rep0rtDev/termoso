@@ -1,5 +1,5 @@
-//! Session logs: metadata in Postgres, encrypted bytes in S3 (MinIO).
-//! Skipped when MinIO is unreachable (see `common`).
+//! Session logs: metadata in Postgres, encrypted bytes in S3.
+//! Skipped when S3 storage is unreachable (see `common`).
 
 mod common;
 

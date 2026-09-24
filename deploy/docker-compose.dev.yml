@@ -10,7 +10,7 @@
 # Services
 #   postgres  localhost:5432   user/password/db: termoso/termoso/termoso
 #   redis     localhost:6379
-#   minio     localhost:9000   (console :9001)  minioadmin/minioadmin
+#   rustfs    localhost:9000   (console :9001)  minioadmin/minioadmin
 #   mailpit   localhost:1025   SMTP sink; UI at http://localhost:8025
 #
 # Data lives in named volumes so it survives `down`/`up`; `down -v` resets it.
@@ -42,17 +42,17 @@ services:
       timeout: 3s
       retries: 30
 
-  minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-    command: ["server", "/data", "--console-address", ":9001"]
+  rustfs:
+    image: rustfs/rustfs:1.0.0
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      RUSTFS_ACCESS_KEY: minioadmin
+      RUSTFS_SECRET_KEY: minioadmin
+      RUSTFS_CONSOLE_ENABLE: "true"
     ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
     volumes:
-      - minio:/data
+      - rustfs:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
       interval: 2s
       timeout: 5s
       retries: 30
@@ -68,4 +68,4 @@ services:
 
 volumes:
   postgres:
-  minio:
+  rustfs:

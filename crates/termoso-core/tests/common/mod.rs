@@ -1,4 +1,4 @@
-//! Boots the real Termoso server (fresh database, Redis, optional MinIO and
+//! Boots the real Termoso server (fresh database, Redis, optional S3 storage and
 //! Mailpit) on an ephemeral port so the client core can be exercised against
 //! it end to end. Mirrors the server crate's own harness minus SSO.
 //!
@@ -73,7 +73,7 @@ async fn optional(name: &str, probe: &str) -> bool {
 
 async fn s3_config() -> Option<S3Config> {
     let endpoint = std::env::var("TERMOSO_TEST_S3_ENDPOINT").unwrap_or_else(|_| DEFAULT_S3.into());
-    if !optional("MinIO", &host_port(&endpoint)).await {
+    if !optional("S3 storage", &host_port(&endpoint)).await {
         return None;
     }
     Some(S3Config {
@@ -255,13 +255,13 @@ macro_rules! server_with_mail_or_skip {
     }};
 }
 
-/// Skip unless MinIO is configured.
+/// Skip unless S3 storage is configured.
 #[macro_export]
 macro_rules! server_with_storage_or_skip {
     () => {{
         let s = $crate::server_or_skip!();
         if !s.storage {
-            eprintln!("skipping: MinIO not configured");
+            eprintln!("skipping: S3 storage not configured");
             return;
         }
         s

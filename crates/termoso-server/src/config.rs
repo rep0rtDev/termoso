@@ -89,7 +89,7 @@ pub struct S3Config {
     pub region: Option<String>,
     pub endpoint: Option<String>,
     /// Endpoint to put into pre-signed URLs handed to clients (e.g. a public
-    /// MinIO hostname), when different from `endpoint`.
+    /// storage hostname), when different from `endpoint`.
     pub public_endpoint: Option<String>,
     pub access_key: String,
     pub secret_key: String,
