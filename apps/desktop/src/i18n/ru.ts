@@ -573,6 +573,8 @@ export const ru: Readonly<Record<string, string>> = {
   "Export…": "Экспорт…",
   "Expose the local SSH agent on the remote side.":
     "Открыть локальный SSH-агент на удалённой стороне.",
+  "Open remote GUI programs on this display (trusted X11, needs a local X server).":
+    "Открывать графические программы сервера на этом экране (доверенный X11, нужен локальный X-сервер).",
   "FIDO2 key": "FIDO2-ключ",
   "FIDO2 security keys": "Ключи безопасности FIDO2",
   Failed: "Ошибка",
@@ -2060,6 +2062,7 @@ export const ru: Readonly<Record<string, string>> = {
   "Workspaces and the previous session remember each pane's working directory and the command it was running. Reopening always returns to the directory; the command can be placed on the prompt for you to confirm, run right away, or dropped.":
     "Рабочие пространства и предыдущая сессия запоминают рабочую папку каждой панели и выполнявшуюся команду. При открытии всегда возвращается папка; команду можно подставить в промпт для подтверждения, выполнить сразу или отбросить.",
   Write: "Запись",
+  "X11 forwarding": "Проброс X11",
   "Writes host passwords as plaintext into the file.":
     "Записывает пароли хостов в файл в открытом виде.",
   "Wrong password": "Неверный пароль",

@@ -106,6 +106,9 @@ pub struct HostForm {
     #[serde(default = "default_ip_version")]
     pub ip_version: String,
     pub agent_forwarding: bool,
+    /// Trusted X11 forwarding to the local display (desktop only).
+    #[serde(default)]
+    pub forward_x11: bool,
     pub startup_snippet_id: Option<Uuid>,
     pub host_chain_id: Option<Uuid>,
     pub proxy_id: Option<Uuid>,
@@ -387,6 +390,8 @@ pub struct GroupForm {
     pub ssh_id_key_type: Option<SshIdKeyType>,
     #[serde(default)]
     pub agent_forwarding: bool,
+    #[serde(default)]
+    pub forward_x11: bool,
     pub host_chain_id: Option<Uuid>,
     pub proxy_id: Option<Uuid>,
     #[serde(default)]
@@ -415,6 +420,7 @@ pub struct Inherited {
     /// The inherited credentials log in with SSH ID.
     pub ssh_id: bool,
     pub agent_forwarding: bool,
+    pub forward_x11: bool,
     pub host_chain_id: Option<Uuid>,
     pub proxy_id: Option<Uuid>,
     pub keep_alive_interval: Option<u32>,
@@ -757,6 +763,7 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
         icon: host.data.icon,
         ip_version: ip_version_of(&host.data.ip_version),
         agent_forwarding: ssh.as_ref().is_some_and(|s| s.agent_forwarding),
+        forward_x11: ssh.as_ref().is_some_and(|s| s.forward_x11),
         startup_snippet_id: host.data.startup_snippet_id,
         host_chain_id: ssh.as_ref().and_then(|s| s.host_chain_id),
         proxy_id: ssh.as_ref().and_then(|s| s.proxy_id),
@@ -886,6 +893,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
             .filter(|c| !c.is_empty())
             .map(str::to_string);
         ssh.agent_forwarding = f.agent_forwarding;
+        ssh.forward_x11 = f.forward_x11;
         ssh.host_chain_id = f.host_chain_id;
         ssh.proxy_id = f.proxy_id;
         ssh.env_variables = clean_env(&f.env_variables);
@@ -1405,6 +1413,7 @@ pub fn group_form(store: &Store, id: Uuid) -> Result<GroupForm> {
         ssh_id: inline.as_ref().is_some_and(|i| i.ssh_id),
         ssh_id_key_type: inline.as_ref().and_then(|i| i.ssh_id_key_type),
         agent_forwarding: ssh.agent_forwarding,
+        forward_x11: ssh.forward_x11,
         host_chain_id: ssh.host_chain_id,
         proxy_id: ssh.proxy_id,
         env_variables: ssh.env_variables,
@@ -1459,6 +1468,7 @@ pub fn save_group_form(store: &Store, f: &GroupForm) -> Result<GroupNode> {
     ssh.port = f.port.filter(|p| *p != 0);
     ssh.identity_id = identity_id;
     ssh.agent_forwarding = f.agent_forwarding;
+    ssh.forward_x11 = f.forward_x11;
     ssh.host_chain_id = f.host_chain_id;
     ssh.proxy_id = f.proxy_id;
     ssh.env_variables = clean_env(&f.env_variables);
@@ -1574,6 +1584,7 @@ pub fn inherited(store: &Store, group_id: Option<Uuid>) -> Result<Inherited> {
         identity_label,
         ssh_id: identity.as_ref().is_some_and(|i| i.data.ssh_id),
         agent_forwarding: ssh.agent_forwarding,
+        forward_x11: ssh.forward_x11,
         host_chain_id: ssh.host_chain_id,
         proxy_id: ssh.proxy_id,
         keep_alive_interval: ssh.keep_alive_interval,
@@ -1954,6 +1965,7 @@ mod tests {
             icon: None,
             ip_version: "auto".into(),
             agent_forwarding: false,
+            forward_x11: false,
             startup_snippet_id: None,
             host_chain_id: None,
             proxy_id: None,
@@ -2494,6 +2506,7 @@ mod tests {
                 ssh_id: false,
                 ssh_id_key_type: None,
                 agent_forwarding: true,
+                forward_x11: false,
                 host_chain_id: None,
                 proxy_id: None,
                 env_variables: vec![("LANG".into(), "C".into())],

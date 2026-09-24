@@ -13,6 +13,7 @@ mod handler;
 mod peek;
 pub mod proxy;
 mod shell;
+pub mod x11;
 
 use std::borrow::Cow;
 use std::future::Future;
@@ -38,6 +39,7 @@ pub use auth::{
 };
 pub use handler::{Algorithms, ClientHandler, ForwardedChannel};
 pub use shell::SshTerminal;
+pub use x11::{LocalDisplay, X11Forward};
 
 /// Where to connect.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,6 +127,9 @@ pub struct ConnectOptions {
     pub env: Vec<(String, String)>,
     /// Request agent forwarding on shells.
     pub agent_forwarding: bool,
+    /// Forward X11 from shells and commands to this local display (see
+    /// [`x11`]); `None` = off.
+    pub x11: Option<Arc<X11Forward>>,
     /// SSH agent to talk to for [`AuthMethod::Agent`] / [`AuthMethod::AgentKey`]
     /// and forwarding: a socket (named pipe on Windows) path, or `None` for
     /// the platform default (`SSH_AUTH_SOCK`, OpenSSH agent pipe, Pageant).
@@ -206,6 +211,7 @@ impl ConnectOptions {
             proxy: None,
             env: Vec::new(),
             agent_forwarding: false,
+            x11: None,
             agent_socket: None,
             post_quantum_kex: true,
             progress: None,
@@ -243,6 +249,7 @@ pub struct SshClient {
     forwarded: handler::ForwardRoutes,
     env: Vec<(String, String)>,
     agent_forwarding: bool,
+    x11: Option<Arc<X11Forward>>,
 }
 
 impl std::fmt::Debug for SshClient {
@@ -403,6 +410,7 @@ impl SshClient {
             opts.host_key_prompt.clone(),
             closed_tx,
             forwarded.clone(),
+            opts.x11.clone(),
         );
         let banner = handler.banner();
         let algorithms = handler.algorithms();
@@ -450,6 +458,7 @@ impl SshClient {
             forwarded,
             env: opts.env,
             agent_forwarding: opts.agent_forwarding,
+            x11: opts.x11,
         })
     }
 
@@ -505,6 +514,7 @@ impl SshClient {
         if self.agent_forwarding {
             let _ = channel.agent_forward(false).await;
         }
+        self.request_x11(&mut channel).await?;
         channel
             .request_pty(true, term, size.cols as u32, size.rows as u32, 0, 0, &[])
             .await?;
@@ -512,6 +522,32 @@ impl SshClient {
         channel.request_shell(true).await?;
         Self::await_reply(&mut channel, "shell").await?;
         Ok(shell::spawn(channel, self.banner.clone()))
+    }
+
+    /// Ask for X11 forwarding on a session channel when it is configured.
+    /// The server may refuse (`X11Forwarding no`); the session goes on
+    /// without it, as `ssh -Y` does.
+    async fn request_x11(&self, channel: &mut Channel<Msg>) -> Result<()> {
+        let Some(x11) = &self.x11 else {
+            return Ok(());
+        };
+        channel
+            .request_x11(
+                true,
+                false,
+                x11::AUTH_PROTOCOL,
+                x11.fake_cookie_hex(),
+                x11.screen(),
+            )
+            .await?;
+        match Self::await_reply(channel, "x11").await {
+            Ok(()) => Ok(()),
+            Err(CoreError::Closed) => Err(CoreError::Closed),
+            Err(e) => {
+                tracing::warn!(target = %self.target.display(), "X11 forwarding refused: {e}");
+                Ok(())
+            }
+        }
     }
 
     /// Wait for the server's answer to a `want_reply` channel request.
@@ -534,6 +570,7 @@ impl SshClient {
         for (k, v) in &self.env {
             let _ = channel.set_env(false, k.clone(), v.clone()).await;
         }
+        self.request_x11(&mut channel).await?;
         channel.exec(true, command).await?;
         if let Some(data) = stdin {
             channel.data_bytes(data).await?;

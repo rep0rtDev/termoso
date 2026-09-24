@@ -1218,14 +1218,17 @@ impl TermosoApp {
     // ---- sessions -----------------------------------------------------
 
     /// Open a terminal to a saved host. Returns at once; progress, prompts
-    /// and output arrive on `listener`.
+    /// and output arrive on `listener`. `vault_id` is the vault the caller
+    /// took the host from; a host of any other vault is refused before any
+    /// credential is read.
     pub fn connect_host(
         &self,
         host_id: String,
+        vault_id: String,
         options: TerminalOptions,
         listener: Arc<dyn SessionListener>,
     ) -> Result<Arc<SshSession>> {
-        let resolved = self.store.resolve_host(parse_id(&host_id)?)?;
+        let resolved = self.resolve_host_in(&host_id, &vault_id)?;
         let protocol = match (options.transport, resolved.telnet.is_some()) {
             (Transport::Telnet, true) => "telnet",
             (Transport::Telnet, false) => {
@@ -1419,13 +1422,14 @@ impl TermosoApp {
     }
 
     /// Open SFTP to a saved host. Returns at once; state, prompts and
-    /// transfers arrive on `listener`.
+    /// transfers arrive on `listener`. `vault_id` as in [`Self::connect_host`].
     pub fn sftp_host(
         &self,
         host_id: String,
+        vault_id: String,
         listener: Arc<dyn SftpListener>,
     ) -> Result<Arc<SftpSession>> {
-        let (resolved, target) = self.ssh_host(&host_id)?;
+        let (resolved, target) = self.ssh_host(&host_id, &vault_id)?;
         let presence = Some(self.presence.slot(resolved.host.id, "sftp"));
         Ok(SftpSession::launch(
             RUNTIME.handle().clone(),
@@ -1446,12 +1450,14 @@ impl TermosoApp {
     /// Open the WebDAV share of a saved host (its WebDAV section). Same
     /// session type as SFTP; `capabilities()` tells the UI what to hide.
     /// Write-mode files spool under the profile directory before the PUT.
+    /// `vault_id` as in [`Self::connect_host`].
     pub fn webdav_host(
         &self,
         host_id: String,
+        vault_id: String,
         listener: Arc<dyn SftpListener>,
     ) -> Result<Arc<SftpSession>> {
-        let resolved = self.store.resolve_host(parse_id(&host_id)?)?;
+        let resolved = self.resolve_host_in(&host_id, &vault_id)?;
         if resolved.webdav.is_none() {
             return Err(MobileError::invalid("this host has no WebDAV section"));
         }
@@ -1672,8 +1678,15 @@ impl TermosoApp {
 }
 
 impl TermosoApp {
-    fn ssh_host(&self, host_id: &str) -> Result<(ResolvedHost, SshTarget)> {
-        let resolved = self.store.resolve_host(parse_id(host_id)?)?;
+    /// [`Store::resolve_host_in`] for ids that came over the FFI.
+    fn resolve_host_in(&self, host_id: &str, vault_id: &str) -> Result<ResolvedHost> {
+        Ok(self
+            .store
+            .resolve_host_in(parse_id(host_id)?, Some(parse_id(vault_id)?))?)
+    }
+
+    fn ssh_host(&self, host_id: &str, vault_id: &str) -> Result<(ResolvedHost, SshTarget)> {
+        let resolved = self.resolve_host_in(host_id, vault_id)?;
         if resolved.protocol() != "ssh" {
             return Err(MobileError::invalid(format!(
                 "{} hosts are not supported here",

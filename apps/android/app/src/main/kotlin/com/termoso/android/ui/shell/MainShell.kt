@@ -280,7 +280,7 @@ fun MainShell(
         if (conn.protocol != FileProtocol.SFTP) return
         scope.launch {
             val session = when {
-                conn.hostId != null -> shell.connectHost(conn.hostId)
+                conn.hostId != null && conn.vaultId != null -> shell.connectHost(conn.hostId, conn.vaultId)
                 conn.quick != null -> shell.connectQuick(conn.quick)
                 else -> null
             } ?: return@launch
@@ -356,7 +356,6 @@ fun MainShell(
                     onOpenTerminal = ::openTerminal,
                     onNewSftp = { nav.navigate(Routes.SFTP_PICK) },
                     onOpenSftp = ::openSftp,
-                    onSftpHost = ::sftpHost,
                     onEditHost = { nav.navigate(Routes.hostEdit(it)) },
                     onAddHostFrom = { nav.navigate(Routes.hostNewFrom(it)) },
                 )
@@ -632,7 +631,6 @@ fun MainShell(
                     pendingShare = pendingShare,
                     onShareConsumed = { container.consumeShare() },
                     onHardwareKeyHook = { container.hardwareKeyHook = it },
-                    onSftp = ::sftpHost,
                     onOpenSftp = ::openSftp,
                     onForward = { nav.navigate(Routes.pfNew(PfKind.LOCAL, null, it)) },
                     onEditHost = { nav.navigate(Routes.hostEdit(it)) },

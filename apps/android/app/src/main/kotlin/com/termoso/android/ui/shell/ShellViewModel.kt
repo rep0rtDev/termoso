@@ -2,6 +2,7 @@ package com.termoso.android.ui.shell
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.termoso.android.R
 import com.termoso.android.data.AiManager
 import com.termoso.android.data.SessionManager
 import com.termoso.android.data.ForwardManager
@@ -11,7 +12,9 @@ import com.termoso.android.data.SftpManager
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
+import com.termoso.android.str
 import com.termoso.core.FileProtocol
+import com.termoso.core.MobileException
 import com.termoso.core.QuickTarget
 import com.termoso.core.SessionState
 import com.termoso.core.SnippetRun
@@ -85,14 +88,24 @@ class ShellViewModel(
     fun launch(block: suspend CoroutineScope.() -> Unit): Job = viewModelScope.launch(block = block)
 
     /**
-     * Open a terminal to a saved host. Returns null (after a notice) when Rust
-     * refuses to even start — e.g. the host is missing; connection errors
-     * themselves arrive later through the session state.
+     * Open a terminal to a saved host of the selected vault. Returns null
+     * (after a notice) when Rust refuses to even start — the host is missing
+     * or belongs to another vault; connection errors themselves arrive later
+     * through the session state.
      */
     suspend fun connectHost(hostId: String, transport: Transport = Transport.AUTO): TerminalSession? =
-        runCatching { sessions.connectHost(hostId, transport) }
+        runCatching { connectHost(hostId, requireVault(), transport) }
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
+
+    /** Same, for a host of an explicit vault — the one an open connection to it was made from. */
+    suspend fun connectHost(hostId: String, vaultId: String, transport: Transport = Transport.AUTO): TerminalSession? =
+        runCatching { sessions.connectHost(hostId, vaultId, transport) }
+            .onFailure { notify(it.userMessage()) }
+            .getOrNull()
+
+    private fun requireVault(): String =
+        selectedVaultId.value ?: throw MobileException.NotFound(str(R.string.no_vault_selected))
 
     suspend fun connectQuick(target: QuickTarget): TerminalSession? =
         runCatching { sessions.connectQuick(target) }
@@ -119,7 +132,13 @@ class ShellViewModel(
 
     /** Files browser for a saved host; `protocol` picks SFTP or WebDAV, `null` = the host's primary one. */
     suspend fun openSftpHost(hostId: String, protocol: FileProtocol? = null): SftpConnection? =
-        runCatching { sftp.openHost(hostId, protocol) }
+        runCatching { openSftpHost(hostId, requireVault(), protocol) }
+            .onFailure { notify(it.userMessage()) }
+            .getOrNull()
+
+    /** Same, for a host of an explicit vault — the one an open session to it was made from. */
+    suspend fun openSftpHost(hostId: String, vaultId: String, protocol: FileProtocol? = null): SftpConnection? =
+        runCatching { sftp.openHost(hostId, vaultId, protocol) }
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
 

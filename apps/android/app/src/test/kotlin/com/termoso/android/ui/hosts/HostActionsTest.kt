@@ -33,6 +33,7 @@ class HostActionsTest : ResourceTest() {
         icon = null,
         ipVersion = "auto",
         agentForwarding = false,
+        forwardX11 = false,
         startupSnippetId = null,
         envVariables = emptyList(),
         keepAliveInterval = null,

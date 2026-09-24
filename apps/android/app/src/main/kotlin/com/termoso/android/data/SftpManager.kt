@@ -68,6 +68,8 @@ class SftpConnection(
     val label: String,
     val target: String,
     val hostId: String?,
+    /** Vault of [hostId]; a reconnect must find the host there again. */
+    val vaultId: String?,
     val quick: QuickTarget?,
     val osName: String?,
     val rust: SftpSession,
@@ -125,14 +127,18 @@ class SftpManager(
         _connections.value.firstOrNull { it.isLocal && it.state.value !is SessionState.Closed && it.state.value !is SessionState.Failed }
 
     /**
-     * Open a saved host's files. [protocol] picks the section when the host has
-     * both; `null` means the primary one (WebDAV only for WebDAV-only hosts).
+     * Open a saved host's files. [vaultId] is the vault the caller took the
+     * host from; Rust refuses a host of any other vault before reading
+     * credentials. [protocol] picks the section when the host has both; `null`
+     * means the primary one (WebDAV only for WebDAV-only hosts).
      */
-    suspend fun openHost(hostId: String, protocol: FileProtocol? = null): SftpConnection {
+    suspend fun openHost(hostId: String, vaultId: String, protocol: FileProtocol? = null): SftpConnection {
         val host: HostItem = repo.read { host(hostId) }
         val wanted = protocol ?: defaultProtocol(host)
         val bridge = SftpBridge()
-        val rust = repo.read { if (wanted == FileProtocol.WEBDAV) webdavHost(hostId, bridge) else sftpHost(hostId, bridge) }
+        val rust = repo.read {
+            if (wanted == FileProtocol.WEBDAV) webdavHost(hostId, vaultId, bridge) else sftpHost(hostId, vaultId, bridge)
+        }
         val user = host.username.takeIf { it.isNotBlank() }?.let { "$it@" } ?: ""
         val target = if (wanted == FileProtocol.WEBDAV) host.webdavUrl ?: host.address else "$user${host.address}:${host.port}"
         return register(
@@ -141,6 +147,7 @@ class SftpManager(
                 label = host.label.ifBlank { host.address },
                 target = target,
                 hostId = hostId,
+                vaultId = vaultId,
                 quick = null,
                 osName = host.osName,
                 rust = rust,
@@ -159,6 +166,7 @@ class SftpManager(
                 label = target.host,
                 target = listOf(target.username, "${target.host}:${target.port}").filter { it.isNotBlank() }.joinToString("@"),
                 hostId = null,
+                vaultId = null,
                 quick = target,
                 osName = null,
                 rust = rust,
@@ -183,6 +191,7 @@ class SftpManager(
                 label = context.getString(R.string.local_shell_files),
                 target = context.getString(R.string.files_local_root_summary),
                 hostId = null,
+                vaultId = null,
                 quick = null,
                 osName = "android",
                 rust = rust,
@@ -197,7 +206,7 @@ class SftpManager(
         val old = find(id) ?: return null
         val fresh = when {
             old.isLocal -> openLocal()
-            old.hostId != null -> openHost(old.hostId, old.protocol)
+            old.hostId != null && old.vaultId != null -> openHost(old.hostId, old.vaultId, old.protocol)
             old.quick != null -> openQuick(old.quick)
             else -> return null
         }

@@ -747,6 +747,9 @@ fn merge_ssh(into: &mut SshConfig, from: &SshConfig) {
     if from.agent_forwarding {
         into.agent_forwarding = true;
     }
+    if from.forward_x11 {
+        into.forward_x11 = true;
+    }
     if from.use_mosh {
         into.use_mosh = true;
     }

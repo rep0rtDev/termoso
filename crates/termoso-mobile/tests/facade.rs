@@ -13,10 +13,10 @@ use russh::{Channel, ChannelId, MethodSet};
 use termoso_mobile::{
     ConnectStage, HostKeyChoice, IdentityDraft, KeyAlgorithm, KeyGenerateDraft, KeyImportDraft,
     LiveEndReason, LiveListener, LiveParticipantCard, LocalShell, MobileError, PfKind, PfRuleDraft,
-    PromptAnswer, PromptRequest, QuickTarget, SessionListener, SessionState, SshIdKeyKind,
-    SshSession, TelnetDraft, TerminalOptions, TermosoApp, Transport, TunnelListener, TunnelState,
-    VaultKind, flag, generate_master_key, is_live_link, parse_target, profile_exists,
-    sshid_handle_valid,
+    PromptAnswer, PromptRequest, QuickTarget, SessionListener, SessionState, SftpListener,
+    SshIdKeyKind, SshSession, TelnetDraft, TerminalOptions, TermosoApp, TransferCard, Transport,
+    TunnelListener, TunnelState, VaultKind, WebDavDraft, flag, generate_master_key, is_live_link,
+    parse_target, profile_exists, sshid_handle_valid,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -359,6 +359,19 @@ impl Recorder {
     }
 }
 
+#[derive(Default)]
+struct SftpRecorder {
+    states: Mutex<Vec<SessionState>>,
+}
+
+impl SftpListener for SftpRecorder {
+    fn on_state(&self, state: SessionState) {
+        self.states.lock().unwrap().push(state);
+    }
+    fn on_prompt(&self, _prompt_id: u64, _request: PromptRequest) {}
+    fn on_transfer(&self, _transfer: TransferCard) {}
+}
+
 fn wait_text(session: &SshSession, needle: &str) -> Vec<String> {
     let t = Instant::now();
     loop {
@@ -390,6 +403,74 @@ fn opts() -> TerminalOptions {
         palette: None,
         transport: Transport::Auto,
     }
+}
+
+fn local_vault(app: &Arc<TermosoApp>) -> String {
+    app.local_vault().unwrap().id
+}
+
+/// Every connect entry point takes the vault the caller believes the host
+/// lives in; a mismatch is refused before any credential is read or a
+/// session is started, so a stale id from another vault cannot ride an
+/// already-unlocked one.
+#[test]
+fn connecting_checks_the_host_vault() {
+    let (app, _dir) = app();
+    let vault = local_vault(&app);
+    let mut d = app.new_host_draft(vault.clone(), None).unwrap();
+    d.label = "pg".into();
+    d.address = "127.0.0.1".into();
+    d.telnet = Some(TelnetDraft::default());
+    d.webdav = Some(WebDavDraft {
+        url: "https://files.example/dav".into(),
+        ..WebDavDraft::default()
+    });
+    let host = app.save_host(d).unwrap();
+    let other = uuid::Uuid::new_v4().to_string();
+
+    let rec = Arc::new(Recorder::default());
+    let err = app
+        .connect_host(host.id.clone(), other.clone(), opts(), rec.clone())
+        .err()
+        .expect("foreign vault");
+    assert!(matches!(err, MobileError::Invalid { .. }), "{err}");
+    assert!(err.to_string().contains("another vault"), "{err}");
+    let err = app
+        .connect_host(
+            host.id.clone(),
+            other.clone(),
+            TerminalOptions {
+                transport: Transport::Telnet,
+                ..opts()
+            },
+            rec.clone(),
+        )
+        .err()
+        .expect("foreign vault");
+    assert!(matches!(err, MobileError::Invalid { .. }), "{err}");
+    let files = Arc::new(SftpRecorder::default());
+    let err = app
+        .sftp_host(host.id.clone(), other.clone(), files.clone())
+        .err()
+        .expect("foreign vault");
+    assert!(matches!(err, MobileError::Invalid { .. }), "{err}");
+    let err = app
+        .webdav_host(host.id.clone(), other, files.clone())
+        .err()
+        .expect("foreign vault");
+    assert!(matches!(err, MobileError::Invalid { .. }), "{err}");
+    assert!(rec.states.lock().unwrap().is_empty());
+    assert!(rec.prompts.lock().unwrap().is_empty());
+    assert!(files.states.lock().unwrap().is_empty());
+    assert!(app.history(10).unwrap().is_empty());
+
+    // The right vault still resolves (the target is not reachable, but the
+    // session starts and reports it instead of refusing up front).
+    let rec = Arc::new(Recorder::default());
+    let s = app
+        .connect_host(host.id, vault, opts(), rec.clone())
+        .unwrap();
+    s.disconnect();
 }
 
 // ---- tests ----------------------------------------------------------------
@@ -810,7 +891,7 @@ async fn telnet_quick_and_saved_host() {
 
     let rec = Arc::new(Recorder::default());
     let session = app
-        .connect_host(host.id.clone(), opts(), rec.clone())
+        .connect_host(host.id.clone(), local_vault(&app), opts(), rec.clone())
         .unwrap();
     rec.wait_state(|s| matches!(s, SessionState::Connected));
     wait_text(&session, "login:");
@@ -827,6 +908,7 @@ async fn telnet_quick_and_saved_host() {
     let err = app
         .connect_host(
             ssh_only.id,
+            local_vault(&app),
             TerminalOptions {
                 transport: Transport::Telnet,
                 ..opts()
@@ -1000,7 +1082,7 @@ async fn saved_host_keyboard_interactive_and_rejected_key() {
     // Rejecting the key fails the session with a typed error.
     let rec = Arc::new(Recorder::default());
     let s = app
-        .connect_host(host.id.clone(), opts(), rec.clone())
+        .connect_host(host.id.clone(), local_vault(&app), opts(), rec.clone())
         .unwrap();
     let (id, _) = rec.wait_prompt(0);
     assert!(s.answer(
@@ -1022,7 +1104,7 @@ async fn saved_host_keyboard_interactive_and_rejected_key() {
     // Accept once + keyboard-interactive.
     let rec = Arc::new(Recorder::default());
     let s = app
-        .connect_host(host.id.clone(), opts(), rec.clone())
+        .connect_host(host.id.clone(), local_vault(&app), opts(), rec.clone())
         .unwrap();
     let (id, _) = rec.wait_prompt(0);
     assert!(s.answer(
@@ -1061,7 +1143,9 @@ async fn saved_host_keyboard_interactive_and_rejected_key() {
 
     // Cancelling a prompt fails the session cleanly.
     let rec = Arc::new(Recorder::default());
-    let s = app.connect_host(h.id, opts(), rec.clone()).unwrap();
+    let s = app
+        .connect_host(h.id, local_vault(&app), opts(), rec.clone())
+        .unwrap();
     let (id, _) = rec.wait_prompt(0);
     assert!(s.answer(id, PromptAnswer::Cancel));
     let st = rec.wait_state(|s| matches!(s, SessionState::Failed { .. }));
@@ -1078,7 +1162,7 @@ async fn saved_host_keyboard_interactive_and_rejected_key() {
 fn connect_with_key(app: &Arc<TermosoApp>, host: &str, passphrase: &str, remember: bool) -> bool {
     let rec = Arc::new(Recorder::default());
     let s = app
-        .connect_host(host.to_string(), opts(), rec.clone())
+        .connect_host(host.to_string(), local_vault(app), opts(), rec.clone())
         .unwrap();
     let mut n = 0;
     let mut asked = false;
@@ -1256,7 +1340,7 @@ async fn saved_host_over_mosh() {
 
     let rec = Arc::new(Recorder::default());
     let s = app
-        .connect_host(host.id.clone(), opts(), rec.clone())
+        .connect_host(host.id.clone(), local_vault(&app), opts(), rec.clone())
         .unwrap();
     let (id, _) = rec.wait_prompt(0);
     assert!(s.answer(
@@ -1308,6 +1392,7 @@ async fn saved_host_over_mosh() {
     let s = app
         .connect_host(
             host.id.clone(),
+            local_vault(&app),
             TerminalOptions {
                 transport: Transport::Ssh,
                 ..opts()

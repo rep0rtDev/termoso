@@ -130,8 +130,9 @@ class SftpAccess(private val container: AppContainer) {
 
     private suspend fun open(vault: VaultState.Open, hostId: String, protocol: FileProtocol): SftpConnection {
         val conn = try {
-            if (!offers(vault.repo.read { host(hostId) }, protocol)) throw notFound()
-            vault.sftp.openHost(hostId, protocol)
+            val host = vault.repo.read { host(hostId) }
+            if (!offers(host, protocol)) throw notFound()
+            vault.sftp.openHost(hostId, host.vaultId, protocol)
         } catch (e: MobileException.NotFound) {
             throw notFound()
         } catch (e: MobileException) {

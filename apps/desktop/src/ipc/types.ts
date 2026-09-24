@@ -397,6 +397,8 @@ export interface HostForm {
   icon: string | null;
   ipVersion: IpVersion;
   agentForwarding: boolean;
+  /** Trusted X11 forwarding to the local display. */
+  forwardX11: boolean;
   startupSnippetId: Uuid | null;
   hostChainId: Uuid | null;
   proxyId: Uuid | null;
@@ -605,6 +607,7 @@ export function emptyHostForm(vaultId: Uuid, groupId: Uuid | null): HostForm {
     icon: null,
     ipVersion: "auto",
     agentForwarding: false,
+    forwardX11: false,
     startupSnippetId: null,
     hostChainId: null,
     proxyId: null,
@@ -648,6 +651,7 @@ export interface GroupForm {
   sshIdKeyType: SshIdKeyType | null;
   hasPassword: boolean;
   agentForwarding: boolean;
+  forwardX11: boolean;
   hostChainId: Uuid | null;
   proxyId: Uuid | null;
   envVariables: [string, string][];
@@ -671,6 +675,7 @@ export function emptyGroupForm(vaultId: Uuid, parentId: Uuid | null): GroupForm 
     sshIdKeyType: null,
     hasPassword: false,
     agentForwarding: false,
+    forwardX11: false,
     hostChainId: null,
     proxyId: null,
     envVariables: [],
@@ -691,6 +696,7 @@ export interface Inherited {
   identityLabel: string | null;
   sshId: boolean;
   agentForwarding: boolean;
+  forwardX11: boolean;
   hostChainId: Uuid | null;
   proxyId: Uuid | null;
   keepAliveInterval: number | null;
@@ -1149,6 +1155,7 @@ export interface ImportedHost {
   jumpHosts: string[];
   proxy: ImportedProxy | null;
   agentForwarding: boolean;
+  forwardX11: boolean;
   envVariables: [string, string][];
   keepAliveInterval: number | null;
   timeout: number | null;

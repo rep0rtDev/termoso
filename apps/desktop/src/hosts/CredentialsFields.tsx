@@ -50,6 +50,7 @@ export interface CredentialValues {
   sshId: boolean;
   sshIdKeyType: SshIdKeyType | null;
   agentForwarding: boolean;
+  forwardX11: boolean;
 }
 
 type AuthRow = "sshid" | "key" | "certificate" | "fido2";
@@ -606,6 +607,35 @@ export function CredentialsFields({
         <AgentForwardingRow value={value} onChange={onChange} inherited={inherited} />
       )}
     </>
+  );
+}
+
+export function X11ForwardingRow({
+  value,
+  onChange,
+  inherited,
+}: {
+  value: Pick<CredentialValues, "forwardX11">;
+  onChange: (patch: Pick<CredentialValues, "forwardX11">) => void;
+  inherited?: Inherited | null;
+}) {
+  const from = inherited && inherited.groupPath.length > 0 ? inherited.groupPath.join(" / ") : null;
+  return (
+    <SettingRow
+      label={tr("X11 forwarding")}
+      hint={
+        !value.forwardX11 && inherited?.forwardX11 && from
+          ? tr("Enabled by {from}; turning it on here changes nothing.", { from })
+          : tr("Open remote GUI programs on this display (trusted X11, needs a local X server).")
+      }
+      last
+      control={
+        <Switch
+          checked={value.forwardX11}
+          onChange={(e) => onChange({ forwardX11: e.target.checked })}
+        />
+      }
+    />
   );
 }
 

@@ -164,6 +164,8 @@ class TerminalSession(
     val label: String,
     val target: String,
     val hostId: String?,
+    /** Vault of [hostId]; a reconnect must find the host there again. */
+    val vaultId: String?,
     /** Set for quick-connect sessions (no saved host). */
     val quick: QuickTarget?,
     /** How the shell was opened; a reconnect keeps it. */
@@ -230,10 +232,14 @@ class SessionManager(
         if (_sessions.value.any { it.id == id }) _activeId.value = id
     }
 
-    suspend fun connectHost(hostId: String, transport: Transport = Transport.AUTO): TerminalSession {
-        val host: HostItem = repo.read { host(hostId) }
+    /**
+     * Connect a saved host. [vaultId] is the vault the caller took the host
+     * from; Rust refuses a host of any other vault before reading credentials.
+     */
+    suspend fun connectHost(hostId: String, vaultId: String, transport: Transport = Transport.AUTO): TerminalSession {
         val bridge = SessionBridge()
-        val rust = repo.read { connectHost(hostId, options(transport), bridge) }
+        val rust = repo.read { connectHost(hostId, vaultId, options(transport), bridge) }
+        val host: HostItem = repo.read { host(hostId) }
         val telnet = transport == Transport.TELNET || host.protocol == "telnet"
         val user = host.username.takeIf { it.isNotBlank() && !telnet }?.let { "$it@" } ?: ""
         val mosh = !telnet && (transport == Transport.MOSH || (transport == Transport.AUTO && host.useMosh))
@@ -249,6 +255,7 @@ class SessionManager(
                 host.label.ifBlank { host.address },
                 target,
                 hostId,
+                vaultId,
                 null,
                 if (telnet) Transport.TELNET else transport,
                 host.osName,
@@ -264,7 +271,7 @@ class SessionManager(
         val transport = if (telnet) Transport.TELNET else Transport.SSH
         val rust = repo.read { connectQuick(target, options(transport), bridge) }
         val text = if (telnet) "${target.host}:${target.port} · Telnet" else listOf(target.username, "${target.host}:${target.port}").filter { it.isNotBlank() }.joinToString("@")
-        return register(TerminalSession(rust.id(), target.host, text, null, target, transport, null, rust, bridge))
+        return register(TerminalSession(rust.id(), target.host, text, null, null, target, transport, null, rust, bridge))
     }
 
     /** A shell on this device (`/system/bin/sh` in [localHome] unless [shell] says otherwise). */
@@ -282,6 +289,7 @@ class SessionManager(
                 label = str(R.string.local),
                 target = str(R.string.on_this_device, program),
                 hostId = null,
+                vaultId = null,
                 quick = null,
                 transport = Transport.SSH,
                 savedOsName = "android",
@@ -306,6 +314,7 @@ class SessionManager(
                 label = str(R.string.shared_terminal),
                 target = str(R.string.multiplayer),
                 hostId = null,
+                vaultId = null,
                 quick = null,
                 transport = Transport.SSH,
                 savedOsName = null,
@@ -349,7 +358,7 @@ class SessionManager(
         val old = find(id) ?: return null
         return when {
             old.isView -> null
-            old.hostId != null -> connectHost(old.hostId, old.transport)
+            old.hostId != null && old.vaultId != null -> connectHost(old.hostId, old.vaultId, old.transport)
             old.quick != null -> connectQuick(old.quick)
             old.local != null -> connectLocal(old.local)
             else -> null
@@ -360,7 +369,7 @@ class SessionManager(
     suspend fun reconnect(id: String): TerminalSession? {
         val old = find(id) ?: return null
         val fresh = when {
-            old.hostId != null -> connectHost(old.hostId, old.transport)
+            old.hostId != null && old.vaultId != null -> connectHost(old.hostId, old.vaultId, old.transport)
             old.quick != null -> connectQuick(old.quick)
             old.local != null -> connectLocal(old.local)
             else -> return null
