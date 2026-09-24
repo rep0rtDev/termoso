@@ -268,7 +268,9 @@ Build:
 ```bash
 cd apps/desktop
 npm ci
+src-tauri/appimage/prepare.sh      # once: Termoso's linuxdeploy GTK plugin into ~/.cache/tauri
 npm run tauri build -- --config src-tauri/tauri.no-updater.conf.json --bundles deb,rpm,appimage
+src-tauri/appimage/verify.sh ../../target/release/bundle/appimage/*.AppImage
 ```
 
 Output (`target/` is the workspace target directory, two levels up):
@@ -280,16 +282,22 @@ target/release/bundle/rpm/Termoso-0.3.0-1.x86_64.rpm
 target/release/bundle/appimage/Termoso_0.3.0_amd64.AppImage
 ```
 
-The AppImage is fully self-contained apart from `libwebkit2gtk-4.1-0` and
-`libgtk-3-0`, which every current desktop distribution has; the `.deb`
-declares them as dependencies. On an arm64 host the same command produces
-`_arm64` / `.aarch64` packages — there is no cross-compilation, build on the
-architecture you target.
+The AppImage carries GTK and WebKitGTK from the build host; the `.deb`/`.rpm`
+depend on the distribution's `libwebkit2gtk-4.1-0` / `libgtk-3-0` instead.
+On an arm64 host the same command produces `_arm64` / `.aarch64` packages —
+there is no cross-compilation, build on the architecture you target.
 
 `--bundles` accepts any subset of `deb,rpm,appimage`; leave it out to build
 all three. Building the AppImage needs `file`, `patchelf` and `xdg-mime`
-(`xdg-utils`) and downloads
-`linuxdeploy` on first use.
+(`xdg-utils`) and downloads `linuxdeploy` and its plugins into
+`~/.cache/tauri` on first use. `prepare.sh` pre-seeds that cache with
+`src-tauri/appimage/linuxdeploy-plugin-gtk.sh`, our copy of the upstream GTK
+plugin with two changes: the bundled `libwayland-*` are removed again (a copy
+from Ubuntu 22.04 shadows the system one and a current Mesa cannot load its
+EGL driver — blank window, [tauri-apps/tauri#15665](https://github.com/tauri-apps/tauri/issues/15665)),
+and `GDK_BACKEND=x11` becomes a default the user can override. Skip it and
+you get a stock AppImage that breaks on Arch and friends; `verify.sh` fails
+in that case, and the release workflow runs it on every AppImage.
 
 ### Windows
 

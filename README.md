@@ -322,6 +322,18 @@ the renderer on, `=1` forces it off on other GPUs) to override that. If the
 window still stays blank, try `__NV_DISABLE_EXPLICIT_SYNC=1` or, as a last
 resort, `WEBKIT_DISABLE_COMPOSITING_MODE=1`.
 
+The AppImage is built on Ubuntu 22.04 and carries its own GTK/WebKitGTK, but
+deliberately **not** `libwayland-*`: a bundled copy shadows the system one and
+a current Mesa (linked against a newer libwayland than 22.04 ships) then cannot load its EGL driver
+(`EGL_BAD_PARAMETER`, WebKitWebProcess aborts, the window stays blank —
+[tauri-apps/tauri#15665](https://github.com/tauri-apps/tauri/issues/15665)).
+Releases up to 0.6.1 did bundle it; on Arch/Fedora and other rolling distros
+either upgrade or run `./Termoso.AppImage --appimage-extract && rm squashfs-root/usr/lib/libwayland-*.so* && squashfs-root/AppRun`.
+On Wayland the AppImage runs through XWayland by default (`GDK_BACKEND=x11`,
+what linuxdeploy's GTK hook does for every Tauri app); `GDK_BACKEND=wayland ./Termoso.AppImage`
+runs it natively. The `.deb`/`.rpm` use the distribution's WebKitGTK and are
+not affected.
+
 ### Android
 
 ```bash
