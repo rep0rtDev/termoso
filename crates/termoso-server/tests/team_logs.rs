@@ -1,6 +1,6 @@
 //! Team session logs: teammates holding the vault key list and download each
 //! other's recordings, pin and annotate them by role, and managers switch
-//! per-vault logging. Skipped when MinIO is unreachable (see `common`).
+//! per-vault logging. Skipped when S3 storage is unreachable (see `common`).
 
 mod common;
 

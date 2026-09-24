@@ -1,0 +1,5 @@
+[Unit]
+Description=Termoso RustFS data
+
+[Volume]
+VolumeName=termoso-rustfs

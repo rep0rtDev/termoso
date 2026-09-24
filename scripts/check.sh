@@ -42,7 +42,7 @@ check_rust() {
   has cargo || { skip rust "cargo not found"; return; }
   run rust . cargo fmt --all -- --check
   run rust . cargo clippy --workspace --all-targets --locked
-  # Server tests use PostgreSQL/Redis/MinIO/Mailpit from deploy/docker-compose.dev.yml
+  # Server tests use PostgreSQL/Redis/RustFS/Mailpit from deploy/docker-compose.dev.yml
   # when reachable and skip otherwise (TERMOSO_TEST_REQUIRE_SERVICES=1 to insist).
   run rust . cargo test --workspace --locked
   # Advisories, licence allow-list, banned crates and registry sources: deny.toml.
@@ -92,7 +92,7 @@ check_deploy() {
     compose=(podman-compose)
   fi
   if [ ${#compose[@]} -gt 0 ]; then
-    run deploy deploy env TERMOSO_ENV_FILE=.env.example POSTGRES_PASSWORD=x MINIO_ROOT_USER=x MINIO_ROOT_PASSWORD=x \
+    run deploy deploy env TERMOSO_ENV_FILE=.env.example POSTGRES_PASSWORD=x RUSTFS_ACCESS_KEY=x RUSTFS_SECRET_KEY=x \
       "${compose[@]}" -f docker-compose.yml --env-file .env.example --profile bridge --profile proxy config -q
     run deploy deploy "${compose[@]}" -f docker-compose.dev.yml config -q
   else

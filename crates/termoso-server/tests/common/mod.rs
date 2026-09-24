@@ -6,7 +6,7 @@
 //! and the default local Postgres is unreachable.
 //!
 //! Optional services are picked up when reachable (or when their
-//! `TERMOSO_TEST_*` variable is set): MinIO for session logs and Mailpit for
+//! `TERMOSO_TEST_*` variable is set): RustFS (S3) for session logs and Mailpit for
 //! outgoing email. `TERMOSO_TEST_REQUIRE_SERVICES=1` (CI) turns a missing
 //! service into a failure instead of a skip. SSO is always exercised against
 //! an in-process mock OpenID Connect provider.
@@ -79,7 +79,7 @@ pub struct TestServer {
     pub db_name: String,
     pub database_url: String,
     pub master_key: String,
-    /// Object storage (MinIO) is configured.
+    /// Object storage (S3) is configured.
     pub storage: bool,
     /// Mailpit REST API base URL when email is configured.
     pub mailpit: Option<String>,
@@ -147,7 +147,7 @@ async fn optional(name: &str, probe: &str) -> bool {
 
 async fn s3_config() -> Option<S3Config> {
     let endpoint = std::env::var("TERMOSO_TEST_S3_ENDPOINT").unwrap_or_else(|_| DEFAULT_S3.into());
-    if !optional("MinIO", &host_port(&endpoint)).await {
+    if !optional("S3 storage", &host_port(&endpoint)).await {
         return None;
     }
     Some(S3Config {

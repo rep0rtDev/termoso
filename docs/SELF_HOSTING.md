@@ -27,9 +27,9 @@ backing services with fixed passwords for `cargo run`/`cargo test`.
 | `api` | `ghcr.io/rep0rtdev/termoso-server` | none | REST + WebSocket API under `/api/v1`, web cabinet on `/`, SSH ID handles, Android asset links. Runs migrations at start. |
 | `postgres` | `postgres:18-alpine` | **volume, back it up** | accounts, devices, teams, vaults, encrypted entities, audit log, avatars |
 | `redis` | `redis:8-alpine` | volume (disposable) | login handshakes, MFA/approval codes, session cache, rate limits, cross-replica event fan-out |
-| `minio` | `quay.io/minio/minio:RELEASE.2025-09-07…` | volume | client-encrypted session logs, reached by clients through pre-signed URLs. MinIO stopped publishing community container images after this tag; newer releases are source-only (`make docker`). Any S3-compatible store is a drop-in replacement — see [Scaling](#scaling). |
+| `rustfs` | `rustfs/rustfs:1.0.0` | volume | client-encrypted session logs, reached by clients through pre-signed URLs. [RustFS](https://github.com/rustfs/rustfs) is an Apache-2.0 S3-compatible store; any other S3-compatible store is a drop-in replacement — see [Scaling](#scaling). Stacks that still run the retired MinIO image: see [Migrating from MinIO](#migrating-from-minio). |
 | `bridge` (optional) | `ghcr.io/rep0rtdev/termoso-bridge` | none | Termius-compatible REST API for automation — see [API_BRIDGE.md](API_BRIDGE.md) |
-| `caddy` (Compose `proxy` profile) | `caddy:2-alpine` | volume (certificates) | TLS termination for the API and MinIO |
+| `caddy` (Compose `proxy` profile) | `caddy:2-alpine` | volume (certificates) | TLS termination for the API and RustFS |
 
 The `termoso-server` and `termoso-bridge` images are multi-architecture
 (`linux/amd64` and `linux/arm64`), so the same Compose file works on x86_64
@@ -39,7 +39,7 @@ Everything the server stores about vault contents is ciphertext the server
 cannot open; what it *can* read is listed in the README's
 [security model](../README.md#security-model). Losing Redis logs nobody out
 permanently — pending logins and MFA codes are lost, sessions are re-read from
-PostgreSQL. Losing PostgreSQL loses the deployment. Losing MinIO loses
+PostgreSQL. Losing PostgreSQL loses the deployment. Losing RustFS loses
 recorded session logs only.
 
 ### Ports
@@ -52,8 +52,8 @@ deliberately change the bind address.
 | Port | Service | Expose? |
 |---|---|---|
 | 8080 | API + cabinet | through your reverse proxy as `TERMOSO_PUBLIC_URL` |
-| 9000 | MinIO S3 | through your reverse proxy as `TERMOSO_S3__PUBLIC_ENDPOINT` (only if session logs are used) |
-| 9001 | MinIO console | no; use an SSH tunnel |
+| 9000 | RustFS S3 | through your reverse proxy as `TERMOSO_S3__PUBLIC_ENDPOINT` (only if session logs are used) |
+| 9001 | RustFS console | no; use an SSH tunnel |
 | 8081 | API Bridge | no; it is an unauthenticated-by-design local API guarded by one shared key |
 | 9090 | Prometheus metrics (`TERMOSO_METRICS__*`) | no |
 | 80/443 | Caddy (`proxy` profile) | yes, from the internet |
@@ -74,8 +74,8 @@ Minimum for a useful instance:
 TERMOSO_MASTER_KEY=            # openssl rand -base64 32 — back it up with the database
 TERMOSO_PUBLIC_URL=https://termoso.example.com
 POSTGRES_PASSWORD=             # openssl rand -hex 24
-MINIO_ROOT_USER=termoso
-MINIO_ROOT_PASSWORD=           # openssl rand -hex 24
+RUSTFS_ACCESS_KEY=termoso
+RUSTFS_SECRET_KEY=             # openssl rand -hex 24
 TERMOSO_S3__PUBLIC_ENDPOINT=https://s3.termoso.example.com
 TERMOSO_ADMIN_EMAILS=you@example.com
 TERMOSO_SMTP__HOST=… PORT=… USERNAME=… PASSWORD=… SECURITY=starttls FROM=…
@@ -115,7 +115,7 @@ Both names must resolve to the host and ports 80/443 must be open. The
 [`Caddyfile`](../deploy/Caddyfile) is two `reverse_proxy` blocks; adapt it to
 nginx or Traefik if you already run one — the only requirements are HTTP/1.1
 upgrade support for `/api/v1/ws` and that the storage hostname forwards to
-MinIO unchanged (pre-signed URLs are signed for that exact host and path).
+RustFS unchanged (pre-signed URLs are signed for that exact host and path).
 
 Optional second hostname: `TERMOSO_SSHID_URL` serves SSH ID public keys at the
 root of a dedicated origin (`https://sshid.example.com/<handle>`), convenient
@@ -233,6 +233,31 @@ Stacks created before the move to PostgreSQL 18 mounted the volume at
 `/var/lib/postgresql/<major>/docker`, which is why the volume is now mounted
 at `/var/lib/postgresql` (and why `pg_upgrade --link` works in place there).
 
+### Migrating from MinIO
+
+Stacks set up before 0.6.1 ran MinIO for session logs; its last community
+image (`quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z`) has since been
+withdrawn from the registry, so a fresh `pull` fails. The stack now ships
+RustFS instead. To move over:
+
+1. In `deploy/.env` rename `MINIO_ROOT_USER` → `RUSTFS_ACCESS_KEY`,
+   `MINIO_ROOT_PASSWORD` → `RUSTFS_SECRET_KEY`, `MINIO_BUCKET` → `S3_BUCKET`,
+   `MINIO_PORT`/`MINIO_CONSOLE_PORT` → `RUSTFS_PORT`/`RUSTFS_CONSOLE_PORT`
+   (Quadlet: the same two credentials in `/etc/termoso/stack.env`, plus
+   `TERMOSO_S3__ENDPOINT=http://termoso-rustfs:9000`, and replace the
+   `termoso-minio.*` unit files with `termoso-rustfs.*`).
+2. `docker compose -f deploy/docker-compose.yml up -d --wait` (or
+   `systemctl daemon-reload && systemctl start termoso-rustfs termoso-api`).
+   RustFS starts on a new, empty volume; the server creates the bucket on
+   first use. The reverse-proxy hostname and `TERMOSO_S3__PUBLIC_ENDPOINT`
+   stay as they are.
+3. Existing logs live in the old `minio` volume, which is left untouched. If
+   the old image is still in your local image cache, start it once alongside
+   and mirror the bucket with any S3 client (`rclone sync`, `mc mirror`) into
+   RustFS; otherwise those recordings can no longer be downloaded (their
+   entries stay in the log list until deleted). Remove the old volume afterwards
+   (`docker volume rm termoso_minio` / `podman volume rm termoso-minio`).
+
 ### Scaling
 
 The API keeps no local state. Run more replicas behind a proxy that
@@ -240,7 +265,7 @@ load-balances them (drop the `ports:` mapping of `api` and let the proxy join
 the Compose network, or run replicas on several hosts) and they share
 sessions through PostgreSQL and realtime events through Redis pub/sub.
 
-PostgreSQL, Redis and MinIO are single instances in this stack;
+PostgreSQL, Redis and RustFS are single instances in this stack;
 replace them with managed services by pointing `TERMOSO_DATABASE_URL`,
 `TERMOSO_REDIS_URL` and `TERMOSO_S3__*` elsewhere and removing the services
 you no longer need. Any S3-compatible store works, including AWS S3
@@ -256,8 +281,8 @@ daemon.
 
 ```
 termoso.network              private network, containers resolve each other by name
-termoso-{postgres,redis,minio}.volume
-termoso-{postgres,redis,minio,api}.container
+termoso-{postgres,redis,rustfs}.volume
+termoso-{postgres,redis,rustfs,api}.container
 termoso-bridge.container.example   rename to .container to enable the bridge
 stack.env.example            in-stack addresses + credentials → /etc/termoso/stack.env
 bridge.env.example           bridge key → /etc/termoso/bridge.env
@@ -292,7 +317,7 @@ journalctl -u termoso-api -f
 Generated units cannot be `systemctl enable`d by hand; their
 `[Install] WantedBy=default.target` section is honoured by the generator, so
 they start at boot as soon as the files are in place. Stop everything with
-`systemctl stop termoso-api termoso-postgres termoso-redis termoso-minio`;
+`systemctl stop termoso-api termoso-postgres termoso-redis termoso-rustfs`;
 remove the files and `daemon-reload` to retire the stack (volumes stay until
 `podman volume rm`).
 
@@ -324,7 +349,7 @@ rely on any of those stay on Podman 5.x (the units do not depend on either).
 
 Every container declares a health check; with Podman ≥ 5.0 `Notify=healthy`
 makes a unit *active* only once its check passes, so `termoso-api` waits for
-PostgreSQL, Redis and MinIO to be genuinely ready. On Podman 4.x the
+PostgreSQL, Redis and RustFS to be genuinely ready. On Podman 4.x the
 dependencies are still ordered, but the API may start a few seconds early and
 be restarted by systemd (`Restart=always`, 5 s) until the database answers.
 Both behaviours converge on a healthy stack.
@@ -348,7 +373,7 @@ Back up, in this order of importance:
 1. **PostgreSQL** — the deployment.
 2. **`TERMOSO_MASTER_KEY`** (in `.env`) — without it the database is only
    partially usable.
-3. **MinIO data** — session logs, if you care about them.
+3. **RustFS data** — session logs, if you care about them.
 4. The `.env` file itself.
 
 Redis holds nothing worth keeping.
@@ -357,12 +382,12 @@ Redis holds nothing worth keeping.
 # Compose
 docker compose -f deploy/docker-compose.yml exec -T postgres \
   pg_dump -U termoso -Fc termoso > termoso-$(date +%F).dump
-docker run --rm -v termoso_minio:/data:ro -v "$PWD":/backup alpine \
+docker run --rm -v termoso_rustfs:/data:ro -v "$PWD":/backup alpine \
   tar czf /backup/termoso-logs-$(date +%F).tgz -C /data .
 
 # Quadlet
 podman exec termoso-postgres pg_dump -U termoso -Fc termoso > termoso-$(date +%F).dump
-podman volume export termoso-minio > termoso-logs-$(date +%F).tar
+podman volume export termoso-rustfs > termoso-logs-$(date +%F).tar
 ```
 
 `pg_dump` runs online; taking it nightly from a timer is enough for most
@@ -402,7 +427,7 @@ cargo test --workspace                 # integration tests use the same services
 docker compose -f deploy/docker-compose.dev.yml down -v   # wipe
 ```
 
-It publishes PostgreSQL (`termoso`/`termoso`), Redis, MinIO
+It publishes PostgreSQL (`termoso`/`termoso`), Redis, RustFS
 (`minioadmin`/`minioadmin`) and [Mailpit](https://mailpit.axllent.org)
 (SMTP on 1025, inbox UI on <http://localhost:8025>) on localhost only. Data
 persists in named volumes across restarts. Do not expose it, do not reuse its
@@ -412,7 +437,7 @@ passwords, and do not point a production `TERMOSO_DATABASE_URL` at it.
 
 * One region, one PostgreSQL: there is no multi-primary or read-replica
   support in the server.
-* MinIO in the stack is a single node; use replicated storage for anything
+* RustFS in the stack is a single node; use replicated storage for anything
   you cannot afford to lose.
 * The API Bridge exposes hosts and groups only, and holds the keys of the
   vaults it was granted — treat its host as part of those vaults' trust

@@ -1,7 +1,7 @@
 //! Client core against the real server: OPAQUE account flows, vault keys,
 //! entity / history / log sync, conflicts and the realtime loop.
 //!
-//! Needs PostgreSQL + Redis (see `tests/common`); MinIO and Mailpit unlock the
+//! Needs PostgreSQL + Redis (see `tests/common`); S3 storage and Mailpit unlock the
 //! log and email cases. Everything is skipped when they are absent.
 
 mod common;

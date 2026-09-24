@@ -18,5 +18,5 @@
 
 # Pre-signed session-log uploads/downloads (TERMOSO_S3__PUBLIC_ENDPOINT).
 {$TERMOSO_S3_DOMAIN} {
-	reverse_proxy minio:9000
+	reverse_proxy rustfs:9000
 }

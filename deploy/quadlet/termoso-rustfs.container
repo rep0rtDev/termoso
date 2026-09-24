@@ -1,20 +1,20 @@
-# MinIO: S3-compatible storage for encrypted session logs. Clients upload and
+# RustFS: S3-compatible storage for encrypted session logs. Clients upload and
 # download through pre-signed URLs, so port 9000 has to be reachable through
 # your reverse proxy at TERMOSO_S3__PUBLIC_ENDPOINT.
 [Unit]
-Description=Termoso MinIO
+Description=Termoso RustFS
 
 [Container]
-ContainerName=termoso-minio
-Image=quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+ContainerName=termoso-rustfs
+Image=docker.io/rustfs/rustfs:1.0.0
 Network=termoso.network
-Volume=termoso-minio.volume:/data
+Volume=termoso-rustfs.volume:/data
 EnvironmentFile=/etc/termoso/stack.env
-Exec=server /data --console-address :9001
+Environment=RUSTFS_CONSOLE_ENABLE=true
 PublishPort=127.0.0.1:9000:9000
 PublishPort=127.0.0.1:9001:9001
 NoNewPrivileges=true
-HealthCmd=mc ready local
+HealthCmd=curl -fsS http://127.0.0.1:9000/health
 HealthInterval=5s
 HealthTimeout=5s
 HealthRetries=20
