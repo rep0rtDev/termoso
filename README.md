@@ -313,6 +313,15 @@ for what a lock closes and why a lost password cannot be reset). On macOS
 shortcuts use ⌘ where Linux and Windows use Ctrl, so Ctrl+C still reaches
 the shell.
 
+Linux renders through WebKitGTK, whose DMA-BUF renderer does not get along
+with the proprietary NVIDIA driver (blank or see-through window, flicker,
+crash on resize — [tauri-apps/tauri#9394](https://github.com/tauri-apps/tauri/issues/9394)).
+When the `nvidia` kernel module is loaded the app therefore starts with
+`WEBKIT_DISABLE_DMABUF_RENDERER=1`; export the variable yourself (`=0` keeps
+the renderer on, `=1` forces it off on other GPUs) to override that. If the
+window still stays blank, try `__NV_DISABLE_EXPLICIT_SYNC=1` or, as a last
+resort, `WEBKIT_DISABLE_COMPOSITING_MODE=1`.
+
 ### Android
 
 ```bash
