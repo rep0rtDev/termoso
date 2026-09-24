@@ -14,6 +14,8 @@ mod edits;
 mod error;
 mod forwarding;
 mod import;
+#[cfg(target_os = "linux")]
+mod linux_graphics;
 mod logs;
 mod mosh;
 mod multiplayer;
@@ -47,6 +49,9 @@ pub fn run() {
         )
         .with_writer(std::io::stderr)
         .init();
+
+    #[cfg(target_os = "linux")]
+    linux_graphics::apply_workarounds();
 
     let mut context = tauri::generate_context!();
     // WebKitGTK strips file:// URIs from HTML5 drops, so OS drops need the
