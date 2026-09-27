@@ -162,11 +162,13 @@ jobs:
         working-directory: apps/desktop
       - run: cargo clippy -p termoso-core -p termoso-desktop --all-targets --locked
       - run: cargo test -p termoso-core --locked
-      # No updater key on CI: build the .app only, skip the signed updater tarball.
-      - run: npm run tauri build -- --debug --bundles app --ci --config '{"bundle":{"createUpdaterArtifacts":false}}'
+      # No updater key on CI: skip the signed updater tarball. The dmg is built too so a
+      # bad src-tauri/macos/dmg-background.png or window layout fails here, not on a tag.
+      - run: npm run tauri build -- --debug --bundles app,dmg --ci --config '{"bundle":{"createUpdaterArtifacts":false}}'
         working-directory: apps/desktop
       - name: Inspect the bundle
         run: |
+          ls -la target/debug/bundle/dmg/*.dmg
           app=target/debug/bundle/macos/Termoso.app
           exe="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
           test -x "$exe" || { echo "::error::no executable at $exe"; ls -R "$app"; exit 1; }
@@ -184,6 +186,57 @@ jobs:
             ${{ runner.temp }}/smoke/*.png
             ${{ runner.temp }}/smoke/report.txt
             ${{ runner.temp }}/smoke/app.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # The Windows installers are built from our own NSIS template
+  # (src-tauri/windows/installer.nsi) plus the stock WiX .msi. makensis under
+  # Wine only proves the template compiles; this job builds both bundles like
+  # the release does and lets apps/desktop/smoke/windows-installer.ps1 click
+  # through the real setup (dark title bar, DarkMode controls, Segoe UI),
+  # screenshotting every page and checking install/uninstall, /S, /P (the
+  # updater path), the .msi and the MSI → setup.exe migration page.
+  windows:
+    name: windows (tauri build --debug nsis+msi + installer smoke)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: apps/desktop
+      # No updater key on CI: skip the signed updater artifacts, keep the bundles themselves.
+      - run: npm run tauri build -- --debug --bundles nsis,msi --ci --config '{"bundle":{"createUpdaterArtifacts":false}}'
+        shell: bash
+        working-directory: apps/desktop
+      - name: Inspect the bundles
+        shell: bash
+        run: |
+          ls -la target/debug/bundle/nsis target/debug/bundle/msi
+          test -n "$(ls target/debug/bundle/nsis/*-setup.exe)" || { echo "::error::no NSIS setup.exe"; exit 1; }
+          test -n "$(ls target/debug/bundle/msi/*.msi)" || { echo "::error::no MSI"; exit 1; }
+      - name: Installer smoke
+        shell: pwsh
+        run: |
+          $setup = (Get-Item target/debug/bundle/nsis/*-setup.exe).FullName
+          $msi = (Get-Item target/debug/bundle/msi/*.msi).FullName
+          & apps/desktop/smoke/windows-installer.ps1 -Setup $setup -Msi $msi -Out "$env:RUNNER_TEMP/smoke"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: windows-installer-smoke
+          path: |
+            ${{ runner.temp }}/smoke/*.png
+            ${{ runner.temp }}/smoke/*.txt
+            ${{ runner.temp }}/smoke/*.log
           if-no-files-found: ignore
           retention-days: 14
 

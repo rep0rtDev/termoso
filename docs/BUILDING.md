@@ -325,7 +325,19 @@ target\release\bundle\nsis\Termoso_0.3.0_x64-setup.exe
 ```
 
 WiX (for `.msi`) and NSIS (for `-setup.exe`) are downloaded by the bundler on
-first use. The installers are not Authenticode-signed unless you configure
+first use. `-setup.exe` is compiled from our own template,
+`src-tauri/windows/installer.nsi` (with `windows/installer-*.bmp` as the
+logo/header); the `.msi` uses Tauri's stock WiX template and exists for
+Intune/GPO/SCCM deployment (`msiexec /i ... /qn`). Regenerate the installer
+bitmaps and the macOS dmg background from the app icon with
+`python3 src-tauri/branding/gen-images.py` (needs Pillow). To iterate on the
+template without a Windows machine, `makensis` on Linux/macOS compiles it and
+Wine runs the result, but Wine draws classic Win95-style controls — the real
+look (dark title bar, DarkMode controls, Segoe UI) is only visible on Windows;
+the `windows` CI job uploads screenshots of every page
+(`windows-installer-smoke` artifact) for exactly that reason.
+
+The installers are not Authenticode-signed unless you configure
 `bundle.windows.certificateThumbprint` or `signCommand` in a `--config`
 overlay; SmartScreen will show the usual "unknown publisher" prompt for an
 unsigned installer. With variant A both installers get a `.sig`; the official

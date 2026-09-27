@@ -9,7 +9,7 @@ GitHub Actions.
 | Platform | Installers | Updater artifact |
 |---|---|---|
 | Linux | `_amd64.deb` / `.x86_64.rpm` / `_amd64.AppImage` (x86_64), `_arm64.deb` / `.aarch64.rpm` / `_aarch64.AppImage` (64-bit ARM) | `*.AppImage` + `*.AppImage.sig` per architecture |
-| Windows | NSIS `*-setup.exe`, `*.msi` | `*-setup.exe` + `.sig` (preferred), `*.msi` + `.sig` |
+| Windows | `*-setup.exe` (the installer — branded NSIS, per-user, no admin prompt), `*.msi` (WiX, per-machine, for Intune / Group Policy / SCCM) | `*-setup.exe` + `.sig` (preferred), `*.msi` + `.sig` |
 | macOS | `*_aarch64.dmg` (Apple Silicon), `*_x64.dmg` (Intel) | `*_aarch64.app.tar.gz` / `*_x64.app.tar.gz` + `.sig` |
 | Android | `termoso-<version>-{arm64-v8a,armeabi-v7a,x86_64,universal}.apk` | — (no in-app updater on Android; the APKs carry the standard v2/v3 APK signature) |
 | iOS | `termoso-<version>-ios.ipa` (**unsigned**, sideload) | `termoso-altstore.json` — AltStore/SideStore source; the store app signs with the user's Apple ID and refreshes the 7-day profile, see [IOS_SIDELOAD.md](IOS_SIDELOAD.md) |
@@ -19,6 +19,29 @@ plus:
 * `latest.json` — the updater manifest: version, release notes, publication
   date and, per platform target, the artifact URL and its signature;
 * `SHA256SUMS.txt` — checksums of every asset above.
+
+### Which Windows installer
+
+`*-setup.exe` is what a user downloads: it is built from our own NSIS template
+(`apps/desktop/src-tauri/windows/installer.nsi` — Termoso colours, Segoe UI,
+dark title bar and controls on Windows 10 1809+, install-location + shortcut
+options on one page), installs under `%LOCALAPPDATA%\Termoso` without
+elevation, registers `termoso://`, and is what the in-app updater downloads and
+runs (`/P`, passive). Silent: `Termoso_<v>_x64-setup.exe /S` (`/D=<dir>` to
+choose the folder, `/NS` for no shortcuts); the uninstaller takes `/S` too.
+
+`*.msi` is the stock WiX package kept for managed environments: Intune, Group
+Policy and SCCM deploy MSIs, `msiexec /i Termoso_<v>_x64_en-US.msi /qn`
+installs machine-wide with transactional rollback. Its UI is the plain WiX
+wizard. If a machine has the MSI and the user later runs `*-setup.exe`, the
+setup detects it and removes the MSI first (the migration page), so mixing the
+two is safe. Both are produced by the same `tauri build`, both get a `.sig`,
+and `latest.json` points the updater at the NSIS one.
+
+CI (`windows` job) builds both from every PR and clicks through the real
+setup on a Windows runner — screenshots of every page and the install /
+uninstall / `/S` / `/P` / MSI report are in the `windows-installer-smoke`
+artifact; look there before changing `installer.nsi`.
 
 Signatures are [minisign](https://jedisct1.github.io/minisign/) signatures
 made with the project signing key. The matching public key is compiled into

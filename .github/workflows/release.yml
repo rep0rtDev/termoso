@@ -199,6 +199,10 @@ jobs:
             Linux: `_amd64` / `.x86_64` bundles are for x86_64, `_arm64` / `_aarch64` / `.aarch64`
             for 64-bit ARM (Raspberry Pi 4+, Apple Silicon VMs, Ampere and friends).
 
+            Windows: `_x64-setup.exe` is the installer (per-user, no admin prompt; `/S` for silent).
+            `_x64_en-US.msi` is for managed deployment through Intune / Group Policy / SCCM
+            (`msiexec /i ... /qn`, per-machine); it has the plain WiX wizard.
+
             macOS: `_aarch64.dmg` is for Apple Silicon, `_x64.dmg` for Intel. Unless this
             repository has a Developer ID configured, the builds are ad-hoc signed and not
             notarized: after dragging Termoso to Applications run

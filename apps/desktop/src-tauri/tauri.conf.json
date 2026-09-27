@@ -63,6 +63,12 @@
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
+      },
+      "nsis": {
+        "template": "windows/installer.nsi",
+        "headerImage": "windows/installer-header.bmp",
+        "sidebarImage": "windows/installer-logo.bmp",
+        "languages": ["English", "Russian"]
       }
     },
     "createUpdaterArtifacts": true

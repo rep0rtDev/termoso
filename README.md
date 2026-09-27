@@ -396,7 +396,9 @@ http://127.0.0.1:8080 --users 20 --duration 30`.
 ## Releases
 
 Every `v*` tag triggers `.github/workflows/release.yml`: Linux, Windows and
-macOS bundles (minisign-signed, with `latest.json` for the built-in updater),
+macOS bundles (minisign-signed, with `latest.json` for the built-in updater;
+on Windows `*-setup.exe` is the installer — our own NSIS template, per-user —
+and `*.msi` is kept for Intune / Group Policy / SCCM deployment),
 signed Android APKs per ABI, the unsigned iOS `.ipa` with its AltStore source,
 `SHA256SUMS.txt`, and the `ghcr.io/rep0rtdev/termoso-server:<version>` and
 `termoso-bridge:<version>` images. The version must match in the workspace
