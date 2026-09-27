@@ -28,6 +28,7 @@ export function LogViewer({
   const host = useRef<HTMLDivElement>(null);
   const { mode, systemMode } = useColorScheme();
   const scheme = (mode === "system" ? systemMode : mode) === "light" ? "light" : "dark";
+  const background = resolveTerminalTheme(settings.terminalTheme, scheme).background;
 
   useEffect(() => {
     const el = host.current;
@@ -84,6 +85,7 @@ export function LogViewer({
         minHeight: 0,
         minWidth: 0,
         overflow: "hidden",
+        bgcolor: background,
         "& .xterm": { height: "100%", p: 1 },
         "& .xterm-viewport": { overflowY: "auto !important" },
       }}

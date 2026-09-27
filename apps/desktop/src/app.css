@@ -38,6 +38,10 @@ textarea,
 .termoso-xterm .xterm .xterm-viewport {
   overflow-y: auto;
 }
+/* xterm 6 themes only the row area; the full-height viewport keeps xterm.css's #000. */
+.xterm .xterm-viewport {
+  background-color: transparent;
+}
 .termoso-xterm .xterm .xterm-viewport::-webkit-scrollbar-thumb {
   background: rgba(142, 147, 168, 0.35);
 }
