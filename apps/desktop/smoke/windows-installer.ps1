@@ -169,18 +169,18 @@ $startMenuLnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'Termoso.ln
 $desktopLnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Termoso.lnk'
 
 function Assert-Installed([string]$phase, [bool]$shortcuts = $true) {
-  Check (Test-Path $uninstKey) "$phase: Programs and Features entry"
+  Check (Test-Path $uninstKey) "${phase}: Programs and Features entry"
   if (Test-Path $uninstKey) {
     $reg = Get-ItemProperty $uninstKey
-    Log "$phase: DisplayName='$($reg.DisplayName)' DisplayVersion='$($reg.DisplayVersion)' Publisher='$($reg.Publisher)' MainBinaryName='$($reg.MainBinaryName)'"
-    Check ($reg.DisplayName -eq 'Termoso') "$phase: DisplayName"
-    Check (-not [string]::IsNullOrEmpty($reg.MainBinaryName) -and (Test-Path (Join-Path $instDir $reg.MainBinaryName))) "$phase: main binary $instDir\$($reg.MainBinaryName)"
-    Check ($reg.UninstallString -like "*$instDir\uninstall.exe*") "$phase: UninstallString points into $instDir"
+    Log "${phase}: DisplayName='$($reg.DisplayName)' DisplayVersion='$($reg.DisplayVersion)' Publisher='$($reg.Publisher)' MainBinaryName='$($reg.MainBinaryName)'"
+    Check ($reg.DisplayName -eq 'Termoso') "${phase}: DisplayName"
+    Check (-not [string]::IsNullOrEmpty($reg.MainBinaryName) -and (Test-Path (Join-Path $instDir $reg.MainBinaryName))) "${phase}: main binary $instDir\$($reg.MainBinaryName)"
+    Check ($reg.UninstallString -like "*$instDir\uninstall.exe*") "${phase}: UninstallString points into $instDir"
   }
-  Check (Test-Path (Join-Path $instDir 'uninstall.exe')) "$phase: uninstall.exe"
-  Check (Test-Path 'HKCU:\Software\Classes\termoso\shell\open\command') "$phase: termoso:// handler"
-  Check ((Test-Path $startMenuLnk) -eq $shortcuts) "$phase: Start Menu shortcut present=$shortcuts"
-  Check ((Test-Path $desktopLnk) -eq $shortcuts) "$phase: Desktop shortcut present=$shortcuts"
+  Check (Test-Path (Join-Path $instDir 'uninstall.exe')) "${phase}: uninstall.exe"
+  Check (Test-Path 'HKCU:\Software\Classes\termoso\shell\open\command') "${phase}: termoso:// handler"
+  Check ((Test-Path $startMenuLnk) -eq $shortcuts) "${phase}: Start Menu shortcut present=$shortcuts"
+  Check ((Test-Path $desktopLnk) -eq $shortcuts) "${phase}: Desktop shortcut present=$shortcuts"
 }
 function Wait-Removed([string]$phase, [int]$seconds = 90) {
   $deadline = (Get-Date).AddSeconds($seconds)
@@ -189,11 +189,11 @@ function Wait-Removed([string]$phase, [int]$seconds = 90) {
     if ($gone) { break }
     Start-Sleep -Milliseconds 500
   } while ((Get-Date) -lt $deadline)
-  Check (-not (Test-Path $uninstKey)) "$phase: Programs and Features entry removed"
-  Check (-not (Test-Path (Join-Path $instDir 'uninstall.exe'))) "$phase: uninstall.exe removed"
-  Check (-not (Test-Path 'HKCU:\Software\Classes\termoso')) "$phase: termoso:// handler removed"
-  Check (-not (Test-Path $startMenuLnk)) "$phase: Start Menu shortcut removed"
-  Check (-not (Test-Path $desktopLnk)) "$phase: Desktop shortcut removed"
+  Check (-not (Test-Path $uninstKey)) "${phase}: Programs and Features entry removed"
+  Check (-not (Test-Path (Join-Path $instDir 'uninstall.exe'))) "${phase}: uninstall.exe removed"
+  Check (-not (Test-Path 'HKCU:\Software\Classes\termoso')) "${phase}: termoso:// handler removed"
+  Check (-not (Test-Path $startMenuLnk)) "${phase}: Start Menu shortcut removed"
+  Check (-not (Test-Path $desktopLnk)) "${phase}: Desktop shortcut removed"
 }
 
 Log "setup: $Setup"
