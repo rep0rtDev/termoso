@@ -41,7 +41,7 @@ alacritty_terminal = "0.26"
 tokio = { version = "1", features = ["full"] }
 axum = { version = "0.8", features = ["ws", "macros"] }
 tower = { version = "0.5", features = ["util", "timeout", "limit"] }
-tower-http = { version = "0.6", features = ["cors", "trace", "compression-full", "limit", "timeout", "set-header", "fs"] }
+tower-http = { version = "0.7", features = ["cors", "trace", "compression-full", "limit", "timeout", "set-header", "fs"] }
 hyper = "1"
 futures = "0.3"
 futures-util = "0.3"
