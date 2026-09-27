@@ -48,7 +48,7 @@ public static class Win {
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
-  [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumProc cb, IntPtr l);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);
   [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr l);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
 
@@ -67,19 +67,31 @@ public static class Win {
     return found;
   }
 
+  // Depth-first walk over all descendants (FindWindowEx: no callbacks, so no delegate lifetime games).
+  static void Walk(IntPtr parent, List<IntPtr> into) {
+    for (var h = FindWindowEx(parent, IntPtr.Zero, null, null); h != IntPtr.Zero; h = FindWindowEx(parent, h, null, null)) {
+      into.Add(h);
+      Walk(h, into);
+    }
+  }
+
+  // cls empty/null = any class. PowerShell turns $null into "" for string arguments, hence the IsNullOrEmpty.
   public static IntPtr FindChild(IntPtr parent, string cls, string textContains) {
-    IntPtr found = IntPtr.Zero;
-    EnumChildWindows(parent, (h, l) => {
-      if (cls != null && Class(h) != cls) return true;
-      if (Text(h).Replace("&", "").IndexOf(textContains, StringComparison.OrdinalIgnoreCase) < 0) return true;
-      found = h; return false;
-    }, IntPtr.Zero);
-    return found;
+    var all = new List<IntPtr>();
+    Walk(parent, all);
+    foreach (var h in all) {
+      if (!string.IsNullOrEmpty(cls) && Class(h) != cls) continue;
+      if (Text(h).Replace("&", "").IndexOf(textContains ?? "", StringComparison.OrdinalIgnoreCase) < 0) continue;
+      return h;
+    }
+    return IntPtr.Zero;
   }
 
   public static List<string> Children(IntPtr parent) {
+    var all = new List<IntPtr>();
+    Walk(parent, all);
     var r = new List<string>();
-    EnumChildWindows(parent, (h, l) => { r.Add(Class(h) + " | " + Text(h)); return true; }, IntPtr.Zero);
+    foreach (var h in all) r.Add(Class(h) + " | " + Text(h));
     return r;
   }
 
@@ -231,7 +243,7 @@ if ($h -ne [IntPtr]::Zero) {
   for ($i = 0; $i -lt 40; $i++) {
     Start-Sleep -Milliseconds 150
     if ([Win]::FindChild($h, $null, 'Termoso is ready') -ne [IntPtr]::Zero) { break }
-    if ([Win]::FindChild($h, 'msctls_progress32', '') -ne [IntPtr]::Zero) { Shot $h '03-installing'; break }
+    if ([Win]::FindChild($h, 'msctls_progress32', '') -ne [IntPtr]::Zero) { Start-Sleep -Milliseconds 700; Shot $h '03-installing'; break }
   }
   $c = Wait-Child $h 'Termoso is ready' 180
   Check ($c -ne [IntPtr]::Zero) 'finish page'

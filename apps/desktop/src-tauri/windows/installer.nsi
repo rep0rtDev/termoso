@@ -266,9 +266,29 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 !macroend
 !define TermosoDarkControl "!insertmacro TERMOSO_DARK_CONTROL"
 
-; Text field: dark theme frame plus our colours through WM_CTLCOLOREDIT
+; Drop the 3D client edge (WS_EX_CLIENTEDGE / WS_BORDER); the field is a flat, lighter box on the page.
+!define /ifndef GWL_STYLE -16
+!define /ifndef GWL_EXSTYLE -20
+!define TERMOSO_NOT_WS_BORDER 0xFF7FFFFF
+!define TERMOSO_NOT_WS_EX_CLIENTEDGE 0xFFFFFDFF
+!macro TERMOSO_FLAT_EDGE HWND
+  Push $0
+  System::Call 'user32::GetWindowLong(p ${HWND}, i ${GWL_EXSTYLE}) i .r0'
+  IntOp $0 $0 & ${TERMOSO_NOT_WS_EX_CLIENTEDGE}
+  System::Call 'user32::SetWindowLong(p ${HWND}, i ${GWL_EXSTYLE}, i r0)'
+  System::Call 'user32::GetWindowLong(p ${HWND}, i ${GWL_STYLE}) i .r0'
+  IntOp $0 $0 & ${TERMOSO_NOT_WS_BORDER}
+  System::Call 'user32::SetWindowLong(p ${HWND}, i ${GWL_STYLE}, i r0)'
+  ; SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE
+  System::Call 'user32::SetWindowPos(p ${HWND}, p 0, i 0, i 0, i 0, i 0, i 0x0037)'
+  Pop $0
+!macroend
+!define TermosoFlatEdge "!insertmacro TERMOSO_FLAT_EDGE"
+
+; Text field: dark theme scroll bars, flat edge, our colours through WM_CTLCOLOREDIT
 !macro TERMOSO_EDIT HWND
   ${TermosoDarkControl} ${HWND}
+  ${TermosoFlatEdge} ${HWND}
   SetCtlColors ${HWND} "${TERMOSO_TEXT}" "${TERMOSO_BG_HIGH}"
 !macroend
 !define TermosoEdit "!insertmacro TERMOSO_EDIT"
@@ -431,6 +451,7 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
       ${If} $2 == "RichEdit20W"
       ${OrIf} $2 == "RichEdit20A"
         ${TermosoDarkControl} $1
+        ${TermosoFlatEdge} $1
         SendMessage $1 ${EM_SETBKGNDCOLOR} 0 ${TERMOSO_BG_HIGH_REF}
         ; CFM_COLOR|CFM_LINK with no effects: light text, and the auto-detected URL loses its system-blue link colour
         System::Call '*(i 92, i ${CFM_COLOR_LINK}, i 0, i 0, i 0, i ${TERMOSO_TEXT_REF}, &i1 0, &i1 0, &w32 "") p .r2'
@@ -453,6 +474,7 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
     GetDlgItem $1 $0 1016
     ${If} $1 <> 0
       ${TermosoDarkControl} $1
+      ${TermosoFlatEdge} $1
       SetCtlColors $1 "${TERMOSO_TEXT}" "${TERMOSO_BG_HIGH}"
     ${EndIf}
   FunctionEnd
