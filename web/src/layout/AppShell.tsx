@@ -165,7 +165,15 @@ export function AppShell() {
       <Box sx={{ flex: 1, overflowY: "auto", pb: 2 }}>
         <NavSection items={accountNav} onNavigate={closeDrawer} />
         {info.data?.features.teams !== false && (
-          <NavSection title="Workspace" items={workspaceNav} onNavigate={closeDrawer} />
+          <NavSection
+            title="Workspace"
+            items={
+              info.data?.features.bridges === false
+                ? workspaceNav.filter((i) => i.to !== "/bridges")
+                : workspaceNav
+            }
+            onNavigate={closeDrawer}
+          />
         )}
         {user?.is_admin && (
           <NavSection title="Administration" items={adminNav} onNavigate={closeDrawer} />

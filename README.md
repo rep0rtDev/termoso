@@ -248,6 +248,7 @@ list; the source of truth is
 | `TERMOSO_SWAGGER_UI` | `true` | serve Swagger UI at `/api/docs` and the OpenAPI document at `/api/openapi.json` |
 | `TERMOSO_DOCS` | `true` | serve the documentation at `/docs` |
 | `TERMOSO_DOCS_URL` | – | dedicated origin for the documentation (`https://docs.example.com`); `/docs` on the other origins redirects there |
+| `TERMOSO_BRIDGES` | `true` | offer API bridges (cabinet page, bridge tokens); `false` hides the page and rejects bridge tokens — the hosted cloud runs with it off |
 | `TERMOSO_START_OVER_DELAY_SECS` | `86400` | waiting period of the *Start over* account reset |
 
 Client-side settings live in the apps. Desktop honours `TERMOSO_PROFILE_DIR`

@@ -131,6 +131,9 @@ impl FromRequestParts<AppState> for Auth {
         if info.disabled {
             return Err(Error::account_disabled());
         }
+        if info.bridge_id.is_some() && !state.cfg.bridges {
+            return Err(Error::forbidden("API bridges are disabled on this server"));
+        }
         if info.bridge_id.is_some() && !bridge_allowed(&parts.method, parts.uri.path()) {
             return Err(Error::forbidden(
                 "API bridge tokens may only sync and read /bridge/me",
