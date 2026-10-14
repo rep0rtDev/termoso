@@ -1411,4 +1411,29 @@
         <item quantity="one">Import %d host</item>
         <item quantity="other">Import %d hosts</item>
     </plurals>
+||||||| parent of 03665ef (android: Serial (USB-UART) sessions — CDC-ACM/FTDI/CP210x/CH34x drivers, picker, attach intent)
+    <string name="serial_usb">Serial (USB)</string>
+    <string name="serial_usb_subtitle">A console over a USB-UART adapter (OTG)</string>
+    <string name="no_usb_adapters">No supported adapters attached</string>
+    <string name="plug_in_usb_adapter">Plug a CDC-ACM, FTDI, CP210x or CH34x adapter into the USB/OTG port.</string>
+    <string name="baud_rate">Baud rate</string>
+    <string name="data_bits">Data bits</string>
+    <string name="stop_bits">Stop bits</string>
+    <string name="parity">Parity</string>
+    <string name="flow_control">Flow control</string>
+    <string name="parity_none">None</string>
+    <string name="parity_odd">Odd</string>
+    <string name="parity_even">Even</string>
+    <string name="parity_mark">Mark</string>
+    <string name="parity_space">Space</string>
+    <string name="flow_none">None</string>
+    <string name="flow_hardware">RTS/CTS</string>
+    <string name="flow_software">XON/XOFF</string>
+    <string name="usb_adapter_not_found">The USB adapter is no longer attached</string>
+    <string name="usb_permission_denied">USB access was not granted</string>
+    <string name="usb_write_failed">USB write failed</string>
+    <string name="usb_read_failed">USB read failed</string>
+    <string name="usb_adapter_unplugged">Adapter unplugged</string>
+    <string name="serial_target">%1$d baud · %2$s</string>
+    <string name="open_console">Open console</string>
 </resources>

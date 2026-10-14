@@ -141,6 +141,19 @@ class AppContainer(context: Context) {
         _pendingShareText.value = null
     }
 
+    private val _pendingSerial = MutableStateFlow(false)
+
+    /** A USB-UART adapter was just plugged in; Connections offers to open it. */
+    val pendingSerial: StateFlow<Boolean> = _pendingSerial.asStateFlow()
+
+    fun offerSerial() {
+        _pendingSerial.value = true
+    }
+
+    fun consumeSerial() {
+        _pendingSerial.value = false
+    }
+
     /**
      * Hardware-key hook installed by the terminal while it is on screen
      * (volume-key bindings, Ctrl(+Shift) hotkeys). The activity consults it
@@ -215,7 +228,7 @@ class AppContainer(context: Context) {
             }
             VaultRepository(app)
         }.also {
-            val sessions = SessionManager(it, localHome)
+            val sessions = SessionManager(appContext, it, localHome)
             val sftp = SftpManager(appContext, it, localHome)
             val forwards = ForwardManager(it)
             val account = AccountManager(it, onSignOut = sessions::endLive)

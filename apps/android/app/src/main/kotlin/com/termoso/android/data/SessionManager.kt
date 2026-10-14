@@ -9,6 +9,17 @@ import com.termoso.core.LiveListener
 import com.termoso.core.LiveParticipantCard
 import com.termoso.core.LiveShare
 import com.termoso.core.LocalShell
+import com.termoso.core.SerialLine
+import com.termoso.core.SerialLink
+import com.termoso.core.SerialPipe
+import com.termoso.android.data.serial.UsbSerial
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbManager
+import android.os.Build
 import com.termoso.core.PromptAnswer
 import com.termoso.core.PromptRequest
 import com.termoso.core.QuickTarget
@@ -29,6 +40,14 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
+
+/** Which adapter and line settings a serial console was opened with. */
+data class SerialTarget(val adapterKey: String, val line: SerialLine)
+
+@Suppress("DEPRECATION")
+private inline fun <reified T : android.os.Parcelable> Intent.parcelable(key: String): T? =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) getParcelableExtra(key, T::class.java)
+    else getParcelableExtra(key) as? T
 
 /** A prompt the user has to answer before the connection can continue. */
 data class PendingPrompt(val id: ULong, val request: PromptRequest)
@@ -178,6 +197,8 @@ class TerminalSession(
     val isView: Boolean = false,
     /** Set for a shell running on this device. */
     val local: LocalShell? = null,
+    /** Set for a USB-UART console; a reconnect reopens the same adapter. */
+    val serial: SerialTarget? = null,
     private val live: LiveBridge = LiveBridge(),
 ) {
     val state: StateFlow<SessionState> get() = bridge.state
@@ -197,7 +218,7 @@ class TerminalSession(
     val themeOverride = MutableStateFlow<String?>(null)
 
     /** Can be reconnected by us (not a view, has a target). */
-    val reconnectable: Boolean get() = !isView && (hostId != null || quick != null || local != null)
+    val reconnectable: Boolean get() = !isView && (hostId != null || quick != null || local != null || serial != null)
 
     internal val liveListener: LiveBridge get() = live
 
@@ -214,6 +235,7 @@ class TerminalSession(
  * (and the sockets) alive while the user is in another app.
  */
 class SessionManager(
+    private val context: Context,
     private val repo: VaultRepository,
     /** `HOME` and working directory of local shells; created on first use. */
     private val localHome: File,
@@ -272,6 +294,79 @@ class SessionManager(
         val rust = repo.read { connectQuick(target, options(transport), bridge) }
         val text = if (telnet) "${target.host}:${target.port} · Telnet" else listOf(target.username, "${target.host}:${target.port}").filter { it.isNotBlank() }.joinToString("@")
         return register(TerminalSession(rust.id(), target.host, text, null, null, target, transport, null, rust, bridge))
+    }
+
+    /**
+     * A serial console over a USB-UART adapter. The adapter is opened here and
+     * its bytes are pumped into the Rust terminal; the far side is whatever is
+     * on the wire, so nothing is saved except the connection history.
+     */
+    suspend fun connectSerial(adapterKey: String, line: SerialLine): TerminalSession {
+        val adapter = UsbSerial.find(context, adapterKey)
+            ?: throw IllegalStateException(str(R.string.usb_adapter_not_found))
+        if (!UsbSerial.requestPermission(context, adapter.device)) {
+            throw IllegalStateException(str(R.string.usb_permission_denied))
+        }
+        val port = withContext(Dispatchers.IO) { UsbSerial.open(context, adapter, line) }
+        val bridge = SessionBridge()
+        lateinit var pipe: SerialPipe
+        val link = object : SerialLink {
+            override fun write(data: ByteArray) {
+                runCatching { port.write(data) }
+                    .onFailure { pipe.closed(it.message ?: str(R.string.usb_write_failed)) }
+            }
+
+            override fun release() {
+                port.close()
+            }
+        }
+        val opened = repo.read { connectSerial(adapter.key, adapter.name, line, link, options(Transport.SSH), bridge) }
+        pipe = opened.pipe
+        val reader = Thread({
+            val buffer = ByteArray(4096)
+            try {
+                while (port.isOpen) {
+                    val chunk = port.read(buffer) ?: break
+                    if (chunk.isNotEmpty()) pipe.feed(chunk)
+                }
+                pipe.closed(null)
+            } catch (e: Throwable) {
+                pipe.closed(e.message ?: str(R.string.usb_read_failed))
+            }
+        }, "usb-serial-${adapter.key}")
+        reader.isDaemon = true
+        reader.start()
+        val detach = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                val gone = intent.parcelable<UsbDevice>(UsbManager.EXTRA_DEVICE) ?: return
+                if (gone.deviceName != adapter.device.deviceName) return
+                runCatching { ctx.unregisterReceiver(this) }
+                port.close()
+                pipe.closed(str(R.string.usb_adapter_unplugged))
+            }
+        }
+        val filter = IntentFilter(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(detach, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            context.registerReceiver(detach, filter)
+        }
+        return register(
+            TerminalSession(
+                id = opened.session.id(),
+                label = adapter.name,
+                target = str(R.string.serial_target, line.baudRate.toLong(), adapter.driver.label),
+                hostId = null,
+                vaultId = null,
+                quick = null,
+                transport = Transport.SSH,
+                savedOsName = null,
+                rust = opened.session,
+                bridge = bridge,
+                serial = SerialTarget(adapter.key, line),
+            ),
+        )
     }
 
     /** A shell on this device (`/system/bin/sh` in [localHome] unless [shell] says otherwise). */
@@ -361,6 +456,7 @@ class SessionManager(
             old.hostId != null && old.vaultId != null -> connectHost(old.hostId, old.vaultId, old.transport)
             old.quick != null -> connectQuick(old.quick)
             old.local != null -> connectLocal(old.local)
+            old.serial != null -> connectSerial(old.serial.adapterKey, old.serial.line)
             else -> null
         }
     }
@@ -372,6 +468,7 @@ class SessionManager(
             old.hostId != null && old.vaultId != null -> connectHost(old.hostId, old.vaultId, old.transport)
             old.quick != null -> connectQuick(old.quick)
             old.local != null -> connectLocal(old.local)
+            old.serial != null -> connectSerial(old.serial.adapterKey, old.serial.line)
             else -> return null
         }
         _sessions.update { list -> list.filterNot { it.id == fresh.id }.map { if (it.id == id) fresh else it } }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudQueue
 import androidx.compose.material.icons.filled.ContentCopy
@@ -107,6 +108,9 @@ fun ConnectionsScreen(
     onOpenSftp: (String) -> Unit,
     onEditHost: (String) -> Unit = {},
     onAddHostFrom: (String) -> Unit = {},
+    /** A USB-UART adapter was just attached: open the serial sheet once. */
+    openSerial: Boolean = false,
+    onSerialConsumed: () -> Unit = {},
 ) {
     val revision by shell.repo.revision.collectAsStateWithLifecycle()
     val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
@@ -124,6 +128,13 @@ fun ConnectionsScreen(
     }
 
     var joinDialog by remember { mutableStateOf(false) }
+    var serialSheet by remember { mutableStateOf(false) }
+    LaunchedEffect(openSerial) {
+        if (openSerial) {
+            serialSheet = true
+            onSerialConsumed()
+        }
+    }
     var topMenu by remember { mutableStateOf(false) }
     var confirmCloseAll by remember { mutableStateOf(false) }
     val open = sessions.size + sftp.size
@@ -289,6 +300,13 @@ fun ConnectionsScreen(
                 )
                 RowDivider()
                 ChevronRow(
+                    title = stringResource(R.string.serial_usb),
+                    subtitle = stringResource(R.string.serial_usb_subtitle),
+                    leading = { IconTile(Icons.Filled.Usb) },
+                    modifier = Modifier.clickable { serialSheet = true },
+                )
+                RowDivider()
+                ChevronRow(
                     title = stringResource(R.string.files),
                     subtitle = stringResource(R.string.files_protocols_subtitle),
                     leading = { IconTile(Icons.Filled.FolderOpen) },
@@ -329,6 +347,15 @@ fun ConnectionsScreen(
         }
     }
 
+    if (serialSheet) {
+        SerialSheet(
+            onConnect = { key, line ->
+                serialSheet = false
+                scope.launch { if (shell.connectSerial(key, line) != null) onOpenTerminal() }
+            },
+            onDismiss = { serialSheet = false },
+        )
+    }
     if (joinDialog) {
         JoinLiveDialog(onDismiss = { joinDialog = false }, onJoin = ::join)
     }

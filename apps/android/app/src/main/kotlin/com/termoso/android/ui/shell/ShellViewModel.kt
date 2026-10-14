@@ -124,6 +124,12 @@ class ShellViewModel(
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
 
+    /** A serial console over a USB-UART adapter. */
+    suspend fun connectSerial(adapterKey: String, line: com.termoso.core.SerialLine): TerminalSession? =
+        runCatching { sessions.connectSerial(adapterKey, line) }
+            .onFailure { notify(it.userMessage()) }
+            .getOrNull()
+
     /** Join a `termoso://join/…` share as a viewer; the link is validated in Rust. */
     suspend fun joinLive(link: String): TerminalSession? =
         runCatching { sessions.joinLive(link.trim()) }
