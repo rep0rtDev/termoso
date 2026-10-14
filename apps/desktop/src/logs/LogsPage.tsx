@@ -35,7 +35,16 @@ import { EmptyState } from "@/components/EmptyState";
 import { goToSettings, goToSettingsWith } from "@/app/navigation";
 import { useActiveVault } from "@/app/vault";
 import { Page, PageBody, PageHeader } from "@/components/PageHeader";
-import { EntityCard, Field, IconTile, InfoBar, Loading, ToolIconButton } from "@/components/ui";
+import {
+  EntityCard,
+  Field,
+  IconTile,
+  InfoBar,
+  Loading,
+  SectionTitle,
+  ToolIconButton,
+} from "@/components/ui";
+import { ConnectionHistoryList } from "@/history/ShellHistory";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
 import { keys, useBookmarks, useLogBody, useLogs, useSettings } from "@/ipc/hooks";
@@ -680,44 +689,52 @@ export function LogsPage() {
                 description={errorMessage(logs.error)}
               />
             ) : list.length === 0 ? (
-              <EmptyState
-                icon={isTeam ? <GroupsRoundedIcon /> : <ArticleRoundedIcon />}
-                title={isTeam ? tr("No team recordings yet") : tr("No recordings")}
-                description={
-                  isTeam
-                    ? state === "team"
-                      ? tr(
-                          "Sessions to this vault's hosts are recorded on each member's device and shared here, encrypted with the vault key.",
-                        )
-                      : manager
+              <Stack spacing={3}>
+                <EmptyState
+                  icon={isTeam ? <GroupsRoundedIcon /> : <ArticleRoundedIcon />}
+                  title={isTeam ? tr("No team recordings yet") : tr("No recordings")}
+                  description={
+                    isTeam
+                      ? state === "team"
                         ? tr(
-                            "Turn on session logging for this vault and every member's sessions to its hosts will be captured here, readable by the whole vault.",
+                            "Sessions to this vault's hosts are recorded on each member's device and shared here, encrypted with the vault key.",
                           )
-                        : tr(
-                            "A vault manager can turn on session logging so the whole vault sees each other's recordings. Your own recordings appear here when recording is on in Settings.",
-                          )
-                    : tr(
-                        "Turn on session recording in Settings and every terminal session will be captured here, encrypted and stored locally.",
-                      )
-                }
-                action={
-                  isTeam && manager && state !== "team" ? (
-                    <Button
-                      variant="contained"
-                      disabled={teamToggle.isPending}
-                      onClick={() => teamToggle.mutate(true)}
-                    >
-                      {tr("Record for the team")}
-                    </Button>
-                  ) : (
-                    recordingOff && (
-                      <Button variant="contained" onClick={() => goToSettings("logs")}>
-                        {tr("Open settings")}
+                        : manager
+                          ? tr(
+                              "Turn on session logging for this vault and every member's sessions to its hosts will be captured here, readable by the whole vault.",
+                            )
+                          : tr(
+                              "A vault manager can turn on session logging so the whole vault sees each other's recordings. Your own recordings appear here when recording is on in Settings.",
+                            )
+                      : tr(
+                          "Turn on session recording in Settings and every terminal session will be captured here, encrypted and stored locally.",
+                        )
+                  }
+                  action={
+                    isTeam && manager && state !== "team" ? (
+                      <Button
+                        variant="contained"
+                        disabled={teamToggle.isPending}
+                        onClick={() => teamToggle.mutate(true)}
+                      >
+                        {tr("Record for the team")}
                       </Button>
+                    ) : (
+                      recordingOff && (
+                        <Button variant="contained" onClick={() => goToSettings("logs")}>
+                          {tr("Open settings")}
+                        </Button>
+                      )
                     )
-                  )
-                }
-              />
+                  }
+                />
+                {!isTeam && (
+                  <Box>
+                    <SectionTitle sx={{ mb: 1 }}>{tr("Connection history")}</SectionTitle>
+                    <ConnectionHistoryList query="" hideClear />
+                  </Box>
+                )}
+              </Stack>
             ) : (
               <Stack spacing={1}>
                 {list.map((l) => (

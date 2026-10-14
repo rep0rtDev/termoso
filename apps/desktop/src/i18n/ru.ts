@@ -263,6 +263,7 @@ export const ru: Readonly<Record<string, string>> = {
   Stop: "Остановить",
   "Edit {label}": "Изменить {label}",
   More: "Ещё",
+  "Connection history": "История подключений",
   "Clear buffer": "Очистить буфер",
   "Clear finished": "Убрать завершённые",
   "Clear selection": "Снять выделение",
