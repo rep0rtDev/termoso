@@ -1429,4 +1429,5 @@
     <string name="app_pin_or_pattern">PIN / графический ключ</string>
     <string name="app_pin_hint">6-значный PIN или графический ключ, который запрашивается при блокировке Termoso в дополнение к экрану блокировки. Хранится на устройстве только как хэш с солью.</string>
     <string name="set_up">Настроить</string>
+    <string name="shake_device">Встряхивание устройства</string>
 </resources>

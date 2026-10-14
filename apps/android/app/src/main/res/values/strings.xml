@@ -1403,4 +1403,5 @@
     <string name="app_pin_or_pattern">App PIN / pattern</string>
     <string name="app_pin_hint">A 6-digit PIN or a pattern asked for when Termoso is locked, in addition to the screen lock. Stored only as a salted hash on this device.</string>
     <string name="set_up">Set up</string>
+    <string name="shake_device">Shake the device</string>
 </resources>

@@ -114,6 +114,7 @@ fun TerminalInputScreen(shell: ShellViewModel, onBack: () -> Unit) {
     }
 
     var volumePick by remember { mutableStateOf<Boolean?>(null) }
+    var shakePick by remember { mutableStateOf(false) }
     var hotkeyPick by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
 
@@ -164,6 +165,12 @@ fun TerminalInputScreen(shell: ShellViewModel, onBack: () -> Unit) {
                         title = stringResource(R.string.volume_down),
                         badge = InputAction.title(InputAction.parse(settings.volumeDownAction)),
                         modifier = Modifier.clickable { volumePick = false },
+                    )
+                    RowDivider()
+                    ChevronRow(
+                        title = stringResource(R.string.shake_device),
+                        badge = InputAction.title(InputAction.parse(settings.shakeAction)),
+                        modifier = Modifier.clickable { shakePick = true },
                     )
                     Text(
                         stringResource(R.string.bound_buttons_act_only_while_a_terminal_is),
@@ -231,6 +238,16 @@ fun TerminalInputScreen(shell: ShellViewModel, onBack: () -> Unit) {
             }
             item { Spacer(Modifier.height(24.dp)) }
         }
+    }
+
+    if (shakePick) {
+        ChoiceSheet(
+            title = stringResource(R.string.shake_device),
+            options = InputAction.choices.map { it to InputAction.title(it) },
+            selected = InputAction.parse(settings.shakeAction),
+            onPick = { a -> set { it.copy(shakeAction = InputAction.encode(a)) } },
+            onDismiss = { shakePick = false },
+        )
     }
 
     volumePick?.let { up ->

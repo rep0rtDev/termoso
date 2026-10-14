@@ -152,6 +152,9 @@ pub struct MobileSettings {
     pub volume_up_action: String,
     #[serde(default)]
     pub volume_down_action: String,
+    /// What shaking the device does while a terminal is in front (same grammar; empty = off).
+    #[serde(default)]
+    pub shake_action: String,
     /// Physical-keyboard app shortcuts (session switching, close, new, zoom):
     /// `disabled` | `ctrl` | `ctrl_shift`. Ctrl+Shift by default so Ctrl+W,
     /// Ctrl+T and friends keep reaching the shell.
@@ -211,6 +214,7 @@ impl Default for MobileSettings {
             record_sessions: false,
             volume_up_action: String::new(),
             volume_down_action: String::new(),
+            shake_action: String::new(),
             hardware_hotkeys: default_hotkeys(),
             hide_panel_with_keyboard: false,
             autocomplete: true,

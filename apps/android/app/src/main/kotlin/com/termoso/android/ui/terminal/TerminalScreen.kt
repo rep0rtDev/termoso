@@ -97,6 +97,11 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import com.termoso.android.R
 import com.termoso.android.data.LiveEvent
 import com.termoso.android.data.SessionEvent
@@ -669,6 +674,31 @@ private fun ActiveSession(
             }
             else -> false
         }
+    }
+
+    // Shake gesture (Termius "shake action"): accelerometer only while a terminal is
+    // in front and the action is bound; nothing is recorded.
+    val shakeAction = remember(settings.shakeAction) { InputAction.parse(settings.shakeAction).takeIf { it != InputAction.Disabled } }
+    DisposableEffect(shakeAction) {
+        val action = shakeAction ?: return@DisposableEffect onDispose {}
+        val sm = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        val sensor = sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        if (sm == null || sensor == null) return@DisposableEffect onDispose {}
+        var last = 0L
+        val listener = object : SensorEventListener {
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            override fun onSensorChanged(event: SensorEvent) {
+                val (x, y, z) = event.values
+                val g = kotlin.math.sqrt(x * x + y * y + z * z) / SensorManager.GRAVITY_EARTH
+                val now = System.currentTimeMillis()
+                if (g > 2.4f && now - last > 1000) {
+                    last = now
+                    run(action)
+                }
+            }
+        }
+        sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
+        onDispose { sm.unregisterListener(listener) }
     }
     val currentHook by rememberUpdatedState(hook)
     DisposableEffect(onHardwareKeyHook) {
