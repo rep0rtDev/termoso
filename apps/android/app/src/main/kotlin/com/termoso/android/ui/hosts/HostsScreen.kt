@@ -235,6 +235,7 @@ fun HostsScreen(
                     DropdownMenu(expanded = fabMenu, onDismissRequest = { fabMenu = false }) {
                         DropdownMenuItem(text = { Text(stringResource(R.string.new_host)) }, onClick = { fabMenu = false; onNewHost() })
                         DropdownMenuItem(text = { Text(stringResource(R.string.discover_on_local_network)) }, onClick = { fabMenu = false; dialog = HostsDialog.Discover })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.quick_import)) }, onClick = { fabMenu = false; dialog = HostsDialog.QuickImport })
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.new_group)) },
                             onClick = { fabMenu = false; dialog = HostsDialog.NewGroup },
@@ -369,6 +370,7 @@ fun HostsScreen(
             onConfirm = { vm.renameGroup(d.group, it); dialog = null },
             onDismiss = { dialog = null },
         )
+        HostsDialog.QuickImport -> QuickImportSheet(onImport = { items -> dialog = null; vm.importHosts(items) }, onDismiss = { dialog = null })
         HostsDialog.Discover -> DiscoverSheet(onPick = { t -> dialog = null; onNewHostFrom(t) }, onDismiss = { dialog = null })
         HostsDialog.Online -> {
             var labels by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
@@ -398,6 +400,7 @@ private sealed interface HostsDialog {
     data class RenameGroup(val group: GroupItem) : HostsDialog
     data object Online : HostsDialog
     data object Discover : HostsDialog
+    data object QuickImport : HostsDialog
 }
 
 @OptIn(ExperimentalFoundationApi::class)

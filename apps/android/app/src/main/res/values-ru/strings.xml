@@ -1430,4 +1430,13 @@
     <string name="app_pin_hint">6-значный PIN или графический ключ, который запрашивается при блокировке Termoso в дополнение к экрану блокировки. Хранится на устройстве только как хэш с солью.</string>
     <string name="set_up">Настроить</string>
     <string name="shake_device">Встряхивание устройства</string>
+    <string name="quick_import">Быстрый импорт</string>
+    <string name="quick_import_hint">Вставьте ssh_config, строки user@host:port или выберите файл. Хосты создаются в этом хранилище; ничего не покидает устройство.</string>
+    <string name="choose_file">Выбрать файл</string>
+    <plurals name="import_n_hosts">
+        <item quantity="one">Импортировать %d хост</item>
+        <item quantity="few">Импортировать %d хоста</item>
+        <item quantity="many">Импортировать %d хостов</item>
+        <item quantity="other">Импортировать %d хоста</item>
+    </plurals>
 </resources>

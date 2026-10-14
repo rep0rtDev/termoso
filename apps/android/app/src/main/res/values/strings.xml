@@ -1404,4 +1404,11 @@
     <string name="app_pin_hint">A 6-digit PIN or a pattern asked for when Termoso is locked, in addition to the screen lock. Stored only as a salted hash on this device.</string>
     <string name="set_up">Set up</string>
     <string name="shake_device">Shake the device</string>
+    <string name="quick_import">Quick Import</string>
+    <string name="quick_import_hint">Paste an ssh_config, user@host:port lines, or pick a file. Hosts are created in this vault; nothing leaves the device.</string>
+    <string name="choose_file">Choose file</string>
+    <plurals name="import_n_hosts">
+        <item quantity="one">Import %d host</item>
+        <item quantity="other">Import %d hosts</item>
+    </plurals>
 </resources>
