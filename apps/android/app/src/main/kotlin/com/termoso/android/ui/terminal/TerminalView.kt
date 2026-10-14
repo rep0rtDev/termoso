@@ -3,6 +3,7 @@ package com.termoso.android.ui.terminal
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -155,6 +156,8 @@ fun TerminalView(
     Box(
         modifier
             .background(background)
+            // Breathing room like Termius: the grid never touches the screen edge.
+            .padding(start = 6.dp, end = 6.dp, top = 4.dp)
             .onSizeChanged { size = it }
             .pointerInput(session) {
                 detectTapGestures(

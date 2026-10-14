@@ -56,6 +56,9 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.termoso.android.ui.terminal.TerminalPreview
 import com.termoso.android.R
 import com.termoso.android.data.SftpConnection
 import com.termoso.android.data.TerminalSession
@@ -108,6 +111,7 @@ fun ConnectionsScreen(
     val revision by shell.repo.revision.collectAsStateWithLifecycle()
     val sessions by shell.sessions.sessions.collectAsStateWithLifecycle()
     val sftp by shell.sftp.connections.collectAsStateWithLifecycle()
+    val settings by shell.repo.settings.collectAsStateWithLifecycle()
     val vaults by shell.vaults.collectAsStateWithLifecycle()
     val selectedVaultId by shell.selectedVaultId.collectAsStateWithLifecycle()
     val vault = vaults.firstOrNull { it.id == selectedVaultId }
@@ -204,6 +208,7 @@ fun ConnectionsScreen(
                         if (i > 0) RowDivider()
                         ActiveSessionRow(
                             session = s,
+                            fontFamily = settings.terminalFontFamily,
                             siblings = siblingsOf(s, sessions),
                             sftpForHost = s.hostId?.let { id -> sftp.filter { it.hostId == id } } ?: emptyList(),
                             onOpen = { shell.sessions.setActive(s.id); onOpenTerminal() },
@@ -348,6 +353,7 @@ fun ConnectionsScreen(
 @Composable
 private fun ActiveSessionRow(
     session: TerminalSession,
+    fontFamily: String,
     siblings: List<TerminalSession>,
     sftpForHost: List<SftpConnection>,
     onOpen: () -> Unit,
@@ -372,7 +378,21 @@ private fun ActiveSessionRow(
     val remote = !session.isView && session.local == null
     val ssh = remote && (session.quick?.protocol?.equals("ssh", true) ?: true)
     val hostTotal = siblings.size + 1 + sftpForHost.size
-    ListRow(
+    Column {
+        // A glance at what is on screen, as on the Termius Connections tab.
+        if (state is SessionState.Connected) {
+            TerminalPreview(
+                session = session,
+                fontFamily = fontFamily,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 12.dp, top = 12.dp)
+                    .height(112.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClick = onOpen),
+            )
+        }
+        ListRow(
         title = session.label,
         subtitle = subtitle,
         leading = {
@@ -405,7 +425,8 @@ private fun ActiveSessionRow(
         },
         modifier = Modifier.combinedClickable(onClick = onOpen, onLongClick = { menu = true }, onLongClickLabel = stringResource(R.string.session_actions)),
         titleColor = if (state is SessionState.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-    )
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

@@ -10,6 +10,7 @@ import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -18,6 +19,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -25,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -122,9 +125,10 @@ import kotlinx.coroutines.withContext
 private const val VOLUME_SCROLL_LINES = 3
 
 /**
- * Terminal tab host: session chips on top, the active terminal in the middle,
- * the key panel above the soft keyboard. Sessions keep running when the user
- * navigates away; this screen only shows them.
+ * Terminal tab host, laid out like Termius: the terminal fills the screen, the
+ * session bar (back, one pill per session, menu, new) sits at the bottom right
+ * above the key panel and the soft keyboard. Sessions keep running when the
+ * user navigates away; this screen only shows them.
  */
 @Composable
 fun TerminalScreen(
@@ -197,16 +201,18 @@ fun TerminalScreen(
                 .statusBarsPadding()
                 .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)),
         ) {
-            SessionChips(
-                sessions = sessions,
-                active = active,
-                onBack = onBack,
-                onSelect = { shell.sessions.setActive(it) },
-                onClose = { id -> scope.launch { shell.sessions.close(id) } },
-                onLive = { liveSheet = true },
-                onMenu = { id -> shell.sessions.setActive(id); menuFor = id },
-                onNew = onNewSession,
-            )
+            val bar: @Composable () -> Unit = {
+                SessionBar(
+                    sessions = sessions,
+                    active = active,
+                    onBack = onBack,
+                    onSelect = { shell.sessions.setActive(it) },
+                    onClose = { id -> scope.launch { shell.sessions.close(id) } },
+                    onLive = { liveSheet = true },
+                    onMenu = { id -> shell.sessions.setActive(id); menuFor = id },
+                    onNew = onNewSession,
+                )
+            }
             if (active == null) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     EmptyState(
@@ -216,6 +222,7 @@ fun TerminalScreen(
                         action = { Button(onClick = onNewSession) { Text(stringResource(R.string.new_connection)) } },
                     )
                 }
+                bar()
             } else {
                 ActiveSession(
                     session = active,
@@ -231,6 +238,7 @@ fun TerminalScreen(
                     onShareConsumed = onShareConsumed,
                     onHardwareKeyHook = onHardwareKeyHook,
                     panelRequest = panelRequest,
+                    bar = bar,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
@@ -260,7 +268,7 @@ fun TerminalScreen(
 
 private val ChipShape = RoundedCornerShape(12.dp)
 
-/** Square 40dp chrome button of the session header (back, sharing, new). */
+/** Square 40dp chrome button of the session bar (back, sharing, menu, new). */
 @Composable
 private fun HeaderButton(icon: ImageVector, description: String, tint: Color? = null, onClick: () -> Unit) {
     Box(
@@ -276,12 +284,13 @@ private fun HeaderButton(icon: ImageVector, description: String, tint: Color? = 
 }
 
 /**
- * Session header: back, one pill per session (the active one tinted with the
- * accent and carrying its close button; long-press opens its menu), sharing,
- * the `⋯` session menu and the new-session button.
+ * Session bar above the key panel: back, one pill per session (the active one
+ * tinted with the accent and carrying its close button; long-press opens its
+ * menu), sharing while a terminal is live, the `⋯` session menu and the
+ * new-session button.
  */
 @Composable
-private fun SessionChips(
+private fun SessionBar(
     sessions: List<TerminalSession>,
     active: TerminalSession?,
     onBack: () -> Unit,
@@ -295,9 +304,9 @@ private fun SessionChips(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(52.dp)
             .background(MaterialTheme.colorScheme.surfaceContainer)
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -333,13 +342,15 @@ private fun SessionChips(
         }
         if (active != null) {
             val shared by active.share.collectAsStateWithLifecycle()
-            val live = active.isView || shared != null
-            HeaderButton(
-                Icons.Filled.Groups,
-                if (active.isView) stringResource(R.string.shared_terminal) else stringResource(R.string.terminal_sharing),
-                tint = if (live) MaterialTheme.colorScheme.primary else null,
-                onClick = onLive,
-            )
+            // Sharing has its own button only while it is on; otherwise it lives in the menu.
+            if (active.isView || shared != null) {
+                HeaderButton(
+                    Icons.Filled.Groups,
+                    if (active.isView) stringResource(R.string.shared_terminal) else stringResource(R.string.terminal_sharing),
+                    tint = MaterialTheme.colorScheme.primary,
+                    onClick = onLive,
+                )
+            }
             HeaderButton(Icons.Filled.MoreVert, stringResource(R.string.session_actions), onClick = { onMenu(active.id) })
         }
         HeaderButton(Icons.Filled.Add, stringResource(R.string.new_session), tint = MaterialTheme.colorScheme.primary, onClick = onNew)
@@ -427,6 +438,8 @@ private fun ActiveSession(
     onHardwareKeyHook: (((KeyEvent) -> Boolean)?) -> Unit,
     /** Incremented by the caller to open the History & themes sheet. */
     panelRequest: Int = 0,
+    /** The session bar, drawn between the terminal and the key panel. */
+    bar: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -519,12 +532,16 @@ private fun ActiveSession(
         zoomDelta = (zoomDelta + delta).coerceIn(6 - fontSize, 40 - fontSize)
     }
 
+    fun hideIme() {
+        context.getSystemService<InputMethodManager>()?.hideSoftInputFromWindow(view.windowToken, 0)
+        imeShown = false
+    }
+
     fun toggleIme() {
         val imm = context.getSystemService<InputMethodManager>()
         val input = controller.inputView
         if (imeShown) {
-            imm?.hideSoftInputFromWindow(view.windowToken, 0)
-            imeShown = false
+            hideIme()
         } else if (input != null) {
             input.requestFocus()
             imm?.showSoftInput(input, 0)
@@ -659,6 +676,17 @@ private fun ActiveSession(
         onDispose { onHardwareKeyHook(null) }
     }
 
+    // Like Termius: the first Back only puts the keyboard (or the key grid) away
+    // so the terminal fills the screen; the next one leaves to Connections.
+    @OptIn(ExperimentalLayoutApi::class)
+    val imeVisible = WindowInsets.isImeVisible
+    BackHandler(enabled = imeVisible || panelExpanded) {
+        when {
+            panelExpanded -> panelExpanded = false
+            else -> hideIme()
+        }
+    }
+
     Box(modifier) {
         Column(Modifier.fillMaxSize()) {
             if (session.isView) ViewBanner(canWrite)
@@ -746,6 +774,7 @@ private fun ActiveSession(
                     onClose = { scope.launch { shell.sessions.close(session.id) } },
                 )
             }
+            bar()
             AutocompleteStrip(
                 items = suggestions,
                 onPick = { item ->
