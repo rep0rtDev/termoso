@@ -80,6 +80,16 @@ fun parseQuickImport(text: String): List<ImportedHost> {
 fun QuickImportSheet(onImport: (List<ImportedHost>) -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
     var text by remember { mutableStateOf("") }
+    var scanning by remember { mutableStateOf(false) }
+    if (scanning) {
+        QrScanDialog(
+            onResult = { code ->
+                text = if (text.isBlank()) code else text + "\n" + code
+                scanning = false
+            },
+            onDismiss = { scanning = false },
+        )
+    }
     val parsed = remember(text) { parseQuickImport(text) }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
@@ -101,6 +111,7 @@ fun QuickImportSheet(onImport: (List<ImportedHost>) -> Unit, onDismiss: () -> Un
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { pick.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.choose_file)) }
+                OutlinedButton(onClick = { scanning = true }) { Text(stringResource(R.string.scan_qr)) }
                 Spacer(Modifier.weight(1f))
                 Button(enabled = parsed.isNotEmpty(), onClick = { onImport(parsed) }) {
                     Text(pluralStringResource(R.plurals.import_n_hosts, parsed.size, parsed.size))

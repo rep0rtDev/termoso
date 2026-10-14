@@ -1436,4 +1436,8 @@
     <string name="usb_adapter_unplugged">Adapter unplugged</string>
     <string name="serial_target">%1$d baud · %2$s</string>
     <string name="open_console">Open console</string>
+    <string name="scan_qr">Scan QR</string>
+    <string name="qr_scan_title">Scan a QR code</string>
+    <string name="qr_scan_hint">Point the camera at a QR code with an ssh_config, user@host:port or ssh:// link. Nothing leaves the device.</string>
+    <string name="camera_permission_needed">Camera access is needed to scan a code.</string>
 </resources>
