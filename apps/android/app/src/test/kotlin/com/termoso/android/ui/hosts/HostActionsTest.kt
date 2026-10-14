@@ -43,6 +43,11 @@ class HostActionsTest : ResourceTest() {
         telnet = null,
         webdav = null,
         filesProvider = false,
+        hostChainId = null,
+        proxyId = null,
+        colorScheme = null,
+        charset = null,
+        backspace = null,
     )
 
     @Test
