@@ -1464,4 +1464,8 @@
     <string name="usb_adapter_unplugged">Адаптер отключён</string>
     <string name="serial_target">%1$d бод · %2$s</string>
     <string name="open_console">Открыть консоль</string>
+    <string name="scan_qr">Сканировать QR</string>
+    <string name="qr_scan_title">Сканируйте QR-код</string>
+    <string name="qr_scan_hint">Наведите камеру на QR-код с ssh_config, user@host:port или ссылкой ssh://. Ничего не покидает устройство.</string>
+    <string name="camera_permission_needed">Для сканирования нужен доступ к камере.</string>
 </resources>
