@@ -1277,6 +1277,8 @@ mod tests {
         let manual = crate::hosts::save(
             &s,
             &crate::hosts::HostForm {
+                charset: None,
+                backspace: None,
                 id: None,
                 vault_id: vault,
                 label: "manual".into(),

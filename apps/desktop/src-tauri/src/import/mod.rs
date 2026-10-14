@@ -845,6 +845,8 @@ pub fn apply(
         let telnet = h.protocol == "telnet";
         let password = h.password.clone().filter(|p| !p.is_empty());
         let form = HostForm {
+            charset: None,
+            backspace: None,
             id: None,
             vault_id,
             label: h.label.clone(),
@@ -1231,6 +1233,8 @@ fn build_chain(
             Some(id) => id,
             None => {
                 let form = HostForm {
+                    charset: None,
+                    backspace: None,
                     id: None,
                     vault_id,
                     label: host.clone(),
