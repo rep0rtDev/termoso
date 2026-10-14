@@ -246,6 +246,13 @@ fun SettingsScreen(
                 )
                 RowDivider()
                 SwitchRow(
+                    title = stringResource(R.string.import_shell_history),
+                    subtitle = stringResource(R.string.show_the_host_s_own_command_history_in),
+                    checked = settings.importShellHistory,
+                    onCheckedChange = { v -> set { it.copy(importShellHistory = v) } },
+                )
+                RowDivider()
+                SwitchRow(
                     title = stringResource(R.string.post_quantum_key_exchange),
                     subtitle = stringResource(R.string.prefer_ml_kem_hybrid_kex_when_the_server),
                     checked = settings.postQuantumKex,

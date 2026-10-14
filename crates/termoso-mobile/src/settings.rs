@@ -120,6 +120,9 @@ pub struct MobileSettings {
     pub post_quantum_kex: bool,
     #[serde(default = "default_true")]
     pub detect_os: bool,
+    /// Read the remote shell's history files after connecting (opt-in; nothing is stored).
+    #[serde(default)]
+    pub import_shell_history: bool,
     /// Ask for the device credential (biometric / PIN) when the app returns
     /// to the foreground.
     pub lock_on_background: bool,
@@ -200,6 +203,7 @@ impl Default for MobileSettings {
             keep_alive_seconds: default_keepalive(),
             post_quantum_kex: true,
             detect_os: true,
+            import_shell_history: false,
             lock_on_background: false,
             lock_after_seconds: 0,
             sync_credentials: true,

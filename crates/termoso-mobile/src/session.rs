@@ -1042,6 +1042,45 @@ impl SshSession {
     /// use remotely; it is sanitised and made unique. Returns the remote
     /// path. Blocks the calling thread while uploading; `listener` gets
     /// progress.
+    /// Commands from the remote shell's history files (bash, zsh, fish), most
+    /// recent last, de-duplicated. Opt-in from Settings; nothing is stored —
+    /// the panel shows them for the life of the session. Empty for local,
+    /// telnet and viewer sessions.
+    pub fn import_shell_history(&self, limit: u32) -> Result<Vec<String>> {
+        let client = match self.inner.ssh.lock().expect("ssh poisoned").clone() {
+            Some(c) => c,
+            None => return Ok(Vec::new()),
+        };
+        let n = limit.clamp(1, 5000);
+        let cmd = format!(
+            "cat ~/.bash_history ~/.zsh_history ~/.local/share/fish/fish_history 2>/dev/null | tail -n {n}"
+        );
+        let out = self
+            .runtime
+            .block_on(async move { client.exec(&cmd, None).await })?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mut seen = std::collections::HashSet::new();
+        let mut lines: Vec<String> = Vec::new();
+        for raw in text.lines().rev() {
+            let line = raw.trim();
+            // zsh extended history: ": 1700000000:0;command"; fish: "- cmd: command".
+            let line = line
+                .strip_prefix(": ")
+                .and_then(|l| l.split_once(';').map(|(_, c)| c))
+                .or_else(|| line.strip_prefix("- cmd: "))
+                .unwrap_or(line)
+                .trim();
+            if line.is_empty() || line.starts_with('#') || line.starts_with("  when:") {
+                continue;
+            }
+            if seen.insert(line.to_string()) {
+                lines.push(line.to_string());
+            }
+        }
+        lines.reverse();
+        Ok(lines)
+    }
+
     pub fn send_file(
         &self,
         local_path: String,

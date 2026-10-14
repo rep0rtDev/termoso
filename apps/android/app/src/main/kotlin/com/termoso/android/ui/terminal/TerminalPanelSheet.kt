@@ -47,6 +47,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.termoso.core.SessionState
 import com.termoso.android.R
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.userMessage
@@ -107,11 +110,21 @@ private fun HistoryTab(shell: ShellViewModel, session: TerminalSession, controll
     var menuFor by remember { mutableStateOf<CommandHistoryItem?>(null) }
     var saveAs by remember { mutableStateOf<CommandHistoryItem?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
+    // Termius "Import shell history": the host's own history files, read over the connection (opt-in).
+    val settings by shell.repo.settings.collectAsStateWithLifecycle()
+    val sessionState by session.state.collectAsStateWithLifecycle()
+    val importOn = settings.importShellHistory && !session.isView && session.local == null && sessionState is SessionState.Connected
+    var onHost by rememberSaveable { mutableStateOf(false) }
+    var remote by remember(session) { mutableStateOf<List<String>?>(null) }
 
     LaunchedEffect(revision) {
         runCatching { shell.repo.read { commandHistory(500u) } }
             .onSuccess { items = it }
             .onFailure { items = emptyList(); shell.notify(it.userMessage()) }
+    }
+    LaunchedEffect(session, importOn) {
+        if (!importOn) return@LaunchedEffect
+        remote = runCatching { withContext(Dispatchers.IO) { session.rust.importShellHistory(500u) } }.getOrDefault(emptyList())
     }
 
     val shown = items.orEmpty().filter { h ->
@@ -123,10 +136,16 @@ private fun HistoryTab(shell: ShellViewModel, session: TerminalSession, controll
 
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (session.hostId != null) {
-                FilterChip(selected = thisHost, onClick = { thisHost = true }, label = { Text(stringResource(R.string.this_host)) })
-                Spacer(Modifier.width(8.dp))
-                FilterChip(selected = !thisHost, onClick = { thisHost = false }, label = { Text(stringResource(R.string.all_hosts)) })
+            if (session.hostId != null || importOn) {
+                if (session.hostId != null) {
+                    FilterChip(selected = thisHost && !onHost, onClick = { thisHost = true; onHost = false }, label = { Text(stringResource(R.string.this_host)) })
+                    Spacer(Modifier.width(8.dp))
+                }
+                FilterChip(selected = !thisHost && !onHost, onClick = { thisHost = false; onHost = false }, label = { Text(stringResource(R.string.all_hosts)) })
+                if (importOn) {
+                    Spacer(Modifier.width(8.dp))
+                    FilterChip(selected = onHost, onClick = { onHost = true }, label = { Text(stringResource(R.string.on_host)) })
+                }
             } else {
                 SectionLabel(stringResource(R.string.commands_typed_in_your_terminals))
             }
@@ -135,7 +154,31 @@ private fun HistoryTab(shell: ShellViewModel, session: TerminalSession, controll
         }
         if (items.orEmpty().size > 8) FormField(query, { query = it }, stringResource(R.string.search))
     }
+    val remoteShown = remote.orEmpty().filter { query.isBlank() || it.contains(query, ignoreCase = true) }
     when {
+        onHost && importOn -> LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
+            if (remote == null) item { Spacer(Modifier.height(120.dp)) }
+            if (remote != null && remoteShown.isEmpty()) {
+                item { EmptyState(title = stringResource(R.string.no_commands_yet), hint = stringResource(R.string.on_host), icon = Icons.Filled.Terminal, modifier = Modifier.padding(16.dp)) }
+            }
+            items(remoteShown.asReversed(), key = { it }) { cmd ->
+                ListRow(
+                    title = cmd,
+                    leading = { IconTile(Icons.Filled.Terminal) },
+                    modifier = Modifier.combinedClickable(
+                        onClick = {
+                            if (!canType) {
+                                shell.notify(str(R.string.you_can_only_watch_this_terminal))
+                                return@combinedClickable
+                            }
+                            controller.runCommand(cmd)
+                            onClose()
+                        },
+                        onLongClick = { if (canType) { controller.paste(cmd); onClose() } },
+                    ),
+                )
+            }
+        }
         items == null -> Spacer(Modifier.height(120.dp))
         shown.isEmpty() -> {
             EmptyState(

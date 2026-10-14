@@ -219,6 +219,7 @@ fun SftpScreen(
                     onClose = vm::clearSelection,
                     onSelectAll = vm::selectAll,
                     onDownload = { vm.download(state.selectedEntries) },
+                    onCopyTo = { state.selectedEntries.singleOrNull()?.let { dialog = SftpDialog.CopyTo(it) } },
                     onRename = { dialog = SftpDialog.Rename(state.selectedEntries.first()) },
                     onEdit = { onEdit(conn, state.selectedEntries.first().path); vm.clearSelection() },
                     onOpenWith = { vm.openWith(state.selectedEntries.first()) },
@@ -379,6 +380,13 @@ fun SftpScreen(
             onConfirm = { vm.rename(d.entry, it); vm.clearSelection(); dialog = null },
             onDismiss = { dialog = null },
         )
+        is SftpDialog.CopyTo -> NameDialog(
+            title = stringResource(R.string.copy_to),
+            initial = d.entry.path,
+            confirm = stringResource(R.string.copy_to),
+            onConfirm = { vm.copyTo(d.entry, it); vm.clearSelection(); dialog = null },
+            onDismiss = { dialog = null },
+        )
         is SftpDialog.Remove -> ConfirmDialog(
             title = if (d.entries.size == 1) stringResource(R.string.remove, d.entries.first().name) else stringResource(R.string.remove_items, d.entries.size),
             text = if (d.entries.any { it.isDir }) {
@@ -401,6 +409,7 @@ fun SftpScreen(
 private sealed interface SftpDialog {
     data object NewFolder : SftpDialog
     data class Rename(val entry: SftpEntry) : SftpDialog
+    data class CopyTo(val entry: SftpEntry) : SftpDialog
     data class Remove(val entries: List<SftpEntry>) : SftpDialog
     data class Permissions(val entry: SftpEntry) : SftpDialog
 }
@@ -530,6 +539,7 @@ private fun SelectionBar(
     onSelectAll: () -> Unit,
     onDownload: () -> Unit,
     onRename: () -> Unit,
+    onCopyTo: () -> Unit,
     onEdit: () -> Unit,
     onOpenWith: () -> Unit,
     onPermissions: () -> Unit,
@@ -559,6 +569,11 @@ private fun SelectionBar(
                             text = { Text(stringResource(R.string.rename)) },
                             leadingIcon = { Icon(Icons.Filled.DriveFileRenameOutline, null) },
                             onClick = { menu = false; onRename() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.copy_to)) },
+                            leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
+                            onClick = { menu = false; onCopyTo() },
                         )
                         if (single != null && !single.isDir) {
                             if (canEditInTerminal) {
