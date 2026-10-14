@@ -1387,4 +1387,5 @@
     <string name="import_shell_history">Import shell history</string>
     <string name="show_the_host_s_own_command_history_in">Show the host\'s own command history (bash, zsh, fish) in the History panel. Read over the connection, never stored.</string>
     <string name="on_host">On this host</string>
+    <string name="paste_shared_text">Paste shared text into the terminal?</string>
 </resources>

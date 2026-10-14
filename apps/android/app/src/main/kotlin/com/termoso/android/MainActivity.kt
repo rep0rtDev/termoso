@@ -78,7 +78,10 @@ class MainActivity : FragmentActivity() {
     private fun handleLink(intent: Intent?, container: AppContainer) {
         when (intent?.action) {
             Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE -> {
-                container.offerShare(sharedUris(intent))
+                val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+                val uris = sharedUris(intent)
+                // Text shared from another app is typed into the terminal, like Termius' "share to terminal".
+                if (uris.isEmpty() && !text.isNullOrEmpty()) container.offerShareText(text) else container.offerShare(uris)
                 // Consumed: a rotation must not re-offer the same files.
                 intent.action = Intent.ACTION_MAIN
                 return

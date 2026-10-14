@@ -128,6 +128,18 @@ class AppContainer(context: Context) {
         _pendingShare.value = null
     }
 
+    /** Plain text shared into the app (`ACTION_SEND` text/plain), offered to the active terminal. */
+    private val _pendingShareText = MutableStateFlow<String?>(null)
+    val pendingShareText: StateFlow<String?> = _pendingShareText.asStateFlow()
+
+    fun offerShareText(text: String) {
+        if (text.isNotEmpty()) _pendingShareText.value = text
+    }
+
+    fun consumeShareText() {
+        _pendingShareText.value = null
+    }
+
     /**
      * Hardware-key hook installed by the terminal while it is on screen
      * (volume-key bindings, Ctrl(+Shift) hotkeys). The activity consults it

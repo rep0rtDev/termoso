@@ -1413,4 +1413,5 @@
     <string name="import_shell_history">Импорт истории shell</string>
     <string name="show_the_host_s_own_command_history_in">Показывать историю команд самого хоста (bash, zsh, fish) в панели History. Читается по соединению, не сохраняется.</string>
     <string name="on_host">На этом хосте</string>
+    <string name="paste_shared_text">Вставить полученный текст в терминал?</string>
 </resources>
