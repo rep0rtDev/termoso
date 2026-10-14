@@ -29,7 +29,7 @@ import { goToSection, goToSettings, goToSftp, isSftpTab, useNav, type Section } 
 import { tr, msg } from "@/i18n";
 
 interface Item {
-  id: Section | "sftp";
+  id: Section | "sftp" | "settings";
   label: string;
   icon: ReactNode;
 }
@@ -54,6 +54,7 @@ const items: Item[] = [
 
 export function Sidebar() {
   const section = useNav((s) => s.section);
+  const settingsOpen = useNav((s) => s.settingsOpen);
   const sftp = useTerminal((s) => isSftpTab(s.activeTabId));
   const { data: info } = useAppInfo();
   const { data: account } = useAccount();
@@ -77,7 +78,13 @@ export function Sidebar() {
             key={item.id}
             item={item}
             selected={item.id === "sftp" ? sftp : !sftp && section === item.id}
-            onClick={() => (item.id === "sftp" ? goToSftp() : goToSection(item.id))}
+            onClick={() =>
+              item.id === "sftp"
+                ? goToSftp()
+                : item.id === "settings"
+                  ? goToSettings()
+                  : goToSection(item.id)
+            }
           />
         ))}
       </List>
@@ -88,7 +95,7 @@ export function Sidebar() {
             label: tr("Settings"),
             icon: <SettingsRoundedIcon fontSize="small" />,
           }}
-          selected={!sftp && section === "settings"}
+          selected={settingsOpen}
           onClick={() => goToSettings()}
         />
         <Tooltip title={footerTip(account)} placement="right">

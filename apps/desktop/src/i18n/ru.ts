@@ -1548,6 +1548,8 @@ export const ru: Readonly<Record<string, string>> = {
     "Сохранённые сессии из реестра Windows или экспорта .reg: SSH/Telnet, прокси, туннели, файлы ключей.",
   "Saved to {path}": "Сохранено в {path}",
   "Saving…": "Сохранение…",
+  Saved: "Сохранено",
+  "Close settings": "Закрыть настройки",
   "Scan again": "Сканировать снова",
   "Scan ~/.ssh": "Сканировать ~/.ssh",
   "Scanning ~/.ssh…": "Сканирование ~/.ssh…",
