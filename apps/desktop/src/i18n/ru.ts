@@ -261,6 +261,7 @@ export const ru: Readonly<Record<string, string>> = {
     "Для проброса портов нужен сохранённый хост — эта сессия открыта без него.",
   Start: "Запустить",
   Stop: "Остановить",
+  "Edit {label}": "Изменить {label}",
   "Clear buffer": "Очистить буфер",
   "Clear finished": "Убрать завершённые",
   "Clear selection": "Снять выделение",

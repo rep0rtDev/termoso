@@ -1,7 +1,7 @@
 import { Box, IconButton, Tooltip } from "@mui/material";
 import FolderRoundedIcon from "@mui/icons-material/FolderRounded";
 import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
-import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
 import CloudSyncOutlinedIcon from "@mui/icons-material/CloudSyncOutlined";
 import type { MouseEvent, ReactNode } from "react";
@@ -208,15 +208,15 @@ export function HostGrid(p: HostCollectionProps) {
                   }
                   actions={
                     <>
-                      <Tooltip title={tr("Connect")}>
+                      <Tooltip title={tr("Edit")}>
                         <IconButton
-                          aria-label={tr("Connect to {label}", { label: h.label })}
+                          aria-label={tr("Edit {label}", { label: h.label })}
                           onClick={(e) => {
                             e.stopPropagation();
-                            p.onConnectHost(h);
+                            p.onOpenHost(h, e);
                           }}
                         >
-                          <PlayArrowRoundedIcon fontSize="small" />
+                          <EditOutlinedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <IconButton

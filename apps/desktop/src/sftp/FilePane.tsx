@@ -72,6 +72,7 @@ import {
   sortEntries,
   type Sort,
   type SortKey,
+  formatMode,
 } from "./format";
 import { fsQueryKey } from "./store";
 import { tr, trn, msg } from "@/i18n";
@@ -834,6 +835,13 @@ export function FilePane(props: Props) {
                         borderColor: "border.light",
                         ...(over && { bgcolor: "action.selected" }),
                       },
+                      // Termius: a selected row is a solid accent bar with light text.
+                      "&.Mui-selected td, &.Mui-selected:hover td": {
+                        bgcolor: "primary.main",
+                        color: "primary.contrastText",
+                        borderColor: "primary.main",
+                        "& .MuiTypography-root": { color: "inherit" },
+                      },
                       ...(over && {
                         "& td:first-of-type": { boxShadow: "inset 2px 0 0", color: "primary.main" },
                       }),
@@ -842,9 +850,26 @@ export function FilePane(props: Props) {
                     <TableCell sx={{ overflow: "hidden" }}>
                       <Stack direction="row" spacing={1} sx={{ alignItems: "center", minWidth: 0 }}>
                         <EntryIcon entry={e} />
-                        <Typography variant="body2" noWrap sx={{ fontSize: 13 }}>
-                          {e.name}
-                        </Typography>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="body2" noWrap sx={{ fontSize: 13, lineHeight: 1.3 }}>
+                            {e.name}
+                          </Typography>
+                          {e.mode !== null && (
+                            <Typography
+                              variant="caption"
+                              noWrap
+                              sx={{
+                                display: "block",
+                                lineHeight: 1.2,
+                                fontSize: 11,
+                                color: "text.disabled",
+                                fontFamily: monoFontFamily,
+                              }}
+                            >
+                              {formatMode(e.mode, e.kind)}
+                            </Typography>
+                          )}
+                        </Box>
                         {inEdit && (
                           <Tooltip
                             title={tr("Open in a local application — saves are uploaded back")}

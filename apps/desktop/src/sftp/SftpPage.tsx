@@ -5,9 +5,6 @@ import {
   Button,
   Chip,
   CircularProgress,
-  Dialog,
-  DialogContent,
-  DialogTitle,
   InputAdornment,
   List,
   ListItemButton,
@@ -17,7 +14,6 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
@@ -64,7 +60,6 @@ export function SftpPage() {
   const conns = useSftp((s) => s.conns);
   const activeId = useSftp((s) => s.activeId);
   const active = activeId ? conns[activeId] : undefined;
-  const [picker, setPicker] = useState(false);
   const [localPath, setLocalPath] = useState<string | null>(null);
   const [remotePath, setRemotePath] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<ConflictPrompt | null>(null);
@@ -250,9 +245,7 @@ export function SftpPage() {
           )
         }
       >
-        <Button variant="tonal" startIcon={<AddRoundedIcon />} onClick={() => setPicker(true)}>
-          {tr("Connect")}
-        </Button>
+        {null}
       </Toolbar>
 
       <Stack direction="row" sx={{ flex: 1, minHeight: 0 }}>
@@ -293,7 +286,6 @@ export function SftpPage() {
               status={active?.status ?? null}
               webdav={active?.target.kind === "webdav"}
               message={active?.message ?? null}
-              onConnect={() => setPicker(true)}
               onRetry={active ? () => reconnectSftp(active.id) : undefined}
             />
           )}
@@ -301,7 +293,6 @@ export function SftpPage() {
       </Stack>
 
       <TransfersPanel />
-      <ConnectPicker open={picker} onClose={() => setPicker(false)} />
       <ConflictDialog prompt={prompt} />
       <OpenWithDialog
         key={openWith ? `${openWith.side}:${openWith.entry.path}` : ""}
@@ -338,19 +329,17 @@ function RemotePlaceholder({
   status,
   webdav,
   message,
-  onConnect,
   onRetry,
 }: {
   status: "connecting" | "open" | "error" | "closed" | null;
   webdav?: boolean;
   message: string | null;
-  onConnect: () => void;
   onRetry?: () => void;
 }) {
   return (
     <Stack
       spacing={1.5}
-      sx={{ alignItems: "center", justifyContent: "center", height: "100%", p: 3 }}
+      sx={{ alignItems: "center", justifyContent: "flex-start", height: "100%", p: 3, pt: 6 }}
     >
       {status === "connecting" ? (
         <>
@@ -372,23 +361,22 @@ function RemotePlaceholder({
             {message ??
               tr("Pick a host, a WebDAV share or an open SSH session to browse its files.")}
           </Typography>
-          <Stack direction="row" spacing={1}>
-            {onRetry && (status === "error" || status === "closed") && (
-              <Button startIcon={<ReplayRoundedIcon />} onClick={onRetry}>
-                {tr("Retry")}
-              </Button>
-            )}
-            <Button variant="contained" onClick={onConnect}>
-              {tr("Connect")}
+          {onRetry && (status === "error" || status === "closed") && (
+            <Button startIcon={<ReplayRoundedIcon />} onClick={onRetry}>
+              {tr("Retry")}
             </Button>
-          </Stack>
+          )}
+          <Box sx={{ width: "100%", maxWidth: 420, minHeight: 0, display: "flex" }}>
+            <HostPickerList />
+          </Box>
         </>
       )}
     </Stack>
   );
 }
 
-function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }) {
+/** Termius-style "Select host" list rendered inside the empty remote pane. */
+function HostPickerList() {
   const vault = useActiveVault();
   const hosts = useHosts(vault.data?.id ?? null);
   const panes = useTerminal((s) => s.panes);
@@ -408,69 +396,73 @@ function ConnectPicker({ open, onClose }: { open: boolean; onClose: () => void }
   const pickHost = (h: HostCard, kind: "host" | "webdav") => {
     if (kind === "host") openSftpForHost(h.id, h.label, h.vaultId);
     else openWebDavForHost(h.id, h.label, h.vaultId);
-    onClose();
   };
   const pickSession = (id: Uuid, title: string, hostId: Uuid | null) => {
     openSftpForSession(id, title, hostId);
-    onClose();
   };
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>{tr("Open files")}</DialogTitle>
-      <DialogContent sx={{ p: 0 }}>
-        <Box sx={{ px: 3, pb: 1 }}>
-          <TextField
-            autoFocus
-            placeholder={tr("Search hosts")}
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchRoundedIcon fontSize="small" />
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-        </Box>
-        <List dense sx={{ maxHeight: 360, overflow: "auto" }}>
-          {sessions.length > 0 && !q && (
-            <>
-              <ListSubheader disableSticky>{tr("Open sessions")}</ListSubheader>
-              {sessions.map((p) => (
-                <ListItemButton key={p.id} onClick={() => pickSession(p.id, p.title, p.hostId)}>
-                  <ListItemText primary={p.title} secondary={p.subtitle} />
-                </ListItemButton>
-              ))}
-            </>
-          )}
-          {sshHosts.length > 0 && <ListSubheader disableSticky>SFTP</ListSubheader>}
-          {sshHosts.map((h) => (
-            <ListItemButton key={h.id} onClick={() => pickHost(h, "host")}>
-              <Box sx={{ mr: 1.5 }}>
-                <HostAvatar host={h} size={28} />
-              </Box>
-              <ListItemText primary={h.label} secondary={`${h.username}@${h.address}:${h.port}`} />
-            </ListItemButton>
-          ))}
-          {davHosts.length > 0 && <ListSubheader disableSticky>{tr("WebDAV")}</ListSubheader>}
-          {davHosts.map((h) => (
-            <ListItemButton key={`dav-${h.id}`} onClick={() => pickHost(h, "webdav")}>
-              <Box sx={{ mr: 1.5 }}>
-                <HostAvatar host={h} size={28} />
-              </Box>
-              <ListItemText primary={h.label} secondary={h.webdavUrl ?? h.address} />
-            </ListItemButton>
-          ))}
-          {sshHosts.length === 0 && davHosts.length === 0 && (
-            <Typography variant="body2" color="text.disabled" sx={{ px: 3, py: 2 }}>
-              {tr("No SSH or WebDAV hosts saved yet.")}
-            </Typography>
-          )}
-        </List>
-      </DialogContent>
-    </Dialog>
+    <Stack
+      sx={{
+        flex: 1,
+        minHeight: 0,
+        borderRadius: 2,
+        bgcolor: "surface.high",
+        overflow: "hidden",
+      }}
+    >
+      <Box sx={{ p: 1.5, pb: 0.5 }}>
+        <TextField
+          size="small"
+          fullWidth
+          placeholder={tr("Search hosts")}
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchRoundedIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+      </Box>
+      <List dense sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+        {sessions.length > 0 && !q && (
+          <>
+            <ListSubheader disableSticky>{tr("Open sessions")}</ListSubheader>
+            {sessions.map((p) => (
+              <ListItemButton key={p.id} onClick={() => pickSession(p.id, p.title, p.hostId)}>
+                <ListItemText primary={p.title} secondary={p.subtitle} />
+              </ListItemButton>
+            ))}
+          </>
+        )}
+        {sshHosts.length > 0 && <ListSubheader disableSticky>SFTP</ListSubheader>}
+        {sshHosts.map((h) => (
+          <ListItemButton key={h.id} onClick={() => pickHost(h, "host")}>
+            <Box sx={{ mr: 1.5 }}>
+              <HostAvatar host={h} size={28} />
+            </Box>
+            <ListItemText primary={h.label} secondary={`${h.username}@${h.address}:${h.port}`} />
+          </ListItemButton>
+        ))}
+        {davHosts.length > 0 && <ListSubheader disableSticky>{tr("WebDAV")}</ListSubheader>}
+        {davHosts.map((h) => (
+          <ListItemButton key={`dav-${h.id}`} onClick={() => pickHost(h, "webdav")}>
+            <Box sx={{ mr: 1.5 }}>
+              <HostAvatar host={h} size={28} />
+            </Box>
+            <ListItemText primary={h.label} secondary={h.webdavUrl ?? h.address} />
+          </ListItemButton>
+        ))}
+        {sshHosts.length === 0 && davHosts.length === 0 && (
+          <Typography variant="body2" color="text.disabled" sx={{ px: 3, py: 2 }}>
+            {tr("No SSH or WebDAV hosts saved yet.")}
+          </Typography>
+        )}
+      </List>
+    </Stack>
   );
 }
