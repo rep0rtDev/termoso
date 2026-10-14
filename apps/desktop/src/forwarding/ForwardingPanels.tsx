@@ -340,7 +340,7 @@ export function HostPicker({
 
 /* ------------------------------------------------------------- editor */
 
-function RuntimeLine({ rule }: { rule: PfRuleCard }) {
+export function RuntimeLine({ rule }: { rule: PfRuleCard }) {
   const rt = rule.runtime;
   if (rt.state === "stopped") {
     return rt.lastError ? (

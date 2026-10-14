@@ -30,6 +30,8 @@ import HistoryRoundedIcon from "@mui/icons-material/HistoryRounded";
 import PaletteRoundedIcon from "@mui/icons-material/PaletteRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import RocketLaunchOutlinedIcon from "@mui/icons-material/RocketLaunchOutlined";
+import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
+import StopRoundedIcon from "@mui/icons-material/StopRounded";
 import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import RemoveRoundedIcon from "@mui/icons-material/RemoveRounded";
@@ -38,14 +40,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { SnippetCard, Uuid } from "@/ipc/types";
 import { errorMessage, isPostQuantumKex } from "@/ipc/types";
 import * as ipc from "@/ipc/commands";
-import { useHosts, useSaveSettings, useSettings, useSnippets } from "@/ipc/hooks";
+import { keys, useHosts, usePfRules, useSaveSettings, useSettings, useSnippets } from "@/ipc/hooks";
 import { useActiveVault } from "@/app/vault";
-import { goToSection, requestCreate } from "@/app/navigation";
+import { goToSection, requestCreate, requestForwardingRule } from "@/app/navigation";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
 import { useSnackbar } from "@/components/Snackbar";
 import { ActionMenu, Loading, Mono, SearchField, type MenuAction } from "@/components/ui";
 import { ThemeCard } from "@/settings/ThemeGallery";
+import { RuleTile, RuntimeLine } from "@/forwarding/ForwardingPanels";
+import { routeLine, ruleTitle } from "@/forwarding/model";
 import { FontPicker } from "@/settings/FontPicker";
 import { SearchBar } from "./SearchBar";
 import { AskAiPanel } from "./AskAiPanel";
@@ -75,6 +79,7 @@ export const SIDE_PANEL_WIDTH = 300;
 
 const TABS: { id: SidePanelTab; label: string; icon: React.ReactNode }[] = [
   { id: "search", label: msg("Terminal"), icon: <RocketLaunchOutlinedIcon /> },
+  { id: "forwarding", label: msg("Port forwarding"), icon: <SwapHorizRoundedIcon /> },
   { id: "snippets", label: msg("Snippets"), icon: <DataObjectRoundedIcon /> },
   { id: "history", label: msg("History"), icon: <HistoryRoundedIcon /> },
   { id: "themes", label: msg("Themes"), icon: <PaletteRoundedIcon /> },
@@ -136,6 +141,7 @@ export function TerminalSidePanel({ tab }: { tab: TerminalTab }) {
         </Stack>
         <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
           {panel === "search" && <TerminalPanel pane={pane} />}
+          {panel === "forwarding" && <ForwardingPanel pane={pane} />}
           {panel === "snippets" && <SnippetsPanel pane={pane} />}
           {panel === "history" && <HistoryPanel pane={pane} />}
           {panel === "themes" && <ThemesPanel tab={tab} pane={pane} />}
@@ -144,6 +150,107 @@ export function TerminalSidePanel({ tab }: { tab: TerminalTab }) {
         </Box>
       </Box>
     </Box>
+  );
+}
+
+/* ----------------------------------------------------------- forwarding */
+
+/** Port-forwarding rules of the pane's host with start / stop, like Termius' side panel. */
+function ForwardingPanel({ pane }: { pane: Pane }) {
+  const vault = useActiveVault();
+  const rules = usePfRules(vault.data?.id ?? null);
+  const qc = useQueryClient();
+  const snackbar = useSnackbar();
+  const hostId = pane.hostId;
+  const mine = (rules.data ?? []).filter((r) => r.hostId === hostId);
+  const toggle = useMutation({
+    mutationFn: (rule: (typeof mine)[number]) =>
+      rule.runtime.state === "stopped" ? ipc.pfStart(rule.id) : ipc.pfStop(rule.id),
+    onSettled: () => void qc.invalidateQueries({ queryKey: keys.pfRules(vault.data?.id ?? null) }),
+    onError: (e) => snackbar.error(errorMessage(e)),
+  });
+
+  if (!hostId) {
+    return (
+      <Stack sx={{ p: 1.5 }}>
+        <Typography variant="body2" color="text.secondary">
+          {tr("Port forwarding needs a saved host — this session was opened without one.")}
+        </Typography>
+      </Stack>
+    );
+  }
+  return (
+    <Stack sx={{ p: 1.5, gap: 1 }}>
+      <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}>
+        <Button
+          size="small"
+          variant="tonal"
+          startIcon={<AddRoundedIcon />}
+          onClick={() => requestForwardingRule(hostId)}
+        >
+          {tr("New rule")}
+        </Button>
+        <Box sx={{ flex: 1 }} />
+        <Button size="small" color="inherit" onClick={() => goToSection("forwarding")}>
+          {tr("Open all")}
+        </Button>
+      </Stack>
+      {rules.isPending ? (
+        <Loading pt={2} />
+      ) : mine.length === 0 ? (
+        <Typography variant="body2" color="text.secondary" sx={{ px: 0.5 }}>
+          {tr("No port forwarding rules for this host yet.")}
+        </Typography>
+      ) : (
+        mine.map((r) => {
+          const running = r.runtime.state !== "stopped";
+          return (
+            <Stack
+              key={r.id}
+              direction="row"
+              sx={{
+                alignItems: "center",
+                gap: 1,
+                p: 1,
+                borderRadius: 1.5,
+                bgcolor: "surface.highest",
+              }}
+            >
+              <RuleTile kind={r.kind} active={running} size={32} />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
+                  {ruleTitle(r)}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  noWrap
+                  sx={{ display: "block" }}
+                >
+                  {routeLine(r)}
+                </Typography>
+                <RuntimeLine rule={r} />
+              </Box>
+              <Tooltip title={running ? tr("Stop") : tr("Start")}>
+                <IconButton
+                  size="small"
+                  aria-label={running ? tr("Stop") : tr("Start")}
+                  disabled={toggle.isPending}
+                  onClick={() => toggle.mutate(r)}
+                  sx={{ color: running ? "primary.main" : "text.secondary" }}
+                >
+                  {running ? (
+                    <StopRoundedIcon fontSize="small" />
+                  ) : (
+                    <PlayArrowRoundedIcon fontSize="small" />
+                  )}
+                </IconButton>
+              </Tooltip>
+            </Stack>
+          );
+        })
+      )}
+    </Stack>
   );
 }
 

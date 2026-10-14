@@ -214,7 +214,8 @@ export function tabTitle(tab: TerminalTab, s: TerminalState = terminalStore.get(
   return tab.paneIds.length > 1 ? `${title} (+${tab.paneIds.length - 1})` : title;
 }
 
-export type SidePanelTab = "search" | "snippets" | "history" | "themes" | "ask" | "info";
+export type SidePanelTab =
+  "search" | "forwarding" | "snippets" | "history" | "themes" | "ask" | "info";
 
 export const HOME_TAB = "home";
 
@@ -369,7 +370,7 @@ const fontFamily = (settings: Settings | null) => terminalFontStack(settings?.te
 export const ZOOM_STEPS = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 
 const fontSize = (zoom: number) =>
-  Math.max(6, Math.round((currentSettings?.terminalFontSize ?? 13) * zoom));
+  Math.max(6, Math.round((currentSettings?.terminalFontSize ?? 14) * zoom));
 
 /** Scheme id a pane renders with: tab override → host scheme → app setting. */
 export function paneThemeId(pane: Pane | undefined, tab: TerminalTab | undefined): string {
@@ -1945,6 +1946,11 @@ export async function closePane(paneId: Uuid) {
   patchPane(paneId, { status: "closed" });
   removePane(paneId);
   await ipc.terminalClose(paneId).catch(() => undefined);
+}
+
+/** Close every tab except `tabId` (each goes through the usual close confirmation). */
+export function closeOtherTabs(tabId: string) {
+  for (const t of terminalStore.get().tabs) if (t.id !== tabId) closeTab(t.id);
 }
 
 export function closeTab(tabId: string) {

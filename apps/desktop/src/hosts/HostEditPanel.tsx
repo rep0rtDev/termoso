@@ -29,7 +29,15 @@ import { TagsPopover } from "./TagsPopover";
 import { AgentForwardingRow, CredentialsFields, X11ForwardingRow } from "./CredentialsFields";
 import { WebDavAuthFields } from "./WebDavAuthFields";
 import { ServerKeyField } from "./ServerKeyField";
-import { Field, IconTile, Loading, SectionCard, SidePanel, ToolIconButton } from "@/components/ui";
+import {
+  Field,
+  IconTile,
+  Loading,
+  SectionCard,
+  SidePanel,
+  ToolIconButton,
+  CompactFields,
+} from "@/components/ui";
 import {
   useDeleteHost,
   useGroups,
@@ -302,604 +310,615 @@ function HostEditor({
     );
 
   return (
-    <SidePanel
-      title={tr("Host Details")}
-      subtitle={hostId ? form.label || form.address : tr("New host")}
-      onClose={onClose}
-      width={sizes.panel}
-      actions={
-        hostId && (
-          <ToolIconButton
-            title={tr("Delete host")}
-            color="error"
-            onClick={() => setConfirmDelete(true)}
-          >
-            <DeleteOutlineRoundedIcon fontSize="small" />
-          </ToolIconButton>
-        )
-      }
-      footer={footer}
-    >
-      <Box
-        component="form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (canSave && (touched || !hostId)) onSave(null);
-        }}
-        sx={{ display: "contents" }}
+    <CompactFields.Provider value>
+      <SidePanel
+        title={tr("Host Details")}
+        subtitle={hostId ? form.label || form.address : tr("New host")}
+        onClose={onClose}
+        width={sizes.panel}
+        actions={
+          hostId && (
+            <ToolIconButton
+              title={tr("Delete host")}
+              color="error"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <DeleteOutlineRoundedIcon fontSize="small" />
+            </ToolIconButton>
+          )
+        }
+        footer={footer}
       >
-        {hostId && <ConnectedNowCard viewers={presence.get(hostId) ?? []} />}
-        <SectionCard title={tr("Address")}>
-          <Box sx={{ display: "flex", gap: 1.5, alignItems: "center" }}>
-            <IconTile size={sizes.tile} color={icon?.color}>
-              {icon ? <DistroGlyph icon={icon} /> : <ProtocolGlyph protocol={glyphProtocol} />}
-            </IconTile>
+        <Box
+          component="form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (canSave && (touched || !hostId)) onSave(null);
+          }}
+          sx={{ display: "contents" }}
+        >
+          {hostId && <ConnectedNowCard viewers={presence.get(hostId) ?? []} />}
+          <SectionCard title={tr("Address")}>
+            <Box sx={{ display: "flex", gap: 1.5, alignItems: "center" }}>
+              <IconTile size={sizes.tile} color={icon?.color}>
+                {icon ? <DistroGlyph icon={icon} /> : <ProtocolGlyph protocol={glyphProtocol} />}
+              </IconTile>
+              <TextField
+                required={needsAddress(form)}
+                autoFocus={!hostId}
+                value={form.address}
+                onChange={(e) => set("address", e.target.value)}
+                placeholder={
+                  needsAddress(form) ? tr("IP or Hostname") : tr("IP or Hostname (optional)")
+                }
+                slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+                error={touched && needsAddress(form) && form.address.trim().length === 0}
+                sx={{ flex: 1 }}
+              />
+            </Box>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+                {tr("IP version")}
+              </Typography>
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={form.ipVersion}
+                onChange={(_e, v: IpVersion | null) => {
+                  if (v) set("ipVersion", v);
+                }}
+              >
+                {IP_VERSIONS.map((o) => (
+                  <ToggleButton key={o.value} value={o.value} sx={{ px: 1.5 }}>
+                    {tr(o.label)}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+            </Box>
+          </SectionCard>
+
+          <SectionCard title={tr("General")}>
             <TextField
-              required={needsAddress(form)}
-              autoFocus={!hostId}
-              value={form.address}
-              onChange={(e) => set("address", e.target.value)}
-              placeholder={
-                needsAddress(form) ? tr("IP or Hostname") : tr("IP or Hostname (optional)")
-              }
-              slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
-              error={touched && needsAddress(form) && form.address.trim().length === 0}
-              sx={{ flex: 1 }}
+              value={form.label}
+              onChange={(e) => set("label", e.target.value)}
+              placeholder={tr("Label")}
             />
-          </Box>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-              {tr("IP version")}
-            </Typography>
-            <ToggleButtonGroup
-              exclusive
-              size="small"
-              value={form.ipVersion}
-              onChange={(_e, v: IpVersion | null) => {
-                if (v) set("ipVersion", v);
+            <TextField
+              select
+              value={form.groupId ?? ""}
+              onChange={(e) => set("groupId", e.target.value === "" ? null : e.target.value)}
+              slotProps={{
+                select: {
+                  displayEmpty: true,
+                  renderValue: (v) => {
+                    const g = (groups.data ?? []).find((x) => x.id === v);
+                    return (
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+                        <FolderOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                        <Box component="span" sx={{ color: g ? "text.primary" : "text.disabled" }}>
+                          {g?.label ?? tr("Parent Group")}
+                        </Box>
+                      </Box>
+                    );
+                  },
+                },
               }}
             >
-              {IP_VERSIONS.map((o) => (
-                <ToggleButton key={o.value} value={o.value} sx={{ px: 1.5 }}>
-                  {tr(o.label)}
-                </ToggleButton>
-              ))}
-            </ToggleButtonGroup>
-          </Box>
-        </SectionCard>
-
-        <SectionCard title={tr("General")}>
-          <TextField
-            value={form.label}
-            onChange={(e) => set("label", e.target.value)}
-            placeholder={tr("Label")}
-          />
-          <TextField
-            select
-            value={form.groupId ?? ""}
-            onChange={(e) => set("groupId", e.target.value === "" ? null : e.target.value)}
-            slotProps={{
-              select: {
-                displayEmpty: true,
-                renderValue: (v) => {
-                  const g = (groups.data ?? []).find((x) => x.id === v);
-                  return (
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
-                      <FolderOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
-                      <Box component="span" sx={{ color: g ? "text.primary" : "text.disabled" }}>
-                        {g?.label ?? tr("Parent Group")}
-                      </Box>
-                    </Box>
-                  );
-                },
-              },
-            }}
-          >
-            <MenuItem value="">
-              <em>{tr("No group")}</em>
-            </MenuItem>
-            {(groups.data ?? []).map((g) => (
-              <MenuItem key={g.id} value={g.id}>
-                {g.label}
+              <MenuItem value="">
+                <em>{tr("No group")}</em>
               </MenuItem>
-            ))}
-          </TextField>
-          {inheritedFrom &&
-            inh &&
-            (inh.username !== null ||
-              inh.hasPassword ||
-              inh.sshKeyId !== null ||
-              inh.identityId !== null ||
-              inh.port !== null) && (
-              <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-                {tr("Inherits credentials and connection defaults from {group}.", {
-                  group: inheritedFrom,
-                })}
-              </Typography>
-            )}
-          <Box
-            component="button"
-            type="button"
-            onClick={(e) => setTagAnchor(e.currentTarget)}
-            aria-label={tr("Tags")}
-            sx={{
-              all: "unset",
-              boxSizing: "border-box",
-              display: "flex",
-              alignItems: "center",
-              gap: 1.25,
-              minHeight: sizes.control,
-              px: 1.5,
-              py: 0.5,
-              borderRadius: 1.5,
-              border: 1,
-              borderColor: "border.basic",
-              cursor: "pointer",
-              "&:hover": { borderColor: "border.strong" },
-              "&:focus-visible": { borderColor: "primary.main" },
-            }}
-          >
-            <LabelOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
-            {selectedTags.length === 0 ? (
-              <Typography variant="body1" sx={{ color: "text.disabled" }}>
-                {tr("Tags")}
-              </Typography>
-            ) : (
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, flex: 1 }}>
-                {selectedTags.map((t) => (
-                  <Box
-                    key={t.id}
-                    component="span"
-                    sx={{
-                      px: 1,
-                      height: 22,
-                      lineHeight: "22px",
-                      borderRadius: 1,
-                      bgcolor: "surface.highest",
-                      fontSize: 12,
-                      fontWeight: 500,
-                    }}
-                  >
-                    {t.label}
-                  </Box>
-                ))}
-              </Box>
-            )}
-          </Box>
-          <TextField
-            multiline
-            minRows={1}
-            maxRows={6}
-            value={form.notes}
-            onChange={(e) => set("notes", e.target.value)}
-            placeholder={tr("Notes")}
-          />
-        </SectionCard>
+              {(groups.data ?? []).map((g) => (
+                <MenuItem key={g.id} value={g.id}>
+                  {g.label}
+                </MenuItem>
+              ))}
+            </TextField>
+            {inheritedFrom &&
+              inh &&
+              (inh.username !== null ||
+                inh.hasPassword ||
+                inh.sshKeyId !== null ||
+                inh.identityId !== null ||
+                inh.port !== null) && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+                  {tr("Inherits credentials and connection defaults from {group}.", {
+                    group: inheritedFrom,
+                  })}
+                </Typography>
+              )}
+            <Box
+              component="button"
+              type="button"
+              onClick={(e) => setTagAnchor(e.currentTarget)}
+              aria-label={tr("Tags")}
+              sx={{
+                all: "unset",
+                boxSizing: "border-box",
+                display: "flex",
+                alignItems: "center",
+                gap: 1.25,
+                minHeight: sizes.control,
+                px: 1.5,
+                py: 0.5,
+                borderRadius: 1.5,
+                border: 1,
+                borderColor: "border.basic",
+                cursor: "pointer",
+                "&:hover": { borderColor: "border.strong" },
+                "&:focus-visible": { borderColor: "primary.main" },
+              }}
+            >
+              <LabelOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
+              {selectedTags.length === 0 ? (
+                <Typography variant="body1" sx={{ color: "text.disabled" }}>
+                  {tr("Tags")}
+                </Typography>
+              ) : (
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, flex: 1 }}>
+                  {selectedTags.map((t) => (
+                    <Box
+                      key={t.id}
+                      component="span"
+                      sx={{
+                        px: 1,
+                        height: 22,
+                        lineHeight: "22px",
+                        borderRadius: 1,
+                        bgcolor: "surface.highest",
+                        fontSize: 12,
+                        fontWeight: 500,
+                      }}
+                    >
+                      {t.label}
+                    </Box>
+                  ))}
+                </Box>
+              )}
+            </Box>
+            <TextField
+              multiline
+              minRows={1}
+              maxRows={6}
+              value={form.notes}
+              onChange={(e) => set("notes", e.target.value)}
+              placeholder={tr("Notes")}
+            />
+          </SectionCard>
 
-        {form.ssh ? (
-          <SectionCard
-            title={
-              <PortTitle
-                name="SSH"
-                value={form.port}
-                placeholder={sshPortPlaceholder}
-                onChange={(v) => set("port", v)}
+          {form.ssh ? (
+            <SectionCard
+              title={
+                <PortTitle
+                  name="SSH"
+                  value={form.port}
+                  placeholder={sshPortPlaceholder}
+                  onChange={(v) => set("port", v)}
+                />
+              }
+              action={
+                (form.telnet !== null || form.webdav !== null) && (
+                  <Tooltip title={tr("Remove SSH")}>
+                    <IconButton
+                      size="small"
+                      aria-label={tr("Remove SSH")}
+                      onClick={() => set("ssh", false)}
+                    >
+                      <CloseRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                )
+              }
+            >
+              <Divider />
+              <CredentialsFields
+                vaultId={vaultId}
+                ssh
+                agentForwarding={false}
+                inherited={inh}
+                inlineLabel={tr("Set on this host")}
+                value={form}
+                onChange={patch}
               />
-            }
-            action={
-              (form.telnet !== null || form.webdav !== null) && (
-                <Tooltip title={tr("Remove SSH")}>
+
+              <Button
+                variant="text"
+                color="inherit"
+                onClick={() => setMore((v) => !v)}
+                endIcon={more ? <ExpandLessRoundedIcon /> : <ExpandMoreRoundedIcon />}
+                sx={{ alignSelf: "flex-start", color: "text.secondary", ml: -1 }}
+              >
+                {more ? tr("Show less") : tr("Show more")}
+              </Button>
+
+              {more && (
+                <>
+                  <AgentForwardingRow value={form} onChange={patch} inherited={inh} />
+                  <X11ForwardingRow value={form} onChange={patch} inherited={inh} />
+                  <Field
+                    label={tr("Startup snippet")}
+                    hint={tr("Runs right after the shell opens.")}
+                  >
+                    <TextField
+                      select
+                      value={form.startupSnippetId ?? ""}
+                      onChange={(e) =>
+                        set("startupSnippetId", e.target.value === "" ? null : e.target.value)
+                      }
+                    >
+                      <MenuItem value="">
+                        <em>{tr("None")}</em>
+                      </MenuItem>
+                      {(snippets.data ?? []).map((s) => (
+                        <MenuItem key={s.id} value={s.id}>
+                          {s.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Field>
+                  <Field label={tr("Host Chaining")}>
+                    <TextField
+                      select
+                      value={form.hostChainId ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "__new") setDialog("chain");
+                        else set("hostChainId", v === "" ? null : v);
+                      }}
+                    >
+                      <MenuItem value="">
+                        <em>
+                          {inh?.hostChainId && chainName(inh.hostChainId)
+                            ? tr("Inherited — {name}", { name: chainName(inh.hostChainId) ?? "" })
+                            : tr("Direct connection")}
+                        </em>
+                      </MenuItem>
+                      {(chains.data ?? []).map((c) => (
+                        <MenuItem key={c.id} value={c.id}>
+                          {c.data.label}
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ ml: 1 }}
+                          >
+                            {trn(c.data.host_ids.length, "{count} hop", "{count} hops")}
+                          </Typography>
+                        </MenuItem>
+                      ))}
+                      <MenuItem value="__new" sx={{ color: "primary.main" }}>
+                        <AddRoundedIcon fontSize="small" sx={{ mr: 1 }} />
+                        {tr("New host chain…")}
+                      </MenuItem>
+                    </TextField>
+                  </Field>
+                  <Field label={tr("Proxy")}>
+                    <TextField
+                      select
+                      value={form.proxyId ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "__new") setDialog("proxy");
+                        else set("proxyId", v === "" ? null : v);
+                      }}
+                    >
+                      <MenuItem value="">
+                        <em>
+                          {inh?.proxyId && proxyName(inh.proxyId)
+                            ? tr("Inherited — {name}", { name: proxyName(inh.proxyId) ?? "" })
+                            : tr("None")}
+                        </em>
+                      </MenuItem>
+                      {(proxies.data ?? []).map((p) => (
+                        <MenuItem key={p.id} value={p.id}>
+                          {p.data.kind.toUpperCase()}
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ ml: 1, fontFamily: monoFontFamily }}
+                          >
+                            {p.data.host}:{p.data.port}
+                          </Typography>
+                        </MenuItem>
+                      ))}
+                      <MenuItem value="__new" sx={{ color: "primary.main" }}>
+                        <AddRoundedIcon fontSize="small" sx={{ mr: 1 }} />
+                        {tr("New proxy…")}
+                      </MenuItem>
+                    </TextField>
+                  </Field>
+                  <Field
+                    label={tr("Environment Variables")}
+                    hint={
+                      inh && inh.envVariables.length > 0 && inheritedFrom
+                        ? `From ${inheritedFrom}: ${inh.envVariables.map(([k, v]) => `${k}=${v}`).join(", ")}`
+                        : tr("Sent with the session; the server must accept them (AcceptEnv).")
+                    }
+                  >
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                      {form.envVariables.map(([k, v], i) => (
+                        <Box key={i} sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                          <TextField
+                            value={k}
+                            placeholder="NAME"
+                            onChange={(e) =>
+                              set(
+                                "envVariables",
+                                form.envVariables.map((row, j) =>
+                                  j === i ? [e.target.value, row[1]] : row,
+                                ),
+                              )
+                            }
+                            slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+                            sx={{ flex: 1 }}
+                          />
+                          <TextField
+                            value={v}
+                            placeholder="value"
+                            onChange={(e) =>
+                              set(
+                                "envVariables",
+                                form.envVariables.map((row, j) =>
+                                  j === i ? [row[0], e.target.value] : row,
+                                ),
+                              )
+                            }
+                            slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+                            sx={{ flex: 1.4 }}
+                          />
+                          <IconButton
+                            size="small"
+                            aria-label={tr("Remove variable")}
+                            onClick={() =>
+                              set(
+                                "envVariables",
+                                form.envVariables.filter((_row, j) => j !== i),
+                              )
+                            }
+                          >
+                            <CloseRoundedIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      ))}
+                      <Button
+                        size="small"
+                        color="inherit"
+                        startIcon={<AddRoundedIcon />}
+                        onClick={() => set("envVariables", [...form.envVariables, ["", ""]])}
+                        sx={{ alignSelf: "flex-start", color: "text.secondary" }}
+                      >
+                        {tr("Add variable")}
+                      </Button>
+                    </Box>
+                  </Field>
+                  <Box sx={{ display: "flex", gap: 1.5 }}>
+                    <Field label={tr("Keep-alive, s")} sx={{ flex: 1 }}>
+                      <TextField
+                        type="number"
+                        value={form.keepAliveInterval ?? ""}
+                        onChange={(e) => set("keepAliveInterval", clampSeconds(e.target.value))}
+                        placeholder={inh?.keepAliveInterval?.toString() ?? tr("default")}
+                        slotProps={{ htmlInput: { min: 0, max: 86400 } }}
+                      />
+                    </Field>
+                    <Field label={tr("Timeout, s")} sx={{ flex: 1 }}>
+                      <TextField
+                        type="number"
+                        value={form.timeout ?? ""}
+                        onChange={(e) => set("timeout", clampSeconds(e.target.value))}
+                        placeholder={inh?.timeout?.toString() ?? tr("default")}
+                        slotProps={{ htmlInput: { min: 0, max: 86400 } }}
+                      />
+                    </Field>
+                  </Box>
+                  <ServerKeyField
+                    vaultId={vaultId}
+                    host={form.address}
+                    port={form.port ?? inh?.port ?? 22}
+                    readOnly={readOnly}
+                  />
+                  <Field
+                    label={tr("Mosh")}
+                    hint={
+                      form.useMosh
+                        ? tr(
+                            "Connect runs mosh-server over SSH, then hands the session to a local mosh-client (UDP). Needs Mosh on both ends.",
+                          )
+                        : undefined
+                    }
+                  >
+                    <TextField
+                      select
+                      value={form.useMosh ? "on" : "off"}
+                      onChange={(e) => set("useMosh", e.target.value === "on")}
+                    >
+                      <MenuItem value="off">{tr("Disabled")}</MenuItem>
+                      <MenuItem value="on">{tr("Enabled")}</MenuItem>
+                    </TextField>
+                  </Field>
+                  {form.useMosh && (
+                    <Field label={tr("Mosh server command")}>
+                      <TextField
+                        value={form.moshServerCommand ?? ""}
+                        onChange={(e) => set("moshServerCommand", e.target.value || null)}
+                        placeholder={MOSH_DEFAULT_SERVER_COMMAND}
+                        slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+                      />
+                    </Field>
+                  )}
+                  <ThemeField value={form.colorScheme} onChange={(v) => set("colorScheme", v)} />
+                </>
+              )}
+            </SectionCard>
+          ) : (
+            <AddSectionButton label={tr("Add SSH")} onClick={() => set("ssh", true)} />
+          )}
+
+          {form.telnet ? (
+            <SectionCard
+              title={
+                <PortTitle
+                  name="Telnet"
+                  value={form.telnet.port}
+                  placeholder="23"
+                  onChange={(v) => patchTelnet({ port: v })}
+                />
+              }
+              action={
+                <Tooltip title={tr("Remove Telnet")}>
                   <IconButton
                     size="small"
-                    aria-label={tr("Remove SSH")}
-                    onClick={() => set("ssh", false)}
+                    aria-label={tr("Remove Telnet")}
+                    onClick={() => set("telnet", null)}
                   >
                     <CloseRoundedIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
-              )
-            }
-          >
-            <Divider />
-            <CredentialsFields
-              vaultId={vaultId}
-              ssh
-              agentForwarding={false}
-              inherited={inh}
-              inlineLabel={tr("Set on this host")}
-              value={form}
-              onChange={patch}
-            />
-
-            <Button
-              variant="text"
-              color="inherit"
-              onClick={() => setMore((v) => !v)}
-              endIcon={more ? <ExpandLessRoundedIcon /> : <ExpandMoreRoundedIcon />}
-              sx={{ alignSelf: "flex-start", color: "text.secondary", ml: -1 }}
+              }
             >
-              {more ? tr("Show less") : tr("Show more")}
-            </Button>
+              <Divider />
+              <CredentialsFields
+                vaultId={vaultId}
+                ssh={false}
+                inlineLabel={tr("Set on this host")}
+                value={{
+                  identityId: form.telnet.identityId,
+                  username: form.telnet.username,
+                  password: form.telnet.password,
+                  hasPassword: form.telnet.hasPassword,
+                  sshKeyId: null,
+                  sshCertificateId: null,
+                  sshId: false,
+                  sshIdKeyType: null,
+                  agentForwarding: false,
+                  forwardX11: false,
+                }}
+                onChange={({ identityId, username, password }) => {
+                  const p: Partial<TelnetForm> = {};
+                  if (identityId !== undefined) p.identityId = identityId;
+                  if (username !== undefined) p.username = username;
+                  if (password !== undefined) p.password = password;
+                  patchTelnet(p);
+                }}
+              />
+              <ThemeField
+                value={form.telnet.colorScheme}
+                onChange={(v) => patchTelnet({ colorScheme: v })}
+              />
+            </SectionCard>
+          ) : (
+            <AddSectionButton
+              label={tr("Add Telnet")}
+              onClick={() => set("telnet", emptyTelnet())}
+            />
+          )}
 
-            {more && (
-              <>
-                <AgentForwardingRow value={form} onChange={patch} inherited={inh} />
-                <X11ForwardingRow value={form} onChange={patch} inherited={inh} />
-                <Field label={tr("Startup snippet")} hint={tr("Runs right after the shell opens.")}>
-                  <TextField
-                    select
-                    value={form.startupSnippetId ?? ""}
-                    onChange={(e) =>
-                      set("startupSnippetId", e.target.value === "" ? null : e.target.value)
-                    }
+          {form.webdav ? (
+            <SectionCard
+              title="WebDAV"
+              action={
+                <Tooltip title={tr("Remove WebDAV")}>
+                  <IconButton
+                    size="small"
+                    aria-label={tr("Remove WebDAV")}
+                    onClick={() => set("webdav", null)}
                   >
-                    <MenuItem value="">
-                      <em>{tr("None")}</em>
-                    </MenuItem>
-                    {(snippets.data ?? []).map((s) => (
-                      <MenuItem key={s.id} value={s.id}>
-                        {s.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Field>
-                <Field label={tr("Host Chaining")}>
-                  <TextField
-                    select
-                    value={form.hostChainId ?? ""}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === "__new") setDialog("chain");
-                      else set("hostChainId", v === "" ? null : v);
-                    }}
-                  >
-                    <MenuItem value="">
-                      <em>
-                        {inh?.hostChainId && chainName(inh.hostChainId)
-                          ? tr("Inherited — {name}", { name: chainName(inh.hostChainId) ?? "" })
-                          : tr("Direct connection")}
-                      </em>
-                    </MenuItem>
-                    {(chains.data ?? []).map((c) => (
-                      <MenuItem key={c.id} value={c.id}>
-                        {c.data.label}
-                        <Typography
-                          component="span"
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ ml: 1 }}
-                        >
-                          {trn(c.data.host_ids.length, "{count} hop", "{count} hops")}
-                        </Typography>
-                      </MenuItem>
-                    ))}
-                    <MenuItem value="__new" sx={{ color: "primary.main" }}>
-                      <AddRoundedIcon fontSize="small" sx={{ mr: 1 }} />
-                      {tr("New host chain…")}
-                    </MenuItem>
-                  </TextField>
-                </Field>
-                <Field label={tr("Proxy")}>
-                  <TextField
-                    select
-                    value={form.proxyId ?? ""}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === "__new") setDialog("proxy");
-                      else set("proxyId", v === "" ? null : v);
-                    }}
-                  >
-                    <MenuItem value="">
-                      <em>
-                        {inh?.proxyId && proxyName(inh.proxyId)
-                          ? tr("Inherited — {name}", { name: proxyName(inh.proxyId) ?? "" })
-                          : tr("None")}
-                      </em>
-                    </MenuItem>
-                    {(proxies.data ?? []).map((p) => (
-                      <MenuItem key={p.id} value={p.id}>
-                        {p.data.kind.toUpperCase()}
-                        <Typography
-                          component="span"
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ ml: 1, fontFamily: monoFontFamily }}
-                        >
-                          {p.data.host}:{p.data.port}
-                        </Typography>
-                      </MenuItem>
-                    ))}
-                    <MenuItem value="__new" sx={{ color: "primary.main" }}>
-                      <AddRoundedIcon fontSize="small" sx={{ mr: 1 }} />
-                      {tr("New proxy…")}
-                    </MenuItem>
-                  </TextField>
-                </Field>
-                <Field
-                  label={tr("Environment Variables")}
-                  hint={
-                    inh && inh.envVariables.length > 0 && inheritedFrom
-                      ? `From ${inheritedFrom}: ${inh.envVariables.map(([k, v]) => `${k}=${v}`).join(", ")}`
-                      : tr("Sent with the session; the server must accept them (AcceptEnv).")
+                    <CloseRoundedIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              }
+            >
+              <Field label="URL">
+                <TextField
+                  required
+                  value={form.webdav.url}
+                  onChange={(e) => patchWebDav({ url: e.target.value })}
+                  placeholder="https://cloud.example.com/remote.php/dav/files/user/"
+                  error={
+                    touched && form.webdav.url.trim().length > 0 && !isWebDavUrl(form.webdav.url)
                   }
-                >
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                    {form.envVariables.map(([k, v], i) => (
-                      <Box key={i} sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-                        <TextField
-                          value={k}
-                          placeholder="NAME"
-                          onChange={(e) =>
-                            set(
-                              "envVariables",
-                              form.envVariables.map((row, j) =>
-                                j === i ? [e.target.value, row[1]] : row,
-                              ),
-                            )
-                          }
-                          slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
-                          sx={{ flex: 1 }}
-                        />
-                        <TextField
-                          value={v}
-                          placeholder="value"
-                          onChange={(e) =>
-                            set(
-                              "envVariables",
-                              form.envVariables.map((row, j) =>
-                                j === i ? [row[0], e.target.value] : row,
-                              ),
-                            )
-                          }
-                          slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
-                          sx={{ flex: 1.4 }}
-                        />
-                        <IconButton
-                          size="small"
-                          aria-label={tr("Remove variable")}
-                          onClick={() =>
-                            set(
-                              "envVariables",
-                              form.envVariables.filter((_row, j) => j !== i),
-                            )
-                          }
-                        >
-                          <CloseRoundedIcon fontSize="small" />
-                        </IconButton>
-                      </Box>
-                    ))}
-                    <Button
-                      size="small"
-                      color="inherit"
-                      startIcon={<AddRoundedIcon />}
-                      onClick={() => set("envVariables", [...form.envVariables, ["", ""]])}
-                      sx={{ alignSelf: "flex-start", color: "text.secondary" }}
-                    >
-                      {tr("Add variable")}
-                    </Button>
-                  </Box>
-                </Field>
-                <Box sx={{ display: "flex", gap: 1.5 }}>
-                  <Field label={tr("Keep-alive, s")} sx={{ flex: 1 }}>
-                    <TextField
-                      type="number"
-                      value={form.keepAliveInterval ?? ""}
-                      onChange={(e) => set("keepAliveInterval", clampSeconds(e.target.value))}
-                      placeholder={inh?.keepAliveInterval?.toString() ?? tr("default")}
-                      slotProps={{ htmlInput: { min: 0, max: 86400 } }}
-                    />
-                  </Field>
-                  <Field label={tr("Timeout, s")} sx={{ flex: 1 }}>
-                    <TextField
-                      type="number"
-                      value={form.timeout ?? ""}
-                      onChange={(e) => set("timeout", clampSeconds(e.target.value))}
-                      placeholder={inh?.timeout?.toString() ?? tr("default")}
-                      slotProps={{ htmlInput: { min: 0, max: 86400 } }}
-                    />
-                  </Field>
-                </Box>
-                <ServerKeyField
-                  vaultId={vaultId}
-                  host={form.address}
-                  port={form.port ?? inh?.port ?? 22}
-                  readOnly={readOnly}
-                />
-                <Field
-                  label={tr("Mosh")}
-                  hint={
-                    form.useMosh
-                      ? tr(
-                          "Connect runs mosh-server over SSH, then hands the session to a local mosh-client (UDP). Needs Mosh on both ends.",
-                        )
+                  helperText={
+                    touched && form.webdav.url.trim().length > 0 && !isWebDavUrl(form.webdav.url)
+                      ? tr("Enter an http:// or https:// URL")
                       : undefined
                   }
-                >
-                  <TextField
-                    select
-                    value={form.useMosh ? "on" : "off"}
-                    onChange={(e) => set("useMosh", e.target.value === "on")}
-                  >
-                    <MenuItem value="off">{tr("Disabled")}</MenuItem>
-                    <MenuItem value="on">{tr("Enabled")}</MenuItem>
-                  </TextField>
-                </Field>
-                {form.useMosh && (
-                  <Field label={tr("Mosh server command")}>
-                    <TextField
-                      value={form.moshServerCommand ?? ""}
-                      onChange={(e) => set("moshServerCommand", e.target.value || null)}
-                      placeholder={MOSH_DEFAULT_SERVER_COMMAND}
-                      slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
-                    />
-                  </Field>
+                  slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+                />
+              </Field>
+              <Divider />
+              <WebDavAuthFields vaultId={vaultId} value={form.webdav} onChange={patchWebDav} />
+              <Divider />
+              <Field
+                label={tr("Server certificate fingerprint")}
+                hint={tr(
+                  "SHA-256 of the server certificate; pins self-signed or private-CA servers. Left empty, the system trust store decides and an unknown certificate is offered on first connect.",
                 )}
-                <ThemeField value={form.colorScheme} onChange={(v) => set("colorScheme", v)} />
-              </>
-            )}
-          </SectionCard>
-        ) : (
-          <AddSectionButton label={tr("Add SSH")} onClick={() => set("ssh", true)} />
-        )}
-
-        {form.telnet ? (
-          <SectionCard
-            title={
-              <PortTitle
-                name="Telnet"
-                value={form.telnet.port}
-                placeholder="23"
-                onChange={(v) => patchTelnet({ port: v })}
-              />
-            }
-            action={
-              <Tooltip title={tr("Remove Telnet")}>
-                <IconButton
-                  size="small"
-                  aria-label={tr("Remove Telnet")}
-                  onClick={() => set("telnet", null)}
-                >
-                  <CloseRoundedIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            }
-          >
-            <Divider />
-            <CredentialsFields
-              vaultId={vaultId}
-              ssh={false}
-              inlineLabel={tr("Set on this host")}
-              value={{
-                identityId: form.telnet.identityId,
-                username: form.telnet.username,
-                password: form.telnet.password,
-                hasPassword: form.telnet.hasPassword,
-                sshKeyId: null,
-                sshCertificateId: null,
-                sshId: false,
-                sshIdKeyType: null,
-                agentForwarding: false,
-                forwardX11: false,
-              }}
-              onChange={({ identityId, username, password }) => {
-                const p: Partial<TelnetForm> = {};
-                if (identityId !== undefined) p.identityId = identityId;
-                if (username !== undefined) p.username = username;
-                if (password !== undefined) p.password = password;
-                patchTelnet(p);
-              }}
+              >
+                <TextField
+                  value={form.webdav.certificateFingerprint ?? ""}
+                  onChange={(e) =>
+                    patchWebDav({ certificateFingerprint: e.target.value.trim() || null })
+                  }
+                  placeholder="sha256:…"
+                  error={
+                    touched &&
+                    form.webdav.certificateFingerprint !== null &&
+                    !isFingerprint(form.webdav.certificateFingerprint)
+                  }
+                  slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+                />
+              </Field>
+            </SectionCard>
+          ) : (
+            <AddSectionButton
+              label={tr("Add WebDAV")}
+              onClick={() => set("webdav", emptyWebDav())}
             />
-            <ThemeField
-              value={form.telnet.colorScheme}
-              onChange={(v) => patchTelnet({ colorScheme: v })}
-            />
-          </SectionCard>
-        ) : (
-          <AddSectionButton label={tr("Add Telnet")} onClick={() => set("telnet", emptyTelnet())} />
-        )}
+          )}
+        </Box>
 
-        {form.webdav ? (
-          <SectionCard
-            title="WebDAV"
-            action={
-              <Tooltip title={tr("Remove WebDAV")}>
-                <IconButton
-                  size="small"
-                  aria-label={tr("Remove WebDAV")}
-                  onClick={() => set("webdav", null)}
-                >
-                  <CloseRoundedIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            }
-          >
-            <Field label="URL">
-              <TextField
-                required
-                value={form.webdav.url}
-                onChange={(e) => patchWebDav({ url: e.target.value })}
-                placeholder="https://cloud.example.com/remote.php/dav/files/user/"
-                error={
-                  touched && form.webdav.url.trim().length > 0 && !isWebDavUrl(form.webdav.url)
-                }
-                helperText={
-                  touched && form.webdav.url.trim().length > 0 && !isWebDavUrl(form.webdav.url)
-                    ? tr("Enter an http:// or https:// URL")
-                    : undefined
-                }
-                slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
-              />
-            </Field>
-            <Divider />
-            <WebDavAuthFields vaultId={vaultId} value={form.webdav} onChange={patchWebDav} />
-            <Divider />
-            <Field
-              label={tr("Server certificate fingerprint")}
-              hint={tr(
-                "SHA-256 of the server certificate; pins self-signed or private-CA servers. Left empty, the system trust store decides and an unknown certificate is offered on first connect.",
-              )}
-            >
-              <TextField
-                value={form.webdav.certificateFingerprint ?? ""}
-                onChange={(e) =>
-                  patchWebDav({ certificateFingerprint: e.target.value.trim() || null })
-                }
-                placeholder="sha256:…"
-                error={
-                  touched &&
-                  form.webdav.certificateFingerprint !== null &&
-                  !isFingerprint(form.webdav.certificateFingerprint)
-                }
-                slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
-              />
-            </Field>
-          </SectionCard>
-        ) : (
-          <AddSectionButton label={tr("Add WebDAV")} onClick={() => set("webdav", emptyWebDav())} />
-        )}
-      </Box>
+        <TagsPopover
+          anchor={tagAnchor}
+          vaultId={vaultId}
+          selected={selectedTagIds}
+          allowCreate
+          onCreated={(id) => set("tagIds", [...form.tagIds, id])}
+          onToggle={(t, on) =>
+            set("tagIds", on ? [...form.tagIds, t.id] : form.tagIds.filter((x) => x !== t.id))
+          }
+          onDeleted={(t) => setForm((f) => ({ ...f, tagIds: f.tagIds.filter((x) => x !== t.id) }))}
+          onClose={() => setTagAnchor(null)}
+        />
 
-      <TagsPopover
-        anchor={tagAnchor}
-        vaultId={vaultId}
-        selected={selectedTagIds}
-        allowCreate
-        onCreated={(id) => set("tagIds", [...form.tagIds, id])}
-        onToggle={(t, on) =>
-          set("tagIds", on ? [...form.tagIds, t.id] : form.tagIds.filter((x) => x !== t.id))
-        }
-        onDeleted={(t) => setForm((f) => ({ ...f, tagIds: f.tagIds.filter((x) => x !== t.id) }))}
-        onClose={() => setTagAnchor(null)}
-      />
+        <ProxyDialog
+          open={dialog === "proxy"}
+          vaultId={vaultId}
+          onClose={() => setDialog(null)}
+          onCreated={(id) => set("proxyId", id)}
+        />
+        <ChainDialog
+          open={dialog === "chain"}
+          vaultId={vaultId}
+          excludeHostId={hostId}
+          onClose={() => setDialog(null)}
+          onCreated={(id) => set("hostChainId", id)}
+        />
 
-      <ProxyDialog
-        open={dialog === "proxy"}
-        vaultId={vaultId}
-        onClose={() => setDialog(null)}
-        onCreated={(id) => set("proxyId", id)}
-      />
-      <ChainDialog
-        open={dialog === "chain"}
-        vaultId={vaultId}
-        excludeHostId={hostId}
-        onClose={() => setDialog(null)}
-        onCreated={(id) => set("hostChainId", id)}
-      />
-
-      <ConfirmDialog
-        open={confirmDelete}
-        title={tr("Delete host?")}
-        danger
-        confirmLabel={tr("Delete")}
-        busy={del.isPending}
-        onCancel={() => setConfirmDelete(false)}
-        onConfirm={onDelete}
-      >
-        {tr("“{name}” and its inline credentials will be removed from this device.", {
-          name: form.label || form.address,
-        })}
-      </ConfirmDialog>
-    </SidePanel>
+        <ConfirmDialog
+          open={confirmDelete}
+          title={tr("Delete host?")}
+          danger
+          confirmLabel={tr("Delete")}
+          busy={del.isPending}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={onDelete}
+        >
+          {tr("“{name}” and its inline credentials will be removed from this device.", {
+            name: form.label || form.address,
+          })}
+        </ConfirmDialog>
+      </SidePanel>
+    </CompactFields.Provider>
   );
 }
 

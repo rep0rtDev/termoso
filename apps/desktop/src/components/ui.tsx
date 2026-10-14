@@ -30,6 +30,8 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
+  createContext,
+  useContext,
   useState,
 } from "react";
 import { monoFontFamily, sizes } from "@/theme/theme";
@@ -938,21 +940,25 @@ export function SettingRow({
   control: ReactNode;
   last?: boolean;
 }) {
+  const compact = useContext(CompactFields);
   return (
     <Box
       sx={{
         display: "flex",
         alignItems: "center",
         gap: 2,
-        minHeight: sizes.row,
-        py: 0.75,
+        minHeight: compact ? 36 : sizes.row,
+        py: compact ? 0.25 : 0.75,
         borderBottom: last ? 0 : 1,
         borderColor: "border.light",
       }}
     >
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography variant="body1">{label}</Typography>
-        {hint && (
+        <Typography variant={compact ? "body2" : "body1"}>
+          {label}
+          {compact && hint && <HintIcon hint={hint} />}
+        </Typography>
+        {hint && !compact && (
           <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
             {hint}
           </Typography>
@@ -982,6 +988,22 @@ export function FieldLabel({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Dense forms (the Host Details panel, like Termius) keep hints out of the
+ * flow: `Field` / `SettingRow` show them as an info tooltip next to the label.
+ */
+export const CompactFields = createContext(false);
+
+function HintIcon({ hint }: { hint: ReactNode }) {
+  return (
+    <Tooltip title={hint} enterDelay={300}>
+      <InfoOutlinedIcon
+        sx={{ fontSize: 14, color: "text.disabled", ml: 0.5, verticalAlign: "-2px" }}
+      />
+    </Tooltip>
+  );
+}
+
 /** Label + control + optional hint, stacked. */
 export function Field({
   label,
@@ -994,11 +1016,15 @@ export function Field({
   children: ReactNode;
   sx?: SxProps<Theme>;
 }) {
+  const compact = useContext(CompactFields);
   return (
     <Box sx={[{ minWidth: 0 }, ...sxList(sx)]}>
-      <FieldLabel>{label}</FieldLabel>
+      <FieldLabel>
+        {label}
+        {compact && hint && <HintIcon hint={hint} />}
+      </FieldLabel>
       {children}
-      {hint && (
+      {hint && !compact && (
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
           {hint}
         </Typography>
