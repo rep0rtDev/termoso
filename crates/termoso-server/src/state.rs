@@ -41,6 +41,7 @@ pub struct Inner {
     pub sshid_host: Option<String>,
     /// `host[:port]` of `TERMOSO_LANDING_URL`, matched against `Host`.
     pub landing_host: Option<String>,
+    pub docs_host: Option<String>,
     /// Local fan-out of bus events to WebSocket connections on this instance.
     pub events: broadcast::Sender<Event>,
     /// Local fan-out of multiplayer relay frames (see `live::bus`).
@@ -102,11 +103,13 @@ impl Inner {
         let sso = SsoRegistry::from_config(&cfg).await?;
         let sshid_host = cfg.sshid_host();
         let landing_host = cfg.landing_host();
+        let docs_host = cfg.docs_host();
         let ai = cfg.ai.as_ref().map(crate::ai::Ai::new).transpose()?;
 
         Ok(Arc::new(Inner {
             sshid_host,
             landing_host,
+            docs_host,
             ai,
             cfg,
             db,

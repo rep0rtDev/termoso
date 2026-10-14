@@ -50,6 +50,10 @@ export interface ServerInfo {
   landing: boolean;
   /** This origin serves only the landing; the cabinet lives at `web_url`. */
   landing_only: boolean;
+  /** Documentation is served (`TERMOSO_DOCS`); absent on older servers. */
+  docs?: boolean;
+  /** Dedicated docs origin (`TERMOSO_DOCS_URL`), empty when docs live at `/docs` here. */
+  docs_url?: string;
 }
 
 // ── account ─────────────────────────────────────────────────────────────

@@ -187,6 +187,13 @@ schema! {
         /// cabinet lives at `web_url`.
         #[serde(default)]
         pub landing_only: bool,
+        /// Whether the documentation is served (`TERMOSO_DOCS`).
+        #[serde(default = "default_true")]
+        pub docs: bool,
+        /// Dedicated documentation origin (`TERMOSO_DOCS_URL`); empty when the
+        /// docs live at `/docs` of the landing / cabinet origin.
+        #[serde(default)]
+        pub docs_url: String,
     }
 }
 

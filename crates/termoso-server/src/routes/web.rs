@@ -51,45 +51,77 @@ pub fn validate_dir(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn router<S: Clone + Send + Sync + 'static>(dir: PathBuf, landing_on_root: bool) -> Router<S> {
+pub fn router<S: Clone + Send + Sync + 'static>(
+    dir: PathBuf,
+    landing_on_root: bool,
+    docs: bool,
+) -> Router<S> {
     let dir = Arc::new(dir);
-    Router::new().fallback(move |req: Request| serve(dir.clone(), landing_on_root, req))
+    Router::new().fallback(move |req: Request| serve(dir.clone(), landing_on_root, docs, req))
 }
 
-/// Rewrites requests addressed to the dedicated landing origin: `/` and the
-/// static files are served (tagged with [`LandingHost`] so `/` stays the
-/// landing and `/server/info` reports it), health probes and `/server/info`
-/// pass through, anything else goes to the cabinet at `web_url`.
+/// Rewrites requests addressed to the dedicated landing or docs origins.
+/// Landing origin: `/`, the static files, health probes and `/server/info`
+/// are served (tagged with [`LandingHost`] so `/` stays the landing and
+/// `/server/info` reports it); `/docs/*` is served too unless the docs have
+/// their own origin. Docs origin: `/docs/*`, the static files and the probes
+/// are served, `/` goes to `/docs`. Anything else goes to the cabinet at
+/// `web_url`.
 pub async fn landing_host_layer(
     State(state): State<AppState>,
     mut req: Request,
     next: Next,
 ) -> Response {
-    let Some(want) = state.landing_host.as_deref() else {
-        return next.run(req).await;
-    };
-    if super::request_host(&req) != want {
-        return next.run(req).await;
-    }
-    let path = req.uri().path();
-    let served_here =
-        matches!(path, "/" | "/healthz" | "/readyz" | "/api/v1/server/info") || !is_route(path);
-    if !served_here {
+    let host = super::request_host(&req);
+    let path = req.uri().path().to_owned();
+    let web_url = state.cfg.web_url().trim_end_matches('/').to_string();
+    let redirect = |base: &str, req: &Request| {
         let target = match req.uri().query() {
-            Some(q) => format!("{}{path}?{q}", state.cfg.web_url().trim_end_matches('/')),
-            None => format!("{}{path}", state.cfg.web_url().trim_end_matches('/')),
+            Some(q) => format!("{base}{path}?{q}"),
+            None => format!("{base}{path}"),
         };
-        return Redirect::temporary(&target).into_response();
+        Redirect::temporary(&target).into_response()
+    };
+    let passthrough = matches!(
+        path.as_str(),
+        "/healthz" | "/readyz" | "/api/v1/server/info"
+    ) || !is_route(&path);
+    if state.docs_host.as_deref() == Some(host.as_str()) {
+        if path == "/" {
+            return Redirect::temporary("/docs").into_response();
+        }
+        if !(passthrough || is_docs(&path)) {
+            return redirect(&web_url, &req);
+        }
+        return next.run(req).await;
     }
-    req.extensions_mut().insert(LandingHost);
+    if state.landing_host.as_deref() == Some(host.as_str()) {
+        if is_docs(&path)
+            && let Some(docs_url) = state.cfg.docs_url()
+        {
+            return redirect(docs_url, &req);
+        } else if !(path == "/" || passthrough || is_docs(&path)) {
+            return redirect(&web_url, &req);
+        }
+        req.extensions_mut().insert(LandingHost);
+        return next.run(req).await;
+    }
+    if is_docs(&path)
+        && let Some(docs_url) = state.cfg.docs_url()
+    {
+        return redirect(docs_url, &req);
+    }
     next.run(req).await
 }
 
-async fn serve(dir: Arc<PathBuf>, landing_on_root: bool, req: Request) -> Response {
+async fn serve(dir: Arc<PathBuf>, landing_on_root: bool, docs: bool, req: Request) -> Response {
     if req.method() != Method::GET && req.method() != Method::HEAD {
         return crate::error::Error::not_found("route").into_response();
     }
     let path = req.uri().path().to_owned();
+    if is_docs(&path) && !docs {
+        return crate::error::Error::not_found("route").into_response();
+    }
     if path == "/" && !landing_on_root && req.extensions().get::<LandingHost>().is_none() {
         let mut res = Redirect::temporary("/login").into_response();
         res.headers_mut().insert(header::CACHE_CONTROL, REVALIDATE);
@@ -129,6 +161,12 @@ async fn serve(dir: Arc<PathBuf>, landing_on_root: bool, req: Request) -> Respon
 }
 
 /// Client-side routes look like `/team/123` — no extension in the last segment.
+/// The documentation is part of the web cabinet bundle but belongs to the
+/// public site, so the landing origin serves it instead of redirecting.
+fn is_docs(path: &str) -> bool {
+    path == "/docs" || path.starts_with("/docs/")
+}
+
 fn is_route(path: &str) -> bool {
     !path.starts_with("/assets/") && !path.rsplit('/').next().unwrap_or("").contains('.')
 }
@@ -146,11 +184,20 @@ mod tests {
     }
 
     async fn get(landing_on_root: bool, path: &str, landing_host: bool) -> Response {
+        get_docs(landing_on_root, true, path, landing_host).await
+    }
+
+    async fn get_docs(
+        landing_on_root: bool,
+        docs: bool,
+        path: &str,
+        landing_host: bool,
+    ) -> Response {
         let mut req = Request::get(path).body(Body::empty()).unwrap();
         if landing_host {
             req.extensions_mut().insert(LandingHost);
         }
-        router::<()>(dist(), landing_on_root)
+        router::<()>(dist(), landing_on_root, docs)
             .oneshot(req)
             .await
             .unwrap()
@@ -193,6 +240,22 @@ mod tests {
                 .unwrap()
                 .starts_with("text/html")
         );
+    }
+
+    #[tokio::test]
+    async fn docs_can_be_switched_off() {
+        let res = get_docs(true, false, "/docs/quick-start", false).await;
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+        let res = get_docs(true, true, "/docs/quick-start", false).await;
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn docs_stay_on_the_landing_origin() {
+        assert!(is_docs("/docs"));
+        assert!(is_docs("/docs/self-hosting/overview"));
+        assert!(!is_docs("/docsy"));
+        assert!(!is_docs("/account"));
     }
 
     #[test]

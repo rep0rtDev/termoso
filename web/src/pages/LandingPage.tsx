@@ -889,6 +889,21 @@ export function LandingPage() {
                 {label}
               </Button>
             ))}
+            {info.data?.docs !== false &&
+              (info.data?.docs_url ? (
+                <Button href={info.data.docs_url} variant="text" sx={{ color: "text.secondary" }}>
+                  Docs
+                </Button>
+              ) : (
+                <Button
+                  component={RouterLink}
+                  to="/docs"
+                  variant="text"
+                  sx={{ color: "text.secondary" }}
+                >
+                  Docs
+                </Button>
+              ))}
             <Button
               href={REPO}
               target="_blank"

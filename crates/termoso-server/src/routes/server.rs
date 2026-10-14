@@ -37,6 +37,8 @@ pub async fn info(
         web_url: state.cfg.web_url().trim_end_matches('/').to_string(),
         landing: landing_only || state.cfg.landing_on_cabinet(),
         landing_only,
+        docs: state.cfg.docs,
+        docs_url: state.cfg.docs_url().unwrap_or("").to_string(),
     }))
 }
 

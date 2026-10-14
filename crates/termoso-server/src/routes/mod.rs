@@ -253,7 +253,11 @@ pub fn router(state: AppState) -> Router {
         app = app.merge(crate::openapi::swagger());
     }
     if let Some(dir) = state.cfg.web_dir() {
-        app = app.merge(web::router(dir, state.cfg.landing_on_cabinet()));
+        app = app.merge(web::router(
+            dir,
+            state.cfg.landing_on_cabinet(),
+            state.cfg.docs,
+        ));
     }
 
     let cors = cors_layer(&state);
