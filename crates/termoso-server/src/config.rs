@@ -79,6 +79,10 @@ pub struct Config {
     pub ai: Option<AiConfig>,
     /// Serve the Swagger UI at `/api/docs`.
     pub swagger_ui: bool,
+    /// Offer API bridges (`/account/bridges`, bridge tokens). `false` hides
+    /// the feature from the cabinet and rejects existing bridge tokens; the
+    /// hosted cloud runs with it off.
+    pub bridges: bool,
     /// Seconds between confirming a "start over" account reset and being
     /// allowed to complete it. The waiting period is what lets the real owner
     /// cancel a reset they did not ask for. Default: 24 hours.
@@ -335,6 +339,7 @@ impl Default for Config {
             sso: BTreeMap::new(),
             ai: None,
             swagger_ui: true,
+            bridges: true,
             start_over_delay_secs: 24 * 3600,
         }
     }

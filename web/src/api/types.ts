@@ -22,6 +22,8 @@ export interface ServerFeatures {
   email: boolean;
   webauthn: boolean;
   teams: boolean;
+  /** API bridges can be created; absent on older servers (always offered). */
+  bridges?: boolean;
 }
 
 export type SsoKind = "oidc" | "saml";

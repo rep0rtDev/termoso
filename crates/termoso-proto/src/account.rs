@@ -217,5 +217,9 @@ schema! {
         /// account, see `GET /account/ai`).
         #[serde(default)]
         pub ai: bool,
+        /// API bridges can be created (`TERMOSO_BRIDGES`). Absent on older
+        /// servers, which always offered them.
+        #[serde(default)]
+        pub bridges: bool,
     }
 }

@@ -24,6 +24,15 @@ use crate::state::AppState;
 use crate::users;
 
 const MAX_BRIDGES: i64 = 20;
+
+/// Bridge endpoints answer like an unknown route when `TERMOSO_BRIDGES=false`.
+fn enabled(state: &AppState) -> ApiResult<()> {
+    if state.cfg.bridges {
+        Ok(())
+    } else {
+        Err(Error::not_found("route"))
+    }
+}
 const MAX_VAULTS: usize = 50;
 
 fn validate_name(name: &str) -> ApiResult<String> {
@@ -181,6 +190,7 @@ async fn load_one(state: &AppState, user_id: Uuid, id: Uuid) -> ApiResult<Bridge
 #[utoipa::path(get, path = "/api/v1/account/bridges", tag = "bridges",
     responses((status = 200, body = BridgeList)))]
 pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<BridgeList>> {
+    enabled(&state)?;
     Ok(Json(BridgeList {
         bridges: load_all(&state, auth.user_id()).await?,
     }))
@@ -195,6 +205,7 @@ pub async fn create(
     StepUp(auth): StepUp,
     Body(req): Body<CreateBridgeRequest>,
 ) -> ApiResult<Json<CreateBridgeResponse>> {
+    enabled(&state)?;
     let name = validate_name(&req.name)?;
     validate_public_key(&req.public_key)?;
     check_vaults(&state, auth.user_id(), &req.vaults).await?;
@@ -280,6 +291,7 @@ pub async fn set_vaults(
     Path(id): Path<Uuid>,
     Body(keys): Body<Vec<BridgeVaultKey>>,
 ) -> ApiResult<Json<Bridge>> {
+    enabled(&state)?;
     let before = load_one(&state, auth.user_id(), id).await?;
     check_vaults(&state, auth.user_id(), &keys).await?;
     let mut tx = state.db.begin().await?;
@@ -334,6 +346,7 @@ pub async fn revoke(
     StepUp(auth): StepUp,
     Path(id): Path<Uuid>,
 ) -> ApiResult<NoContent> {
+    enabled(&state)?;
     let bridge = load_one(&state, auth.user_id(), id).await?;
     session::revoke_device(&state, auth.user_id(), bridge.device_id).await?;
     sqlx::query("DELETE FROM bridges WHERE id = $1 AND user_id = $2")
@@ -374,6 +387,7 @@ pub async fn revoke(
 #[utoipa::path(get, path = "/api/v1/bridge/me", tag = "bridges",
     responses((status = 200, body = BridgeSelf)))]
 pub async fn me(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<BridgeSelf>> {
+    enabled(&state)?;
     let Some(bridge_id) = auth.bridge_id() else {
         return Err(Error::forbidden("Not an API bridge session"));
     };

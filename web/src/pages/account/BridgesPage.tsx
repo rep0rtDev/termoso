@@ -34,7 +34,8 @@ import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@/api/client";
 import { bridgesApi, vaultsApi } from "@/api/endpoints";
-import { queryKeys } from "@/api/hooks";
+import { Navigate } from "react-router";
+import { queryKeys, useServerInfo } from "@/api/hooks";
 import type { Bridge, BridgeCredentials, BridgeVault, Vault } from "@/api/types";
 import { UnlockCancelled, withStepUp } from "@/auth/unlock";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -367,6 +368,7 @@ function EditVaultsDialog({
 }
 
 export function BridgesPage() {
+  const info = useServerInfo();
   const qc = useQueryClient();
   const snack = useSnackbar();
   const bridges = useQuery({ queryKey: queryKeys.bridges, queryFn: bridgesApi.list });
@@ -390,6 +392,7 @@ export function BridgesPage() {
     },
   });
 
+  if (info.data?.features.bridges === false) return <Navigate to="/account" replace />;
   if (bridges.isPending || vaults.isPending) return <Loading />;
   if (bridges.isError) return <Alert severity="error">{errorMessage(bridges.error)}</Alert>;
   if (vaults.isError) return <Alert severity="error">{errorMessage(vaults.error)}</Alert>;
