@@ -1392,4 +1392,20 @@
     <string name="sso_timed_out">Время единого входа истекло. Попробуйте ещё раз.</string>
     <string name="sso_expired">Эта ссылка единого входа больше не действует. Начните заново.</string>
     <string name="no_browser_available">Нет браузера, чтобы открыть страницу входа.</string>
+    <string name="connection">Подключение</string>
+    <string name="host_chaining">Цепочка хостов</string>
+    <string name="proxy">Прокси</string>
+    <string name="charset">Кодировка</string>
+    <string name="backspace_sends_ctrl_h">Backspace отправляет Ctrl-H</string>
+    <string name="for_hosts_whose_shell_expects_h_instead_of_del">Для хостов, чей shell ждёт ^H вместо DEL.</string>
+    <string name="new_chain">Новая цепочка…</string>
+    <string name="new_proxy">Новый прокси…</string>
+    <string name="proxy_type">Тип</string>
+    <string name="jump_hosts_in_order">Jump-хосты по порядку</string>
+    <string name="terminal_type">Тип терминала</string>
+    <string name="scrollback">История прокрутки</string>
+    <string name="n_lines">%1$d строк</string>
+    <string name="keep_alive_interval">Интервал keep-alive</string>
+    <string name="default_for_hosts_without_their_own_interval">Для хостов без своего интервала</string>
+    <string name="off">Выкл.</string>
 </resources>

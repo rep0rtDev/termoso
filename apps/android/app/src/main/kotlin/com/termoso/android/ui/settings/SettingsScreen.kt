@@ -112,6 +112,9 @@ fun SettingsScreen(
     var languagePicker by remember { mutableStateOf(false) }
     val language = remember { AppLanguage.current(context) }
     var delayPicker by remember { mutableStateOf(false) }
+    var termTypePicker by remember { mutableStateOf(false) }
+    var scrollbackPicker by remember { mutableStateOf(false) }
+    var keepAlivePicker by remember { mutableStateOf(false) }
     var privacy by remember { mutableStateOf(false) }
     var licenses by remember { mutableStateOf(false) }
     val appLock by container.appLock.collectAsStateWithLifecycle()
@@ -247,6 +250,25 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.prefer_ml_kem_hybrid_kex_when_the_server),
                     checked = settings.postQuantumKex,
                     onCheckedChange = { v -> set { it.copy(postQuantumKex = v) } },
+                )
+                RowDivider()
+                ChevronRow(
+                    title = stringResource(R.string.terminal_type),
+                    badge = settings.termType,
+                    modifier = Modifier.clickable { termTypePicker = true },
+                )
+                RowDivider()
+                ChevronRow(
+                    title = stringResource(R.string.scrollback),
+                    badge = stringResource(R.string.n_lines, settings.scrollbackLines.toInt()),
+                    modifier = Modifier.clickable { scrollbackPicker = true },
+                )
+                RowDivider()
+                ChevronRow(
+                    title = stringResource(R.string.keep_alive_interval),
+                    subtitle = stringResource(R.string.default_for_hosts_without_their_own_interval),
+                    badge = if (settings.keepAliveSeconds == 0u) stringResource(R.string.off) else stringResource(R.string.n_seconds_short, settings.keepAliveSeconds.toInt()),
+                    modifier = Modifier.clickable { keepAlivePicker = true },
                 )
                 RowDivider()
                 SwitchRow(
@@ -386,6 +408,30 @@ fun SettingsScreen(
     if (delayPicker) {
         ChoiceSheet(stringResource(R.string.lock_after), lockDelays.map { it.first to stringResource(it.second) }, settings.lockAfterSeconds, onPick = { set { s -> s.copy(lockAfterSeconds = it) } }) { delayPicker = false }
     }
+    if (termTypePicker) {
+        ChoiceSheet(
+            stringResource(R.string.terminal_type),
+            TERM_TYPES.map { it to it },
+            settings.termType,
+            onPick = { set { s -> s.copy(termType = it) } },
+        ) { termTypePicker = false }
+    }
+    if (scrollbackPicker) {
+        ChoiceSheet(
+            stringResource(R.string.scrollback),
+            SCROLLBACKS.map { it to stringResource(R.string.n_lines, it.toInt()) },
+            settings.scrollbackLines,
+            onPick = { set { s -> s.copy(scrollbackLines = it) } },
+        ) { scrollbackPicker = false }
+    }
+    if (keepAlivePicker) {
+        ChoiceSheet(
+            stringResource(R.string.keep_alive_interval),
+            KEEP_ALIVES.map { it to if (it == 0u) stringResource(R.string.off) else stringResource(R.string.n_seconds_short, it.toInt()) },
+            settings.keepAliveSeconds,
+            onPick = { set { s -> s.copy(keepAliveSeconds = it) } },
+        ) { keepAlivePicker = false }
+    }
     if (privacy) {
         AlertDialog(
             onDismissRequest = { privacy = false },
@@ -413,3 +459,8 @@ fun SettingsScreen(
         )
     }
 }
+
+/** `TERM` values a shell is likely to have terminfo for. */
+private val TERM_TYPES = listOf("xterm-256color", "xterm", "screen-256color", "tmux-256color", "linux", "vt100")
+private val SCROLLBACKS = listOf(500u, 1000u, 2000u, 5000u, 10000u, 50000u)
+private val KEEP_ALIVES = listOf(0u, 15u, 30u, 60u, 120u, 300u)

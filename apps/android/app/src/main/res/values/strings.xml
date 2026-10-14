@@ -1366,4 +1366,20 @@
     <string name="sso_timed_out">Single sign-on timed out. Try again.</string>
     <string name="sso_expired">This single sign-on link is no longer valid. Start again.</string>
     <string name="no_browser_available">No browser is available to open the sign-in page.</string>
+    <string name="connection">Connection</string>
+    <string name="host_chaining">Host chaining</string>
+    <string name="proxy">Proxy</string>
+    <string name="charset">Charset</string>
+    <string name="backspace_sends_ctrl_h">Backspace sends Ctrl-H</string>
+    <string name="for_hosts_whose_shell_expects_h_instead_of_del">For hosts whose shell expects ^H instead of DEL.</string>
+    <string name="new_chain">New chain…</string>
+    <string name="new_proxy">New proxy…</string>
+    <string name="proxy_type">Type</string>
+    <string name="jump_hosts_in_order">Jump hosts, in order</string>
+    <string name="terminal_type">Terminal type</string>
+    <string name="scrollback">Scrollback</string>
+    <string name="n_lines">%1$d lines</string>
+    <string name="keep_alive_interval">Keep-alive interval</string>
+    <string name="default_for_hosts_without_their_own_interval">Default for hosts without their own interval</string>
+    <string name="off">Off</string>
 </resources>
