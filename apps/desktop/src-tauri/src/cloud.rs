@@ -293,6 +293,8 @@ pub fn apply_scoped(
             }
             None => {
                 let form = HostForm {
+                    charset: None,
+                    backspace: None,
                     id: None,
                     vault_id,
                     label: inst.label.clone(),

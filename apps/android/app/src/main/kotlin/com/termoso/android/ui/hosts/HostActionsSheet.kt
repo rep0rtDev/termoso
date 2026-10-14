@@ -101,6 +101,7 @@ fun HostActionsSheet(
     onEdit: () -> Unit,
     onDuplicate: () -> Unit,
     onMove: () -> Unit,
+    onMoveVault: () -> Unit,
     onCopy: () -> Unit,
     onSelect: () -> Unit,
     onDelete: () -> Unit,
@@ -213,6 +214,8 @@ fun HostActionsSheet(
                 RowDivider()
                 ActionRow(Icons.AutoMirrored.Filled.DriveFileMove, stringResource(R.string.move_to_group), onClick = then(onMove))
                 if (canCopyToVault) {
+                    RowDivider()
+                    ActionRow(Icons.AutoMirrored.Filled.DriveFileMove, stringResource(R.string.move_to_vault), onClick = then(onMoveVault))
                     RowDivider()
                     ActionRow(Icons.Filled.ContentCopy, stringResource(R.string.copy_to_vault), onClick = then(onCopy))
                 }

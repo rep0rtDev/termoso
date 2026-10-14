@@ -120,6 +120,9 @@ pub struct MobileSettings {
     pub post_quantum_kex: bool,
     #[serde(default = "default_true")]
     pub detect_os: bool,
+    /// Read the remote shell's history files after connecting (opt-in; nothing is stored).
+    #[serde(default)]
+    pub import_shell_history: bool,
     /// Ask for the device credential (biometric / PIN) when the app returns
     /// to the foreground.
     pub lock_on_background: bool,
@@ -149,6 +152,9 @@ pub struct MobileSettings {
     pub volume_up_action: String,
     #[serde(default)]
     pub volume_down_action: String,
+    /// What shaking the device does while a terminal is in front (same grammar; empty = off).
+    #[serde(default)]
+    pub shake_action: String,
     /// Physical-keyboard app shortcuts (session switching, close, new, zoom):
     /// `disabled` | `ctrl` | `ctrl_shift`. Ctrl+Shift by default so Ctrl+W,
     /// Ctrl+T and friends keep reaching the shell.
@@ -200,6 +206,7 @@ impl Default for MobileSettings {
             keep_alive_seconds: default_keepalive(),
             post_quantum_kex: true,
             detect_os: true,
+            import_shell_history: false,
             lock_on_background: false,
             lock_after_seconds: 0,
             sync_credentials: true,
@@ -207,6 +214,7 @@ impl Default for MobileSettings {
             record_sessions: false,
             volume_up_action: String::new(),
             volume_down_action: String::new(),
+            shake_action: String::new(),
             hardware_hotkeys: default_hotkeys(),
             hide_panel_with_keyboard: false,
             autocomplete: true,

@@ -80,6 +80,21 @@ class HostsViewModel(
         }
     }
 
+    /** Quick Import: creates one host per parsed entry in the current vault/group. */
+    fun importHosts(items: List<ImportedHost>) {
+        val vault = currentVault ?: return
+        viewModelScope.launch {
+            runCatching {
+                repo.write {
+                    items.forEach { h ->
+                        val d = newHostDraft(vault, groupId)
+                        saveHost(d.copy(label = h.label, address = h.address, port = h.port?.toUShort(), username = h.username))
+                    }
+                }
+            }
+        }
+    }
+
     private suspend fun reload(vaultId: String?) {
         if (vaultId == null) return
         runCatching {
@@ -142,6 +157,10 @@ class HostsViewModel(
 
     fun copy(ids: List<String>, vaultId: String, withCredentials: Boolean) = mutate {
         repo.write { copyHostsToVault(ids, vaultId, withCredentials) }
+    }
+
+    fun moveToVault(ids: List<String>, vaultId: String, withCredentials: Boolean) = mutate {
+        repo.write { moveHostsToVault(ids, vaultId, withCredentials) }
     }
 
     fun duplicateSelected() = duplicate(_state.value.selected.toList())

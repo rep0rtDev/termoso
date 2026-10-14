@@ -415,6 +415,11 @@ impl InteractivePrompt for InteractiveAsk {
     ) -> Pin<Box<dyn Future<Output = Option<Vec<String>>> + Send + '_>> {
         Box::pin(async move {
             let n = prompts.len();
+            // PAM commonly follows a successful password with an empty round;
+            // there is nothing to type, so answer it without bothering the user.
+            if n == 0 {
+                return Some(Vec::new());
+            }
             let request = PromptRequest::KeyboardInteractive {
                 name,
                 instructions,

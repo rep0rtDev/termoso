@@ -103,8 +103,8 @@ private val stripKeys: List<PanelKey> = listOf(
 /**
  * Extra-keys panel above the soft keyboard, laid out like the Termius iOS one.
  *
- * Compact: one strip — grid toggle, a sideways-scrolling row of the everyday
- * keys, paste and the keyboard toggle. Expanded: Customize/Password shortcuts,
+ * Compact: one strip — grid toggle, Ask AI, hidden password input, a
+ * sideways-scrolling row of the everyday keys, paste and the keyboard toggle. Expanded: Customize/Password shortcuts,
  * a scrollable grid of [rows] (built-in groups or whatever the user arranged in
  * Settings → Customize keys) as rounded tiles, and a bottom bar with the tool
  * sheets (snippets, history & themes, Ask AI) and the keyboard toggle.
@@ -172,6 +172,8 @@ fun KeyPanel(
                 horizontalArrangement = Arrangement.spacedBy(KeyGap),
             ) {
                 IconKey(Icons.Filled.GridView, stringResource(R.string.more_keys), Modifier.width(44.dp), onClick = onToggleExpanded)
+                IconKey(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai), Modifier.width(40.dp)) { onKeyPressed(); onAskAi() }
+                IconKey(Icons.Filled.Password, stringResource(R.string.password), Modifier.width(40.dp)) { onKeyPressed(); onHiddenInput() }
                 LazyRow(
                     Modifier.weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(KeyGap),

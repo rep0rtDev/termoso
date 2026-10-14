@@ -244,6 +244,13 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
         rename(entry.path, join(parent.ifBlank { "/" }, newName.trim()))
     }
 
+    /** Server-side copy of [entry] to [target] (a full path, or a directory to copy into). */
+    fun copyTo(entry: SftpEntry, target: String) = mutate(str(R.string.copied_2)) {
+        val t = target.trim().ifBlank { entry.path }
+        val dest = if (t.endsWith("/")) join(t, entry.name) else t
+        copy(entry.path, dest)
+    }
+
     fun remove(entries: List<SftpEntry>) = mutate(if (entries.size == 1) str(R.string.removed_2) else str(R.string.removed_items, entries.size)) {
         entries.forEach { remove(it.path) }
     }

@@ -187,6 +187,16 @@ pub struct HostDraft {
     pub env_variables: Vec<EnvVar>,
     pub keep_alive_interval: Option<u32>,
     pub timeout: Option<u32>,
+    /// Jump-host chain to go through; `None` connects directly.
+    pub host_chain_id: Option<String>,
+    /// SOCKS / HTTP proxy; `None` connects directly.
+    pub proxy_id: Option<String>,
+    /// Terminal colour scheme id; `None` follows the app setting.
+    pub color_scheme: Option<String>,
+    /// Terminal charset; `None` = UTF-8.
+    pub charset: Option<String>,
+    /// `ctrl-h` makes Backspace send ^H instead of DEL (Termius "Delete sends Ctrl-H").
+    pub backspace: Option<String>,
     /// Set by the core when the stored inline identity has a password.
     pub has_password: bool,
     /// The host has an SSH section (the SSH fields above belong to it). A
@@ -302,6 +312,11 @@ impl HostDraft {
             startup_snippet_id: None,
             env_variables: Vec::new(),
             keep_alive_interval: None,
+            host_chain_id: None,
+            proxy_id: None,
+            color_scheme: None,
+            charset: None,
+            backspace: None,
             timeout: None,
             has_password: false,
             ssh: true,
@@ -344,6 +359,11 @@ impl From<hosts::HostForm> for HostDraft {
                 .collect(),
             keep_alive_interval: f.keep_alive_interval,
             timeout: f.timeout,
+            host_chain_id: f.host_chain_id.map(|i| i.to_string()),
+            proxy_id: f.proxy_id.map(|i| i.to_string()),
+            color_scheme: f.color_scheme,
+            charset: f.charset,
+            backspace: f.backspace,
             has_password: f.has_password,
             ssh: f.ssh,
             telnet: f.telnet.map(Into::into),
@@ -390,6 +410,11 @@ impl HostDraft {
             .collect();
         base.keep_alive_interval = self.keep_alive_interval;
         base.timeout = self.timeout;
+        base.host_chain_id = parse_opt_id(&self.host_chain_id)?;
+        base.proxy_id = parse_opt_id(&self.proxy_id)?;
+        base.color_scheme = self.color_scheme;
+        base.charset = self.charset;
+        base.backspace = self.backspace;
         base.files_provider = self.files_provider;
         base.telnet = match self.telnet {
             None => None,
@@ -466,6 +491,8 @@ pub(crate) fn blank_form(vault_id: Uuid) -> hosts::HostForm {
         keep_alive_interval: None,
         timeout: None,
         color_scheme: None,
+        charset: None,
+        backspace: None,
         has_password: false,
         files_provider: false,
     }
@@ -810,4 +837,51 @@ pub struct HistoryItem {
     pub started_at: i64,
     pub duration_secs: Option<u64>,
     pub error: Option<String>,
+}
+
+// ───────────────────────────── proxies & jump chains ─────────────────────────────
+
+/// SOCKS / HTTP proxy a host can connect through.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ProxyItem {
+    pub id: String,
+    pub vault_id: String,
+    /// `socks4`, `socks5` or `http`.
+    pub kind: String,
+    pub host: String,
+    pub port: u16,
+    /// Identity used for proxy authentication.
+    pub identity_id: Option<String>,
+    pub identity_label: Option<String>,
+}
+
+/// Editor model of a proxy; `id` is `None` for a new one.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ProxyDraft {
+    pub id: Option<String>,
+    pub vault_id: String,
+    pub kind: String,
+    pub host: String,
+    pub port: u16,
+    pub identity_id: Option<String>,
+}
+
+/// Ordered jump hosts a connection goes through before the target.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct HostChainItem {
+    pub id: String,
+    pub vault_id: String,
+    pub label: String,
+    pub host_ids: Vec<String>,
+    /// Labels of [`Self::host_ids`] in order (unknown hosts are skipped).
+    pub host_labels: Vec<String>,
+}
+
+/// Editor model of a jump chain; `id` is `None` for a new one.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct HostChainDraft {
+    pub id: Option<String>,
+    pub vault_id: String,
+    pub label: String,
+    pub host_ids: Vec<String>,
 }

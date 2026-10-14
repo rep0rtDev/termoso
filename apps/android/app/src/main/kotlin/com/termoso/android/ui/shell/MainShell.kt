@@ -36,6 +36,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.font.FontFamily
 import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.AiManager
@@ -251,6 +255,36 @@ fun MainShell(
         }
     }
 
+    // Text shared into the app: pasted into the active terminal after a confirmation.
+    val pendingShareText by container.pendingShareText.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingShareText, openSessions.isEmpty()) {
+        if (pendingShareText == null) return@LaunchedEffect
+        if (openSessions.isEmpty()) {
+            shell.notify(str(R.string.connect_to_a_host_the_shared_files_will))
+            nav.navigate(Routes.CONNECTIONS) {
+                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        } else if (nav.currentDestination?.route != Routes.TERMINAL) {
+            openTerminal()
+        }
+    }
+    pendingShareText?.let { text ->
+        val target = shell.sessions.active ?: openSessions.firstOrNull()
+        if (target != null) {
+            AlertDialog(
+                onDismissRequest = { container.consumeShareText() },
+                title = { Text(stringResource(R.string.paste_shared_text)) },
+                text = { Text(text.take(400), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, maxLines = 8) },
+                confirmButton = {
+                    TextButton(onClick = { target.rust.paste(text); container.consumeShareText() }) { Text(stringResource(R.string.paste)) }
+                },
+                dismissButton = { TextButton(onClick = { container.consumeShareText() }) { Text(stringResource(R.string.cancel)) } },
+            )
+        }
+    }
+
     fun openSftp(connectionId: String) {
         nav.navigate(Routes.sftp(connectionId)) { launchSingleTop = true }
     }
@@ -449,6 +483,7 @@ fun MainShell(
                     onBack = { nav.popBackStack() },
                     onOpenGroup = { nav.navigate(Routes.hosts(it)) },
                     onNewHost = { nav.navigate(Routes.hostNew(group)) },
+                    onNewHostFrom = { nav.navigate(Routes.hostNewFrom(it)) },
                     onEditHost = { nav.navigate(Routes.hostEdit(it)) },
                     onConnect = { connectHost(it) },
                     onConnectWith = ::connectHost,
