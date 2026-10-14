@@ -109,7 +109,7 @@ pub struct SmtpConfig {
     /// `starttls` (default), `tls` (implicit), `none` (plain, for local dev).
     #[serde(default)]
     pub security: SmtpSecurity,
-    /// `From:` header, e.g. `Termoso <no-reply@termoso.com>`.
+    /// `From:` header, e.g. `Termoso <no-reply@termoso.dev>`.
     pub from: String,
 }
 
@@ -156,9 +156,9 @@ pub enum SmtpSecurity {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct WebauthnConfig {
-    /// Relying party id, e.g. `termoso.com`.
+    /// Relying party id, e.g. `termoso.dev`.
     pub rp_id: String,
-    /// Allowed origins, comma-separated, e.g. `https://app.termoso.com,tauri://localhost`.
+    /// Allowed origins, comma-separated, e.g. `https://app.termoso.dev,tauri://localhost`.
     pub origins: String,
     #[serde(default = "default_rp_name")]
     pub rp_name: String,

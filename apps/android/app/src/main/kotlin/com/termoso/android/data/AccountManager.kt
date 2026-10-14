@@ -38,7 +38,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** Termoso Cloud — the free hosted server. Same constant as the desktop client. */
-const val CLOUD_URL = "https://app.termoso.com"
+const val CLOUD_URL = "https://app.termoso.dev"
 
 /** Which server a sign-in targets. */
 enum class ServerChoice { Cloud, SelfHosted }

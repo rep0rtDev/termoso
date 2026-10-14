@@ -100,8 +100,8 @@ TERMOSO_ANDROID_KEYSTORE_PASSWORD=… ./gradlew :app:assembleRelease` signs the
 same way; without those variables the release APK is left unsigned.
 
 The signing certificate also powers Android App Links: the app declares
-`https://app.termoso.com/{invite,join}/…` and Android only lets it claim those
-URLs after fetching `https://app.termoso.com/.well-known/assetlinks.json` and
+`https://app.termoso.dev/{invite,join}/…` and Android only lets it claim those
+URLs after fetching `https://app.termoso.dev/.well-known/assetlinks.json` and
 finding the certificate there. Print the fingerprint and put it in the
 server's `TERMOSO_ANDROID_APP_LINKS` (self-hosted servers do the same for
 their own builds):

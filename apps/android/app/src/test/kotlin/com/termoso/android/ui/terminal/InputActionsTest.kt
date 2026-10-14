@@ -64,9 +64,10 @@ class InputActionsTest : ResourceTest() {
     @Test
     fun defaultRowsMatchTheFormerStaticPanel() {
         val rows = KeyGroups.rows(emptyList())
-        assertEquals(6, rows.size)
+        assertEquals(7, rows.size)
         assertEquals(listOf("←", "↑", "↓", "→", "Alt", "Tab", "Insert", "Delete"), rows[0].map { it.label })
         assertEquals(listOf("F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"), rows[5].map { it.label })
+        assertTrue(rows[6].all { it.label.startsWith("^B") })
         assertEquals(KeyGroups.defaults, KeyGroups.editable(emptyList()))
     }
 

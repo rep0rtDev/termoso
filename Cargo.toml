@@ -22,7 +22,7 @@ edition = "2024"
 rust-version = "1.94"
 license = "AGPL-3.0-only"
 repository = "https://github.com/rep0rtDev/termoso"
-homepage = "https://termoso.com"
+homepage = "https://termoso.dev"
 authors = ["Termoso contributors"]
 
 [workspace.dependencies]
