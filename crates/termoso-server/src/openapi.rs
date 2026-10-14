@@ -176,7 +176,7 @@ impl Modify for BearerAuth {
 pub struct ApiDoc;
 
 pub fn swagger<S: Clone + Send + Sync + 'static>() -> Router<S> {
-    SwaggerUi::new("/docs")
+    SwaggerUi::new("/api/docs")
         .url("/api/openapi.json", ApiDoc::openapi())
         .into()
 }

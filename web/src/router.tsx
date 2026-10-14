@@ -28,9 +28,19 @@ import { AdminTeamsPage } from "./pages/admin/AdminTeamsPage";
 import { AdminSettingsPage } from "./pages/admin/AdminSettingsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { RootPage } from "./pages/RootPage";
+import { DocsLayout } from "./docs/DocsLayout";
+import { DocsPage } from "./docs/DocsPage";
 
 export const router = createBrowserRouter([
   { path: "/", element: <RootPage /> },
+  {
+    path: "/docs",
+    element: <DocsLayout />,
+    children: [
+      { index: true, element: <DocsPage /> },
+      { path: "*", element: <DocsPage /> },
+    ],
+  },
   {
     element: <AuthLayout />,
     children: [

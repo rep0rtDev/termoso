@@ -72,8 +72,9 @@ pub async fn landing_host_layer(
         return next.run(req).await;
     }
     let path = req.uri().path();
-    let served_here =
-        matches!(path, "/" | "/healthz" | "/readyz" | "/api/v1/server/info") || !is_route(path);
+    let served_here = matches!(path, "/" | "/healthz" | "/readyz" | "/api/v1/server/info")
+        || is_docs(path)
+        || !is_route(path);
     if !served_here {
         let target = match req.uri().query() {
             Some(q) => format!("{}{path}?{q}", state.cfg.web_url().trim_end_matches('/')),
@@ -129,6 +130,12 @@ async fn serve(dir: Arc<PathBuf>, landing_on_root: bool, req: Request) -> Respon
 }
 
 /// Client-side routes look like `/team/123` — no extension in the last segment.
+/// The documentation is part of the web cabinet bundle but belongs to the
+/// public site, so the landing origin serves it instead of redirecting.
+fn is_docs(path: &str) -> bool {
+    path == "/docs" || path.starts_with("/docs/")
+}
+
 fn is_route(path: &str) -> bool {
     !path.starts_with("/assets/") && !path.rsplit('/').next().unwrap_or("").contains('.')
 }
@@ -193,6 +200,14 @@ mod tests {
                 .unwrap()
                 .starts_with("text/html")
         );
+    }
+
+    #[test]
+    fn docs_stay_on_the_landing_origin() {
+        assert!(is_docs("/docs"));
+        assert!(is_docs("/docs/self-hosting/overview"));
+        assert!(!is_docs("/docsy"));
+        assert!(!is_docs("/account"));
     }
 
     #[test]

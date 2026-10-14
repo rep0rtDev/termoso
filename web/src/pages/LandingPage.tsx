@@ -882,6 +882,14 @@ export function LandingPage() {
               </Button>
             ))}
             <Button
+              component={RouterLink}
+              to="/docs"
+              variant="text"
+              sx={{ color: "text.secondary" }}
+            >
+              Docs
+            </Button>
+            <Button
               href={REPO}
               target="_blank"
               rel="noreferrer"

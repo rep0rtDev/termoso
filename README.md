@@ -273,7 +273,7 @@ Prerequisites per component (all optional — work on what you touch):
 docker compose -f deploy/docker-compose.dev.yml up -d --wait   # postgres, redis, rustfs, mailpit
 export TERMOSO_MASTER_KEY=$(openssl rand -base64 32)
 cargo run -p termoso-server
-# → http://localhost:8080/docs   (Mailpit UI: http://localhost:8025)
+# → http://localhost:8080/api/docs   (Mailpit UI: http://localhost:8025)
 ```
 
 The defaults connect to `postgres://termoso:termoso@localhost:5432/termoso`

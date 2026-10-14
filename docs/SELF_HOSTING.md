@@ -422,7 +422,7 @@ older dump into a newer version works; the reverse does not.
 
 ```bash
 docker compose -f deploy/docker-compose.dev.yml up -d --wait
-cargo run -p termoso-server            # http://localhost:8080, Swagger UI at /docs
+cargo run -p termoso-server            # http://localhost:8080, Swagger UI at /api/docs
 cargo test --workspace                 # integration tests use the same services
 docker compose -f deploy/docker-compose.dev.yml down -v   # wipe
 ```
