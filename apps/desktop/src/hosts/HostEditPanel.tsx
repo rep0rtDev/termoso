@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -187,6 +187,15 @@ function HostEditor({
   const [form, setForm] = useState<HostForm>(initial);
   const [seen, setSeen] = useState(initial);
   const [touched, setTouched] = useState(false);
+  const [edits, setEdits] = useState(0);
+  const [saved, setSaved] = useState(false);
+  const markEdited = () => {
+    setTouched(true);
+    setSaved(false);
+    setEdits((n) => n + 1);
+  };
+  /** The stored host: the one being edited, or the one autosave just created. */
+  const id = form.id;
   // The host can change underneath an untouched editor (cloud import, sync):
   // follow the stored form until the user starts editing.
   if (seen !== initial) {
@@ -213,19 +222,19 @@ function HostEditor({
   const [tagAnchor, setTagAnchor] = useState<HTMLElement | null>(null);
 
   const set = <K extends keyof HostForm>(k: K, v: HostForm[K]) => {
-    setTouched(true);
+    markEdited();
     setForm((f) => ({ ...f, [k]: v }));
   };
   const patch = (p: Partial<HostForm>) => {
-    setTouched(true);
+    markEdited();
     setForm((f) => ({ ...f, ...p }));
   };
   const patchTelnet = (p: Partial<TelnetForm>) => {
-    setTouched(true);
+    markEdited();
     setForm((f) => ({ ...f, telnet: { ...(f.telnet ?? emptyTelnet()), ...p } }));
   };
   const patchWebDav = (p: Partial<WebDavForm>) => {
-    setTouched(true);
+    markEdited();
     setForm((f) => ({ ...f, webdav: { ...(f.webdav ?? emptyWebDav()), ...p } }));
   };
 
@@ -252,23 +261,79 @@ function HostEditor({
   const selectedTags = (tags.data ?? []).filter((t) => form.tagIds.includes(t.id));
   const selectedTagIds = new Set(form.tagIds);
 
-  const onSave = (thenConnect: ConnectTarget | null) => {
-    save.mutate(form, {
+  // Termius-style autosave: edits persist shortly after the last change (a
+  // new host is created once it has an address); Connect flushes first.
+  const latest = useRef({ form, canSave });
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlight = useRef(false);
+  const dirty = useRef(false);
+  useEffect(() => {
+    latest.current = { form, canSave };
+  });
+
+  const persist = (after?: (card: Parameters<typeof connectTo>[0]) => void) => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    if (inFlight.current) {
+      timer.current = setTimeout(() => persist(after), 250);
+      return;
+    }
+    const { form: f, canSave: ok } = latest.current;
+    if (!ok) return;
+    dirty.current = false;
+    inFlight.current = true;
+    save.mutate(f, {
       onSuccess: (card) => {
-        snackbar.notify(
-          hostId ? tr("Host saved") : tr("Host “{label}” added", { label: card.label }),
-        );
-        if (thenConnect) connectTo(card, thenConnect);
-        onClose();
+        if (f.id === null) {
+          latest.current = { ...latest.current, form: { ...latest.current.form, id: card.id } };
+          setForm((cur) => ({ ...cur, id: card.id }));
+          snackbar.notify(tr("Host “{label}” added", { label: card.label }));
+        }
+        setSaved(true);
+        after?.(card);
       },
       onError: (e) => snackbar.error(errorMessage(e)),
+      onSettled: () => {
+        inFlight.current = false;
+      },
     });
   };
+  const persistRef = useRef(persist);
+  useEffect(() => {
+    persistRef.current = persist;
+  });
+
+  useEffect(() => {
+    if (edits === 0) return;
+    dirty.current = true;
+    timer.current = setTimeout(() => persistRef.current(), 600);
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [edits]);
+
+  // Closing the panel with a pending edit still saves it.
+  useEffect(
+    () => () => {
+      if (dirty.current) persistRef.current();
+    },
+    [],
+  );
+
+  const connect = () => {
+    const target = primaryOf(form);
+    if (id !== null && (!dirty.current || !canSave)) {
+      connectTo({ id, vaultId, label: form.label }, target);
+      return;
+    }
+    persist((card) => connectTo(card, target));
+  };
+  const canConnect = id !== null ? !save.isPending : canSave;
 
   const onDelete = () => {
-    if (!hostId) return;
+    if (!id) return;
     del.mutate(
-      { id: hostId, vaultId },
+      { id, vaultId },
       {
         onSuccess: () => {
           snackbar.notify(tr("Host deleted"));
@@ -280,44 +345,36 @@ function HostEditor({
     );
   };
 
-  const footer =
-    hostId && !touched ? (
+  const footer = (
+    <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 0.5 }}>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        noWrap
+        sx={{ minHeight: 16, lineHeight: "16px", textAlign: "center" }}
+      >
+        {save.isPending ? tr("Saving…") : saved ? tr("Saved") : ""}
+      </Typography>
       <ConnectButton
-        hostId={hostId}
+        hostId={id}
         vaultId={vaultId}
         label={form.label}
         target={primaryOf(form)}
+        disabled={!canConnect}
+        onClick={connect}
       />
-    ) : (
-      <>
-        <Button
-          variant="tonal"
-          size="large"
-          disabled={!canSave}
-          onClick={() => onSave(null)}
-          sx={{ height: 40, borderRadius: 2.5, flex: "0 0 auto !important", px: 2.5 }}
-        >
-          {save.isPending ? tr("Saving…") : tr("Save")}
-        </Button>
-        <ConnectButton
-          hostId={hostId}
-          vaultId={vaultId}
-          target={primaryOf(form)}
-          disabled={!canSave}
-          onClick={() => onSave(primaryOf(form))}
-        />
-      </>
-    );
+    </Box>
+  );
 
   return (
     <CompactFields.Provider value>
       <SidePanel
         title={tr("Host Details")}
-        subtitle={hostId ? form.label || form.address : tr("New host")}
+        subtitle={id ? form.label || form.address : tr("New host")}
         onClose={onClose}
         width={sizes.panel}
         actions={
-          hostId && (
+          id && (
             <ToolIconButton
               title={tr("Delete host")}
               color="error"
@@ -333,11 +390,11 @@ function HostEditor({
           component="form"
           onSubmit={(e) => {
             e.preventDefault();
-            if (canSave && (touched || !hostId)) onSave(null);
+            if (canSave) persist();
           }}
           sx={{ display: "contents" }}
         >
-          {hostId && <ConnectedNowCard viewers={presence.get(hostId) ?? []} />}
+          {id && <ConnectedNowCard viewers={presence.get(id) ?? []} />}
           <SectionCard title={tr("Address")}>
             <Box sx={{ display: "flex", gap: 1.5, alignItems: "center" }}>
               <IconTile size={sizes.tile} color={icon?.color}>
@@ -899,7 +956,7 @@ function HostEditor({
         <ChainDialog
           open={dialog === "chain"}
           vaultId={vaultId}
-          excludeHostId={hostId}
+          excludeHostId={id}
           onClose={() => setDialog(null)}
           onCreated={(id) => set("hostChainId", id)}
         />
