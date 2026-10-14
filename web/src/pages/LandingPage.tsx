@@ -35,8 +35,12 @@ import { emerald, monoFontFamily } from "@/theme/theme";
 const REPO = "https://github.com/rep0rtDev/termoso";
 const RELEASES = `${REPO}/releases/latest`;
 const README = `${REPO}#readme`;
+const SELF_HOSTING = `${REPO}/blob/main/docs/SELF_HOSTING.md`;
+const IOS_SIDELOAD = `${REPO}/blob/main/docs/IOS_SIDELOAD.md`;
 
 const HEADER = 60;
+
+const PLATFORMS = ["Linux", "Windows", "macOS", "Android", "iOS"];
 
 // ───────────────────────────── content ─────────────────────────────
 
@@ -144,7 +148,7 @@ const steps = [
   {
     n: "03",
     title: "Connect the app",
-    text: "Install the desktop app, point it at your server URL and sign in. Hosts sync encrypted.",
+    text: "Install the desktop or mobile app, point it at your server URL and sign in. Hosts sync encrypted.",
     code: null,
   },
 ];
@@ -156,7 +160,7 @@ const faq = [
   },
   {
     q: "Do I need an account?",
-    a: "No. The desktop app works fully offline with a local encrypted vault. An account only adds sync between devices and sharing with a team.",
+    a: "No. Every app works fully offline with a local encrypted vault. An account only adds sync between devices and sharing with a team.",
   },
   {
     q: "Where is my data stored?",
@@ -281,7 +285,7 @@ function IconBox({ children }: { children: ReactNode }) {
   );
 }
 
-function PlatformChip({ label, soon }: { label: string; soon?: boolean }) {
+function PlatformChip({ label }: { label: string }) {
   return (
     <Box
       sx={{
@@ -292,7 +296,7 @@ function PlatformChip({ label, soon }: { label: string; soon?: boolean }) {
         gap: 0.75,
         borderRadius: 999,
         bgcolor: "surface.high",
-        color: soon ? "text.disabled" : "text.primary",
+        color: "text.primary",
         fontSize: 13,
         fontWeight: 500,
         border: 1,
@@ -300,11 +304,6 @@ function PlatformChip({ label, soon }: { label: string; soon?: boolean }) {
       }}
     >
       {label}
-      {soon && (
-        <Box component="span" sx={{ fontSize: 11, color: "text.disabled" }}>
-          soon
-        </Box>
-      )}
     </Box>
   );
 }
@@ -341,12 +340,18 @@ function TitleBar({ tabs, active = 0 }: { tabs: string[]; active?: number }) {
         gap: 0.5,
         px: 1.5,
         bgcolor: "surface.lowest",
+        overflow: "hidden",
       }}
     >
       {tabs.map((t, i) => (
         <Box
           key={t}
           sx={{
+            whiteSpace: "nowrap",
+            flexShrink: i === active ? 0 : 1,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
             px: 1.25,
             py: 0.5,
             borderRadius: 1,
@@ -415,7 +420,7 @@ function HostsMock() {
   return (
     <Window>
       <TitleBar tabs={["Vaults", "SFTP"]} />
-      <Box sx={{ display: "flex", minHeight: { xs: 300, md: 380 } }}>
+      <Box sx={{ display: "flex", minHeight: { xs: 300, md: 340 } }}>
         <Box
           sx={{
             width: 148,
@@ -605,8 +610,10 @@ function TerminalMock() {
           color: "#E4E7F0",
           p: 2,
           fontFamily: monoFontFamily,
-          fontSize: 12.5,
+          fontSize: { xs: 11.5, sm: 12.5 },
           lineHeight: 1.7,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
         }}
       >
         <Prompt cmd="git pull --ff-only" />
@@ -636,9 +643,10 @@ function TerminalMock() {
         <Box
           sx={{
             position: "absolute",
-            left: 196,
+            left: { xs: 16, sm: 196 },
             top: 196,
-            width: 340,
+            width: { xs: "calc(100% - 32px)", sm: 340 },
+            maxWidth: 340,
             whiteSpace: "nowrap",
             borderRadius: 1.5,
             bgcolor: "#1C2032",
@@ -986,10 +994,9 @@ export function LandingPage() {
               useFlexGap
               sx={{ mt: 4, justifyContent: "center", flexWrap: "wrap" }}
             >
-              <PlatformChip label="Linux" />
-              <PlatformChip label="Windows" />
-              <PlatformChip label="Android" soon />
-              <PlatformChip label="macOS" soon />
+              {PLATFORMS.map((p) => (
+                <PlatformChip key={p} label={p} />
+              ))}
             </Stack>
 
             <Box sx={{ mt: { xs: 6, md: 8 }, mx: "auto", maxWidth: 1040, textAlign: "left" }}>
@@ -1186,7 +1193,7 @@ export function LandingPage() {
 
         <Container maxWidth="lg">
           {/* Self-hosting */}
-          <Section id="self-hosting">
+          <Section id="self-hosting" sx={{ pb: { xs: 5, md: 7 } }}>
             <SectionTitle
               eyebrow="Self-hosting"
               title="Up and running in three steps"
@@ -1236,8 +1243,8 @@ export function LandingPage() {
             </Box>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 3 }}>
               Full instructions and the configuration reference are in the{" "}
-              <Link href={README} target="_blank" rel="noreferrer">
-                README
+              <Link href={SELF_HOSTING} target="_blank" rel="noreferrer">
+                self-hosting guide
               </Link>
               .
             </Typography>
@@ -1273,46 +1280,46 @@ export function LandingPage() {
                   component="h2"
                   sx={{ fontSize: { xs: "1.75rem", md: "2.5rem" }, letterSpacing: "-0.02em" }}
                 >
-                  Get the desktop app
+                  Get the app
                 </Typography>
                 <Typography
                   variant="body1"
                   color="text.secondary"
                   sx={{ mt: 1.5, maxWidth: 560, mx: "auto", fontSize: "1.0625rem" }}
                 >
-                  Signed builds for Linux (deb, rpm, AppImage) and Windows (msi, exe). Updates are
-                  checked only when you ask, against your own server or GitHub.
+                  Native builds for Linux (deb, rpm, AppImage), Windows (msi, exe), macOS (Apple
+                  Silicon and Intel) and Android (apk). Updates are checked only when you ask,
+                  against your own server or GitHub.
                 </Typography>
                 <Stack
                   direction={{ xs: "column", sm: "row" }}
                   spacing={1.5}
-                  sx={{ mt: 4, justifyContent: "center" }}
+                  useFlexGap
+                  sx={{ mt: 4, justifyContent: "center", flexWrap: "wrap" }}
                 >
-                  <Button
-                    href={RELEASES}
-                    target="_blank"
-                    rel="noreferrer"
-                    variant="contained"
-                    size="large"
-                  >
-                    Download for Linux
-                  </Button>
-                  <Button
-                    href={RELEASES}
-                    target="_blank"
-                    rel="noreferrer"
-                    variant="outlined"
-                    size="large"
-                  >
-                    Download for Windows
-                  </Button>
+                  {["Linux", "Windows", "macOS", "Android"].map((p, i) => (
+                    <Button
+                      key={p}
+                      href={RELEASES}
+                      target="_blank"
+                      rel="noreferrer"
+                      variant={i === 0 ? "contained" : "outlined"}
+                      size="large"
+                    >
+                      Download for {p}
+                    </Button>
+                  ))}
                 </Stack>
                 <Typography
                   variant="caption"
                   color="text.disabled"
                   sx={{ display: "block", mt: 2 }}
                 >
-                  Android and macOS builds are in development.
+                  iOS: the unsigned .ipa installs through AltStore or SideStore —{" "}
+                  <Link href={IOS_SIDELOAD} target="_blank" rel="noreferrer" color="inherit">
+                    sideloading guide
+                  </Link>
+                  .
                 </Typography>
               </Box>
             </Box>
@@ -1384,7 +1391,7 @@ export function LandingPage() {
                   links: [
                     ["Quick start", README],
                     ["Docker Compose", `${REPO}/blob/main/deploy/docker-compose.yml`],
-                    ["Releasing", `${REPO}/blob/main/docs/RELEASING.md`],
+                    ["Self-hosting guide", SELF_HOSTING],
                   ],
                 },
                 {
