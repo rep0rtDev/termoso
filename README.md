@@ -245,7 +245,9 @@ list; the source of truth is
 | `TERMOSO_ANDROID_APP_LINKS` | empty | `<package>=<SHA-256 cert fingerprint>` pairs published at `/.well-known/assetlinks.json` |
 | `TERMOSO_METRICS__ENABLED` / `TERMOSO_METRICS__BIND` | `false` / `127.0.0.1:9090` | opt-in Prometheus metrics on a separate listener |
 | `TERMOSO_LOG` / `TERMOSO_LOG_FORMAT` | `info,sqlx=warn,…` / `text` | tracing filter and `text` or `json` output |
-| `TERMOSO_SWAGGER_UI` | `true` | serve Swagger UI at `/docs` and the OpenAPI document at `/api/openapi.json` |
+| `TERMOSO_SWAGGER_UI` | `true` | serve Swagger UI at `/api/docs` and the OpenAPI document at `/api/openapi.json` |
+| `TERMOSO_DOCS` | `true` | serve the documentation at `/docs` |
+| `TERMOSO_DOCS_URL` | – | dedicated origin for the documentation (`https://docs.example.com`); `/docs` on the other origins redirects there |
 | `TERMOSO_START_OVER_DELAY_SECS` | `86400` | waiting period of the *Start over* account reset |
 
 Client-side settings live in the apps. Desktop honours `TERMOSO_PROFILE_DIR`

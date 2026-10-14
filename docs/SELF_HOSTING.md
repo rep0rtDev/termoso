@@ -148,6 +148,17 @@ from `TERMOSO_PUBLIC_URL`/`TERMOSO_WEB_URL`, and needs `TERMOSO_WEB_DIR`
 otherwise. Everything else (`TERMOSO_WEBAUTHN__RP_ID`, OAuth redirect URIs,
 `assetlinks.json`) stays tied to `TERMOSO_PUBLIC_URL`, i.e. the cabinet.
 
+### Documentation: on, off, or on its own domain
+
+The documentation ships inside the cabinet bundle at `/docs` and is served on
+the landing origin too. `TERMOSO_DOCS=false` hides it (404). `TERMOSO_DOCS_URL`
+(e.g. `https://docs.example.com`; with the Compose `proxy` profile add the
+name to `TERMOSO_DOMAIN`) gives it a dedicated origin: that host answers
+`/docs/*`, the static files and the health probes, `/` goes to `/docs`, and
+`/docs/*` on the landing and cabinet origins redirects there. The same rules
+as for `TERMOSO_LANDING_URL` apply: a bare origin, different from the other
+hostnames, `TERMOSO_WEB_DIR` set.
+
 ### WebAuthn, App Links, SSO
 
 * `TERMOSO_WEBAUTHN__RP_ID` must be the registrable domain of

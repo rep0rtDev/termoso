@@ -38,6 +38,15 @@ pub struct Config {
     /// every other path redirects to the same path under `web_url`. `/` on
     /// the cabinet origin then behaves as if `landing = false`.
     pub landing_url: Option<String>,
+    /// Serve the documentation (`/docs`, part of the web cabinet bundle).
+    /// `false` answers 404 there on every origin.
+    pub docs: bool,
+    /// Dedicated origin for the documentation (e.g. `https://docs.example.com`).
+    /// Requests whose `Host` matches get `/docs/*` and its assets, `/` goes
+    /// to `/docs`, every other path redirects to the same path under
+    /// `web_url`; the landing and cabinet origins then redirect `/docs/*`
+    /// here.
+    pub docs_url: Option<String>,
     /// Human name shown in emails / server info.
     pub server_name: String,
     /// Android apps allowed to open this server's `https://…/invite/…` and
@@ -305,6 +314,8 @@ impl Default for Config {
             web_dir: None,
             landing: true,
             landing_url: None,
+            docs: true,
+            docs_url: None,
             server_name: "Termoso".into(),
             android_app_links: String::new(),
             database_url: "postgres://termoso:termoso@localhost:5432/termoso".into(),
@@ -380,6 +391,28 @@ impl Config {
                 "TERMOSO_LANDING_URL must differ from TERMOSO_PUBLIC_URL / TERMOSO_WEB_URL (use TERMOSO_LANDING=false to hide the landing on the cabinet origin)"
             );
         }
+        if let Some(u) = self.docs_url() {
+            let parsed = url::Url::parse(u).context("TERMOSO_DOCS_URL must be a URL")?;
+            anyhow::ensure!(
+                parsed.host_str().is_some() && parsed.path().trim_end_matches('/').is_empty(),
+                "TERMOSO_DOCS_URL must be an origin without a path (e.g. https://docs.example.com)"
+            );
+            anyhow::ensure!(
+                self.docs,
+                "TERMOSO_DOCS_URL needs TERMOSO_DOCS=true (unset one of them)"
+            );
+            anyhow::ensure!(
+                self.web_dir().is_some(),
+                "TERMOSO_DOCS_URL needs TERMOSO_WEB_DIR (the docs are part of the web cabinet)"
+            );
+            let docs_host = host_header(u);
+            anyhow::ensure!(
+                docs_host != host_header(&self.public_url)
+                    && docs_host != host_header(self.web_url())
+                    && docs_host != self.landing_host(),
+                "TERMOSO_DOCS_URL must differ from TERMOSO_PUBLIC_URL / TERMOSO_WEB_URL / TERMOSO_LANDING_URL"
+            );
+        }
         self.android_app_links()?;
         if let Some(ai) = &self.ai {
             anyhow::ensure!(
@@ -449,6 +482,17 @@ impl Config {
     /// `host[:port]` of `landing_url`, as it appears in the `Host` header.
     pub fn landing_host(&self) -> Option<String> {
         host_header(self.landing_url()?)
+    }
+
+    pub fn docs_url(&self) -> Option<&str> {
+        self.docs_url
+            .as_deref()
+            .map(|u| u.trim().trim_end_matches('/'))
+            .filter(|u| !u.is_empty())
+    }
+
+    pub fn docs_host(&self) -> Option<String> {
+        host_header(self.docs_url()?)
     }
 
     /// Whether `/` on the cabinet origin renders the landing page.

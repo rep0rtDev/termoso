@@ -46,11 +46,12 @@ Never enable `TERMOSO_TRUST_PROXY` on a server that is reachable without the pro
 
 ## Landing page and domains
 
-| Layout               | Settings                                                                                                                               | Result                                                                                        |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| One origin (default) | `TERMOSO_PUBLIC_URL=https://termoso.example.com`                                                                                       | `/` is the landing, `/docs` the docs, `/login` the cabinet                                    |
-| No landing           | `TERMOSO_LANDING=false`                                                                                                                | `/` goes straight to sign-in                                                                  |
-| Landing on the apex  | `TERMOSO_PUBLIC_URL=https://app.example.com`<br>`TERMOSO_WEB_URL=https://app.example.com`<br>`TERMOSO_LANDING_URL=https://example.com` | `example.com` serves the landing and `/docs`; every other path redirects to `app.example.com` |
+| Layout                   | Settings                                                                                                                               | Result                                                                                                                       |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| One origin (default)     | `TERMOSO_PUBLIC_URL=https://termoso.example.com`                                                                                       | `/` is the landing, `/docs` the docs, `/login` the cabinet                                                                   |
+| No landing               | `TERMOSO_LANDING=false`                                                                                                                | `/` goes straight to sign-in                                                                                                 |
+| Docs on their own domain | `TERMOSO_DOCS_URL=https://docs.example.com`                                                                                            | `docs.example.com` serves the documentation; `/docs` elsewhere redirects there. `TERMOSO_DOCS=false` hides the docs entirely |
+| Landing on the apex      | `TERMOSO_PUBLIC_URL=https://app.example.com`<br>`TERMOSO_WEB_URL=https://app.example.com`<br>`TERMOSO_LANDING_URL=https://example.com` | `example.com` serves the landing and `/docs`; every other path redirects to `app.example.com`                                |
 
 ## Passkeys, App Links, SSO
 
