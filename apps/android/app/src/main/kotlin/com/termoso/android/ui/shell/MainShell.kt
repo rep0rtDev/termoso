@@ -223,6 +223,7 @@ fun MainShell(
 
     // A termoso://join link: needs an account, then becomes a viewer terminal.
     val pendingJoin by container.pendingJoin.collectAsStateWithLifecycle()
+    val pendingSerial by container.pendingSerial.collectAsStateWithLifecycle()
     val restoring by account.restoring.collectAsStateWithLifecycle()
     LaunchedEffect(pendingJoin, accountStatus.account?.userId, restoring) {
         val link = pendingJoin ?: return@LaunchedEffect
@@ -384,6 +385,8 @@ fun MainShell(
             }
             composable(Routes.CONNECTIONS) {
                 ConnectionsScreen(
+                    openSerial = pendingSerial,
+                    onSerialConsumed = container::consumeSerial,
                     shell = shell,
                     onAddHost = { nav.navigate(Routes.hostNew(null)) },
                     onConnectHost = { connectHost(it) },

@@ -77,6 +77,11 @@ class MainActivity : FragmentActivity() {
 
     private fun handleLink(intent: Intent?, container: AppContainer) {
         when (intent?.action) {
+            android.hardware.usb.UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
+                container.offerSerial()
+                intent.action = Intent.ACTION_MAIN
+                return
+            }
             Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE -> {
                 val text = intent.getStringExtra(Intent.EXTRA_TEXT)
                 val uris = sharedUris(intent)

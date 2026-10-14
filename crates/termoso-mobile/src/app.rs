@@ -29,6 +29,7 @@ use crate::fido2::{self, Fido2GenerateDraft, Fido2Listener, Fido2LoadDraft, Secu
 use crate::forward::{self, PfRuleDraft, PfRuleItem, PfTunnel, TunnelLaunch, TunnelListener};
 use crate::live::{LiveListener, LiveShare};
 use crate::presence::{self, TeamPresenceCard};
+use crate::serial::{PipeTerminal, SerialLine, SerialLink, SerialPipe, SerialSession};
 use crate::session::{
     Launch, LaunchTarget, SessionListener, SshSession, TerminalOptions, Transport, ViewerLaunch,
 };
@@ -1455,6 +1456,44 @@ impl TermosoApp {
                 account: Some(self.account.clone()),
             },
         ))
+    }
+
+    /// A serial console over a USB-UART adapter the app drives: Kotlin
+    /// opens the device and moves bytes through the returned [`SerialPipe`]
+    /// and the [`SerialLink`] it passes in.
+    pub fn connect_serial(
+        &self,
+        device: String,
+        label: String,
+        line: SerialLine,
+        link: Arc<dyn SerialLink>,
+        options: TerminalOptions,
+        listener: Arc<dyn SessionListener>,
+    ) -> Result<SerialSession> {
+        let (terminal, events) = PipeTerminal::open(&line, link)?;
+        let session = SshSession::launch(
+            RUNTIME.handle().clone(),
+            Launch {
+                store: self.store.clone(),
+                secrets: self.secrets.clone(),
+                target: LaunchTarget::Serial {
+                    label,
+                    device,
+                    terminal: terminal.clone(),
+                    events,
+                },
+                settings: MobileSettings::load(&self.store)?,
+                options,
+                listener,
+                presence: None,
+                logs_dir: self.profile_dir.join("logs"),
+                account: Some(self.account.clone()),
+            },
+        );
+        Ok(SerialSession {
+            session,
+            pipe: Arc::new(SerialPipe::new(terminal)),
+        })
     }
 
     /// Open a terminal to an ad-hoc target (`user@host:port`); nothing is

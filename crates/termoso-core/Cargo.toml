@@ -26,7 +26,7 @@ russh = { version = "0.63", features = ["rsa"] }
 russh-sftp = "3"
 portable-pty = { version = "0.9", optional = true }
 serialport = { version = "4.9", default-features = false, optional = true }
-encoding_rs = { version = "0.8", optional = true }
+encoding_rs = { version = "0.8" }
 rand = "0.10"
 # FIDO2 security keys: desktop USB HID backend…
 ctap-hid-fido2 = { version = "3.5", optional = true }
@@ -79,7 +79,7 @@ keychain = ["dep:keyring"]
 # Local terminal (spawns the user's shell in a PTY).
 local-pty = ["dep:portable-pty"]
 # Serial console over a COM / tty device.
-serial = ["dep:serialport", "dep:encoding_rs"]
+serial = ["dep:serialport"]
 # FIDO2 security keys (`sk-ssh-ed25519@openssh.com`, `sk-ecdsa-sha2-nistp256@openssh.com`).
 fido2 = ["dep:ctap-hid-fido2"]
 # Transport-agnostic CTAP2 client (`fido2::ctap`, `fido2::hid`, `fido2::nfc`).
