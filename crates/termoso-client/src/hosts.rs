@@ -1953,6 +1953,8 @@ mod tests {
 
     fn new_form(vault_id: Uuid) -> HostForm {
         HostForm {
+            charset: None,
+            backspace: None,
             id: None,
             vault_id,
             label: "prod".into(),

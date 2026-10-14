@@ -839,7 +839,6 @@ pub struct HistoryItem {
     pub error: Option<String>,
 }
 
-
 // ───────────────────────────── proxies & jump chains ─────────────────────────────
 
 /// SOCKS / HTTP proxy a host can connect through.

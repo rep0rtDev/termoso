@@ -336,7 +336,12 @@ impl TermosoApp {
         let vault = parse_opt_id(&vault_id)?;
         let identities = keychain::identities(&self.store, None)?;
         let label = |id: Option<uuid::Uuid>| {
-            id.and_then(|i| identities.iter().find(|c| c.id == i).map(|c| c.label.clone()))
+            id.and_then(|i| {
+                identities
+                    .iter()
+                    .find(|c| c.id == i)
+                    .map(|c| c.label.clone())
+            })
         };
         Ok(self
             .store
@@ -359,7 +364,9 @@ impl TermosoApp {
         use termoso_core::ssh::proxy::ProxyKind;
         let kind = draft.kind.trim().to_ascii_lowercase();
         if ProxyKind::parse(&kind).is_none() {
-            return Err(MobileError::invalid(format!("unsupported proxy type {kind}")));
+            return Err(MobileError::invalid(format!(
+                "unsupported proxy type {kind}"
+            )));
         }
         let host = draft.host.trim().to_string();
         if host.is_empty() {
