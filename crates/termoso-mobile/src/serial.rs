@@ -238,8 +238,10 @@ mod tests {
         assert!(bad(|l| l.parity = "both".into()));
         assert!(bad(|l| l.flow_control = "rts".into()));
         assert!(bad(|l| l.charset = "utf-16le".into()));
-        let mut ok = SerialLine::default();
-        ok.charset = "koi8-r".into();
+        let ok = SerialLine {
+            charset: "koi8-r".into(),
+            ..SerialLine::default()
+        };
         assert!(validate_line(&ok).is_ok());
     }
 }
