@@ -1415,4 +1415,6 @@
     <string name="on_host">На этом хосте</string>
     <string name="paste_shared_text">Вставить полученный текст в терминал?</string>
     <string name="tmux">tmux</string>
+    <string name="discover_on_local_network">Найти в локальной сети</string>
+    <string name="looking_for_ssh_servers">Ищем SSH-серверы, объявленные через mDNS…</string>
 </resources>
