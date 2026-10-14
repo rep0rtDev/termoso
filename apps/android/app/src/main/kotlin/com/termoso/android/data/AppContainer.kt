@@ -44,6 +44,7 @@ class AppContainer(context: Context) {
     /** `HOME` of local shells, the one app-private directory the Files browser and provider expose. */
     val localHome: File = File(appContext.filesDir, "home")
     val masterKeys = MasterKeyStore(context)
+    val appPin = AppPin(context)
 
     /** FIDO2 tokens on USB/NFC; process-wide, started on first use by the UI. */
     val fido2 = Fido2Manager(appContext)
@@ -177,13 +178,13 @@ class AppContainer(context: Context) {
     fun backgroundLockDue(): Boolean {
         val open = _vault.value as? VaultState.Open ?: return false
         val settings = open.repo.settings.value
-        if (!settings.lockOnBackground || !masterKeys.authRequired() || backgroundedAt == 0L) return false
+        if (!settings.lockOnBackground || !(masterKeys.authRequired() || appPin.isSet) || backgroundedAt == 0L) return false
         val away = (SystemClock.elapsedRealtime() - backgroundedAt) / 1000
         return away >= settings.lockAfterSeconds.toLong()
     }
 
     fun gate() {
-        if (_vault.value is VaultState.Open && masterKeys.authRequired()) _gated.value = true
+        if (_vault.value is VaultState.Open && (masterKeys.authRequired() || appPin.isSet)) _gated.value = true
     }
 
     /** Blocking Keystore work; call off the main thread after the user authenticated. */

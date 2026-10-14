@@ -43,6 +43,8 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termoso.android.AppLanguage
 import com.termoso.android.BuildConfig
+import com.termoso.android.data.AppPin
+import com.termoso.android.ui.security.PinSetupDialog
 import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.AppContainer
@@ -118,6 +120,22 @@ fun SettingsScreen(
     var privacy by remember { mutableStateOf(false) }
     var licenses by remember { mutableStateOf(false) }
     val appLock by container.appLock.collectAsStateWithLifecycle()
+    var pinSet by remember { mutableStateOf(container.appPin.isSet) }
+    var pinMenu by remember { mutableStateOf(false) }
+    var pinSetup by remember { mutableStateOf(false) }
+    if (pinSetup) PinSetupDialog(container.appPin) { pinSetup = false; pinSet = container.appPin.isSet }
+    if (pinMenu) {
+        AlertDialog(
+            onDismissRequest = { pinMenu = false },
+            title = { Text(stringResource(R.string.app_pin_or_pattern)) },
+            text = { Text(stringResource(R.string.app_pin_hint)) },
+            confirmButton = { TextButton(onClick = { pinMenu = false; pinSetup = true }) { Text(stringResource(if (pinSet) R.string.change else R.string.set_up)) } },
+            dismissButton = {
+                if (pinSet) TextButton(onClick = { container.appPin.clear(); pinSet = false; pinMenu = false }) { Text(stringResource(R.string.remove)) }
+                else TextButton(onClick = { pinMenu = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
     var lockBusy by remember { mutableStateOf(false) }
     val filesEnabled by container.files.enabled.collectAsStateWithLifecycle()
 
@@ -324,14 +342,24 @@ fun SettingsScreen(
                     title = stringResource(R.string.lock_when_in_background),
                     subtitle = stringResource(R.string.ask_again_after_leaving_the_app_sessions_keep),
                     checked = settings.lockOnBackground,
-                    enabled = appLock,
+                    enabled = appLock || pinSet,
                     onCheckedChange = { v -> set { it.copy(lockOnBackground = v) } },
                 )
                 RowDivider()
                 ChevronRow(
                     title = stringResource(R.string.lock_after),
                     badge = lockDelays.firstOrNull { it.first == settings.lockAfterSeconds }?.let { stringResource(it.second) } ?: stringResource(R.string.n_seconds_short, settings.lockAfterSeconds.toLong()),
-                    modifier = Modifier.clickable(enabled = appLock && settings.lockOnBackground) { delayPicker = true },
+                    modifier = Modifier.clickable(enabled = (appLock || pinSet) && settings.lockOnBackground) { delayPicker = true },
+                )
+                RowDivider()
+                ChevronRow(
+                    title = stringResource(R.string.app_pin_or_pattern),
+                    badge = when (container.appPin.kind?.takeIf { pinSet }) {
+                        AppPin.Kind.PIN -> stringResource(R.string.pin)
+                        AppPin.Kind.PATTERN -> stringResource(R.string.pattern)
+                        null -> stringResource(R.string.off)
+                    },
+                    modifier = Modifier.clickable { pinMenu = true },
                 )
                 RowDivider()
                 SwitchRow(

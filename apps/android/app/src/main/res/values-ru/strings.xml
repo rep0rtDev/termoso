@@ -1417,4 +1417,16 @@
     <string name="tmux">tmux</string>
     <string name="discover_on_local_network">Найти в локальной сети</string>
     <string name="looking_for_ssh_servers">Ищем SSH-серверы, объявленные через mDNS…</string>
+    <string name="try_again_in_n_seconds">Повторите через %1$d с</string>
+    <string name="wrong_code">Неверный код</string>
+    <string name="draw_your_pattern">Нарисуйте графический ключ</string>
+    <string name="enter_your_pin">Введите PIN</string>
+    <string name="set_app_pin">Задать PIN или графический ключ</string>
+    <string name="confirm_code">Повторите для подтверждения</string>
+    <string name="pin">PIN</string>
+    <string name="pattern">Графический ключ</string>
+    <string name="codes_do_not_match">Коды не совпадают, начните заново</string>
+    <string name="app_pin_or_pattern">PIN / графический ключ</string>
+    <string name="app_pin_hint">6-значный PIN или графический ключ, который запрашивается при блокировке Termoso в дополнение к экрану блокировки. Хранится на устройстве только как хэш с солью.</string>
+    <string name="set_up">Настроить</string>
 </resources>

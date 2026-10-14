@@ -36,6 +36,7 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import com.termoso.android.R
+import com.termoso.android.ui.security.PinLockScreen
 import com.termoso.android.data.AppContainer
 import com.termoso.android.data.VaultState
 import com.termoso.android.data.userMessage
@@ -96,7 +97,7 @@ fun TermosoRoot(container: AppContainer, vault: VaultState) {
             }
     }
     LaunchedEffect(gated) {
-        if (gated && prompt()) container.ungate()
+        if (gated && !container.appPin.isSet && prompt()) container.ungate()
     }
 
     when (vault) {
@@ -153,7 +154,9 @@ fun TermosoRoot(container: AppContainer, vault: VaultState) {
                         )
                     }
                 }
-                if (gated) {
+                if (gated && container.appPin.isSet) {
+                    PinLockScreen(container.appPin, onUnlocked = { container.ungate() })
+                } else if (gated) {
                     LockedScreen(error = error, manual = true, authRequired = true, onRetry = {
                         error = null
                         scope.launch { if (prompt()) container.ungate() }
