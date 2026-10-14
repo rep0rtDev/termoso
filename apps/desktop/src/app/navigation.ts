@@ -6,8 +6,7 @@ import { createStore, useStore } from "@/lib/store";
 import { HOME_TAB, setActiveTab, terminalStore } from "@/terminal/store";
 import type { Uuid } from "@/ipc/types";
 
-export type Section =
-  "hosts" | "keychain" | "forwarding" | "snippets" | "knownHosts" | "logs" | "settings";
+export type Section = "hosts" | "keychain" | "forwarding" | "snippets" | "knownHosts" | "logs";
 
 /** `terminalStore.activeTabId` is the source of truth for the top tab; the SFTP
  *  tab is one more pseudo id alongside `HOME_TAB`. */
@@ -19,6 +18,8 @@ export const SERIAL_TAB = "serial";
 
 interface NavState {
   section: Section;
+  /** Settings is a window over the app (Termius style), not a sidebar section. */
+  settingsOpen: boolean;
   /** Settings sub-page (Settings is a page group like Termius' settings window). */
   settingsPage: SettingsPage;
   /** "New …" picked from the top bar; the section page consumes it. */
@@ -52,6 +53,7 @@ export type CreateKind = "host" | "group" | "snippet";
 
 export const navStore = createStore<NavState>({
   section: "hosts",
+  settingsOpen: false,
   settingsPage: "account",
   pendingCreate: null,
   pendingEdit: null,
@@ -67,8 +69,11 @@ export function goToSection(section: Section) {
 }
 
 export function goToSettings(page?: SettingsPage) {
-  navStore.set((s) => ({ ...s, section: "settings", settingsPage: page ?? s.settingsPage }));
-  setActiveTab(HOME_TAB);
+  navStore.set((s) => ({ ...s, settingsOpen: true, settingsPage: page ?? s.settingsPage }));
+}
+
+export function closeSettings() {
+  navStore.set((s) => (s.settingsOpen ? { ...s, settingsOpen: false } : s));
 }
 
 export function setSettingsPage(page: SettingsPage) {
@@ -79,11 +84,10 @@ export function setSettingsPage(page: SettingsPage) {
 export function goToSettingsWith(intent: SettingsIntent) {
   navStore.set((s) => ({
     ...s,
-    section: "settings",
+    settingsOpen: true,
     settingsPage: intent.kind === "invite" ? "team" : "vaults",
     pendingSettingsIntent: intent,
   }));
-  setActiveTab(HOME_TAB);
 }
 
 /** Run `onIntent` once for the pending settings intent of the given kinds. */

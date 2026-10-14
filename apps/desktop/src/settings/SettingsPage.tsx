@@ -2,6 +2,8 @@ import { useState, type ReactNode } from "react";
 import {
   Box,
   Button,
+  Dialog,
+  IconButton,
   List,
   ListItemButton,
   ListItemIcon,
@@ -19,13 +21,19 @@ import TuneRoundedIcon from "@mui/icons-material/TuneRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import KeyboardRoundedIcon from "@mui/icons-material/KeyboardRounded";
 import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ArticleRoundedIcon from "@mui/icons-material/ArticleRounded";
 import SystemUpdateAltRoundedIcon from "@mui/icons-material/SystemUpdateAltRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AccountPage } from "@/account/AccountPage";
-import { setSettingsPage, useNav, type SettingsPage as PageId } from "@/app/navigation";
+import {
+  type SettingsPage as PageId,
+  closeSettings,
+  setSettingsPage,
+  useNav,
+} from "@/app/navigation";
 import { EmptyState } from "@/components/EmptyState";
 import { Page, PageBody } from "@/components/PageHeader";
 import { useSnackbar } from "@/components/Snackbar";
@@ -841,5 +849,46 @@ function Value({ children }: { children: ReactNode }) {
     >
       {children}
     </Typography>
+  );
+}
+
+/**
+ * Settings as a window over whatever is open (Termius style): the sidebar
+ * item, Ctrl+, and every "open Settings" link land here; Esc / × close it.
+ */
+export function SettingsDialog() {
+  const open = useNav((s) => s.settingsOpen);
+  return (
+    <Dialog
+      open={open}
+      onClose={closeSettings}
+      maxWidth={false}
+      slotProps={{
+        paper: {
+          sx: {
+            width: "min(1040px, 94vw)",
+            height: "min(720px, 90vh)",
+            display: "flex",
+            flexDirection: "column",
+            bgcolor: "surface.base",
+            backgroundImage: "none",
+            borderRadius: 3,
+            overflow: "hidden",
+          },
+        },
+      }}
+    >
+      <Box sx={{ flex: 1, minHeight: 0, display: "flex", position: "relative" }}>
+        <SettingsPage />
+        <IconButton
+          onClick={closeSettings}
+          aria-label={tr("Close settings")}
+          size="small"
+          sx={{ position: "absolute", top: 10, right: 10 }}
+        >
+          <CloseRoundedIcon fontSize="small" />
+        </IconButton>
+      </Box>
+    </Dialog>
   );
 }

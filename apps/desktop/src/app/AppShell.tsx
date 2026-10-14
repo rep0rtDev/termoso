@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { HostsPage } from "@/hosts/HostsPage";
-import { SettingsPage } from "@/settings/SettingsPage";
+import { SettingsDialog } from "@/settings/SettingsPage";
 import { SftpPage } from "@/sftp/SftpPage";
 import { ForwardingPage } from "@/forwarding/ForwardingPage";
 import { SnippetsPage } from "@/snippets/SnippetsPage";
@@ -205,12 +205,12 @@ function UnlockedShell() {
             {section === "keychain" && <KeychainPage />}
             {section === "knownHosts" && <KnownHostsPage />}
             {section === "logs" && <LogsPage />}
-            {section === "settings" && <SettingsPage />}
           </Box>
         </Box>
       </Box>
       <TerminalOverlays />
       <CommandPalette />
+      <SettingsDialog />
       <PromptHost />
       <RecoveryPrompt />
     </Box>
