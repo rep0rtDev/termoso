@@ -565,9 +565,17 @@ function RecentConnections({
                   </Box>
                   <ListItemText
                     primary={host?.label ?? it.data.label}
-                    secondary={`${it.data.target} · ${relativeTime(it.created_at)}`}
+                    secondary={it.data.target}
                     slotProps={rowText}
                   />
+                  <Typography
+                    variant="caption"
+                    color="text.disabled"
+                    noWrap
+                    sx={{ flexShrink: 0, pl: 1 }}
+                  >
+                    {relativeTime(it.created_at)}
+                  </Typography>
                 </ListItemButton>
               );
             })}
