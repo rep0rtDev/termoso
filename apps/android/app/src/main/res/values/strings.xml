@@ -1382,4 +1382,5 @@
     <string name="keep_alive_interval">Keep-alive interval</string>
     <string name="default_for_hosts_without_their_own_interval">Default for hosts without their own interval</string>
     <string name="off">Off</string>
+    <string name="type_ip_address_or_hostname">Type IP address or hostname</string>
 </resources>

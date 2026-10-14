@@ -144,6 +144,10 @@ class HostsViewModel(
         repo.write { copyHostsToVault(ids, vaultId, withCredentials) }
     }
 
+    fun moveToVault(ids: List<String>, vaultId: String, withCredentials: Boolean) = mutate {
+        repo.write { moveHostsToVault(ids, vaultId, withCredentials) }
+    }
+
     fun duplicateSelected() = duplicate(_state.value.selected.toList())
 
     fun createGroup(label: String) = mutate {

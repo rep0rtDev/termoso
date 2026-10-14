@@ -78,6 +78,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import com.termoso.android.R
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.ui.components.EmptyState
@@ -105,6 +109,8 @@ fun HostsScreen(
     onBack: () -> Unit,
     onOpenGroup: (String) -> Unit,
     onNewHost: () -> Unit,
+    /** New-host form prefilled with an address typed into the empty state. */
+    onNewHostFrom: (String) -> Unit = {},
     onEditHost: (String) -> Unit,
     onConnect: (String) -> Unit,
     /** Connect over an explicit transport (Mosh, the Telnet section). */
@@ -246,11 +252,28 @@ fun HostsScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 if (state.query.isBlank()) {
+                    // Termius-style first host: type the address right here, the form opens prefilled.
+                    var address by rememberSaveable { mutableStateOf("") }
+                    val go = { if (address.isNotBlank()) onNewHostFrom(address.trim()) }
                     EmptyState(
                         title = if (state.group == null) stringResource(R.string.no_hosts_yet) else stringResource(R.string.empty_group),
                         hint = stringResource(R.string.save_a_server_with_its_credentials_to_connect),
                         icon = Icons.Filled.Dns,
-                        action = { Button(onClick = onNewHost) { Text(stringResource(R.string.add_host)) } },
+                        action = {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                OutlinedTextField(
+                                    value = address,
+                                    onValueChange = { address = it },
+                                    singleLine = true,
+                                    placeholder = { Text(stringResource(R.string.type_ip_address_or_hostname)) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, capitalization = KeyboardCapitalization.None, imeAction = ImeAction.Go, autoCorrectEnabled = false),
+                                    keyboardActions = KeyboardActions(onGo = { go() }),
+                                    modifier = Modifier.fillMaxWidth(0.85f),
+                                )
+                                Button(onClick = go, enabled = address.isNotBlank(), modifier = Modifier.fillMaxWidth(0.85f)) { Text(stringResource(R.string.continue_)) }
+                                TextButton(onClick = onNewHost) { Text(stringResource(R.string.add_host)) }
+                            }
+                        },
                     )
                 } else {
                     EmptyState(
@@ -296,6 +319,7 @@ fun HostsScreen(
             onEdit = { onEditHost(d.host.id) },
             onDuplicate = { vm.duplicate(listOf(d.host.id)) },
             onMove = { dialog = HostsDialog.Move(listOf(d.host.id)) },
+            onMoveVault = { dialog = HostsDialog.MoveVault(listOf(d.host.id)) },
             onCopy = { dialog = HostsDialog.Copy(listOf(d.host.id)) },
             onSelect = { vm.toggle(d.host.id) },
             onDelete = { dialog = HostsDialog.Delete(listOf(d.host.id)) },
@@ -318,6 +342,12 @@ fun HostsScreen(
         is HostsDialog.Copy -> CopyToVaultDialog(
             vaults = otherVaults,
             onCopy = { v, creds -> vm.copy(d.ids, v, creds); dialog = null },
+            onDismiss = { dialog = null },
+        )
+        is HostsDialog.MoveVault -> CopyToVaultDialog(
+            vaults = otherVaults,
+            move = true,
+            onCopy = { v, creds -> vm.moveToVault(d.ids, v, creds); dialog = null },
             onDismiss = { dialog = null },
         )
         HostsDialog.NewGroup -> NameDialog(
@@ -360,6 +390,7 @@ private sealed interface HostsDialog {
     data class Delete(val ids: List<String>) : HostsDialog
     data class Move(val ids: List<String>) : HostsDialog
     data class Copy(val ids: List<String>) : HostsDialog
+    data class MoveVault(val ids: List<String>) : HostsDialog
     data object NewGroup : HostsDialog
     data class GroupMenu(val group: GroupItem) : HostsDialog
     data class RenameGroup(val group: GroupItem) : HostsDialog
@@ -727,12 +758,12 @@ private fun PickRow(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CopyToVaultDialog(vaults: List<VaultInfo>, onCopy: (String, Boolean) -> Unit, onDismiss: () -> Unit) {
+private fun CopyToVaultDialog(vaults: List<VaultInfo>, onCopy: (String, Boolean) -> Unit, onDismiss: () -> Unit, move: Boolean = false) {
     var target by remember { mutableStateOf(vaults.firstOrNull()?.id) }
     var withCredentials by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.copy_to_vault_2)) },
+        title = { Text(if (move) stringResource(R.string.move_to_vault) else stringResource(R.string.copy_to_vault_2)) },
         text = {
             Column {
                 vaults.forEach { v ->
@@ -763,7 +794,9 @@ private fun CopyToVaultDialog(vaults: List<VaultInfo>, onCopy: (String, Boolean)
             }
         },
         confirmButton = {
-            TextButton(onClick = { target?.let { onCopy(it, withCredentials) } }, enabled = target != null) { Text(stringResource(R.string.copy)) }
+            TextButton(onClick = { target?.let { onCopy(it, withCredentials) } }, enabled = target != null) {
+                Text(if (move) stringResource(R.string.move) else stringResource(R.string.copy))
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )

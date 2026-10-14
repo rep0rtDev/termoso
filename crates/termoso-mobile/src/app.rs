@@ -434,6 +434,26 @@ impl TermosoApp {
 
     /// Copy hosts into another vault. `with_credentials` copies keys /
     /// passwords along (team vault sharing); otherwise only the address book.
+    /// Move hosts into another vault (copy, then delete the originals).
+    pub fn move_hosts_to_vault(
+        &self,
+        ids: Vec<String>,
+        vault_id: String,
+        with_credentials: bool,
+    ) -> Result<Vec<String>> {
+        let creds = if with_credentials {
+            CopyCredentials::Shared
+        } else {
+            CopyCredentials::Personal
+        };
+        Ok(
+            hosts::move_to_vault(&self.store, &parse_ids(&ids)?, parse_id(&vault_id)?, creds)?
+                .into_iter()
+                .map(|u| u.to_string())
+                .collect(),
+        )
+    }
+
     pub fn copy_hosts_to_vault(
         &self,
         ids: Vec<String>,

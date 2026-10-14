@@ -449,6 +449,7 @@ fun MainShell(
                     onBack = { nav.popBackStack() },
                     onOpenGroup = { nav.navigate(Routes.hosts(it)) },
                     onNewHost = { nav.navigate(Routes.hostNew(group)) },
+                    onNewHostFrom = { nav.navigate(Routes.hostNewFrom(it)) },
                     onEditHost = { nav.navigate(Routes.hostEdit(it)) },
                     onConnect = { connectHost(it) },
                     onConnectWith = ::connectHost,
