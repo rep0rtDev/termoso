@@ -34,6 +34,7 @@ use crate::error::{MobileError, Result};
 use crate::keys::{KeyMods, SpecialKey, encode_key, encode_text};
 use crate::live::{LiveListener, LiveParticipantCard, LiveShare, ShareState, ViewState};
 use crate::presence::Slot;
+use crate::serial::PipeTerminal;
 use crate::settings::MobileSettings;
 use crate::terminal::{Emulator, GridFrame, GridSnapshot, InputMark, TermSignal, TerminalPalette};
 
@@ -498,6 +499,13 @@ pub(crate) enum LaunchTarget {
         cwd: Option<std::path::PathBuf>,
         env: Vec<(String, String)>,
     },
+    /// A USB-UART console the app drives; bytes arrive through a [`PipeTerminal`].
+    Serial {
+        label: String,
+        device: String,
+        terminal: Arc<PipeTerminal>,
+        events: TermEvents,
+    },
 }
 
 pub(crate) struct Launch {
@@ -574,11 +582,13 @@ impl SshSession {
         let host_id = match &target {
             LaunchTarget::Ssh { resolved, .. } => resolved.as_ref().map(|r| r.host.id),
             LaunchTarget::Telnet { host_id, .. } => *host_id,
-            LaunchTarget::Local { .. } => None,
+            LaunchTarget::Local { .. } | LaunchTarget::Serial { .. } => None,
         };
         let vault_id = match &target {
             LaunchTarget::Ssh { resolved, .. } => resolved.as_ref().map(|r| r.host.vault_id),
-            LaunchTarget::Telnet { .. } | LaunchTarget::Local { .. } => None,
+            LaunchTarget::Telnet { .. }
+            | LaunchTarget::Local { .. }
+            | LaunchTarget::Serial { .. } => None,
         };
         let local = match &target {
             LaunchTarget::Local { cwd, env, .. } => {
@@ -699,6 +709,16 @@ impl SshSession {
             LaunchTarget::Local { argv, cwd, env } => {
                 runtime.spawn(run_local(
                     inner, argv, cwd, env, term_type, settings, signals,
+                ));
+            }
+            LaunchTarget::Serial {
+                label,
+                device,
+                terminal,
+                events,
+            } => {
+                runtime.spawn(run_serial(
+                    inner, label, device, terminal, events, settings, signals,
                 ));
             }
         }
@@ -1540,6 +1560,41 @@ async fn run_telnet(
             .await?;
             Ok((term as SharedTerminal, events))
         },
+        signals,
+    )
+    .await;
+}
+
+/// The adapter is already open on the Kotlin side, so "connecting" is
+/// immediate; the session lives until the device goes away or is closed.
+async fn run_serial(
+    inner: Arc<Inner>,
+    label: String,
+    device: String,
+    terminal: Arc<PipeTerminal>,
+    events: TermEvents,
+    settings: MobileSettings,
+    signals: mpsc::UnboundedReceiver<TermSignal>,
+) {
+    let row = ConnectionHistory {
+        host_id: None,
+        label: if label.trim().is_empty() {
+            device.clone()
+        } else {
+            label
+        },
+        target: device.clone(),
+        protocol: "serial".into(),
+        duration_secs: None,
+        error: None,
+    };
+    let stage = ConnectStage::ConnectingTo { target: device };
+    run_direct(
+        inner,
+        row,
+        Some((settings, None)),
+        stage,
+        |_size| async move { Ok((terminal as SharedTerminal, events)) },
         signals,
     )
     .await;

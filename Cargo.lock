@@ -9068,8 +9068,10 @@ name = "termoso-mobile"
 version = "0.6.3"
 dependencies = [
  "alacritty_terminal",
+ "async-trait",
  "bytes",
  "chrono",
+ "encoding_rs",
  "rand 0.10.2",
  "russh",
  "serde",

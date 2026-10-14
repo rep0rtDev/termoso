@@ -24,6 +24,7 @@ mod forward;
 mod keys;
 mod live;
 mod presence;
+mod serial;
 mod session;
 mod settings;
 mod sftp;
