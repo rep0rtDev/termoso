@@ -57,6 +57,7 @@ pub mod telnet;
 pub mod terminal;
 pub mod webdav;
 
+pub mod charset;
 #[cfg(feature = "local-pty")]
 pub mod pty;
 #[cfg(feature = "serial")]
