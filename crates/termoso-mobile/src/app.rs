@@ -329,6 +329,109 @@ impl TermosoApp {
         )?)
     }
 
+    // ---- proxies & jump chains -----------------------------------------
+
+    /// Proxies of one vault, or of all vaults when `vault_id` is `None`.
+    pub fn proxies(&self, vault_id: Option<String>) -> Result<Vec<ProxyItem>> {
+        let vault = parse_opt_id(&vault_id)?;
+        let identities = keychain::identities(&self.store, None)?;
+        let label = |id: Option<uuid::Uuid>| {
+            id.and_then(|i| identities.iter().find(|c| c.id == i).map(|c| c.label.clone()))
+        };
+        Ok(self
+            .store
+            .list::<termoso_core::model::Proxy>(vault)?
+            .into_iter()
+            .map(|e| ProxyItem {
+                id: e.id.to_string(),
+                vault_id: e.vault_id.to_string(),
+                kind: e.data.kind.clone(),
+                host: e.data.host.clone(),
+                port: e.data.port,
+                identity_id: e.data.identity_id.map(|i| i.to_string()),
+                identity_label: label(e.data.identity_id),
+            })
+            .collect())
+    }
+
+    /// Create or update a proxy; returns its id.
+    pub fn save_proxy(&self, draft: ProxyDraft) -> Result<String> {
+        use termoso_core::ssh::proxy::ProxyKind;
+        let kind = draft.kind.trim().to_ascii_lowercase();
+        if ProxyKind::parse(&kind).is_none() {
+            return Err(MobileError::invalid(format!("unsupported proxy type {kind}")));
+        }
+        let host = draft.host.trim().to_string();
+        if host.is_empty() {
+            return Err(MobileError::invalid("proxy host is required"));
+        }
+        let data = termoso_core::model::Proxy {
+            kind,
+            host,
+            port: draft.port,
+            identity_id: parse_opt_id(&draft.identity_id)?,
+        };
+        Ok(match parse_opt_id(&draft.id)? {
+            Some(id) => {
+                self.store.update(id, &data)?;
+                id
+            }
+            None => self.store.insert(parse_id(&draft.vault_id)?, &data)?,
+        }
+        .to_string())
+    }
+
+    pub fn delete_proxy(&self, id: String) -> Result<()> {
+        Ok(self.store.delete(parse_id(&id)?)?)
+    }
+
+    /// Jump chains of one vault, or of all vaults when `vault_id` is `None`.
+    pub fn host_chains(&self, vault_id: Option<String>) -> Result<Vec<HostChainItem>> {
+        let vault = parse_opt_id(&vault_id)?;
+        let cards = hosts::cards(&self.store, None)?;
+        Ok(self
+            .store
+            .list::<termoso_core::model::HostChain>(vault)?
+            .into_iter()
+            .map(|e| HostChainItem {
+                id: e.id.to_string(),
+                vault_id: e.vault_id.to_string(),
+                label: e.data.label.clone(),
+                host_ids: e.data.host_ids.iter().map(ToString::to_string).collect(),
+                host_labels: e
+                    .data
+                    .host_ids
+                    .iter()
+                    .filter_map(|h| cards.iter().find(|c| c.id == *h).map(|c| c.label.clone()))
+                    .collect(),
+            })
+            .collect())
+    }
+
+    /// Create or update a jump chain; returns its id.
+    pub fn save_host_chain(&self, draft: HostChainDraft) -> Result<String> {
+        let host_ids = parse_ids(&draft.host_ids)?;
+        if host_ids.is_empty() {
+            return Err(MobileError::invalid("a chain needs at least one host"));
+        }
+        let data = termoso_core::model::HostChain {
+            label: draft.label.trim().to_string(),
+            host_ids,
+        };
+        Ok(match parse_opt_id(&draft.id)? {
+            Some(id) => {
+                self.store.update(id, &data)?;
+                id
+            }
+            None => self.store.insert(parse_id(&draft.vault_id)?, &data)?,
+        }
+        .to_string())
+    }
+
+    pub fn delete_host_chain(&self, id: String) -> Result<()> {
+        Ok(self.store.delete(parse_id(&id)?)?)
+    }
+
     /// Copy hosts into another vault. `with_credentials` copies keys /
     /// passwords along (team vault sharing); otherwise only the address book.
     pub fn copy_hosts_to_vault(

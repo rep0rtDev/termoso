@@ -6,7 +6,12 @@ import com.termoso.android.data.userMessage
 import com.termoso.android.data.VaultRepository
 import com.termoso.core.EnvVar
 import com.termoso.core.GroupItem
+import com.termoso.core.HostChainDraft
+import com.termoso.core.HostChainItem
 import com.termoso.core.HostDraft
+import com.termoso.core.HostItem
+import com.termoso.core.ProxyDraft
+import com.termoso.core.ProxyItem
 import com.termoso.core.HostKeyPinItem
 import com.termoso.core.IdentityItem
 import com.termoso.core.InheritedInfo
@@ -81,6 +86,10 @@ data class HostEditorState(
     val keys: List<KeyItem> = emptyList(),
     val identities: List<IdentityItem> = emptyList(),
     val snippets: List<SnippetItem> = emptyList(),
+    val proxies: List<ProxyItem> = emptyList(),
+    val chains: List<HostChainItem> = emptyList(),
+    /** Hosts of the draft's vault, candidates for a jump chain. */
+    val hosts: List<HostItem> = emptyList(),
     val inherited: InheritedInfo? = null,
     val saving: Boolean = false,
     /** The form is finished (saved, duplicated or removed) and should close. */
@@ -145,6 +154,9 @@ class HostEditorViewModel(
                     keys = keys(draft.vaultId),
                     identities = identities(draft.vaultId),
                     snippets = snippets(draft.vaultId),
+                    proxies = proxies(draft.vaultId),
+                    chains = hostChains(draft.vaultId),
+                    hosts = hosts(draft.vaultId),
                     inherited = inherited(draft.groupId),
                 )
             }
@@ -154,6 +166,47 @@ class HostEditorViewModel(
 
     fun update(transform: (HostDraft) -> HostDraft) {
         _state.update { s -> s.draft?.let { s.copy(draft = transform(it)) } ?: s }
+    }
+
+    private fun reloadConnection(vaultId: String) {
+        viewModelScope.launch {
+            runCatching { repo.read { Triple(proxies(vaultId), hostChains(vaultId), hosts(vaultId)) } }
+                .onSuccess { (p, c, h) -> _state.update { it.copy(proxies = p, chains = c, hosts = h) } }
+        }
+    }
+
+    fun saveProxy(draft: ProxyDraft, onSaved: (String) -> Unit) {
+        viewModelScope.launch {
+            runCatching { repo.write { saveProxy(draft) } }
+                .onSuccess { id -> reloadConnection(draft.vaultId); onSaved(id) }
+                .onFailure { e -> _state.update { it.copy(error = e.userMessage()) } }
+        }
+    }
+
+    fun deleteProxy(id: String) {
+        val vaultId = _state.value.draft?.vaultId ?: return
+        viewModelScope.launch {
+            runCatching { repo.write { deleteProxy(id) } }
+                .onSuccess { reloadConnection(vaultId) }
+                .onFailure { e -> _state.update { it.copy(error = e.userMessage()) } }
+        }
+    }
+
+    fun saveChain(draft: HostChainDraft, onSaved: (String) -> Unit) {
+        viewModelScope.launch {
+            runCatching { repo.write { saveHostChain(draft) } }
+                .onSuccess { id -> reloadConnection(draft.vaultId); onSaved(id) }
+                .onFailure { e -> _state.update { it.copy(error = e.userMessage()) } }
+        }
+    }
+
+    fun deleteChain(id: String) {
+        val vaultId = _state.value.draft?.vaultId ?: return
+        viewModelScope.launch {
+            runCatching { repo.write { deleteHostChain(id) } }
+                .onSuccess { reloadConnection(vaultId) }
+                .onFailure { e -> _state.update { it.copy(error = e.userMessage()) } }
+        }
     }
 
     fun loadHostKeyPins(host: String, port: UShort) {
@@ -264,6 +317,9 @@ class HostEditorViewModel(
                         keys = keys(vaultId),
                         identities = identities(vaultId),
                         snippets = snippets(vaultId),
+                        proxies = proxies(vaultId),
+                        chains = hostChains(vaultId),
+                        hosts = hosts(vaultId),
                         inherited = inherited(null),
                     )
                 }

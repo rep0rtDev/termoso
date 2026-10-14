@@ -489,6 +489,10 @@ private fun HostForm(
                         keyboard = KeyboardType.Number,
                     )
                 }
+                if (draft.ssh) {
+                    RowDivider()
+                    ConnectionSection(state, draft, vm)
+                }
                 RowDivider()
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.environment_variables), style = MaterialTheme.typography.labelLarge)
@@ -795,7 +799,8 @@ private fun StartupSnippetRow(state: HostEditorState, draft: HostDraft, onPick: 
 private fun webdavOnly(d: HostDraft) = !d.ssh && d.telnet == null && d.webdav != null
 
 private fun hasAdvanced(d: HostDraft) =
-    d.envVariables.isNotEmpty() || d.keepAliveInterval != null || d.timeout != null || d.notes.isNotBlank() || d.ipVersion != "auto"
+    d.envVariables.isNotEmpty() || d.keepAliveInterval != null || d.timeout != null || d.notes.isNotBlank() || d.ipVersion != "auto" ||
+        d.hostChainId != null || d.proxyId != null || d.colorScheme != null || d.charset != null || d.backspace != null
 
 private fun tagSummary(draft: HostDraft, tags: List<TagItem>): String {
     val labels = draft.tagIds.mapNotNull { id -> tags.firstOrNull { it.id == id }?.label }

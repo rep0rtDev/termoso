@@ -127,6 +127,12 @@ pub struct HostForm {
     /// Terminal colour scheme id; `None` follows the app setting.
     #[serde(default)]
     pub color_scheme: Option<String>,
+    /// Terminal charset (`UTF-8` when `None`).
+    #[serde(default)]
+    pub charset: Option<String>,
+    /// Backspace mode: `None` (DEL) or `ctrl-h`.
+    #[serde(default)]
+    pub backspace: Option<String>,
     /// Set when the stored inline identity has a password (UI shows a mask).
     #[serde(default)]
     pub has_password: bool,
@@ -776,6 +782,8 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
         keep_alive_interval: ssh.as_ref().and_then(|s| s.keep_alive_interval),
         timeout: ssh.as_ref().and_then(|s| s.timeout),
         color_scheme: ssh.as_ref().and_then(|s| s.color_scheme.clone()),
+        charset: ssh.as_ref().and_then(|s| s.charset.clone()),
+        backspace: host.data.backspace.clone(),
         has_password: ssh_login.has_password,
         files_provider: host.data.files_provider,
     })
@@ -900,6 +908,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
         ssh.keep_alive_interval = f.keep_alive_interval.filter(|s| *s > 0);
         ssh.timeout = f.timeout.filter(|s| *s > 0);
         ssh.color_scheme = clean_scheme(&f.color_scheme);
+        ssh.charset = clean_scheme(&f.charset).filter(|c| !c.eq_ignore_ascii_case("utf-8"));
         Some(match &existing_ssh {
             Some(e) => {
                 store.update(e.id, &ssh)?;
@@ -1045,6 +1054,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
         host.os_name = f.os_name.clone().filter(|s| !s.is_empty());
     }
     host.icon = clean_icon(&f.icon);
+    host.backspace = clean_scheme(&f.backspace);
     host.ip_version = match f.ip_version.as_str() {
         "4" | "6" => f.ip_version.clone(),
         _ => String::new(),
