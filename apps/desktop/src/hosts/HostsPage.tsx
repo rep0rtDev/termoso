@@ -13,6 +13,7 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Stack,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -786,7 +787,7 @@ export function HostsPage() {
   return (
     <Box sx={{ display: "flex", flex: 1, minHeight: 0 }}>
       <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <Box sx={{ px: 2, pt: 1.5, pb: 1 }}>
+        <Stack direction="row" spacing={1} sx={{ px: 2, pt: 1.5, pb: 1, alignItems: "center" }}>
           <TextField
             placeholder={
               groupId
@@ -801,6 +802,7 @@ export function HostsPage() {
               if (e.key === "Enter") onSearchEnter();
               if (e.key === "Escape") updateSearch("");
             }}
+            sx={{ flex: 1 }}
             slotProps={{
               input: {
                 startAdornment: (
@@ -808,25 +810,31 @@ export function HostsPage() {
                     <SearchRoundedIcon fontSize="small" />
                   </InputAdornment>
                 ),
-                endAdornment:
-                  quickTarget && visibleHosts.length !== 1 ? (
-                    <InputAdornment position="end">
-                      <Chip
-                        size="small"
-                        icon={<PlayArrowRoundedIcon />}
-                        label={tr("Connect to {quickLabel}", {
-                          quickLabel: quickLabel(quickTarget),
-                        })}
-                        onClick={onSearchEnter}
-                        color="primary"
-                        sx={{ "& .MuiChip-icon": { fontSize: 16 } }}
-                      />
-                    </InputAdornment>
-                  ) : null,
               },
             }}
           />
-        </Box>
+          <Tooltip
+            title={
+              quickTarget
+                ? tr("Connect to {quickLabel}", { quickLabel: quickLabel(quickTarget) })
+                : visibleHosts.length === 1 && search.trim() && visibleHosts[0]
+                  ? tr("Connect to {label}", { label: visibleHosts[0].label })
+                  : ""
+            }
+          >
+            <span>
+              <Button
+                variant="contained"
+                startIcon={<PlayArrowRoundedIcon />}
+                disabled={!quickTarget && !(visibleHosts.length === 1 && search.trim())}
+                onClick={onSearchEnter}
+                sx={{ flexShrink: 0, height: 36 }}
+              >
+                {tr("Connect")}
+              </Button>
+            </span>
+          </Tooltip>
+        </Stack>
 
         <Toolbar
           trailing={
