@@ -30,6 +30,7 @@ import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import CloudRoundedIcon from "@mui/icons-material/CloudRounded";
 import FolderOpenRoundedIcon from "@mui/icons-material/FolderOpenRounded";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
@@ -554,11 +555,32 @@ export function HostsPage() {
             icon: <PlayArrowRoundedIcon fontSize="small" />,
             items: connectActions(h, connectProtocols(h), hasWebDav(h)),
           },
+      ...(hasWebDav(h) && !hasSsh(h)
+        ? []
+        : [
+            {
+              label: tr("Open SFTP"),
+              icon: <FolderCopyRoundedIcon fontSize="small" />,
+              onClick: () => sftpHost(h),
+              disabled: many || !hasSsh(h),
+            },
+          ]),
+      ...(hasWebDav(h)
+        ? [
+            {
+              label: tr("Open WebDAV"),
+              icon: <CloudRoundedIcon fontSize="small" />,
+              onClick: () => webdavHost(h),
+              disabled: many,
+            },
+          ]
+        : []),
       ...(terminalTargets > 0
         ? [
             {
               label: tr("Add to Workspace"),
               icon: <TabRoundedIcon fontSize="small" />,
+              divider: true,
               items: [
                 {
                   label: tr("New Workspace"),
@@ -585,38 +607,17 @@ export function HostsPage() {
             },
           ]
         : []),
-      ...(hasWebDav(h) && !hasSsh(h)
-        ? []
-        : [
-            {
-              label: tr("Open SFTP"),
-              icon: <FolderCopyRoundedIcon fontSize="small" />,
-              onClick: () => sftpHost(h),
-              disabled: many || !hasSsh(h),
-            },
-          ]),
-      ...(hasWebDav(h)
-        ? [
-            {
-              label: tr("Open WebDAV"),
-              icon: <CloudRoundedIcon fontSize="small" />,
-              onClick: () => webdavHost(h),
-              disabled: many,
-            },
-          ]
-        : []),
-      {
-        label: tr("Port forwarding"),
-        icon: <SwapHorizRoundedIcon fontSize="small" />,
-        onClick: () => requestForwardingRule(h.id),
-        disabled: many || !hasSsh(h),
-        divider: true,
-      },
       {
         label: tr("Edit"),
         icon: <EditOutlinedIcon fontSize="small" />,
         onClick: () => setPanel({ mode: "edit", id: h.id }),
         disabled: many,
+      },
+      {
+        label: tr("Duplicate"),
+        icon: <ContentCopyRoundedIcon fontSize="small" />,
+        disabled: readOnly,
+        onClick: () => void duplicateHosts(targets),
       },
       {
         label: tr("Move to…"),
@@ -628,37 +629,43 @@ export function HostsPage() {
         label: tr("Copy to"),
         icon: <LibraryAddOutlinedIcon fontSize="small" />,
         items: copyToItems(targets),
-      },
-      {
-        label: tr("Duplicate"),
-        icon: <ContentCopyRoundedIcon fontSize="small" />,
-        disabled: readOnly,
-        onClick: () => void duplicateHosts(targets),
         divider: true,
       },
       {
-        label: many ? tr("Copy links") : tr("Copy link"),
-        icon: <LinkRoundedIcon fontSize="small" />,
+        label: tr("More"),
+        icon: <MoreHorizRoundedIcon fontSize="small" />,
+        divider: true,
         items: [
           {
-            label: tr("Termoso link"),
-            icon: <LinkRoundedIcon fontSize="small" />,
-            onClick: () => void copyLinks(targets),
+            label: tr("Port forwarding"),
+            icon: <SwapHorizRoundedIcon fontSize="small" />,
+            onClick: () => requestForwardingRule(h.id),
+            disabled: many || !hasSsh(h),
           },
           {
-            label: targets.every((t) => !hostProtocols(t).includes("ssh"))
-              ? "telnet:// link"
-              : "ssh:// link",
-            icon: <TerminalRoundedIcon fontSize="small" />,
-            onClick: () => copyProtocolLinks(targets),
+            label: many ? tr("Copy links") : tr("Copy link"),
+            icon: <LinkRoundedIcon fontSize="small" />,
+            items: [
+              {
+                label: tr("Termoso link"),
+                icon: <LinkRoundedIcon fontSize="small" />,
+                onClick: () => void copyLinks(targets),
+              },
+              {
+                label: targets.every((t) => !hostProtocols(t).includes("ssh"))
+                  ? "telnet:// link"
+                  : "ssh:// link",
+                icon: <TerminalRoundedIcon fontSize="small" />,
+                onClick: () => copyProtocolLinks(targets),
+              },
+            ],
+          },
+          {
+            label: tr("Copy address"),
+            icon: <ContentCopyRoundedIcon fontSize="small" />,
+            onClick: () => void copyText(targets.map((t) => t.address).join("\n"), "Address"),
           },
         ],
-      },
-      {
-        label: tr("Copy address"),
-        icon: <ContentCopyRoundedIcon fontSize="small" />,
-        onClick: () => void copyText(targets.map((t) => t.address).join("\n"), "Address"),
-        divider: true,
       },
       {
         label: many ? tr("Remove {n} hosts", { n }) : tr("Remove"),

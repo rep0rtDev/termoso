@@ -262,6 +262,7 @@ export const ru: Readonly<Record<string, string>> = {
   Start: "Запустить",
   Stop: "Остановить",
   "Edit {label}": "Изменить {label}",
+  More: "Ещё",
   "Clear buffer": "Очистить буфер",
   "Clear finished": "Убрать завершённые",
   "Clear selection": "Снять выделение",
@@ -947,7 +948,6 @@ export const ru: Readonly<Record<string, string>> = {
   "Minimize window": "Свернуть окно",
   "Mirror the machines of an AWS, DigitalOcean or Azure account into this group, on a schedule. Credentials stay encrypted on this device.":
     "Зеркалировать машины из аккаунта AWS, DigitalOcean или Azure в эту группу по расписанию. Учётные данные хранятся зашифрованными на этом устройстве.",
-  More: "Ещё",
   "More options": "Ещё параметры",
   "Mosh server command": "Команда mosh-server",
   Move: "Переместить",
