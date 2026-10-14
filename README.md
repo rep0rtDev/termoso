@@ -11,7 +11,7 @@ telemetry, no analytics, no crash reporting and no "phone home". Clients talk
 only to the server you point them at (or to nothing at all in offline mode);
 the server's only metrics are opt-in Prometheus counters on a private listener.
 
-* Website / hosted instance: <https://termoso.com> (the same server image
+* Website / hosted instance: <https://termoso.dev> (the same server image
   everyone can self-host; hosted accounts are free)
 * Downloads: [GitHub Releases](https://github.com/rep0rtDev/termoso/releases)
   (`.deb` / `.rpm` / AppImage, NSIS / MSI, `.dmg`, APK, unsigned `.ipa`)
