@@ -32,7 +32,7 @@ import {
   renameTab,
   resetZoom,
   setActiveTab,
-  isSearchOpen,
+  closeOtherTabs,
   setSearchOpen,
   splitActivePane,
   tabTitle,
@@ -219,10 +219,7 @@ export function TopBar() {
 }
 
 function PaneTools({ tab }: { tab: TerminalTab }) {
-  const pane = useTerminal((s) => s.panes[tab.activePaneId]);
   const sidePanel = useTerminal((s) => s.sidePanel);
-  const searchOpen = useTerminal(isSearchOpen);
-  const canSftp = pane?.protocol === "ssh" && pane.status === "connected";
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, px: 1 }}>
       {tab.zoom !== 1 && (
@@ -248,77 +245,6 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
           </Box>
         </Tooltip>
       )}
-      <Tooltip title={withHint("Split right", "pane.splitRight")}>
-        <IconButton onClick={() => splitActivePane(tab.id, "row")}>
-          <VerticalSplitRoundedIcon fontSize="small" />
-        </IconButton>
-      </Tooltip>
-      <Tooltip title={withHint("Split down", "pane.splitDown")}>
-        <IconButton onClick={() => splitActivePane(tab.id, "column")}>
-          <HorizontalSplitRoundedIcon fontSize="small" />
-        </IconButton>
-      </Tooltip>
-      <Tooltip
-        title={
-          tab.viewMode === "split"
-            ? withHint(tr("Show terminals as a list"), "ws.viewMode")
-            : withHint(tr("Show terminals side by side"), "ws.viewMode")
-        }
-      >
-        <span>
-          <IconButton
-            disabled={tab.paneIds.length < 2 && tab.viewMode === "split"}
-            onClick={() => toggleTabViewMode(tab.id)}
-            sx={
-              tab.viewMode === "list"
-                ? { color: "text.primary", bgcolor: "action.selected" }
-                : undefined
-            }
-          >
-            <ViewListRoundedIcon fontSize="small" />
-          </IconButton>
-        </span>
-      </Tooltip>
-      <Tooltip
-        title={tab.broadcast ? tr("Broadcast input: on") : tr("Broadcast input to all panes")}
-      >
-        <span>
-          <IconButton
-            disabled={tab.paneIds.length < 2}
-            onClick={() => toggleBroadcast(tab.id)}
-            sx={tab.broadcast ? { color: "primary.main", bgcolor: "action.selected" } : undefined}
-          >
-            <CampaignRoundedIcon fontSize="small" />
-          </IconButton>
-        </span>
-      </Tooltip>
-      <Tooltip title={withHint("Find", "term.find")}>
-        <IconButton
-          onClick={() => setSearchOpen(!searchOpen)}
-          sx={searchOpen ? { color: "text.primary", bgcolor: "action.selected" } : undefined}
-        >
-          <SearchRoundedIcon fontSize="small" />
-        </IconButton>
-      </Tooltip>
-      <Tooltip title={withHint("Clear buffer", "term.clear")}>
-        <IconButton onClick={() => clearBuffer(tab.activePaneId)}>
-          <DeleteSweepRoundedIcon fontSize="small" />
-        </IconButton>
-      </Tooltip>
-      <Tooltip title={tr("Open SFTP for this connection")}>
-        <span>
-          <IconButton
-            disabled={!canSftp}
-            onClick={() => {
-              if (!pane) return;
-              openSftpForSession(pane.id, pane.title, pane.hostId);
-              goToSftp();
-            }}
-          >
-            <FolderCopyRoundedIcon fontSize="small" />
-          </IconButton>
-        </span>
-      </Tooltip>
       <Tooltip title={withHint("Side panel: snippets, history, themes, info", "term.sidePanel")}>
         <IconButton
           onClick={() => toggleSidePanel()}
@@ -357,6 +283,7 @@ function TerminalTopTab({
 }) {
   const pane = useTerminal((s) => s.panes[tab.activePaneId]);
   const title = useTerminal((s) => tabTitle(tab, s));
+  const tabs = useTerminal((s) => s.tabs);
   const hosts = useHosts(null);
   const snackbar = useSnackbar();
   const templateName = useWorkspaces(
@@ -370,11 +297,17 @@ function TerminalTopTab({
   const distro = pane.status === "connected" ? hostIcon(paneHost) : null;
   const workspace = isWorkspaceTab(tab);
 
+  const canSftp = pane.protocol === "ssh" && pane.status === "connected";
   const menuItems: MenuAction[] = [
     {
-      label: tr("Rename"),
-      icon: <DriveFileRenameOutlineRoundedIcon fontSize="small" />,
-      onClick: () => setRenaming(true),
+      label: tr("Split right"),
+      icon: <VerticalSplitRoundedIcon fontSize="small" />,
+      onClick: () => splitActivePane(tab.id, "row"),
+    },
+    {
+      label: tr("Split down"),
+      icon: <HorizontalSplitRoundedIcon fontSize="small" />,
+      onClick: () => splitActivePane(tab.id, "column"),
     },
     {
       label: tab.viewMode === "split" ? tr("Show as list") : tr("Show side by side"),
@@ -384,23 +317,64 @@ function TerminalTopTab({
         ) : (
           <GridViewRoundedIcon fontSize="small" />
         ),
+      disabled: tab.paneIds.length < 2 && tab.viewMode === "split",
       onClick: () => toggleTabViewMode(tab.id),
+    },
+    {
+      label: tab.broadcast ? tr("Broadcast input: on") : tr("Broadcast input to all panes"),
+      icon: <CampaignRoundedIcon fontSize="small" />,
+      disabled: tab.paneIds.length < 2,
+      divider: true,
+      onClick: () => toggleBroadcast(tab.id),
+    },
+    {
+      label: tr("Duplicate session"),
+      icon: <ContentCopyRoundedIcon fontSize="small" />,
+      onClick: () => openTerminal(pane.target),
+    },
+    {
+      label: tr("Rename"),
+      icon: <DriveFileRenameOutlineRoundedIcon fontSize="small" />,
+      onClick: () => setRenaming(true),
+    },
+    {
+      label: tr("Open SFTP for this connection"),
+      icon: <FolderCopyRoundedIcon fontSize="small" />,
+      disabled: !canSftp,
+      onClick: () => {
+        openSftpForSession(pane.id, pane.title, pane.hostId);
+        goToSftp();
+      },
+    },
+    {
+      label: tr("Find"),
+      icon: <SearchRoundedIcon fontSize="small" />,
+      onClick: () => {
+        setActiveTab(tab.id);
+        setSearchOpen(true);
+      },
+    },
+    {
+      label: tr("Clear buffer"),
+      icon: <DeleteSweepRoundedIcon fontSize="small" />,
+      onClick: () => clearBuffer(tab.activePaneId),
     },
     {
       label: templateName
         ? tr("Save to “{templateName}”", { templateName })
         : tr("Save as workspace template"),
       icon: <BookmarkAddedRoundedIcon fontSize="small" />,
+      divider: true,
       onClick: () => {
         const tpl = saveTabAsTemplate(tab.id);
         if (tpl) snackbar.notify(tr("Workspace “{name}” saved", { name: tpl.name }));
       },
     },
     {
-      label: tr("Duplicate session"),
-      icon: <ContentCopyRoundedIcon fontSize="small" />,
-      divider: true,
-      onClick: () => openTerminal(pane.target),
+      label: tr("Close others"),
+      icon: <CloseRoundedIcon fontSize="small" />,
+      disabled: tabs.length < 2,
+      onClick: () => closeOtherTabs(tab.id),
     },
     {
       label: workspace ? tr("Close workspace") : tr("Close"),

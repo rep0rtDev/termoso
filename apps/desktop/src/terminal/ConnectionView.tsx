@@ -12,6 +12,8 @@ import { hostTarget } from "@/hosts/HostGrid";
 import { requestEditHost } from "@/app/navigation";
 import { monoFontFamily } from "@/theme/theme";
 import { closePane, copyText, reconnectPane, type Pane } from "./store";
+import { InlinePrompt } from "@/prompts/PromptHost";
+import { promptForSession, usePrompts } from "@/prompts/store";
 import { tr, msg } from "@/i18n";
 
 interface Stage {
@@ -114,6 +116,7 @@ export function ConnectionView({ pane }: { pane: Pane }) {
   const failed = pane.status === "error" || pane.status === "closed";
   const [logPref, setLogPref] = useState<boolean | null>(null);
   const logOpen = logPref ?? failed;
+  const prompt = usePrompts((s) => promptForSession(s, pane.id));
 
   const current = pane.progress
     ? STAGES.findIndex((s) => s.key === stageOf(pane.progress?.phase.kind ?? "resolving"))
@@ -277,13 +280,17 @@ export function ConnectionView({ pane }: { pane: Pane }) {
           </Box>
         )}
 
-        <Typography
-          variant="body2"
-          color={failed ? "error.main" : "text.primary"}
-          sx={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}
-        >
-          {statusLine(pane)}
-        </Typography>
+        {prompt && !failed ? (
+          <InlinePrompt prompt={prompt} />
+        ) : (
+          <Typography
+            variant="body2"
+            color={failed ? "error.main" : "text.primary"}
+            sx={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}
+          >
+            {statusLine(pane)}
+          </Typography>
+        )}
 
         <Stack spacing={1.5} sx={{ minWidth: 0 }}>
           <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>

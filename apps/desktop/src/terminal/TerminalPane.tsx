@@ -1,18 +1,30 @@
-import { useEffect, useRef } from "react";
-import { Box, Button, Stack, Tooltip, Typography, alpha } from "@mui/material";
+import { useEffect, useRef, useState } from "react";
+import { Box, Button, IconButton, Stack, Tooltip, Typography, alpha } from "@mui/material";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
 import KeyboardAltRoundedIcon from "@mui/icons-material/KeyboardAltRounded";
+import CampaignRoundedIcon from "@mui/icons-material/CampaignRounded";
+import MoreHorizRoundedIcon from "@mui/icons-material/MoreHorizRounded";
+import VerticalSplitRoundedIcon from "@mui/icons-material/VerticalSplitRounded";
+import HorizontalSplitRoundedIcon from "@mui/icons-material/HorizontalSplitRounded";
+import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import type { SshAlgorithms, Uuid } from "@/ipc/types";
 import { isPostQuantumKex } from "@/ipc/types";
+import { useHosts } from "@/ipc/hooks";
+import { ActionMenu, type MenuAction } from "@/components/ui";
+import { HostGlyph } from "@/hosts/HostAvatar";
 import {
   closePane,
   focusPane,
   mountPane,
+  openTerminal,
   reconnectPane,
   setActivePane,
+  splitActivePane,
+  toggleBroadcast,
   useTerminal,
+  type Pane,
 } from "./store";
 import { AutocompletePopup } from "./AutocompletePopup";
 import { ConnectionView } from "./ConnectionView";
@@ -67,32 +79,15 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
         bgcolor: theme.background,
         borderRadius: 2,
         overflow: "hidden",
+        boxShadow: showFrame
+          ? active
+            ? "0 0 0 1px var(--mui-palette-primary-main)"
+            : "0 0 0 1px var(--mui-palette-border-light)"
+          : "none",
+        transition: "box-shadow 120ms",
       }}
     >
-      {showFrame && (
-        <Stack
-          direction="row"
-          spacing={1}
-          sx={{
-            alignItems: "center",
-            px: 1.25,
-            height: 26,
-            flexShrink: 0,
-            color: theme.foreground,
-            bgcolor: alpha(theme.foreground, 0.05),
-            opacity: active ? 1 : 0.7,
-          }}
-        >
-          <StatusDot status={pane.status} />
-          <Typography variant="caption" noWrap sx={{ flex: 1, fontWeight: 600 }}>
-            {pane.title}
-          </Typography>
-          <Typography variant="caption" noWrap sx={{ opacity: 0.6 }}>
-            {pane.subtitle}
-          </Typography>
-          <PqBadge algorithms={pane.algorithms} size={13} />
-        </Stack>
-      )}
+      {showFrame && <PaneHeader pane={pane} active={active} theme={theme} />}
       <Box sx={{ flex: 1, minHeight: 0, position: "relative", display: "flex" }}>
         <Box
           ref={hostRef}
@@ -141,6 +136,131 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
         </Overlay>
       )}
     </Box>
+  );
+}
+
+/**
+ * Termius-style pane header in a split: host icon, title, address, and the
+ * pane's actions (broadcast, more, close).
+ */
+function PaneHeader({
+  pane,
+  active,
+  theme,
+}: {
+  pane: Pane;
+  active: boolean;
+  theme: TerminalTheme;
+}) {
+  const hosts = useHosts(null);
+  const tab = useTerminal((s) => s.tabs.find((t) => t.paneIds.includes(pane.id)));
+  const [menu, setMenu] = useState<HTMLElement | null>(null);
+  const host = pane.hostId ? hosts.data?.find((h) => h.id === pane.hostId) : undefined;
+  if (!tab) return null;
+  const split = (direction: "row" | "column") => {
+    setActivePane(pane.id);
+    splitActivePane(tab.id, direction);
+  };
+  const items: MenuAction[] = [
+    {
+      label: tr("Split right"),
+      icon: <VerticalSplitRoundedIcon fontSize="small" />,
+      onClick: () => split("row"),
+    },
+    {
+      label: tr("Split down"),
+      icon: <HorizontalSplitRoundedIcon fontSize="small" />,
+      divider: true,
+      onClick: () => split("column"),
+    },
+    {
+      label: tr("Duplicate session"),
+      icon: <ContentCopyRoundedIcon fontSize="small" />,
+      divider: true,
+      onClick: () => openTerminal(pane.target),
+    },
+    {
+      label: tr("Close"),
+      icon: <CloseRoundedIcon fontSize="small" />,
+      danger: true,
+      onClick: () => void closePane(pane.id),
+    },
+  ];
+  const iconSx = {
+    width: 22,
+    height: 22,
+    color: "inherit",
+    opacity: 0.7,
+    "&:hover": { opacity: 1, bgcolor: alpha(theme.foreground, 0.1) },
+    "& svg": { fontSize: 15 },
+  };
+  return (
+    <Stack
+      direction="row"
+      spacing={0.75}
+      sx={{
+        alignItems: "center",
+        pl: 1,
+        pr: 0.5,
+        height: 28,
+        flexShrink: 0,
+        color: theme.foreground,
+        bgcolor: alpha(theme.foreground, active ? 0.06 : 0.035),
+        opacity: active ? 1 : 0.75,
+        "& .pane-actions": { opacity: active ? 1 : 0, transition: "opacity 120ms" },
+        "&:hover .pane-actions": { opacity: 1 },
+      }}
+    >
+      <Box sx={{ display: "flex", alignItems: "center", "& svg": { fontSize: 14 } }}>
+        {pane.protocol === "local" ? (
+          <StatusDot status={pane.status} />
+        ) : (
+          <HostGlyph osName={host?.osName} icon={host?.icon} protocol={pane.protocol ?? "ssh"} />
+        )}
+      </Box>
+      <Typography variant="caption" noWrap sx={{ fontWeight: 600 }}>
+        {pane.title}
+      </Typography>
+      <Typography variant="caption" noWrap sx={{ opacity: 0.55, flex: 1, minWidth: 0 }}>
+        {pane.subtitle}
+      </Typography>
+      <PqBadge algorithms={pane.algorithms} size={13} />
+      <Stack direction="row" className="pane-actions" sx={{ alignItems: "center", gap: 0.25 }}>
+        {tab.paneIds.length > 1 && (
+          <Tooltip
+            title={tab.broadcast ? tr("Broadcast input: on") : tr("Broadcast input to all panes")}
+          >
+            <IconButton
+              size="small"
+              aria-label={tr("Broadcast input to all panes")}
+              aria-pressed={tab.broadcast}
+              onClick={() => toggleBroadcast(tab.id)}
+              sx={{ ...iconSx, ...(tab.broadcast ? { opacity: 1, color: "primary.main" } : {}) }}
+            >
+              <CampaignRoundedIcon />
+            </IconButton>
+          </Tooltip>
+        )}
+        <IconButton
+          size="small"
+          aria-label={tr("Pane actions")}
+          aria-haspopup="menu"
+          onClick={(e) => setMenu(e.currentTarget)}
+          sx={iconSx}
+        >
+          <MoreHorizRoundedIcon />
+        </IconButton>
+        <IconButton
+          size="small"
+          aria-label={tr("Close")}
+          onClick={() => void closePane(pane.id)}
+          sx={iconSx}
+        >
+          <CloseRoundedIcon />
+        </IconButton>
+      </Stack>
+      <ActionMenu anchor={menu} onClose={() => setMenu(null)} items={items} />
+    </Stack>
   );
 }
 
