@@ -2,6 +2,10 @@ package com.termoso.android.ui.terminal
 
 import android.content.Context
 import android.graphics.Typeface
+import android.graphics.fonts.Font
+import android.graphics.fonts.FontFamily
+import android.graphics.fonts.FontStyle
+import android.os.Build
 import androidx.annotation.FontRes
 import androidx.core.content.res.ResourcesCompat
 import com.termoso.android.R
@@ -67,9 +71,27 @@ fun terminalTypefaces(context: Context, family: String): TerminalTypefaces {
     fun variant(@FontRes res: Int?, style: Int) =
         res?.let { ResourcesCompat.getFont(context, it) } ?: Typeface.create(regular, style)
     return TerminalTypefaces(
-        regular,
-        variant(font.bold, Typeface.BOLD),
-        variant(font.italic, Typeface.ITALIC),
-        variant(font.boldItalic, Typeface.BOLD_ITALIC),
+        withNerdSymbols(context, font.regular, regular, FontStyle.FONT_WEIGHT_NORMAL, false),
+        withNerdSymbols(context, font.bold, variant(font.bold, Typeface.BOLD), FontStyle.FONT_WEIGHT_BOLD, false),
+        withNerdSymbols(context, font.italic, variant(font.italic, Typeface.ITALIC), FontStyle.FONT_WEIGHT_NORMAL, true),
+        withNerdSymbols(context, font.boldItalic, variant(font.boldItalic, Typeface.BOLD_ITALIC), FontStyle.FONT_WEIGHT_BOLD, true),
     )
+}
+
+/**
+ * Appends Symbols Nerd Font Mono as a fallback behind a bundled face, so
+ * powerline separators, devicons and codicons (starship, lsd, eza, nvim
+ * status lines) render with any terminal font. Needs the platform font
+ * family API (Android 10+); older devices keep the plain face.
+ */
+private fun withNerdSymbols(context: Context, @FontRes res: Int?, fallback: Typeface, weight: Int, italic: Boolean): Typeface {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || res == null) return fallback
+    return runCatching {
+        val base = FontFamily.Builder(Font.Builder(context.resources, res).build()).build()
+        val nerd = FontFamily.Builder(Font.Builder(context.resources, R.font.symbols_nerd_font_mono).build()).build()
+        Typeface.CustomFallbackBuilder(base)
+            .addCustomFallback(nerd)
+            .setStyle(FontStyle(weight, if (italic) FontStyle.FONT_SLANT_ITALIC else FontStyle.FONT_SLANT_UPRIGHT))
+            .build()
+    }.getOrDefault(fallback)
 }
