@@ -23,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.DataObject
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.History
@@ -131,6 +133,8 @@ fun KeyPanel(
     /** Whether this session can take files; shows the paperclip. */
     canAttach: Boolean = false,
     onAttach: () -> Unit = {},
+    onCompose: () -> Unit = {},
+    onVoice: () -> Unit = {},
     onKeyPressed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -191,6 +195,7 @@ fun KeyPanel(
                 if (canAttach) {
                     IconKey(Icons.Filled.AttachFile, stringResource(R.string.send_file), Modifier.width(40.dp)) { onKeyPressed(); onAttach() }
                 }
+                IconKey(Icons.Filled.Mic, stringResource(R.string.voice_input), Modifier.width(40.dp)) { onKeyPressed(); onVoice() }
                 IconKey(Icons.Filled.ContentPaste, stringResource(R.string.paste_2), Modifier.width(44.dp)) { onKeyPressed(); onPaste() }
                 IconKey(
                     if (imeShown) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
@@ -227,6 +232,7 @@ fun KeyPanel(
             IconKey(Icons.Filled.DataObject, stringResource(R.string.snippets), Modifier.width(52.dp)) { onKeyPressed(); onSnippets() }
             IconKey(Icons.Filled.History, stringResource(R.string.history_and_themes), Modifier.width(52.dp)) { onKeyPressed(); onPanel() }
             IconKey(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai), Modifier.width(52.dp)) { onKeyPressed(); onAskAi() }
+            IconKey(Icons.Filled.EditNote, stringResource(R.string.compose_message), Modifier.width(52.dp)) { onKeyPressed(); onCompose() }
             Spacer(Modifier.weight(1f))
             Box(Modifier.width(1.dp).height(22.dp).background(MaterialTheme.colorScheme.outlineVariant))
             Spacer(Modifier.width(2.dp))

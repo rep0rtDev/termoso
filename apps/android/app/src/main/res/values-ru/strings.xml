@@ -692,8 +692,6 @@
     <string name="speed_slow">Медленно</string>
     <string name="speed_normal">Обычно</string>
     <string name="speed_fast">Быстро</string>
-||||||| parent of 4629524 (android: list active port forwarding in Connections)
-||||||| parent of 58f36e0 (android: pin session recordings)
     <string name="pin_recording">Закрепить запись</string>
     <string name="unpin_recording">Открепить запись</string>
     <string name="pinned">Закреплена</string>
@@ -701,6 +699,12 @@
     <string name="reconnecting">Переподключение…</string>
     <string name="connecting">Подключение…</string>
     <string name="stop">Остановить</string>
+    <string name="compose_message">Сообщение</string>
+    <string name="compose_hint">Напишите длинный промпт или многострочную команду, продиктуйте, затем отправьте в терминал.</string>
+    <string name="voice_input">Голосовой ввод</string>
+    <string name="speech_not_available">На устройстве нет службы распознавания речи</string>
+    <string name="paste_without_enter">Только вставить</string>
+    <string name="ai_coding_agent">AI-агент для кода</string>
     <string name="reset_key_panel">Сбросить панель клавиш?</string>
     <string name="your_custom_rows_are_replaced_by_the_built">Ваши собственные ряды заменяются встроенной раскладкой.</string>
     <string name="reset">Сбросить</string>
@@ -1456,7 +1460,6 @@
         <item quantity="many">Импортировать %d хостов</item>
         <item quantity="other">Импортировать %d хоста</item>
     </plurals>
-||||||| parent of 03665ef (android: Serial (USB-UART) sessions — CDC-ACM/FTDI/CP210x/CH34x drivers, picker, attach intent)
     <string name="serial_usb">Serial (USB)</string>
     <string name="serial_usb_subtitle">Консоль через USB-UART адаптер (OTG)</string>
     <string name="no_usb_adapters">Поддерживаемых адаптеров не подключено</string>

@@ -11,6 +11,7 @@ import com.termoso.core.HostChainItem
 import com.termoso.core.HostDraft
 import com.termoso.core.HostItem
 import com.termoso.core.ProxyDraft
+import com.termoso.core.SnippetDraft
 import com.termoso.core.ProxyItem
 import com.termoso.core.HostKeyPinItem
 import com.termoso.core.IdentityItem
@@ -172,6 +173,41 @@ class HostEditorViewModel(
         viewModelScope.launch {
             runCatching { repo.read { Triple(proxies(vaultId), hostChains(vaultId), hosts(vaultId)) } }
                 .onSuccess { (p, c, h) -> _state.update { it.copy(proxies = p, chains = c, hosts = h) } }
+        }
+    }
+
+    /** Pick a CLI coding agent to start on connect: reuse or create its startup snippet. */
+    fun setCodingAgent(agentId: String?) {
+        val s = _state.value
+        val draft = s.draft ?: return
+        val agent = CodingAgents.byId(agentId)
+        if (agent == null) {
+            if (CodingAgents.selected(s.snippets, draft.startupSnippetId) != null) update { it.copy(startupSnippetId = null) }
+            return
+        }
+        s.snippets.firstOrNull { CodingAgents.of(it)?.id == agent.id }?.let { existing ->
+            update { it.copy(startupSnippetId = existing.id) }
+            return
+        }
+        viewModelScope.launch {
+            runCatching {
+                repo.write {
+                    saveSnippet(
+                        SnippetDraft(
+                            id = null,
+                            vaultId = draft.vaultId,
+                            label = CodingAgents.snippetLabel(agent),
+                            script = agent.command,
+                            packageId = null,
+                            closeAfterRun = false,
+                            targetHostIds = emptyList(),
+                        ),
+                    )
+                }
+            }.onSuccess { created ->
+                val list = runCatching { repo.read { snippets(draft.vaultId) } }.getOrDefault(s.snippets + created)
+                _state.update { st -> st.copy(snippets = list, draft = st.draft?.copy(startupSnippetId = created.id)) }
+            }.onFailure { e -> _state.update { it.copy(error = e.userMessage()) } }
         }
     }
 

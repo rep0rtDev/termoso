@@ -136,6 +136,8 @@ enum class UiAction(val id: String, @StringRes val title: Int) {
     TOGGLE_KEYBOARD("toggle_keyboard", R.string.show_hide_keyboard),
     CLOSE_SESSION("close_session", R.string.close_session),
     SEND_FILE("send_file", R.string.send_file),
+    COMPOSE("compose", R.string.compose_message),
+    VOICE_INPUT("voice_input", R.string.voice_input),
 }
 
 /** A volume-key binding: nothing, an app action, or a key to send. */
