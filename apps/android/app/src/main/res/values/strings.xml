@@ -684,6 +684,7 @@
     <string name="double_tap_sends_tab">Double-tap sends Tab</string>
     <string name="double_tap_tab_hint">When off, a double-tap selects the word</string>
     <string name="cursor_speed">Cursor speed</string>
+    <string name="arrow_gesture">Arrow gesture</string>
     <string name="speed_slow">Slow</string>
     <string name="speed_normal">Normal</string>
     <string name="speed_fast">Fast</string>
