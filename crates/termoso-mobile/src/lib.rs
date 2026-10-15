@@ -22,6 +22,7 @@ mod error;
 mod fido2;
 mod forward;
 mod keys;
+mod linux;
 mod live;
 mod presence;
 mod serial;

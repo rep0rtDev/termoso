@@ -72,6 +72,7 @@ import com.termoso.android.ui.keychain.IdentityEditorScreen
 import com.termoso.android.ui.keychain.ImportKeyScreen
 import com.termoso.android.ui.keychain.KeyDetailScreen
 import com.termoso.android.ui.keychain.KeychainScreen
+import com.termoso.android.ui.settings.LinuxScreen
 import com.termoso.android.ui.settings.SettingsScreen
 import com.termoso.android.ui.settings.TerminalAppearanceScreen
 import com.termoso.android.ui.settings.TerminalInputScreen
@@ -113,6 +114,7 @@ object Routes {
     const val IDENTITY_EDIT = "identity/{id}"
     const val TERMINAL_APPEARANCE = "terminalAppearance"
     const val TERMINAL_INPUT = "terminalInput"
+    const val LINUX = "linux"
     const val KNOWN_HOSTS = "knownHosts"
     const val HISTORY = "history"
     const val LOGS = "logs"
@@ -408,8 +410,10 @@ fun MainShell(
                     onLock = onLock,
                     onTerminalAppearance = { nav.navigate(Routes.TERMINAL_APPEARANCE) },
                     onTerminalInput = { nav.navigate(Routes.TERMINAL_INPUT) },
+                    onLinux = { nav.navigate(Routes.LINUX) },
                 )
             }
+            composable(Routes.LINUX) { LinuxScreen(shell = shell, onBack = { nav.popBackStack() }, onOpenTerminal = ::openTerminal) }
             composable(Routes.TERMINAL_APPEARANCE) { TerminalAppearanceScreen(shell = shell, onBack = { nav.popBackStack() }) }
             composable(Routes.TERMINAL_INPUT) { TerminalInputScreen(shell = shell, onBack = { nav.popBackStack() }) }
             composable(Routes.ACCOUNT) {

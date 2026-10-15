@@ -320,14 +320,26 @@ fun ConnectionsScreen(
                     modifier = Modifier.clickable(onClick = onAddHost),
                 )
                 RowDivider()
+                val linux by shell.sessions.linux.installed.collectAsStateWithLifecycle()
                 ChevronRow(
                     title = stringResource(R.string.local_terminal),
-                    subtitle = stringResource(R.string.a_shell_on_this_device),
+                    subtitle = linux?.let { "${it.name} ${it.version}" } ?: stringResource(R.string.a_shell_on_this_device),
                     leading = { IconTile(Icons.Filled.PhoneAndroid) },
                     modifier = Modifier.clickable {
                         scope.launch { if (shell.connectLocal() != null) onOpenTerminal() }
                     },
                 )
+                if (linux != null) {
+                    RowDivider()
+                    ChevronRow(
+                        title = stringResource(R.string.android_shell),
+                        subtitle = stringResource(R.string.a_shell_on_this_device),
+                        leading = { IconTile(Icons.Filled.PhoneAndroid) },
+                        modifier = Modifier.clickable {
+                            scope.launch { if (shell.connectAndroidShell() != null) onOpenTerminal() }
+                        },
+                    )
+                }
                 RowDivider()
                 ChevronRow(
                     title = stringResource(R.string.serial_usb),

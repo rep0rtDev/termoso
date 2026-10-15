@@ -1,0 +1,21 @@
+Bundled native binaries for the Linux environment (jniLibs/*/):
+
+libproot.so, libproot-loader.so
+  PRoot 5.1.107 — https://proot-me.github.io/
+  Build with Android patches from Termux: https://github.com/termux/termux-packages/tree/master/packages/proot
+  License: GNU General Public License v2.0 (GPL-2.0-only). Full text: https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt
+  Source for this exact build: the Termux package above (version 5.1.107-96). PRoot is run as a separate
+  process; Termoso itself is not linked against it.
+
+libtalloc.so
+  talloc 2.5.0 — https://talloc.samba.org/
+  License: GNU Lesser General Public License v3.0 or later (LGPL-3.0-or-later).
+  Build: https://github.com/termux/termux-packages/tree/master/packages/libtalloc
+
+libandroid-shmem.so
+  libandroid-shmem 0.7 — https://github.com/termux/libandroid-shmem
+  License: MIT.
+
+Root filesystems are downloaded on demand from the distributions' official mirrors
+(Alpine Linux: https://alpinelinux.org/ — MIT and others; Ubuntu Base: https://ubuntu.com/ — mixed free licenses)
+and are not part of this application package.

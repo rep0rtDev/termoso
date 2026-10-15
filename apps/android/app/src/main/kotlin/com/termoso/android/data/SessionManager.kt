@@ -239,6 +239,8 @@ class SessionManager(
     private val repo: VaultRepository,
     /** `HOME` and working directory of local shells; created on first use. */
     private val localHome: File,
+    /** The optional Linux userland the default local shell runs in. */
+    val linux: LinuxManager,
 ) {
     private val _sessions = MutableStateFlow<List<TerminalSession>>(emptyList())
     val sessions: StateFlow<List<TerminalSession>> = _sessions.asStateFlow()
@@ -370,7 +372,13 @@ class SessionManager(
     }
 
     /** A shell on this device (`/system/bin/sh` in [localHome] unless [shell] says otherwise). */
-    suspend fun connectLocal(shell: LocalShell = LocalShell(argv = emptyList(), home = "", env = emptyList())): TerminalSession {
+    suspend fun connectLocal(
+        shell: LocalShell = LocalShell(argv = emptyList(), home = "", env = emptyList()),
+        title: String? = null,
+    ): TerminalSession {
+        // No program named: the installed Linux system when there is one, else the Android shell.
+        val linuxShell = if (shell.argv.isEmpty()) linux.shell() else null
+        val shell = linuxShell?.shell ?: shell
         val bridge = SessionBridge()
         val home = shell.home.ifBlank {
             withContext(Dispatchers.IO) { localHome.mkdirs() }
@@ -378,11 +386,12 @@ class SessionManager(
         }
         val rust = repo.read { connectLocal(shell.copy(home = home), options(Transport.SSH), bridge) }
         val program = shell.argv.firstOrNull()?.substringAfterLast('/') ?: "sh"
+        val target = title ?: linuxShell?.title ?: str(R.string.on_this_device, program)
         return register(
             TerminalSession(
                 id = rust.id(),
                 label = str(R.string.local),
-                target = str(R.string.on_this_device, program),
+                target = target,
                 hostId = null,
                 vaultId = null,
                 quick = null,
@@ -455,7 +464,7 @@ class SessionManager(
             old.isView -> null
             old.hostId != null && old.vaultId != null -> connectHost(old.hostId, old.vaultId, old.transport)
             old.quick != null -> connectQuick(old.quick)
-            old.local != null -> connectLocal(old.local)
+            old.local != null -> connectLocal(old.local, old.target)
             old.serial != null -> connectSerial(old.serial.adapterKey, old.serial.line)
             else -> null
         }
@@ -467,7 +476,7 @@ class SessionManager(
         val fresh = when {
             old.hostId != null && old.vaultId != null -> connectHost(old.hostId, old.vaultId, old.transport)
             old.quick != null -> connectQuick(old.quick)
-            old.local != null -> connectLocal(old.local)
+            old.local != null -> connectLocal(old.local, old.target)
             old.serial != null -> connectSerial(old.serial.adapterKey, old.serial.line)
             else -> return null
         }

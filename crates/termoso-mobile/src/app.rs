@@ -45,7 +45,7 @@ use crate::team::{
 const DB_FILE: &str = "vault.db";
 const AVATARS_DIR: &str = "avatars";
 
-static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+pub(crate) static RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .thread_name("termoso-rt")
