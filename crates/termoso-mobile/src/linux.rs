@@ -95,10 +95,16 @@ fn source(id: &str) -> Result<&'static Source> {
 }
 
 /// Distributions this device can install (none on unsupported CPUs).
+///
+/// Alpine is left out on x86_64: musl's `fork()` there uses the legacy
+/// `fork` syscall, which Android's app seccomp filter rejects with ENOSYS
+/// (`/bin/sh: can't fork`); arm64 has only `clone`, and glibc uses `clone`
+/// everywhere, so Ubuntu works on both.
 #[uniffi::export]
 pub fn linux_distros() -> Vec<LinuxDistro> {
     SOURCES
         .iter()
+        .filter(|s| !(s.id == "alpine" && cfg!(target_arch = "x86_64")))
         .filter_map(|s| {
             let (_, _, bytes) = arch_source(s)?;
             Some(LinuxDistro {
@@ -502,7 +508,11 @@ mod tests {
     #[test]
     fn distros_listed_for_this_arch() {
         let d = linux_distros();
-        assert!(d.iter().any(|x| x.id == "alpine") && d.iter().any(|x| x.id == "ubuntu"));
+        assert!(d.iter().any(|x| x.id == "ubuntu"));
+        assert_eq!(
+            d.iter().any(|x| x.id == "alpine"),
+            cfg!(target_arch = "aarch64")
+        );
     }
 
     #[test]
