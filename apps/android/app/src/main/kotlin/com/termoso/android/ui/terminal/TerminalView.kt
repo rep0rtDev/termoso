@@ -1,5 +1,6 @@
 package com.termoso.android.ui.terminal
 
+import android.view.HapticFeedbackConstants
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -29,6 +30,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,6 +43,7 @@ import com.termoso.core.KeyMods
 import com.termoso.core.SpecialKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 
 /** Position of a cell under a touch. */
@@ -87,6 +90,10 @@ fun TerminalView(
 
     var selection by remember(session) { mutableStateOf<TermSelection?>(null) }
     var dragSelecting by remember { mutableStateOf(false) }
+    // Long-press arrow mode: set by the tap detector, consumed by the drag loop below.
+    var arrowGesture by remember { mutableStateOf<ArrowGesture?>(null) }
+    var arrowOrigin by remember { mutableStateOf(Offset.Zero) }
+    val view = LocalView.current
 
     val tick by session.frameTick.collectAsStateWithLifecycle()
 
@@ -172,10 +179,19 @@ fun TerminalView(
                         }
                         currentTap()
                     },
-                    onDoubleTap = { offset -> selectWordAt(offset) },
+                    onDoubleTap = { offset ->
+                        if (currentGestures.doubleTapTab) controller.sendKey(SpecialKey.TAB) else selectWordAt(offset)
+                    },
                     onLongPress = { offset ->
-                        selectWordAt(offset)
-                        dragSelecting = selection != null
+                        if (currentGestures.longPressArrows && selection == null) {
+                            val m = currentMetrics
+                            arrowGesture = ArrowGesture(m.width, m.height, currentGestures.cursorSpeed)
+                            arrowOrigin = offset
+                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        } else {
+                            selectWordAt(offset)
+                            dragSelecting = selection != null
+                        }
                     },
                 )
             }
@@ -190,14 +206,22 @@ fun TerminalView(
                     var multi = false
                     var swiped = false
                     var axis = Axis.NONE
-                    do {
-                        val event = awaitPointerEvent()
-                        val pressed = event.changes.count { it.pressed }
-                        if (!dragSelecting && event.changes.all { it.isConsumed }) {
-                            // A selection handle or the action bar owns this gesture.
+                    while (true) {
+                        // Short timeout so a finger held still in arrow mode keeps repeating.
+                        val event = withTimeoutOrNull(ArrowGesture.REPEAT_MS) { awaitPointerEvent() }
+                        if (event == null) {
+                            arrowGesture?.repeatTick()?.let { controller.arrowKeys(it) }
                             continue
                         }
-                        if (dragSelecting) {
+                        val pressed = event.changes.count { it.pressed }
+                        val arrows = arrowGesture
+                        if (arrows != null) {
+                            val pan = event.calculatePan()
+                            arrows.move(pan.x, pan.y)?.let { controller.arrowKeys(it) }
+                            event.changes.forEach { it.consume() }
+                        } else if (!dragSelecting && event.changes.all { it.isConsumed }) {
+                            // A selection handle or the action bar owns this gesture.
+                        } else if (dragSelecting) {
                             // Long press keeps selecting while the finger moves.
                             val p = event.changes.firstOrNull { it.pressed }?.position
                             val sel = selection
@@ -257,7 +281,11 @@ fun TerminalView(
                                 }
                             }
                         }
-                    } while (event.changes.any { it.pressed })
+                        if (event.changes.none { it.pressed }) break
+                    }
+                    // A long-press released without dragging still selects the word under it.
+                    arrowGesture?.let { if (!it.moved) selectWordAt(arrowOrigin) }
+                    arrowGesture = null
                     dragSelecting = false
                 }
             },
@@ -317,6 +345,12 @@ data class TerminalGestures(
     val pinchZoom: Boolean = true,
     val swipeArrows: Boolean = true,
     val swipeSessions: Boolean = true,
+    /** Long-press, then drag in any direction for ← ↑ ↓ →; hold to repeat. */
+    val longPressArrows: Boolean = true,
+    /** Double-tap sends Tab (otherwise it selects the word under the finger). */
+    val doubleTapTab: Boolean = true,
+    /** Travel multiplier for arrow gestures, see [ArrowGesture.speedOf]. */
+    val cursorSpeed: Float = 1f,
 )
 
 private enum class Axis { NONE, VERTICAL, HORIZONTAL }
@@ -385,6 +419,11 @@ class TerminalController(private val session: TerminalSession) {
     fun scrollToBottom() = session.rust.scrollToBottom()
 
     fun altScreen(): Boolean = session.rust.frame().altScreen
+
+    /** One step of a long-press arrow gesture. */
+    fun arrowKeys(step: ArrowStep) {
+        repeat(step.count.coerceAtMost(50)) { session.rust.sendKey(step.key, NONE) }
+    }
 
     /** Horizontal swipe: positive = →, negative = ←, one key per cell travelled. */
     fun arrows(cells: Int) {
