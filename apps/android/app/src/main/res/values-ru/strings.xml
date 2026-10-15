@@ -47,6 +47,7 @@
         <item quantity="other">%d туннеля</item>
     </plurals>
     <string name="active_sessions_2">Активные сессии</string>
+    <string name="notif_forwarding_for">Проброс портов · %1$s</string>
     <string name="shown_while_a_terminal_is_connected_so_the">Показывается, пока терминал подключён, чтобы соединение сохранялось в фоне.</string>
     <string name="unlock_termoso">Разблокировать Termoso</string>
     <string name="use_your_fingerprint_or_screen_lock">Используйте отпечаток пальца или блокировку экрана</string>

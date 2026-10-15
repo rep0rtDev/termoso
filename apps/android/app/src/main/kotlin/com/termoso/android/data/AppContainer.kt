@@ -141,6 +141,18 @@ class AppContainer(context: Context) {
         _pendingShareText.value = null
     }
 
+    /** Where a tap on one of the shade's notifications wants the app to land. */
+    private val _pendingOpen = MutableStateFlow<OpenTarget?>(null)
+    val pendingOpen: StateFlow<OpenTarget?> = _pendingOpen.asStateFlow()
+
+    fun offerOpen(target: OpenTarget) {
+        _pendingOpen.value = target
+    }
+
+    fun consumeOpen() {
+        _pendingOpen.value = null
+    }
+
     private val _pendingSerial = MutableStateFlow(false)
 
     /** A USB-UART adapter was just plugged in; Connections offers to open it. */
@@ -238,7 +250,7 @@ class AppContainer(context: Context) {
                 sftp = sftp,
                 forwards = forwards,
                 account = account,
-                keepAlive = KeepAlive(appContext, sessions, sftp, forwards),
+                keepAlive = KeepAlive(appContext, sessions, sftp, forwards, it),
                 presence = PresenceManager(it, account),
                 ai = AiManager(it, account),
             )
@@ -274,4 +286,12 @@ class AppContainer(context: Context) {
             open.repo.app.close()
         }
     }
+}
+
+/** A destination requested from outside the UI (notification taps). */
+sealed interface OpenTarget {
+    data class Terminal(val sessionId: String) : OpenTarget
+    data object Connections : OpenTarget
+    data object Forwarding : OpenTarget
+    data class Files(val connectionId: String?) : OpenTarget
 }

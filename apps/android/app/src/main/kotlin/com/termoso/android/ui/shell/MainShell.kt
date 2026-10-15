@@ -42,6 +42,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.font.FontFamily
 import com.termoso.android.R
 import com.termoso.android.data.AccountManager
+import com.termoso.android.data.OpenTarget
 import com.termoso.android.data.AiManager
 import com.termoso.android.data.AppContainer
 import com.termoso.android.data.ForwardManager
@@ -219,6 +220,30 @@ fun MainShell(
 
     fun openTerminal() {
         nav.navigate(Routes.TERMINAL) { launchSingleTop = true }
+    }
+
+    // A tap on one of the shade's notifications: land on that session / list.
+    val pendingOpen by container.pendingOpen.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingOpen) {
+        val target = pendingOpen ?: return@LaunchedEffect
+        container.consumeOpen()
+        fun top(route: String) = nav.navigate(route) {
+            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+        when (target) {
+            is OpenTarget.Terminal -> {
+                shell.sessions.setActive(target.sessionId)
+                openTerminal()
+            }
+            OpenTarget.Connections -> top(Routes.CONNECTIONS)
+            OpenTarget.Forwarding -> nav.navigate(Routes.FORWARDING) { launchSingleTop = true }
+            is OpenTarget.Files -> {
+                val id = target.connectionId?.takeIf { c -> shell.sftp.find(c) != null }
+                if (id != null) nav.navigate(Routes.sftp(id)) { launchSingleTop = true } else top(Routes.CONNECTIONS)
+            }
+        }
     }
 
     // A termoso://join link: needs an account, then becomes a viewer terminal.
