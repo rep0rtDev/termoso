@@ -688,6 +688,10 @@
     <string name="speed_normal">Normal</string>
     <string name="speed_fast">Fast</string>
 ||||||| parent of 4629524 (android: list active port forwarding in Connections)
+||||||| parent of 58f36e0 (android: pin session recordings)
+    <string name="pin_recording">Pin recording</string>
+    <string name="unpin_recording">Unpin recording</string>
+    <string name="pinned">Pinned</string>
     <string name="running">Running</string>
     <string name="reconnecting">Reconnecting…</string>
     <string name="connecting">Connecting…</string>

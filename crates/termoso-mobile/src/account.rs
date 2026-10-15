@@ -1339,6 +1339,25 @@ impl AccountRuntime {
     }
 
     /// Fetch a teammate's recording body into the local log cache.
+    /// Pin / annotate a recording on the server (team or synced personal log).
+    pub async fn annotate_log(
+        &self,
+        id: Uuid,
+        pinned: Option<bool>,
+        note: Option<String>,
+    ) -> Result<()> {
+        let engine = {
+            let inner = self.inner.lock().await;
+            inner
+                .engine
+                .as_ref()
+                .map(|e| e.engine.clone())
+                .ok_or_else(|| MobileError::invalid("not signed in"))?
+        };
+        engine.annotate_log(id, pinned, note).await?;
+        Ok(())
+    }
+
     pub async fn fetch_log(&self, id: Uuid) -> Result<()> {
         let engine = {
             let inner = self.inner.lock().await;
