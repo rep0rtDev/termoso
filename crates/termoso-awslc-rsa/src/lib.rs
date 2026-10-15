@@ -297,8 +297,14 @@ mod tests {
             .encrypt(&mut rand::thread_rng(), Pkcs1v15Encrypt, b"legacy")
             .unwrap();
         assert_eq!(sp.decrypt(Padding::Pkcs1v15, &ct).unwrap(), b"legacy");
+        // PKCS#1 v1.5 unpadding has no integrity check: an OAEP ciphertext
+        // decrypts to random bytes that look like valid v1.5 padding about
+        // once in 256 keys, so only the message itself must never come back.
         let oaep = oaep_encrypt(&key.to_public_key(), Hash::Sha1, Hash::Sha1, b"legacy");
-        assert_eq!(sp.decrypt(Padding::Pkcs1v15, &oaep), Err(DecryptError));
+        assert_ne!(
+            sp.decrypt(Padding::Pkcs1v15, &oaep).ok().as_deref(),
+            Some(&b"legacy"[..])
+        );
         assert_eq!(
             sp.decrypt(
                 Padding::Oaep {
