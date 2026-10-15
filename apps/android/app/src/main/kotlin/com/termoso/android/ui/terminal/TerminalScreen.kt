@@ -481,6 +481,7 @@ private fun ActiveSession(
     var confirmDrop by remember { mutableStateOf<List<Uri>?>(null) }
     var zoomDelta by rememberSaveable { mutableStateOf(0) }
     var scrolled by remember { mutableStateOf(false) }
+    var arrowHint by remember { mutableStateOf<ArrowHint?>(null) }
 
     val autocompleteOn = autocompleteAllowed(settings.autocomplete, state, canWrite, session.isView)
     val frameTick by session.frameTick.collectAsStateWithLifecycle()
@@ -824,7 +825,9 @@ private fun ActiveSession(
                             if (r == SnackbarResult.ActionPerformed) openLink(context, uri)
                         }
                     },
+                    onArrowGesture = { arrowHint = it },
                 )
+                arrowHint?.let { ArrowGestureOverlay(it, Modifier.align(Alignment.Center)) }
                 if (scrolled) {
                     SmallFloatingActionButton(
                         onClick = { controller.scrollToBottom() },

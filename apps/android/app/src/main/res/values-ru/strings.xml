@@ -689,6 +689,7 @@
     <string name="double_tap_sends_tab">Двойной тап — Tab</string>
     <string name="double_tap_tab_hint">Если выключено, двойной тап выделяет слово</string>
     <string name="cursor_speed">Скорость курсора</string>
+    <string name="arrow_gesture">Жест стрелок</string>
     <string name="speed_slow">Медленно</string>
     <string name="speed_normal">Обычно</string>
     <string name="speed_fast">Быстро</string>

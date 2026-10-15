@@ -80,6 +80,8 @@ fun TerminalView(
     onContent: (Uri) -> Unit = {},
     /** Tap on an OSC 8 hyperlink; the caller offers to open it. */
     onLink: (String) -> Unit = {},
+    /** Long-press arrow gesture state for an on-screen hint; `null` when it ends. */
+    onArrowGesture: (ArrowHint?) -> Unit = {},
 ) {
     val density = LocalDensity.current
     val context = LocalContext.current
@@ -155,6 +157,7 @@ fun TerminalView(
     val currentZoom by rememberUpdatedState(onZoom)
     val currentSwipe by rememberUpdatedState(onSwipeSession)
     val currentGestures by rememberUpdatedState(gestures)
+    val currentOnArrowGesture by rememberUpdatedState(onArrowGesture)
     val currentMetrics by rememberUpdatedState(metrics)
     val currentGrid by rememberUpdatedState(grid)
     val slop = with(density) { 12.dp.toPx() }
@@ -199,6 +202,7 @@ fun TerminalView(
                             val m = currentMetrics
                             arrowGesture = ArrowGesture(m.width, m.height, currentGestures.cursorSpeed)
                             arrowOrigin = offset
+                            currentOnArrowGesture(ArrowHint(null, 1))
                             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                         } else {
                             selectWordAt(offset)
@@ -222,7 +226,10 @@ fun TerminalView(
                         // Short timeout so a finger held still in arrow mode keeps repeating.
                         val event = withTimeoutOrNull(ArrowGesture.REPEAT_MS) { awaitPointerEvent() }
                         if (event == null) {
-                            arrowGesture?.repeatTick()?.let { controller.arrowKeys(it) }
+                            arrowGesture?.let { a ->
+                                a.repeatTick()?.let { controller.arrowKeys(it) }
+                                currentOnArrowGesture(ArrowHint(a.direction, a.gear))
+                            }
                             continue
                         }
                         val pressed = event.changes.count { it.pressed }
@@ -230,6 +237,7 @@ fun TerminalView(
                         if (arrows != null) {
                             val pan = event.calculatePan()
                             arrows.move(pan.x, pan.y)?.let { controller.arrowKeys(it) }
+                            currentOnArrowGesture(ArrowHint(arrows.direction, arrows.gear))
                             event.changes.forEach { it.consume() }
                         } else if (!dragSelecting && event.changes.all { it.isConsumed }) {
                             // A selection handle or the action bar owns this gesture.
@@ -296,7 +304,10 @@ fun TerminalView(
                         if (event.changes.none { it.pressed }) break
                     }
                     // A long-press released without dragging still selects the word under it.
-                    arrowGesture?.let { if (!it.moved) selectWordAt(arrowOrigin) }
+                    arrowGesture?.let {
+                        if (!it.moved) selectWordAt(arrowOrigin)
+                        currentOnArrowGesture(null)
+                    }
                     arrowGesture = null
                     dragSelecting = false
                 }
