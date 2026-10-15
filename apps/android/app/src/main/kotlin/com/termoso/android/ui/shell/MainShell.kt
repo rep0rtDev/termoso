@@ -395,6 +395,7 @@ fun MainShell(
                     onOpenSftp = ::openSftp,
                     onEditHost = { nav.navigate(Routes.hostEdit(it)) },
                     onAddHostFrom = { nav.navigate(Routes.hostNewFrom(it)) },
+                    onOpenForwarding = { nav.navigate(Routes.FORWARDING) },
                 )
             }
             composable(Routes.SETTINGS) {

@@ -61,6 +61,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.termoso.android.ui.terminal.TerminalPreview
 import com.termoso.android.R
+import com.termoso.android.data.Tunnel
+import com.termoso.core.PfRuleItem
+import com.termoso.core.PfKind
+import com.termoso.core.TunnelState
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
 import com.termoso.android.data.SftpConnection
 import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.userMessage
@@ -106,6 +115,7 @@ fun ConnectionsScreen(
     onOpenTerminal: () -> Unit,
     onNewSftp: () -> Unit,
     onOpenSftp: (String) -> Unit,
+    onOpenForwarding: () -> Unit = {},
     onEditHost: (String) -> Unit = {},
     onAddHostFrom: (String) -> Unit = {},
     /** A USB-UART adapter was just attached: open the serial sheet once. */
@@ -122,9 +132,14 @@ fun ConnectionsScreen(
     val scope = rememberCoroutineScope()
     var target by remember { mutableStateOf("") }
     var recent by remember { mutableStateOf<List<HistoryItem>>(emptyList()) }
+    val tunnels by shell.forwards.tunnels.collectAsStateWithLifecycle()
+    var pfRules by remember { mutableStateOf<List<PfRuleItem>>(emptyList()) }
     LaunchedEffect(revision, vault) {
         recent = runCatching { shell.repo.read { history(RECENT_SCAN) } }.getOrDefault(emptyList())
             .recentIn(vault, RECENT_MAX)
+    }
+    LaunchedEffect(revision, tunnels.keys) {
+        pfRules = if (tunnels.isEmpty()) emptyList() else runCatching { shell.repo.read { pfRules(null) } }.getOrDefault(emptyList())
     }
 
     var joinDialog by remember { mutableStateOf(false) }
@@ -276,6 +291,21 @@ fun ConnectionsScreen(
                                     shell.sftp.closeMany(sftpIds)
                                 }
                             },
+                        )
+                    }
+                }
+            }
+
+            if (tunnels.isNotEmpty()) {
+                SectionLabel(stringResource(R.string.port_forwarding))
+                SectionCard {
+                    tunnels.values.sortedBy { it.ruleId }.forEachIndexed { i, tunnel ->
+                        if (i > 0) RowDivider()
+                        ActiveTunnelRow(
+                            tunnel = tunnel,
+                            rule = pfRules.firstOrNull { it.id == tunnel.ruleId },
+                            onOpen = onOpenForwarding,
+                            onStop = { scope.launch { shell.forwards.stop(tunnel.ruleId) } },
                         )
                     }
                 }
@@ -546,3 +576,41 @@ fun historySubtitle(h: HistoryItem): String {
     }
     return listOfNotNull(h.target, time, duration, h.error).joinToString(" · ")
 }
+
+/** A live port-forwarding tunnel, so Connections lists every kind of active connection like Termius. */
+@Composable
+private fun ActiveTunnelRow(tunnel: Tunnel, rule: PfRuleItem?, onOpen: () -> Unit, onStop: () -> Unit) {
+    val state by tunnel.state.collectAsStateWithLifecycle()
+    val endpoints = rule?.let {
+        when (it.kind) {
+            PfKind.REMOTE -> "${it.remote_host_or_bind()}:${it.remotePort} → localhost:${it.localPort}"
+            PfKind.DYNAMIC -> "SOCKS ${it.boundAddress}:${it.localPort}"
+            else -> "localhost:${it.localPort} → ${it.remoteHost}:${it.remotePort}"
+        } + " · " + it.hostLabel
+    } ?: tunnel.ruleId
+    val status = when (state) {
+        is TunnelState.Running -> stringResource(R.string.running)
+        is TunnelState.Reconnecting -> stringResource(R.string.reconnecting)
+        else -> stringResource(R.string.connecting)
+    }
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.SwapVert, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(rule?.label?.ifBlank { null } ?: endpoints, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                if (rule?.label.isNullOrBlank()) status else "$endpoints · $status",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (state is TunnelState.Running) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(onClick = onStop) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.stop)) }
+    }
+}
+
+private fun PfRuleItem.remote_host_or_bind(): String = boundAddress.ifBlank { "*" }

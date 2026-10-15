@@ -860,6 +860,44 @@ impl TermosoApp {
         Ok(String::from_utf8_lossy(&body).into_owned())
     }
 
+    /// Pin a recording so it survives per-host overwrite / cleanup, or leave a
+    /// note on it. Synced logs go through the server (editor role); local-only
+    /// logs are updated in the store.
+    pub fn annotate_session_log(
+        &self,
+        id: String,
+        pinned: Option<bool>,
+        note: Option<String>,
+    ) -> Result<SessionLogCard> {
+        let uuid = parse_id(&id)?;
+        let item = self
+            .store
+            .logs()?
+            .into_iter()
+            .find(|l| l.id == uuid)
+            .ok_or_else(|| MobileError::not_found("recording"))?;
+        let note = note.map(|n| n.trim().to_string());
+        let synced = item.uploaded
+            && RUNTIME
+                .block_on(self.account.annotate_log(uuid, pinned, note.clone()))
+                .is_ok();
+        if !synced {
+            let pinned = pinned.unwrap_or(item.pinned);
+            let (note, note_by) = match note {
+                Some(n) if n != item.note => (n, None),
+                _ => (item.note.clone(), item.note_by),
+            };
+            self.store.annotate_log(uuid, pinned, &note, note_by)?;
+            if item.uploaded {
+                self.account.sync_in_background();
+            }
+        }
+        self.session_logs()?
+            .into_iter()
+            .find(|c| c.id == id)
+            .ok_or_else(|| MobileError::not_found("recording"))
+    }
+
     pub fn delete_session_log(&self, id: String) -> Result<()> {
         let id = parse_id(&id)?;
         let item = self

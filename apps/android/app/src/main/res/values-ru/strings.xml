@@ -692,6 +692,15 @@
     <string name="speed_slow">Медленно</string>
     <string name="speed_normal">Обычно</string>
     <string name="speed_fast">Быстро</string>
+||||||| parent of 4629524 (android: list active port forwarding in Connections)
+||||||| parent of 58f36e0 (android: pin session recordings)
+    <string name="pin_recording">Закрепить запись</string>
+    <string name="unpin_recording">Открепить запись</string>
+    <string name="pinned">Закреплена</string>
+    <string name="running">Работает</string>
+    <string name="reconnecting">Переподключение…</string>
+    <string name="connecting">Подключение…</string>
+    <string name="stop">Остановить</string>
     <string name="reset_key_panel">Сбросить панель клавиш?</string>
     <string name="your_custom_rows_are_replaced_by_the_built">Ваши собственные ряды заменяются встроенной раскладкой.</string>
     <string name="reset">Сбросить</string>

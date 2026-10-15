@@ -14,6 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -92,6 +94,19 @@ fun SessionLogsScreen(shell: ShellViewModel, onBack: () -> Unit, onOpen: (String
                             leading = { IconTile(Icons.Filled.Videocam) },
                             modifier = Modifier.clickable { onOpen(l.id) },
                         ) {
+                            IconButton(onClick = {
+                                scope.launch {
+                                    runCatching { shell.repo.write { annotateSessionLog(l.id, !l.pinned, null) } }
+                                        .onSuccess { updated -> items = items.map { if (it.id == updated.id) updated else it } }
+                                        .onFailure { shell.notify(it.userMessage()) }
+                                }
+                            }) {
+                                Icon(
+                                    if (l.pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                                    contentDescription = stringResource(if (l.pinned) R.string.unpin_recording else R.string.pin_recording),
+                                    tint = if (l.pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                             if (l.mine) {
                                 IconButton(onClick = { confirm = l }) {
                                     Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.delete), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -128,7 +143,8 @@ fun logSubtitle(l: SessionLogCard): String {
         else -> null
     }
     val state = if (l.completed) null else str(R.string.recording)
-    return listOfNotNull(l.protocol.uppercase(), time, duration, formatSize(l.bytes), who, state).joinToString(" · ")
+    val pinned = if (l.pinned) str(R.string.pinned) else null
+    return listOfNotNull(l.protocol.uppercase(), time, duration, formatSize(l.bytes), who, state, pinned).joinToString(" · ")
 }
 
 fun formatDuration(secs: Long): String = when {
