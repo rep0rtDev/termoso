@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Shield
@@ -102,6 +103,7 @@ fun SettingsScreen(
     onLock: () -> Unit,
     onTerminalAppearance: () -> Unit,
     onTerminalInput: () -> Unit,
+    onLinux: () -> Unit,
 ) {
     val settings by shell.repo.settings.collectAsStateWithLifecycle()
     val accountStatus by account.status.collectAsStateWithLifecycle()
@@ -254,6 +256,14 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.key_panel_rows_volume_buttons_physical_keyboard_swipes),
                     leading = { IconTile(Icons.Filled.Keyboard) },
                     modifier = Modifier.clickable(onClick = onTerminalInput),
+                )
+                RowDivider()
+                val linux by container.linux.installed.collectAsStateWithLifecycle()
+                ChevronRow(
+                    title = stringResource(R.string.linux_environment),
+                    subtitle = linux?.let { "${it.name} ${it.version}" } ?: stringResource(R.string.linux_environment_subtitle),
+                    leading = { IconTile(Icons.Filled.Terminal) },
+                    modifier = Modifier.clickable(onClick = onLinux),
                 )
                 RowDivider()
                 SwitchRow(

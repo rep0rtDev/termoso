@@ -43,6 +43,7 @@ class AppContainer(context: Context) {
 
     /** `HOME` of local shells, the one app-private directory the Files browser and provider expose. */
     val localHome: File = File(appContext.filesDir, "home")
+    val linux = LinuxManager(appContext)
     val masterKeys = MasterKeyStore(context)
     val appPin = AppPin(context)
 
@@ -240,7 +241,7 @@ class AppContainer(context: Context) {
             }
             VaultRepository(app)
         }.also {
-            val sessions = SessionManager(appContext, it, localHome)
+            val sessions = SessionManager(appContext, it, localHome, linux)
             val sftp = SftpManager(appContext, it, localHome)
             val forwards = ForwardManager(it)
             val account = AccountManager(it, onSignOut = sessions::endLive)

@@ -1,0 +1,163 @@
+package com.termoso.android.ui.settings
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.termoso.android.R
+import com.termoso.android.ui.components.ChevronRow
+import com.termoso.android.ui.components.IconTile
+import com.termoso.android.ui.components.RowDivider
+import com.termoso.android.ui.components.SectionCard
+import com.termoso.android.ui.components.SectionLabel
+import com.termoso.android.ui.shell.ShellViewModel
+import com.termoso.core.LinuxStage
+import kotlinx.coroutines.launch
+
+/**
+ * Settings → Linux environment: pick Alpine or Ubuntu, watch it download and
+ * unpack, open a shell in it or remove it. One system at a time.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LinuxScreen(shell: ShellViewModel, onBack: () -> Unit, onOpenTerminal: () -> Unit) {
+    val linux = shell.sessions.linux
+    val installed by linux.installed.collectAsStateWithLifecycle()
+    val progress by linux.progress.collectAsStateWithLifecycle()
+    val error by linux.error.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var confirmRemove by remember { mutableStateOf(false) }
+
+    if (confirmRemove) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text(stringResource(R.string.remove_linux)) },
+            text = { Text(stringResource(R.string.remove_linux_explain)) },
+            confirmButton = {
+                TextButton(onClick = { confirmRemove = false; scope.launch { linux.remove() } }) {
+                    Text(stringResource(R.string.remove))
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+    error?.let { message ->
+        AlertDialog(
+            onDismissRequest = { linux.clearError() },
+            title = { Text(stringResource(R.string.installation_failed)) },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { linux.clearError() }) { Text(stringResource(android.R.string.ok)) } },
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.linux_environment)) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back)) }
+                },
+            )
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+            Text(
+                stringResource(R.string.linux_environment_explain),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 12.dp),
+            )
+            installed?.let { sys ->
+                SectionLabel(stringResource(R.string.installed))
+                SectionCard {
+                    ChevronRow(
+                        title = "${sys.name} ${sys.version}",
+                        subtitle = stringResource(R.string.open_linux_shell),
+                        leading = { IconTile(Icons.Filled.Terminal) },
+                        modifier = Modifier.clickable {
+                            scope.launch { if (shell.connectLocal() != null) onOpenTerminal() }
+                        },
+                    )
+                    RowDivider()
+                    ChevronRow(
+                        title = stringResource(R.string.remove_linux),
+                        subtitle = stringResource(R.string.remove_linux_subtitle),
+                        leading = { IconTile(Icons.Filled.Delete) },
+                        modifier = Modifier.clickable(enabled = progress == null) { confirmRemove = true },
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+            progress?.let { p ->
+                val stage = when (p.stage) {
+                    LinuxStage.DOWNLOADING -> stringResource(R.string.downloading)
+                    LinuxStage.VERIFYING -> stringResource(R.string.verifying)
+                    LinuxStage.UNPACKING -> stringResource(R.string.unpacking)
+                    LinuxStage.CONFIGURING -> stringResource(R.string.configuring)
+                }
+                val name = linux.distros.firstOrNull { it.id == p.distroId }?.name ?: p.distroId
+                SectionLabel(stringResource(R.string.installing_s, name))
+                SectionCard {
+                    Column(Modifier.padding(16.dp)) {
+                        val detail = if (p.stage == LinuxStage.DOWNLOADING && p.total > 0u) {
+                            "$stage · ${p.done.toLong() / 1_000_000} / ${p.total.toLong() / 1_000_000} MB"
+                        } else {
+                            stage
+                        }
+                        Text(detail, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(10.dp))
+                        if (p.stage == LinuxStage.DOWNLOADING && p.total > 0u) {
+                            LinearProgressIndicator(progress = { p.done.toFloat() / p.total.toFloat() }, modifier = Modifier.fillMaxWidth())
+                        } else {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+            }
+            SectionLabel(stringResource(if (installed == null) R.string.choose_a_distribution else R.string.replace_with))
+            SectionCard {
+                linux.distros.forEachIndexed { i, d ->
+                    if (i > 0) RowDivider()
+                    ChevronRow(
+                        title = "${d.name} ${d.version}",
+                        subtitle = "${d.note} · ${d.downloadBytes.toLong() / 1_000_000} MB",
+                        leading = { IconTile(Icons.Filled.Download) },
+                        modifier = Modifier.clickable(enabled = progress == null) { linux.install(d.id) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}

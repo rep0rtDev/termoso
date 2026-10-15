@@ -13,6 +13,7 @@ import com.termoso.android.data.TerminalSession
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
 import com.termoso.android.str
+import com.termoso.core.LocalShell
 import com.termoso.core.FileProtocol
 import com.termoso.core.MobileException
 import com.termoso.core.QuickTarget
@@ -121,6 +122,12 @@ class ShellViewModel(
     /** A shell on this device. */
     suspend fun connectLocal(): TerminalSession? =
         runCatching { sessions.connectLocal() }
+            .onFailure { notify(it.userMessage()) }
+            .getOrNull()
+
+    /** The plain Android shell, even when a Linux system is installed. */
+    suspend fun connectAndroidShell(): TerminalSession? =
+        runCatching { sessions.connectLocal(LocalShell(argv = listOf("/system/bin/sh"), home = "", env = emptyList())) }
             .onFailure { notify(it.userMessage()) }
             .getOrNull()
 

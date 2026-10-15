@@ -105,7 +105,8 @@ android {
 
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1")
-        jniLibs.useLegacyPackaging = false
+        // proot is exec'd from the native-library dir, so the .so files must be extracted to disk.
+        jniLibs.useLegacyPackaging = true
     }
 
     lint {
