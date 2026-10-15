@@ -626,6 +626,7 @@ private fun ActiveSession(
                 UiAction.PREV_SESSION -> switchSession(forward = false)
                 UiAction.TOGGLE_KEYBOARD -> toggleIme()
                 UiAction.CLOSE_SESSION -> scope.launch { shell.sessions.close(session.id) }
+                UiAction.SEND_FILE -> if (FileDrop.blocker(session) == null) pickFiles.launch(arrayOf("*/*"))
             }
         }
     }
@@ -787,6 +788,7 @@ private fun ActiveSession(
                         cursorSpeed = ArrowGesture.speedOf(settings.cursorSpeed),
                     ),
                     onSwipeSession = ::switchSession,
+                    onContent = { dropFiles(listOf(it)) },
                 )
                 if (scrolled) {
                     SmallFloatingActionButton(
@@ -835,6 +837,8 @@ private fun ActiveSession(
                 onAskAi = { askAi = true },
                 onPanel = { panelSheet = true },
                 onPaste = ::paste,
+                canAttach = FileDrop.blocker(session) == null,
+                onAttach = { pickFiles.launch(arrayOf("*/*")) },
                 onCustomize = onCustomizeKeys,
                 onKeyPressed = ::tap,
             )

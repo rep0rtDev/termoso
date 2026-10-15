@@ -1,5 +1,6 @@
 package com.termoso.android.ui.terminal
 
+import android.net.Uri
 import android.view.HapticFeedbackConstants
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.Canvas
@@ -75,6 +76,8 @@ fun TerminalView(
     gestures: TerminalGestures = TerminalGestures(),
     /** Two-finger horizontal swipe; `true` = towards the next session. */
     onSwipeSession: (Boolean) -> Unit = {},
+    /** Image/file inserted by the keyboard or pasted; the caller uploads it. */
+    onContent: (Uri) -> Unit = {},
 ) {
     val density = LocalDensity.current
     val context = LocalContext.current
@@ -334,6 +337,7 @@ fun TerminalView(
                 v.onText = { text -> controller.sendText(text) }
                 v.onTextWithMods = { text, mods -> controller.sendText(text, mods) }
                 v.onKey = { key, mods -> controller.sendKey(key, mods) }
+                v.onContent = onContent
             },
             modifier = Modifier.size(1.dp),
         )
