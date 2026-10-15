@@ -1,6 +1,7 @@
 package com.termoso.android.ui.terminal
 
 import android.content.Context
+import android.net.Uri
 import android.text.InputType
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
@@ -8,6 +9,9 @@ import android.view.View
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
+import androidx.core.view.ViewCompat
+import androidx.core.view.inputmethod.EditorInfoCompat
+import androidx.core.view.inputmethod.InputConnectionCompat
 import com.termoso.core.KeyMods
 import com.termoso.core.SpecialKey
 
@@ -22,10 +26,21 @@ class TerminalInputView(context: Context) : View(context) {
     var onKey: (SpecialKey, KeyMods) -> Unit = { _, _ -> }
     /** Ctrl/Alt from hardware keyboards apply on top of the on-screen sticky ones. */
     var onTextWithMods: (String, KeyMods) -> Unit = { text, _ -> onText(text) }
+    /** An image/file the keyboard inserted (sticker, GIF, screenshot) or the user pasted. */
+    var onContent: (Uri) -> Unit = {}
 
     init {
         isFocusable = true
         isFocusableInTouchMode = true
+        // Rich content from the IME (commitContent) and from paste lands here; text
+        // keeps going through the input connection.
+        ViewCompat.setOnReceiveContentListener(this, CONTENT_MIME_TYPES) { _, payload ->
+            val parts = payload.partition { it.uri != null }
+            parts.first?.let { withUri ->
+                for (i in 0 until withUri.clip.itemCount) withUri.clip.getItemAt(i).uri?.let(onContent)
+            }
+            parts.second
+        }
     }
 
     override fun onCheckIsTextEditor(): Boolean = true
@@ -35,7 +50,8 @@ class TerminalInputView(context: Context) : View(context) {
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or
             EditorInfo.IME_FLAG_NO_EXTRACT_UI or
             EditorInfo.IME_ACTION_NONE
-        return object : BaseInputConnection(this, false) {
+        EditorInfoCompat.setContentMimeTypes(outAttrs, CONTENT_MIME_TYPES)
+        val ic = object : BaseInputConnection(this, false) {
             override fun commitText(text: CharSequence, newCursorPosition: Int): Boolean {
                 deliver(text.toString())
                 return true
@@ -60,6 +76,7 @@ class TerminalInputView(context: Context) : View(context) {
                 return true
             }
         }
+        return InputConnectionCompat.createWrapper(this, ic, outAttrs)
     }
 
     private fun deliver(text: String) {
@@ -121,6 +138,7 @@ class TerminalInputView(context: Context) : View(context) {
     }
 
     private companion object {
+        private val CONTENT_MIME_TYPES = arrayOf("image/*", "video/*", "audio/*", "application/*")
         val NO_MODS = KeyMods(ctrl = false, alt = false, shift = false)
     }
 }

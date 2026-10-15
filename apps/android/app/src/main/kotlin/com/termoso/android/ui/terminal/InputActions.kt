@@ -135,6 +135,7 @@ enum class UiAction(val id: String, @StringRes val title: Int) {
     PREV_SESSION("prev_session", R.string.previous_session),
     TOGGLE_KEYBOARD("toggle_keyboard", R.string.show_hide_keyboard),
     CLOSE_SESSION("close_session", R.string.close_session),
+    SEND_FILE("send_file", R.string.send_file),
 }
 
 /** A volume-key binding: nothing, an app action, or a key to send. */

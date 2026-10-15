@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DataObject
 import androidx.compose.material.icons.filled.GridView
@@ -127,6 +128,9 @@ fun KeyPanel(
     onPanel: () -> Unit,
     onPaste: () -> Unit,
     onCustomize: () -> Unit,
+    /** Whether this session can take files; shows the paperclip. */
+    canAttach: Boolean = false,
+    onAttach: () -> Unit = {},
     onKeyPressed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -183,6 +187,9 @@ fun KeyPanel(
                             TextKey(key, active(key), Modifier.widthIn(min = 44.dp), height = StripKeyHeight) { press(it) }
                         }
                     }
+                }
+                if (canAttach) {
+                    IconKey(Icons.Filled.AttachFile, stringResource(R.string.send_file), Modifier.width(40.dp)) { onKeyPressed(); onAttach() }
                 }
                 IconKey(Icons.Filled.ContentPaste, stringResource(R.string.paste_2), Modifier.width(44.dp)) { onKeyPressed(); onPaste() }
                 IconKey(
