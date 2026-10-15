@@ -782,6 +782,9 @@ private fun ActiveSession(
                         pinchZoom = settings.pinchZoom,
                         swipeArrows = settings.swipeArrows,
                         swipeSessions = settings.swipeSessions,
+                        longPressArrows = settings.longPressArrows,
+                        doubleTapTab = settings.doubleTapTab,
+                        cursorSpeed = ArrowGesture.speedOf(settings.cursorSpeed),
                     ),
                     onSwipeSession = ::switchSession,
                 )

@@ -28,6 +28,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.termoso.android.R
 import com.termoso.android.str
+import com.termoso.android.ui.components.SegmentedLabel
 import com.termoso.android.ui.components.ChevronRow
 import com.termoso.android.ui.components.ChoiceSheet
 import com.termoso.android.ui.components.FormField
@@ -234,6 +238,35 @@ fun TerminalInputScreen(shell: ShellViewModel, onBack: () -> Unit) {
                         checked = settings.swipeSessions,
                         onCheckedChange = { v -> set { it.copy(swipeSessions = v) } },
                     )
+                    RowDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.long_press_for_arrows),
+                        subtitle = stringResource(R.string.long_press_arrows_hint),
+                        checked = settings.longPressArrows,
+                        onCheckedChange = { v -> set { it.copy(longPressArrows = v) } },
+                    )
+                    RowDivider()
+                    SwitchRow(
+                        title = stringResource(R.string.double_tap_sends_tab),
+                        subtitle = stringResource(R.string.double_tap_tab_hint),
+                        checked = settings.doubleTapTab,
+                        onCheckedChange = { v -> set { it.copy(doubleTapTab = v) } },
+                    )
+                    RowDivider()
+                    Text(
+                        stringResource(R.string.cursor_speed),
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                    )
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(16.dp)) {
+                        cursorSpeeds.forEachIndexed { i, (id, label) ->
+                            SegmentedButton(
+                                selected = settings.cursorSpeed == id,
+                                onClick = { set { it.copy(cursorSpeed = id) } },
+                                shape = SegmentedButtonDefaults.itemShape(i, cursorSpeeds.size),
+                            ) { SegmentedLabel(stringResource(label)) }
+                        }
+                    }
                 }
             }
             item { Spacer(Modifier.height(24.dp)) }
@@ -289,6 +322,12 @@ private fun shortcutHelp(mode: String): String {
     }
     return str(R.string.switch_session_t_new_n_clone_w_close, m, m, m, m, m)
 }
+
+private val cursorSpeeds = listOf(
+    "slow" to R.string.speed_slow,
+    "normal" to R.string.speed_normal,
+    "fast" to R.string.speed_fast,
+)
 
 @Composable
 private fun GroupRow(group: KeyGroup, first: Boolean, last: Boolean, onToggle: (Boolean) -> Unit, onMove: (Int) -> Unit, onEdit: () -> Unit) {

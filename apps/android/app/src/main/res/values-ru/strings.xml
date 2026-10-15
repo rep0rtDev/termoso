@@ -684,6 +684,14 @@
     <string name="swipe_for">Свайп для ← →</string>
     <string name="a_horizontal_one_finger_swipe_moves_the_cursor">Горизонтальный свайп одним пальцем перемещает курсор</string>
     <string name="two_finger_swipe_switches_sessions">Свайп двумя пальцами переключает сессии</string>
+    <string name="long_press_for_arrows">Долгое нажатие — стрелки</string>
+    <string name="long_press_arrows_hint">Удержите и ведите пальцем в любую сторону для ← ↑ ↓ →; держите — повтор, дальше — быстрее</string>
+    <string name="double_tap_sends_tab">Двойной тап — Tab</string>
+    <string name="double_tap_tab_hint">Если выключено, двойной тап выделяет слово</string>
+    <string name="cursor_speed">Скорость курсора</string>
+    <string name="speed_slow">Медленно</string>
+    <string name="speed_normal">Обычно</string>
+    <string name="speed_fast">Быстро</string>
     <string name="reset_key_panel">Сбросить панель клавиш?</string>
     <string name="your_custom_rows_are_replaced_by_the_built">Ваши собственные ряды заменяются встроенной раскладкой.</string>
     <string name="reset">Сбросить</string>

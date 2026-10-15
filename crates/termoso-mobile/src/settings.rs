@@ -35,6 +35,10 @@ fn default_view() -> String {
 fn default_app_theme() -> String {
     "system".into()
 }
+fn default_cursor_speed() -> String {
+    "normal".into()
+}
+
 fn default_hotkeys() -> String {
     "ctrl_shift".into()
 }
@@ -177,6 +181,17 @@ pub struct MobileSettings {
     /// Two-finger horizontal swipe switches between open sessions.
     #[serde(default = "default_true")]
     pub swipe_sessions: bool,
+    /// Long-press, then drag in any direction to send arrow keys (held still
+    /// at the edge keeps repeating; farther = faster).
+    #[serde(default = "default_true")]
+    pub long_press_arrows: bool,
+    /// Double-tap on the terminal sends Tab instead of selecting a word.
+    #[serde(default = "default_true")]
+    pub double_tap_tab: bool,
+    /// How far the finger travels per arrow key in gesture mode:
+    /// `slow` | `normal` | `fast`.
+    #[serde(default = "default_cursor_speed")]
+    pub cursor_speed: String,
     /// Custom rows of the expandable key panel; empty means the built-in layout.
     #[serde(default)]
     pub key_groups: Vec<KeyGroup>,
@@ -221,6 +236,9 @@ impl Default for MobileSettings {
             pinch_zoom: true,
             swipe_arrows: true,
             swipe_sessions: true,
+            long_press_arrows: true,
+            double_tap_tab: true,
+            cursor_speed: default_cursor_speed(),
             key_groups: Vec::new(),
             welcome_seen: false,
             selected_vault_id: None,
@@ -302,6 +320,8 @@ mod tests {
         assert!(s.volume_up_action.is_empty() && s.volume_down_action.is_empty());
         assert_eq!(s.hardware_hotkeys, "ctrl_shift");
         assert!(s.pinch_zoom && s.swipe_arrows && s.swipe_sessions);
+        assert!(s.long_press_arrows && s.double_tap_tab);
+        assert_eq!(s.cursor_speed, "normal");
         assert!(!s.hide_panel_with_keyboard);
         assert!(s.key_groups.is_empty());
     }

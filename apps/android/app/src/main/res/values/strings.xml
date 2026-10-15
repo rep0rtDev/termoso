@@ -679,6 +679,14 @@
     <string name="swipe_for">Swipe for ← →</string>
     <string name="a_horizontal_one_finger_swipe_moves_the_cursor">A horizontal one-finger swipe moves the cursor</string>
     <string name="two_finger_swipe_switches_sessions">Two-finger swipe switches sessions</string>
+    <string name="long_press_for_arrows">Long-press for arrows</string>
+    <string name="long_press_arrows_hint">Hold, then drag in any direction to send ← ↑ ↓ →; keep holding to repeat, move farther to go faster</string>
+    <string name="double_tap_sends_tab">Double-tap sends Tab</string>
+    <string name="double_tap_tab_hint">When off, a double-tap selects the word</string>
+    <string name="cursor_speed">Cursor speed</string>
+    <string name="speed_slow">Slow</string>
+    <string name="speed_normal">Normal</string>
+    <string name="speed_fast">Fast</string>
     <string name="reset_key_panel">Reset key panel?</string>
     <string name="your_custom_rows_are_replaced_by_the_built">Your custom rows are replaced by the built-in layout.</string>
     <string name="reset">Reset</string>
