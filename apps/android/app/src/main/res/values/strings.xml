@@ -687,6 +687,11 @@
     <string name="speed_slow">Slow</string>
     <string name="speed_normal">Normal</string>
     <string name="speed_fast">Fast</string>
+||||||| parent of 4629524 (android: list active port forwarding in Connections)
+    <string name="running">Running</string>
+    <string name="reconnecting">Reconnecting…</string>
+    <string name="connecting">Connecting…</string>
+    <string name="stop">Stop</string>
     <string name="reset_key_panel">Reset key panel?</string>
     <string name="your_custom_rows_are_replaced_by_the_built">Your custom rows are replaced by the built-in layout.</string>
     <string name="reset">Reset</string>
