@@ -638,6 +638,10 @@ private fun SshSection(
                 )
             }
         }
+        RowDivider()
+        Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            CodingAgentRow(state, draft, onPick = vm::setCodingAgent)
+        }
         if (state.snippets.isNotEmpty() || draft.startupSnippetId != null) {
             RowDivider()
             Box(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
@@ -781,6 +785,19 @@ private fun FilesSection(draft: HostDraft, vm: HostEditorViewModel, files: Files
             onCheckedChange = { v -> vm.update { it.copy(filesProvider = v) } },
         )
     }
+}
+
+@Composable
+private fun CodingAgentRow(state: HostEditorState, draft: HostDraft, onPick: (String?) -> Unit) {
+    val current = CodingAgents.selected(state.snippets, draft.startupSnippetId)
+    PickerRow(
+        label = stringResource(R.string.ai_coding_agent),
+        value = current?.name ?: stringResource(R.string.none),
+        options = listOf<Pair<String?, String>>(null to stringResource(R.string.none)) + CodingAgents.presets.map { it.id to it.name },
+        selected = current?.id,
+        onPick = onPick,
+        empty = null,
+    )
 }
 
 @Composable

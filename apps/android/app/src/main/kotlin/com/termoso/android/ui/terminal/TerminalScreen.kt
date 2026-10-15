@@ -7,6 +7,9 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.speech.RecognizerIntent
 import android.view.HapticFeedbackConstants
 import android.view.KeyEvent
 import android.view.inputmethod.InputMethodManager
@@ -117,6 +120,7 @@ import com.termoso.core.ConnectStage
 import com.termoso.core.LiveEndReason
 import com.termoso.core.MobileSettings
 import com.termoso.core.SessionState
+import com.termoso.core.SpecialKey
 import com.termoso.core.SuggestionItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -597,6 +601,29 @@ private fun ActiveSession(
         dropFiles(uris)
     }
 
+    // Compose box (long prompts for coding agents, dictation); text only leaves on Send/Paste.
+    var composeOpen by rememberSaveable { mutableStateOf(false) }
+    var composeText by rememberSaveable { mutableStateOf("") }
+    val speech = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val heard = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()
+        if (!heard.isNullOrEmpty()) {
+            composeText = if (composeText.isBlank()) heard else composeText.trimEnd() + " " + heard
+            composeOpen = true
+        }
+    }
+
+    fun voiceInput() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, str(R.string.compose_message))
+        try {
+            speech.launch(intent)
+        } catch (_: ActivityNotFoundException) {
+            scope.launch { snackbar.showSnackbar(str(R.string.speech_not_available)) }
+        }
+    }
+
     fun paste() {
         val clip = context.getSystemService<ClipboardManager>()?.primaryClip
         val item = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)
@@ -627,6 +654,8 @@ private fun ActiveSession(
                 UiAction.TOGGLE_KEYBOARD -> toggleIme()
                 UiAction.CLOSE_SESSION -> scope.launch { shell.sessions.close(session.id) }
                 UiAction.SEND_FILE -> if (FileDrop.blocker(session) == null) pickFiles.launch(arrayOf("*/*"))
+                UiAction.COMPOSE -> composeOpen = true
+                UiAction.VOICE_INPUT -> voiceInput()
             }
         }
     }
@@ -840,6 +869,8 @@ private fun ActiveSession(
                 canAttach = FileDrop.blocker(session) == null,
                 onAttach = { pickFiles.launch(arrayOf("*/*")) },
                 onCustomize = onCustomizeKeys,
+                onCompose = { composeOpen = true },
+                onVoice = ::voiceInput,
                 onKeyPressed = ::tap,
             )
         }
@@ -847,6 +878,21 @@ private fun ActiveSession(
 
     prompt?.let { pending ->
         PromptDialog(pending) { answer -> scope.launch { session.answer(pending, answer) } }
+    }
+    if (composeOpen) {
+        ComposeSheet(
+            text = composeText,
+            onTextChange = { composeText = it },
+            onVoice = ::voiceInput,
+            onPaste = { t -> controller.paste(t); composeText = ""; composeOpen = false },
+            onSend = { t ->
+                controller.paste(t)
+                controller.sendKey(SpecialKey.ENTER)
+                composeText = ""
+                composeOpen = false
+            },
+            onClose = { composeOpen = false },
+        )
     }
     if (snippetPicker) {
         SnippetPickerSheet(
