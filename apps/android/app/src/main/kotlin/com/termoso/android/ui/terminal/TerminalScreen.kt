@@ -818,6 +818,12 @@ private fun ActiveSession(
                     ),
                     onSwipeSession = ::switchSession,
                     onContent = { dropFiles(listOf(it)) },
+                    onLink = { uri ->
+                        scope.launch {
+                            val r = snackbar.showSnackbar(uri, actionLabel = str(R.string.open_link), withDismissAction = true)
+                            if (r == SnackbarResult.ActionPerformed) openLink(context, uri)
+                        }
+                    },
                 )
                 if (scrolled) {
                     SmallFloatingActionButton(
@@ -1039,4 +1045,15 @@ private fun OverlayCard(content: @Composable () -> Unit) {
 
 internal fun copyToClipboard(context: android.content.Context, text: String) {
     context.getSystemService<ClipboardManager>()?.setPrimaryClip(ClipData.newPlainText("Termoso", text))
+}
+
+/** Open a hyperlink from the terminal: web and mail go to the system, anything else is copied. */
+private fun openLink(context: Context, uri: String) {
+    val scheme = uri.substringBefore(':', "").lowercase()
+    if (scheme == "http" || scheme == "https" || scheme == "mailto") {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { copyToClipboard(context, uri) }
+    } else {
+        copyToClipboard(context, uri)
+    }
 }
