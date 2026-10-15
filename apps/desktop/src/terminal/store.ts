@@ -1670,7 +1670,8 @@ export function toggleFocus(tabId: string) {
   const tab = terminalStore.get().tabs.find((t) => t.id === tabId);
   if (!tab) return;
   const focused = !tab.focused && tab.paneIds.length > 1;
-  terminalStore.set((s) => ({
+  update((s) => ({
+    ...s,
     tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, focused } : t)),
   }));
   focusPane(tab.activePaneId);
