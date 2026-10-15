@@ -21,6 +21,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.termoso.android.data.AppContainer
+import com.termoso.android.data.OpenTarget
 import com.termoso.android.data.VaultState
 import com.termoso.android.service.SessionService
 import com.termoso.android.ui.TermosoRoot
@@ -88,6 +89,21 @@ class MainActivity : FragmentActivity() {
                 // Text shared from another app is typed into the terminal, like Termius' "share to terminal".
                 if (uris.isEmpty() && !text.isNullOrEmpty()) container.offerShareText(text) else container.offerShare(uris)
                 // Consumed: a rotation must not re-offer the same files.
+                intent.action = Intent.ACTION_MAIN
+                return
+            }
+            SessionService.ACTION_OPEN_TERMINAL, SessionService.ACTION_OPEN_CONNECTIONS,
+            SessionService.ACTION_OPEN_FORWARDING, SessionService.ACTION_OPEN_FILES,
+            -> {
+                val id = intent.getStringExtra(SessionService.EXTRA_ID)
+                container.offerOpen(
+                    when (intent.action) {
+                        SessionService.ACTION_OPEN_TERMINAL -> id?.let { OpenTarget.Terminal(it) } ?: OpenTarget.Connections
+                        SessionService.ACTION_OPEN_FORWARDING -> OpenTarget.Forwarding
+                        SessionService.ACTION_OPEN_FILES -> OpenTarget.Files(id)
+                        else -> OpenTarget.Connections
+                    },
+                )
                 intent.action = Intent.ACTION_MAIN
                 return
             }

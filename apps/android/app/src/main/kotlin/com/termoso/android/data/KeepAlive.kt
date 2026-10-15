@@ -1,8 +1,14 @@
 package com.termoso.android.data
 
 import android.content.Context
-import com.termoso.android.service.ActiveCounts
+import com.termoso.android.R
+import com.termoso.android.service.ActiveItem
+import com.termoso.android.service.ActiveItems
+import com.termoso.android.service.SessionControls
 import com.termoso.android.service.SessionService
+import com.termoso.android.str
+import com.termoso.core.PfKind
+import com.termoso.core.PfRuleItem
 import com.termoso.core.SessionState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -21,28 +27,75 @@ import kotlinx.coroutines.launch
 /**
  * Mirrors what is connected (terminals, file connections, tunnels) into the
  * foreground service so the process survives in the background while anything
- * is live. Derived from the managers' state flows, so the notification can
- * never lag behind or run ahead of the lists the UI shows; tabs that already
- * closed or failed stay visible in the UI but are not counted.
+ * is live, and so the shade can list each connection with a Close button.
+ * Derived from the managers' state flows, so the notifications can never lag
+ * behind or run ahead of the lists the UI shows; tabs that already closed or
+ * failed stay visible in the UI but are not listed.
  */
-class KeepAlive(private val context: Context, sessions: SessionManager, files: SftpManager, forwards: ForwardManager) {
+class KeepAlive(
+    private val context: Context,
+    private val sessions: SessionManager,
+    private val files: SftpManager,
+    private val forwards: ForwardManager,
+    private val repo: VaultRepository,
+) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     init {
-        val terminals = sessions.sessions.liveCount { it.state }
-        val fileConnections = files.connections.liveCount { it.state }
-        val tunnels = forwards.tunnels.map { it.size }
+        SessionService.controls = object : SessionControls {
+            override fun closeTerminal(id: String) {
+                scope.launch { runCatching { sessions.close(id) } }
+            }
+
+            override fun closeFile(id: String) {
+                scope.launch { runCatching { files.close(id) } }
+            }
+
+            override fun stopTunnel(ruleId: String) {
+                scope.launch { runCatching { forwards.stop(ruleId) } }
+            }
+
+            override fun closeAll() {
+                scope.launch {
+                    runCatching { sessions.closeAll() }
+                    files.connections.value.forEach { runCatching { files.close(it.id) } }
+                    forwards.tunnels.value.keys.forEach { runCatching { forwards.stop(it) } }
+                }
+            }
+        }
+        val terminals = sessions.sessions.live({ it.state }) { s ->
+            ActiveItem(s.id, s.label, s.target, s.detectedOs.value ?: s.savedOsName)
+        }
+        val fileConnections = files.connections.live({ it.state }) { c ->
+            ActiveItem(c.id, str(R.string.sftp, c.label), c.target, c.osName)
+        }
+        val tunnels = forwards.tunnels.map { it.keys.toList() }.distinctUntilChanged().map { ids ->
+            if (ids.isEmpty()) return@map emptyList()
+            val rules = runCatching { repo.read { pfRules(null) } }.getOrDefault(emptyList())
+            ids.map { id -> tunnelItem(id, rules.firstOrNull { it.id == id }) }
+        }
         scope.launch {
             combine(terminals, fileConnections, tunnels) { t, f, p ->
-                ActiveCounts(terminals = t, files = f, tunnels = p)
+                ActiveItems(terminals = t, files = f, tunnels = p)
             }.distinctUntilChanged().collect { SessionService.sync(context, it) }
         }
     }
 
-    /** Stop mirroring and drop the notification; the managers are expected to be empty by now. */
+    private fun tunnelItem(ruleId: String, rule: PfRuleItem?): ActiveItem {
+        if (rule == null) return ActiveItem(ruleId, str(R.string.port_forwarding), ruleId)
+        val endpoints = when (rule.kind) {
+            PfKind.REMOTE -> "${rule.boundAddress.ifBlank { "localhost" }}:${rule.remotePort} → localhost:${rule.localPort}"
+            PfKind.DYNAMIC -> "SOCKS ${rule.boundAddress}:${rule.localPort}"
+            else -> "localhost:${rule.localPort} → ${rule.remoteHost}:${rule.remotePort}"
+        }
+        return ActiveItem(ruleId, str(R.string.notif_forwarding_for, rule.hostLabel), endpoints)
+    }
+
+    /** Stop mirroring and drop the notifications; the managers are expected to be empty by now. */
     fun close() {
+        SessionService.controls = null
         scope.cancel()
-        SessionService.sync(context, ActiveCounts())
+        SessionService.sync(context, ActiveItems())
     }
 }
 
@@ -50,11 +103,11 @@ private val SessionState.live: Boolean
     get() = this is SessionState.Connecting || this is SessionState.Connected
 
 @OptIn(ExperimentalCoroutinesApi::class)
-private fun <T> StateFlow<List<T>>.liveCount(state: (T) -> StateFlow<SessionState>): Flow<Int> =
+private fun <T> StateFlow<List<T>>.live(state: (T) -> StateFlow<SessionState>, item: (T) -> ActiveItem): Flow<List<ActiveItem>> =
     flatMapLatest { items ->
         if (items.isEmpty()) {
-            flowOf(0)
+            flowOf(emptyList())
         } else {
-            combine(items.map(state)) { states -> states.count { it.live } }
+            combine(items.map(state)) { states -> items.filterIndexed { i, _ -> states[i].live }.map(item) }
         }
     }

@@ -41,6 +41,7 @@
         <item quantity="other">%d tunnels</item>
     </plurals>
     <string name="active_sessions_2">Active sessions</string>
+    <string name="notif_forwarding_for">Port forwarding · %1$s</string>
     <string name="shown_while_a_terminal_is_connected_so_the">Shown while a terminal is connected so the connection survives in the background.</string>
     <string name="unlock_termoso">Unlock Termoso</string>
     <string name="use_your_fingerprint_or_screen_lock">Use your fingerprint or screen lock</string>
