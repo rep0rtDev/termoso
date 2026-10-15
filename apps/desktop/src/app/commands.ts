@@ -18,6 +18,7 @@ import {
   openTerminal,
   pasteClipboard,
   requestClosePane,
+  toggleFocus,
   resetZoom,
   selectAll,
   setActiveTab,
@@ -308,6 +309,14 @@ export const COMMANDS: Command[] = [
     keys: ["ctrl+shift+q"],
     enabled: hasPanes,
     run: onActivePane(requestClosePane),
+  },
+  {
+    id: "pane.toggleFocus",
+    title: msg("Toggle focus mode"),
+    group: "Panes",
+    keys: ["ctrl+shift+enter"],
+    enabled: hasPanes,
+    run: onActiveTab(toggleFocus),
   },
   {
     id: "pane.detach",

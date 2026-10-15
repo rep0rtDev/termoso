@@ -197,6 +197,8 @@ export interface TerminalTab {
   /** Leaves of `layout` in reading order (kept in sync by the store). */
   paneIds: Uuid[];
   activePaneId: Uuid;
+  /** Focus mode: the active pane fills the tab, the rest of the split stays intact. */
+  focused: boolean;
   broadcast: boolean;
   /** Font scale, 1 = the settings font size. */
   zoom: number;
@@ -352,6 +354,7 @@ function newTab(layout: SplitNode, extra: Partial<TerminalTab> = {}): TerminalTa
     id: uuid(),
     name: null,
     viewMode: "split",
+    focused: false,
     templateId: null,
     layout,
     paneIds,
@@ -1618,6 +1621,7 @@ export function openLayout(template: LayoutTemplate, opts: OpenLayoutOptions = {
   const tab = newTab(layout, {
     name: opts.name ?? null,
     viewMode: opts.viewMode ?? "split",
+    focused: false,
     templateId: opts.templateId ?? null,
   });
   update((s) => ({
@@ -1660,6 +1664,17 @@ export function tabLayoutTemplate(
 export function renameTab(tabId: string, name: string | null) {
   const trimmed = name?.trim() ?? "";
   patchTab(tabId, { name: trimmed ? trimmed : null });
+}
+
+export function toggleFocus(tabId: string) {
+  const tab = terminalStore.get().tabs.find((t) => t.id === tabId);
+  if (!tab) return;
+  const focused = !tab.focused && tab.paneIds.length > 1;
+  update((s) => ({
+    ...s,
+    tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, focused } : t)),
+  }));
+  focusPane(tab.activePaneId);
 }
 
 export function setTabViewMode(tabId: string, viewMode: TabViewMode) {

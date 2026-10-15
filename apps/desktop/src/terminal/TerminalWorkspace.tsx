@@ -32,6 +32,7 @@ export function TerminalWorkspace({ tabId }: Props) {
 
   if (!tab) return null;
   const list = tab.viewMode === "list";
+  const single = list || (tab.focused && tab.paneIds.length > 1);
 
   return (
     <Box sx={{ flex: 1, minHeight: 0, display: "flex" }}>
@@ -39,8 +40,8 @@ export function TerminalWorkspace({ tabId }: Props) {
       <Box
         sx={{ position: "relative", flex: 1, minWidth: 0, minHeight: 0, display: "flex", p: 0.75 }}
       >
-        {list ? (
-          <TerminalPane key={tab.activePaneId} paneId={tab.activePaneId} active showFrame={false} />
+        {single ? (
+          <TerminalPane key={tab.activePaneId} paneId={tab.activePaneId} active showFrame={!list} />
         ) : (
           <SplitView
             tabId={tabId}
