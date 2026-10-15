@@ -78,6 +78,8 @@ fun TerminalView(
     onSwipeSession: (Boolean) -> Unit = {},
     /** Image/file inserted by the keyboard or pasted; the caller uploads it. */
     onContent: (Uri) -> Unit = {},
+    /** Tap on an OSC 8 hyperlink; the caller offers to open it. */
+    onLink: (String) -> Unit = {},
 ) {
     val density = LocalDensity.current
     val context = LocalContext.current
@@ -171,10 +173,17 @@ fun TerminalView(
             .onSizeChanged { size = it }
             .pointerInput(session) {
                 detectTapGestures(
-                    onTap = {
+                    onTap = { offset ->
                         if (selection != null) {
                             selection = null
                             return@detectTapGestures
+                        }
+                        currentGrid?.let { g ->
+                            val cell = currentMetrics.cellAt(offset, g)
+                            g.linkAt(cell.row, cell.col)?.let { uri ->
+                                onLink(uri)
+                                return@detectTapGestures
+                            }
                         }
                         controller.inputView?.let { v ->
                             v.requestFocus()

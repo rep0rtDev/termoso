@@ -38,6 +38,7 @@ class SelectionTest {
                 altScreen = false,
                 bracketedPaste = false,
                 appCursor = false,
+                links = emptyList(),
             ),
         )
     }

@@ -700,6 +700,7 @@
     <string name="speech_not_available">No speech recognition service on this device</string>
     <string name="paste_without_enter">Paste only</string>
     <string name="ai_coding_agent">AI coding agent</string>
+    <string name="open_link">Open</string>
     <string name="reset_key_panel">Reset key panel?</string>
     <string name="your_custom_rows_are_replaced_by_the_built">Your custom rows are replaced by the built-in layout.</string>
     <string name="reset">Reset</string>

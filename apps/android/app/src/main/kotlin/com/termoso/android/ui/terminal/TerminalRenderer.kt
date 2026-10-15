@@ -31,6 +31,15 @@ class CellGrid(val frame: GridFrame) {
 
     fun bg(row: Int, col: Int): Int = buf.getInt((row * cols + col) * CELL_BYTES + 8) and 0xFFFFFF
 
+    /** OSC 8 hyperlink target of the cell, if any (index rides in the top byte of `bg`). */
+    fun linkAt(row: Int, col: Int): String? {
+        if (row !in 0 until rows || col !in 0 until cols) return null
+        val id = (buf.getInt((row * cols + col) * CELL_BYTES + 8) ushr 24) and 0xFF
+        return if (id == 0) null else frame.links.getOrNull(id - 1)
+    }
+
+    fun hasLink(row: Int, col: Int): Boolean = (buf.getInt((row * cols + col) * CELL_BYTES + 8) ushr 24) and 0xFF != 0
+
     fun flags(row: Int, col: Int): Int = (buf.getInt((row * cols + col) * CELL_BYTES + 4) ushr 24) and 0xFF
 
     /** Second half of a double-width character. */
@@ -120,7 +129,8 @@ class TerminalRenderer {
             val baseline = top + metrics.baseline
             var col = 0
             while (col < grid.cols) {
-                val flags = grid.flags(row, col)
+                // OSC 8 links are drawn underlined so there is something to tap.
+                val flags = grid.flags(row, col) or (if (grid.hasLink(row, col)) FLAG_UNDERLINE else 0)
                 val cp = grid.codepoint(row, col)
                 if (cp == 0 || cp == ' '.code || flags and (FLAG_WIDE_SPACER or FLAG_HIDDEN) != 0) {
                     col++
@@ -142,7 +152,7 @@ class TerminalRenderer {
                 sb.setLength(0)
                 val start = col
                 while (col < grid.cols) {
-                    val f = grid.flags(row, col)
+                    val f = grid.flags(row, col) or (if (grid.hasLink(row, col)) FLAG_UNDERLINE else 0)
                     val c = grid.codepoint(row, col)
                     if (f and FLAG_WIDE != 0 || grid.fg(row, col) != fg ||
                         (f and (FLAG_BOLD or FLAG_ITALIC or FLAG_UNDERLINE or FLAG_STRIKEOUT)) != style

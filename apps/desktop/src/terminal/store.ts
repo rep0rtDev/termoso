@@ -579,6 +579,20 @@ function createRuntime(paneId: Uuid): Runtime {
     minimumContrastRatio: 1,
     scrollOnUserInput: true,
     smoothScrollDuration: 0,
+    // OSC 8 hyperlinks (ls --hyperlink, gcc, cargo, …): same Ctrl / Cmd + click rule as plain URLs.
+    linkHandler: {
+      activate: (ev, uri) => {
+        if ((ev.ctrlKey || ev.metaKey) && safeLinkTarget(uri)) void openUrl(uri);
+      },
+      hover: (ev, uri) => {
+        update((s) => ({
+          ...s,
+          linkHover: { paneId, uri, left: ev.clientX, top: ev.clientY },
+        }));
+      },
+      leave: () => clearLinkHover(paneId),
+      allowNonHttpProtocols: false,
+    },
   });
   const fit = new FitAddon();
   const search = new SearchAddon();
@@ -2145,4 +2159,9 @@ export function startTerminalEvents(qc: QueryClient) {
   if (started) return;
   started = true;
   void ipc.onSessionEvent(onSessionEvent);
+}
+
+/** Only web / mail targets open from the terminal; file:, ssh: and friends are ignored. */
+function safeLinkTarget(uri: string): boolean {
+  return /^(https?|mailto):/i.test(uri);
 }

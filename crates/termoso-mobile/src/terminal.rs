@@ -8,6 +8,8 @@
 
 use std::sync::{Arc, Mutex};
 
+use std::collections::HashMap;
+
 use alacritty_terminal::event::{Event, EventListener};
 use alacritty_terminal::grid::{Dimensions, Scroll};
 use alacritty_terminal::term::cell::Flags;
@@ -156,6 +158,8 @@ pub struct GridSnapshot {
     pub bracketed_paste: bool,
     /// Application cursor keys mode.
     pub app_cursor: bool,
+    /// OSC 8 hyperlink targets; a cell's link is `bg >> 24` (1-based, 0 = none).
+    pub links: Vec<String>,
 }
 
 /// Bytes per cell in [`GridFrame::cells`].
@@ -165,7 +169,7 @@ pub const CELL_BYTES: usize = 12;
 /// boxed lists, so a frame costs a single copy on the Kotlin side.
 ///
 /// `cells` holds `cols × rows` little-endian triples of `u32`:
-/// `[code point, flags << 24 | fg RGB, bg RGB]`.
+/// `[code point, flags << 24 | fg RGB, link index << 24 | bg RGB]`.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct GridFrame {
     pub cols: u16,
@@ -181,6 +185,8 @@ pub struct GridFrame {
     pub alt_screen: bool,
     pub bracketed_paste: bool,
     pub app_cursor: bool,
+    /// OSC 8 hyperlink targets, indexed by the top byte of a cell's `bg` (1-based).
+    pub links: Vec<String>,
 }
 
 impl GridSnapshot {
@@ -191,7 +197,7 @@ impl GridSnapshot {
             cells.extend_from_slice(&self.chars[i].to_le_bytes());
             let fg = (self.fg[i] & 0x00FF_FFFF) | ((self.flags[i] as u32) << 24);
             cells.extend_from_slice(&fg.to_le_bytes());
-            cells.extend_from_slice(&(self.bg[i] & 0x00FF_FFFF).to_le_bytes());
+            cells.extend_from_slice(&self.bg[i].to_le_bytes());
         }
         GridFrame {
             cols: self.cols,
@@ -203,6 +209,7 @@ impl GridSnapshot {
             display_offset: self.display_offset,
             history: self.history,
             background: self.background,
+            links: self.links,
             mouse_reporting: self.mouse_reporting,
             alt_screen: self.alt_screen,
             bracketed_paste: self.bracketed_paste,
@@ -468,6 +475,9 @@ impl Emulator {
         let mut fg = vec![self.palette.foreground; n];
         let mut bg = vec![self.palette.background; n];
         let mut flags = vec![0u8; n];
+        // OSC 8 targets, 1-based so 0 means "no link"; the index rides in the top byte of `bg`.
+        let mut links: Vec<String> = Vec::new();
+        let mut link_ids: HashMap<String, u32> = HashMap::new();
 
         let content = self.term.renderable_content();
         let display_offset = content.display_offset;
@@ -533,7 +543,23 @@ impl Emulator {
                 cell.c as u32
             };
             fg[idx] = cfg;
-            bg[idx] = cbg;
+            let link = cell.hyperlink().and_then(|h| {
+                let uri = h.uri();
+                if uri.is_empty() {
+                    return None;
+                }
+                if let Some(&id) = link_ids.get(uri) {
+                    return Some(id);
+                }
+                if links.len() >= 255 {
+                    return None;
+                }
+                links.push(uri.to_string());
+                let id = links.len() as u32;
+                link_ids.insert(uri.to_string(), id);
+                Some(id)
+            });
+            bg[idx] = (cbg & 0x00FF_FFFF) | (link.unwrap_or(0) << 24);
             flags[idx] = bits;
         }
 
@@ -571,6 +597,7 @@ impl Emulator {
             alt_screen: mode.contains(TermMode::ALT_SCREEN),
             bracketed_paste: mode.contains(TermMode::BRACKETED_PASTE),
             app_cursor: mode.contains(TermMode::APP_CURSOR),
+            links,
         }
     }
 }
@@ -734,6 +761,29 @@ mod tests {
         assert!(s.bracketed_paste);
         assert!(s.mouse_reporting);
         assert!(s.app_cursor);
+    }
+
+    #[test]
+    fn osc8_links_are_indexed_in_bg() {
+        let (mut e, _rx) = emu();
+        e.feed(b"\x1b]8;;https://example.com\x1b\\ab\x1b]8;;\x1b\\c\x1b]8;;mailto:x@y\x07d\x1b]8;;\x07");
+        let s = e.snapshot();
+        assert_eq!(
+            s.links,
+            vec!["https://example.com".to_string(), "mailto:x@y".to_string()]
+        );
+        assert_eq!(s.bg[0] >> 24, 1);
+        assert_eq!(s.bg[1] >> 24, 1);
+        assert_eq!(s.bg[2] >> 24, 0);
+        assert_eq!(s.bg[3] >> 24, 2);
+        assert_eq!(
+            s.bg[0] & 0x00FF_FFFF,
+            TerminalPalette::termoso_dark().background
+        );
+        let f = s.pack();
+        let word = |i: usize| u32::from_le_bytes(f.cells[i * 4..i * 4 + 4].try_into().unwrap());
+        assert_eq!(word(2) >> 24, 1);
+        assert_eq!(f.links.len(), 2);
     }
 
     #[test]
