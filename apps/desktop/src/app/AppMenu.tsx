@@ -59,6 +59,7 @@ const MENU: { label: string; entries: Entry[] }[] = [
       "pane.splitRight",
       "pane.splitDown",
       "pane.close",
+      "pane.toggleFocus",
       "pane.detach",
       "pane.broadcast",
       null,
