@@ -98,6 +98,7 @@ const markdownSx = {
       border: 1,
       borderColor: "border.basic",
       boxShadow: "0 20px 50px -20px rgba(0,0,0,0.5)",
+      "&.portrait": { width: "100%", maxWidth: 320, mx: "auto" },
     },
     "& figcaption": {
       mt: 1,
@@ -122,7 +123,10 @@ const markdownSx = {
       verticalAlign: "top",
     },
     "& th": { fontWeight: 600, color: "text.secondary", fontSize: "0.8125rem" },
-    "& code": { whiteSpace: "nowrap" },
+    "& th:first-of-type, & td:first-of-type": { whiteSpace: "nowrap" },
+    "& td": { minWidth: 120 },
+    "& code": { overflowWrap: "anywhere" },
+    "& kbd": { whiteSpace: "nowrap" },
   },
   "& hr": { my: 4, border: 0, borderTop: 1, borderColor: "border.light" },
   "& kbd": {

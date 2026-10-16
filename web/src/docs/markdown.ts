@@ -1,4 +1,4 @@
-import { Marked, type Tokens } from "marked";
+import { Lexer, Marked, type Tokens } from "marked";
 
 export interface TocEntry {
   id: string;
@@ -81,12 +81,13 @@ export function renderMarkdown(body: string): Rendered {
           if (m) {
             const label = m[1] ?? "NOTE";
             const kind = label.toLowerCase();
+            const text = first.text.replace(CALLOUT, "");
             const rest = this.parser.parse([
               {
                 ...first,
                 raw: first.raw.replace(CALLOUT, ""),
-                text: first.text.replace(CALLOUT, ""),
-                tokens: first.tokens.slice(1),
+                text,
+                tokens: Lexer.lexInline(text),
               },
               ...tokens.slice(1),
             ]);
@@ -97,7 +98,8 @@ export function renderMarkdown(body: string): Rendered {
       },
       image({ href, title, text }: Tokens.Image) {
         const cap = title ?? text;
-        return `<figure><img src="${escapeAttr(href)}" alt="${escapeAttr(text)}" loading="lazy" />${
+        const cls = /\/android-[^/]*$/.test(href) ? ' class="portrait"' : "";
+        return `<figure><img src="${escapeAttr(href)}" alt="${escapeAttr(text)}" loading="lazy"${cls} />${
           cap ? `<figcaption>${escapeAttr(cap)}</figcaption>` : ""
         }</figure>`;
       },
