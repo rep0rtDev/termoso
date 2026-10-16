@@ -26,7 +26,7 @@ APKs are signed with the project key and need no Google Play Services:
 - `termoso-<version>-x86_64.apk` — emulators and Chromebooks;
 - `termoso-<version>-universal.apk` — all of the above in one larger file.
 
-Allow installing from your browser or file manager when Android asks. There is no in-app updater: install a newer APK over the old one, your data stays.
+Allow installing from your browser or file manager when Android asks. There is no in-app updater: install a newer APK over the old one, your data stays — including the Local vault and an installed [Linux environment](/docs/terminal/linux-on-android). Android 8.0 (API 26) or newer is required; the app targets the current Android release.
 
 ## iOS
 

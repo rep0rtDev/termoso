@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
 import RocketLaunchOutlinedIcon from "@mui/icons-material/RocketLaunchOutlined";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
+import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
+import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
+import PaletteOutlinedIcon from "@mui/icons-material/PaletteOutlined";
+import EditNoteOutlinedIcon from "@mui/icons-material/EditNoteOutlined";
+import CompareArrowsOutlinedIcon from "@mui/icons-material/CompareArrowsOutlined";
+import DeveloperBoardOutlinedIcon from "@mui/icons-material/DeveloperBoardOutlined";
 import DownloadOutlinedIcon from "@mui/icons-material/DownloadOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import FileUploadOutlinedIcon from "@mui/icons-material/FileUploadOutlined";
@@ -74,6 +81,7 @@ const layout: { title: string; pages: Entry[] }[] = [
       ["getting-started/vaults", <LockOutlinedIcon />],
       ["getting-started/import", <FileUploadOutlinedIcon />],
       ["getting-started/mobile", <PhoneAndroidOutlinedIcon />],
+      ["getting-started/migrating-from-termius", <CompareArrowsOutlinedIcon />],
     ],
   },
   {
@@ -93,7 +101,10 @@ const layout: { title: string; pages: Entry[] }[] = [
       ["terminal/tabs-and-splits", <ViewQuiltOutlinedIcon />],
       ["terminal/snippets", <CodeOutlinedIcon />],
       ["terminal/autocomplete", <TerminalOutlinedIcon />],
+      ["terminal/appearance", <PaletteOutlinedIcon />],
       ["terminal/mobile", <PhoneAndroidOutlinedIcon />],
+      ["terminal/compose-and-ai", <EditNoteOutlinedIcon />],
+      ["terminal/linux-on-android", <DeveloperBoardOutlinedIcon />],
     ],
   },
   {
@@ -130,6 +141,14 @@ const layout: { title: string; pages: Entry[] }[] = [
       ["self-hosting/upgrading", <SystemUpdateAltOutlinedIcon />],
       ["self-hosting/backups", <SettingsBackupRestoreOutlinedIcon />],
       ["self-hosting/api-bridge", <HubOutlinedIcon />],
+    ],
+  },
+  {
+    title: "Reference",
+    pages: [
+      ["reference/keyboard-shortcuts", <KeyboardOutlinedIcon />],
+      ["reference/troubleshooting", <BuildOutlinedIcon />],
+      ["reference/faq", <HelpOutlineOutlinedIcon />],
     ],
   },
 ];

@@ -61,8 +61,9 @@ fun parseQuickImport(text: String): List<ImportedHost> {
             "user" -> cur = cur?.copy(username = kv.groupValues[2].trim())
             "port" -> cur = cur?.copy(port = kv.groupValues[2].trim().toIntOrNull())
             "match" -> flush()
-            else -> if (cur == null) {
+            else -> if (cur == null || !line.contains(' ')) {
                 loose.find(line)?.let { m ->
+                    flush()
                     val host = m.groups["host"]!!.value.trim('[', ']')
                     val port = (m.groups["port"] ?: m.groups["port2"])?.value?.toIntOrNull()
                     val h = ImportedHost(host, host, port, m.groups["user"]?.value.orEmpty())
