@@ -715,7 +715,10 @@ async fn new_devices_need_an_emailed_approval() {
     )
     .await
     .unwrap();
-    assert!(matches!(again, AuthResponse::Authenticated(_)));
+    // Re-login replaced the approved device's session; continue with the new one.
+    let AuthResponse::Authenticated(approved) = again else {
+        panic!("expected direct session on the approved device, got {again:?}")
+    };
     let kinds = security_kinds(s, &approved.token).await;
     assert!(
         kinds.contains(&"device_approval_requested".into()),
