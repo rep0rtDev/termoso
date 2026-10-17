@@ -1,12 +1,12 @@
 ---
 title: API Bridge
-description: Let Ansible, Terraform or a CMDB manage hosts in a vault over a REST API — without the server ever seeing plaintext. Self-hosted servers only.
+description: Let Ansible, Terraform or a CMDB manage hosts in a vault over a REST API — without the server ever seeing plaintext. Free on the hosted cloud and on self-hosted servers.
 ---
 
 The API Bridge is a small container you run **in your own infrastructure**. It holds the keys of the vaults you give it, exposes a Termius-compatible REST API for hosts and groups, encrypts everything locally and pushes only ciphertext through the ordinary sync API. To the server it is one more device.
 
 > [!NOTE]
-> The bridge is available on self-hosted servers. The hosted cloud at `app.termoso.dev` does not offer it.
+> The bridge runs on your side; nothing is hosted per user. It is offered by the hosted cloud at `app.termoso.dev` and by self-hosted servers unless the operator sets `TERMOSO_BRIDGES=false`.
 
 ## Setting it up
 

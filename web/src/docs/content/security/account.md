@@ -26,4 +26,12 @@ At sign-up you get a 24-word recovery key. It is the only way back in if you for
 
 ## Single sign-on
 
-Self-hosted servers can add OpenID Connect or SAML 2.0 providers. SSO proves who owns the e-mail address; your vault password and recovery key remain the only ways to unwrap key material, so the identity provider cannot read vaults.
+The hosted cloud offers **Sign in with GitHub**; self-hosted servers can add any OpenID Connect or SAML 2.0 provider. SSO proves who owns the e-mail address; your vault password and recovery key remain the only ways to unwrap key material, so the identity provider cannot read vaults.
+
+### Connected accounts
+
+**Security → Connected accounts** lists the providers linked to your account. *Connect* starts the provider's sign-in and links the identity it returns; *Disconnect* asks you to re-enter your password first. If you sign in with a provider whose e-mail already belongs to your account, you are asked for your password and the identity is linked once it checks out — no second account is created. An identity that is already linked to another account cannot be connected to yours.
+
+### Sessions
+
+A device holds one session. Signing in again on the same device replaces the previous session, so **Devices** never shows duplicates for one browser or phone; signing out revokes only the current device.
