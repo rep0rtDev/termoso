@@ -25,7 +25,9 @@ async fn only_the_owner_manages_admins() {
     let me: serde_json::Value = s.json(Method::GET, "/account", Some(&owner), NOBODY).await;
     assert_eq!(me["user"]["is_owner"], true, "{me}");
     let owner_id = me["user"]["id"].as_str().expect("owner id").to_string();
-    let mine: serde_json::Value = s.json(Method::GET, "/account", Some(a.token()), NOBODY).await;
+    let mine: serde_json::Value = s
+        .json(Method::GET, "/account", Some(a.token()), NOBODY)
+        .await;
     assert_eq!(mine["user"]["is_owner"], false);
 
     // The owner promotes A; A is an admin but not the owner.
@@ -39,7 +41,12 @@ async fn only_the_owner_manages_admins() {
         .await;
     assert!(u.is_admin && !u.is_owner);
     let listed: AdminUser = s
-        .json(Method::GET, &format!("/admin/users/{owner_id}"), Some(a.token()), NOBODY)
+        .json(
+            Method::GET,
+            &format!("/admin/users/{owner_id}"),
+            Some(a.token()),
+            NOBODY,
+        )
         .await;
     assert!(listed.is_owner && listed.is_admin);
 
