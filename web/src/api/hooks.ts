@@ -10,6 +10,7 @@ export const queryKeys = {
   devices: ["account", "devices"] as const,
   bridges: ["account", "bridges"] as const,
   securityEvents: ["account", "security-events"] as const,
+  ssoIdentities: ["account", "sso"] as const,
   teams: ["teams"] as const,
   team: (id: string) => ["teams", id] as const,
   teamMembers: (id: string) => ["teams", id, "members"] as const,

@@ -1,4 +1,4 @@
-import { useState, type SubmitEvent } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
 import {
   Alert,
   Box,
@@ -23,11 +23,12 @@ import {
   Tooltip,
   Typography,
   TableContainer,
+  Divider,
 } from "@mui/material";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
 import { QRCodeSVG } from "qrcode.react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   startRegistration,
   type PublicKeyCredentialCreationOptionsJSON,
@@ -35,7 +36,9 @@ import {
 import { errorMessage } from "@/api/client";
 import { accountApi } from "@/api/endpoints";
 import { queryKeys, useServerInfo } from "@/api/hooks";
-import type { WebauthnCredentialInfo } from "@/api/types";
+import type { SsoIdentity, WebauthnCredentialInfo } from "@/api/types";
+import { useLocation } from "react-router";
+import { startSsoLink } from "@/auth/sso";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CopyField } from "@/components/CopyField";
 import { EmptyState } from "@/components/EmptyState";
@@ -63,6 +66,7 @@ export function SecurityPage() {
         <WebauthnSection credentials={mfa.data.webauthn_credentials} />
       )}
       {mfa.data.totp_enabled && <BackupCodesSection remaining={mfa.data.backup_codes_remaining} />}
+      <ConnectedAccountsSection />
       <SecurityEventsSection />
     </>
   );
@@ -499,10 +503,13 @@ function WebauthnSection({ credentials }: { credentials: WebauthnCredentialInfo[
 }
 
 function SecurityEventsSection() {
-  const events = useQuery({
+  const events = useInfiniteQuery({
     queryKey: queryKeys.securityEvents,
-    queryFn: accountApi.securityEvents,
+    queryFn: ({ pageParam }) => accountApi.securityEvents(pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => (last.has_more ? last.events.at(-1)?.created_at : undefined),
   });
+  const rows = events.data?.pages.flatMap((p) => p.events) ?? [];
   return (
     <Section
       title="Recent activity"
@@ -515,7 +522,7 @@ function SecurityEventsSection() {
         <Box sx={{ p: 3 }}>
           <Alert severity="error">{errorMessage(events.error)}</Alert>
         </Box>
-      ) : events.data.events.length === 0 ? (
+      ) : rows.length === 0 ? (
         <EmptyState title="No activity yet" />
       ) : (
         <TableContainer>
@@ -529,7 +536,7 @@ function SecurityEventsSection() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {events.data.events.map((ev) => (
+              {rows.map((ev) => (
                 <TableRow key={ev.id} hover>
                   <TableCell>{titleCase(ev.kind)}</TableCell>
                   <TableCell sx={{ fontFamily: monoFontFamily, fontSize: "0.8rem" }}>
@@ -551,6 +558,123 @@ function SecurityEventsSection() {
           </Table>
         </TableContainer>
       )}
+      {events.hasNextPage && (
+        <Box sx={{ p: 2, display: "flex", justifyContent: "center" }}>
+          <Button
+            variant="text"
+            onClick={() => void events.fetchNextPage()}
+            disabled={events.isFetchingNextPage}
+          >
+            {events.isFetchingNextPage ? "Loading…" : "Show older"}
+          </Button>
+        </Box>
+      )}
+    </Section>
+  );
+}
+
+function ConnectedAccountsSection() {
+  const qc = useQueryClient();
+  const snack = useSnackbar();
+  const location = useLocation();
+  const info = useServerInfo();
+  const identities = useQuery({
+    queryKey: queryKeys.ssoIdentities,
+    queryFn: accountApi.ssoIdentities,
+  });
+  const [removing, setRemoving] = useState<SsoIdentity | null>(null);
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const linked = (location.state as { ssoLinked?: { provider: string; email: string } } | null)
+    ?.ssoLinked;
+  useEffect(() => {
+    if (!linked) return;
+    snack.notify(`${linked.provider} account ${linked.email} connected`);
+    window.history.replaceState({}, "");
+  }, [linked, snack]);
+  const unlink = useMutation({
+    mutationFn: (provider: string) => withStepUp(() => accountApi.ssoUnlink(provider)),
+    onSuccess: () => {
+      setRemoving(null);
+      void qc.invalidateQueries({ queryKey: queryKeys.ssoIdentities });
+      void qc.invalidateQueries({ queryKey: queryKeys.securityEvents });
+      snack.notify("Account disconnected");
+    },
+    onError: (e) => {
+      if (!(e instanceof UnlockCancelled)) snack.error(errorMessage(e));
+    },
+  });
+  const providers = info.data?.sso_providers ?? [];
+  if (providers.length === 0) return null;
+  const byProvider = new Map((identities.data ?? []).map((i) => [i.provider, i]));
+  return (
+    <Section
+      title="Connected accounts"
+      description="Sign in with these identity providers. Your password is still needed to unlock the vault; a connected account skips e-mail codes and new-device approval."
+      disablePadding
+    >
+      {identities.isPending ? (
+        <Loading minHeight={80} />
+      ) : identities.isError ? (
+        <Box sx={{ p: 3 }}>
+          <Alert severity="error">{errorMessage(identities.error)}</Alert>
+        </Box>
+      ) : (
+        <Stack divider={<Divider />}>
+          {providers.map((p) => {
+            const id = byProvider.get(p.id);
+            return (
+              <Stack
+                key={p.id}
+                direction="row"
+                spacing={2}
+                sx={{ px: 3, py: 1.5, alignItems: "center", justifyContent: "space-between" }}
+              >
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {p.name}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" noWrap component="div">
+                    {id
+                      ? `${id.email ?? "connected"} · since ${formatDateTime(id.linked_at)}`
+                      : "Not connected"}
+                  </Typography>
+                </Box>
+                {id ? (
+                  <Button size="small" color="inherit" onClick={() => setRemoving(id)}>
+                    Disconnect
+                  </Button>
+                ) : (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={connecting !== null}
+                    onClick={() => {
+                      setConnecting(p.id);
+                      startSsoLink(p.id).catch((e: unknown) => {
+                        setConnecting(null);
+                        snack.error(errorMessage(e));
+                      });
+                    }}
+                  >
+                    {connecting === p.id ? "Redirecting…" : "Connect"}
+                  </Button>
+                )}
+              </Stack>
+            );
+          })}
+        </Stack>
+      )}
+      <ConfirmDialog
+        open={removing !== null}
+        title={`Disconnect ${removing?.name ?? ""}?`}
+        confirmLabel="Disconnect"
+        onCancel={() => setRemoving(null)}
+        onConfirm={() => removing && unlink.mutate(removing.provider)}
+        busy={unlink.isPending}
+      >
+        Signing in with {removing?.name} will ask for your password and e-mail codes like a new
+        device again.
+      </ConfirmDialog>
     </Section>
   );
 }

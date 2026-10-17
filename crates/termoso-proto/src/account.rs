@@ -124,6 +124,9 @@ schema! {
     pub struct SecurityEventList {
         /// Newest first.
         pub events: Vec<SecurityEvent>,
+        /// Older events exist; pass the last `created_at` as `before` to get them.
+        #[serde(default)]
+        pub has_more: bool,
     }
 }
 

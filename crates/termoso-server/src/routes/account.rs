@@ -460,10 +460,20 @@ pub async fn revoke_device(
 // ───────────────────────────── security events ─────────────────────────────
 
 #[utoipa::path(get, path = "/api/v1/account/security-events", tag = "account", responses((status = 200, body = SecurityEventList)))]
+#[derive(Deserialize)]
+pub struct SecurityEventsQuery {
+    /// Only events strictly older than this instant (pagination cursor).
+    pub before: Option<DateTime<Utc>>,
+    /// Page size, 1–200 (default 50).
+    pub limit: Option<i64>,
+}
+
 pub async fn security_events(
     State(state): State<AppState>,
     auth: Auth,
+    Query(q): Query<SecurityEventsQuery>,
 ) -> ApiResult<Json<SecurityEventList>> {
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
     let rows: Vec<(
         Uuid,
         String,
@@ -474,11 +484,15 @@ pub async fn security_events(
         DateTime<Utc>,
     )> = sqlx::query_as(
         "SELECT id, kind, device_id, ip, user_agent, details, created_at FROM security_events
-             WHERE user_id = $1 ORDER BY created_at DESC LIMIT 200",
+             WHERE user_id = $1 AND ($2::timestamptz IS NULL OR created_at < $2)
+             ORDER BY created_at DESC LIMIT $3",
     )
     .bind(auth.user_id())
+    .bind(q.before)
+    .bind(limit + 1)
     .fetch_all(&state.db)
     .await?;
+    let has_more = rows.len() as i64 > limit;
     let events = rows
         .into_iter()
         .map(
@@ -493,7 +507,8 @@ pub async fn security_events(
             },
         )
         .collect();
-    Ok(Json(SecurityEventList { events }))
+    let events: Vec<SecurityEvent> = events.into_iter().take(limit as usize).collect();
+    Ok(Json(SecurityEventList { events, has_more }))
 }
 
 // ───────────────────────────── recovery key rotation ─────────────────────────────
