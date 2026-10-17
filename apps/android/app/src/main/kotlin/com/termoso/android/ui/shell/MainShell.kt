@@ -96,7 +96,6 @@ import com.termoso.core.KeyMods
 import com.termoso.core.PfKind
 import com.termoso.core.Transport
 import com.termoso.core.parseTarget
-import kotlinx.coroutines.launch
 
 object Routes {
     const val VAULT = "vault"
@@ -262,7 +261,7 @@ fun MainShell(
         }
         // Consuming re-keys this effect, so the join itself runs on the shell scope.
         container.consumeJoin()
-        scope.launch { if (shell.joinLive(link) != null) openTerminal() }
+        shell.launch { if (shell.joinLive(link) != null) openTerminal() }
     }
 
     // Files shared into the app: sent to the active terminal, or held until one is opened.
@@ -319,16 +318,16 @@ fun MainShell(
 
     /** SFTP for SSH hosts; a WebDAV-only host has no other browser, so it gets its share. */
     fun sftpHost(hostId: String) {
-        scope.launch { shell.openSftpHost(hostId)?.let { openSftp(it.id) } }
+        shell.launch { shell.openSftpHost(hostId)?.let { openSftp(it.id) } }
     }
 
     fun webdavHost(hostId: String) {
-        scope.launch { shell.openSftpHost(hostId, FileProtocol.WEBDAV)?.let { openSftp(it.id) } }
+        shell.launch { shell.openSftpHost(hostId, FileProtocol.WEBDAV)?.let { openSftp(it.id) } }
     }
 
     /** "Connect" on a host: a terminal, or the Files browser when the host is WebDAV-only. */
     fun connectHost(hostId: String, transport: Transport = Transport.AUTO) {
-        scope.launch {
+        shell.launch {
             if (!shell.hasTerminal(hostId)) {
                 shell.openSftpHost(hostId, FileProtocol.WEBDAV)?.let { openSftp(it.id) }
             } else if (shell.connectHost(hostId, transport) != null) {
@@ -340,7 +339,7 @@ fun MainShell(
     /** Termius-style "Edit": a terminal to the same host running an editor on the file, exiting with it. */
     fun editInTerminal(conn: SftpConnection, path: String) {
         if (conn.protocol != FileProtocol.SFTP) return
-        scope.launch {
+        shell.launch {
             val session = when {
                 conn.hostId != null && conn.vaultId != null -> shell.connectHost(conn.hostId, conn.vaultId)
                 conn.quick != null -> shell.connectQuick(conn.quick)
