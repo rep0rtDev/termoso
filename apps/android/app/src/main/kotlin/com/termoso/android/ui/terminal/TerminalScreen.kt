@@ -129,6 +129,10 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
+import androidx.compose.foundation.shape.CircleShape
+import com.termoso.android.ui.components.UserAvatar
+import com.termoso.core.LiveParticipantCard
 
 /** Lines one volume press scrolls through the history. */
 private const val VOLUME_SCROLL_LINES = 3
@@ -459,6 +463,20 @@ private fun ActiveSession(
     val state by session.state.collectAsStateWithLifecycle()
     val prompt by session.prompt.collectAsStateWithLifecycle()
     val canWrite by session.canWrite.collectAsStateWithLifecycle()
+    // Multiplayer: whoever typed last gets a small avatar above the cursor for a moment.
+    var typingBy by remember(session) { mutableStateOf<LiveParticipantCard?>(null) }
+    LaunchedEffect(session) {
+        var clear: Job? = null
+        session.typing.collect { id ->
+            val card = session.participants.value.firstOrNull { it.userId == id && !it.me } ?: return@collect
+            typingBy = card
+            clear?.cancel()
+            clear = launch {
+                delay(2_500)
+                typingBy = null
+            }
+        }
+    }
 
     val fontSize = settings.terminalFontSize.toInt()
     val haptics = settings.hapticFeedback
@@ -761,6 +779,18 @@ private fun ActiveSession(
                     cursorStyle = settings.cursorStyle,
                     modifier = Modifier.fillMaxSize(),
                     onFrame = { scrolled = it.frame.displayOffset > 0u },
+                    cursorBadge = typingBy?.let { card ->
+                        {
+                            UserAvatar(
+                                shell.repo,
+                                userId = card.userId,
+                                tag = card.avatar,
+                                name = card.displayName ?: card.email,
+                                size = 22,
+                                shape = CircleShape,
+                            )
+                        }
+                    },
                     onTap = {
                         imeShown = true
                         panelExpanded = false

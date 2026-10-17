@@ -50,6 +50,8 @@ pub enum FrameKind {
     Input,
     /// JSON metadata: title, size (host → viewers).
     Meta,
+    /// "This participant is typing": the viewer's user id (viewer → host).
+    Typing,
 }
 
 impl FrameKind {
@@ -58,6 +60,7 @@ impl FrameKind {
             FrameKind::Output => 0,
             FrameKind::Input => 1,
             FrameKind::Meta => 2,
+            FrameKind::Typing => 3,
         }
     }
 
@@ -66,6 +69,7 @@ impl FrameKind {
             0 => FrameKind::Output,
             1 => FrameKind::Input,
             2 => FrameKind::Meta,
+            3 => FrameKind::Typing,
             _ => return None,
         })
     }

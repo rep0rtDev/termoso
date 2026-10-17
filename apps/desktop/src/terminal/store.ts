@@ -1186,7 +1186,9 @@ function scheduleSuggest(paneId: Uuid) {
 }
 
 /** Pixel position of the cursor cell inside the pane, or null before layout. */
-function cursorPixels(rt: Runtime): { left: number; top: number; cellHeight: number } | null {
+export function cursorPixels(
+  rt: Runtime,
+): { left: number; top: number; cellHeight: number } | null {
   const screen = rt.container.querySelector<HTMLElement>(".xterm-screen");
   if (!screen || rt.term.cols === 0 || rt.term.rows === 0) return null;
   const cellW = screen.clientWidth / rt.term.cols;

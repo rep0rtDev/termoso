@@ -1016,6 +1016,9 @@ impl SshSession {
     /// Send raw bytes to the remote (key presses already encoded).
     pub fn write(&self, data: Vec<u8>) {
         let _ = self.inner.input.send(data);
+        if let Some(share) = self.inner.share() {
+            share.typing();
+        }
     }
 
     /// Send text as typed; wraps it in bracketed-paste markers when the

@@ -56,6 +56,8 @@ pub trait LiveListener: Send + Sync {
     fn on_control(&self, can_write: bool);
     /// The share (host) or the view (viewer) is over.
     fn on_ended(&self, reason: LiveEndReason, message: String);
+    /// A participant (host included) just typed; shown as a badge at the cursor.
+    fn on_typing(&self, user_id: String);
 }
 
 pub(crate) fn cards(list: &[LiveParticipant], me: Uuid) -> Vec<LiveParticipantCard> {
@@ -99,6 +101,13 @@ pub(crate) struct ShareState {
 }
 
 impl ShareState {
+    /// The host typed into the shared terminal.
+    pub(crate) fn typing(&self) {
+        if let Some(s) = self.share.lock().expect("share poisoned").as_ref() {
+            s.typing();
+        }
+    }
+
     pub(crate) fn resized(&self, size: TermSize) {
         if let Some(s) = self.share.lock().expect("share poisoned").as_ref() {
             s.resized(size);
@@ -181,6 +190,7 @@ async fn forward_host(
                 listener.on_ended(end_reason(&reason), message);
                 return;
             }
+            LiveEvent::Typing { user_id } => listener.on_typing(user_id.to_string()),
             LiveEvent::Control { .. } | LiveEvent::Resize { .. } | LiveEvent::Title { .. } => {}
         }
     }
@@ -276,6 +286,7 @@ pub(crate) async fn forward_viewer(
             }
             LiveEvent::Resize { cols, rows } => resize(cols, rows),
             LiveEvent::Title { title: t } => title(t),
+            LiveEvent::Typing { user_id } => listener.on_typing(user_id.to_string()),
             LiveEvent::Ended { reason, message } => {
                 listener.on_ended(end_reason(&reason), message);
                 return;

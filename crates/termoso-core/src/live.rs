@@ -12,9 +12,9 @@
 //! terminal nor forge frames.
 
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
@@ -182,6 +182,12 @@ pub enum LiveEvent {
         /// New title.
         title: String,
     },
+    /// A participant just typed into the shared terminal (at most about once
+    /// a second per participant while they keep typing).
+    Typing {
+        /// Who typed.
+        user_id: Uuid,
+    },
     /// The session is over.
     Ended {
         /// `stopped`, `disconnected` or `error`.
@@ -200,6 +206,20 @@ struct Meta {
     rows: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    typing: Option<Uuid>,
+}
+
+/// Rate limit for "typing" notices: true when the last one is older than a second.
+fn typing_due(at: &Mutex<Option<Instant>>) -> bool {
+    let mut at = at.lock().expect("typing poisoned");
+    match *at {
+        Some(t) if t.elapsed() < Duration::from_secs(1) => false,
+        _ => {
+            *at = Some(Instant::now());
+            true
+        }
+    }
 }
 
 // ---- relay socket ----------------------------------------------------------
@@ -366,6 +386,7 @@ enum HostCmd {
     Resize(TermSize),
     Title(String),
     Control { user_id: Uuid, enabled: bool },
+    Typing,
     Stop,
 }
 
@@ -377,6 +398,7 @@ pub struct HostShare {
     user_id: Uuid,
     cmds: mpsc::Sender<HostCmd>,
     task: JoinHandle<()>,
+    typing_at: Mutex<Option<Instant>>,
 }
 
 impl Drop for HostShare {
@@ -430,6 +452,7 @@ impl HostShare {
                 title,
                 events,
                 seen: joined.participants.iter().map(|p| p.user_id).collect(),
+                me: joined.user_id,
             },
             socket,
             cmd_rx,
@@ -440,6 +463,7 @@ impl HostShare {
             user_id: joined.user_id,
             cmds,
             task,
+            typing_at: Mutex::new(None),
         })
     }
 
@@ -474,6 +498,14 @@ impl HostShare {
     /// The tab title changed.
     pub fn retitled(&self, title: String) {
         let _ = self.cmds.try_send(HostCmd::Title(title));
+    }
+
+    /// The host typed into the shared terminal; viewers get a throttled
+    /// "typing" notice so they can show who is driving.
+    pub fn typing(&self) {
+        if typing_due(&self.typing_at) {
+            let _ = self.cmds.try_send(HostCmd::Typing);
+        }
     }
 
     /// Grant or revoke remote control for a viewer.
@@ -522,6 +554,7 @@ struct HostLoop {
     title: String,
     events: mpsc::Sender<LiveEvent>,
     seen: HashSet<Uuid>,
+    me: Uuid,
 }
 
 impl HostLoop {
@@ -540,6 +573,17 @@ impl HostLoop {
             cols: Some(self.size.cols),
             rows: Some(self.size.rows),
             title: Some(self.title.clone()),
+            typing: None,
+        };
+        self.seal(FrameKind::Meta, &serde_json::to_vec(&m)?)
+    }
+
+    fn typing_frame(&self, user_id: Uuid) -> Result<Vec<u8>> {
+        let m = Meta {
+            cols: None,
+            rows: None,
+            title: None,
+            typing: Some(user_id),
         };
         self.seal(FrameKind::Meta, &serde_json::to_vec(&m)?)
     }
@@ -578,6 +622,11 @@ async fn host_loop(mut h: HostLoop, mut socket: Socket, mut cmds: mpsc::Receiver
                         let _ = socket.send_frame(f).await;
                     }
                 }
+                Some(HostCmd::Typing) => {
+                    if let Ok(f) = h.typing_frame(h.me) {
+                        let _ = socket.send_frame(f).await;
+                    }
+                }
                 Some(HostCmd::Control { user_id, enabled }) => {
                     let _ = socket
                         .send_msg(&LiveClientMessage::Control { user_id, enabled })
@@ -596,6 +645,18 @@ async fn host_loop(mut h: HostLoop, mut socket: Socket, mut cmds: mpsc::Receiver
                         Ok((FrameKind::Input, data)) => {
                             if let Err(e) = h.term.write(&data).await {
                                 tracing::debug!("live: viewer input not delivered: {e}");
+                            }
+                        }
+                        // Only ids of participants we have seen are relayed, so a
+                        // viewer cannot pose as someone who never joined.
+                        Ok((FrameKind::Typing, data)) => {
+                            if let Ok(user_id) = Uuid::from_slice(&data)
+                                && h.seen.contains(&user_id)
+                            {
+                                let _ = h.events.send(LiveEvent::Typing { user_id }).await;
+                                if let Ok(f) = h.typing_frame(user_id) {
+                                    let _ = socket.send_frame(f).await;
+                                }
                             }
                         }
                         Ok(_) => {}
@@ -659,6 +720,8 @@ pub struct ViewerTerminal {
     frames: mpsc::Sender<Vec<u8>>,
     can_write: Arc<AtomicBool>,
     cancel: CancellationToken,
+    me: Uuid,
+    typing_at: Mutex<Option<Instant>>,
 }
 
 impl ViewerTerminal {
@@ -684,7 +747,18 @@ impl TerminalSession for ViewerTerminal {
         self.frames
             .send(f)
             .await
-            .map_err(|_| CoreError::Ws("share has ended".into()))
+            .map_err(|_| CoreError::Ws("share has ended".into()))?;
+        if typing_due(&self.typing_at) {
+            let f = crypto::seal_frame(
+                &self.key,
+                &self.session_id,
+                Direction::FromViewer,
+                FrameKind::Typing,
+                self.me.as_bytes(),
+            )?;
+            let _ = self.frames.try_send(f);
+        }
+        Ok(())
     }
 
     async fn resize(&self, _size: TermSize) -> Result<()> {
@@ -748,6 +822,8 @@ pub async fn join(
         key: key.clone(),
         frames,
         can_write: can_write.clone(),
+        me: joined.user_id,
+        typing_at: Mutex::new(None),
         cancel: cancel.clone(),
     });
     tokio::spawn(viewer_loop(
@@ -804,6 +880,9 @@ async fn viewer_loop(
                             }
                             if let Some(title) = m.title {
                                 let _ = live_events.send(LiveEvent::Title { title }).await;
+                            }
+                            if let Some(user_id) = m.typing {
+                                let _ = live_events.send(LiveEvent::Typing { user_id }).await;
                             }
                         }
                     }

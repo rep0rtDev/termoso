@@ -492,6 +492,7 @@ pub fn terminal_attach(
 pub async fn terminal_write(state: State<'_, AppState>, id: Uuid, data: String) -> Result<()> {
     let term = state.sessions.terminal(id)?;
     term.write(data.as_bytes()).await?;
+    state.multiplayer.typing(id);
     Ok(())
 }
 

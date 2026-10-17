@@ -1742,6 +1742,7 @@ export interface ShareInfo {
 
 export type LiveEvent =
   | { type: "participants"; id: Uuid; participants: LiveParticipant[] }
+  | { type: "typing"; id: Uuid; user_id: Uuid }
   | { type: "control"; id: Uuid; canWrite: boolean }
   | { type: "resize"; id: Uuid; cols: number; rows: number }
   | { type: "title"; id: Uuid; title: string }
