@@ -37,6 +37,9 @@ schema! {
         /// Display name.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub display_name: Option<String>,
+        /// Profile picture tag (see `UserProfile::avatar`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub avatar: Option<String>,
         /// Admin.
         pub is_admin: bool,
         /// Disabled.

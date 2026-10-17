@@ -55,6 +55,7 @@ type UserRow = (
     String,
     bool,
     Option<String>,
+    Option<String>,
     bool,
     bool,
     bool,
@@ -69,6 +70,7 @@ fn to_admin_user(r: UserRow) -> AdminUser {
         email,
         email_verified,
         display_name,
+        avatar,
         is_admin,
         disabled,
         mfa_enabled,
@@ -81,6 +83,7 @@ fn to_admin_user(r: UserRow) -> AdminUser {
         email,
         email_verified,
         display_name,
+        avatar,
         is_admin,
         disabled,
         mfa_enabled,
@@ -90,7 +93,7 @@ fn to_admin_user(r: UserRow) -> AdminUser {
     }
 }
 
-const USER_SELECT: &str = "SELECT u.id, u.email, u.email_verified, u.display_name, u.is_admin, u.disabled,
+const USER_SELECT: &str = "SELECT u.id, u.email, u.email_verified, u.display_name, u.avatar_tag, u.is_admin, u.disabled,
         (u.totp_enabled OR EXISTS (SELECT 1 FROM webauthn_credentials w WHERE w.user_id = u.id)),
         u.created_at, u.last_seen_at,
         (SELECT count(*) FROM devices d WHERE d.user_id = u.id
