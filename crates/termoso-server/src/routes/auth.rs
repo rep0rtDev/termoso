@@ -22,6 +22,7 @@ use crate::ratelimit;
 use crate::session;
 use crate::sso;
 use crate::state::AppState;
+use crate::turnstile;
 use crate::users::{self, UserRow};
 use crate::util::{hash_token, mask_email, normalize_code, normalize_email};
 
@@ -223,6 +224,7 @@ pub async fn register_start(
     Body(req): Body<RegisterStartRequest>,
 ) -> ApiResult<Json<RegisterStartResponse>> {
     ratelimit::check_ip(&state, ratelimit::AUTH_IP, client.ip.as_deref()).await?;
+    turnstile::require(&state, req.turnstile_token.as_deref(), client.ip.as_deref()).await?;
     let email = normalize_email(&req.email).ok_or_else(|| Error::bad_request("Invalid email"))?;
     // Closed registration is enforced at `register_finish`, where the invite
     // token (which may still allow sign-up) is available.
@@ -389,6 +391,9 @@ pub async fn login_start(
     Body(req): Body<LoginStartRequest>,
 ) -> ApiResult<Json<LoginStartResponse>> {
     ratelimit::check_ip(&state, ratelimit::AUTH_IP, client.ip.as_deref()).await?;
+    if turnstile::login_needs_captcha(&state, client.ip.as_deref()).await {
+        turnstile::require(&state, req.turnstile_token.as_deref(), client.ip.as_deref()).await?;
+    }
     let email = normalize_email(&req.email).ok_or_else(|| Error::bad_request("Invalid email"))?;
     ratelimit::check(&state, ratelimit::AUTH_ACCOUNT, &email).await?;
     validate_device(&req.device)?;
@@ -434,6 +439,7 @@ pub async fn login_finish(
     let flow: LoginFlow = codes::take_flow(&state, P_LOGIN, &req.login_id).await?;
     let Some(user_id) = flow.user_id else {
         metrics::counter!("termoso_logins_total", "result" => "unknown_user").increment(1);
+        turnstile::note_login_failure(&state, client.ip.as_deref()).await;
         return Err(Error::invalid_credentials());
     };
     let server_state = unb64(&flow.server_state)?;
@@ -449,6 +455,7 @@ pub async fn login_finish(
         )
         .await?;
         metrics::counter!("termoso_logins_total", "result" => "bad_password").increment(1);
+        turnstile::note_login_failure(&state, client.ip.as_deref()).await;
         return Err(Error::invalid_credentials());
     }
     let user = users::by_id(&state.db, user_id).await?;
@@ -1007,6 +1014,7 @@ pub async fn recovery_start(
     Body(req): Body<RecoveryStartRequest>,
 ) -> ApiResult<Json<RecoveryStartResponse>> {
     ratelimit::check_ip(&state, ratelimit::AUTH_IP, client.ip.as_deref()).await?;
+    turnstile::require(&state, req.turnstile_token.as_deref(), client.ip.as_deref()).await?;
     let email = normalize_email(&req.email).ok_or_else(|| Error::bad_request("Invalid email"))?;
     ratelimit::check(&state, ratelimit::AUTH_ACCOUNT, &email).await?;
     unb64_array::<32>(&req.recovery_verifier)

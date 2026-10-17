@@ -5,6 +5,8 @@ import { errorMessage } from "@/api/client";
 import { recoverAccount } from "@/auth/flows";
 import { monoFontFamily } from "@/theme/theme";
 import { AuthTitle, PasswordField, passwordProblem } from "./common";
+import { useServerInfo } from "@/api/hooks";
+import { Turnstile } from "@/components/Turnstile";
 
 export function ForgotPasswordPage() {
   const navigate = useNavigate();
@@ -14,6 +16,10 @@ export function ForgotPasswordPage() {
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const info = useServerInfo();
+  const siteKey = info.data?.turnstile_site_key ?? null;
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaRound, setCaptchaRound] = useState(0);
 
   const words = phrase.trim().split(/\s+/).filter(Boolean);
   const phraseOk = words.length === 24;
@@ -26,7 +32,12 @@ export function ForgotPasswordPage() {
     setBusy(true);
     setError(null);
     try {
-      const out = await recoverAccount(email, words.join(" ").toLowerCase(), password);
+      const out = await recoverAccount(
+        email,
+        words.join(" ").toLowerCase(),
+        password,
+        captcha ?? undefined,
+      );
       void navigate("/signup/recovery-key", {
         replace: true,
         state: {
@@ -38,6 +49,8 @@ export function ForgotPasswordPage() {
       });
     } catch (err) {
       setError(errorMessage(err));
+      setCaptcha(null);
+      setCaptchaRound((n) => n + 1);
     } finally {
       setBusy(false);
     }
@@ -95,7 +108,13 @@ export function ForgotPasswordPage() {
         <Alert severity="info">
           All other sessions will be signed out and a new recovery key will be generated.
         </Alert>
-        <Button type="submit" variant="contained" size="large" disabled={busy || !phraseOk}>
+        {siteKey && <Turnstile key={captchaRound} siteKey={siteKey} onToken={setCaptcha} />}
+        <Button
+          type="submit"
+          variant="contained"
+          size="large"
+          disabled={busy || !phraseOk || (siteKey !== null && captcha === null)}
+        >
           {busy ? "Resetting…" : "Reset password"}
         </Button>
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>

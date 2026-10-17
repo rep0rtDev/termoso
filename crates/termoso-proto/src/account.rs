@@ -200,6 +200,10 @@ schema! {
         /// docs live at `/docs` of the landing / cabinet origin.
         #[serde(default)]
         pub docs_url: String,
+        /// Cloudflare Turnstile site key when the server requires a captcha on
+        /// sign-up, start over, account recovery and repeated failed logins.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub turnstile_site_key: Option<String>,
     }
 }
 

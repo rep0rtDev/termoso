@@ -60,15 +60,25 @@ export const serverApi = {
 };
 
 export const authApi = {
-  registerStart: (email: string, opaque_request: string) =>
-    http.post<{ opaque_response: string }>("/auth/register/start", { email, opaque_request }, anon),
+  registerStart: (email: string, opaque_request: string, turnstile_token?: string) =>
+    http.post<{ opaque_response: string }>(
+      "/auth/register/start",
+      { email, opaque_request, turnstile_token },
+      anon,
+    ),
   registerFinish: (req: RegisterFinishRequest) =>
     http.post<AuthResponse>("/auth/register/finish", req, anon),
 
-  loginStart: (email: string, opaque_request: string, device: DeviceInfo, sso_session?: string) =>
+  loginStart: (
+    email: string,
+    opaque_request: string,
+    device: DeviceInfo,
+    sso_session?: string,
+    turnstile_token?: string,
+  ) =>
     http.post<LoginStartResponse>(
       "/auth/login/start",
-      { email, opaque_request, device, sso_session },
+      { email, opaque_request, device, sso_session, turnstile_token },
       anon,
     ),
   loginFinish: (login_id: string, opaque_finalization: string) =>
@@ -86,8 +96,12 @@ export const authApi = {
   deviceApproveResend: (approval_token: string) =>
     http.post<undefined>("/auth/device/approve/resend", { approval_token }, anon),
 
-  recoveryStart: (email: string, recovery_verifier: string) =>
-    http.post<RecoveryStartResponse>("/auth/recovery/start", { email, recovery_verifier }, anon),
+  recoveryStart: (email: string, recovery_verifier: string, turnstile_token?: string) =>
+    http.post<RecoveryStartResponse>(
+      "/auth/recovery/start",
+      { email, recovery_verifier, turnstile_token },
+      anon,
+    ),
   passwordStart: (opaque_request: string, recovery_token?: string) =>
     http.post<{ opaque_response: string }>(
       "/auth/password/start",
@@ -104,8 +118,12 @@ export const authApi = {
   reauthFinish: (reauth_id: string, proof: { opaque_finalization?: string; code?: string }) =>
     http.post<AuthResponse>("/auth/reauth/finish", { reauth_id, ...proof }),
 
-  startOverRequest: (email: string) =>
-    http.post<StartOverRequestResponse>("/auth/start-over/request", { email }, anon),
+  startOverRequest: (email: string, turnstile_token?: string) =>
+    http.post<StartOverRequestResponse>(
+      "/auth/start-over/request",
+      { email, turnstile_token },
+      anon,
+    ),
   startOverConfirm: (request_token: string, code: string, mfa_code?: string) =>
     http.post<StartOverScheduled>(
       "/auth/start-over/confirm",

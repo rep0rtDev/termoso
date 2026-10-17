@@ -806,6 +806,7 @@ pub async fn try_register(
             Some(&RegisterStartRequest {
                 email: email.into(),
                 opaque_request: request,
+                turnstile_token: None,
             }),
         )
         .await;
@@ -944,6 +945,7 @@ pub async fn login_raw(
                 opaque_request: request,
                 device,
                 sso_session,
+                turnstile_token: None,
             }),
         )
         .await;

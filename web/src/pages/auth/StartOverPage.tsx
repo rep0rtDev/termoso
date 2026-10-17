@@ -5,6 +5,8 @@ import { ApiError, errorMessage } from "@/api/client";
 import { authApi } from "@/api/endpoints";
 import { formatDateTime, formatRelative } from "@/components/format";
 import { AuthTitle } from "./common";
+import { useServerInfo } from "@/api/hooks";
+import { Turnstile } from "@/components/Turnstile";
 
 /** The one thing every Start-over screen must say, in red. */
 export function IrreversibleWarning() {
@@ -36,6 +38,10 @@ export function StartOverPage() {
   const [mfaCode, setMfaCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const info = useServerInfo();
+  const siteKey = info.data?.turnstile_site_key ?? null;
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaRound, setCaptchaRound] = useState(0);
 
   const submit = async (e: SubmitEvent) => {
     e.preventDefault();
@@ -43,7 +49,7 @@ export function StartOverPage() {
     setError(null);
     try {
       if (stage.kind === "email") {
-        const r = await authApi.startOverRequest(email.trim());
+        const r = await authApi.startOverRequest(email.trim(), captcha ?? undefined);
         setStage({
           kind: "code",
           requestToken: r.request_token,
@@ -69,6 +75,8 @@ export function StartOverPage() {
       }
     } catch (err) {
       setError(errorMessage(err));
+      setCaptcha(null);
+      setCaptchaRound((n) => n + 1);
     } finally {
       setBusy(false);
     }
@@ -125,7 +133,14 @@ export function StartOverPage() {
               <strong>scheduled 24 hours later</strong> and can be cancelled from the email or from
               any signed-in device.
             </Typography>
-            <Button type="submit" variant="contained" size="large" color="error" disabled={busy}>
+            {siteKey && <Turnstile key={captchaRound} siteKey={siteKey} onToken={setCaptcha} />}
+            <Button
+              type="submit"
+              variant="contained"
+              size="large"
+              color="error"
+              disabled={busy || (siteKey !== null && captcha === null)}
+            >
               {busy ? "Sending…" : "Send confirmation code"}
             </Button>
           </>

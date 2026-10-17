@@ -80,6 +80,7 @@ TERMOSO_S3__PUBLIC_ENDPOINT=https://s3.termoso.example.com
 TERMOSO_ADMIN_EMAILS=you@example.com
 TERMOSO_OWNER_EMAIL=you@example.com   # optional; default = first registered account
 TERMOSO_SMTP__HOST=… PORT=… USERNAME=… PASSWORD=… SECURITY=starttls FROM=…
+TERMOSO_TURNSTILE__SITE_KEY=… TERMOSO_TURNSTILE__SECRET_KEY=…   # optional Cloudflare Turnstile captcha
 ```
 
 Without SMTP the server still runs, but e-mail verification, device approval

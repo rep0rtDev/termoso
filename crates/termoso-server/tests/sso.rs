@@ -236,6 +236,7 @@ async fn sso_registers_then_logs_in_and_skips_device_approval() {
                 opaque_request: request,
                 device: device("sso device"),
                 sso_session: Some(sso_session.clone()),
+                turnstile_token: None,
             }),
             StatusCode::FORBIDDEN,
         )
@@ -266,6 +267,7 @@ async fn sso_registers_then_logs_in_and_skips_device_approval() {
             opaque_request: request,
             device: device("sso device"),
             sso_session: Some(sso_session),
+            turnstile_token: None,
         }),
         StatusCode::UNAUTHORIZED,
     )
