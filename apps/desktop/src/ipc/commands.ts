@@ -487,6 +487,8 @@ export const importScanSsh = (dir: string | null) =>
 export const importParseFile = (source: ImportSource, path: string) =>
   invoke<ImportPreview>("import_parse_file", { source, path });
 export const importScanPuttyRegistry = () => invoke<ImportPreview>("import_scan_putty_registry");
+export const importScanSecurecrtDir = (path: string) =>
+  invoke<ImportPreview>("import_scan_securecrt_dir", { path });
 export const importSshDirDefault = () => invoke<string | null>("import_ssh_dir_default");
 export const importCsvTemplate = () => invoke<string>("import_csv_template");
 export const importCsvTemplateSave = (path: string) =>

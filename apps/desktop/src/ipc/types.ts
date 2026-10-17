@@ -1144,7 +1144,7 @@ export interface HostKeyPin {
 
 // ───────────────────────────── import (ssh_config / PuTTY / CSV) ─────────────────────────────
 
-export type ImportSource = "ssh_config" | "putty" | "csv";
+export type ImportSource = "ssh_config" | "putty" | "csv" | "mobaxterm" | "securecrt" | "zoc";
 
 export interface ImportedProxy {
   kind: string;
@@ -1172,6 +1172,7 @@ export interface ImportedHost {
   envVariables: [string, string][];
   keepAliveInterval: number | null;
   timeout: number | null;
+  notes: string;
   warnings: string[];
 }
 

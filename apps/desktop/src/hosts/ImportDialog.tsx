@@ -70,6 +70,9 @@ const SOURCE_LABEL: Record<ImportSource, string> = {
   ssh_config: "OpenSSH",
   putty: "PuTTY",
   csv: msg("Termius / CSV"),
+  mobaxterm: "MobaXterm",
+  securecrt: "SecureCRT",
+  zoc: "ZOC Terminal",
 };
 
 const all = (n: number) => Array.from({ length: n }, (_, i) => i);
@@ -217,6 +220,33 @@ function Body({
       { name: "CSV", extensions: ["csv", "txt", "tsv"] },
     ]);
     if (path) void load(tr("Parsing…"), () => ipc.importParseFile("csv", path));
+  };
+  const parseMobaxterm = async () => {
+    const path = await pickFile(tr("MobaXterm sessions"), [
+      { name: "MobaXterm", extensions: ["mxtsessions", "ini"] },
+    ]);
+    if (path) void load(tr("Parsing…"), () => ipc.importParseFile("mobaxterm", path));
+  };
+  const scanSecurecrtDir = async () => {
+    const picked = await openFile({
+      directory: true,
+      multiple: false,
+      title: tr("SecureCRT Config directory"),
+    });
+    if (typeof picked === "string")
+      void load(tr("Scanning…"), () => ipc.importScanSecurecrtDir(picked));
+  };
+  const parseSecurecrtFile = async () => {
+    const path = await pickFile(tr("SecureCRT session or settings export"), [
+      { name: "SecureCRT", extensions: ["ini", "xml"] },
+    ]);
+    if (path) void load(tr("Parsing…"), () => ipc.importParseFile("securecrt", path));
+  };
+  const parseZoc = async () => {
+    const path = await pickFile(tr("ZOC host directory"), [
+      { name: "ZOC", extensions: ["zhd", "txt"] },
+    ]);
+    if (path) void load(tr("Parsing…"), () => ipc.importParseFile("zoc", path));
   };
   const saveTemplate = async () => {
     const path = await saveFile({
@@ -392,6 +422,65 @@ function Body({
                       {tr("Template")}
                     </Button>
                   </>
+                }
+              />
+              <SourceCard
+                icon={<DnsRoundedIcon />}
+                tone="accent"
+                title="MobaXterm"
+                description={tr(
+                  "A .mxtsessions export or MobaXterm.ini: SSH/Telnet sessions, folders, gateway chains, proxies, key paths. Passwords stay in MobaXterm.",
+                )}
+                actions={
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<DescriptionOutlinedIcon />}
+                    onClick={() => void parseMobaxterm()}
+                  >
+                    {tr("Sessions file…")}
+                  </Button>
+                }
+              />
+              <SourceCard
+                icon={<CableRoundedIcon />}
+                tone="info"
+                title="SecureCRT"
+                description={tr(
+                  "The Config/Sessions directory (folders become groups), one session .ini, or the XML from File → Export Settings: SSH/Telnet, keys, jump sessions, descriptions.",
+                )}
+                actions={
+                  <>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<FolderOpenRoundedIcon />}
+                      onClick={() => void scanSecurecrtDir()}
+                    >
+                      {tr("Config directory…")}
+                    </Button>
+                    <Button size="small" color="inherit" onClick={() => void parseSecurecrtFile()}>
+                      {tr("Session / export file…")}
+                    </Button>
+                  </>
+                }
+              />
+              <SourceCard
+                icon={<TerminalRoundedIcon />}
+                tone="purple"
+                title={tr("ZOC Terminal")}
+                description={tr(
+                  "HostDirectory.zhd (ZOC Files → Options): SSH hosts, folders, usernames, key files and memos.",
+                )}
+                actions={
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<DescriptionOutlinedIcon />}
+                    onClick={() => void parseZoc()}
+                  >
+                    {tr("Host directory…")}
+                  </Button>
                 }
               />
             </Box>

@@ -1,6 +1,7 @@
 //! Import of hosts from other tools: OpenSSH `~/.ssh` (config, keys,
-//! known_hosts), PuTTY saved sessions (registry / `.reg` export) and the
-//! Termius CSV template. Parsing only produces a preview; nothing is written
+//! known_hosts), PuTTY saved sessions (registry / `.reg` export), the
+//! Termius CSV template, MobaXterm bookmarks, SecureCRT sessions and the
+//! ZOC host directory. Parsing only produces a preview; nothing is written
 //! until the user picks what to import and a target vault. Private keys are
 //! read from disk only at apply time and never travel to the webview — the
 //! preview carries path, type and fingerprint. Passwords found in the source
@@ -8,8 +9,11 @@
 //! from what the UI receives; the UI refers to a preview by id.
 
 mod csv;
+mod mobaxterm;
 mod putty;
+mod securecrt;
 mod ssh_config;
+mod zoc;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -37,6 +41,9 @@ pub enum ImportSource {
     SshConfig,
     Putty,
     Csv,
+    Mobaxterm,
+    Securecrt,
+    Zoc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -79,6 +86,8 @@ pub struct ImportedHost {
     pub env_variables: Vec<(String, String)>,
     pub keep_alive_interval: Option<u32>,
     pub timeout: Option<u32>,
+    /// Free text from the source (SecureCRT description, ZOC memo).
+    pub notes: String,
     /// Source-specific notes for the user (ignored directives etc.).
     pub warnings: Vec<String>,
 }
@@ -589,6 +598,15 @@ pub fn parse_file(source: ImportSource, path: &str) -> Result<ImportPreview> {
         }
         ImportSource::Putty => putty::parse_reg_into(&text, &mut preview)?,
         ImportSource::Csv => csv::parse_into(&text, &mut preview)?,
+        ImportSource::Mobaxterm => mobaxterm::parse_into(&text, &mut preview)?,
+        ImportSource::Securecrt => {
+            if text.trim_start().starts_with('<') {
+                securecrt::parse_xml_into(&text, &mut preview)?
+            } else {
+                securecrt::parse_ini_into(&text, &mut preview)?
+            }
+        }
+        ImportSource::Zoc => zoc::parse_into(&text, &mut preview)?,
     }
     if preview.is_empty() {
         return Err(DesktopError::invalid(match source {
@@ -597,6 +615,9 @@ pub fn parse_file(source: ImportSource, path: &str) -> Result<ImportPreview> {
                 "No PuTTY sessions found — export HKEY_CURRENT_USER\\Software\\SimonTatham\\PuTTY\\Sessions with regedit"
             }
             ImportSource::Csv => "No hosts found in the CSV",
+            ImportSource::Mobaxterm => "No SSH or Telnet sessions found in the MobaXterm bookmarks",
+            ImportSource::Securecrt => "No SSH or Telnet sessions found in the SecureCRT export",
+            ImportSource::Zoc => "No SSH hosts found in the ZOC host directory",
         }));
     }
     Ok(preview)
@@ -607,6 +628,26 @@ pub fn parse_file(source: ImportSource, path: &str) -> Result<ImportPreview> {
 pub fn parse_csv_text(text: &str) -> Result<ImportPreview> {
     let mut preview = ImportPreview::new(ImportSource::Csv, "text");
     csv::parse_into(text, &mut preview)?;
+    Ok(preview)
+}
+
+/// A SecureCRT `Config` (or `Config/Sessions`) directory: one `.ini` per
+/// session, directories are groups.
+pub fn scan_securecrt_dir(dir: &str) -> Result<ImportPreview> {
+    let dir = expand_tilde(dir.trim());
+    if !dir.is_dir() {
+        return Err(DesktopError::not_found(format!(
+            "{} is not a directory",
+            display(&dir)
+        )));
+    }
+    let mut preview = ImportPreview::new(ImportSource::Securecrt, display(&dir));
+    securecrt::scan_dir(&dir, &mut preview)?;
+    if preview.is_empty() {
+        return Err(DesktopError::invalid(
+            "No SecureCRT sessions found — pick the Config or Config/Sessions directory",
+        ));
+    }
     Ok(preview)
 }
 
@@ -868,7 +909,7 @@ pub fn apply(
             use_mosh: false,
             mosh_server_command: None,
             tag_ids,
-            notes: String::new(),
+            notes: h.notes.clone(),
             os_name: None,
             icon: None,
             ip_version: "auto".into(),
