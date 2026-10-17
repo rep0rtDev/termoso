@@ -159,6 +159,18 @@ name to `TERMOSO_DOMAIN`) gives it a dedicated origin: that host answers
 as for `TERMOSO_LANDING_URL` apply: a bare origin, different from the other
 hostnames, `TERMOSO_WEB_DIR` set.
 
+### Search engines and link previews
+
+The landing page and every docs page are served with their own `<title>`,
+description, canonical URL and Open Graph / Twitter card (image `/og.png`),
+rendered once at start-up from `seo.json` in the web bundle, so crawlers and
+chat link previews see real metadata without running the app. Cabinet routes
+(`/login`, `/vaults`, ...) carry `noindex, nofollow`. `/robots.txt` allows
+everything on the landing and docs origins and disallows the cabinet origin
+(except `/docs` when the docs live there); `/sitemap.xml` on the landing
+origin lists the landing and all docs pages, using `TERMOSO_LANDING_URL` /
+`TERMOSO_DOCS_URL` when set.
+
 ### WebAuthn, App Links, SSO
 
 * `TERMOSO_WEBAUTHN__RP_ID` must be the registrable domain of

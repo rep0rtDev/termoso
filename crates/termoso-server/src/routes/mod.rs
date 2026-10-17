@@ -253,10 +253,19 @@ pub fn router(state: AppState) -> Router {
         app = app.merge(crate::openapi::swagger());
     }
     if let Some(dir) = state.cfg.web_dir() {
+        let seo = web::Seo::load(
+            &dir,
+            web::Origins {
+                web: state.cfg.web_url().trim_end_matches('/').to_string(),
+                landing: state.cfg.landing_url().map(str::to_string),
+                docs: state.cfg.docs_url().map(str::to_string),
+            },
+        );
         app = app.merge(web::router(
             dir,
             state.cfg.landing_on_cabinet(),
             state.cfg.docs,
+            seo,
         ));
     }
 

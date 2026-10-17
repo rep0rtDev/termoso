@@ -53,6 +53,8 @@ Never enable `TERMOSO_TRUST_PROXY` on a server that is reachable without the pro
 | Docs on their own domain | `TERMOSO_DOCS_URL=https://docs.example.com`                                                                                            | `docs.example.com` serves the documentation; `/docs` elsewhere redirects there. `TERMOSO_DOCS=false` hides the docs entirely |
 | Landing on the apex      | `TERMOSO_PUBLIC_URL=https://app.example.com`<br>`TERMOSO_WEB_URL=https://app.example.com`<br>`TERMOSO_LANDING_URL=https://example.com` | `example.com` serves the landing and `/docs`; every other path redirects to `app.example.com`                                |
 
+The landing and the docs pages ship with real `<title>`, description, canonical and Open Graph tags (image `/og.png`) rendered once at start-up, so search engines and link previews work without JavaScript. Cabinet routes are `noindex`; `/robots.txt` and `/sitemap.xml` follow the layout above, pointing at `TERMOSO_LANDING_URL` / `TERMOSO_DOCS_URL` when set.
+
 ## Passkeys, App Links, SSO
 
 - `TERMOSO_WEBAUTHN__RP_ID` must be the registrable domain of `TERMOSO_PUBLIC_URL`. Keep the `tauri://localhost,http://tauri.localhost` origins so the desktop app can use passkeys.
