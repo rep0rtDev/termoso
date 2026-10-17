@@ -1571,7 +1571,11 @@ async fn team_activity_digest_is_opt_in_per_admin() {
     // Monday morning (weekly); each subscription is mailed exactly once, and a
     // second instance running the same tick finds nothing left to claim.
     let (smtp, _) = smtp_config().await.expect("mailpit");
-    let mailer = termoso_server::mail::Mailer::new(&smtp, "Termoso Test").expect("mailer");
+    let mail_cfg = termoso_server::config::Config {
+        server_name: "Termoso Test".into(),
+        ..Default::default()
+    };
+    let mailer = termoso_server::mail::Mailer::new(&smtp, &mail_cfg).expect("mailer");
     let db = sqlx::PgPool::connect(&s.database_url).await.expect("db");
     let today = chrono::Utc::now().date_naive();
     let at_8 = |d: chrono::NaiveDate| d.and_hms_opt(8, 0, 0).expect("time").and_utc();

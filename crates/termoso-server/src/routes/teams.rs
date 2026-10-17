@@ -813,21 +813,25 @@ pub async fn create_invite(
             .fetch_one(&state.db)
             .await?;
         let inviter = users::by_id(&state.db, auth.user_id()).await?;
-        let text = format!(
-            "{} invited you to join the team \"{}\" on {}.\n\nOpen this link to accept:\n\n    {}\n\nThe invitation expires in {} days.",
-            inviter
-                .display_name
-                .clone()
-                .unwrap_or(inviter.email.clone()),
-            team_name,
-            state.cfg.server_name,
-            url,
-            INVITE_DAYS
-        );
-        if let Err(e) = mailer
-            .send(&email, &format!("Invitation to {team_name}"), &text)
-            .await
-        {
+        let inviter = inviter
+            .display_name
+            .clone()
+            .unwrap_or(inviter.email.clone());
+        let email_msg = crate::mail::Email::new(
+            format!("Invitation to {team_name}"),
+            format!("Join \"{team_name}\""),
+        )
+        .preheader(format!("{inviter} invited you to {team_name} on {}.", state.cfg.server_name))
+        .paragraph(format!(
+            "{inviter} invited you to join the team \"{team_name}\" on {}. Accept to get access to the team's shared vaults and hosts.",
+            state.cfg.server_name
+        ))
+        .button("Accept invitation", &url)
+        .outro(format!("The invitation expires in {INVITE_DAYS} days."))
+        .note(format!(
+            "Not expecting this? You can ignore the email — nothing is shared with you until you accept, and {inviter} is not notified."
+        ));
+        if let Err(e) = mailer.send(&email, &email_msg).await {
             tracing::warn!(error = %e, "could not send invite email");
         }
     }

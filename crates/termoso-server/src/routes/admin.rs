@@ -449,12 +449,14 @@ pub async fn test_email(
         .ok_or_else(|| Error::feature_disabled("Email"))?;
     let to =
         crate::util::normalize_email(&req.to).ok_or_else(|| Error::bad_request("Invalid email"))?;
+    let email = crate::mail::Email::new(
+        format!("{}: test email", state.cfg.server_name),
+        "Outgoing email works",
+    )
+    .paragraph("If you can read this, outgoing email from your Termoso server works.")
+    .outro("This message was requested from the admin settings; nothing else is configured by it.");
     mailer
-        .send(
-            &to,
-            &format!("{}: test email", state.cfg.server_name),
-            "If you can read this, outgoing email from your Termoso server works.",
-        )
+        .send(&to, &email)
         .await
         .map_err(|e| Error::bad_request(format!("Sending failed: {e}")))
         .map(NoContent::from)
