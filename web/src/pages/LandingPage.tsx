@@ -25,6 +25,9 @@ import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
 import HistoryOutlinedIcon from "@mui/icons-material/HistoryOutlined";
 import DevicesOutlinedIcon from "@mui/icons-material/DevicesOutlined";
+import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import { Drawer, IconButton, List, ListItemButton, ListItemText, Divider } from "@mui/material";
 import { Link as RouterLink } from "react-router";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/layout/ThemeToggle";
@@ -828,6 +831,7 @@ export function LandingPage() {
   const info = useServerInfo();
   const registrationOpen = info.data?.registration_open !== false;
   const [open, setOpen] = useState<number | null>(0);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const primaryCta = session ? (
     <CabinetButton
@@ -916,6 +920,13 @@ export function LandingPage() {
           </Stack>
           <Box sx={{ flex: 1 }} />
           <ThemeToggle />
+          <IconButton
+            aria-label="Open menu"
+            onClick={() => setMenuOpen(true)}
+            sx={{ ml: 0.5, display: { xs: "inline-flex", md: "none" } }}
+          >
+            <MenuRoundedIcon />
+          </IconButton>
           {session ? (
             <CabinetButton to="/account" variant="contained" sx={{ ml: 1 }}>
               Open cabinet
@@ -926,7 +937,11 @@ export function LandingPage() {
                 Log in
               </CabinetButton>
               {registrationOpen && (
-                <CabinetButton to="/signup" variant="contained">
+                <CabinetButton
+                  to="/signup"
+                  variant="contained"
+                  sx={{ display: { xs: "none", sm: "inline-flex" } }}
+                >
                   Sign up
                 </CabinetButton>
               )}
@@ -934,6 +949,79 @@ export function LandingPage() {
           )}
         </Container>
       </Box>
+
+      <Drawer anchor="right" open={menuOpen} onClose={() => setMenuOpen(false)}>
+        <Box sx={{ width: 280, pt: 1 }} role="navigation">
+          <Box sx={{ display: "flex", alignItems: "center", px: 2, py: 1 }}>
+            <Logo size={24} />
+            <Box sx={{ flex: 1 }} />
+            <IconButton aria-label="Close menu" onClick={() => setMenuOpen(false)}>
+              <CloseRoundedIcon />
+            </IconButton>
+          </Box>
+          <List>
+            {[
+              ["Product", "#product"],
+              ["Security", "#security"],
+              ["Self-hosting", "#self-hosting"],
+              ["Download", "#download"],
+              ["FAQ", "#faq"],
+            ].map(([label, href]) => (
+              <ListItemButton
+                key={href}
+                component="a"
+                href={href}
+                onClick={() => setMenuOpen(false)}
+              >
+                <ListItemText primary={label} />
+              </ListItemButton>
+            ))}
+            {info.data?.docs !== false && (
+              <ListItemButton
+                component={info.data?.docs_url ? "a" : RouterLink}
+                {...(info.data?.docs_url ? { href: info.data.docs_url } : { to: "/docs" })}
+                onClick={() => setMenuOpen(false)}
+              >
+                <ListItemText primary="Docs" />
+              </ListItemButton>
+            )}
+            <ListItemButton component="a" href={REPO} target="_blank" rel="noreferrer">
+              <ListItemText primary="GitHub" />
+            </ListItemButton>
+          </List>
+          <Divider />
+          <List>
+            {session ? (
+              <ListItemButton
+                component={RouterLink}
+                to="/account"
+                onClick={() => setMenuOpen(false)}
+              >
+                <ListItemText primary="Open cabinet" />
+              </ListItemButton>
+            ) : (
+              <>
+                <ListItemButton
+                  component={RouterLink}
+                  to="/login"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <ListItemText primary="Log in" />
+                </ListItemButton>
+                {registrationOpen && (
+                  <ListItemButton
+                    component={RouterLink}
+                    to="/signup"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <ListItemText primary="Sign up" />
+                  </ListItemButton>
+                )}
+              </>
+            )}
+          </List>
+        </Box>
+      </Drawer>
 
       <Box component="main">
         {/* Hero */}

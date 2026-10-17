@@ -17,6 +17,11 @@ export function LoginPage() {
   const next = useNextPath();
   const location = useLocation();
   const sso = (location.state as { sso?: SsoLoginState } | null)?.sso;
+  const [sessionEnded] = useState(() => {
+    const ended = sessionStorage.getItem("termoso.session_ended") === "1";
+    sessionStorage.removeItem("termoso.session_ended");
+    return ended;
+  });
   const info = useServerInfo();
 
   const [email, setEmail] = useState(sso?.email ?? "");
@@ -65,6 +70,12 @@ export function LoginPage() {
         }
       />
       <Stack spacing={2}>
+        {sessionEnded && !error && (
+          <Alert severity="info">
+            Your session ended — you signed in on this device again or it was revoked. Sign in to
+            continue.
+          </Alert>
+        )}
         {error && <Alert severity="error">{error}</Alert>}
         <TextField
           label="Email"

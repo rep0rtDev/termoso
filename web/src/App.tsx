@@ -10,7 +10,10 @@ import { SnackbarProvider } from "./components/Snackbar";
 
 configureClient({
   token: authStore.token,
-  onUnauthorized: () => authStore.signOut(),
+  onUnauthorized: () => {
+    if (authStore.get().session) sessionStorage.setItem("termoso.session_ended", "1");
+    authStore.signOut();
+  },
 });
 
 export function App() {
