@@ -13,6 +13,8 @@ Sessions in the bar are the ones of the current vault; two-finger swipe left or 
 
 ## Key panel
 
+On a phone in portrait the compact bar keeps the scrolling key strip, the panel toggle and the keyboard button; **Ask AI**, hidden input, file attach, voice input and paste live under the **⋯** button so the keys themselves never shrink. On tablets and in landscape all of them sit inline.
+
 Expand the panel for rows of extra keys: arrows and editing keys, navigation (Home, End, PgUp, PgDn), symbols, brackets, F1–F12 and a **tmux** row with the common <kbd>Ctrl</kbd>-<kbd>B</kbd> chords (new window, next, previous, detach, split, zoom, copy mode…). The expanded bar also holds **Snippets**, **History & themes**, **Ask AI** and **Compose**.
 
 ![Extra key rows](/docs/img/android-key-panel.png)

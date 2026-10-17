@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -65,11 +66,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -94,15 +95,15 @@ import com.termoso.android.ui.shell.ShellViewModel
 import com.termoso.android.ui.terminal.copyToClipboard
 import com.termoso.android.ui.vault.vaultLabel
 import com.termoso.core.HostDraft
-import com.termoso.core.VaultKind
-import com.termoso.core.VaultAccess
 import com.termoso.core.HostKeyPinItem
 import com.termoso.core.IdentityItem
 import com.termoso.core.InheritedInfo
 import com.termoso.core.QuickTarget
 import com.termoso.core.TagItem
 import com.termoso.core.TelnetDraft
+import com.termoso.core.VaultAccess
 import com.termoso.core.VaultInfo
+import com.termoso.core.VaultKind
 import com.termoso.core.WebDavDraft
 import com.termoso.core.moshDefaultServerCommand
 import kotlinx.coroutines.launch
@@ -958,7 +959,7 @@ private fun TlsBlock(vm: HostEditorViewModel, webdav: WebDavDraft) {
             placeholder = stringResource(R.string.begin_certificate_placeholder),
             minLines = 3,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(onClick = {
                 pasteText(context)?.let { text -> vm.updateWebdav { it.copy(caCertificate = text.trim().ifEmpty { null }) } }
                     ?: vm.showError(str(R.string.clipboard_is_empty))
@@ -1041,7 +1042,7 @@ private fun ClientCertificateBlock(vm: HostEditorViewModel, state: HostEditorSta
                     placeholder = if (saved != null && webdav.clientKey == null) stringResource(R.string.webdav_client_key_kept) else stringResource(R.string.begin_private_key_placeholder),
                     minLines = 3,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { pasteText(context)?.let(vm::importClientPem) ?: vm.showError(str(R.string.clipboard_is_empty)) }) {
                         Icon(Icons.Filled.ContentPaste, contentDescription = null, Modifier.height(18.dp))
                         Text(stringResource(R.string.paste))

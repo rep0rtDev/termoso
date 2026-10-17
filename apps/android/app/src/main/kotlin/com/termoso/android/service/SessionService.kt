@@ -20,6 +20,7 @@ import com.termoso.android.MainActivity
 import com.termoso.android.R
 import com.termoso.android.str
 import com.termoso.android.ui.components.DistroIcons
+import com.termoso.android.ui.components.SvgPath
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -202,7 +203,7 @@ class SessionService : Service() {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
         paint.color = icon.color.toArgb()
         canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
-        val path = runCatching { PathParser.createPathFromPathData(icon.path) }.getOrNull() ?: return bitmap
+        val path = runCatching { PathParser.createPathFromPathData(SvgPath.normalize(icon.path)) }.getOrNull() ?: return bitmap
         val scale = size * 0.6f / 24f
         path.transform(Matrix().apply { setScale(scale, scale); postTranslate(size * 0.2f, size * 0.2f) })
         paint.color = 0xFFFFFFFF.toInt()

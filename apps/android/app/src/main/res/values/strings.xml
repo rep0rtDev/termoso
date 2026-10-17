@@ -1441,6 +1441,8 @@
     <string name="tmux">tmux</string>
     <string name="discover_on_local_network">Discover on local network</string>
     <string name="looking_for_ssh_servers">Looking for SSH servers advertised over mDNS…</string>
+    <string name="rescan">Rescan</string>
+    <string name="no_ssh_servers_found">No SSH servers found on this network.</string>
     <string name="try_again_in_n_seconds">Try again in %1$d s</string>
     <string name="wrong_code">Wrong code</string>
     <string name="draw_your_pattern">Draw your pattern</string>

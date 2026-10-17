@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -21,9 +22,12 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.termoso.android.R
+import kotlinx.coroutines.delay
 
 /** An SSH server advertised over mDNS/Bonjour on the local network. */
 data class DiscoveredHost(val name: String, val address: String, val port: Int) {
@@ -41,6 +46,9 @@ data class DiscoveredHost(val name: String, val address: String, val port: Int) 
 }
 
 private val SERVICE_TYPES = listOf("_ssh._tcp.", "_sftp-ssh._tcp.")
+
+/** How long the spinner runs; browsing keeps going quietly afterwards until Rescan or dismiss. */
+private const val SCAN_WINDOW_MS = 12_000L
 
 /**
  * Browses the local network for `_ssh._tcp` / `_sftp-ssh._tcp` services (Termius "Discover")
@@ -52,8 +60,15 @@ fun DiscoverSheet(onPick: (String) -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val found = remember { mutableStateListOf<DiscoveredHost>() }
     var error by remember { mutableStateOf<String?>(null) }
+    var generation by remember { mutableIntStateOf(0) }
+    var scanning by remember { mutableStateOf(true) }
 
-    DisposableEffect(Unit) {
+    LaunchedEffect(generation) {
+        scanning = true
+        delay(SCAN_WINDOW_MS)
+        scanning = false
+    }
+    DisposableEffect(generation) {
         val nsd = context.getSystemService(Context.NSD_SERVICE) as NsdManager
         val listeners = SERVICE_TYPES.map { type ->
             object : NsdManager.DiscoveryListener {
@@ -86,10 +101,18 @@ fun DiscoverSheet(onPick: (String) -> Unit, onDismiss: () -> Unit) {
             Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.discover_on_local_network), style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.weight(1f))
-                if (error == null) CircularProgressIndicator(Modifier.height(18.dp), strokeWidth = 2.dp)
+                when {
+                    error != null -> {}
+                    scanning -> CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    else -> TextButton(onClick = { generation++ }) { Text(stringResource(R.string.rescan)) }
+                }
             }
             Spacer(Modifier.height(8.dp))
-            val hint = error ?: if (found.isEmpty()) stringResource(R.string.looking_for_ssh_servers) else null
+            val hint = error ?: when {
+                found.isNotEmpty() -> null
+                scanning -> stringResource(R.string.looking_for_ssh_servers)
+                else -> stringResource(R.string.no_ssh_servers_found)
+            }
             if (hint != null) {
                 Text(hint, Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
