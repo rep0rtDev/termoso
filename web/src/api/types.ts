@@ -425,6 +425,7 @@ export interface AdminUser {
   email: string;
   email_verified: boolean;
   display_name?: string;
+  avatar?: string;
   is_admin: boolean;
   disabled: boolean;
   mfa_enabled: boolean;

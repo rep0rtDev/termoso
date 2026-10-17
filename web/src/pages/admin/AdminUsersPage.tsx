@@ -123,13 +123,25 @@ export function AdminUsersPage() {
                       selected={selected === u.id}
                     >
                       <TableCell>
-                        <UserCell userId={u.id} email={u.email} displayName={u.display_name} />
+                        <UserCell
+                          userId={u.id}
+                          email={u.email}
+                          displayName={u.display_name}
+                          avatar={u.avatar}
+                        />
                       </TableCell>
                       <TableCell>
                         <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: "wrap" }}>
                           {u.is_admin && <Chip size="small" color="primary" label="Admin" />}
                           {u.disabled && <Chip size="small" color="error" label="Disabled" />}
-                          {!u.email_verified && (
+                          {u.email_verified ? (
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              color="success"
+                              label="Verified"
+                            />
+                          ) : (
                             <Chip
                               size="small"
                               variant="outlined"
