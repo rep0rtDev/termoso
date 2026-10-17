@@ -214,8 +214,17 @@ pub struct HostDraft {
 /// never inherited from the SSH identity.
 #[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
 pub struct WebDavDraft {
-    /// `http(s)://host[:port]/path/`; trimmed and normalised on save.
-    pub url: String,
+    /// TCP port; `None` = 443 (80 with `http`).
+    pub port: Option<u16>,
+    /// Collection path below the host's address (`/remote.php/dav/files/alice/`); empty = `/`.
+    pub path: String,
+    /// Plain HTTP instead of HTTPS.
+    pub http: bool,
+    /// TLS: name sent as SNI and checked against the certificate when it
+    /// differs from the address (reverse proxy reached by IP, name not in DNS).
+    pub tls_server_name: Option<String>,
+    /// TLS: PEM bundle of a private CA to trust instead of the system roots.
+    pub ca_certificate: Option<String>,
     pub username: String,
     /// `None` keeps the stored password when editing; `Some("")` clears it.
     pub password: Option<String>,
@@ -243,7 +252,11 @@ pub struct WebDavDraft {
 impl From<hosts::WebDavForm> for WebDavDraft {
     fn from(w: hosts::WebDavForm) -> Self {
         Self {
-            url: w.url,
+            port: w.port,
+            path: w.path,
+            http: w.http,
+            tls_server_name: w.tls_server_name,
+            ca_certificate: w.ca_certificate,
             username: w.username,
             password: None,
             identity_id: w.identity_id.map(|i| i.to_string()),
@@ -435,7 +448,17 @@ impl HostDraft {
             Some(w) => {
                 let stored = base.webdav.take().unwrap_or_default();
                 Some(hosts::WebDavForm {
-                    url: w.url.trim().to_string(),
+                    port: w.port,
+                    path: w.path.trim().to_string(),
+                    http: w.http,
+                    tls_server_name: w
+                        .tls_server_name
+                        .map(|n| n.trim().to_string())
+                        .filter(|n| !n.is_empty()),
+                    ca_certificate: w
+                        .ca_certificate
+                        .map(|c| c.trim().to_string())
+                        .filter(|c| !c.is_empty()),
                     username: w.username.trim().to_string(),
                     password: w.password,
                     identity_id: parse_opt_id(&w.identity_id)?,

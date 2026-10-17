@@ -76,6 +76,12 @@ class SftpConnection(
     private val bridge: SftpBridge,
     /** Scratch directory for downloads on their way to SAF / "Open with" and for uploads on their way in. */
     val cacheDir: File,
+    /**
+     * Opened by the documents provider for another app, not by the user in
+     * Termoso: stays out of the shade notification (it closes itself when
+     * idle) while still showing up in Connections.
+     */
+    val background: Boolean = false,
 ) {
     val protocol: FileProtocol = rust.protocol()
     val capabilities: FileCapabilities = rust.capabilities()
@@ -132,7 +138,7 @@ class SftpManager(
      * credentials. [protocol] picks the section when the host has both; `null`
      * means the primary one (WebDAV only for WebDAV-only hosts).
      */
-    suspend fun openHost(hostId: String, vaultId: String, protocol: FileProtocol? = null): SftpConnection {
+    suspend fun openHost(hostId: String, vaultId: String, protocol: FileProtocol? = null, background: Boolean = false): SftpConnection {
         val host: HostItem = repo.read { host(hostId) }
         val wanted = protocol ?: defaultProtocol(host)
         val bridge = SftpBridge()
@@ -153,6 +159,7 @@ class SftpManager(
                 rust = rust,
                 bridge = bridge,
                 cacheDir = cacheFor(rust.id()),
+                background = background,
             ),
         )
     }
@@ -181,7 +188,7 @@ class SftpManager(
      * start in). Paths stay inside it; nothing else under the app's private
      * storage is reachable.
      */
-    suspend fun openLocal(): SftpConnection {
+    suspend fun openLocal(background: Boolean = false): SftpConnection {
         val bridge = SftpBridge()
         withContext(Dispatchers.IO) { localHome.mkdirs() }
         val rust = repo.read { localFiles(localHome.absolutePath, bridge) }
@@ -197,6 +204,7 @@ class SftpManager(
                 rust = rust,
                 bridge = bridge,
                 cacheDir = cacheFor(rust.id()),
+                background = background,
             ),
         )
     }

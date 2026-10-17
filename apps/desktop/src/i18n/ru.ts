@@ -1620,6 +1620,19 @@ export const ru: Readonly<Record<string, string>> = {
   "Serial Port": "Serial-порт",
   "Server URL": "URL сервера",
   "Server certificate fingerprint": "Отпечаток сертификата сервера",
+  Port: "Порт",
+  Path: "Путь",
+  "The share is reached at the host's address above; the port defaults to 443 (80 over plain HTTP).":
+    "Шара доступна по адресу хоста выше; порт по умолчанию 443 (80 для обычного HTTP).",
+  "Plain HTTP (no TLS)": "Обычный HTTP (без TLS)",
+  "Server name (SNI)": "Имя сервера (SNI)",
+  "Only when the certificate is issued to a different name than the address — a share behind a reverse proxy reached by IP, or a name that is not in DNS. Sent as SNI and Host and checked against the certificate.":
+    "Только если сертификат выдан на другое имя, чем адрес: шара за обратным прокси по IP или имя, которого нет в DNS. Отправляется как SNI и Host и сверяется с сертификатом.",
+  "Certificate authority (PEM)": "Удостоверяющий центр (PEM)",
+  "Your own CA that signed the server certificate, instead of the system trust store. Several certificates may follow one another.":
+    "Собственный УЦ, подписавший сертификат сервера, вместо системного хранилища. Сертификатов может быть несколько подряд.",
+  "Alternatively pin exactly one server certificate by its SHA-256; a pin takes precedence over the CA. Left empty with no CA, the system trust store decides and an unknown certificate is offered on first connect.":
+    "Либо закрепите ровно один сертификат сервера по SHA-256; пин имеет приоритет над УЦ. Если пусто и УЦ не задан — решает системное хранилище, а незнакомый сертификат предлагается при первом подключении.",
   "Server key": "Ключ сервера",
   "Server unreachable · working offline": "Сервер недоступен · работаем офлайн",
   "Server unreachable — working offline": "Сервер недоступен — работаем офлайн",

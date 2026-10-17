@@ -34,11 +34,34 @@ With a remote host in both panes, drag from one to the other — or **Copy to ta
 
 ## WebDAV
 
-A host can carry a WebDAV endpoint next to (or instead of) SSH: **Add WebDAV** in the host details, with the URL and Basic or Digest credentials. The browser is the same. A self-signed certificate can be pinned on first use instead of being rejected, and the pin is stored with the host in the vault.
+A host can carry a WebDAV share next to (or instead of) SSH: **Add WebDAV** in the host details. The share lives at the host's **address** — the same one SSH uses — so the section only asks for what differs from SSH:
+
+| Field | Meaning |
+| --- | --- |
+| **Port** | TCP port; empty means 443, or 80 when plain HTTP is on. |
+| **Path** | The collection below the server root, e.g. `/remote.php/dav/files/alice/` for Nextcloud or `/dav/` for a bare server. Empty means `/`. |
+| **Plain HTTP** | Talk HTTP without TLS. Only for a share on the local network or behind a tunnel — credentials travel in the clear. |
+| **Authentication** | Basic/Digest (user + password) or a bearer token; both are stored in the vault, never in the host record. |
+
+The browser is the same as for SFTP, and WebDAV hosts show up in the same places (Connections, **Copy to…**, the Android Files app).
+
+### TLS
+
+The **TLS** block covers everything about trusting the server; it is hidden for plain-HTTP shares.
+
+- **Server name (SNI)** — only when the certificate is issued to a different name than the address: a share behind a reverse proxy that you reach by IP, or an internal name that is not in DNS. Termoso connects to the address, but sends this name as SNI and `Host` and checks the certificate against it.
+- **Certificate authority (PEM)** — your own CA (one or several certificates, PEM) that signed the server certificate. With a CA set, the system trust store is not consulted; the server chain must lead to one of the pasted certificates.
+- **Server certificate fingerprint** — pins exactly one certificate by SHA-256 (`sha256:…`, bare or colon-separated hex). A pin wins over the CA and over the system roots.
+- **Client certificate** — a certificate + private key pair for mutual TLS, stored in the vault. See [Keychain](/docs/keychain/identities) for identities.
+
+With neither CA nor pin, the system trust store decides. An unknown certificate is not rejected outright: the first connection shows its fingerprint and offers to pin it, and the pin is stored with the host.
+
+> [!NOTE]
+> Hosts created before 0.8.2 carried a full WebDAV URL. They keep working as they are; opening such a host in the editor shows the URL split into address, port, path and HTTP, and saving stores the new form.
 
 ## Android
 
-Every SFTP and WebDAV host is exposed to the system **Files** app and to document pickers (Storage Access Framework) when **Settings → Files → Show SFTP hosts in Files** is on, so other apps can open and save files on your servers directly — attach a log to an e-mail, open a config in a code editor, save a photo to a server. Hosts in a locked vault are hidden until the vault is unlocked.
+Every SFTP and WebDAV host is exposed to the system **Files** app and to document pickers (Storage Access Framework) when **Settings → Files → Show SFTP hosts in Files** is on, so other apps can open and save files on your servers directly — attach a log to an e-mail, open a config in a code editor, save a photo to a server. Hosts in a locked vault are hidden until the vault is unlocked. Connections that another app opens this way run quietly: they do not appear as cards in the notification shade and close on their own after a few minutes idle; only sessions you open in Termoso itself are listed there.
 
 The in-app browser has the same transfer queue with pause and resume, **Copy to…** between hosts, and uploads from the phone's storage or the camera. Open it from a session's **⋮ → Open SFTP**, from **Connections**, or from the host's menu.
 

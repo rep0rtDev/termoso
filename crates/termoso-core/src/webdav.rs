@@ -9,6 +9,7 @@
 //! is `…/files/me/Photos/a.jpg` on the wire.
 
 use std::future::Future;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -60,6 +61,9 @@ pub enum TlsPolicy {
     /// (`aa:bb:…`, case-insensitive, colons optional), whatever chain it
     /// comes with. For self-signed / private-CA servers.
     Pinned(String),
+    /// Trust certificates chaining to the authorities in this PEM bundle
+    /// (one or more `CERTIFICATE` blocks) instead of the public roots.
+    PrivateCa(String),
 }
 
 /// Client certificate + private key presented to servers that require mTLS.
@@ -213,6 +217,15 @@ pub struct WebDavConfig {
     pub bearer_token: Option<String>,
     /// Certificate policy.
     pub tls: TlsPolicy,
+    /// Name sent as SNI, used as the `Host` header and checked against the
+    /// certificate when it differs from the URL's host: the TCP connection
+    /// still goes to the URL's host (an IP, or a name the certificate does
+    /// not carry). `None` = the URL's host.
+    pub server_name: Option<String>,
+    /// Addresses of the URL's host when `server_name` redirects the name
+    /// check; [`WebDav::connect`] fills them asynchronously, [`WebDav::new`]
+    /// falls back to a blocking lookup when they are missing.
+    pub resolved_addrs: Option<Vec<SocketAddr>>,
     /// Client certificate for servers that require mTLS.
     pub client_identity: Option<ClientIdentity>,
     /// TCP + TLS connect deadline.
@@ -231,6 +244,8 @@ impl Default for WebDavConfig {
             password: None,
             bearer_token: None,
             tls: TlsPolicy::System,
+            server_name: None,
+            resolved_addrs: None,
             client_identity: None,
             connect_timeout: Duration::from_secs(20),
             spool_dir: None,
@@ -246,6 +261,8 @@ impl std::fmt::Debug for WebDavConfig {
             .field("password", &self.password.as_ref().map(|_| "…"))
             .field("bearer_token", &self.bearer_token.as_ref().map(|_| "…"))
             .field("tls", &self.tls)
+            .field("server_name", &self.server_name)
+            .field("resolved_addrs", &self.resolved_addrs)
             .field("client_identity", &self.client_identity)
             .field("connect_timeout", &self.connect_timeout)
             .field("spool_dir", &self.spool_dir)
@@ -751,12 +768,90 @@ fn tls_config_with(
     Ok(cfg)
 }
 
-fn http_client(cfg: &WebDavConfig, tls: Option<rustls::ClientConfig>) -> Result<reqwest::Client> {
+/// Where the TCP connection goes and under which name the TLS handshake
+/// runs: the URL as configured, or — with a `server_name` that differs from
+/// the URL's host — the URL rewritten to that name plus the addresses the
+/// original host resolves to, so SNI, `Host` and the certificate check all
+/// use the name while the socket still opens to the address.
+struct Target {
+    base: Url,
+    resolve: Option<(String, Vec<SocketAddr>)>,
+}
+
+/// The TLS name check should use `server_name` rather than the URL's host?
+fn name_override(cfg: &WebDavConfig, base: &Url) -> Option<String> {
+    let name = cfg.server_name.as_deref()?.trim();
+    if name.is_empty()
+        || base
+            .host_str()
+            .is_some_and(|h| h.eq_ignore_ascii_case(name))
+    {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+/// Does `cfg` need the URL host resolved before the client can be built?
+fn needs_lookup(cfg: &WebDavConfig) -> Option<(String, u16)> {
+    let base = normalize_url(&cfg.url).ok()?;
+    name_override(cfg, &base)?;
+    match base.host()? {
+        url::Host::Domain(d) => Some((d.to_string(), base.port_or_known_default().unwrap_or(443))),
+        _ => None,
+    }
+}
+
+fn target(cfg: &WebDavConfig) -> Result<Target> {
+    let mut base = normalize_url(&cfg.url)?;
+    let Some(name) = name_override(cfg, &base) else {
+        return Ok(Target {
+            base,
+            resolve: None,
+        });
+    };
+    validate_server_name(&name)?;
+    let port = base.port_or_known_default().unwrap_or(443);
+    let addrs: Vec<SocketAddr> = match base.host() {
+        Some(url::Host::Ipv4(ip)) => vec![SocketAddr::new(ip.into(), port)],
+        Some(url::Host::Ipv6(ip)) => vec![SocketAddr::new(ip.into(), port)],
+        Some(url::Host::Domain(d)) => match &cfg.resolved_addrs {
+            Some(a) if !a.is_empty() => a.clone(),
+            _ => std::net::ToSocketAddrs::to_socket_addrs(&(d, port))
+                .map_err(|e| webdav_err(None, format!("cannot resolve {d}: {e}")))?
+                .collect(),
+        },
+        None => return Err(CoreError::Invalid("URL has no host".into())),
+    };
+    if addrs.is_empty() {
+        return Err(webdav_err(
+            None,
+            format!(
+                "{} does not resolve to any address",
+                base.host_str().unwrap_or("")
+            ),
+        ));
+    }
+    base.set_host(Some(&name))
+        .map_err(|_| CoreError::Invalid(format!("bad TLS server name {name:?}")))?;
+    Ok(Target {
+        base,
+        resolve: Some((name, addrs)),
+    })
+}
+
+fn http_client(
+    cfg: &WebDavConfig,
+    tls: Option<rustls::ClientConfig>,
+    resolve: Option<&(String, Vec<SocketAddr>)>,
+) -> Result<reqwest::Client> {
     let mut b = reqwest::Client::builder()
         .connect_timeout(cfg.connect_timeout)
         .redirect(reqwest::redirect::Policy::none())
         .user_agent(concat!("Termoso/", env!("CARGO_PKG_VERSION")))
         .http1_only();
+    if let Some((name, addrs)) = resolve {
+        b = b.resolve_to_addrs(name, addrs);
+    }
     match tls {
         // A preconfigured config carries the client certificate itself.
         Some(tls) => b = b.use_preconfigured_tls(tls),
@@ -817,8 +912,16 @@ fn is_tls_error(e: &reqwest::Error) -> bool {
 
 /// Fetch the SHA-256 fingerprint of the certificate `url`'s server presents,
 /// without trusting it. For the "trust this certificate?" prompt.
-pub async fn probe_certificate(url: &str, connect_timeout: Duration) -> Result<String> {
-    let base = normalize_url(url)?;
+pub async fn probe_certificate(cfg: &WebDavConfig) -> Result<String> {
+    let cfg = WebDavConfig {
+        username: None,
+        password: None,
+        bearer_token: None,
+        tls: TlsPolicy::System,
+        client_identity: None,
+        ..cfg.clone()
+    };
+    let Target { base, resolve } = target(&cfg)?;
     if base.scheme() != "https" {
         return Err(CoreError::Invalid("not an https URL".into()));
     }
@@ -826,12 +929,11 @@ pub async fn probe_certificate(url: &str, connect_timeout: Duration) -> Result<S
         seen: std::sync::Mutex::new(None),
         provider: Arc::new(rustls::crypto::ring::default_provider()),
     });
-    let cfg = WebDavConfig {
-        url: url.into(),
-        connect_timeout,
-        ..Default::default()
-    };
-    let client = http_client(&cfg, Some(tls_config_with(verifier.clone(), None)?))?;
+    let client = http_client(
+        &cfg,
+        Some(tls_config_with(verifier.clone(), None)?),
+        resolve.as_ref(),
+    )?;
     // The response does not matter; the handshake does.
     let _ = client.request(method("OPTIONS"), base).send().await;
     verifier
@@ -869,6 +971,135 @@ pub fn normalize_url(url: &str) -> Result<Url> {
         u.set_path(&p);
     }
     Ok(u)
+}
+
+/// Root store built from a PEM bundle of CA certificates.
+fn ca_roots(pem: &str) -> Result<rustls::RootCertStore> {
+    let mut roots = rustls::RootCertStore::empty();
+    for c in CertificateDer::pem_slice_iter(pem.as_bytes()) {
+        let c = c.map_err(|e| CoreError::Invalid(format!("CA certificate: {e}")))?;
+        roots
+            .add(c)
+            .map_err(|e| CoreError::Invalid(format!("CA certificate: {e}")))?;
+    }
+    if roots.is_empty() {
+        return Err(CoreError::Invalid(
+            "CA certificate: no CERTIFICATE block found".into(),
+        ));
+    }
+    Ok(roots)
+}
+
+/// A DER certificate as a PEM `CERTIFICATE` block.
+pub fn pem_of(der: &[u8]) -> String {
+    pem_block("CERTIFICATE", &CertificateDer::from(der.to_vec()))
+}
+
+/// Check a PEM CA bundle parses; returns how many certificates it holds.
+pub fn validate_ca_bundle(pem: &str) -> Result<usize> {
+    Ok(ca_roots(pem)?.len())
+}
+
+/// Check a TLS server name (a DNS name or an IP literal) and return it
+/// trimmed and lower-cased.
+pub fn validate_server_name(name: &str) -> Result<String> {
+    let name = name.trim().to_ascii_lowercase();
+    if name.is_empty() {
+        return Err(CoreError::Invalid("TLS server name is empty".into()));
+    }
+    ServerName::try_from(name.clone())
+        .map_err(|_| CoreError::Invalid(format!("bad TLS server name {name:?}")))?;
+    Ok(name)
+}
+
+/// Normalise a collection path: leading and trailing slash, `/` when empty.
+pub fn normalize_share_path(path: &str) -> String {
+    let p = path.trim().trim_matches('/');
+    if p.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{p}/")
+    }
+}
+
+/// Share URL of a host's WebDAV section: the host's address with the
+/// section's scheme, port and path — or the full URL older entries stored.
+pub fn share_url(address: &str, section: &crate::model::WebDavConfig) -> Result<Url> {
+    if !section.url.trim().is_empty() {
+        return normalize_url(&section.url);
+    }
+    let address = address.trim();
+    if address.is_empty() {
+        return Err(CoreError::Invalid("address is required".into()));
+    }
+    let host = if address.contains(':') && !address.starts_with('[') {
+        format!("[{address}]")
+    } else {
+        address.to_string()
+    };
+    let scheme = if section.http { "http" } else { "https" };
+    let default_port = if section.http { 80 } else { 443 };
+    let port = match section.port {
+        Some(p) if p != default_port => format!(":{p}"),
+        _ => String::new(),
+    };
+    normalize_url(&format!(
+        "{scheme}://{host}{port}{}",
+        normalize_share_path(&section.path)
+    ))
+}
+
+/// Host, port, scheme and path of a share URL, for turning an older stored
+/// URL into the per-field form.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharePieces {
+    /// Host name or IP as written in the URL.
+    pub host: String,
+    /// Explicit port only; `None` when the URL used the scheme default.
+    pub port: Option<u16>,
+    /// `http://` rather than `https://`.
+    pub http: bool,
+    /// Normalised collection path (`/` or `/a/b/`).
+    pub path: String,
+}
+
+/// Split a share URL into [`SharePieces`].
+pub fn split_share_url(url: &str) -> Result<SharePieces> {
+    let u = normalize_url(url)?;
+    let host = match u.host() {
+        Some(url::Host::Ipv6(ip)) => ip.to_string(),
+        Some(h) => h.to_string(),
+        None => return Err(CoreError::Invalid("URL has no host".into())),
+    };
+    Ok(SharePieces {
+        host,
+        port: u.port(),
+        http: u.scheme() == "http",
+        path: normalize_share_path(&percent_decode(u.path())),
+    })
+}
+
+/// Runtime connection parameters for a host's WebDAV section: URL from the
+/// address and section, certificate policy from the pin or CA it carries
+/// (a pin wins), SNI / name override from `tls_server_name`. Credentials
+/// come separately through [`WebDavConfig::with_identity`].
+pub fn config_for(address: &str, section: &crate::model::WebDavConfig) -> Result<WebDavConfig> {
+    let tls = match (&section.certificate_fingerprint, &section.ca_certificate) {
+        (Some(fp), _) if !fp.trim().is_empty() => TlsPolicy::Pinned(fp.clone()),
+        (_, Some(ca)) if !ca.trim().is_empty() => TlsPolicy::PrivateCa(ca.clone()),
+        _ => TlsPolicy::System,
+    };
+    Ok(WebDavConfig {
+        url: share_url(address, section)?.to_string(),
+        tls,
+        server_name: section
+            .tls_server_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .map(str::to_string),
+        ..Default::default()
+    })
 }
 
 /// A property set the server returned for one resource.
@@ -1051,7 +1282,8 @@ impl std::fmt::Debug for WebDav {
 impl WebDav {
     /// Build a client without touching the network.
     pub fn new(cfg: WebDavConfig) -> Result<Self> {
-        let base = normalize_url(&cfg.url)?;
+        let origin = normalize_url(&cfg.url)?;
+        let Target { base, resolve } = target(&cfg)?;
         let tls = match &cfg.tls {
             TlsPolicy::System => None,
             TlsPolicy::Pinned(fp) => {
@@ -1064,11 +1296,22 @@ impl WebDav {
                     cfg.client_identity.as_ref(),
                 )?)
             }
+            TlsPolicy::PrivateCa(pem) => {
+                let provider = Arc::new(rustls::crypto::ring::default_provider());
+                let verifier = rustls::client::WebPkiServerVerifier::builder_with_provider(
+                    Arc::new(ca_roots(pem)?),
+                    provider,
+                )
+                .build()
+                .map_err(|e| CoreError::Invalid(format!("CA certificate: {e}")))?;
+                Some(tls_config_with(verifier, cfg.client_identity.as_ref())?)
+            }
         };
-        let http = http_client(&cfg, tls)?;
-        let host = match base.port() {
-            Some(p) => format!("{}:{p}", base.host_str().unwrap_or("")),
-            None => base.host_str().unwrap_or("").to_string(),
+        let http = http_client(&cfg, tls, resolve.as_ref())?;
+        // Messages name the address the socket opens to, not the TLS name.
+        let host = match origin.port() {
+            Some(p) => format!("{}:{p}", origin.host_str().unwrap_or("")),
+            None => origin.host_str().unwrap_or("").to_string(),
         };
         let bearer_token = cfg.bearer_token.filter(|t| !t.is_empty());
         let username = cfg.username.filter(|u| !u.is_empty());
@@ -1101,9 +1344,15 @@ impl WebDav {
     /// Build and verify: the base must answer PROPFIND as a collection. A
     /// certificate the policy does not trust surfaces as
     /// [`CoreError::CertificateRejected`] carrying its fingerprint.
-    pub async fn connect(cfg: WebDavConfig) -> Result<Self> {
-        let connect_timeout = cfg.connect_timeout;
-        let url = cfg.url.clone();
+    pub async fn connect(mut cfg: WebDavConfig) -> Result<Self> {
+        if let Some((host, port)) = needs_lookup(&cfg).filter(|_| cfg.resolved_addrs.is_none()) {
+            let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), port))
+                .await
+                .map_err(|e| webdav_err(None, format!("cannot resolve {host}: {e}")))?
+                .collect();
+            cfg.resolved_addrs = Some(addrs);
+        }
+        let probe = cfg.clone();
         let dav = Self::new(cfg)?;
         match dav.stat("/").await {
             Ok(e) if e.kind == EntryKind::Dir => Ok(dav),
@@ -1112,9 +1361,7 @@ impl WebDav {
                 format!("{} is not a WebDAV collection", dav.inner.base),
             )),
             Err(CoreError::Http(e)) if dav.inner.base.scheme() == "https" && is_tls_error(&e) => {
-                let fingerprint = probe_certificate(&url, connect_timeout)
-                    .await
-                    .unwrap_or_default();
+                let fingerprint = probe_certificate(&probe).await.unwrap_or_default();
                 Err(CoreError::CertificateRejected {
                     host: dav.inner.host.clone(),
                     fingerprint,

@@ -440,7 +440,16 @@ export function emptyTelnetForm(): TelnetForm {
 }
 
 export interface WebDavForm {
-  url: string;
+  /** TCP port; null = 443 (80 with `http`). */
+  port: number | null;
+  /** Collection path below the host's address (`/remote.php/dav/files/alice/`); "" = `/`. */
+  path: string;
+  /** Plain HTTP instead of HTTPS. */
+  http: boolean;
+  /** TLS name (SNI + certificate check) when it differs from the address. */
+  tlsServerName: string | null;
+  /** PEM bundle of a private CA to trust instead of the system roots. */
+  caCertificate: string | null;
   username: string;
   /** null keeps the stored password when editing; "" clears it. */
   password: string | null;
@@ -465,7 +474,11 @@ export type WebDavAuth = "password" | "token";
 
 export function emptyWebDavForm(): WebDavForm {
   return {
-    url: "",
+    port: null,
+    path: "",
+    http: false,
+    tlsServerName: null,
+    caCertificate: null,
     username: "",
     password: null,
     identityId: null,

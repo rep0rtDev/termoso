@@ -66,7 +66,9 @@ class KeepAlive(
         val terminals = sessions.sessions.live({ it.state }) { s ->
             ActiveItem(s.id, s.label, s.target, s.detectedOs.value ?: s.savedOsName)
         }
-        val fileConnections = files.connections.live({ it.state }) { c ->
+        // Connections the documents provider opened for another app stay out
+        // of the shade: nothing to "close" from the user's point of view.
+        val fileConnections = files.connections.live({ it.state }, include = { !it.background }) { c ->
             ActiveItem(c.id, str(R.string.sftp, c.label), c.target, c.osName)
         }
         val tunnels = forwards.tunnels.map { it.keys.toList() }.distinctUntilChanged().map { ids ->
@@ -103,8 +105,13 @@ private val SessionState.live: Boolean
     get() = this is SessionState.Connecting || this is SessionState.Connected
 
 @OptIn(ExperimentalCoroutinesApi::class)
-private fun <T> StateFlow<List<T>>.live(state: (T) -> StateFlow<SessionState>, item: (T) -> ActiveItem): Flow<List<ActiveItem>> =
-    flatMapLatest { items ->
+private fun <T> StateFlow<List<T>>.live(
+    state: (T) -> StateFlow<SessionState>,
+    include: (T) -> Boolean = { true },
+    item: (T) -> ActiveItem,
+): Flow<List<ActiveItem>> =
+    flatMapLatest { all ->
+        val items = all.filter(include)
         if (items.isEmpty()) {
             flowOf(emptyList())
         } else {

@@ -422,7 +422,7 @@ fn connecting_checks_the_host_vault() {
     d.address = "127.0.0.1".into();
     d.telnet = Some(TelnetDraft::default());
     d.webdav = Some(WebDavDraft {
-        url: "https://files.example/dav".into(),
+        path: "/dav".into(),
         ..WebDavDraft::default()
     });
     let host = app.save_host(d).unwrap();

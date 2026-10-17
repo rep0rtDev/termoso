@@ -280,7 +280,7 @@ fun draftLink(d: HostDraft): String {
     return when {
         d.ssh -> hostLink("ssh", d.username, d.address.trim(), d.port?.toInt() ?: 22)
         telnet != null -> hostLink("telnet", "", d.address.trim(), telnet.port?.toInt() ?: 23)
-        webdav != null -> webdav.url.trim()
+        webdav != null -> webdavLink(d.address.trim(), webdav)
         else -> hostLink("ssh", d.username, d.address.trim(), d.port?.toInt() ?: 22)
     }
 }
@@ -321,7 +321,6 @@ private fun HostForm(
                     draft.address,
                     { v -> vm.update { it.copy(address = v) } },
                     stringResource(R.string.hostname_or_ip_address),
-                    placeholder = if (webdavOnly(draft)) stringResource(R.string.taken_from_the_webdav_url) else null,
                     keyboard = KeyboardType.Uri,
                 )
             }
@@ -379,11 +378,23 @@ private fun HostForm(
             SectionCard {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     FormField(
-                        webdav.url,
-                        { v -> vm.updateWebdav { it.copy(url = v) } },
-                        stringResource(R.string.webdav_url),
-                        placeholder = "https://cloud.example.com/remote.php/dav/files/user/",
+                        webdav.port?.toString() ?: "",
+                        { v -> vm.updateWebdav { it.copy(port = v.filter(Char::isDigit).take(5).toIntOrNull()?.takeIf { p -> p in 1..65535 }?.toUShort()) } },
+                        stringResource(R.string.webdav_port),
+                        placeholder = if (webdav.http) "80" else "443",
+                        keyboard = KeyboardType.Number,
+                    )
+                    FormField(
+                        webdav.path,
+                        { v -> vm.updateWebdav { it.copy(path = v) } },
+                        stringResource(R.string.webdav_path),
+                        placeholder = "/remote.php/dav/files/user/",
                         keyboard = KeyboardType.Uri,
+                    )
+                    Text(
+                        stringResource(R.string.webdav_path_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     WebDavAuthRow(webdav.auth) { mode -> vm.updateWebdav { it.copy(auth = mode) } }
                     if (webdav.auth == WEBDAV_AUTH_TOKEN) {
@@ -409,13 +420,6 @@ private fun HostForm(
                             onChange = { v -> vm.updateWebdav { it.copy(password = v) } },
                         )
                     }
-                    FormField(
-                        webdav.certificateFingerprint ?: "",
-                        { v -> vm.updateWebdav { it.copy(certificateFingerprint = v.ifBlank { null }) } },
-                        stringResource(R.string.certificate_fingerprint_sha_256),
-                        placeholder = stringResource(R.string.system_trust_roots),
-                        keyboard = KeyboardType.Ascii,
-                    )
                     Text(
                         stringResource(R.string.webdav_credentials_hint),
                         style = MaterialTheme.typography.bodySmall,
@@ -423,7 +427,17 @@ private fun HostForm(
                     )
                 }
                 RowDivider()
-                ClientCertificateBlock(vm, state, webdav)
+                SwitchRow(
+                    title = stringResource(R.string.webdav_plain_http),
+                    checked = webdav.http,
+                    onCheckedChange = { on -> vm.updateWebdav { it.copy(http = on) } },
+                )
+                if (!webdav.http) {
+                    RowDivider()
+                    TlsBlock(vm, webdav)
+                    RowDivider()
+                    ClientCertificateBlock(vm, state, webdav)
+                }
             }
         }
 
@@ -813,7 +827,13 @@ private fun StartupSnippetRow(state: HostEditorState, draft: HostDraft, onPick: 
     )
 }
 
-private fun webdavOnly(d: HostDraft) = !d.ssh && d.telnet == null && d.webdav != null
+/** `http(s)://address[:port]/path/` the way the core builds it from the section. */
+private fun webdavLink(address: String, w: WebDavDraft): String {
+    val scheme = if (w.http) "http" else "https"
+    val port = w.port?.let { ":$it" } ?: ""
+    val path = "/" + w.path.trim().trim('/')
+    return "$scheme://$address$port${if (path == "/") "/" else "$path/"}"
+}
 
 private fun hasAdvanced(d: HostDraft) =
     d.envVariables.isNotEmpty() || d.keepAliveInterval != null || d.timeout != null || d.notes.isNotBlank() || d.ipVersion != "auto" ||
@@ -905,6 +925,72 @@ private fun WebDavAuthRow(auth: String, onPick: (String) -> Unit) {
  * `clientCertificate == null` keeps the stored pair ([WebDavDraft.clientCertificateFingerprint]
  * says whether there is one), `""` removes it, PEM text replaces it.
  */
+@Composable
+private fun TlsBlock(vm: HostEditorViewModel, webdav: WebDavDraft) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val pickPem = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching { readTextFile(context, uri) }
+                .onSuccess { text -> vm.updateWebdav { it.copy(caCertificate = text.trim().ifEmpty { null }) } }
+                .onFailure { vm.showError(it.message ?: str(R.string.could_not_read_the_file)) }
+        }
+    }
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(stringResource(R.string.webdav_tls), style = MaterialTheme.typography.titleSmall)
+        FormField(
+            webdav.tlsServerName ?: "",
+            { v -> vm.updateWebdav { it.copy(tlsServerName = v.trim().ifEmpty { null }) } },
+            stringResource(R.string.webdav_tls_server_name),
+            placeholder = "dav.internal",
+            keyboard = KeyboardType.Uri,
+        )
+        Text(
+            stringResource(R.string.webdav_tls_server_name_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(stringResource(R.string.webdav_ca_certificate), style = MaterialTheme.typography.bodyMedium)
+        KeyTextArea(
+            value = webdav.caCertificate ?: "",
+            onChange = { v -> vm.updateWebdav { it.copy(caCertificate = v.ifBlank { null }) } },
+            placeholder = stringResource(R.string.begin_certificate_placeholder),
+            minLines = 3,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = {
+                pasteText(context)?.let { text -> vm.updateWebdav { it.copy(caCertificate = text.trim().ifEmpty { null }) } }
+                    ?: vm.showError(str(R.string.clipboard_is_empty))
+            }) {
+                Icon(Icons.Filled.ContentPaste, contentDescription = null, Modifier.height(18.dp))
+                Text(stringResource(R.string.paste))
+            }
+            TextButton(onClick = { pickPem.launch(arrayOf("*/*")) }) {
+                Icon(Icons.Filled.FolderOpen, contentDescription = null, Modifier.height(18.dp))
+                Text(stringResource(R.string.open_pem_file))
+            }
+        }
+        Text(
+            stringResource(R.string.webdav_ca_certificate_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FormField(
+            webdav.certificateFingerprint ?: "",
+            { v -> vm.updateWebdav { it.copy(certificateFingerprint = v.ifBlank { null }) } },
+            stringResource(R.string.certificate_fingerprint_sha_256),
+            placeholder = stringResource(R.string.system_trust_roots),
+            keyboard = KeyboardType.Ascii,
+        )
+        Text(
+            stringResource(R.string.webdav_fingerprint_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 @Composable
 private fun ClientCertificateBlock(vm: HostEditorViewModel, state: HostEditorState, webdav: WebDavDraft) {
     val context = LocalContext.current
