@@ -356,6 +356,10 @@ struct LoginFlow {
     server_state: String,
     device: DeviceInfo,
     sso_verified: bool,
+    /// The IdP identity that vouched for this sign-in; linked to the account
+    /// once the password checks out.
+    #[serde(default)]
+    sso: Option<sso::SsoSession>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -387,13 +391,11 @@ pub async fn login_start(
     let email = normalize_email(&req.email).ok_or_else(|| Error::bad_request("Invalid email"))?;
     ratelimit::check(&state, ratelimit::AUTH_ACCOUNT, &email).await?;
     validate_device(&req.device)?;
-    let sso_verified = match &req.sso_session {
-        Some(t) => {
-            sso::consume_session(&state, t, &email).await?;
-            true
-        }
-        None => false,
+    let sso_sess = match &req.sso_session {
+        Some(t) => Some(sso::consume_session(&state, t, &email).await?),
+        None => None,
     };
+    let sso_verified = sso_sess.is_some();
     let user = users::by_email(&state.db, &email).await?;
     let record = user.as_ref().and_then(|u| u.opaque_record.as_deref());
     let (opaque_response, server_state) =
@@ -409,6 +411,7 @@ pub async fn login_start(
             server_state: b64(&server_state),
             device: req.device,
             sso_verified,
+            sso: sso_sess,
         },
         LOGIN_TTL,
     )
@@ -450,6 +453,9 @@ pub async fn login_finish(
     let user = users::by_id(&state.db, user_id).await?;
     if user.disabled {
         return Err(Error::account_disabled());
+    }
+    if let Some(s) = &flow.sso {
+        sso::link_identity(&state, s, user.id).await?;
     }
     let resp = continue_login(
         &state,
@@ -1210,7 +1216,7 @@ pub async fn sso_start(
     Query(q): Query<SsoStartQuery>,
 ) -> ApiResult<Json<SsoStartResponse>> {
     ratelimit::check_ip(&state, ratelimit::AUTH_IP, client.ip.as_deref()).await?;
-    let (authorization_url, flow_id) = sso::start(&state, &provider, q.redirect).await?;
+    let (authorization_url, flow_id) = sso::start(&state, &provider, q.redirect, None).await?;
     Ok(Json(SsoStartResponse {
         authorization_url,
         flow_id,

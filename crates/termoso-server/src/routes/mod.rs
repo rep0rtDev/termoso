@@ -129,6 +129,12 @@ pub fn router(state: AppState) -> Router {
         .route("/account/sshid/keys/fido2", post(sshid::add_fido2_key))
         .route("/account/sshid/keys/{id}", delete(sshid::remove_key))
         .route("/account/security-events", get(account::security_events))
+        .route("/account/sso", get(account::sso_identities))
+        .route("/account/sso/{provider}", delete(account::sso_unlink))
+        .route(
+            "/account/sso/{provider}/link/start",
+            get(account::sso_link_start),
+        )
         .route("/account/recovery/rotate", post(account::rotate_recovery))
         // mfa management
         .route("/account/mfa", get(mfa::status))

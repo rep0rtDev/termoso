@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use termoso_crypto::encoding::{unb64, unb64_array};
 use termoso_proto::account::*;
-use termoso_proto::auth::{Device, DeviceList, RecoveryRotate};
+use termoso_proto::auth::{Device, DeviceList, RecoveryRotate, SsoIdentity, SsoStartResponse};
 use uuid::Uuid;
 
 use crate::avatar;
@@ -594,4 +594,60 @@ pub async fn delete_account(
     }
     users::delete(&state, u.id).await?;
     Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+// ───────────────────────────── connected SSO accounts ─────────────────────────
+
+#[utoipa::path(get, path = "/api/v1/account/sso", tag = "account", responses((status = 200, body = Vec<SsoIdentity>)))]
+pub async fn sso_identities(
+    State(state): State<AppState>,
+    auth: Auth,
+) -> ApiResult<Json<Vec<SsoIdentity>>> {
+    Ok(Json(crate::sso::identities(&state, auth.user_id()).await?))
+}
+
+#[derive(Deserialize)]
+pub struct SsoLinkQuery {
+    pub redirect: Option<String>,
+}
+
+/// Starts an identity-provider round-trip that attaches the identity to the
+/// signed-in account instead of signing in; the flow ends with `SsoResult::Linked`.
+#[utoipa::path(get, path = "/api/v1/account/sso/{provider}/link/start", tag = "account",
+    params(("provider" = String, Path)), responses((status = 200, body = SsoStartResponse)))]
+pub async fn sso_link_start(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(provider): Path<String>,
+    Query(q): Query<SsoLinkQuery>,
+) -> ApiResult<Json<SsoStartResponse>> {
+    let (authorization_url, flow_id) =
+        crate::sso::start(&state, &provider, q.redirect, Some(auth.user_id())).await?;
+    Ok(Json(SsoStartResponse {
+        authorization_url,
+        flow_id,
+    }))
+}
+
+#[utoipa::path(delete, path = "/api/v1/account/sso/{provider}", tag = "account",
+    params(("provider" = String, Path)), responses((status = 204)))]
+pub async fn sso_unlink(
+    State(state): State<AppState>,
+    StepUp(auth): StepUp,
+    Path(provider): Path<String>,
+) -> ApiResult<NoContent> {
+    if !crate::sso::unlink(&state, auth.user_id(), &provider).await? {
+        return Err(Error::not_found("linked account"));
+    }
+    users::security_event(
+        &state,
+        auth.user_id(),
+        "sso_unlinked",
+        Some(auth.device_id()),
+        auth.ip.as_deref(),
+        auth.user_agent.as_deref(),
+        Some(serde_json::json!({ "provider": provider })),
+    )
+    .await?;
+    Ok(NoContent::from(()))
 }

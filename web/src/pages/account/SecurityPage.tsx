@@ -22,6 +22,7 @@ import {
   TextField,
   Tooltip,
   Typography,
+  TableContainer,
 } from "@mui/material";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
@@ -517,36 +518,38 @@ function SecurityEventsSection() {
       ) : events.data.events.length === 0 ? (
         <EmptyState title="No activity yet" />
       ) : (
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Event</TableCell>
-              <TableCell>IP</TableCell>
-              <TableCell>Client</TableCell>
-              <TableCell align="right">When</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {events.data.events.map((ev) => (
-              <TableRow key={ev.id} hover>
-                <TableCell>{titleCase(ev.kind)}</TableCell>
-                <TableCell sx={{ fontFamily: monoFontFamily, fontSize: "0.8rem" }}>
-                  {ev.ip ?? "—"}
-                </TableCell>
-                <TableCell sx={{ maxWidth: 320 }}>
-                  <Typography variant="body2" noWrap title={ev.user_agent}>
-                    {ev.user_agent ?? "—"}
-                  </Typography>
-                </TableCell>
-                <TableCell align="right">
-                  <Tooltip title={formatDateTime(ev.created_at)}>
-                    <Stack component="span">{formatRelative(ev.created_at)}</Stack>
-                  </Tooltip>
-                </TableCell>
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Event</TableCell>
+                <TableCell>IP</TableCell>
+                <TableCell>Client</TableCell>
+                <TableCell align="right">When</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {events.data.events.map((ev) => (
+                <TableRow key={ev.id} hover>
+                  <TableCell>{titleCase(ev.kind)}</TableCell>
+                  <TableCell sx={{ fontFamily: monoFontFamily, fontSize: "0.8rem" }}>
+                    {ev.ip ?? "—"}
+                  </TableCell>
+                  <TableCell sx={{ maxWidth: 320 }}>
+                    <Typography variant="body2" noWrap title={ev.user_agent}>
+                      {ev.user_agent ?? "—"}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Tooltip title={formatDateTime(ev.created_at)}>
+                      <Stack component="span">{formatRelative(ev.created_at)}</Stack>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
     </Section>
   );

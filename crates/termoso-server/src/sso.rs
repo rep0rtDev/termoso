@@ -16,7 +16,7 @@ use openidconnect::{
     RedirectUrl, Scope, TokenResponse,
 };
 use serde::{Deserialize, Serialize};
-use termoso_proto::auth::{SsoKind, SsoProvider, SsoResult};
+use termoso_proto::auth::{SsoIdentity, SsoKind, SsoProvider, SsoResult};
 
 use crate::config::{Config, SsoKindConfig, SsoProviderConfig};
 use crate::error::{ApiResult, Error};
@@ -77,6 +77,10 @@ struct FlowState {
     /// SAML HTTP-POST binding: form the browser has to submit to the IdP.
     #[serde(default)]
     saml_post: Option<SamlPostForm>,
+    /// Account-linking flow started from the cabinet: attach the identity to
+    /// this user instead of signing in.
+    #[serde(default)]
+    link_user: Option<uuid::Uuid>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -351,6 +355,7 @@ pub async fn start(
     state: &AppState,
     provider_id: &str,
     redirect: Option<String>,
+    link_user: Option<uuid::Uuid>,
 ) -> ApiResult<(String, String)> {
     let provider = state.sso.get(provider_id)?;
     let flow_id = random_token();
@@ -426,6 +431,7 @@ pub async fn start(
                 redirect,
                 saml_request_id,
                 saml_post,
+                link_user,
             },
             FLOW_TTL,
         )
@@ -488,7 +494,10 @@ pub async fn callback(
             message: format!("Identity provider returned an error: {err}"),
         },
         (Some(code), None) => match exchange(state, &flow, code).await {
-            Ok(sess) => finish(state, sess).await?,
+            Ok(sess) => match flow.link_user {
+                Some(user_id) => link(state, sess, user_id).await?,
+                None => finish(state, sess).await?,
+            },
             Err(e) => {
                 tracing::warn!(error = %e, provider = %flow.provider, "sso exchange failed");
                 SsoResult::Failed {
@@ -533,7 +542,10 @@ pub async fn saml_acs(
         return Err(Error::token_expired());
     };
     let outcome = match consume_saml(state, &flow, saml_response) {
-        Ok(sess) => finish(state, sess).await?,
+        Ok(sess) => match flow.link_user {
+            Some(user_id) => link(state, sess, user_id).await?,
+            None => finish(state, sess).await?,
+        },
         Err(e) => {
             tracing::warn!(error = %e, provider = %flow.provider, "saml response rejected");
             SsoResult::Failed {
@@ -725,6 +737,61 @@ async fn finish(state: &AppState, sess: SsoSession) -> ApiResult<SsoResult> {
 /// doubles as the OAuth `state` and shows up in browser history and IdP logs,
 /// so nothing useful must remain behind it after the client has collected the
 /// `sso_session`.
+/// Account-linking flow: attach the identity to `user_id` unless it already
+/// belongs to someone else.
+async fn link(state: &AppState, sess: SsoSession, user_id: uuid::Uuid) -> ApiResult<SsoResult> {
+    let owner: Option<(uuid::Uuid,)> =
+        sqlx::query_as("SELECT user_id FROM sso_identities WHERE provider = $1 AND subject = $2")
+            .bind(&sess.provider)
+            .bind(&sess.subject)
+            .fetch_optional(&state.db)
+            .await?;
+    if owner.is_some_and(|(u,)| u != user_id) {
+        return Ok(SsoResult::Failed {
+            message: "This identity is already linked to another account".into(),
+        });
+    }
+    link_identity(state, &sess, user_id).await?;
+    Ok(SsoResult::Linked {
+        provider: sess.provider,
+        email: sess.email,
+    })
+}
+
+/// Identities linked to `user_id`, in link order.
+pub async fn identities(state: &AppState, user_id: uuid::Uuid) -> ApiResult<Vec<SsoIdentity>> {
+    let rows: Vec<(String, Option<String>, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
+        "SELECT provider, email, created_at FROM sso_identities WHERE user_id = $1 ORDER BY created_at",
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(provider, email, linked_at)| SsoIdentity {
+            name: state
+                .sso
+                .get(&provider)
+                .map(|p| p.name.clone())
+                .unwrap_or_else(|_| provider.clone()),
+            provider,
+            email,
+            linked_at,
+        })
+        .collect())
+}
+
+/// Removes every identity of `provider` from `user_id`. `Ok(false)` when there was none.
+pub async fn unlink(state: &AppState, user_id: uuid::Uuid, provider: &str) -> ApiResult<bool> {
+    let n = sqlx::query("DELETE FROM sso_identities WHERE user_id = $1 AND provider = $2")
+        .bind(user_id)
+        .bind(provider)
+        .execute(&state.db)
+        .await?
+        .rows_affected();
+    Ok(n > 0)
+}
+
 pub async fn poll(state: &AppState, flow_id: &str) -> ApiResult<SsoResult> {
     let key = result_key(flow_id);
     match state.cache.get_json::<SsoResult>(&key).await? {

@@ -12,6 +12,7 @@ import {
   TableRow,
   TextField,
   Tooltip,
+  TableContainer,
 } from "@mui/material";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
@@ -98,40 +99,42 @@ export function AdminTeamsPage() {
           <EmptyState title="No teams match" />
         ) : (
           <>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Team</TableCell>
-                  <TableCell>Owner</TableCell>
-                  <TableCell align="right">Members</TableCell>
-                  <TableCell align="right">Vaults</TableCell>
-                  <TableCell>Created</TableCell>
-                  <TableCell align="right" />
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {teams.data.items.map((t) => (
-                  <TableRow key={t.id} hover>
-                    <TableCell sx={{ fontWeight: 600 }}>{t.name}</TableCell>
-                    <TableCell>{t.owner_email}</TableCell>
-                    <TableCell align="right">{t.member_count}</TableCell>
-                    <TableCell align="right">{t.vault_count}</TableCell>
-                    <TableCell>{formatDateTime(t.created_at)}</TableCell>
-                    <TableCell align="right">
-                      <Tooltip title="Delete team">
-                        <IconButton
-                          size="small"
-                          onClick={() => setDeleting(t)}
-                          aria-label="Delete team"
-                        >
-                          <DeleteOutlineRoundedIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Team</TableCell>
+                    <TableCell>Owner</TableCell>
+                    <TableCell align="right">Members</TableCell>
+                    <TableCell align="right">Vaults</TableCell>
+                    <TableCell>Created</TableCell>
+                    <TableCell align="right" />
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHead>
+                <TableBody>
+                  {teams.data.items.map((t) => (
+                    <TableRow key={t.id} hover>
+                      <TableCell sx={{ fontWeight: 600 }}>{t.name}</TableCell>
+                      <TableCell>{t.owner_email}</TableCell>
+                      <TableCell align="right">{t.member_count}</TableCell>
+                      <TableCell align="right">{t.vault_count}</TableCell>
+                      <TableCell>{formatDateTime(t.created_at)}</TableCell>
+                      <TableCell align="right">
+                        <Tooltip title="Delete team">
+                          <IconButton
+                            size="small"
+                            onClick={() => setDeleting(t)}
+                            aria-label="Delete team"
+                          >
+                            <DeleteOutlineRoundedIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
             <TablePagination
               component="div"
               count={teams.data.total}

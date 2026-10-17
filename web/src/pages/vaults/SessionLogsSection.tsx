@@ -23,6 +23,7 @@ import {
   TextField,
   Tooltip,
   Typography,
+  TableContainer,
 } from "@mui/material";
 import CommentOutlinedIcon from "@mui/icons-material/CommentOutlined";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
@@ -240,112 +241,114 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                 </Select>
               </FormControl>
             )}
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Author</TableCell>
-                  <TableCell>Session</TableCell>
-                  <TableCell>When</TableCell>
-                  <TableCell align="right">Size</TableCell>
-                  <TableCell align="right" />
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {list.map((l) => {
-                  const meta = metas[l.id];
-                  const canDelete = manager || l.user_id === me;
-                  return (
-                    <TableRow key={l.id} hover>
-                      <TableCell sx={{ minWidth: 200 }}>
-                        <UserCell
-                          userId={l.user_id}
-                          email={l.author?.email ?? "Former member"}
-                          displayName={l.author?.display_name}
-                          avatar={l.author?.avatar_tag}
-                          you={l.user_id === me}
-                        />
-                      </TableCell>
-                      <TableCell sx={{ minWidth: 220 }}>
-                        <Stack direction="row" spacing={0.75} sx={{ alignItems: "center" }}>
-                          {l.pinned && (
-                            <Tooltip title="Pinned">
-                              <PushPinRoundedIcon color="primary" sx={{ fontSize: 16 }} />
-                            </Tooltip>
-                          )}
-                          <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
-                            {meta ? meta.label : "Encrypted recording"}
-                          </Typography>
-                          {!l.completed && (
-                            <Chip size="small" variant="outlined" label="Uploading" />
-                          )}
-                        </Stack>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          noWrap
-                          sx={{ display: "block" }}
-                        >
-                          {meta
-                            ? `${meta.protocol} · ${meta.target} · ${durationOf(meta)}`
-                            : !vaultKey
-                              ? "Details are decrypted only in your browser"
-                              : meta === null
-                                ? "Could not decrypt (recorded with another key version?)"
-                                : "Decrypting…"}
-                        </Typography>
-                        {l.note && (
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Author</TableCell>
+                    <TableCell>Session</TableCell>
+                    <TableCell>When</TableCell>
+                    <TableCell align="right">Size</TableCell>
+                    <TableCell align="right" />
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {list.map((l) => {
+                    const meta = metas[l.id];
+                    const canDelete = manager || l.user_id === me;
+                    return (
+                      <TableRow key={l.id} hover>
+                        <TableCell sx={{ minWidth: 200 }}>
+                          <UserCell
+                            userId={l.user_id}
+                            email={l.author?.email ?? "Former member"}
+                            displayName={l.author?.display_name}
+                            avatar={l.author?.avatar_tag}
+                            you={l.user_id === me}
+                          />
+                        </TableCell>
+                        <TableCell sx={{ minWidth: 220 }}>
+                          <Stack direction="row" spacing={0.75} sx={{ alignItems: "center" }}>
+                            {l.pinned && (
+                              <Tooltip title="Pinned">
+                                <PushPinRoundedIcon color="primary" sx={{ fontSize: 16 }} />
+                              </Tooltip>
+                            )}
+                            <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
+                              {meta ? meta.label : "Encrypted recording"}
+                            </Typography>
+                            {!l.completed && (
+                              <Chip size="small" variant="outlined" label="Uploading" />
+                            )}
+                          </Stack>
                           <Typography
-                            variant="body2"
-                            sx={{ mt: 0.5, whiteSpace: "pre-wrap", color: "text.secondary" }}
+                            variant="caption"
+                            color="text.secondary"
+                            noWrap
+                            sx={{ display: "block" }}
                           >
-                            {l.note}
+                            {meta
+                              ? `${meta.protocol} · ${meta.target} · ${durationOf(meta)}`
+                              : !vaultKey
+                                ? "Details are decrypted only in your browser"
+                                : meta === null
+                                  ? "Could not decrypt (recorded with another key version?)"
+                                  : "Decrypting…"}
                           </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell sx={{ whiteSpace: "nowrap" }}>
-                        {formatDateTime(meta?.started_at ?? l.created_at)}
-                      </TableCell>
-                      <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
-                        {formatBytes(l.size_bytes)}
-                      </TableCell>
-                      <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
-                        {canAnnotate && (
-                          <>
-                            <Tooltip title={l.pinned ? "Unpin" : "Pin"}>
-                              <IconButton
-                                size="small"
-                                disabled={annotate.isPending}
-                                onClick={() =>
-                                  annotate.mutate({ id: l.id, patch: { pinned: !l.pinned } })
-                                }
-                              >
-                                {l.pinned ? (
-                                  <PushPinRoundedIcon fontSize="small" />
-                                ) : (
-                                  <PushPinOutlinedIcon fontSize="small" />
-                                )}
+                          {l.note && (
+                            <Typography
+                              variant="body2"
+                              sx={{ mt: 0.5, whiteSpace: "pre-wrap", color: "text.secondary" }}
+                            >
+                              {l.note}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell sx={{ whiteSpace: "nowrap" }}>
+                          {formatDateTime(meta?.started_at ?? l.created_at)}
+                        </TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                          {formatBytes(l.size_bytes)}
+                        </TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                          {canAnnotate && (
+                            <>
+                              <Tooltip title={l.pinned ? "Unpin" : "Pin"}>
+                                <IconButton
+                                  size="small"
+                                  disabled={annotate.isPending}
+                                  onClick={() =>
+                                    annotate.mutate({ id: l.id, patch: { pinned: !l.pinned } })
+                                  }
+                                >
+                                  {l.pinned ? (
+                                    <PushPinRoundedIcon fontSize="small" />
+                                  ) : (
+                                    <PushPinOutlinedIcon fontSize="small" />
+                                  )}
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title={l.note ? "Edit comment" : "Comment"}>
+                                <IconButton size="small" onClick={() => setEditing(l)}>
+                                  <CommentOutlinedIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </>
+                          )}
+                          {canDelete && (
+                            <Tooltip title="Delete for everyone">
+                              <IconButton size="small" onClick={() => setDeleting(l)}>
+                                <DeleteOutlineRoundedIcon fontSize="small" />
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title={l.note ? "Edit comment" : "Comment"}>
-                              <IconButton size="small" onClick={() => setEditing(l)}>
-                                <CommentOutlinedIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          </>
-                        )}
-                        {canDelete && (
-                          <Tooltip title="Delete for everyone">
-                            <IconButton size="small" onClick={() => setDeleting(l)}>
-                              <DeleteOutlineRoundedIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
             {logs.hasNextPage && (
               <Box>
                 <Button
