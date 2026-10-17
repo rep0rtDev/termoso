@@ -174,7 +174,21 @@ pub struct TelnetForm {
 #[serde(rename_all = "camelCase")]
 pub struct WebDavForm {
     /// Base URL of the share (`https://…/remote.php/dav/files/alice/`).
-    pub url: String,
+    /// TCP port; `None` = 443 (80 with `http`).
+    #[serde(default)]
+    pub port: Option<u16>,
+    /// Collection path below the host (`/remote.php/dav/files/alice/`); empty = `/`.
+    #[serde(default)]
+    pub path: String,
+    /// Plain HTTP instead of HTTPS.
+    #[serde(default)]
+    pub http: bool,
+    /// TLS name (SNI + certificate check) when it differs from the address.
+    #[serde(default)]
+    pub tls_server_name: Option<String>,
+    /// PEM bundle of a private CA to trust instead of the system roots.
+    #[serde(default)]
+    pub ca_certificate: Option<String>,
     #[serde(default)]
     pub username: String,
     /// `None` keeps the stored password when editing; `Some("")` clears it.
@@ -292,11 +306,59 @@ fn is_webdav_only(h: &Host) -> bool {
     h.webdav_config_id.is_some() && h.ssh_config_id.is_none() && h.telnet_config_id.is_none()
 }
 
-/// Validate and normalise a WebDAV share URL (scheme, host, trailing slash).
-fn clean_webdav_url(url: &str) -> Result<String> {
-    termoso_core::webdav::normalize_url(url.trim())
-        .map(|u| u.to_string())
-        .map_err(|e| ClientError::invalid(format!("WebDAV URL: {e}")))
+/// Validate the WebDAV section's connection fields; identity and pin are
+/// filled in by the caller.
+fn clean_webdav_section(w: &WebDavForm) -> Result<WebDavConfig> {
+    if w.port == Some(0) {
+        return Err(ClientError::invalid("WebDAV port must be 1–65535"));
+    }
+    let name = w
+        .tls_server_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty() && !w.http);
+    let tls_server_name = match name {
+        Some(n) => Some(
+            termoso_core::webdav::validate_server_name(n)
+                .map_err(|e| ClientError::invalid(format!("WebDAV TLS: {e}")))?,
+        ),
+        None => None,
+    };
+    let ca = w
+        .ca_certificate
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty() && !w.http);
+    let ca_certificate = match ca {
+        Some(pem) => {
+            termoso_core::webdav::validate_ca_bundle(pem)
+                .map_err(|e| ClientError::invalid(format!("WebDAV TLS: {e}")))?;
+            Some(pem.to_string())
+        }
+        None => None,
+    };
+    Ok(WebDavConfig {
+        url: String::new(),
+        port: w.port,
+        path: termoso_core::webdav::normalize_share_path(&w.path),
+        http: w.http,
+        tls_server_name,
+        ca_certificate,
+        identity_id: None,
+        certificate_fingerprint: None,
+    })
+}
+
+/// Per-field view of a stored section; older entries that still carry a
+/// full URL are split so the form (and the next save) use the fields.
+fn webdav_fields(w: &WebDavConfig) -> (Option<u16>, String, bool) {
+    if w.url.trim().is_empty() {
+        return (w.port, w.path.clone(), w.http);
+    }
+    match termoso_core::webdav::split_share_url(&w.url) {
+        Ok(p) => (p.port, p.path, p.http),
+        Err(_) => (w.port, w.path.clone(), w.http),
+    }
 }
 
 /// `aa:bb:…` fingerprint the form may enter with or without separators.
@@ -468,7 +530,11 @@ pub fn cards(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<HostCard>> {
         let telnet_only = is_telnet_only(&h.data);
         let webdav_only = is_webdav_only(&h.data);
         let telnet_port = r.telnet.as_ref().map(|t| t.port.unwrap_or(23));
-        let webdav_url = r.webdav.as_ref().map(|w| w.url.clone());
+        let webdav_url = r
+            .webdav
+            .as_ref()
+            .and_then(|w| termoso_core::webdav::share_url(&h.data.address, w).ok())
+            .map(|u| u.to_string());
         let port = if telnet_only {
             telnet_port.unwrap_or(23)
         } else if webdav_only {
@@ -710,8 +776,13 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
     let webdav = match &webdav_cfg {
         Some(w) => {
             let login = flatten_identity(store, w.identity_id)?;
+            let (port, path, http) = webdav_fields(w);
             Some(WebDavForm {
-                url: w.url.clone(),
+                port,
+                path,
+                http,
+                tls_server_name: w.tls_server_name.clone(),
+                ca_certificate: w.ca_certificate.clone(),
                 username: login.username,
                 password: None,
                 identity_id: login.identity_id,
@@ -809,22 +880,17 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
             "a host needs an SSH, Telnet or WebDAV section",
         ));
     }
-    let webdav_url = match &f.webdav {
-        Some(w) => Some(clean_webdav_url(&w.url)?),
+    let webdav_section = match &f.webdav {
+        Some(w) => Some(clean_webdav_section(w)?),
         None => None,
     };
-    // A WebDAV-only host may leave the address empty: it is the share's host.
-    let derived_address = webdav_url
-        .as_deref()
-        .filter(|_| !f.ssh && f.telnet.is_none())
-        .and_then(|u| url::Url::parse(u).ok())
-        .and_then(|u| u.host_str().map(str::to_string));
-    let address = match f.address.trim() {
-        "" => derived_address.as_deref().unwrap_or_default(),
-        a => a,
-    };
+    let address = f.address.trim();
     if address.is_empty() {
         return Err(ClientError::invalid("address is required"));
+    }
+    if let Some(w) = &webdav_section {
+        termoso_core::webdav::share_url(address, w)
+            .map_err(|e| ClientError::invalid(format!("WebDAV: {e}")))?;
     }
     if let Some(gid) = f.group_id {
         let g = store.require::<Group>(gid)?;
@@ -967,7 +1033,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
         None
     };
 
-    let webdav_config_id = if let (Some(wf), Some(url)) = (&f.webdav, webdav_url) {
+    let webdav_config_id = if let (Some(wf), Some(section)) = (&f.webdav, webdav_section) {
         let token_mode = match wf.auth.as_str() {
             WEBDAV_AUTH_TOKEN => true,
             WEBDAV_AUTH_PASSWORD | "" => false,
@@ -1007,9 +1073,9 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
             },
         )?;
         let w = WebDavConfig {
-            url,
             identity_id,
             certificate_fingerprint: clean_fingerprint(&wf.certificate_fingerprint)?,
+            ..section
         };
         Some(match &existing_webdav {
             Some(e) => {
@@ -2198,7 +2264,7 @@ mod tests {
         let vault = s.local_vault().unwrap().id;
         let mut f = new_form(vault);
         f.webdav = Some(WebDavForm {
-            url: "cloud.example.com/remote.php/dav/files/alice".into(),
+            path: "remote.php/dav/files/alice".into(),
             username: "alice".into(),
             password: Some("dav".into()),
             certificate_fingerprint: Some(
@@ -2211,7 +2277,7 @@ mod tests {
         assert_eq!(card.username, "deploy");
         assert_eq!(
             card.webdav_url.as_deref(),
-            Some("https://cloud.example.com/remote.php/dav/files/alice/")
+            Some("https://10.0.0.1/remote.php/dav/files/alice/")
         );
         let identities: Vec<Entity<Identity>> = s.list(Some(vault)).unwrap();
         assert_eq!(identities.len(), 2, "one hidden identity per section");
@@ -2251,9 +2317,11 @@ mod tests {
         let vault = s.local_vault().unwrap().id;
         let mut f = new_form(vault);
         f.ssh = false;
-        f.address = String::new();
+        f.address = "nas.local".into();
         f.webdav = Some(WebDavForm {
-            url: "http://nas.local:8080/dav".into(),
+            port: Some(8080),
+            path: "dav".into(),
+            http: true,
             username: "nas".into(),
             ..WebDavForm::default()
         });
@@ -2261,6 +2329,10 @@ mod tests {
         assert_eq!(card.protocol, "webdav");
         assert_eq!(card.address, "nas.local");
         assert_eq!(card.port, 8080);
+        assert_eq!(
+            card.webdav_url.as_deref(),
+            Some("http://nas.local:8080/dav/")
+        );
         assert_eq!(card.username, "nas");
         assert!(!card.use_mosh);
         let identities: Vec<Entity<Identity>> = s.list(Some(vault)).unwrap();
@@ -2272,11 +2344,21 @@ mod tests {
         assert!(!f.ssh);
         assert!(f.telnet.is_none());
         let mut bad = f.clone();
-        bad.webdav.as_mut().unwrap().url = "ftp://nas.local/".into();
+        bad.webdav.as_mut().unwrap().port = Some(0);
         assert!(save(&s, &bad).is_err());
-        bad.webdav.as_mut().unwrap().url = "https://nas.local/".into();
+        bad.webdav.as_mut().unwrap().port = None;
         bad.webdav.as_mut().unwrap().certificate_fingerprint = Some("zz".into());
         assert!(save(&s, &bad).is_err());
+        bad.webdav.as_mut().unwrap().certificate_fingerprint = None;
+        bad.webdav.as_mut().unwrap().http = false;
+        bad.webdav.as_mut().unwrap().tls_server_name = Some("not a name!".into());
+        assert!(save(&s, &bad).is_err());
+        bad.webdav.as_mut().unwrap().tls_server_name = None;
+        bad.webdav.as_mut().unwrap().ca_certificate = Some("not pem".into());
+        assert!(save(&s, &bad).is_err());
+        bad.address = String::new();
+        bad.webdav.as_mut().unwrap().ca_certificate = None;
+        assert!(save(&s, &bad).is_err(), "the address is the share's host");
 
         // Adding SSH back makes it the primary protocol again.
         f.ssh = true;
@@ -2299,7 +2381,7 @@ mod tests {
         let vault = s.local_vault().unwrap().id;
         let mut f = new_form(vault);
         f.webdav = Some(WebDavForm {
-            url: "https://cloud.example.com/dav/".into(),
+            path: "/dav/".into(),
             username: "alice".into(),
             password: Some("dav".into()),
             ..WebDavForm::default()
@@ -2309,7 +2391,7 @@ mod tests {
         assert_ne!(copy.id, card.id);
         let r = s.resolve_host(copy.id).unwrap();
         let w = r.webdav.expect("webdav travels");
-        assert_eq!(w.url, "https://cloud.example.com/dav/");
+        assert_eq!(w.path, "/dav/");
         let i = r.webdav_identity.expect("identity travels");
         assert_eq!(i.data.username, "alice");
         assert_eq!(i.data.password.as_deref(), Some("dav"));
@@ -2328,7 +2410,7 @@ mod tests {
         let mut f = new_form(vault);
         f.ssh = false;
         f.webdav = Some(WebDavForm {
-            url: "https://cloud.example.com/dav/".into(),
+            path: "/dav/".into(),
             auth: WEBDAV_AUTH_TOKEN.into(),
             bearer_token: Some(" tok-123 ".into()),
             client_certificate: Some(CERT.into()),
@@ -2374,7 +2456,7 @@ mod tests {
         let mut fresh = new_form(vault);
         fresh.address = "10.0.0.9".into();
         fresh.webdav = Some(WebDavForm {
-            url: "https://other.example.com/".into(),
+            path: "/".into(),
             client_certificate: Some(CERT.into()),
             ..WebDavForm::default()
         });
@@ -2679,5 +2761,47 @@ mod tests {
         let cfgs: Vec<Entity<SshConfig>> = s.list(Some(vault)).unwrap();
         let ids: Vec<Entity<Identity>> = s.list(Some(vault)).unwrap();
         assert!(cfgs.is_empty() && ids.is_empty());
+    }
+
+    #[test]
+    fn legacy_webdav_url_is_split_into_fields() {
+        let s = store();
+        let vault = s.local_vault().unwrap().id;
+        let mut f = new_form(vault);
+        f.address = "cloud.example.com".into();
+        f.webdav = Some(WebDavForm {
+            path: "/remote.php/dav/".into(),
+            ..WebDavForm::default()
+        });
+        let card = save(&s, &f).unwrap();
+        // An entry written by an older client carries the whole URL.
+        let r = s.resolve_host(card.id).unwrap();
+        let cfg_id = r.host.data.webdav_config_id.unwrap();
+        let old = WebDavConfig {
+            url: "http://cloud.example.com:8080/remote.php/dav/".into(),
+            port: None,
+            path: String::new(),
+            http: false,
+            ..r.webdav.clone().unwrap()
+        };
+        s.update(cfg_id, &old).unwrap();
+        let cards = cards(&s, Some(vault)).unwrap();
+        let card = cards.iter().find(|c| c.id == card.id).unwrap();
+        assert_eq!(
+            card.webdav_url.as_deref(),
+            Some("http://cloud.example.com:8080/remote.php/dav/")
+        );
+        let f = form(&s, card.id).unwrap();
+        let w = f.webdav.clone().unwrap();
+        assert_eq!(w.port, Some(8080));
+        assert!(w.http);
+        assert_eq!(w.path, "/remote.php/dav/");
+        // Saving the form again moves the entry to the per-field form.
+        save(&s, &f).unwrap();
+        let r = s.resolve_host(card.id).unwrap();
+        let w = r.webdav.unwrap();
+        assert!(w.url.is_empty());
+        assert_eq!(w.port, Some(8080));
+        assert!(w.http);
     }
 }

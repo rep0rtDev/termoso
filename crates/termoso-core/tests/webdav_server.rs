@@ -40,6 +40,10 @@ const NONCE: &str = "dcd98b7102dd2f0e8b11d0f600bfb0c093";
 
 const CERT_DER: &[u8] = include_bytes!("fixtures/webdav-test.crt.der");
 const KEY_DER: &[u8] = include_bytes!("fixtures/webdav-test.key.der");
+/// `dav.internal`, issued by `SERVER_CA_PEM`; carries no IP address.
+const NAMED_CERT_DER: &[u8] = include_bytes!("fixtures/webdav-named.crt.der");
+const NAMED_KEY_DER: &[u8] = include_bytes!("fixtures/webdav-named.key.der");
+const SERVER_CA_PEM: &str = include_str!("fixtures/webdav-ca.crt.pem");
 /// CA the mTLS server trusts for client certificates, and a client
 /// certificate it issued.
 const CLIENT_CA_DER: &[u8] = include_bytes!("fixtures/webdav-client-ca.crt.der");
@@ -66,6 +70,9 @@ enum Tls {
     Server,
     /// Server certificate + a client certificate from `CLIENT_CA_DER` required.
     Mutual,
+    /// The private-CA certificate for `dav.internal` instead of the
+    /// self-signed `localhost` one.
+    Named,
 }
 
 struct ServerState {
@@ -119,8 +126,12 @@ async fn spawn_full(auth: Auth, tls: Tls, strip_range: bool) -> Server {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
     let task = if tls != Tls::Off {
-        let cert = CertificateDer::from(CERT_DER.to_vec());
-        let key = PrivateKeyDer::try_from(KEY_DER.to_vec()).unwrap();
+        let (cert_der, key_der) = match tls {
+            Tls::Named => (NAMED_CERT_DER, NAMED_KEY_DER),
+            _ => (CERT_DER, KEY_DER),
+        };
+        let cert = CertificateDer::from(cert_der.to_vec());
+        let key = PrivateKeyDer::try_from(key_der.to_vec()).unwrap();
         let provider = Arc::new(rustls::crypto::ring::default_provider());
         let builder = rustls::ServerConfig::builder_with_provider(provider.clone())
             .with_safe_default_protocol_versions()
@@ -338,10 +349,74 @@ fn cfg(server: &Server, creds: Option<(&str, &str)>) -> WebDavConfig {
         password: creds.map(|(_, p)| p.to_string()),
         bearer_token: None,
         tls: TlsPolicy::System,
+        server_name: None,
+        resolved_addrs: None,
         client_identity: None,
         connect_timeout: Duration::from_secs(5),
         spool_dir: Some(std::env::temp_dir()),
     }
+}
+
+#[tokio::test]
+async fn private_ca_and_server_name_reach_a_share_by_address() {
+    // The server is reached by IP; its certificate names only `dav.internal`
+    // and chains to a private CA.
+    let server = spawn_full(Auth::Anonymous, Tls::Named, false).await;
+
+    // CA + name: the handshake verifies `dav.internal` against the CA.
+    let mut ok = cfg(&server, None);
+    ok.tls = TlsPolicy::PrivateCa(SERVER_CA_PEM.into());
+    ok.server_name = Some("dav.internal".into());
+    let dav = WebDav::connect(ok).await.unwrap();
+    dav.write("/ca.txt", b"private").await.unwrap();
+    assert_eq!(dav.read("/ca.txt").await.unwrap(), b"private");
+    assert!(dav.base_url().as_str().starts_with("https://dav.internal:"));
+    assert!(dav.host().starts_with("127.0.0.1:"), "{}", dav.host());
+
+    // The CA alone: the name on the certificate does not match the address.
+    let mut no_name = cfg(&server, None);
+    no_name.tls = TlsPolicy::PrivateCa(SERVER_CA_PEM.into());
+    assert!(matches!(
+        WebDav::connect(no_name).await.unwrap_err(),
+        CoreError::CertificateRejected { .. }
+    ));
+
+    // The name alone: the system roots do not know the private CA.
+    let mut no_ca = cfg(&server, None);
+    no_ca.server_name = Some("dav.internal".into());
+    let fp = fingerprint(NAMED_CERT_DER);
+    match WebDav::connect(no_ca).await.unwrap_err() {
+        CoreError::CertificateRejected { fingerprint, .. } => assert_eq!(fingerprint, fp),
+        other => panic!("{other:?}"),
+    }
+
+    // A pin still works with a name override.
+    let mut pinned = cfg(&server, None);
+    pinned.tls = TlsPolicy::Pinned(fp);
+    pinned.server_name = Some("dav.internal".into());
+    WebDav::connect(pinned).await.unwrap();
+
+    // A different CA is refused; garbage is a configuration error.
+    let mut wrong = cfg(&server, None);
+    wrong.tls = TlsPolicy::PrivateCa(termoso_core::webdav::pem_of(CLIENT_CA_DER));
+    wrong.server_name = Some("dav.internal".into());
+    assert!(matches!(
+        WebDav::connect(wrong).await.unwrap_err(),
+        CoreError::CertificateRejected { .. }
+    ));
+    assert!(matches!(
+        termoso_core::webdav::validate_ca_bundle("nope"),
+        Err(CoreError::Invalid(_))
+    ));
+    assert_eq!(
+        termoso_core::webdav::validate_ca_bundle(SERVER_CA_PEM).unwrap(),
+        1
+    );
+    assert!(termoso_core::webdav::validate_server_name("not a name!").is_err());
+    assert_eq!(
+        termoso_core::webdav::validate_server_name(" DAV.Internal ").unwrap(),
+        "dav.internal"
+    );
 }
 
 fn err_text(e: CoreError) -> String {
@@ -836,9 +911,7 @@ async fn tls_pinning_accepts_only_the_pinned_certificate() {
     }
 
     // Probing on its own returns the same fingerprint.
-    let probed = probe_certificate(&server.base, Duration::from_secs(5))
-        .await
-        .unwrap();
+    let probed = probe_certificate(&cfg(&server, None)).await.unwrap();
     assert_eq!(probed, fp);
 
     // Pinned (any spelling) works end to end.

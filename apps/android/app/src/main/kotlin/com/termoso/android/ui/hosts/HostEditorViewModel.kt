@@ -36,7 +36,11 @@ const val WEBDAV_AUTH_TOKEN = "token"
 
 /** A blank WebDAV section for "+ Add WebDAV". */
 fun emptyWebDavDraft() = WebDavDraft(
-    url = "",
+    port = null,
+    path = "",
+    http = false,
+    tlsServerName = null,
+    caCertificate = null,
     username = "",
     password = null,
     identityId = null,
@@ -111,9 +115,8 @@ data class HostEditorState(
         get() {
             val d = draft ?: return false
             if (saving) return false
-            // A WebDAV-only host takes its address from the share URL.
-            val webdavOnly = !d.ssh && d.telnet == null && d.webdav != null
-            return d.address.isNotBlank() || (webdavOnly && d.webdav?.url?.isNotBlank() == true)
+            // Every section, WebDAV included, lives at the host's address.
+            return d.address.isNotBlank()
         }
 }
 
@@ -415,7 +418,9 @@ class HostEditorViewModel(
                 webdav = draft.webdav?.let {
                     val tokenMode = it.auth == WEBDAV_AUTH_TOKEN
                     it.copy(
-                        url = it.url.trim(),
+                        path = it.path.trim(),
+                        tlsServerName = it.tlsServerName?.trim()?.ifEmpty { null },
+                        caCertificate = it.caCertificate?.trim()?.ifEmpty { null },
                         username = if (tokenMode) "" else it.username.trim(),
                         // Switching modes drops the other mode's secret.
                         password = if (tokenMode) "" else it.password,

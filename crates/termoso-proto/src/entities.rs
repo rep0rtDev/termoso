@@ -277,8 +277,32 @@ pub mod payload {
         /// SSH keys do not apply).
         #[derive(Default, PartialEq, Eq)]
         pub struct WebDavConfig {
-            /// Base URL of the share, e.g. `https://cloud.example.com/remote.php/dav/files/alice/`.
+            /// Base URL of the share as stored before 0.8.2
+            /// (`https://cloud.example.com/remote.php/dav/files/alice/`).
+            /// Empty once the section uses the host's address with
+            /// `port` / `path` / `http` below; kept so older entries and
+            /// older clients keep working.
+            #[serde(default)]
             pub url: String,
+            /// TCP port; `None` = 443 (or 80 with `http`).
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub port: Option<u16>,
+            /// Collection path below the host, e.g. `/remote.php/dav/files/alice/`;
+            /// empty = `/`.
+            #[serde(default, skip_serializing_if = "String::is_empty")]
+            pub path: String,
+            /// Plain HTTP instead of HTTPS.
+            #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+            pub http: bool,
+            /// TLS: name sent as SNI and checked against the certificate
+            /// when it differs from the host's address (a share behind a
+            /// reverse proxy reached by IP, or a hostname not in DNS).
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub tls_server_name: Option<String>,
+            /// TLS: PEM bundle of a private certificate authority the
+            /// server certificate must chain to, instead of the system roots.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub ca_certificate: Option<String>,
             /// Identity.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub identity_id: Option<Uuid>,

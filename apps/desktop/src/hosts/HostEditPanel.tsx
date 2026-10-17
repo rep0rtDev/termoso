@@ -3,9 +3,12 @@ import {
   Box,
   Button,
   Divider,
+  FormControlLabel,
   IconButton,
   ListSubheader,
   MenuItem,
+  Stack,
+  Switch,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -85,15 +88,24 @@ const emptyTelnet = (): TelnetForm => ({
 
 const emptyWebDav = emptyWebDavForm;
 
-/** `http(s)://host[:port][/path]`, the only shape the WebDAV client accepts. */
-const isWebDavUrl = (raw: string) => {
-  try {
-    const u = new URL(raw.trim());
-    return (u.protocol === "https:" || u.protocol === "http:") && u.hostname.length > 0;
-  } catch {
-    return false;
-  }
+/** TCP port text: empty (default) or 1–65535. */
+const isPortText = (raw: string) => {
+  const t = raw.trim();
+  if (t === "") return true;
+  return /^\d{1,5}$/.test(t) && Number(t) >= 1 && Number(t) <= 65535;
 };
+
+/** A DNS name for SNI: labels of letters, digits and hyphens. */
+const isServerName = (raw: string) => {
+  const t = raw.trim().toLowerCase();
+  return (
+    t.length > 0 &&
+    t.length <= 253 &&
+    t.split(".").every((l) => /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(l))
+  );
+};
+
+const isPemBundle = (raw: string) => raw.includes("-----BEGIN CERTIFICATE-----");
 
 /** SHA-256 fingerprint as `sha256:<hex>`, bare hex or colon-separated hex. */
 const isFingerprint = (raw: string) => {
@@ -156,7 +168,6 @@ const primaryOf = (f: HostForm): ConnectTarget | null =>
   f.ssh ? (f.useMosh ? "mosh" : "ssh") : f.telnet ? "telnet" : f.webdav ? "webdav" : null;
 
 /** Terminal sections need an address; a WebDAV-only host carries its own URL. */
-const needsAddress = (f: HostForm) => f.ssh || f.telnet !== null || f.webdav === null;
 
 /**
  * Host Details laid out the Termius way: Address → General → "SSH on … port"
@@ -240,10 +251,12 @@ function HostEditor({
 
   const readOnly = useActiveVault().readOnly;
   const protocols = protocolsOf(form);
-  const addressOk = !needsAddress(form) || form.address.trim().length > 0;
+  const addressOk = form.address.trim().length > 0;
   const webdavOk =
     form.webdav === null ||
-    (isWebDavUrl(form.webdav.url) &&
+    (isPortText(form.webdav.port === null ? "" : String(form.webdav.port)) &&
+      (form.webdav.tlsServerName === null || isServerName(form.webdav.tlsServerName)) &&
+      (form.webdav.caCertificate === null || isPemBundle(form.webdav.caCertificate)) &&
       (form.webdav.certificateFingerprint === null ||
         form.webdav.certificateFingerprint.trim() === "" ||
         isFingerprint(form.webdav.certificateFingerprint)));
@@ -401,15 +414,13 @@ function HostEditor({
                 {icon ? <DistroGlyph icon={icon} /> : <ProtocolGlyph protocol={glyphProtocol} />}
               </IconTile>
               <TextField
-                required={needsAddress(form)}
+                required
                 autoFocus={!hostId}
                 value={form.address}
                 onChange={(e) => set("address", e.target.value)}
-                placeholder={
-                  needsAddress(form) ? tr("IP or Hostname") : tr("IP or Hostname (optional)")
-                }
+                placeholder={tr("IP or Hostname")}
                 slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
-                error={touched && needsAddress(form) && form.address.trim().length === 0}
+                error={touched && form.address.trim().length === 0}
                 sx={{ flex: 1 }}
               />
             </Box>
@@ -885,46 +896,116 @@ function HostEditor({
                 </Tooltip>
               }
             >
-              <Field label="URL">
-                <TextField
-                  required
-                  value={form.webdav.url}
-                  onChange={(e) => patchWebDav({ url: e.target.value })}
-                  placeholder="https://cloud.example.com/remote.php/dav/files/user/"
-                  error={
-                    touched && form.webdav.url.trim().length > 0 && !isWebDavUrl(form.webdav.url)
-                  }
-                  helperText={
-                    touched && form.webdav.url.trim().length > 0 && !isWebDavUrl(form.webdav.url)
-                      ? tr("Enter an http:// or https:// URL")
-                      : undefined
-                  }
-                  slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
-                />
-              </Field>
+              <Stack direction="row" spacing={1.5}>
+                <Field label={tr("Port")} sx={{ width: 120 }}>
+                  <TextField
+                    value={form.webdav.port ?? ""}
+                    onChange={(e) => {
+                      const t = e.target.value.replace(/\D/g, "");
+                      patchWebDav({ port: t === "" ? null : Number(t) });
+                    }}
+                    placeholder={form.webdav.http ? "80" : "443"}
+                    slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+                  />
+                </Field>
+                <Field label={tr("Path")} sx={{ flex: 1 }}>
+                  <TextField
+                    value={form.webdav.path}
+                    onChange={(e) => patchWebDav({ path: e.target.value })}
+                    placeholder="/remote.php/dav/files/user/"
+                    slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+                  />
+                </Field>
+              </Stack>
+              <Typography variant="caption" color="text.secondary">
+                {tr(
+                  "The share is reached at the host's address above; the port defaults to 443 (80 over plain HTTP).",
+                )}
+              </Typography>
+              <FormControlLabel
+                control={
+                  <Switch
+                    size="small"
+                    checked={form.webdav.http}
+                    onChange={(e) => patchWebDav({ http: e.target.checked })}
+                  />
+                }
+                label={tr("Plain HTTP (no TLS)")}
+              />
               <Divider />
               <WebDavAuthFields vaultId={vaultId} value={form.webdav} onChange={patchWebDav} />
               <Divider />
-              <Field
-                label={tr("Server certificate fingerprint")}
-                hint={tr(
-                  "SHA-256 of the server certificate; pins self-signed or private-CA servers. Left empty, the system trust store decides and an unknown certificate is offered on first connect.",
-                )}
-              >
-                <TextField
-                  value={form.webdav.certificateFingerprint ?? ""}
-                  onChange={(e) =>
-                    patchWebDav({ certificateFingerprint: e.target.value.trim() || null })
-                  }
-                  placeholder="sha256:…"
-                  error={
-                    touched &&
-                    form.webdav.certificateFingerprint !== null &&
-                    !isFingerprint(form.webdav.certificateFingerprint)
-                  }
-                  slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
-                />
-              </Field>
+              {!form.webdav.http && (
+                <>
+                  <Divider />
+                  <Typography variant="subtitle2">TLS</Typography>
+                  <Field
+                    label={tr("Server name (SNI)")}
+                    hint={tr(
+                      "Only when the certificate is issued to a different name than the address — a share behind a reverse proxy reached by IP, or a name that is not in DNS. Sent as SNI and Host and checked against the certificate.",
+                    )}
+                  >
+                    <TextField
+                      value={form.webdav.tlsServerName ?? ""}
+                      onChange={(e) =>
+                        patchWebDav({ tlsServerName: e.target.value.trim() || null })
+                      }
+                      placeholder={form.address.trim() || "dav.internal"}
+                      error={
+                        touched &&
+                        form.webdav.tlsServerName !== null &&
+                        !isServerName(form.webdav.tlsServerName)
+                      }
+                      slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+                    />
+                  </Field>
+                  <Field
+                    label={tr("Certificate authority (PEM)")}
+                    hint={tr(
+                      "Your own CA that signed the server certificate, instead of the system trust store. Several certificates may follow one another.",
+                    )}
+                  >
+                    <TextField
+                      multiline
+                      minRows={3}
+                      maxRows={8}
+                      value={form.webdav.caCertificate ?? ""}
+                      onChange={(e) =>
+                        patchWebDav({ caCertificate: e.target.value.trim() || null })
+                      }
+                      placeholder="-----BEGIN CERTIFICATE-----"
+                      error={
+                        touched &&
+                        form.webdav.caCertificate !== null &&
+                        !isPemBundle(form.webdav.caCertificate)
+                      }
+                      slotProps={{
+                        input: { sx: { fontFamily: monoFontFamily, fontSize: 12 } },
+                      }}
+                    />
+                  </Field>
+                  <Field
+                    label={tr("Server certificate fingerprint")}
+                    hint={tr(
+                      "Alternatively pin exactly one server certificate by its SHA-256; a pin takes precedence over the CA. Left empty with no CA, the system trust store decides and an unknown certificate is offered on first connect.",
+                    )}
+                  >
+                    <TextField
+                      value={form.webdav.certificateFingerprint ?? ""}
+                      onChange={(e) =>
+                        patchWebDav({ certificateFingerprint: e.target.value.trim() || null })
+                      }
+                      placeholder="sha256:…"
+                      error={
+                        touched &&
+                        form.webdav.certificateFingerprint !== null &&
+                        !isFingerprint(form.webdav.certificateFingerprint)
+                      }
+                      slotProps={{ input: { sx: { fontFamily: monoFontFamily } } }}
+                    />
+                  </Field>
+                </>
+              )}
             </SectionCard>
           ) : (
             <AddSectionButton

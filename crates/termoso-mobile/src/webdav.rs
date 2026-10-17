@@ -38,16 +38,13 @@ pub(crate) async fn connect_webdav(
     let Some(cfg) = resolved.webdav.clone() else {
         return Err(MobileError::invalid("this host has no WebDAV section"));
     };
-    let url = webdav::normalize_url(&cfg.url)?.to_string();
+    let base = webdav::config_for(&resolved.host.data.address, &cfg)?;
+    let url = base.url.clone();
     let identity = resolved.webdav_identity.as_ref().map(|i| &i.data);
-    let base = WebDavConfig::default().with_identity(identity)?;
+    let base = base.with_identity(identity)?;
     let username = base.username.clone();
     let mut password = base.password.clone().map(Zeroizing::new);
-    let mut tls = cfg
-        .certificate_fingerprint
-        .clone()
-        .map(TlsPolicy::Pinned)
-        .unwrap_or_default();
+    let mut tls = base.tls.clone();
     let mut attempts = 0;
     let mut asked_password = false;
 

@@ -121,7 +121,7 @@ class SftpAccess(private val container: AppContainer) {
 
     private suspend fun openLocal(vault: VaultState.Open): SftpConnection {
         val conn = try {
-            vault.sftp.openLocal()
+            vault.sftp.openLocal(background = true)
         } catch (e: MobileException) {
             throw ProviderException(e.userMessage())
         }
@@ -132,7 +132,7 @@ class SftpAccess(private val container: AppContainer) {
         val conn = try {
             val host = vault.repo.read { host(hostId) }
             if (!offers(host, protocol)) throw notFound()
-            vault.sftp.openHost(hostId, host.vaultId, protocol)
+            vault.sftp.openHost(hostId, host.vaultId, protocol, background = true)
         } catch (e: MobileException.NotFound) {
             throw notFound()
         } catch (e: MobileException) {
