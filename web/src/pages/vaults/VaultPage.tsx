@@ -24,6 +24,7 @@ import {
   TextField,
   Tooltip,
   Typography,
+  TableContainer,
 } from "@mui/material";
 import AutorenewRoundedIcon from "@mui/icons-material/AutorenewRounded";
 import LockOpenRoundedIcon from "@mui/icons-material/LockOpenRounded";
@@ -386,99 +387,101 @@ function MembersSection({
       ) : members.data.members.length === 0 ? (
         <EmptyState title="No members" />
       ) : (
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Member</TableCell>
-              <TableCell>Role</TableCell>
-              <TableCell>Key</TableCell>
-              <TableCell>Added</TableCell>
-              {manager && <TableCell align="right" />}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {members.data.members.map((m) => {
-              const isMe = m.user_id === me;
-              const canEdit = manager && holdKey;
-              return (
-                <TableRow key={m.user_id} hover>
-                  <TableCell>
-                    <UserCell
-                      userId={m.user_id}
-                      email={m.email}
-                      displayName={m.display_name}
-                      avatar={m.avatar}
-                      you={isMe}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {canEdit ? (
-                      <Select
-                        size="small"
-                        value={m.role}
-                        disabled={upsert.isPending}
-                        onChange={(e) =>
-                          upsert.mutate({
-                            user_id: m.user_id,
-                            public_key: m.public_key,
-                            role: e.target.value,
-                          })
-                        }
-                        sx={{ minWidth: 120 }}
-                      >
-                        <MenuItem value="viewer">Viewer</MenuItem>
-                        <MenuItem value="editor">Editor</MenuItem>
-                        <MenuItem value="manager">Manager</MenuItem>
-                      </Select>
-                    ) : (
-                      <RoleChip role={m.role} />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {m.pending ? (
-                      canEdit ? (
-                        <Button
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Member</TableCell>
+                <TableCell>Role</TableCell>
+                <TableCell>Key</TableCell>
+                <TableCell>Added</TableCell>
+                {manager && <TableCell align="right" />}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {members.data.members.map((m) => {
+                const isMe = m.user_id === me;
+                const canEdit = manager && holdKey;
+                return (
+                  <TableRow key={m.user_id} hover>
+                    <TableCell>
+                      <UserCell
+                        userId={m.user_id}
+                        email={m.email}
+                        displayName={m.display_name}
+                        avatar={m.avatar}
+                        you={isMe}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {canEdit ? (
+                        <Select
                           size="small"
-                          startIcon={<LockOpenRoundedIcon />}
+                          value={m.role}
                           disabled={upsert.isPending}
-                          onClick={() =>
+                          onChange={(e) =>
                             upsert.mutate({
                               user_id: m.user_id,
                               public_key: m.public_key,
-                              role: m.role,
+                              role: e.target.value,
                             })
                           }
+                          sx={{ minWidth: 120 }}
                         >
-                          Grant key
-                        </Button>
+                          <MenuItem value="viewer">Viewer</MenuItem>
+                          <MenuItem value="editor">Editor</MenuItem>
+                          <MenuItem value="manager">Manager</MenuItem>
+                        </Select>
                       ) : (
-                        <Chip size="small" color="warning" variant="outlined" label="Pending" />
-                      )
-                    ) : (
-                      <Chip size="small" variant="outlined" label={`v${m.key_version}`} />
-                    )}
-                  </TableCell>
-                  <TableCell>{formatDate(m.added_at)}</TableCell>
-                  {manager && (
-                    <TableCell align="right">
-                      {!isMe && (
-                        <Tooltip title="Remove from vault">
-                          <IconButton
-                            size="small"
-                            onClick={() => setRemoving(m)}
-                            aria-label="Remove member"
-                          >
-                            <PersonRemoveRoundedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                        <RoleChip role={m.role} />
                       )}
                     </TableCell>
-                  )}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+                    <TableCell>
+                      {m.pending ? (
+                        canEdit ? (
+                          <Button
+                            size="small"
+                            startIcon={<LockOpenRoundedIcon />}
+                            disabled={upsert.isPending}
+                            onClick={() =>
+                              upsert.mutate({
+                                user_id: m.user_id,
+                                public_key: m.public_key,
+                                role: m.role,
+                              })
+                            }
+                          >
+                            Grant key
+                          </Button>
+                        ) : (
+                          <Chip size="small" color="warning" variant="outlined" label="Pending" />
+                        )
+                      ) : (
+                        <Chip size="small" variant="outlined" label={`v${m.key_version}`} />
+                      )}
+                    </TableCell>
+                    <TableCell>{formatDate(m.added_at)}</TableCell>
+                    {manager && (
+                      <TableCell align="right">
+                        {!isMe && (
+                          <Tooltip title="Remove from vault">
+                            <IconButton
+                              size="small"
+                              onClick={() => setRemoving(m)}
+                              aria-label="Remove member"
+                            >
+                              <PersonRemoveRoundedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
 
       <Dialog

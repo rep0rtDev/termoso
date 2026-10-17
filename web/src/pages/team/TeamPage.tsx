@@ -32,6 +32,7 @@ import {
   TextField,
   Tooltip,
   Typography,
+  TableContainer,
 } from "@mui/material";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import MailOutlineRoundedIcon from "@mui/icons-material/MailOutlineRounded";
@@ -284,80 +285,82 @@ function MembersSection({ team }: { team: Team }) {
           <Alert severity="error">{errorMessage(members.error)}</Alert>
         </Box>
       ) : (
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Member</TableCell>
-              <TableCell>Role</TableCell>
-              <TableCell>Joined</TableCell>
-              {admin && <TableCell align="right" />}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {members.data.members.map((m) => {
-              const canEdit = admin && m.user_id !== me && m.role !== "owner";
-              return (
-                <TableRow key={m.user_id} hover>
-                  <TableCell>
-                    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                      <UserCell
-                        userId={m.user_id}
-                        email={m.email}
-                        displayName={m.display_name}
-                        avatar={m.avatar}
-                        you={m.user_id === me}
-                      />
-                      <MfaBadge m={m} required={team.require_mfa === true} />
-                      {m.managed && (
-                        <Tooltip title="Account was created through this team's invitation; the owner can delete it">
-                          <Chip label="Team account" size="small" variant="outlined" />
-                        </Tooltip>
-                      )}
-                    </Stack>
-                  </TableCell>
-                  <TableCell>
-                    {canEdit ? (
-                      <Select
-                        size="small"
-                        value={m.role}
-                        onChange={(e) => {
-                          const role = e.target.value;
-                          if (role === "owner") setTransfer(m);
-                          else setRole.mutate({ userId: m.user_id, role });
-                        }}
-                        sx={{ minWidth: 130 }}
-                      >
-                        <MenuItem value="member">Member</MenuItem>
-                        <MenuItem value="admin">Admin</MenuItem>
-                        {team.my_role === "owner" && (
-                          <MenuItem value="owner">Owner (transfer)</MenuItem>
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Member</TableCell>
+                <TableCell>Role</TableCell>
+                <TableCell>Joined</TableCell>
+                {admin && <TableCell align="right" />}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {members.data.members.map((m) => {
+                const canEdit = admin && m.user_id !== me && m.role !== "owner";
+                return (
+                  <TableRow key={m.user_id} hover>
+                    <TableCell>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                        <UserCell
+                          userId={m.user_id}
+                          email={m.email}
+                          displayName={m.display_name}
+                          avatar={m.avatar}
+                          you={m.user_id === me}
+                        />
+                        <MfaBadge m={m} required={team.require_mfa === true} />
+                        {m.managed && (
+                          <Tooltip title="Account was created through this team's invitation; the owner can delete it">
+                            <Chip label="Team account" size="small" variant="outlined" />
+                          </Tooltip>
                         )}
-                      </Select>
-                    ) : (
-                      <RoleChip role={m.role} />
-                    )}
-                  </TableCell>
-                  <TableCell>{formatDate(m.joined_at)}</TableCell>
-                  {admin && (
-                    <TableCell align="right">
-                      {canEdit && (
-                        <Tooltip title="Remove from team">
-                          <IconButton
-                            size="small"
-                            onClick={() => setRemoving(m)}
-                            aria-label="Remove member"
-                          >
-                            <PersonRemoveRoundedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                      </Stack>
+                    </TableCell>
+                    <TableCell>
+                      {canEdit ? (
+                        <Select
+                          size="small"
+                          value={m.role}
+                          onChange={(e) => {
+                            const role = e.target.value;
+                            if (role === "owner") setTransfer(m);
+                            else setRole.mutate({ userId: m.user_id, role });
+                          }}
+                          sx={{ minWidth: 130 }}
+                        >
+                          <MenuItem value="member">Member</MenuItem>
+                          <MenuItem value="admin">Admin</MenuItem>
+                          {team.my_role === "owner" && (
+                            <MenuItem value="owner">Owner (transfer)</MenuItem>
+                          )}
+                        </Select>
+                      ) : (
+                        <RoleChip role={m.role} />
                       )}
                     </TableCell>
-                  )}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+                    <TableCell>{formatDate(m.joined_at)}</TableCell>
+                    {admin && (
+                      <TableCell align="right">
+                        {canEdit && (
+                          <Tooltip title="Remove from team">
+                            <IconButton
+                              size="small"
+                              onClick={() => setRemoving(m)}
+                              aria-label="Remove member"
+                            >
+                              <PersonRemoveRoundedIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
       <RemoveMemberDialog
         key={removing?.user_id ?? ""}
@@ -1024,45 +1027,47 @@ function TeamVaultsSection({ team }: { team: Team }) {
               disabled={create.isPending}
             />
             <Typography variant="subtitle2">Members</Typography>
-            <Table size="small">
-              <TableBody>
-                {(members.data?.members ?? []).map((m) => {
-                  const isMe = m.user_id === session?.user.id;
-                  return (
-                    <TableRow key={m.user_id}>
-                      <TableCell sx={{ pl: 0 }}>
-                        <UserCell
-                          userId={m.user_id}
-                          email={m.email}
-                          displayName={m.display_name}
-                          avatar={m.avatar}
-                          you={isMe}
-                        />
-                      </TableCell>
-                      <TableCell align="right" sx={{ pr: 0 }}>
-                        {isMe ? (
-                          <RoleChip role="manager" />
-                        ) : (
-                          <Select
-                            size="small"
-                            value={roles[m.user_id] ?? "none"}
-                            onChange={(e) =>
-                              setRoles((r) => ({ ...r, [m.user_id]: e.target.value }))
-                            }
-                            sx={{ minWidth: 130 }}
-                          >
-                            <MenuItem value="none">No access</MenuItem>
-                            <MenuItem value="viewer">Viewer</MenuItem>
-                            <MenuItem value="editor">Editor</MenuItem>
-                            <MenuItem value="manager">Manager</MenuItem>
-                          </Select>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            <TableContainer>
+              <Table size="small">
+                <TableBody>
+                  {(members.data?.members ?? []).map((m) => {
+                    const isMe = m.user_id === session?.user.id;
+                    return (
+                      <TableRow key={m.user_id}>
+                        <TableCell sx={{ pl: 0 }}>
+                          <UserCell
+                            userId={m.user_id}
+                            email={m.email}
+                            displayName={m.display_name}
+                            avatar={m.avatar}
+                            you={isMe}
+                          />
+                        </TableCell>
+                        <TableCell align="right" sx={{ pr: 0 }}>
+                          {isMe ? (
+                            <RoleChip role="manager" />
+                          ) : (
+                            <Select
+                              size="small"
+                              value={roles[m.user_id] ?? "none"}
+                              onChange={(e) =>
+                                setRoles((r) => ({ ...r, [m.user_id]: e.target.value }))
+                              }
+                              sx={{ minWidth: 130 }}
+                            >
+                              <MenuItem value="none">No access</MenuItem>
+                              <MenuItem value="viewer">Viewer</MenuItem>
+                              <MenuItem value="editor">Editor</MenuItem>
+                              <MenuItem value="manager">Manager</MenuItem>
+                            </Select>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={() => setOpen(false)} color="inherit" disabled={create.isPending}>

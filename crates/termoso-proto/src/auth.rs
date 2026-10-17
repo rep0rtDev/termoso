@@ -662,10 +662,32 @@ schema! {
             #[serde(default, skip_serializing_if = "Option::is_none")]
             display_name: Option<String>,
         },
+        /// Account-linking flow (`GET /account/sso/{provider}/link/start`)
+        /// finished: the identity now belongs to the signed-in account.
+        Linked {
+            /// Provider slug.
+            provider: String,
+            /// Email at the identity provider.
+            email: String,
+        },
         /// IdP returned an error.
         Failed {
             /// Message.
             message: String,
         },
+    }
+}
+schema! {
+    /// An identity-provider account linked to the user (`GET /account/sso`).
+    pub struct SsoIdentity {
+        /// Provider slug.
+        pub provider: String,
+        /// Provider display name.
+        pub name: String,
+        /// Email at the identity provider when it was linked.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub email: Option<String>,
+        /// When the link was made.
+        pub linked_at: chrono::DateTime<chrono::Utc>,
     }
 }

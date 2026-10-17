@@ -1,4 +1,4 @@
-import { authApi } from "@/api/endpoints";
+import { accountApi, authApi } from "@/api/endpoints";
 
 const SSO_NEXT_KEY = "termoso.sso.next";
 
@@ -7,6 +7,14 @@ export async function startSso(provider: string, next: string): Promise<void> {
   sessionStorage.setItem(SSO_NEXT_KEY, next);
   const redirect = `${window.location.origin}/sso/callback`;
   const r = await authApi.ssoStart(provider, redirect);
+  window.location.assign(r.authorization_url);
+}
+
+/** Same round-trip, but attaches the identity to the signed-in account. */
+export async function startSsoLink(provider: string): Promise<void> {
+  sessionStorage.setItem(SSO_NEXT_KEY, "/security");
+  const redirect = `${window.location.origin}/sso/callback`;
+  const r = await accountApi.ssoLinkStart(provider, redirect);
   window.location.assign(r.authorization_url);
 }
 

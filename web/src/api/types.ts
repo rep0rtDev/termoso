@@ -245,7 +245,15 @@ export type SsoResult =
   | { status: "pending" }
   | { status: "login_required"; sso_session: string; email: string }
   | { status: "registration_required"; sso_session: string; email: string; display_name?: string }
+  | { status: "linked"; provider: string; email: string }
   | { status: "failed"; message: string };
+
+export interface SsoIdentity {
+  provider: string;
+  name: string;
+  email?: string;
+  linked_at: string;
+}
 
 // ── teams ───────────────────────────────────────────────────────────────
 

@@ -20,6 +20,7 @@ import {
   TextField,
   Tooltip,
   Typography,
+  TableContainer,
 } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
@@ -101,50 +102,52 @@ export function AdminUsersPage() {
           <EmptyState title="No users match" />
         ) : (
           <>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>User</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell align="right">Devices</TableCell>
-                  <TableCell>Last seen</TableCell>
-                  <TableCell>Joined</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {users.data.items.map((u) => (
-                  <TableRow
-                    key={u.id}
-                    hover
-                    sx={{ cursor: "pointer" }}
-                    onClick={() => setSelected(u.id)}
-                    selected={selected === u.id}
-                  >
-                    <TableCell>
-                      <UserCell userId={u.id} email={u.email} displayName={u.display_name} />
-                    </TableCell>
-                    <TableCell>
-                      <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: "wrap" }}>
-                        {u.is_admin && <Chip size="small" color="primary" label="Admin" />}
-                        {u.disabled && <Chip size="small" color="error" label="Disabled" />}
-                        {!u.email_verified && (
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            color="warning"
-                            label="Unverified"
-                          />
-                        )}
-                        {u.mfa_enabled && <Chip size="small" variant="outlined" label="MFA" />}
-                      </Stack>
-                    </TableCell>
-                    <TableCell align="right">{u.devices}</TableCell>
-                    <TableCell>{formatRelative(u.last_seen_at)}</TableCell>
-                    <TableCell>{formatDateTime(u.created_at)}</TableCell>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>User</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell align="right">Devices</TableCell>
+                    <TableCell>Last seen</TableCell>
+                    <TableCell>Joined</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHead>
+                <TableBody>
+                  {users.data.items.map((u) => (
+                    <TableRow
+                      key={u.id}
+                      hover
+                      sx={{ cursor: "pointer" }}
+                      onClick={() => setSelected(u.id)}
+                      selected={selected === u.id}
+                    >
+                      <TableCell>
+                        <UserCell userId={u.id} email={u.email} displayName={u.display_name} />
+                      </TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: "wrap" }}>
+                          {u.is_admin && <Chip size="small" color="primary" label="Admin" />}
+                          {u.disabled && <Chip size="small" color="error" label="Disabled" />}
+                          {!u.email_verified && (
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              color="warning"
+                              label="Unverified"
+                            />
+                          )}
+                          {u.mfa_enabled && <Chip size="small" variant="outlined" label="MFA" />}
+                        </Stack>
+                      </TableCell>
+                      <TableCell align="right">{u.devices}</TableCell>
+                      <TableCell>{formatRelative(u.last_seen_at)}</TableCell>
+                      <TableCell>{formatDateTime(u.created_at)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
             <TablePagination
               component="div"
               count={users.data.total}
