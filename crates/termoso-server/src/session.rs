@@ -132,6 +132,14 @@ pub async fn issue(
     let settings = state.settings().await?;
     let token = random_token();
     let expires_at = Utc::now() + chrono::Duration::days(settings.session_ttl_days.max(1) as i64);
+    // A device holds one live session: signing in again replaces the previous
+    // token instead of leaving it valid until it expires.
+    sqlx::query(
+        "UPDATE sessions SET revoked_at = now() WHERE device_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(device_id)
+    .execute(&state.db)
+    .await?;
     sqlx::query(
         "INSERT INTO sessions (id, user_id, device_id, token_hash, expires_at, reauth_at)
          VALUES ($1, $2, $3, $4, $5, now())",

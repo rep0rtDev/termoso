@@ -768,6 +768,9 @@ impl AccountRuntime {
                     display_name,
                 }
             }
+            SsoResult::Linked { .. } => SsoOutcome::Failed {
+                message: "This was an account-linking flow; finish it in the web cabinet".into(),
+            },
             SsoResult::Failed { message } => SsoOutcome::Failed { message },
         };
         flow.outcome = Some(out.clone());

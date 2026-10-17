@@ -34,6 +34,7 @@ import type {
   SettingsBlob,
   SsoProvider,
   SsoResult,
+  SsoIdentity,
   SsoStartResponse,
   StartOverFinishRequest,
   StartOverRequestResponse,
@@ -154,7 +155,10 @@ export const accountApi = {
     http.put<SettingsBlob>("/account/settings", { data, base_version }),
   devices: () => http.get<{ devices: Device[] }>("/account/devices"),
   revokeDevice: (id: string) => http.delete<undefined>(`/account/devices/${id}`),
-  securityEvents: () => http.get<{ events: SecurityEvent[] }>("/account/security-events"),
+  securityEvents: (before?: string) =>
+    http.get<{ events: SecurityEvent[]; has_more: boolean }>("/account/security-events", {
+      query: before ? { before, limit: "50" } : { limit: "50" },
+    }),
   rotateRecovery: (req: RecoveryRotate) => http.post<undefined>("/account/recovery/rotate", req),
   cancelStartOver: () => http.post<undefined>("/account/start-over/cancel"),
   /** Resolves to `"code_sent"` (202: a confirmation code was mailed) or `"deleted"` (204). */
@@ -167,6 +171,13 @@ export const accountApi = {
     return r.status === 202 ? "code_sent" : "deleted";
   },
 
+  ssoIdentities: () => http.get<SsoIdentity[]>("/account/sso"),
+  ssoLinkStart: (provider: string, redirect: string) =>
+    http.get<SsoStartResponse>(`/account/sso/${encodeURIComponent(provider)}/link/start`, {
+      query: { redirect },
+    }),
+  ssoUnlink: (provider: string) =>
+    http.delete<undefined>(`/account/sso/${encodeURIComponent(provider)}`),
   mfa: () => http.get<MfaStatus>("/account/mfa"),
   totpSetup: () => http.post<TotpSetupResponse>("/account/mfa/totp/setup"),
   totpConfirm: (code: string) =>

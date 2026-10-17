@@ -49,6 +49,12 @@ export function SsoCallbackPage() {
               state: { sso: { ssoSession: r.sso_session, email: r.email } },
             });
             return;
+          case "linked":
+            void navigate("/security", {
+              replace: true,
+              state: { ssoLinked: { provider: r.provider, email: r.email } },
+            });
+            return;
           case "registration_required":
             void navigate(`/signup?next=${encodeURIComponent(next)}`, {
               replace: true,

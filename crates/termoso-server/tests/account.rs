@@ -588,7 +588,7 @@ async fn email_verification_gates_features() {
 async fn new_devices_need_an_emailed_approval() {
     let s = server_with_mail!();
     let email = unique_email("approve");
-    let u = register(s, &email, "pw-approve-1234567").await;
+    let mut u = register(s, &email, "pw-approve-1234567").await;
 
     // Registration device is trusted: no prompt for it.
     let same = login_raw(
@@ -600,7 +600,11 @@ async fn new_devices_need_an_emailed_approval() {
     )
     .await
     .unwrap();
-    assert!(matches!(same, AuthResponse::Authenticated(_)));
+    // Signing in again on the same device replaces its session; keep using the new one.
+    let AuthResponse::Authenticated(same) = same else {
+        panic!("expected direct session on the registration device, got {same:?}")
+    };
+    u.session = same;
 
     let AuthResponse::DeviceApprovalRequired {
         approval_token,
@@ -711,7 +715,10 @@ async fn new_devices_need_an_emailed_approval() {
     )
     .await
     .unwrap();
-    assert!(matches!(again, AuthResponse::Authenticated(_)));
+    // Re-login replaced the approved device's session; continue with the new one.
+    let AuthResponse::Authenticated(approved) = again else {
+        panic!("expected direct session on the approved device, got {again:?}")
+    };
     let kinds = security_kinds(s, &approved.token).await;
     assert!(
         kinds.contains(&"device_approval_requested".into()),
