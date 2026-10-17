@@ -1620,7 +1620,6 @@ export const ru: Readonly<Record<string, string>> = {
   "Serial Port": "Serial-порт",
   "Server URL": "URL сервера",
   "Server certificate fingerprint": "Отпечаток сертификата сервера",
-  Port: "Порт",
   Path: "Путь",
   "The share is reached at the host's address above; the port defaults to 443 (80 over plain HTTP).":
     "Шара доступна по адресу хоста выше; порт по умолчанию 443 (80 для обычного HTTP).",

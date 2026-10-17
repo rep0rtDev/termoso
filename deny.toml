@@ -36,6 +36,17 @@ ignore = [
   { id = "RUSTSEC-2025-0081", reason = "unic-* via tera (uniffi-bindgen templates); compile-time only" },
   { id = "RUSTSEC-2025-0098", reason = "unic-* via tera (uniffi-bindgen templates); compile-time only" },
   { id = "RUSTSEC-2025-0100", reason = "unic-* via tera (uniffi-bindgen templates); compile-time only" },
+  # zip < 9 extract(): symlink escape / SUID bits / permissions through
+  # symlinks. No fixed release reachable: utoipa-swagger-ui 9 and 10 pin
+  # zip 3 / 8 as a *build* dependency (it unpacks the vendored Swagger UI
+  # dist at compile time; nothing at runtime), and every tauri-plugin-updater
+  # release still pins zip 4 — there it unpacks an update bundle only after
+  # the bundle's minisign signature verified against the key compiled into
+  # the app, so the archive is never attacker-controlled. Drop when
+  # utoipa-swagger-ui / tauri-plugin-updater move to zip 9.
+  { id = "RUSTSEC-2026-0367", reason = "zip extract via utoipa-swagger-ui build.rs (compile-time) and tauri-plugin-updater (signature-verified bundles only)" },
+  { id = "RUSTSEC-2026-0368", reason = "zip extract via utoipa-swagger-ui build.rs (compile-time) and tauri-plugin-updater (signature-verified bundles only)" },
+  { id = "RUSTSEC-2026-0369", reason = "zip extract via utoipa-swagger-ui build.rs (compile-time) and tauri-plugin-updater (signature-verified bundles only)" },
 ]
 
 [licenses]
