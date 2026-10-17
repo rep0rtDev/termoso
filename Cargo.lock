@@ -8957,7 +8957,7 @@ dependencies = [
  "ctap-hid-fido2",
  "dav-server",
  "dirs 7.0.0",
- "ed25519-dalek 2.2.0",
+ "ed25519-dalek 3.0.0",
  "encoding_rs",
  "flate2",
  "futures",

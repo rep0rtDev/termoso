@@ -42,7 +42,7 @@ flate2 = "1"
 hkdf = { workspace = true, optional = true }
 rand_core = { workspace = true, optional = true }
 # Software authenticator for tests (feature `fido2-soft`).
-ed25519-dalek = { version = "2", optional = true }
+ed25519-dalek = { version = "3", optional = true }
 
 # server api
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
