@@ -2416,4 +2416,18 @@ export const ru: Readonly<Record<string, string>> = {
   "Closing the window hides Termoso to the system tray; sessions and port forwards stay up. Quit from the tray menu or with {keys}.":
     "Закрытие окна сворачивает Termoso в системный трей; сессии и проброс портов продолжают работать. Выход — через меню трея или {keys}.",
   "Show Termoso": "Показать Termoso",
+  "MobaXterm sessions": "Сессии MobaXterm",
+  "Sessions file…": "Файл сессий…",
+  "A .mxtsessions export or MobaXterm.ini: SSH/Telnet sessions, folders, gateway chains, proxies, key paths. Passwords stay in MobaXterm.":
+    "Экспорт .mxtsessions или MobaXterm.ini: сессии SSH/Telnet, папки, цепочки gateway, прокси, пути к ключам. Пароли остаются в MobaXterm.",
+  "SecureCRT Config directory": "Каталог Config SecureCRT",
+  "SecureCRT session or settings export": "Сессия SecureCRT или экспорт настроек",
+  "The Config/Sessions directory (folders become groups), one session .ini, or the XML from File → Export Settings: SSH/Telnet, keys, jump sessions, descriptions.":
+    "Каталог Config/Sessions (папки становятся группами), один .ini сессии или XML из File → Export Settings: SSH/Telnet, ключи, jump-сессии, описания.",
+  "Config directory…": "Каталог Config…",
+  "Session / export file…": "Файл сессии / экспорта…",
+  "ZOC host directory": "Каталог хостов ZOC",
+  "HostDirectory.zhd (ZOC Files → Options): SSH hosts, folders, usernames, key files and memos.":
+    "HostDirectory.zhd (ZOC Files → Options): SSH-хосты, папки, имена пользователей, файлы ключей и заметки.",
+  "Host directory…": "Файл HostDirectory…",
 };
