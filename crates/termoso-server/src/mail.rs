@@ -411,7 +411,30 @@ mod tests {
             "Change or stop it in the team settings",
             "https://app.termoso.dev/team/0000",
         );
-        for (file, e) in [("code", code), ("invite", invite), ("digest", digest)] {
+        let reset = Email::new("Termoso Cloud: account reset scheduled", "Account reset scheduled")
+            .paragraph("Someone — hopefully you — asked to reset your Termoso Cloud account because the password and the recovery phrase are lost.")
+            .paragraph("What this does: on 2026-10-20 17:30 UTC the reset can be completed. It permanently destroys every host, key, identity, snippet and setting stored in your encrypted vault and signs out every device. Termoso Cloud does not have a key to decrypt that data, so it cannot be recovered — not by you, not by us.")
+            .button("Cancel this reset", "https://app.termoso.dev/start-over/cancel/7c1e…")
+            .outro("Nothing changes until the reset is completed. Cancelling also works from any device that is still signed in.")
+            .secondary("To go ahead after the waiting period (72 h), open", "https://app.termoso.dev/start-over/7c1e…")
+            .note("If this was not you, cancel now — the request came from someone who knows your email address, so consider changing passwords you reuse elsewhere.");
+        let security = Email::new(
+            "Termoso Cloud: security key removed",
+            "Security key removed",
+        )
+        .paragraph("The security key \"YubiKey 5C\" was removed from your account.")
+        .note("If this was not you, sign in and review your security events.");
+        let test = Email::new("Termoso Cloud: test email", "Outgoing email works")
+            .paragraph("If you can read this, outgoing email from your Termoso server works.")
+            .outro("This message was requested from the admin settings; nothing else is configured by it.");
+        for (file, e) in [
+            ("code", code),
+            ("invite", invite),
+            ("digest", digest),
+            ("reset", reset),
+            ("security", security),
+            ("test", test),
+        ] {
             std::fs::write(format!("{dir}/{file}.html"), e.html(name, site)).unwrap();
             std::fs::write(format!("{dir}/{file}.txt"), e.text(name, site)).unwrap();
         }

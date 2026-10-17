@@ -155,7 +155,11 @@ pub async fn notify(state: &AppState, email: &str, subject: &str, text: &str) {
     let Some(mailer) = &state.mailer else {
         return;
     };
-    let msg = crate::mail::Email::new(format!("{}: {subject}", state.cfg.server_name), subject)
+    let mut title = subject.to_string();
+    if let Some(first) = title.get(..1) {
+        title.replace_range(..1, &first.to_uppercase());
+    }
+    let msg = crate::mail::Email::new(format!("{}: {subject}", state.cfg.server_name), title)
         .paragraph(text)
         .note("If this was not you, sign in and review your security events.");
     if let Err(e) = mailer.send(email, &msg).await {
