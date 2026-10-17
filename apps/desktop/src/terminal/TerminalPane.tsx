@@ -32,6 +32,7 @@ import { usePaneTheme } from "./useTerminalTheme";
 import { dismissControlHint, useMultiplayer } from "./multiplayer";
 import type { TerminalTheme } from "./themes";
 import { tr } from "@/i18n";
+import { TypingBadge } from "./TypingBadge";
 
 interface Props {
   paneId: Uuid;
@@ -101,6 +102,7 @@ export function TerminalPane({ paneId, active, showFrame }: Props) {
         />
         <AutocompletePopup paneId={paneId} />
         <RemoteControlHint paneId={paneId} />
+        <TypingBadge paneId={paneId} />
         {(connecting || failedToConnect) && <ConnectionView pane={pane} />}
       </Box>
 

@@ -149,6 +149,10 @@ class LiveBridge(viewer: Boolean = false) : LiveListener {
     private val _events = MutableSharedFlow<LiveEvent>(extraBufferCapacity = 16)
     val events: SharedFlow<LiveEvent> = _events.asSharedFlow()
 
+    /** User id of whoever typed last; emitted about once a second while they keep typing. */
+    private val _typing = MutableSharedFlow<String>(extraBufferCapacity = 16)
+    val typing: SharedFlow<String> = _typing.asSharedFlow()
+
     override fun onParticipants(participants: List<LiveParticipantCard>) {
         _participants.value = participants
     }
@@ -156,6 +160,10 @@ class LiveBridge(viewer: Boolean = false) : LiveListener {
     override fun onControl(canWrite: Boolean) {
         _canWrite.value = canWrite
         _events.tryEmit(LiveEvent.Control(canWrite))
+    }
+
+    override fun onTyping(userId: String) {
+        _typing.tryEmit(userId)
     }
 
     override fun onEnded(reason: LiveEndReason, message: String) {
@@ -213,6 +221,8 @@ class TerminalSession(
     val share: StateFlow<LiveShare?> get() = live.share
     val liveEnded: StateFlow<LiveEvent.Ended?> get() = live.ended
     val liveEvents: SharedFlow<LiveEvent> get() = live.events
+    /** User id of the participant who just typed (host included, this device too). */
+    val typing: SharedFlow<String> get() = live.typing
 
     /** Theme picked for this terminal only from the side panel; `null` follows the global setting. */
     val themeOverride = MutableStateFlow<String?>(null)

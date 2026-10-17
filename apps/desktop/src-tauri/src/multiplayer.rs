@@ -84,6 +84,10 @@ pub enum LiveUiEvent {
         id: Uuid,
         title: String,
     },
+    Typing {
+        id: Uuid,
+        user_id: Uuid,
+    },
     Ended {
         id: Uuid,
         reason: String,
@@ -189,6 +193,19 @@ impl Multiplayer {
             .and_then(|e| e.share.as_ref())
         {
             share.resized(size);
+        }
+    }
+
+    /// The host typed into a shared terminal.
+    pub fn typing(&self, id: Uuid) {
+        if let Some(share) = self
+            .entries
+            .lock()
+            .expect("multiplayer poisoned")
+            .get(&id)
+            .and_then(|e| e.share.as_ref())
+        {
+            share.typing();
         }
     }
 }
@@ -376,6 +393,7 @@ async fn forward<R: Runtime>(app: AppHandle<R>, id: Uuid, mut rx: mpsc::Receiver
                 }
                 LiveEvent::Resize { cols, rows } => LiveUiEvent::Resize { id, cols, rows },
                 LiveEvent::Title { title } => LiveUiEvent::Title { id, title },
+                LiveEvent::Typing { user_id } => LiveUiEvent::Typing { id, user_id },
                 LiveEvent::Ended { reason, message } => {
                     let entry = entries.remove(&id);
                     drop(entries);

@@ -16,15 +16,23 @@ export interface MultiplayerState {
   shares: Record<Uuid, ShareInfo>;
   /** Viewer pane that was just handed remote control — shows the "start typing" hint. */
   controlHint: Uuid | null;
+  /** Who typed last in each shared pane (badge at the cursor); `at` is `Date.now()`. */
+  typing: Record<Uuid, { userId: Uuid; at: number }>;
 }
 
-export const multiplayerStore = createStore<MultiplayerState>({ shares: {}, controlHint: null });
+export const multiplayerStore = createStore<MultiplayerState>({
+  shares: {},
+  controlHint: null,
+  typing: {},
+});
 
 export const useMultiplayer = <S>(selector: (s: MultiplayerState) => S) =>
   useStore(multiplayerStore, selector);
 
 export const useShare = (paneId: Uuid | undefined) =>
   useMultiplayer((s) => (paneId ? (s.shares[paneId] ?? null) : null));
+
+export const useTyping = (paneId: Uuid) => useMultiplayer((s) => s.typing[paneId] ?? null);
 
 const update = (fn: (s: MultiplayerState) => MultiplayerState) =>
   multiplayerStore.set(fn(multiplayerStore.get()));
@@ -33,11 +41,29 @@ function put(share: ShareInfo) {
   update((s) => ({ ...s, shares: { ...s.shares, [share.id]: share } }));
 }
 
+/** How long the "who is typing" badge stays after the last keystroke notice. */
+const TYPING_LINGER_MS = 2500;
+const typingTimers = new Map<Uuid, ReturnType<typeof setTimeout>>();
+
+function noteTyping(paneId: Uuid, userId: Uuid) {
+  update((st) => ({ ...st, typing: { ...st.typing, [paneId]: { userId, at: Date.now() } } }));
+  const prev = typingTimers.get(paneId);
+  if (prev) clearTimeout(prev);
+  typingTimers.set(
+    paneId,
+    setTimeout(() => {
+      typingTimers.delete(paneId);
+      update((st) => ({ ...st, typing: omit(st.typing, paneId) }));
+    }, TYPING_LINGER_MS),
+  );
+}
+
 function forget(paneId: Uuid) {
   update((s) => ({
     ...s,
     shares: omit(s.shares, paneId),
     controlHint: s.controlHint === paneId ? null : s.controlHint,
+    typing: omit(s.typing, paneId),
   }));
 }
 
@@ -137,6 +163,12 @@ function onLiveEvent(ev: LiveEvent) {
       break;
     case "title":
       break;
+    case "typing": {
+      // Our own keystrokes need no badge.
+      const me = share?.participants.find((p) => p.isMe)?.userId;
+      if (share && ev.user_id !== me) noteTyping(ev.id, ev.user_id);
+      break;
+    }
     case "ended": {
       const role = share?.role;
       forget(ev.id);

@@ -5,6 +5,7 @@ import android.view.HapticFeedbackConstants
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -33,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -82,6 +84,8 @@ fun TerminalView(
     onLink: (String) -> Unit = {},
     /** Long-press arrow gesture state for an on-screen hint; `null` when it ends. */
     onArrowGesture: (ArrowHint?) -> Unit = {},
+    /** Small badge drawn just above the cursor cell (multiplayer: who is typing). */
+    cursorBadge: (@Composable () -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val context = LocalContext.current
@@ -327,6 +331,19 @@ fun TerminalView(
         }
         val sel = selection
         val g = grid
+        if (cursorBadge != null && g != null) {
+            val badge = with(density) { 22.dp.roundToPx() }
+            val col = g.frame.cursorCol.toInt()
+            val row = g.frame.cursorRow.toInt()
+            Box(
+                Modifier.offset {
+                    IntOffset(
+                        (col * metrics.width).toInt().coerceAtMost((size.width - badge).coerceAtLeast(0)),
+                        ((row * metrics.height).toInt() - badge).coerceAtLeast(0),
+                    )
+                },
+            ) { cursorBadge() }
+        }
         if (sel != null && g != null) {
             SelectionOverlay(
                 selection = sel,

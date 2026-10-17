@@ -712,6 +712,7 @@ fn settings_persist_with_defaults() {
 struct NoLive;
 
 impl LiveListener for NoLive {
+    fn on_typing(&self, _user_id: String) {}
     fn on_participants(&self, _: Vec<LiveParticipantCard>) {}
     fn on_control(&self, _: bool) {}
     fn on_ended(&self, _: LiveEndReason, _: String) {}
