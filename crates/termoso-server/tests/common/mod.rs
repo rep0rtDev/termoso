@@ -313,6 +313,7 @@ async fn boot() -> Option<TestServer> {
         trust_proxy: true,
         master_key: master_key.clone(),
         admin_emails: "admin@test.local".into(),
+        owner_email: "admin@test.local".into(),
         android_app_links: format!("com.termoso.android.debug={}", ANDROID_DEBUG_FINGERPRINT),
         swagger_ui: true,
         s3,
