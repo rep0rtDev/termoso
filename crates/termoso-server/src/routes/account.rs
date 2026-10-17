@@ -493,8 +493,9 @@ pub async fn security_events(
     .fetch_all(&state.db)
     .await?;
     let has_more = rows.len() as i64 > limit;
-    let events = rows
+    let events: Vec<SecurityEvent> = rows
         .into_iter()
+        .take(limit as usize)
         .map(
             |(id, kind, device_id, ip, user_agent, details, created_at)| SecurityEvent {
                 id,
@@ -507,7 +508,6 @@ pub async fn security_events(
             },
         )
         .collect();
-    let events: Vec<SecurityEvent> = events.into_iter().take(limit as usize).collect();
     Ok(Json(SecurityEventList { events, has_more }))
 }
 
