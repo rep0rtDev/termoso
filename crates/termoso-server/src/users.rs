@@ -89,7 +89,7 @@ pub async fn mfa_enabled(state: &AppState, user: &UserRow) -> ApiResult<bool> {
     Ok(n > 0)
 }
 
-pub fn profile(u: &UserRow, mfa_enabled: bool) -> UserProfile {
+pub fn profile(u: &UserRow, mfa_enabled: bool, is_owner: bool) -> UserProfile {
     UserProfile {
         id: u.id,
         email: u.email.clone(),
@@ -97,6 +97,7 @@ pub fn profile(u: &UserRow, mfa_enabled: bool) -> UserProfile {
         display_name: u.display_name.clone(),
         created_at: u.created_at,
         is_admin: u.is_admin,
+        is_owner,
         mfa_enabled,
         reset_scheduled_for: u.reset_scheduled_for,
         presence_hidden: u.presence_hidden,

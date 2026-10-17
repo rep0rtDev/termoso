@@ -173,6 +173,23 @@ impl Inner {
     pub fn is_bootstrap_admin(&self, email: &str) -> bool {
         self.cfg.admin_emails().iter().any(|e| e == email)
     }
+
+    /// The owner: `TERMOSO_OWNER_EMAIL` when set, otherwise the first account
+    /// ever registered. Only the owner manages the admin role.
+    pub async fn owner_user_id(&self) -> sqlx::Result<Option<uuid::Uuid>> {
+        let owner = self.cfg.owner_email.trim().to_lowercase();
+        let row: Option<(uuid::Uuid,)> = if owner.is_empty() {
+            sqlx::query_as("SELECT id FROM users ORDER BY created_at, id LIMIT 1")
+                .fetch_optional(&self.db)
+                .await?
+        } else {
+            sqlx::query_as("SELECT id FROM users WHERE lower(email) = $1")
+                .bind(owner)
+                .fetch_optional(&self.db)
+                .await?
+        };
+        Ok(row.map(|(id,)| id))
+    }
 }
 
 async fn load_opaque_server(

@@ -989,6 +989,7 @@ mod tests {
                 display_name: None,
                 created_at: Utc::now(),
                 is_admin: false,
+                is_owner: false,
                 mfa_enabled: false,
                 reset_scheduled_for: None,
                 presence_hidden: false,

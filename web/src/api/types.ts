@@ -67,6 +67,7 @@ export interface UserProfile {
   display_name?: string;
   created_at: string;
   is_admin: boolean;
+  is_owner: boolean;
   mfa_enabled: boolean;
   /** A destructive "start over" reset is scheduled for this moment (cancellable until then). */
   reset_scheduled_for?: string | null;
@@ -427,6 +428,7 @@ export interface AdminUser {
   display_name?: string;
   avatar?: string;
   is_admin: boolean;
+  is_owner: boolean;
   disabled: boolean;
   mfa_enabled: boolean;
   created_at: string;

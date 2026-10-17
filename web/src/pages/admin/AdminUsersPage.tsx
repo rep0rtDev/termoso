@@ -132,6 +132,7 @@ export function AdminUsersPage() {
                       </TableCell>
                       <TableCell>
                         <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: "wrap" }}>
+                          {u.is_owner && <Chip size="small" color="secondary" label="Owner" />}
                           {u.is_admin && <Chip size="small" color="primary" label="Admin" />}
                           {u.disabled && <Chip size="small" color="error" label="Disabled" />}
                           {u.email_verified ? (
@@ -185,6 +186,7 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
   const snack = useSnackbar();
   const { session } = useAuthState();
   const isMe = id !== null && id === session?.user.id;
+  const isOwner = session?.user.is_owner === true;
   const user = useQuery({
     queryKey: ["admin", "user", id],
     queryFn: () => adminApi.user(id ?? ""),
@@ -258,7 +260,7 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
               control={
                 <Switch
                   checked={u.is_admin}
-                  disabled={isMe || update.isPending}
+                  disabled={isMe || u.is_owner || !isOwner || update.isPending}
                   onChange={(e) => update.mutate({ is_admin: e.target.checked })}
                 />
               }
@@ -301,7 +303,7 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
                   variant="outlined"
                   fullWidth
                   onClick={() => setConfirm("reset-mfa")}
-                  disabled={!u.mfa_enabled}
+                  disabled={!u.mfa_enabled || (u.is_owner && !isMe)}
                 >
                   Reset MFA
                 </Button>
@@ -311,7 +313,7 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
               variant="outlined"
               color="error"
               onClick={() => setConfirm("delete")}
-              disabled={isMe}
+              disabled={isMe || u.is_owner}
             >
               Delete user
             </Button>

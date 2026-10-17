@@ -64,6 +64,9 @@ pub struct Config {
     pub master_key: String,
     /// Comma-separated emails that are granted admin on first login/registration.
     pub admin_emails: String,
+    /// E-mail of the server owner: the only account that can grant or revoke
+    /// the admin role. Empty = the first registered account.
+    pub owner_email: String,
     /// Allowed CORS origins (comma-separated). Empty = same-origin only.
     pub cors_origins: String,
     /// Trust `X-Forwarded-For` / `X-Real-IP` from the reverse proxy.
@@ -328,6 +331,7 @@ impl Default for Config {
             redis_prefix: "termoso:".into(),
             master_key: String::new(),
             admin_emails: String::new(),
+            owner_email: String::new(),
             cors_origins: String::new(),
             trust_proxy: false,
             log: "info,sqlx=warn,hyper=warn,aws=warn".into(),
