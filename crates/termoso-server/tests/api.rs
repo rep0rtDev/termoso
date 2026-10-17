@@ -148,8 +148,12 @@ async fn web_cabinet_is_served_with_spa_fallback() {
     let r = get("/favicon.svg").await.unwrap();
     assert_eq!(r.status(), StatusCode::OK);
     assert_eq!(r.headers()["cache-control"], "no-cache");
-    let r = get("/robots.txt").await.unwrap();
+    let r = get("/humans.txt").await.unwrap();
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
+    // The cabinet is not for crawlers; robots.txt is generated, not a file.
+    let r = get("/robots.txt").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert!(r.text().await.unwrap().contains("Disallow: /"));
 
     // Android App Links statement comes from config, not from the web dir.
     let r = get("/.well-known/assetlinks.json").await.unwrap();
@@ -247,9 +251,12 @@ async fn landing_origin_serves_only_the_landing() {
         .unwrap();
     assert_eq!(r.status(), StatusCode::TEMPORARY_REDIRECT);
 
-    // Unknown files are plain 404s, not redirects.
-    let r = get("/robots.txt").await.unwrap();
+    // Unknown files are plain 404s, not redirects; the public site allows crawlers.
+    let r = get("/humans.txt").await.unwrap();
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
+    let r = get("/robots.txt").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    assert!(r.text().await.unwrap().contains("Allow: /"));
 
     // Unknown routes are the cabinet's business too (it answers with its
     // own 404 page / JSON error); the landing origin never guesses.
@@ -1571,7 +1578,11 @@ async fn team_activity_digest_is_opt_in_per_admin() {
     // Monday morning (weekly); each subscription is mailed exactly once, and a
     // second instance running the same tick finds nothing left to claim.
     let (smtp, _) = smtp_config().await.expect("mailpit");
-    let mailer = termoso_server::mail::Mailer::new(&smtp, "Termoso Test").expect("mailer");
+    let mail_cfg = termoso_server::config::Config {
+        server_name: "Termoso Test".into(),
+        ..Default::default()
+    };
+    let mailer = termoso_server::mail::Mailer::new(&smtp, &mail_cfg).expect("mailer");
     let db = sqlx::PgPool::connect(&s.database_url).await.expect("db");
     let today = chrono::Utc::now().date_naive();
     let at_8 = |d: chrono::NaiveDate| d.and_hms_opt(8, 0, 0).expect("time").and_utc();

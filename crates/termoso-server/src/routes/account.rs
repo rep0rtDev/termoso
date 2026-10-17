@@ -272,10 +272,9 @@ pub async fn email_change(
                 EMAIL_CHANGE_TTL,
             )
             .await?;
-            let (subject, text) =
-                mailer.code_email("email change", &code, EMAIL_CHANGE_TTL.as_secs() / 60);
+            let email = mailer.code_email("email change", &code, EMAIL_CHANGE_TTL.as_secs() / 60);
             mailer
-                .send(&new_email, &subject, &text)
+                .send(&new_email, &email)
                 .await
                 .map_err(|e| Error::Internal(e.context("sending email")))?;
             Ok(NoContent)
@@ -572,9 +571,9 @@ pub async fn delete_account(
                     Duration::from_secs(900),
                 )
                 .await?;
-                let (subject, text) = mailer.code_email("account deletion", &code, 15);
+                let email = mailer.code_email("account deletion", &code, 15);
                 mailer
-                    .send(&u.email, &subject, &text)
+                    .send(&u.email, &email)
                     .await
                     .map_err(|e| Error::Internal(e.context("sending email")))?;
                 return Ok(axum::http::StatusCode::ACCEPTED);

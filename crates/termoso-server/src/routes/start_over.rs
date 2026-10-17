@@ -197,26 +197,26 @@ pub async fn confirm(
 
     let (finish_url, cancel_url) = links(&state, &finish, &cancel);
     let hours = delay(&state).num_hours();
-    let text = format!(
-        "Someone — hopefully you — asked to reset your {name} account because the password and \
-         the recovery phrase are lost.\n\n\
-         WHAT THIS DOES: on {when} UTC the reset can be completed. It permanently destroys every \
-         host, key, identity, snippet and setting stored in your encrypted vault and signs out every \
-         device. {name} does not have a key to decrypt that data, so it cannot be recovered — not \
-         by you, not by us.\n\n\
-         To go ahead after the waiting period ({hours} h), open:\n    {finish_url}\n\n\
-         IF THIS WAS NOT YOU, cancel it now (works from any signed-in device too):\n    {cancel_url}\n\n\
-         Nothing changes until the reset is completed.",
-        name = state.cfg.server_name,
-        when = scheduled_for.format("%Y-%m-%d %H:%M"),
-    );
+    let name = &state.cfg.server_name;
+    let when = scheduled_for.format("%Y-%m-%d %H:%M").to_string();
+    let email = crate::mail::Email::new(
+        format!("{name}: account reset scheduled"),
+        "Account reset scheduled",
+    )
+    .preheader(format!("Your {name} vault will be erased on {when} UTC unless you cancel."))
+    .paragraph(format!(
+        "Someone — hopefully you — asked to reset your {name} account because the password and the recovery phrase are lost."
+    ))
+    .paragraph(format!(
+        "What this does: on {when} UTC the reset can be completed. It permanently destroys every host, key, identity, snippet and setting stored in your encrypted vault and signs out every device. {name} does not have a key to decrypt that data, so it cannot be recovered — not by you, not by us."
+    ))
+    .button("Cancel this reset", &cancel_url)
+    .secondary(format!("To go ahead after the waiting period ({hours} h), open"), &finish_url)
+    .outro("Nothing changes until the reset is completed. Cancelling also works from any device that is still signed in.")
+    .note("If this was not you, cancel now — the request came from someone who knows your email address, so consider changing passwords you reuse elsewhere.");
     if let Some(mailer) = &state.mailer {
         mailer
-            .send(
-                &user.email,
-                &format!("{}: account reset scheduled", state.cfg.server_name),
-                &text,
-            )
+            .send(&user.email, &email)
             .await
             .map_err(|e| Error::Internal(e.context("sending email")))?;
     }

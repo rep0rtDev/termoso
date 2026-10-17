@@ -79,7 +79,7 @@ impl Inner {
         };
 
         let mailer = match &cfg.smtp {
-            Some(smtp) => Some(Mailer::new(smtp, &cfg.server_name)?),
+            Some(smtp) => Some(Mailer::new(smtp, &cfg)?),
             None => None,
         };
 

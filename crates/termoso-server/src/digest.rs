@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::error::{ApiResult, Error};
 use crate::extract::{Auth, Json as Body};
-use crate::mail::Mailer;
+use crate::mail::{Email, Mailer};
 use crate::ratelimit;
 use crate::routes::teams;
 use crate::state::AppState;
@@ -154,8 +154,8 @@ pub async fn send_due(
         if events.is_empty() {
             continue;
         }
-        let (subject, text) = render(&team_name, team_id, cadence, period, &events, web_url);
-        match mailer.send(&email, &subject, &text).await {
+        let digest = render(&team_name, team_id, cadence, period, &events, web_url);
+        match mailer.send(&email, &digest).await {
             Ok(()) => {
                 sent += 1;
                 metrics::counter!("termoso_team_digests_sent_total", "cadence" => cadence.as_str())
@@ -262,7 +262,7 @@ const GROUPS: &[(&str, &str)] = &[
     ("multiplayer.", "Multiplayer"),
 ];
 
-/// Subject and plain-text body. `events` is what [`load`] returned.
+/// The digest email. `events` is what [`load`] returned.
 pub fn render(
     team_name: &str,
     team_id: Uuid,
@@ -270,7 +270,7 @@ pub fn render(
     period: Period,
     events: &[DigestEvent],
     web_url: &str,
-) -> (String, String) {
+) -> Email {
     let last_day = (period.end - TimeDelta::days(1)).date_naive();
     let when = match cadence {
         DigestCadence::Daily => last_day.format("%A, %-d %B %Y").to_string(),
@@ -295,12 +295,7 @@ pub fn render(
         .iter()
         .filter_map(|e| e.actor_email.as_deref())
         .collect();
-
-    let mut text = String::new();
-    let _ = writeln!(text, "Activity in \"{team_name}\" — {when}");
-    text.push('\n');
-    let _ = writeln!(
-        text,
+    let summary = format!(
         "{}{} by {} {}.",
         if capped { "Over " } else { "" },
         plural(events.len(), "event", "events"),
@@ -311,19 +306,20 @@ pub fn render(
             "people"
         }
     );
-    text.push('\n');
-    text.push_str("By type:\n");
+
+    let mut email = Email::new(subject, format!("Activity in \"{team_name}\" — {when}"))
+        .preheader(summary.clone())
+        .paragraph(summary);
     for (prefix, label) in GROUPS {
         let n = events
             .iter()
             .filter(|e| e.action.starts_with(prefix))
             .count();
         if n > 0 {
-            let _ = writeln!(text, "  {label}: {n}");
+            email = email.row(*label, n.to_string());
         }
     }
-    text.push('\n');
-    text.push_str("Timeline (UTC):\n");
+
     let stamp = match cadence {
         DigestCadence::Daily => "%H:%M",
         DigestCadence::Weekly => "%a %-d %b %H:%M",
@@ -335,6 +331,7 @@ pub fn render(
             names.entry(n).or_default().insert(m);
         }
     }
+    let mut lines = Vec::new();
     for e in events.iter().take(MAX_LINES) {
         let mut line = describe(e);
         if let (Some(n), Some(m)) = (e.actor_name.as_deref(), e.actor_email.as_deref())
@@ -342,9 +339,8 @@ pub fn render(
         {
             line.actor = format!("{n} ({m})");
         }
-        let _ = write!(
-            text,
-            "  {}  {} {}",
+        let mut text = format!(
+            "{}  {} {}",
             e.created_at.format(stamp),
             line.actor,
             line.text
@@ -355,23 +351,23 @@ pub fn render(
         if let Some(m) = &line.meta {
             let _ = write!(text, " — {m}");
         }
-        text.push('\n');
+        lines.push(text);
     }
     if events.len() > MAX_LINES {
-        let _ = writeln!(
-            text,
-            "  … {} not shown.",
+        lines.push(format!(
+            "… {} not shown.",
             plural(events.len() - MAX_LINES, "more event", "more events")
-        );
+        ));
     }
-    text.push('\n');
-    let _ = writeln!(
-        text,
-        "You receive this because you turned on the activity digest for \"{team_name}\".\n\
-         Change or stop it in the team settings: {}/team/{team_id}",
-        web_url.trim_end_matches('/')
-    );
-    (subject, text)
+    email
+        .log("Timeline (UTC):", lines)
+        .outro(format!(
+            "You receive this because you turned on the activity digest for \"{team_name}\"."
+        ))
+        .secondary(
+            "Change or stop it in the team settings",
+            format!("{}/team/{team_id}", web_url.trim_end_matches('/')),
+        )
 }
 
 fn plural(n: usize, one: &str, many: &str) -> String {
@@ -756,7 +752,7 @@ pub async fn send_now(
     }
     ratelimit::check(&state, ratelimit::EMAIL, &email).await?;
     let team_name = teams::team_name(&state.db, id).await?;
-    let (subject, text) = render(
+    let digest = render(
         &team_name,
         id,
         cadence,
@@ -764,7 +760,7 @@ pub async fn send_now(
         &events,
         state.cfg.web_url(),
     );
-    mailer.send(&email, &subject, &text).await?;
+    mailer.send(&email, &digest).await?;
     metrics::counter!("termoso_team_digests_sent_total", "cadence" => "manual").increment(1);
     Ok(Json(SendDigestResponse {
         events: events.len().min(MAX_EVENTS as usize) as u32,
@@ -840,13 +836,17 @@ mod tests {
                 serde_json::json!({ "role": "editor" }),
             ),
         ];
-        let (subject, text) = render(
+        let email = render(
             "Ops",
             team,
             DigestCadence::Daily,
             period,
             &events,
             "https://cabinet.example/",
+        );
+        let (subject, text) = (
+            email.subject.clone(),
+            email.text("Termoso", "https://cabinet.example"),
         );
         assert_eq!(subject, "Ops: activity for Monday, 14 September 2026");
         assert!(text.contains("3 events by 1 person."));
@@ -869,13 +869,17 @@ mod tests {
         let events: Vec<DigestEvent> = (0..(MAX_LINES + 5))
             .map(|_| ev("multiplayer.started", serde_json::json!({})))
             .collect();
-        let (subject, text) = render(
+        let email = render(
             "Ops",
             Uuid::nil(),
             DigestCadence::Weekly,
             period,
             &events,
             "http://x",
+        );
+        let (subject, text) = (
+            email.subject.clone(),
+            email.text("Termoso", "https://cabinet.example"),
         );
         assert_eq!(subject, "Ops: activity for 31 August – 6 September 2026");
         assert!(text.contains("… 5 more events not shown."));

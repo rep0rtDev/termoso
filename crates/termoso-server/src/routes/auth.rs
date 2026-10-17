@@ -120,9 +120,9 @@ pub(crate) async fn send_code_email(
         return Err(Error::feature_disabled("Email"));
     };
     ratelimit::check(state, ratelimit::EMAIL, to).await?;
-    let (subject, text) = mailer.code_email(purpose, code, ttl.as_secs() / 60);
+    let email = mailer.code_email(purpose, code, ttl.as_secs() / 60);
     mailer
-        .send(to, &subject, &text)
+        .send(to, &email)
         .await
         .map_err(|e| Error::Internal(e.context("sending email")))?;
     Ok(())
