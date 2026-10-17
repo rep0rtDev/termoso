@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,23 +21,30 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.DataObject
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardHide
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,6 +91,9 @@ private val StripKeyHeight = 40.dp
 private val GridKeyHeight = 44.dp
 private val GridMaxHeight = 232.dp
 private val BarHeight = 46.dp
+
+/** Below this width the strip keeps only the key row; the secondary actions move into a menu. */
+private val CompactBarWidth = 600.dp
 private val ChromePadding = PaddingValues(horizontal = 8.dp, vertical = 5.dp)
 
 /** Keys the compact strip always offers, scrolling sideways past the edge. */
@@ -174,35 +185,56 @@ fun KeyPanel(
             return@Column
         }
         if (!expanded) {
-            Row(
-                Modifier.fillMaxWidth().height(BarHeight).padding(ChromePadding),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(KeyGap),
-            ) {
-                IconKey(Icons.Filled.GridView, stringResource(R.string.more_keys), Modifier.width(44.dp), onClick = onToggleExpanded)
-                IconKey(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai), Modifier.width(40.dp)) { onKeyPressed(); onAskAi() }
-                IconKey(Icons.Filled.Password, stringResource(R.string.password), Modifier.width(40.dp)) { onKeyPressed(); onHiddenInput() }
-                LazyRow(
-                    Modifier.weight(1f),
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val compact = maxWidth < CompactBarWidth
+                var more by remember { mutableStateOf(false) }
+                Row(
+                    Modifier.fillMaxWidth().height(BarHeight).padding(ChromePadding),
+                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(KeyGap),
                 ) {
-                    stripKeys.forEach { key ->
-                        item(key = KeyActions.encode(key)) {
-                            TextKey(key, active(key), Modifier.widthIn(min = 44.dp), height = StripKeyHeight) { press(it) }
+                    IconKey(Icons.Filled.GridView, stringResource(R.string.more_keys), Modifier.width(44.dp), onClick = onToggleExpanded)
+                    if (!compact) {
+                        IconKey(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai), Modifier.width(40.dp)) { onKeyPressed(); onAskAi() }
+                        IconKey(Icons.Filled.Password, stringResource(R.string.password), Modifier.width(40.dp)) { onKeyPressed(); onHiddenInput() }
+                    }
+                    LazyRow(
+                        Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(KeyGap),
+                    ) {
+                        stripKeys.forEach { key ->
+                            item(key = KeyActions.encode(key)) {
+                                TextKey(key, active(key), Modifier.widthIn(min = 44.dp), height = StripKeyHeight) { press(it) }
+                            }
                         }
                     }
+                    if (compact) {
+                        Box {
+                            IconKey(Icons.Filled.MoreHoriz, stringResource(R.string.more), Modifier.width(40.dp)) { more = true }
+                            DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
+                                MenuAction(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai)) { more = false; onKeyPressed(); onAskAi() }
+                                MenuAction(Icons.Filled.Password, stringResource(R.string.password)) { more = false; onKeyPressed(); onHiddenInput() }
+                                if (canAttach) {
+                                    MenuAction(Icons.Filled.AttachFile, stringResource(R.string.send_file)) { more = false; onKeyPressed(); onAttach() }
+                                }
+                                MenuAction(Icons.Filled.Mic, stringResource(R.string.voice_input)) { more = false; onKeyPressed(); onVoice() }
+                                MenuAction(Icons.Filled.ContentPaste, stringResource(R.string.paste_2)) { more = false; onKeyPressed(); onPaste() }
+                            }
+                        }
+                    } else {
+                        if (canAttach) {
+                            IconKey(Icons.Filled.AttachFile, stringResource(R.string.send_file), Modifier.width(40.dp)) { onKeyPressed(); onAttach() }
+                        }
+                        IconKey(Icons.Filled.Mic, stringResource(R.string.voice_input), Modifier.width(40.dp)) { onKeyPressed(); onVoice() }
+                        IconKey(Icons.Filled.ContentPaste, stringResource(R.string.paste_2), Modifier.width(44.dp)) { onKeyPressed(); onPaste() }
+                    }
+                    IconKey(
+                        if (imeShown) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
+                        stringResource(R.string.toggle_keyboard),
+                        Modifier.width(44.dp),
+                        onClick = onToggleIme,
+                    )
                 }
-                if (canAttach) {
-                    IconKey(Icons.Filled.AttachFile, stringResource(R.string.send_file), Modifier.width(40.dp)) { onKeyPressed(); onAttach() }
-                }
-                IconKey(Icons.Filled.Mic, stringResource(R.string.voice_input), Modifier.width(40.dp)) { onKeyPressed(); onVoice() }
-                IconKey(Icons.Filled.ContentPaste, stringResource(R.string.paste_2), Modifier.width(44.dp)) { onKeyPressed(); onPaste() }
-                IconKey(
-                    if (imeShown) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
-                    stringResource(R.string.toggle_keyboard),
-                    Modifier.width(44.dp),
-                    onClick = onToggleIme,
-                )
             }
             return@Column
         }
@@ -316,6 +348,15 @@ private fun WideKey(icon: ImageVector, label: String, modifier: Modifier = Modif
         Spacer(Modifier.width(8.dp))
         Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
     }
+}
+
+@Composable
+private fun MenuAction(icon: ImageVector, label: String, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(label) },
+        leadingIcon = { Icon(icon, contentDescription = null, Modifier.size(20.dp)) },
+        onClick = onClick,
+    )
 }
 
 @Composable
