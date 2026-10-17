@@ -240,6 +240,7 @@ list; the source of truth is
 | `TERMOSO_DATABASE_MAX_CONNECTIONS` | `20` | pool size per replica |
 | `TERMOSO_REDIS_URL` / `TERMOSO_REDIS_PREFIX` | `redis://127.0.0.1:6379` / `termoso:` | Redis; the prefix lets deployments share one instance |
 | `TERMOSO_ADMIN_EMAILS` | empty | comma-separated e-mails granted the admin role on sign-up / sign-in |
+| `TERMOSO_OWNER_EMAIL` | empty | the server owner — the only account that can grant or revoke admin and cannot be disabled, demoted or deleted; empty = the first registered account |
 | `TERMOSO_SERVER_NAME` | `Termoso` | name shown in e-mails and server info |
 | `TERMOSO_CORS_ORIGINS` | empty | extra browser origins allowed to call the API |
 | `TERMOSO_TRUST_PROXY` | `false` | honour `X-Forwarded-For` / `X-Real-IP` (set behind a reverse proxy) |

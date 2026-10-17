@@ -42,6 +42,9 @@ schema! {
         pub avatar: Option<String>,
         /// Admin.
         pub is_admin: bool,
+        /// Owner (see `UserProfile::is_owner`).
+        #[serde(default)]
+        pub is_owner: bool,
         /// Disabled.
         pub disabled: bool,
         /// MFA on.

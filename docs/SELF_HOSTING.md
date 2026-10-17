@@ -78,6 +78,7 @@ RUSTFS_ACCESS_KEY=termoso
 RUSTFS_SECRET_KEY=             # openssl rand -hex 24
 TERMOSO_S3__PUBLIC_ENDPOINT=https://s3.termoso.example.com
 TERMOSO_ADMIN_EMAILS=you@example.com
+TERMOSO_OWNER_EMAIL=you@example.com   # optional; default = first registered account
 TERMOSO_SMTP__HOST=… PORT=… USERNAME=… PASSWORD=… SECURITY=starttls FROM=…
 ```
 

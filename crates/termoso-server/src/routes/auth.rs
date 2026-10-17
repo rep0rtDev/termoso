@@ -100,11 +100,12 @@ pub(crate) async fn build_session(
 ) -> ApiResult<Session> {
     let (token, expires_at) = session::issue(state, user.id, device_id).await?;
     let mfa = users::mfa_enabled(state, user).await?;
+    let is_owner = state.owner_user_id().await? == Some(user.id);
     Ok(Session {
         token,
         expires_at,
         device_id,
-        user: users::profile(user, mfa),
+        user: users::profile(user, mfa, is_owner),
         keys: users::keys(user),
     })
 }

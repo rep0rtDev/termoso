@@ -64,7 +64,7 @@ type UserRow = (
     i64,
 );
 
-fn to_admin_user(r: UserRow) -> AdminUser {
+fn to_admin_user(r: UserRow, owner: Option<Uuid>) -> AdminUser {
     let (
         id,
         email,
@@ -85,6 +85,7 @@ fn to_admin_user(r: UserRow) -> AdminUser {
         display_name,
         avatar,
         is_admin,
+        is_owner: owner == Some(id),
         disabled,
         mfa_enabled,
         created_at,
@@ -125,8 +126,9 @@ pub async fn users(
     .bind(&pattern)
     .fetch_one(&state.db)
     .await?;
+    let owner = state.owner_user_id().await?;
     Ok(Json(AdminUserList {
-        users: rows.into_iter().map(to_admin_user).collect(),
+        users: rows.into_iter().map(|r| to_admin_user(r, owner)).collect(),
         total,
     }))
 }
@@ -142,7 +144,8 @@ pub async fn user(
             .bind(id)
             .fetch_optional(&state.db)
             .await?;
-    row.map(to_admin_user)
+    let owner = state.owner_user_id().await?;
+    row.map(|r| to_admin_user(r, owner))
         .map(Json)
         .ok_or_else(|| Error::not_found("User"))
 }
@@ -158,6 +161,17 @@ pub async fn update_user(
     let target = users::by_id(&state.db, id).await?;
     if id == auth.user_id() && (req.disabled == Some(true) || req.is_admin == Some(false)) {
         return Err(Error::bad_request("You cannot disable or demote yourself"));
+    }
+    let owner = state.owner_user_id().await?;
+    if req.is_admin.is_some() && owner != Some(auth.user_id()) {
+        return Err(Error::forbidden(
+            "Only the server owner can grant or revoke the admin role",
+        ));
+    }
+    if owner == Some(id) && (req.disabled == Some(true) || req.is_admin == Some(false)) {
+        return Err(Error::forbidden(
+            "The server owner cannot be disabled or demoted",
+        ));
     }
     if req.is_admin == Some(false) && state.cfg.is_bootstrap_admin(&target.email) {
         return Err(Error::bad_request(
@@ -204,6 +218,9 @@ pub async fn delete_user(
         ));
     }
     let target = users::by_id(&state.db, id).await?;
+    if state.owner_user_id().await? == Some(id) {
+        return Err(Error::forbidden("The server owner cannot be deleted"));
+    }
     let (owned,): (i64,) = sqlx::query_as("SELECT count(*) FROM teams WHERE owner_id = $1")
         .bind(id)
         .fetch_one(&state.db)
@@ -272,6 +289,11 @@ pub async fn reset_mfa(
     Path(id): Path<Uuid>,
 ) -> ApiResult<NoContent> {
     users::by_id(&state.db, id).await?;
+    if id != auth.user_id() && state.owner_user_id().await? == Some(id) {
+        return Err(Error::forbidden(
+            "Only the server owner can reset their own MFA",
+        ));
+    }
     let mut tx = state.db.begin().await?;
     sqlx::query("UPDATE users SET totp_secret = NULL, totp_enabled = false, updated_at = now() WHERE id = $1")
         .bind(id)

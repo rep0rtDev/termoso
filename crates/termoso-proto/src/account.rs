@@ -21,6 +21,9 @@ schema! {
         pub created_at: DateTime<Utc>,
         /// Server administrator.
         pub is_admin: bool,
+        /// Server owner: the only account that can grant or revoke admin.
+        #[serde(default)]
+        pub is_owner: bool,
         /// Any MFA method enabled.
         pub mfa_enabled: bool,
         /// A "start over" reset is scheduled for this moment (cancel it from any

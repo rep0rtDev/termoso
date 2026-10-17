@@ -42,8 +42,9 @@ pub struct AccountResponse {
 pub async fn get(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<AccountResponse>> {
     let u = users::by_id(&state.db, auth.user_id()).await?;
     let mfa = users::mfa_enabled(&state, &u).await?;
+    let is_owner = state.owner_user_id().await? == Some(u.id);
     Ok(Json(AccountResponse {
-        user: users::profile(&u, mfa),
+        user: users::profile(&u, mfa, is_owner),
         keys: users::keys(&u),
     }))
 }
@@ -69,8 +70,9 @@ pub async fn update_profile(
         .await?;
     let u = users::by_id(&state.db, auth.user_id()).await?;
     let mfa = users::mfa_enabled(&state, &u).await?;
+    let is_owner = state.owner_user_id().await? == Some(u.id);
     events::publish(&state, Event::AccountUpdated { user_id: u.id }).await?;
-    Ok(Json(users::profile(&u, mfa)))
+    Ok(Json(users::profile(&u, mfa, is_owner)))
 }
 
 #[utoipa::path(put, path = "/api/v1/account/presence", tag = "account",
@@ -90,8 +92,9 @@ pub async fn put_presence(
     }
     let u = users::by_id(&state.db, auth.user_id()).await?;
     let mfa = users::mfa_enabled(&state, &u).await?;
+    let is_owner = state.owner_user_id().await? == Some(u.id);
     events::publish(&state, Event::AccountUpdated { user_id: u.id }).await?;
-    Ok(Json(users::profile(&u, mfa)))
+    Ok(Json(users::profile(&u, mfa, is_owner)))
 }
 
 // ───────────────────────────── avatar ─────────────────────────────
@@ -112,8 +115,9 @@ pub async fn put_avatar(
     avatar::store(&state.db, auth.user_id(), &webp).await?;
     let u = users::by_id(&state.db, auth.user_id()).await?;
     let mfa = users::mfa_enabled(&state, &u).await?;
+    let is_owner = state.owner_user_id().await? == Some(u.id);
     events::publish(&state, Event::AccountUpdated { user_id: u.id }).await?;
-    Ok(Json(users::profile(&u, mfa)))
+    Ok(Json(users::profile(&u, mfa, is_owner)))
 }
 
 #[utoipa::path(delete, path = "/api/v1/account/avatar", tag = "account", responses((status = 200, body = UserProfile)))]
@@ -124,8 +128,9 @@ pub async fn delete_avatar(
     avatar::clear(&state.db, auth.user_id()).await?;
     let u = users::by_id(&state.db, auth.user_id()).await?;
     let mfa = users::mfa_enabled(&state, &u).await?;
+    let is_owner = state.owner_user_id().await? == Some(u.id);
     events::publish(&state, Event::AccountUpdated { user_id: u.id }).await?;
-    Ok(Json(users::profile(&u, mfa)))
+    Ok(Json(users::profile(&u, mfa, is_owner)))
 }
 
 #[derive(Deserialize, utoipa::IntoParams)]
