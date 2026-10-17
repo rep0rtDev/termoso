@@ -4,11 +4,18 @@ The API Bridge lets your automation (Ansible, Terraform, a CMDB, an autoscaler)
 create, update and delete hosts and groups in a Termoso vault over a plain REST
 API — without ever sending plaintext to the Termoso server.
 
-Termius sells the same idea as a paid Team feature. Ours is free, and unlike
-theirs the server side stays zero-knowledge: the bridge runs **in your
-infrastructure**, holds the vault keys, encrypts everything locally and pushes
-only ciphertext through the ordinary sync API. The Termoso server (cloud or
-self-hosted) sees the bridge as one more device that syncs opaque blobs.
+Termius offers a comparable API Bridge on its paid team plans
+(<https://termius.com/pricing>). Ours is free on every server, and the server
+side stays zero-knowledge: the bridge runs **in your infrastructure**, holds
+the vault keys, encrypts everything locally and pushes only ciphertext through
+the ordinary sync API. The Termoso server (cloud or self-hosted) sees the
+bridge as one more device that syncs opaque blobs — nothing runs server-side
+per bridge or per user.
+
+Availability is a server switch: `TERMOSO_BRIDGES` (default `true`; the
+hosted cloud at `app.termoso.dev` has it on). With `false` the cabinet hides
+the page, `/account/bridges*` and `/bridge/me` answer 404 and existing bridge
+tokens are rejected.
 
 ```
  your automation ──REST (plaintext, your network)──▶ termoso-bridge ──sync (ciphertext)──▶ Termoso server

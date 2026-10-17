@@ -1449,6 +1449,10 @@ export function LandingPage() {
             {info.data ? `${info.data.name} · server v${info.data.version}` : "Termoso"} · AGPL-3.0
             · No cookies, no trackers.
           </Typography>
+          <Typography variant="caption" color="text.disabled" sx={{ display: "block", mt: 1 }}>
+            Termius is a trademark of Termius Corporation. Termoso is an independent project, not
+            affiliated with or endorsed by Termius.
+          </Typography>
         </Container>
       </Box>
     </Box>

@@ -140,7 +140,14 @@ lives in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   change.
 * Sessions are opaque bearer tokens bound to a registered device; devices can
   be listed and revoked from any signed-in client, and revocation is pushed
-  live over the WebSocket.
+  live over the WebSocket. A device holds one live session: signing in again
+  on it replaces the previous token instead of leaving it valid until expiry.
+* **SSO** (OpenID Connect, GitHub, SAML 2.0) only proves who owns the e-mail.
+  It replaces e-mail codes and new-device approval, never the vault password:
+  the vault key is derived from the password, so an identity provider cannot
+  read vaults. Providers are connected and disconnected per account in
+  Security → *Connected accounts* (step-up required to disconnect); an
+  identity already linked to another account cannot be taken over.
 * **MFA**: TOTP, WebAuthn / passkeys / security keys, e-mail codes, backup
   codes. New-device sign-in approval by e-mail.
 * Server-side secrets (OPAQUE server setup, TOTP secrets) are encrypted at rest
@@ -248,7 +255,7 @@ list; the source of truth is
 | `TERMOSO_SWAGGER_UI` | `true` | serve Swagger UI at `/api/docs` and the OpenAPI document at `/api/openapi.json` |
 | `TERMOSO_DOCS` | `true` | serve the documentation at `/docs` |
 | `TERMOSO_DOCS_URL` | – | dedicated origin for the documentation (`https://docs.example.com`); `/docs` on the other origins redirects there |
-| `TERMOSO_BRIDGES` | `true` | offer API bridges (cabinet page, bridge tokens); `false` hides the page and rejects bridge tokens — the hosted cloud runs with it off |
+| `TERMOSO_BRIDGES` | `true` | offer API bridges (cabinet page, bridge tokens); `false` hides the page and rejects bridge tokens. The hosted cloud at `app.termoso.dev` runs with it on |
 | `TERMOSO_START_OVER_DELAY_SECS` | `86400` | waiting period of the *Start over* account reset |
 
 Client-side settings live in the apps. Desktop honours `TERMOSO_PROFILE_DIR`
@@ -438,3 +445,7 @@ every project space. Security reports go through [SECURITY.md](SECURITY.md).
 
 Termoso is licensed under the [GNU AGPL v3](LICENSE): run it, change it, host
 it — and keep it free for whoever you host it for.
+
+Termius is a trademark of Termius Corporation. Termoso is an independent
+project, not affiliated with or endorsed by Termius; the name is used only to
+describe compatibility and comparison.

@@ -102,6 +102,13 @@ sign in, to the sync server you chose. There are no analytics, crash
 reporting or feature-flag SDKs; server metrics are opt-in and stay on your
 server. A build that opens any other connection is a bug — report it.
 
+* **Identity providers (SSO).** An OIDC/SAML provider only proves control of
+  an e-mail address. A compromised or malicious IdP can therefore sign in to
+  the account on a new device, read nothing (the vault key is derived from the
+  password, which the IdP never sees) and cannot link itself to another
+  account: linking requires either the password login it is attached to or a
+  step-up from the signed-in cabinet, and unlinking requires step-up.
+
 ## Supported versions
 
 The latest release and `main` receive fixes. Older releases are not patched;

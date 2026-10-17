@@ -149,6 +149,20 @@ events, bridges and digests. Server-side secrets that must be recoverable
 `TERMOSO_MASTER_KEY`. Redis is a cache and message bus only — losing it logs
 users out of nothing and loses no data.
 
+### Public site and e-mail (`routes/web.rs`, `mail.rs`)
+
+The same container serves three origins: the landing (`TERMOSO_LANDING_URL`),
+the docs (`TERMOSO_DOCS_URL`) and the cabinet (`TERMOSO_PUBLIC_URL`). The web
+build writes `seo.json` (title/description per public route, from the docs'
+front matter); `Seo::load` renders one HTML shell per public route **once at
+start** — title, description, canonical, Open Graph/Twitter card — and one
+`noindex` shell for cabinet routes, so a request is a `HashMap` lookup with
+no disk read or templating. `/robots.txt` and `/sitemap.xml` are generated
+per origin. E-mails are built from a single `Email` structure and sent as
+`multipart/alternative` (text/plain + HTML on nested tables with inline
+styles, no external CSS/JS/tracking; the logo is the only image). The daily
+and weekly digests are skipped when the period has no activity.
+
 ## Sync protocol (`termoso-proto::sync`, `termoso-core::sync`)
 
 Each vault has an independent, monotonically increasing `seq`. A client keeps
@@ -188,7 +202,11 @@ sync_once
 * **Sessions** are opaque bearer tokens bound to a device row. **Step-up**
   (`reauth`) marks a session as recently re-proved for 5 minutes and gates
   every account-altering endpoint. Revocation is pushed live over the
-  WebSocket and enforced server-side on the next request.
+  WebSocket and enforced server-side on the next request. `session::issue`
+  revokes every live session of the same device before inserting the new
+  one, so a device holds exactly one valid token (clients identify
+  themselves with a stable `client_device_id`, which is what lets
+  `upsert_device` reuse the device row).
 * **MFA** methods are pluggable server-side (`routes/mfa.rs`): TOTP, WebAuthn
   (also used for security-key sign-in from Android over CTAP2), e-mail codes,
   backup codes. New devices need e-mail approval when SMTP is configured.
@@ -211,6 +229,20 @@ sync_once
   one-shot flow state in Redis. SSO only proves who owns the e-mail; the
   vault password (OPAQUE) and the recovery key remain the only ways to unwrap
   key material, so an IdP cannot read vaults.
+  **Identities** live in `sso_identities` (`(provider, subject)` → user, plus
+  the e-mail the IdP reported). An identity is linked at SSO sign-up, after a
+  successful password login that was started through SSO, or from the
+  cabinet (`GET /account/sso/{provider}/link/start` binds the flow to the
+  signed-in user and the callback answers `linked`). Sign-in through a linked
+  identity resolves the account by `(provider, subject)` even if the IdP
+  e-mail changed; an identity owned by another account is refused.
+  `GET /account/sso` lists links, `DELETE /account/sso/{provider}` (step-up)
+  removes one and records an `sso_unlinked` security event.
+* **Account reset** (`start_over.rs`): an e-mail-confirmed "start over" with
+  a 24-hour waiting period (`TERMOSO_START_OVER_DELAY_SECS`) that the owner
+  can cancel from the notification; completing it wipes the vaults and issues
+  fresh keys. It is the only recovery path when password and recovery key
+  are both lost.
 * **SSH ID**: an account can publish public keys under a handle
   (`/sshid/<handle>`), served as `authorized_keys` text so servers can trust a
   person rather than a file.
@@ -237,8 +269,12 @@ bindings, and packages both into an AAR. `:app` is Jetpack Compose + Material
 (`data/AppContainer.kt`) and manager classes (`SessionManager`, `SftpManager`,
 `ForwardManager`, `AccountManager`, `PresenceManager`, `Fido2Manager`,
 `AiManager`) that adapt the UniFFI façade to Kotlin coroutines/flows. Sessions
-run inside a foreground service so they survive backgrounding; the master key
-is wrapped by the Android Keystore (`MasterKeyStore`). FIDO2 is implemented
+run inside a foreground service so they survive backgrounding, and the
+service's notification lists the active sessions with open/disconnect
+actions; the master key is wrapped by the Android Keystore (`MasterKeyStore`).
+The local shell is a full Linux user space: `LinuxManager.kt` downloads a
+rootfs on first use and runs it under proot, so `apt`/`apk` work without
+root. FIDO2 is implemented
 over USB HID and NFC IsoDep transports handed to Rust through a UniFFI callback
 interface.
 

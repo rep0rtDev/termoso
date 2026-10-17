@@ -78,6 +78,17 @@ What it runs, per area:
 | android | `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug` in `apps/android/` |
 | deploy | `docker compose config` for both stacks, Quadlet `-dryrun` when the binary exists |
 
+CI additionally runs a **supply chain** job (`cargo deny --locked check
+advisories bans licenses sources` against `deny.toml`, plus `npm audit` for
+the web and desktop packages — a new RustSec advisory fails the build until it
+is fixed or given a reasoned `ignore` entry) and a **fuzz** job that checks
+the `fuzz/` targets on nightly and runs a short smoke of each; see
+[fuzz/README.md](fuzz/README.md). Server integration tests need the backing
+services: `docker compose -f deploy/docker-compose.dev.yml up -d` (or plain
+`postgres`, `redis` and `axllent/mailpit` containers) and
+`TERMOSO_TEST_DATABASE_URL` / `TERMOSO_TEST_REDIS_URL`; without them they are
+skipped.
+
 macOS and iOS builds run only in CI (Apple-hosted runners); the `macos` job
 also launches the built app for a scripted smoke, the `ios` job runs XCTest
 and XCUITest in a simulator. If you change the desktop Rust side, keep
