@@ -47,6 +47,13 @@ ignore = [
   { id = "RUSTSEC-2026-0367", reason = "zip extract via utoipa-swagger-ui build.rs (compile-time) and tauri-plugin-updater (signature-verified bundles only)" },
   { id = "RUSTSEC-2026-0368", reason = "zip extract via utoipa-swagger-ui build.rs (compile-time) and tauri-plugin-updater (signature-verified bundles only)" },
   { id = "RUSTSEC-2026-0369", reason = "zip extract via utoipa-swagger-ui build.rs (compile-time) and tauri-plugin-updater (signature-verified bundles only)" },
+  # zbus_names / zvariant / zvariant_derive were folded into zbus 6; no
+  # vulnerability, just "unmaintained as standalone crates". They reach us only
+  # through zbus 5 on Linux desktop: notify-rust (tauri-plugin-notification) and
+  # secret-service (keyring). Drop once those move to zbus 6.
+  { id = "RUSTSEC-2026-0370", reason = "zvariant via zbus 5 (notify-rust, secret-service); Linux desktop only, no vulnerability" },
+  { id = "RUSTSEC-2026-0371", reason = "zbus_names via zbus 5 (notify-rust, secret-service); Linux desktop only, no vulnerability" },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive via zbus 5 (notify-rust, secret-service); Linux desktop only, no vulnerability" },
 ]
 
 [licenses]
