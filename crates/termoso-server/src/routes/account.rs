@@ -459,7 +459,6 @@ pub async fn revoke_device(
 
 // ───────────────────────────── security events ─────────────────────────────
 
-#[utoipa::path(get, path = "/api/v1/account/security-events", tag = "account", responses((status = 200, body = SecurityEventList)))]
 #[derive(Deserialize)]
 pub struct SecurityEventsQuery {
     /// Only events strictly older than this instant (pagination cursor).
@@ -468,6 +467,7 @@ pub struct SecurityEventsQuery {
     pub limit: Option<i64>,
 }
 
+#[utoipa::path(get, path = "/api/v1/account/security-events", tag = "account", responses((status = 200, body = SecurityEventList)))]
 pub async fn security_events(
     State(state): State<AppState>,
     auth: Auth,
