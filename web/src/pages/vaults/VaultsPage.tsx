@@ -23,7 +23,7 @@ import { Loading } from "@/components/Loading";
 import { PageHeader } from "@/components/PageHeader";
 import { RoleChip } from "@/components/RoleChip";
 import { formatDate } from "@/components/format";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 
 export function VaultsPage() {
   const navigate = useNavigate();
@@ -50,8 +50,14 @@ export function VaultsPage() {
                   {v.name}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" noWrap>
-                  {v.kind === "personal" ? "Personal vault" : (teamName(v.team_id) ?? "Team vault")}{" "}
-                  · key v{v.key_version} · {formatDate(v.created_at)}
+                  {trx("{v1}  · key v{key_version} · {v2}", {
+                    v1:
+                      v.kind === "personal"
+                        ? tr("Personal vault")
+                        : (teamName(v.team_id) ?? tr("Team vault")),
+                    key_version: v.key_version,
+                    v2: formatDate(v.created_at),
+                  })}
                 </Typography>
               </Stack>
               <Stack direction="row" spacing={0.5} sx={{ alignItems: "center", flexShrink: 0 }}>

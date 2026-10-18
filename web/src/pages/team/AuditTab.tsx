@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { tr } from "@/i18n";
+import { msg, tr, trn, trx } from "@/i18n";
 import {
   Alert,
   Box,
@@ -57,20 +57,20 @@ export function AuditTab({ team }: { team: Team }) {
 const KINDS: { value: WebhookKind; label: string; hint: string }[] = [
   {
     value: "generic",
-    label: tr("Generic JSON (HMAC)"),
-    hint: tr("POST batches signed with X-Termoso-Signature"),
+    label: msg("Generic JSON (HMAC)"),
+    hint: msg("POST batches signed with X-Termoso-Signature"),
   },
-  { value: "splunk_hec", label: tr("Splunk HEC"), hint: tr("secret = HEC token") },
+  { value: "splunk_hec", label: msg("Splunk HEC"), hint: msg("secret = HEC token") },
   {
     value: "elastic",
-    label: tr("Elasticsearch / OpenSearch"),
-    hint: tr("bulk NDJSON; secret = API key"),
+    label: msg("Elasticsearch / OpenSearch"),
+    hint: msg("bulk NDJSON; secret = API key"),
   },
-  { value: "datadog", label: tr("Datadog Logs"), hint: tr("secret = API key") },
+  { value: "datadog", label: msg("Datadog Logs"), hint: msg("secret = API key") },
   {
     value: "syslog_tls",
-    label: tr("Syslog over TLS (CEF)"),
-    hint: tr("syslog+tls://host:6514; no secret"),
+    label: msg("Syslog over TLS (CEF)"),
+    hint: msg("syslog+tls://host:6514; no secret"),
   },
 ];
 
@@ -259,7 +259,7 @@ function WebhooksSection({ team }: { team: Team }) {
     onSuccess: async (r, w) => {
       await invalidate();
       const ok = r.deliveries.filter((d) => d.status === "ok").length;
-      snack.notify(`${ok}/${r.deliveries.length} deliveries succeeded`);
+      snack.notify(tr("{ok}/{total} deliveries succeeded", { ok, total: r.deliveries.length }));
       setHistory(w);
     },
     onError: (e) => snack.error(errorMessage(e)),
@@ -318,10 +318,12 @@ function WebhooksSection({ team }: { team: Team }) {
                       {w.url}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {w.actions?.length ? w.actions.join(", ") : "all events"}
+                      {w.actions?.length ? w.actions.join(", ") : tr("all events")}
                     </Typography>
                   </TableCell>
-                  <TableCell>{KINDS.find((k) => k.value === w.kind)?.label ?? w.kind}</TableCell>
+                  <TableCell>
+                    {tr(KINDS.find((k) => k.value === w.kind)?.label ?? w.kind)}
+                  </TableCell>
                   <TableCell>
                     {w.last_delivered_at ? (
                       <Tooltip title={formatDateTime(w.last_delivered_at)}>
@@ -337,7 +339,7 @@ function WebhooksSection({ team }: { team: Team }) {
                         <Chip
                           size="small"
                           color={w.enabled ? "warning" : "error"}
-                          label={`${w.failures} failure${w.failures === 1 ? "" : "s"}`}
+                          label={trn(w.failures, "{count} failure", "{count} failures")}
                           sx={{ ml: 1 }}
                         />
                       </Tooltip>
@@ -349,7 +351,7 @@ function WebhooksSection({ team }: { team: Team }) {
                       checked={w.enabled}
                       disabled={toggle.isPending}
                       onChange={() => toggle.mutate(w)}
-                      slotProps={{ input: { "aria-label": "Enabled" } }}
+                      slotProps={{ input: { "aria-label": tr("Enabled") } }}
                     />
                   </TableCell>
                   <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
@@ -460,16 +462,16 @@ function CreateWebhookDialog({
             >
               {KINDS.map((x) => (
                 <MenuItem key={x.value} value={x.value}>
-                  {x.label}
+                  {tr(x.label)}
                 </MenuItem>
               ))}
             </Select>
           </FormControl>
           <Typography variant="caption" color="text.secondary">
-            {k?.hint}
+            {k ? tr(k.hint) : null}
           </Typography>
           <TextField
-            label={syslog ? "Destination (syslog+tls://host:port)" : "URL (https://…)"}
+            label={syslog ? tr("Destination (syslog+tls://host:port)") : tr("URL (https://…)")}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             fullWidth
@@ -477,7 +479,9 @@ function CreateWebhookDialog({
           />
           {!syslog && (
             <TextField
-              label={kind === "generic" ? "Signing secret (8–512 chars)" : "Token / API key"}
+              label={
+                kind === "generic" ? tr("Signing secret (8–512 chars)") : tr("Token / API key")
+              }
               type="password"
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
@@ -524,7 +528,7 @@ function DeliveriesDialog({
   });
   return (
     <Dialog open={hook !== null} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Deliveries · {hook?.url}</DialogTitle>
+      <DialogTitle>{trx("Deliveries · {url}", { url: hook?.url })}</DialogTitle>
       <DialogContent sx={{ p: 0 }}>
         {q.isPending ? (
           <Loading minHeight={120} />

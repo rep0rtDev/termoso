@@ -1,5 +1,5 @@
 import { useState, type SubmitEvent } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import { Alert, Box, Button, Divider, Link, Stack, TextField, Typography } from "@mui/material";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router";
 import { ApiError, errorMessage } from "@/api/client";
@@ -76,18 +76,22 @@ export function LoginPage() {
   return (
     <form onSubmit={submit}>
       <AuthTitle
-        title={sso ? "Unlock your account" : "Sign in"}
+        title={sso ? tr("Unlock your account") : tr("Sign in")}
         subtitle={
           sso
-            ? `Signed in with SSO as ${sso.email}. Enter your Termoso password to unlock your encrypted data.`
-            : "Your password never leaves this device."
+            ? tr(
+                "Signed in with SSO as {email}. Enter your Termoso password to unlock your encrypted data.",
+                { email: sso.email },
+              )
+            : tr("Your password never leaves this device.")
         }
       />
       <Stack spacing={2}>
         {sessionEnded && !error && (
           <Alert severity="info">
-            Your session ended — you signed in on this device again or it was revoked. Sign in to
-            continue.
+            {tr(
+              "Your session ended — you signed in on this device again or it was revoked. Sign in to continue.",
+            )}
           </Alert>
         )}
         {error && <Alert severity="error">{error}</Alert>}
@@ -124,7 +128,7 @@ export function LoginPage() {
           size="large"
           disabled={busy || (needCaptcha && captcha === null)}
         >
-          {busy ? "Signing in…" : "Sign in"}
+          {busy ? tr("Signing in…") : tr("Sign in")}
         </Button>
 
         {!sso && providers.length > 0 && (
@@ -155,13 +159,16 @@ export function LoginPage() {
 
         {info.data?.registration_open !== false && !sso && (
           <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
-            New to Termoso?{" "}
-            <Link
-              component={RouterLink}
-              to={next === "/account" ? "/signup" : `/signup?next=${encodeURIComponent(next)}`}
-            >
-              {tr("Create an account")}
-            </Link>
+            {trx("New to Termoso?  {v1}", {
+              v1: (
+                <Link
+                  component={RouterLink}
+                  to={next === "/account" ? "/signup" : `/signup?next=${encodeURIComponent(next)}`}
+                >
+                  {tr("Create an account")}
+                </Link>
+              ),
+            })}
           </Typography>
         )}
       </Stack>

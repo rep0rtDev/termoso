@@ -61,7 +61,9 @@ export function DeviceApprovePage() {
     <form onSubmit={submit}>
       <AuthTitle
         title={tr("Approve this browser")}
-        subtitle={`This is a new device. We sent a confirmation code to ${state.emailHint}.`}
+        subtitle={tr("This is a new device. We sent a confirmation code to {emailHint}.", {
+          emailHint: state.emailHint,
+        })}
       />
       <Stack spacing={2}>
         {error && <Alert severity="error">{error}</Alert>}

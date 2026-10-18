@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { tr } from "@/i18n";
+import { msg, tr } from "@/i18n";
 import {
   Avatar,
   Box,
@@ -50,22 +50,22 @@ interface NavItem {
 }
 
 const accountNav: NavItem[] = [
-  { to: "/account", label: tr("Account"), icon: <PersonOutlineRoundedIcon /> },
-  { to: "/security", label: tr("Security"), icon: <ShieldOutlinedIcon /> },
-  { to: "/devices", label: tr("Devices"), icon: <DevicesOutlinedIcon /> },
+  { to: "/account", label: msg("Account"), icon: <PersonOutlineRoundedIcon /> },
+  { to: "/security", label: msg("Security"), icon: <ShieldOutlinedIcon /> },
+  { to: "/devices", label: msg("Devices"), icon: <DevicesOutlinedIcon /> },
 ];
 
 const workspaceNav: NavItem[] = [
-  { to: "/team", label: tr("Teams"), icon: <GroupsOutlinedIcon /> },
-  { to: "/vaults", label: tr("Vaults"), icon: <LockOutlinedIcon /> },
-  { to: "/bridges", label: tr("API Bridge"), icon: <HubOutlinedIcon /> },
+  { to: "/team", label: msg("Teams"), icon: <GroupsOutlinedIcon /> },
+  { to: "/vaults", label: msg("Vaults"), icon: <LockOutlinedIcon /> },
+  { to: "/bridges", label: msg("API Bridge"), icon: <HubOutlinedIcon /> },
 ];
 
 const adminNav: NavItem[] = [
-  { to: "/admin", label: tr("Overview"), icon: <DashboardOutlinedIcon />, end: true },
-  { to: "/admin/users", label: tr("Users"), icon: <PeopleAltOutlinedIcon /> },
-  { to: "/admin/teams", label: tr("Teams"), icon: <GroupsOutlinedIcon /> },
-  { to: "/admin/settings", label: tr("Server settings"), icon: <TuneRoundedIcon /> },
+  { to: "/admin", label: msg("Overview"), icon: <DashboardOutlinedIcon />, end: true },
+  { to: "/admin/users", label: msg("Users"), icon: <PeopleAltOutlinedIcon /> },
+  { to: "/admin/teams", label: msg("Teams"), icon: <GroupsOutlinedIcon /> },
+  { to: "/admin/settings", label: msg("Server settings"), icon: <TuneRoundedIcon /> },
 ];
 
 function NavSection({
@@ -120,7 +120,7 @@ function NavSection({
               }}
             >
               {it.icon}
-              {it.label}
+              {tr(it.label)}
             </Box>
           );
         })}
@@ -192,13 +192,13 @@ export function AppShell() {
         }}
       >
         <Typography variant="caption" sx={{ flex: 1 }} noWrap>
-          {info.data ? `${info.data.name} · v${info.data.version}` : "Termoso"}
+          {info.data ? `${info.data.name} · v${info.data.version}` : tr("Termoso")}
         </Typography>
         <Tooltip
           title={
             privateKey
-              ? "Encryption keys unlocked in this tab"
-              : "Encryption keys locked — they unlock with your password when needed"
+              ? tr("Encryption keys unlocked in this tab")
+              : tr("Encryption keys locked — they unlock with your password when needed")
           }
         >
           <KeyRoundedIcon

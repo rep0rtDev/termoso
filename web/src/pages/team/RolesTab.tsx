@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Box,
@@ -157,7 +157,9 @@ function Matrix({
                       {manage && r.slug !== "owner" && (
                         <Tooltip
                           title={
-                            r.id === defaultRoleId ? "Default role for new members" : "Make default"
+                            r.id === defaultRoleId
+                              ? tr("Default role for new members")
+                              : tr("Make default")
                           }
                         >
                           <span>
@@ -193,7 +195,7 @@ function Matrix({
                     </Stack>
                     <Typography variant="caption" color="text.secondary">
                       {r.member_count} {r.member_count === 1 ? "member" : "members"}
-                      {r.builtin ? " · built-in" : ""}
+                      {r.builtin ? tr(" · built-in") : ""}
                     </Typography>
                   </Stack>
                 </TableCell>
@@ -223,11 +225,13 @@ function Matrix({
         onClose={() => setCreateOpen(false)}
       />
       <Dialog open={deleting !== null} onClose={() => setDeleting(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Delete role “{deleting?.name}”?</DialogTitle>
+        <DialogTitle>{trx("Delete role “{name}”?", { name: deleting?.name })}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              {deleting?.member_count ?? 0} member(s) currently hold it and will be moved to:
+              {trx("{v1} member(s) currently hold it and will be moved to:", {
+                v1: deleting?.member_count ?? 0,
+              })}
             </Typography>
             <FormControl size="small" fullWidth>
               <InputLabel id="reassign-label">{tr("Role")}</InputLabel>
@@ -249,7 +253,7 @@ function Matrix({
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleting(null)}>Cancel</Button>
+          <Button onClick={() => setDeleting(null)}>{tr("Cancel")}</Button>
           <Button
             color="error"
             variant="contained"
@@ -538,7 +542,7 @@ function MappingsSection({ team, roles }: { team: Team; roles: TeamRoleDef[] }) 
           </TableContainer>
           {draft && (
             <Box sx={{ p: 2, display: "flex", gap: 1, justifyContent: "flex-end" }}>
-              <Button onClick={() => setDraft(null)}>Discard</Button>
+              <Button onClick={() => setDraft(null)}>{tr("Discard")}</Button>
               <Button
                 variant="contained"
                 disabled={save.isPending || rows.some((m) => !m.group_name.trim() || !m.role_id)}
@@ -562,7 +566,7 @@ function MappingsSection({ team, roles }: { team: Team; roles: TeamRoleDef[] }) 
           save.mutate([]);
         }}
       >
-        Members keep their current roles; new sign-ins get the team default.
+        {tr("Members keep their current roles; new sign-ins get the team default.")}
       </ConfirmDialog>
     </Section>
   );

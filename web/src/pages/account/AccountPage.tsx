@@ -1,5 +1,5 @@
 import { useRef, useState, type SubmitEvent } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Box,
@@ -71,7 +71,10 @@ function ProfileSection({ displayName, createdAt }: { displayName: string; creat
     onError: (e) => snack.error(errorMessage(e)),
   });
   return (
-    <Section title={tr("Profile")} description={`Member since ${formatDate(createdAt)}`}>
+    <Section
+      title={tr("Profile")}
+      description={tr("Member since {v1}", { v1: formatDate(createdAt) })}
+    >
       <Box
         component="form"
         onSubmit={(e: SubmitEvent) => {
@@ -148,7 +151,7 @@ function PictureSection({ user }: { user: UserProfile }) {
           }}
         />
         <Button variant="contained" disabled={busy} onClick={() => input.current?.click()}>
-          {user.avatar ? "Change" : "Upload"}
+          {user.avatar ? tr("Change") : tr("Upload")}
         </Button>
         {user.avatar && (
           <Button variant="text" color="inherit" disabled={busy} onClick={() => remove.mutate()}>
@@ -222,7 +225,7 @@ function EmailSection({ email, verified }: { email: string; verified: boolean })
               disabled={send.isPending}
               sx={{ height: 36 }}
             >
-              {sent ? "Resend code" : "Send verification code"}
+              {sent ? tr("Resend code") : tr("Send verification code")}
             </Button>
             <TextField
               placeholder={tr("Code from email")}
@@ -346,8 +349,8 @@ function ChangeEmailDialog({
             <>
               <DialogContentText>
                 {emailEnabled
-                  ? "We will send a confirmation code to the new address."
-                  : "The address is changed immediately; you will then re-enter your password."}
+                  ? tr("We will send a confirmation code to the new address.")
+                  : tr("The address is changed immediately; you will then re-enter your password.")}
               </DialogContentText>
               <TextField
                 autoFocus
@@ -362,7 +365,9 @@ function ChangeEmailDialog({
           )}
           {step === "code" && (
             <>
-              <DialogContentText>Enter the code sent to {newEmail}.</DialogContentText>
+              <DialogContentText>
+                {trx("Enter the code sent to {newEmail}.", { newEmail: newEmail })}
+              </DialogContentText>
               <TextField
                 autoFocus
                 label={tr("Confirmation code")}
@@ -378,8 +383,10 @@ function ChangeEmailDialog({
           {step === "password" && (
             <>
               <Alert severity="warning">
-                Your email is now {newEmail}. Re-enter your password to finish — until you do,
-                signing in with a password is not possible.
+                {trx(
+                  "Your email is now {newEmail}. Re-enter your password to finish — until you do, signing in with a password is not possible.",
+                  { newEmail: newEmail },
+                )}
               </Alert>
               <PasswordField
                 autoFocus
@@ -402,11 +409,11 @@ function ChangeEmailDialog({
           <Button type="submit" variant="contained" disabled={busy}>
             {step === "email"
               ? emailEnabled
-                ? "Send code"
-                : "Change"
+                ? tr("Send code")
+                : tr("Change")
               : step === "code"
-                ? "Confirm"
-                : "Finish"}
+                ? tr("Confirm")
+                : tr("Finish")}
           </Button>
         </DialogActions>
       </form>
@@ -484,7 +491,7 @@ function PasswordSection() {
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               error={mismatch}
-              helperText={mismatch ? "Passwords do not match" : undefined}
+              helperText={mismatch ? tr("Passwords do not match") : undefined}
               disabled={busy}
             />
             <FormControlLabel
@@ -560,8 +567,9 @@ function RecoveryKeySection() {
         <DialogTitle>{tr("Generate a new recovery key?")}</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            You will be asked for your password first. The current recovery key stops working
-            immediately; you will see the new key once — store it safely.
+            {tr(
+              "You will be asked for your password first. The current recovery key stops working immediately; you will see the new key once — store it safely.",
+            )}
           </DialogContentText>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>

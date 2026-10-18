@@ -208,7 +208,7 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
                 set("audit_retention_days", num(e.target.value, s.audit_retention_days))
               }
               slotProps={{ htmlInput: { min: 0, max: 3650 } }}
-              helperText={s.audit_retention_days === 0 ? "Kept forever" : undefined}
+              helperText={s.audit_retention_days === 0 ? tr("Kept forever") : undefined}
             />
           </Grid>
         </Grid>
@@ -239,7 +239,7 @@ function TestEmailSection() {
   const [to, setTo] = useState(session?.user.email ?? "");
   const test = useMutation({
     mutationFn: () => adminApi.testEmail(to.trim()),
-    onSuccess: () => snack.notify(`Test email sent to ${to.trim()}`),
+    onSuccess: () => snack.notify(tr("Test email sent to {v1}", { v1: to.trim() })),
     onError: (e) => snack.error(errorMessage(e)),
   });
   const enabled = info.data?.features.email ?? false;
@@ -250,8 +250,9 @@ function TestEmailSection() {
     >
       {!enabled ? (
         <Alert severity="info">
-          SMTP is not configured. Email verification, device approval codes, email MFA and
-          invitation emails are disabled.
+          {tr(
+            "SMTP is not configured. Email verification, device approval codes, email MFA and invitation emails are disabled.",
+          )}
         </Alert>
       ) : (
         <Box

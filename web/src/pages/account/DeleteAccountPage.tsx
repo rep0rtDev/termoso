@@ -1,5 +1,5 @@
 import { useState, type SubmitEvent } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import { Alert, Button, Link, Stack, TextField, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { Link as RouterLink, useNavigate } from "react-router";
@@ -58,23 +58,31 @@ export function DeleteAccountPage() {
         <form onSubmit={submit}>
           <Stack spacing={2}>
             <Typography variant="body2">
-              Hosts, keys, snippets, session logs, devices and your personal vault are deleted from
-              this server. Team vaults you belong to stay with the team, but your access is removed.
+              {tr(
+                "Hosts, keys, snippets, session logs, devices and your personal vault are deleted from this server. Team vaults you belong to stay with the team, but your access is removed.",
+              )}
             </Typography>
             {owned.length > 0 && (
               <Alert severity="warning">
-                You own {owned.length} {owned.length === 1 ? "team" : "teams"} (
-                {owned.map((t) => t.name).join(", ")}). Transfer ownership or delete{" "}
-                {owned.length === 1 ? "it" : "them"} first on the{" "}
-                <Link component={RouterLink} to="/team">
-                  {tr("Team")}
-                </Link>{" "}
-                page.
+                {trx(
+                  "You own {length} {v1} ( {v2}). Transfer ownership or delete  {v3} first on the  {v4}  page.",
+                  {
+                    length: owned.length,
+                    v1: owned.length === 1 ? "team" : "teams",
+                    v2: owned.map((t) => t.name).join(", "),
+                    v3: owned.length === 1 ? "it" : "them",
+                    v4: (
+                      <Link component={RouterLink} to="/team">
+                        {tr("Team")}
+                      </Link>
+                    ),
+                  },
+                )}
               </Alert>
             )}
             {error && <Alert severity="error">{error}</Alert>}
             <TextField
-              label={`Type ${email} to confirm`}
+              label={tr("Type {email} to confirm", { email })}
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               autoComplete="off"
@@ -106,7 +114,7 @@ export function DeleteAccountPage() {
                   busy || !confirmed || owned.length > 0 || (codeSent && code.trim() === "")
                 }
               >
-                {codeSent || !mayNeedCode ? "Delete account" : "Send confirmation code"}
+                {codeSent || !mayNeedCode ? tr("Delete account") : tr("Send confirmation code")}
               </Button>
               <Button color="inherit" onClick={() => void navigate(-1)} disabled={busy}>
                 {tr("Cancel")}

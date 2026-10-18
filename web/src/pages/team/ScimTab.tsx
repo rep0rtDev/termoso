@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Button,
@@ -92,12 +92,16 @@ function TokensSection({ team }: { team: Team }) {
       title={tr("SCIM provisioning")}
       description={
         <>
-          Point your identity provider (Okta, Entra ID, Google, …) at{" "}
-          <Typography component="code" variant="body2" sx={{ fontFamily: "monospace" }}>
-            {q.data.base_url}
-          </Typography>{" "}
-          with a bearer token below. Users and groups are created, updated and deprovisioned by the
-          provider; up to three active tokens.
+          {trx(
+            "Point your identity provider (Okta, Entra ID, Google, …) at  {v1}  with a bearer token below. Users and groups are created, updated and deprovisioned by the provider; up to three active tokens.",
+            {
+              v1: (
+                <Typography component="code" variant="body2" sx={{ fontFamily: "monospace" }}>
+                  {q.data.base_url}
+                </Typography>
+              ),
+            },
+          )}
         </>
       }
       actions={
@@ -175,7 +179,7 @@ function TokensSection({ team }: { team: Team }) {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+          <Button onClick={() => setCreateOpen(false)}>{tr("Cancel")}</Button>
           <Button
             variant="contained"
             disabled={!name.trim() || create.isPending}
@@ -211,8 +215,9 @@ function TokensSection({ team }: { team: Team }) {
         onCancel={() => setRevoking(null)}
         onConfirm={() => revoking && revoke.mutate(revoking)}
       >
-        The identity provider using it stops syncing immediately. Users already provisioned keep
-        their access.
+        {tr(
+          "The identity provider using it stops syncing immediately. Users already provisioned keep their access.",
+        )}
       </ConfirmDialog>
     </Section>
   );
@@ -318,7 +323,9 @@ function GroupsSection({ team, manage }: { team: Team; manage: boolean }) {
         </TableContainer>
       )}
       <Dialog open={editing !== null} onClose={() => setEditing(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Vaults for “{editing?.display_name}”</DialogTitle>
+        <DialogTitle>
+          {trx("Vaults for “{display_name}”", { display_name: editing?.display_name })}
+        </DialogTitle>
         <DialogContent>
           {teamVaults.length === 0 ? (
             <DialogContentText>{tr("This team has no shared vaults yet.")}</DialogContentText>
@@ -362,7 +369,7 @@ function GroupsSection({ team, manage }: { team: Team; manage: boolean }) {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEditing(null)}>Cancel</Button>
+          <Button onClick={() => setEditing(null)}>{tr("Cancel")}</Button>
           <Button variant="contained" disabled={save.isPending} onClick={() => save.mutate()}>
             {tr("Save")}
           </Button>

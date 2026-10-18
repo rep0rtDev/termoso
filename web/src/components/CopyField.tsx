@@ -30,7 +30,7 @@ export function CopyField({ label, value, mono = true, multiline }: Props) {
           sx: mono ? { fontFamily: monoFontFamily, fontSize: "0.875rem" } : undefined,
           endAdornment: (
             <InputAdornment position="end">
-              <Tooltip title={copied ? "Copied" : "Copy"}>
+              <Tooltip title={copied ? tr("Copied") : tr("Copy")}>
                 <IconButton onClick={copy} edge="end" size="small" aria-label={tr("Copy")}>
                   {copied ? (
                     <CheckRoundedIcon fontSize="small" />

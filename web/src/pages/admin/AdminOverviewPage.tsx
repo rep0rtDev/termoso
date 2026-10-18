@@ -56,7 +56,9 @@ export function AdminOverviewPage() {
       <PageHeader
         title={tr("Admin")}
         subtitle={
-          info.data ? `${info.data.name} · Termoso ${info.data.version}` : "Server overview"
+          info.data
+            ? tr("{name} · Termoso {version}", { name: info.data.name, version: info.data.version })
+            : tr("Server overview")
         }
       />
       <Grid container spacing={2} sx={{ mb: 2.5 }}>
@@ -93,7 +95,7 @@ export function AdminOverviewPage() {
             <Feature on={f.teams} label={tr("Team creation")} />
             <Feature
               on={(info.data?.sso_providers.length ?? 0) > 0}
-              label={`SSO (${info.data?.sso_providers.length ?? 0} providers)`}
+              label={tr("SSO ({v1} providers)", { v1: info.data?.sso_providers.length ?? 0 })}
             />
           </Box>
         </Section>
@@ -117,7 +119,7 @@ function Feature({ on, label }: { on: boolean; label: string }) {
             }}
           />
           <Typography variant="body2" color={on ? "text.primary" : "text.secondary"}>
-            {on ? "Enabled" : "Off"}
+            {on ? tr("Enabled") : tr("Off")}
           </Typography>
         </Stack>
       }

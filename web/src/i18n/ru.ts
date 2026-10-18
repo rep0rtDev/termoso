@@ -592,4 +592,324 @@ export const ru: Readonly<Record<string, string>> = {
   system: "системная",
   "“Any” accepts TOTP, e-mail codes or passkeys; “Passkey” requires WebAuthn. Enforced at sign-in and before team data is served.":
     "«Любой» принимает TOTP, коды по e-mail или passkey; «Passkey» требует WebAuthn. Проверяется при входе и перед выдачей данных команды.",
+  " · built-in": " · встроенная",
+  " · pending": " · ожидает",
+  "(you)": "(вы)",
+  "A new key is generated in your browser and sealed to every member who currently holds the key. Removed members' stale copies become useless. Apps re-encrypt existing records on their next sync.":
+    "Новый ключ генерируется в браузере и запечатывается каждому участнику, у которого сейчас есть ключ. Старые копии удалённых участников становятся бесполезны. Приложения перешифруют записи при следующей синхронизации.",
+  "Account deleted. Rotate affected vault keys to revoke their stale copies.":
+    "Аккаунт удалён. Ротируйте ключи затронутых хранилищ, чтобы отозвать его старые копии.",
+  "Activity digest turned off": "Дайджест активности выключен",
+  "Added {v1} · Last used {v2}": "Добавлен {v1} · Последнее использование {v2}",
+  "Adding a member seals the vault key to their public key locally.":
+    "При добавлении участника ключ хранилища запечатывается его публичным ключом локально.",
+  "After sign-up you will get a 24-word recovery key. It is the only way to reset a forgotten password without losing your data — nobody, including the server operator, can recover it for you.":
+    "После регистрации вы получите ключ восстановления из 24 слов. Это единственный способ сбросить забытый пароль без потери данных — никто, включая оператора сервера, не восстановит его за вас.",
+  "All records and session logs in “{name}” are deleted for every member. This cannot be undone.":
+    "Все записи и логи сессий в «{name}» удаляются у всех участников. Это нельзя отменить.",
+  "All sessions revoked": "Все сессии отозваны",
+  "Already have an account?  {v1}": "Уже есть аккаунт?  {v1}",
+  "An account reset is scheduled {v1}": "Запланирован сброс аккаунта {v1}",
+  "Assigned from {v1} groups": "Назначено из групп {v1}",
+  "At least 10 characters. Use a passphrase you can remember.":
+    "Не меньше 10 символов. Используйте фразу, которую запомните.",
+  "Backup code": "Резервный код",
+  "Becomes an individual account and keeps its personal vault; loses access to the team and its vaults.":
+    "Становится самостоятельным аккаунтом и сохраняет личное хранилище; теряет доступ к команде и её хранилищам.",
+  "Cancel the reset": "Отменить сброс",
+  "Cancelling…": "Отменяем…",
+  "Cannot reach the server. Check your connection.": "Сервер недоступен. Проверьте подключение.",
+  "Come back to this link after that time. If you did not ask for this reset, use the cancel link from the same email — or sign in on a device that is still signed in and cancel it from there.":
+    "Вернитесь по этой ссылке после указанного времени. Если вы не запрашивали сброс, используйте ссылку отмены из того же письма — или войдите на устройстве, где вход ещё выполнен, и отмените оттуда.",
+  "Confirm it's you": "Подтвердите, что это вы",
+  "Confirm your email address first.": "Сначала подтвердите адрес e-mail.",
+  "Confirming…": "Подтверждаем…",
+  Connect: "Подключить",
+  Copied: "Скопировано",
+  "Could not decrypt (recorded with another key version?)":
+    "Не удалось расшифровать (записано другой версией ключа?)",
+  "Create a Termoso account for {email} to join the team.":
+    "Создайте аккаунт Termoso для {email}, чтобы вступить в команду.",
+  "Create a bridge, download its credentials once and run the container next to your automation.":
+    "Создайте мост, один раз скачайте его учётные данные и запустите контейнер рядом с вашей автоматизацией.",
+  "Create a vault to start sharing hosts and keys.":
+    "Создайте хранилище, чтобы делиться хостами и ключами.",
+  "Creating account…": "Создаём аккаунт…",
+  "Decrypting…": "Расшифровываем…",
+  "Default role for new members": "Роль по умолчанию для новых участников",
+  "Delete account?": "Удалить аккаунт?",
+  "Delete my data and start over": "Удалить мои данные и начать заново",
+  "Delete role “{name}”?": "Удалить роль «{name}»?",
+  "Deliveries · {url}": "Доставки · {url}",
+  "Destination (syslog+tls://host:port)": "Назначение (syslog+tls://host:port)",
+  "Details are decrypted only in your browser": "Детали расшифровываются только в вашем браузере",
+  "Device signed out": "Устройство вышло",
+  Discard: "Отменить изменения",
+  "Disconnect {v1}?": "Отключить {v1}?",
+  "Download {file} again": "Скачать {file} ещё раз",
+  "Edit comment": "Изменить комментарий",
+  Enabled: "Включено",
+  "Encrypted recording": "Зашифрованная запись",
+  "Encryption keys locked — they unlock with your password when needed":
+    "Ключи шифрования заблокированы — разблокируются паролем, когда понадобятся",
+  "Encryption keys unlocked in this tab": "Ключи шифрования разблокированы в этой вкладке",
+  "Enter a current code (or a backup code) to confirm.":
+    "Введите текущий код (или резервный), чтобы подтвердить.",
+  "Enter the code sent to {newEmail}.": "Введите код, отправленный на {newEmail}.",
+  "Enter the code we sent to {v1}.": "Введите код, который мы отправили на {v1}.",
+  "Every Monday morning (07:00 UTC) for the previous week.":
+    "Каждый понедельник утром (07:00 UTC) за прошлую неделю.",
+  "Every morning (07:00 UTC) for the previous day.": "Каждое утро (07:00 UTC) за прошлый день.",
+  "Every session of {email} is revoked. They must sign in again on each device.":
+    "Все сессии {email} отзываются. Придётся войти заново на каждом устройстве.",
+  "Every team member already belongs to this vault. Invite more people on the team page first.":
+    "Все участники команды уже в этом хранилище. Сначала пригласите людей на странице команды.",
+  "Every team vault and all data inside it is deleted for all {member_count} members. This cannot be undone.":
+    "Все хранилища команды и все данные в них удаляются у всех {member_count} участников. Это нельзя отменить.",
+  "Every terminal session to a host of this vault is recorded on the member's device and uploaded encrypted. Members still see their own recordings when this is off.":
+    "Каждая терминальная сессия к хосту этого хранилища записывается на устройстве участника и загружается зашифрованной. Свои записи участники видят и при выключенной настройке.",
+  Finish: "Завершить",
+  "Former member": "Бывший участник",
+  "Generate a new vault key and re-seal it to current members":
+    "Создать новый ключ хранилища и перезапечатать его текущим участникам",
+  "Grant access to vaults (as viewer)": "Выдать доступ к хранилищам (как наблюдателю)",
+  "Grant all ({length})": "Выдать все ({length})",
+  "Hide password": "Скрыть пароль",
+  "Hosts, keys and snippets synced from the desktop and mobile apps are stored here. Team vaults can be shared; the personal vault cannot.":
+    "Здесь хранятся хосты, ключи и сниппеты, синхронизированные из приложений. Хранилищами команды можно делиться; личным — нет.",
+  "Hosts, keys, snippets, session logs, devices and your personal vault are deleted from this server. Team vaults you belong to stay with the team, but your access is removed.":
+    "Хосты, ключи, сниппеты, логи сессий, устройства и личное хранилище удаляются с сервера. Хранилища команд остаются у команд, но ваш доступ снимается.",
+  "I understand, schedule the reset": "Понимаю, запланировать сброс",
+  "If you did not request this reset, someone else has access to your mailbox. Change your email password, then sign in to Termoso and review Devices and Security.":
+    "Если вы не запрашивали сброс, у кого-то есть доступ к вашей почте. Смените пароль от почты, затем войдите в Termoso и проверьте «Устройства» и «Безопасность».",
+  "Invite to {name}": "Пригласить в {name}",
+  "Keep the port bound to localhost or set {v1}; callers then send it as {v2}. Full REST reference in the  {v3} .":
+    "Держите порт на localhost или задайте {v1}; клиенты передают его как {v2}. Полный справочник REST — в  {v3} .",
+  "Kept forever": "Хранится всегда",
+  "Key version {key_version} · created {v1}": "Версия ключа {key_version} · создано {v1}",
+  "Last changed {v1}": "Изменено {v1}",
+  "Loading…": "Загрузка…",
+  "Lost the recovery key too?  {v1}  — the old encrypted data cannot be recovered.":
+    "Потеряли и ключ восстановления?  {v1}  — старые зашифрованные данные восстановить нельзя.",
+  "MFA reset; the user can sign in with password only":
+    "MFA сброшена; пользователь может войти только по паролю",
+  "Make default": "Сделать по умолчанию",
+  "Member removed. Rotate affected vault keys to revoke their stale copies.":
+    "Участник удалён. Ротируйте ключи затронутых хранилищ, чтобы отозвать его старые копии.",
+  "Member since {v1}": "С нами с {v1}",
+  "Members keep their current roles; new sign-ins get the team default.":
+    "Участники сохраняют роли; новые входы получают роль команды по умолчанию.",
+  "Members' sessions in this vault are now recorded":
+    "Сессии участников в этом хранилище теперь записываются",
+  "Missing SSO flow id": "Нет идентификатора SSO-потока",
+  "New to Termoso?  {v1}": "Впервые в Termoso?  {v1}",
+  "No Termoso yet?  {v1} {t2}": "Ещё нет Termoso?  {v1} {t2}",
+  "No two-factor authentication": "Без двухфакторной аутентификации",
+  "No two-factor authentication: this member cannot open team vaults until they enable it":
+    "Без двухфакторной аутентификации: участник не сможет открыть хранилища команды, пока не включит её",
+  "No vault is available: a bridge needs a vault where you are an editor or manager and hold the current key.":
+    "Нет подходящего хранилища: мосту нужно хранилище, где вы редактор или менеджер и держите текущий ключ.",
+  "Not connected": "Не подключено",
+  "Not enabled": "Не включено",
+  "Not found.": "Не найдено.",
+  "Not subscribed.": "Не подписаны.",
+  "Nothing happened? Paste this link into Termoso —  {v1} on Android, or the search field on desktop.":
+    "Ничего не произошло? Вставьте ссылку в Termoso —  {v1} на Android или в поле поиска на компьютере.",
+  "Nothing to send: no activity in the last {v1}": "Отправлять нечего: за {v1} активности не было",
+  Off: "Выкл",
+  "Only vault managers change this": "Меняют только менеджеры хранилища",
+  "Only vault managers change this.": "Меняют только менеджеры хранилища.",
+  "Passwords do not match": "Пароли не совпадают",
+  "Permanently deletes the account, its personal vault, devices and session logs. Cannot be undone.":
+    "Навсегда удаляет аккаунт, его личное хранилище, устройства и логи сессий. Отменить нельзя.",
+  Pin: "Закрепить",
+  "Please confirm you are human and try again.": "Подтвердите, что вы человек, и повторите.",
+  "Point your identity provider (Okta, Entra ID, Google, …) at  {v1}  with a bearer token below. Users and groups are created, updated and deprovisioned by the provider; up to three active tokens.":
+    "Направьте провайдер (Okta, Entra ID, Google, …) на  {v1}  с bearer-токеном ниже. Пользователи и группы создаются, обновляются и удаляются провайдером; до трёх активных токенов.",
+  "Recording turned off": "Запись выключена",
+  "Recordings appear here after members finish a session on a host of this vault.":
+    "Записи появятся здесь, когда участники завершат сессию к хосту этого хранилища.",
+  "Redirecting…": "Перенаправляем…",
+  "Reset password": "Сбросить пароль",
+  "Resetting…": "Сбрасываем…",
+  "Revoking a bridge kills its token at once. After a vault key rotation the bridge pauses writes to that vault until you re-seal the new key here.":
+    "Отзыв моста сразу убивает его токен. После ротации ключа хранилища мост приостанавливает запись в него, пока вы не перезапечатаете новый ключ здесь.",
+  "SMTP is not configured. Email verification, device approval codes, email MFA and invitation emails are disabled.":
+    "SMTP не настроен. Подтверждение e-mail, коды для устройств, MFA по почте и письма-приглашения отключены.",
+  "SSO ({v1} providers)": "SSO (провайдеров: {v1})",
+  "Save your recovery key": "Сохраните ключ восстановления",
+  "Saving seals the current key of every selected vault to the bridge in this browser, so it also clears “key rotated” states. Unselected vaults are removed immediately.":
+    "При сохранении текущий ключ каждого выбранного хранилища запечатывается мосту в этом браузере, что снимает состояния «ключ ротирован». Снятые хранилища удаляются сразу.",
+  "Send code": "Отправить код",
+  "Send code to my email": "Отправить код на почту",
+  "Send confirmation code": "Отправить код подтверждения",
+  "Send verification code": "Отправить код подтверждения",
+  "Sending…": "Отправляем…",
+  "Sent {v1} · expires {v2}": "Отправлено {v1} · истекает {v2}",
+  "Sent — {events} {v1}": "Отправлено — {events} {v1}",
+  "Server overview": "Обзор сервера",
+  "Set a new password for {email_hint}.": "Задайте новый пароль для {email_hint}.",
+  "Show older": "Показать старые",
+  "Show password": "Показать пароль",
+  "Sign in with {email} to accept.": "Войдите как {email}, чтобы принять.",
+  "Signed in with SSO as {email}. Enter your Termoso password to unlock your encrypted data.":
+    "Вход через SSO как {email}. Введите пароль Termoso, чтобы открыть зашифрованные данные.",
+  "Signing in with {name} will ask for your password and e-mail codes like a new device again.":
+    "Вход через {name} снова потребует пароль и коды по e-mail, как на новом устройстве.",
+  "Signing in…": "Входим…",
+  "Signing secret (8–512 chars)": "Секрет подписи (8–512 символов)",
+  "Something went wrong": "Что-то пошло не так",
+  "Still have your recovery key?  {v1}": "Ключ восстановления ещё есть?  {v1}",
+  "TOTP, security keys and backup codes of {email} are removed and all sessions revoked. Verify the request out of band first.":
+    "TOTP, ключи безопасности и резервные коды {email} удаляются, все сессии отзываются. Сначала проверьте запрос по другому каналу.",
+  "Team created, but its default vault was not: {v1}":
+    "Команда создана, но хранилище по умолчанию — нет: {v1}",
+  "Team vault": "Хранилище команды",
+  "Team {name}": "Команда {name}",
+  "Test email sent to {v1}": "Тестовое письмо отправлено на {v1}",
+  "The 24-hour delay exists so that the real owner can stop a reset they did not start. Nothing is deleted until you open the finish link and confirm.":
+    "Задержка в 24 часа нужна, чтобы настоящий владелец мог остановить чужой сброс. Ничего не удаляется, пока вы не откроете ссылку завершения и не подтвердите.",
+  "The address is changed immediately; you will then re-enter your password.":
+    "Адрес меняется сразу; затем нужно заново ввести пароль.",
+  "The bridge key pair is generated in this browser. Each selected vault key is sealed to it here; the server stores only the sealed boxes and never sees the private key or the vault contents.":
+    "Пара ключей моста генерируется в этом браузере. Ключ каждого выбранного хранилища запечатывается ей здесь; сервер хранит только запечатанные контейнеры и не видит ни приватный ключ, ни содержимое хранилищ.",
+  "The credentials file (private key + token) is downloaded once and mounted into the  {v1} container.":
+    "Файл учётных данных (приватный ключ + токен) скачивается один раз и монтируется в контейнер  {v1}.",
+  "The identity provider using it stops syncing immediately. Users already provisioned keep their access.":
+    "Провайдер, использующий его, сразу перестанет синхронизироваться. Уже созданные пользователи сохранят доступ.",
+  "The recording is removed from the server for every member of “{name}”; copies already downloaded to members' devices are deleted on their next sync. This cannot be undone.":
+    "Запись удаляется с сервера у всех участников «{name}»; уже скачанные копии удалятся на устройствах при следующей синхронизации. Это нельзя отменить.",
+  "The reset for {emailHint} can be completed {v1} ({v2}).":
+    "Сброс для {emailHint} можно завершить {v1} ({v2}).",
+  "The reset for {email_hint} can be completed {v1} ({v2}).":
+    "Сброс для {email_hint} можно завершить {v1} ({v2}).",
+  "The reset was cancelled, already completed, or the link expired. You can request a new one from the sign-in page.":
+    "Сброс отменён, уже завершён или ссылка истекла. Новый можно запросить со страницы входа.",
+  "The user has no MFA configured": "У пользователя не настроена MFA",
+  "This action needs your account key, which only lives in this browser tab. Enter your password to unlock it — it is never sent to the server.":
+    "Для этого действия нужен ключ аккаунта, который живёт только в этой вкладке. Введите пароль, чтобы разблокировать его — на сервер он не отправляется.",
+  "This already exists.": "Такое уже существует.",
+  "This file is shown {v1}. It contains the bridge private key and its access token; the server keeps neither. Store it like an SSH private key and never commit it. If it is lost, revoke the bridge and create a new one.":
+    "Этот файл показывается {v1}. В нём приватный ключ моста и его токен доступа; сервер не хранит ни то, ни другое. Храните его как приватный SSH-ключ и не коммитьте. Если потеряли — отзовите мост и создайте новый.",
+  "This is a new device. We sent a confirmation code to {emailHint}.":
+    "Это новое устройство. Мы отправили код подтверждения на {emailHint}.",
+  "This is a sensitive change to {v1}. Enter your password to continue — it is never sent to the server.":
+    "Это чувствительное изменение для {v1}. Введите пароль, чтобы продолжить — на сервер он не отправляется.",
+  "This link is missing the part after {v1} that unlocks the shared terminal. Ask the host to send the complete link — the secret is never stored on the server, so it cannot be recovered here.":
+    "В ссылке нет части после {v1}, которая открывает общий терминал. Попросите хозяина прислать полную ссылку — секрет не хранится на сервере и восстановить его здесь нельзя.",
+  "This server has no outgoing e-mail configured, so digests can't be sent.":
+    "На сервере не настроена исходящая почта, дайджесты отправлять нельзя.",
+  "This team requires two-factor authentication.": "Команда требует двухфакторную аутентификацию.",
+  "Token / API key": "Токен / API-ключ",
+  "Too many attempts. Try again later.": "Слишком много попыток. Повторите позже.",
+  "Turn on recording above, or members can record their own sessions from the app settings.":
+    "Включите запись выше — или участники могут записывать свои сессии из настроек приложения.",
+  "Type {email} to confirm": "Введите {email} для подтверждения",
+  Unlock: "Разблокировать",
+  "Unlock encryption keys": "Разблокировать ключи шифрования",
+  "Unlock your account": "Разблокируйте аккаунт",
+  Unpin: "Открепить",
+  Upload: "Загрузить",
+  "Use at least {MIN_PASSWORD} characters": "Не меньше {MIN_PASSWORD} символов",
+  Vault: "Хранилище",
+  "Vault key granted": "Ключ хранилища выдан",
+  "Vault key rotated to version {v}": "Ключ хранилища ротирован до версии {v}",
+  "Vaults for “{display_name}”": "Хранилища для «{display_name}»",
+  "Vaults for “{name}”": "Хранилища для «{name}»",
+  "Verify your e-mail address in Account first.": "Сначала подтвердите e-mail в разделе «Аккаунт».",
+  "We emailed you two links: one to {v1} the reset once the waiting period is over, and one to {v2} it. Every signed-in device of the account was notified too. If you still have a signed-in Termoso app, you can cancel from there as well.":
+    "Мы отправили два письма-ссылки: одна — чтобы {v1} сброс после периода ожидания, другая — чтобы {v2} его. Все устройства аккаунта тоже уведомлены. Если у вас ещё есть вошедшее приложение Termoso, отменить можно и оттуда.",
+  "We will send a confirmation code to the new address.":
+    "Мы отправим код подтверждения на новый адрес.",
+  "We will send a confirmation code. After you confirm, the reset is  {v1} and can be cancelled from the email or from any signed-in device.":
+    "Мы отправим код подтверждения. После подтверждения сброс  {v1}, и его можно отменить из письма или с любого вошедшего устройства.",
+  "Wrong email or password.": "Неверный e-mail или пароль.",
+  "You are a member of this vault but nobody has sealed the vault key to you yet. Ask a vault manager or team admin to grant it under “Pending vault keys” on the team page.":
+    "Вы участник этого хранилища, но ключ вам ещё никто не запечатал. Попросите менеджера хранилища или администратора команды выдать его в «Ожидающих ключах хранилищ» на странице команды.",
+  "You are signed in as {email}, but this invitation is for {email1}. Sign out and use the invited account to accept it.":
+    "Вы вошли как {email}, а приглашение для {email1}. Выйдите и примите его из приглашённого аккаунта.",
+  "You cannot add members or grant keys until you hold the vault key yourself.":
+    "Нельзя добавлять участников или выдавать ключи, пока у вас самих нет ключа хранилища.",
+  "You lose access to all vaults of “{name}”. A manager should rotate the vault keys afterwards.":
+    "Вы потеряете доступ ко всем хранилищам «{name}». Менеджеру стоит затем ротировать ключи.",
+  "You lose access to “{name}”. A manager can add you back later.":
+    "Вы потеряете доступ к «{name}». Менеджер сможет вернуть вас позже.",
+  "You need a vault where you are an editor or manager to create one.":
+    "Нужно хранилище, где вы редактор или менеджер.",
+  "You need the vault key to rotate it": "Для ротации нужен ключ хранилища",
+  "You no longer hold a writable key for {v1}; saving removes {v2} from the bridge.":
+    "У вас больше нет ключа на запись для {v1}; сохранение уберёт {v2} из моста.",
+  "You own {length} {v1} ( {v2}). Transfer ownership or delete  {v3} first on the  {v4}  page.":
+    "Вы владеете {length} {v1} ( {v2}). Сначала передайте владение или удалите  {v3} на странице  {v4} .",
+  "You will be asked for your password first. The current recovery key stops working immediately; you will see the new key once — store it safely.":
+    "Сначала попросим пароль. Текущий ключ восстановления сразу перестанет работать; новый покажем один раз — сохраните его надёжно.",
+  "You'll receive the {v1} digest at {v2}": "Вы будете получать дайджест ({v1}) на {v2}",
+  "Your copy of each chosen vault key is sealed to that key pair; only sealed boxes and the public key reach the server.":
+    "Ваша копия ключа каждого выбранного хранилища запечатывается этой парой; на сервер попадают только запечатанные контейнеры и публичный ключ.",
+  "Your email is now {newEmail}. Re-enter your password to finish — until you do, signing in with a password is not possible.":
+    "Ваш e-mail теперь {newEmail}. Введите пароль заново, чтобы закончить — до этого вход по паролю невозможен.",
+  "Your password never leaves this device.": "Пароль не покидает это устройство.",
+  "Your role does not allow this action.": "Ваша роль не позволяет это действие.",
+  "Your scripts talk plaintext to the container on your network; it encrypts with the vault key and pushes ciphertext through ordinary sync.":
+    "Ваши скрипты общаются с контейнером в вашей сети открытым текстом; он шифрует ключом хранилища и отправляет шифртекст обычной синхронизацией.",
+  "Your session ended — you signed in on this device again or it was revoked. Sign in to continue.":
+    "Сессия завершена — вы снова вошли на этом устройстве или её отозвали. Войдите, чтобы продолжить.",
+  "all events": "все события",
+  "in a moment": "скоро",
+  "just now": "только что",
+  "unknown IP": "неизвестный IP",
+  "in {count} minutes": "через {count} минуту|через {count} минуты|через {count} минут",
+  "in {count} hours": "через {count} час|через {count} часа|через {count} часов",
+  "in {count} days": "через {count} день|через {count} дня|через {count} дней",
+  "{count} minutes ago": "{count} минуту назад|{count} минуты назад|{count} минут назад",
+  "{count} hours ago": "{count} час назад|{count} часа назад|{count} часов назад",
+  "{count} days ago": "{count} день назад|{count} дня назад|{count} дней назад",
+  "{count} failures": "{count} ошибка|{count} ошибки|{count} ошибок",
+  "{count} teams": "{count} команда|{count} команды|{count} команд",
+  "{count} users": "{count} пользователь|{count} пользователя|{count} пользователей",
+  "{count}/24 words": "{count}/24 слов",
+  "{email} and all their encrypted data, devices and session logs are removed permanently. Users who own teams cannot be deleted.":
+    "{email} и все его зашифрованные данные, устройства и логи сессий удаляются навсегда. Владельцев команд удалить нельзя.",
+  "{email} becomes the owner of “{name}” and you become an admin.":
+    "{email} станет владельцем «{name}», а вы — администратором.",
+  "{email} loses access to the team and its vaults.":
+    "{email} теряет доступ к команде и её хранилищам.",
+  "{email} loses access to “{name}”. Rotate the vault key afterwards to invalidate their copy.":
+    "{email} теряет доступ к «{name}». Затем ротируйте ключ хранилища, чтобы его копия стала недействительной.",
+  "{email} was created through this team's invitation. Choose what happens to the account.":
+    "{email} создан по приглашению этой команды. Выберите, что сделать с аккаунтом.",
+  "{inviter} invited {v1} to the team as  {v2}.": "{inviter} приглашает {v1} в команду как  {v2}.",
+  "{length} / {MAX_NOTE_CHARS} · visible to every member of the vault":
+    "{length} / {MAX_NOTE_CHARS} · видно всем участникам хранилища",
+  "{length} devices signed out": "Устройств вышло: {length}",
+  "{length} {v1} rotated — re-seal": "{length} {v1} ротировано — перезапечатайте",
+  "{length} {v1} will be signed out. This browser stays signed in.":
+    "{length} {v1} выйдут. Этот браузер останется в системе.",
+  "{member_count} {v1} · created  {v2}": "{member_count} {v1} · создана  {v2}",
+  "{n} vault keys granted": "Выдано ключей хранилищ: {n}",
+  "{ok}/{total} deliveries succeeded": "Доставлено {ok}/{total}",
+  "{provider} account {email} connected": "Аккаунт {provider} {email} подключён",
+  "{v1}  · key version {key_version} · created {v2}":
+    "{v1}  · версия ключа {key_version} · создано {v2}",
+  "{v1}  · key v{key_version} · {v2}": "{v1}  · ключ v{key_version} · {v2}",
+  "{v1} Confirming deletes your encrypted vault on the server: hosts, passwords, keys, snippets and settings. Termoso cannot recover them for you — there is no decryption key on the server. All devices and sessions are signed out and your SSH ID keys are removed. Team vaults need to be shared with you again by a team admin. You start with an empty vault and a new recovery key.":
+    "{v1} Подтверждение удаляет ваше зашифрованное хранилище на сервере: хосты, пароли, ключи, сниппеты и настройки. Termoso не сможет их восстановить — на сервере нет ключа расшифровки. Все устройства и сессии выходят, ключи SSH ID удаляются. Хранилища команд должен заново выдать администратор команды. Вы начнёте с пустым хранилищем и новым ключом восстановления.",
+  "{v1} Someone requested to start this account over from scratch using the email address. Once it completes ({v2}) the encrypted vault is deleted permanently and every device is signed out. If this was not you, cancel it now and review Devices and Security.":
+    "{v1} Кто-то запросил сброс этого аккаунта «с нуля» через адрес e-mail. После завершения ({v2}) зашифрованное хранилище удаляется навсегда, все устройства выходят. Если это были не вы — отмените сейчас и проверьте «Устройства» и «Безопасность».",
+  "{v1} Your hosts, passwords, keys, snippets, settings and other vault contents are encrypted with keys only you hold. Without the password or the recovery key nobody — including Termoso — can decrypt them: the server never has a decryption key. Starting over keeps your email address and team memberships but gives you a {v2}. The old data is deleted and cannot be brought back.":
+    "{v1} Ваши хосты, пароли, ключи, сниппеты, настройки и остальное содержимое хранилища зашифрованы ключами, которые есть только у вас. Без пароля или ключа восстановления никто — включая Termoso — не расшифрует их: у сервера нет ключа. Сброс сохраняет e-mail и членство в командах, но даёт вам {v2}. Старые данные удаляются безвозвратно.",
+  "{v1} member(s) currently hold it and will be moved to:":
+    "Сейчас её держат участников: {v1}; они будут переведены в:",
+  "{v1} {v2}Created {v3}": "{v1} {v2}Создан {v3}",
+  "{v1} · since {v2}": "{v1} · с {v2}",
+  "{v1} · v{app_version} · {v2} · Active {v3} · Added {v4}":
+    "{v1} · v{app_version} · {v2} · Активно {v3} · Добавлено {v4}",
+  "“{name}” (owner {owner_email}) with {vault_count} vaults and  {member_count} members is deleted permanently.":
+    "«{name}» (владелец {owner_email}) с хранилищами: {vault_count} и участниками:  {member_count} удаляется навсегда.",
+  "“{name}” stops working immediately: its token is invalidated and its sealed vault keys are deleted. Hosts it already created stay in the vaults.":
+    "«{name}» перестанет работать сразу: токен аннулируется, запечатанные ключи хранилищ удаляются. Уже созданные им хосты остаются в хранилищах.",
+  "“{name}” will need to sign in again and unlock with the password.":
+    "«{name}» придётся войти заново и разблокировать паролем.",
+  "“{name}” will no longer be accepted for two-factor sign-in.":
+    "«{name}» больше не будет приниматься для двухфакторного входа.",
 };

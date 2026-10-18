@@ -1,5 +1,5 @@
 import { useMemo, useState, type SubmitEvent } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Box,
@@ -96,8 +96,11 @@ function TeamDetail({ team }: { team: Team }) {
           <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
             <RoleChip role={team.my_role} />
             <span>
-              {team.member_count} {team.member_count === 1 ? "member" : "members"} · created{" "}
-              {formatDate(team.created_at)}
+              {trx("{member_count} {v1} · created  {v2}", {
+                member_count: team.member_count,
+                v1: team.member_count === 1 ? "member" : "members",
+                v2: formatDate(team.created_at),
+              })}
             </span>
           </Stack>
         }
@@ -265,8 +268,10 @@ function TeamActions({ team }: { team: Team }) {
         onCancel={() => setLeaveOpen(false)}
         onConfirm={() => leave.mutate()}
       >
-        You lose access to all vaults of “{team.name}”. A manager should rotate the vault keys
-        afterwards.
+        {trx(
+          "You lose access to all vaults of “{name}”. A manager should rotate the vault keys afterwards.",
+          { name: team.name },
+        )}
       </ConfirmDialog>
       <ConfirmDialog
         open={deleteOpen}
@@ -277,8 +282,10 @@ function TeamActions({ team }: { team: Team }) {
         onCancel={() => setDeleteOpen(false)}
         onConfirm={() => del.mutate()}
       >
-        Every team vault and all data inside it is deleted for all {team.member_count} members. This
-        cannot be undone.
+        {trx(
+          "Every team vault and all data inside it is deleted for all {member_count} members. This cannot be undone.",
+          { member_count: team.member_count },
+        )}
       </ConfirmDialog>
     </Stack>
   );
@@ -338,8 +345,8 @@ function MembersSection({ team }: { team: Team }) {
       await invalidate();
       snack.notify(
         action === "delete_account"
-          ? "Account deleted. Rotate affected vault keys to revoke their stale copies."
-          : "Member removed. Rotate affected vault keys to revoke their stale copies.",
+          ? tr("Account deleted. Rotate affected vault keys to revoke their stale copies.")
+          : tr("Member removed. Rotate affected vault keys to revoke their stale copies."),
         "info",
       );
     },
@@ -418,7 +425,7 @@ function MembersSection({ team }: { team: Team }) {
                               .filter((r) => r.slug !== "owner" || team.my_role === "owner")
                               .map((r) => (
                                 <MenuItem key={r.id} value={r.id}>
-                                  {r.slug === "owner" ? "Owner (transfer)" : r.name}
+                                  {r.slug === "owner" ? tr("Owner (transfer)") : r.name}
                                 </MenuItem>
                               ))}
                           </Select>
@@ -451,12 +458,14 @@ function MembersSection({ team }: { team: Team }) {
                         )}
                         {m.role_source && m.role_source !== "manual" && (
                           <Tooltip
-                            title={`Assigned from ${m.role_source === "scim" ? "SCIM" : "identity provider"} groups`}
+                            title={tr("Assigned from {v1} groups", {
+                              v1: m.role_source === "scim" ? "SCIM" : "identity provider",
+                            })}
                           >
                             <Chip
                               size="small"
                               variant="outlined"
-                              label={m.role_source === "scim" ? "SCIM" : "IdP"}
+                              label={m.role_source === "scim" ? "SCIM" : tr("IdP")}
                               sx={{ height: 20 }}
                             />
                           </Tooltip>
@@ -506,7 +515,10 @@ function MembersSection({ team }: { team: Team }) {
           if (transfer) setRole.mutate({ userId: transfer.user_id, role: "owner" });
         }}
       >
-        {transfer?.email} becomes the owner of “{team.name}” and you become an admin.
+        {trx("{email} becomes the owner of “{name}” and you become an admin.", {
+          email: transfer?.email,
+          name: team.name,
+        })}
       </ConfirmDialog>
     </Section>
   );
@@ -536,14 +548,16 @@ function RemoveMemberDialog({
 
   return (
     <Dialog open={member !== null} onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle>{deleting ? "Delete account?" : "Remove member?"}</DialogTitle>
+      <DialogTitle>{deleting ? tr("Delete account?") : tr("Remove member?")}</DialogTitle>
       <DialogContent>
         <Stack spacing={2}>
           {offerDelete ? (
             <>
               <DialogContentText>
-                {email} was created through this team's invitation. Choose what happens to the
-                account.
+                {trx(
+                  "{email} was created through this team's invitation. Choose what happens to the account.",
+                  { email: email },
+                )}
               </DialogContentText>
               <RadioGroup
                 value={action}
@@ -556,8 +570,9 @@ function RemoveMemberDialog({
                     <>
                       <Typography variant="body2">{tr("Remove from team")}</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Becomes an individual account and keeps its personal vault; loses access to
-                        the team and its vaults.
+                        {tr(
+                          "Becomes an individual account and keeps its personal vault; loses access to the team and its vaults.",
+                        )}
                       </Typography>
                     </>
                   }
@@ -571,8 +586,9 @@ function RemoveMemberDialog({
                         {tr("Delete the account")}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Permanently deletes the account, its personal vault, devices and session
-                        logs. Cannot be undone.
+                        {tr(
+                          "Permanently deletes the account, its personal vault, devices and session logs. Cannot be undone.",
+                        )}
                       </Typography>
                     </>
                   }
@@ -580,7 +596,7 @@ function RemoveMemberDialog({
               </RadioGroup>
               {deleting && (
                 <TextField
-                  label={`Type ${email} to confirm`}
+                  label={tr("Type {email} to confirm", { email })}
                   value={typed}
                   onChange={(e) => setTyped(e.target.value)}
                   autoComplete="off"
@@ -591,7 +607,9 @@ function RemoveMemberDialog({
               )}
             </>
           ) : (
-            <DialogContentText>{email} loses access to the team and its vaults.</DialogContentText>
+            <DialogContentText>
+              {trx("{email} loses access to the team and its vaults.", { email: email })}
+            </DialogContentText>
           )}
         </Stack>
       </DialogContent>
@@ -605,7 +623,7 @@ function RemoveMemberDialog({
           color="error"
           disabled={busy || !confirmed}
         >
-          {deleting ? "Delete account" : "Remove"}
+          {deleting ? tr("Delete account") : tr("Remove")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -700,7 +718,10 @@ function InvitesSection({ team }: { team: Team }) {
                     <RoleChip role={i.role} />
                   </Stack>
                 }
-                secondary={`Sent ${formatRelative(i.created_at)} · expires ${formatDate(i.expires_at)}`}
+                secondary={tr("Sent {v1} · expires {v2}", {
+                  v1: formatRelative(i.created_at),
+                  v2: formatDate(i.expires_at),
+                })}
               />
             </ListItem>
           ))}
@@ -719,7 +740,7 @@ function InvitesSection({ team }: { team: Team }) {
             create.mutate();
           }}
         >
-          <DialogTitle>Invite to {team.name}</DialogTitle>
+          <DialogTitle>{trx("Invite to {name}", { name: team.name })}</DialogTitle>
           <DialogContent sx={{ display: "grid", gap: 2 }}>
             {create.isError && <Alert severity="error">{errorMessage(create.error)}</Alert>}
             <TextField
@@ -746,7 +767,7 @@ function InvitesSection({ team }: { team: Team }) {
             {teamVaults.length > 0 && (
               <FormControl component="fieldset" variant="standard">
                 <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                  Grant access to vaults (as viewer)
+                  {tr("Grant access to vaults (as viewer)")}
                 </Typography>
                 <FormGroup>
                   {teamVaults.map((v) => (
@@ -858,8 +879,11 @@ function DigestSection({ team }: { team: Team }) {
       await qc.invalidateQueries({ queryKey: queryKeys.teamDigest(team.id) });
       snack.notify(
         next === "off"
-          ? "Activity digest turned off"
-          : `You'll receive the ${digestLabel[next].toLowerCase()} digest at ${session?.user.email ?? "your address"}`,
+          ? tr("Activity digest turned off")
+          : tr("You'll receive the {v1} digest at {v2}", {
+              v1: digestLabel[next].toLowerCase(),
+              v2: session?.user.email ?? "your address",
+            }),
       );
     },
     onError: (e) => snack.error(errorMessage(e)),
@@ -869,8 +893,13 @@ function DigestSection({ team }: { team: Team }) {
     onSuccess: (r) => {
       snack.notify(
         r.sent
-          ? `Sent — ${r.events} ${r.events === 1 ? "event" : "events"}`
-          : `Nothing to send: no activity in the last ${cadence === "weekly" ? "week" : "day"}`,
+          ? tr("Sent — {events} {v1}", {
+              events: r.events,
+              v1: r.events === 1 ? "event" : "events",
+            })
+          : tr("Nothing to send: no activity in the last {v1}", {
+              v1: cadence === "weekly" ? "week" : "day",
+            }),
       );
     },
     onError: (e) => snack.error(errorMessage(e)),
@@ -878,9 +907,9 @@ function DigestSection({ team }: { team: Team }) {
 
   const disabled = !emailOk || !verified || update.isPending;
   const hint = !emailOk
-    ? "This server has no outgoing e-mail configured, so digests can't be sent."
+    ? tr("This server has no outgoing e-mail configured, so digests can't be sent.")
     : !verified
-      ? "Verify your e-mail address in Account first."
+      ? tr("Verify your e-mail address in Account first.")
       : undefined;
 
   return (
@@ -909,10 +938,10 @@ function DigestSection({ team }: { team: Team }) {
         label={tr("Frequency")}
         description={
           cadence === "off"
-            ? "Not subscribed."
+            ? tr("Not subscribed.")
             : cadence === "daily"
-              ? "Every morning (07:00 UTC) for the previous day."
-              : "Every Monday morning (07:00 UTC) for the previous week."
+              ? tr("Every morning (07:00 UTC) for the previous day.")
+              : tr("Every Monday morning (07:00 UTC) for the previous week.")
         }
         control={
           <Select<DigestChoice>
@@ -974,7 +1003,7 @@ function PendingKeysSection({ team }: { team: Team }) {
     onSuccess: async (n) => {
       await qc.invalidateQueries({ queryKey: queryKeys.teamPendingKeys(team.id) });
       await qc.invalidateQueries({ queryKey: ["vaults"] });
-      snack.notify(n === 1 ? "Vault key granted" : `${n} vault keys granted`);
+      snack.notify(n === 1 ? tr("Vault key granted") : tr("{n} vault keys granted", { n }));
     },
     onError: (e) => {
       if (!(e instanceof UnlockCancelled)) snack.error(errorMessage(e));
@@ -984,7 +1013,8 @@ function PendingKeysSection({ team }: { team: Team }) {
   const items = pending.data?.items ?? [];
   if (pending.isPending || items.length === 0) return null;
 
-  const vaultName = (id: string) => vaults.data?.vaults.find((v) => v.id === id)?.name ?? "Vault";
+  const vaultName = (id: string) =>
+    vaults.data?.vaults.find((v) => v.id === id)?.name ?? tr("Vault");
   const memberOf = (id: string) => members.data?.members.find((m) => m.user_id === id);
   const grantable = items.filter(
     (p) => vaults.data?.vaults.find((v) => v.id === p.vault_id)?.sealed_key,
@@ -1003,7 +1033,7 @@ function PendingKeysSection({ team }: { team: Team }) {
           disabled={grant.isPending || grantable.length === 0}
           onClick={() => grant.mutate(grantable)}
         >
-          Grant all ({grantable.length})
+          {trx("Grant all ({length})", { length: grantable.length })}
         </Button>
       }
       disablePadding
@@ -1109,7 +1139,7 @@ function TeamVaultsSection({ team }: { team: Team }) {
       ) : teamVaults.length === 0 ? (
         <EmptyState
           title={tr("No team vaults yet")}
-          description={admin ? "Create a vault to start sharing hosts and keys." : undefined}
+          description={admin ? tr("Create a vault to start sharing hosts and keys.") : undefined}
         />
       ) : (
         <List disablePadding>
@@ -1133,7 +1163,10 @@ function TeamVaultsSection({ team }: { team: Team }) {
                     )}
                   </Stack>
                 }
-                secondary={`Key version ${v.key_version} · created ${formatDate(v.created_at)}`}
+                secondary={tr("Key version {key_version} · created {v1}", {
+                  key_version: v.key_version,
+                  v1: formatDate(v.created_at),
+                })}
               />
             </ListItem>
           ))}

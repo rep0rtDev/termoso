@@ -23,7 +23,7 @@ export function RecoveryKeyPage() {
   return (
     <>
       <AuthTitle
-        title={state.title ?? "Save your recovery key"}
+        title={state.title ?? tr("Save your recovery key")}
         subtitle={tr(
           "Write these 24 words down or store them in a password manager. They are shown only once.",
         )}

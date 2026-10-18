@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { tr } from "@/i18n";
+import { tr, trx, trn } from "@/i18n";
 import {
   Alert,
   Box,
@@ -89,7 +89,7 @@ export function AdminTeamsPage() {
         }
       />
       <Section
-        title={teams.data ? `${teams.data.total.toLocaleString()} teams` : "Teams"}
+        title={teams.data ? trn(teams.data.total, "{count} team", "{count} teams") : tr("Teams")}
         disablePadding
       >
         {teams.isPending ? (
@@ -164,8 +164,15 @@ export function AdminTeamsPage() {
           if (deleting) del.mutate(deleting.id);
         }}
       >
-        “{deleting?.name}” (owner {deleting?.owner_email}) with {deleting?.vault_count} vaults and{" "}
-        {deleting?.member_count} members is deleted permanently.
+        {trx(
+          "“{name}” (owner {owner_email}) with {vault_count} vaults and  {member_count} members is deleted permanently.",
+          {
+            name: deleting?.name,
+            owner_email: deleting?.owner_email,
+            vault_count: deleting?.vault_count,
+            member_count: deleting?.member_count,
+          },
+        )}
       </ConfirmDialog>
     </>
   );

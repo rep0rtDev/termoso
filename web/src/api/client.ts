@@ -1,4 +1,5 @@
 import type { ApiErrorBody } from "./types";
+import { msg, tr } from "@/i18n";
 
 export const API_BASE = "/api/v1";
 
@@ -16,10 +17,32 @@ export class ApiError extends Error {
   }
 }
 
+/** Server error codes with a translated wording; anything else shows the server's English message. */
+const CODE_MESSAGES: Record<string, string> = {
+  permission_denied: msg("Your role does not allow this action."),
+  mfa_required: msg("This team requires two-factor authentication."),
+  invalid_credentials: msg("Wrong email or password."),
+  rate_limited: msg("Too many attempts. Try again later."),
+  turnstile_required: msg("Please confirm you are human and try again."),
+  email_not_verified: msg("Confirm your email address first."),
+  not_found: msg("Not found."),
+  conflict: msg("This already exists."),
+  network: msg("Cannot reach the server. Check your connection."),
+};
+
 export function errorMessage(err: unknown): string {
-  if (err instanceof ApiError) return err.message;
+  if (err instanceof ApiError) {
+    const known = CODE_MESSAGES[err.code];
+    if (known) {
+      const perm = (err.details as { permission?: string } | null)?.permission;
+      return perm ? `${tr(known)} (${perm})` : tr(known);
+    }
+    return err.message;
+  }
+  if (err instanceof TypeError)
+    return tr(CODE_MESSAGES.network ?? "Cannot reach the server. Check your connection.");
   if (err instanceof Error) return err.message;
-  return "Something went wrong";
+  return tr("Something went wrong");
 }
 
 type TokenSource = () => string | null;

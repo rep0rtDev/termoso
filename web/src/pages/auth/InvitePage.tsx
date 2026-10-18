@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import { Alert, Button, Chip, Divider, Stack, Typography } from "@mui/material";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -60,8 +60,11 @@ export function InvitePage() {
         title={`Join ${inv.team_name}`}
         subtitle={
           <>
-            {inv.inviter} invited <b>{inv.email}</b> to the team as{" "}
-            <Chip size="small" label={inv.role} sx={{ verticalAlign: "middle" }} />.
+            {trx("{inviter} invited {v1} to the team as  {v2}.", {
+              inviter: inv.inviter,
+              v1: <b>{inv.email}</b>,
+              v2: <Chip size="small" label={inv.role} sx={{ verticalAlign: "middle" }} />,
+            })}
           </>
         }
       />
@@ -70,8 +73,10 @@ export function InvitePage() {
         {session ? (
           emailMismatch ? (
             <Alert severity="warning">
-              You are signed in as {session.user.email}, but this invitation is for {inv.email}.
-              Sign out and use the invited account to accept it.
+              {trx(
+                "You are signed in as {email}, but this invitation is for {email1}. Sign out and use the invited account to accept it.",
+                { email: session.user.email, email1: inv.email },
+              )}
             </Alert>
           ) : (
             <Button
@@ -86,7 +91,7 @@ export function InvitePage() {
         ) : inv.account_exists ? (
           <>
             <Typography variant="body2" color="text.secondary">
-              Sign in with {inv.email} to accept.
+              {trx("Sign in with {email} to accept.", { email: inv.email })}
             </Typography>
             <Button
               variant="contained"
@@ -99,7 +104,7 @@ export function InvitePage() {
         ) : (
           <>
             <Typography variant="body2" color="text.secondary">
-              Create a Termoso account for {inv.email} to join the team.
+              {trx("Create a Termoso account for {email} to join the team.", { email: inv.email })}
             </Typography>
             <Button
               variant="contained"

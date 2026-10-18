@@ -25,7 +25,7 @@ export function SsoCallbackPage() {
   const navigate = useNavigate();
   const [pollError, setError] = useState<string | null>(null);
   const flow = params.get("flow");
-  const error = flow ? pollError : "Missing SSO flow id";
+  const error = flow ? pollError : tr("Missing SSO flow id");
 
   useEffect(() => {
     if (!flow) return;

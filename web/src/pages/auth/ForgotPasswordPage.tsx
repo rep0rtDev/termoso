@@ -1,5 +1,5 @@
 import { useState, type SubmitEvent } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import { Alert, Button, Link, Stack, TextField, Typography } from "@mui/material";
 import { Link as RouterLink, useNavigate } from "react-router";
 import { errorMessage } from "@/api/client";
@@ -83,7 +83,7 @@ export function ForgotPasswordPage() {
           required
           value={phrase}
           onChange={(e) => setPhrase(e.target.value)}
-          helperText={`${words.length}/24 words`}
+          helperText={tr("{count}/24 words", { count: words.length })}
           error={phrase.length > 0 && words.length > 24}
           slotProps={{ input: { sx: { fontFamily: monoFontFamily, fontSize: "0.875rem" } } }}
           disabled={busy}
@@ -105,7 +105,7 @@ export function ForgotPasswordPage() {
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           error={mismatch}
-          helperText={mismatch ? "Passwords do not match" : undefined}
+          helperText={mismatch ? tr("Passwords do not match") : undefined}
           disabled={busy}
         />
         <Alert severity="info">
@@ -118,7 +118,7 @@ export function ForgotPasswordPage() {
           size="large"
           disabled={busy || !phraseOk || (siteKey !== null && captcha === null)}
         >
-          {busy ? "Resetting…" : "Reset password"}
+          {busy ? tr("Resetting…") : tr("Reset password")}
         </Button>
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
           <Link component={RouterLink} to="/login">
@@ -126,11 +126,13 @@ export function ForgotPasswordPage() {
           </Link>
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
-          Lost the recovery key too?{" "}
-          <Link component={RouterLink} to="/start-over">
-            {tr("Start over with an empty vault")}
-          </Link>{" "}
-          — the old encrypted data cannot be recovered.
+          {trx("Lost the recovery key too?  {v1}  — the old encrypted data cannot be recovered.", {
+            v1: (
+              <Link component={RouterLink} to="/start-over">
+                {tr("Start over with an empty vault")}
+              </Link>
+            ),
+          })}
         </Typography>
       </Stack>
     </form>

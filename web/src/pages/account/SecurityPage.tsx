@@ -1,5 +1,5 @@
 import { useEffect, useState, type SubmitEvent } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Box,
@@ -169,7 +169,7 @@ function TotpSection({ enabled }: { enabled: boolean }) {
           <Chip
             size="small"
             color={enabled ? "success" : "default"}
-            label={enabled ? "Enabled" : "Not enabled"}
+            label={enabled ? tr("Enabled") : tr("Not enabled")}
             sx={{ alignSelf: "center" }}
           />
           {enabled ? (
@@ -273,7 +273,7 @@ function TotpSection({ enabled }: { enabled: boolean }) {
           <DialogContent sx={{ display: "grid", gap: 2 }}>
             {error && <Alert severity="error">{error}</Alert>}
             <DialogContentText>
-              Enter a current code (or a backup code) to confirm.
+              {tr("Enter a current code (or a backup code) to confirm.")}
             </DialogContentText>
             <TextField
               autoFocus
@@ -440,7 +440,10 @@ function WebauthnSection({ credentials }: { credentials: WebauthnCredentialInfo[
             >
               <ListItemText
                 primary={c.name}
-                secondary={`Added ${formatDateTime(c.created_at)} · Last used ${formatRelative(c.last_used_at)}`}
+                secondary={tr("Added {v1} · Last used {v2}", {
+                  v1: formatDateTime(c.created_at),
+                  v2: formatRelative(c.last_used_at),
+                })}
               />
             </ListItem>
           ))}
@@ -501,7 +504,9 @@ function WebauthnSection({ credentials }: { credentials: WebauthnCredentialInfo[
           if (removing) remove.mutate(removing.id);
         }}
       >
-        “{removing?.name}” will no longer be accepted for two-factor sign-in.
+        {trx("“{name}” will no longer be accepted for two-factor sign-in.", {
+          name: removing?.name,
+        })}
       </ConfirmDialog>
     </Section>
   );
@@ -570,7 +575,7 @@ function SecurityEventsSection() {
             onClick={() => void events.fetchNextPage()}
             disabled={events.isFetchingNextPage}
           >
-            {events.isFetchingNextPage ? "Loading…" : "Show older"}
+            {events.isFetchingNextPage ? tr("Loading…") : tr("Show older")}
           </Button>
         </Box>
       )}
@@ -593,7 +598,12 @@ function ConnectedAccountsSection() {
     ?.ssoLinked;
   useEffect(() => {
     if (!linked) return;
-    snack.notify(`${linked.provider} account ${linked.email} connected`);
+    snack.notify(
+      tr("{provider} account {email} connected", {
+        provider: linked.provider,
+        email: linked.email,
+      }),
+    );
     window.history.replaceState({}, "");
   }, [linked, snack]);
   const unlink = useMutation({
@@ -642,8 +652,11 @@ function ConnectedAccountsSection() {
                   </Typography>
                   <Typography variant="caption" color="text.secondary" noWrap component="div">
                     {id
-                      ? `${id.email ?? "connected"} · since ${formatDateTime(id.linked_at)}`
-                      : "Not connected"}
+                      ? tr("{v1} · since {v2}", {
+                          v1: id.email ?? "connected",
+                          v2: formatDateTime(id.linked_at),
+                        })
+                      : tr("Not connected")}
                   </Typography>
                 </Box>
                 {id ? (
@@ -663,7 +676,7 @@ function ConnectedAccountsSection() {
                       });
                     }}
                   >
-                    {connecting === p.id ? "Redirecting…" : "Connect"}
+                    {connecting === p.id ? tr("Redirecting…") : tr("Connect")}
                   </Button>
                 )}
               </Stack>
@@ -673,14 +686,16 @@ function ConnectedAccountsSection() {
       )}
       <ConfirmDialog
         open={removing !== null}
-        title={`Disconnect ${removing?.name ?? ""}?`}
+        title={tr("Disconnect {v1}?", { v1: removing?.name ?? "" })}
         confirmLabel={tr("Disconnect")}
         onCancel={() => setRemoving(null)}
         onConfirm={() => removing && unlink.mutate(removing.provider)}
         busy={unlink.isPending}
       >
-        Signing in with {removing?.name} will ask for your password and e-mail codes like a new
-        device again.
+        {trx(
+          "Signing in with {name} will ask for your password and e-mail codes like a new device again.",
+          { name: removing?.name },
+        )}
       </ConfirmDialog>
     </Section>
   );

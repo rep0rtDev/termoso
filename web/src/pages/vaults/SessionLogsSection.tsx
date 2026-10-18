@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Box,
@@ -71,7 +71,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
       await qc.invalidateQueries({ queryKey: queryKeys.vault(vault.id) });
       await qc.invalidateQueries({ queryKey: queryKeys.vaults });
       snack.notify(
-        on ? "Members' sessions in this vault are now recorded" : "Recording turned off",
+        on ? tr("Members' sessions in this vault are now recorded") : tr("Recording turned off"),
       );
     },
     onError: (e) => snack.error(errorMessage(e)),
@@ -188,17 +188,19 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
             <Typography variant="body2">{tr("Record members' sessions")}</Typography>
             <Typography variant="caption" color="text.secondary">
               {manager
-                ? "Every terminal session to a host of this vault is recorded on the member's device and uploaded encrypted. Members still see their own recordings when this is off."
-                : "Only vault managers change this."}
+                ? tr(
+                    "Every terminal session to a host of this vault is recorded on the member's device and uploaded encrypted. Members still see their own recordings when this is off.",
+                  )
+                : tr("Only vault managers change this.")}
             </Typography>
           </Box>
-          <Tooltip title={manager ? "" : "Only vault managers change this"}>
+          <Tooltip title={manager ? "" : tr("Only vault managers change this")}>
             <span>
               <Switch
                 checked={vault.session_logging}
                 disabled={!manager || policy.isPending}
                 onChange={(e) => policy.mutate(e.target.checked)}
-                slotProps={{ input: { "aria-label": "Record members' sessions" } }}
+                slotProps={{ input: { "aria-label": tr("Record members' sessions") } }}
               />
             </span>
           </Tooltip>
@@ -220,8 +222,12 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
             title={tr("No recordings yet")}
             description={
               vault.session_logging
-                ? "Recordings appear here after members finish a session on a host of this vault."
-                : "Turn on recording above, or members can record their own sessions from the app settings."
+                ? tr(
+                    "Recordings appear here after members finish a session on a host of this vault.",
+                  )
+                : tr(
+                    "Turn on recording above, or members can record their own sessions from the app settings.",
+                  )
             }
           />
         ) : (
@@ -264,7 +270,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                         <TableCell sx={{ minWidth: 200 }}>
                           <UserCell
                             userId={l.user_id}
-                            email={l.author?.email ?? "Former member"}
+                            email={l.author?.email ?? tr("Former member")}
                             displayName={l.author?.display_name}
                             avatar={l.author?.avatar_tag}
                             you={l.user_id === me}
@@ -278,7 +284,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                               </Tooltip>
                             )}
                             <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
-                              {meta ? meta.label : "Encrypted recording"}
+                              {meta ? meta.label : tr("Encrypted recording")}
                             </Typography>
                             {!l.completed && (
                               <Chip size="small" variant="outlined" label={tr("Uploading")} />
@@ -293,10 +299,10 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                             {meta
                               ? `${meta.protocol} · ${meta.target} · ${durationOf(meta)}`
                               : !vaultKey
-                                ? "Details are decrypted only in your browser"
+                                ? tr("Details are decrypted only in your browser")
                                 : meta === null
-                                  ? "Could not decrypt (recorded with another key version?)"
-                                  : "Decrypting…"}
+                                  ? tr("Could not decrypt (recorded with another key version?)")
+                                  : tr("Decrypting…")}
                           </Typography>
                           {l.note && (
                             <Typography
@@ -316,7 +322,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                         <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
                           {canAnnotate && (
                             <>
-                              <Tooltip title={l.pinned ? "Unpin" : "Pin"}>
+                              <Tooltip title={l.pinned ? tr("Unpin") : tr("Pin")}>
                                 <IconButton
                                   size="small"
                                   disabled={annotate.isPending}
@@ -331,7 +337,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                                   )}
                                 </IconButton>
                               </Tooltip>
-                              <Tooltip title={l.note ? "Edit comment" : "Comment"}>
+                              <Tooltip title={l.note ? tr("Edit comment") : tr("Comment")}>
                                 <IconButton size="small" onClick={() => setEditing(l)}>
                                   <CommentOutlinedIcon fontSize="small" />
                                 </IconButton>
@@ -391,8 +397,10 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
           if (deleting) del.mutate(deleting.id);
         }}
       >
-        The recording is removed from the server for every member of “{vault.name}”; copies already
-        downloaded to members' devices are deleted on their next sync. This cannot be undone.
+        {trx(
+          "The recording is removed from the server for every member of “{name}”; copies already downloaded to members' devices are deleted on their next sync. This cannot be undone.",
+          { name: vault.name },
+        )}
       </ConfirmDialog>
     </Section>
   );
@@ -463,7 +471,10 @@ function NoteForm({
           value={note}
           onChange={(e) => setNote(e.target.value)}
           error={tooLong}
-          helperText={`${note.length} / ${MAX_NOTE_CHARS} · visible to every member of the vault`}
+          helperText={tr("{length} / {MAX_NOTE_CHARS} · visible to every member of the vault", {
+            length: note.length,
+            MAX_NOTE_CHARS,
+          })}
           sx={{ mt: 1 }}
         />
       </DialogContent>

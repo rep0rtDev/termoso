@@ -1,5 +1,5 @@
 import { useState, type SubmitEvent } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Button,
@@ -156,20 +156,25 @@ function Body() {
 
   return (
     <form onSubmit={submit}>
-      <DialogTitle>{needsKey ? "Unlock encryption keys" : "Confirm it's you"}</DialogTitle>
+      <DialogTitle>{needsKey ? tr("Unlock encryption keys") : tr("Confirm it's you")}</DialogTitle>
       <DialogContent sx={{ display: "grid", gap: 2 }}>
         {stage.kind === "password" && (
           <DialogContentText>
             {needsKey
-              ? "This action needs your account key, which only lives in this browser tab. Enter your password to unlock it — it is never sent to the server."
-              : `This is a sensitive change to ${session?.user.email ?? "your account"}. Enter your password to continue — it is never sent to the server.`}
+              ? tr(
+                  "This action needs your account key, which only lives in this browser tab. Enter your password to unlock it — it is never sent to the server.",
+                )
+              : tr(
+                  "This is a sensitive change to {v1}. Enter your password to continue — it is never sent to the server.",
+                  { v1: session?.user.email ?? "your account" },
+                )}
             {!needsKey &&
               " Accounts without a password (single sign-on) get a code by email instead: leave the field empty."}
           </DialogContentText>
         )}
         {stage.kind === "email" && (
           <DialogContentText>
-            Enter the code we sent to {stage.emailHint || "your email"}.
+            {trx("Enter the code we sent to {v1}.", { v1: stage.emailHint || "your email" })}
           </DialogContentText>
         )}
         {stage.kind === "mfa" && stage.methods.length > 1 && (
@@ -235,12 +240,12 @@ function Body() {
                   onClick={() => void sendEmail(stage.mfaToken)}
                   disabled={busy}
                 >
-                  {emailSent ? "Resend code" : "Send code to my email"}
+                  {emailSent ? tr("Resend code") : tr("Send code to my email")}
                 </Button>
               )}
               <TextField
                 autoFocus
-                label={method === "backup_code" ? "Backup code" : "6-digit code"}
+                label={method === "backup_code" ? tr("Backup code") : tr("6-digit code")}
                 required
                 autoComplete="one-time-code"
                 inputMode={method === "backup_code" ? "text" : "numeric"}
@@ -257,7 +262,7 @@ function Body() {
         </Button>
         {!(stage.kind === "mfa" && method === "webauthn") && (
           <Button type="submit" variant="contained" disabled={busy || !canSubmit}>
-            {stage.kind === "password" ? (needsKey ? "Unlock" : "Continue") : "Verify"}
+            {stage.kind === "password" ? (needsKey ? tr("Unlock") : tr("Continue")) : tr("Verify")}
           </Button>
         )}
       </DialogActions>

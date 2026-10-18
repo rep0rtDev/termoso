@@ -1,5 +1,6 @@
 import { Box, Typography } from "@mui/material";
 import { UserAvatar } from "./UserAvatar";
+import { tr } from "@/i18n";
 
 interface Props {
   userId: string;
@@ -19,7 +20,7 @@ export function UserCell({ userId, email, displayName, avatar, you }: Props) {
           {displayName ?? email}
           {you && (
             <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.75 }}>
-              (you)
+              {tr("(you)")}
             </Typography>
           )}
         </Typography>

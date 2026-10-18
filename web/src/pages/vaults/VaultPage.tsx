@@ -1,5 +1,5 @@
 import { useState, type SubmitEvent } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Box,
@@ -74,19 +74,22 @@ function VaultDetail({ vault }: { vault: Vault }) {
           <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
             <RoleChip role={vault.my_role} />
             <span>
-              {vault.kind === "personal" ? (
-                "Personal vault"
-              ) : team.data ? (
-                <>
-                  Team{" "}
-                  <Link component={RouterLink} to={`/team/${team.data.id}`}>
-                    {team.data.name}
-                  </Link>
-                </>
-              ) : (
-                "Team vault"
-              )}{" "}
-              · key version {vault.key_version} · created {formatDate(vault.created_at)}
+              {trx("{v1}  · key version {key_version} · created {v2}", {
+                v1:
+                  vault.kind === "personal"
+                    ? "Personal vault"
+                    : team.data
+                      ? trx("Team {name}", {
+                          name: (
+                            <Link component={RouterLink} to={`/team/${team.data.id}`}>
+                              {team.data.name}
+                            </Link>
+                          ),
+                        })
+                      : "Team vault",
+                key_version: vault.key_version,
+                v2: formatDate(vault.created_at),
+              })}
             </span>
             {vault.is_default && (
               <Chip size="small" variant="outlined" label={tr("Default vault")} />
@@ -105,8 +108,9 @@ function VaultDetail({ vault }: { vault: Vault }) {
       />
       {!vault.sealed_key && (
         <Alert severity="warning" sx={{ mb: 2.5 }}>
-          You are a member of this vault but nobody has sealed the vault key to you yet. Ask a vault
-          manager or team admin to grant it under “Pending vault keys” on the team page.
+          {tr(
+            "You are a member of this vault but nobody has sealed the vault key to you yet. Ask a vault manager or team admin to grant it under “Pending vault keys” on the team page.",
+          )}
         </Alert>
       )}
       {vault.kind === "personal" ? (
@@ -117,8 +121,9 @@ function VaultDetail({ vault }: { vault: Vault }) {
           )}
         >
           <Typography variant="body2" color="text.secondary">
-            Hosts, keys and snippets synced from the desktop and mobile apps are stored here. Team
-            vaults can be shared; the personal vault cannot.
+            {tr(
+              "Hosts, keys and snippets synced from the desktop and mobile apps are stored here. Team vaults can be shared; the personal vault cannot.",
+            )}
           </Typography>
         </Section>
       ) : (
@@ -167,7 +172,7 @@ function VaultActions({ vault, manager }: { vault: Vault; manager: boolean }) {
     onSuccess: async (v) => {
       setRotateOpen(false);
       await invalidate();
-      snack.notify(`Vault key rotated to version ${v}`);
+      snack.notify(tr("Vault key rotated to version {v}", { v }));
     },
     onError: (e) => {
       setRotateOpen(false);
@@ -195,8 +200,8 @@ function VaultActions({ vault, manager }: { vault: Vault; manager: boolean }) {
         <Tooltip
           title={
             holdKey
-              ? "Generate a new vault key and re-seal it to current members"
-              : "You need the vault key to rotate it"
+              ? tr("Generate a new vault key and re-seal it to current members")
+              : tr("You need the vault key to rotate it")
           }
         >
           <span>
@@ -263,9 +268,9 @@ function VaultActions({ vault, manager }: { vault: Vault; manager: boolean }) {
         onCancel={() => setRotateOpen(false)}
         onConfirm={() => rotate.mutate()}
       >
-        A new key is generated in your browser and sealed to every member who currently holds the
-        key. Removed members' stale copies become useless. Apps re-encrypt existing records on their
-        next sync.
+        {tr(
+          "A new key is generated in your browser and sealed to every member who currently holds the key. Removed members' stale copies become useless. Apps re-encrypt existing records on their next sync.",
+        )}
       </ConfirmDialog>
       <ConfirmDialog
         open={deleteOpen}
@@ -276,8 +281,10 @@ function VaultActions({ vault, manager }: { vault: Vault; manager: boolean }) {
         onCancel={() => setDeleteOpen(false)}
         onConfirm={() => del.mutate()}
       >
-        All records and session logs in “{vault.name}” are deleted for every member. This cannot be
-        undone.
+        {trx(
+          "All records and session logs in “{name}” are deleted for every member. This cannot be undone.",
+          { name: vault.name },
+        )}
       </ConfirmDialog>
     </Stack>
   );
@@ -363,8 +370,8 @@ function MembersSection({
       description={
         manager
           ? holdKey
-            ? "Adding a member seals the vault key to their public key locally."
-            : "You cannot add members or grant keys until you hold the vault key yourself."
+            ? tr("Adding a member seals the vault key to their public key locally.")
+            : tr("You cannot add members or grant keys until you hold the vault key yourself.")
           : undefined
       }
       actions={
@@ -523,8 +530,9 @@ function MembersSection({
           <DialogContent sx={{ display: "grid", gap: 2 }}>
             {candidates.length === 0 ? (
               <DialogContentText>
-                Every team member already belongs to this vault. Invite more people on the team page
-                first.
+                {tr(
+                  "Every team member already belongs to this vault. Invite more people on the team page first.",
+                )}
               </DialogContentText>
             ) : (
               <>
@@ -581,8 +589,10 @@ function MembersSection({
           if (removing) remove.mutate(removing.user_id);
         }}
       >
-        {removing?.email} loses access to “{vault.name}”. Rotate the vault key afterwards to
-        invalidate their copy.
+        {trx(
+          "{email} loses access to “{name}”. Rotate the vault key afterwards to invalidate their copy.",
+          { email: removing?.email, name: vault.name },
+        )}
       </ConfirmDialog>
       <ConfirmDialog
         open={leaveOpen}
@@ -595,7 +605,9 @@ function MembersSection({
           if (me) remove.mutate(me);
         }}
       >
-        You lose access to “{vault.name}”. A manager can add you back later.
+        {trx("You lose access to “{name}”. A manager can add you back later.", {
+          name: vault.name,
+        })}
       </ConfirmDialog>
     </Section>
   );

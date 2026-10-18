@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Avatar,
@@ -72,7 +72,11 @@ export function DevicesPage() {
       setTarget(null);
       setRevokeOthers(false);
       await qc.invalidateQueries({ queryKey: queryKeys.devices });
-      snack.notify(ids.length === 1 ? "Device signed out" : `${ids.length} devices signed out`);
+      snack.notify(
+        ids.length === 1
+          ? tr("Device signed out")
+          : tr("{length} devices signed out", { length: ids.length }),
+      );
     },
     onError: (e) => {
       if (!(e instanceof UnlockCancelled)) snack.error(errorMessage(e));
@@ -150,7 +154,13 @@ export function DevicesPage() {
                       {d.current && <Chip size="small" color="primary" label={tr("This device")} />}
                     </Box>
                   }
-                  secondary={`${platformLabel[d.platform]} · v${d.app_version} · ${d.last_ip ?? "unknown IP"} · Active ${formatRelative(d.last_seen_at)} · Added ${formatDateTime(d.created_at)}`}
+                  secondary={tr("{v1} · v{app_version} · {v2} · Active {v3} · Added {v4}", {
+                    v1: platformLabel[d.platform],
+                    app_version: d.app_version,
+                    v2: d.last_ip ?? tr("unknown IP"),
+                    v3: formatRelative(d.last_seen_at),
+                    v4: formatDateTime(d.created_at),
+                  })}
                 />
               </ListItem>
             ))}
@@ -169,7 +179,9 @@ export function DevicesPage() {
           if (target) revoke.mutate([target.id]);
         }}
       >
-        “{target?.name}” will need to sign in again and unlock with the password.
+        {trx("“{name}” will need to sign in again and unlock with the password.", {
+          name: target?.name,
+        })}
       </ConfirmDialog>
       <ConfirmDialog
         open={revokeOthers}
@@ -180,8 +192,10 @@ export function DevicesPage() {
         onCancel={() => setRevokeOthers(false)}
         onConfirm={() => revoke.mutate(others.map((d) => d.id))}
       >
-        {others.length} {others.length === 1 ? "device" : "devices"} will be signed out. This
-        browser stays signed in.
+        {trx("{length} {v1} will be signed out. This browser stays signed in.", {
+          length: others.length,
+          v1: others.length === 1 ? "device" : "devices",
+        })}
       </ConfirmDialog>
     </>
   );

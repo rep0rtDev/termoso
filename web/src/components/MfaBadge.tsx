@@ -23,8 +23,10 @@ export function MfaBadge({ m, required }: { m: TeamMember; required: boolean }) 
       <Tooltip
         title={
           required
-            ? "No two-factor authentication: this member cannot open team vaults until they enable it"
-            : "No two-factor authentication"
+            ? tr(
+                "No two-factor authentication: this member cannot open team vaults until they enable it",
+              )
+            : tr("No two-factor authentication")
         }
       >
         <Chip

@@ -1,5 +1,5 @@
 import { useState, type SubmitEvent } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Button,
@@ -53,7 +53,9 @@ export function TeamsPage() {
             public_key: session.keys.public_key,
           });
         } catch (e) {
-          snack.error(`Team created, but its default vault was not: ${errorMessage(e)}`);
+          snack.error(
+            tr("Team created, but its default vault was not: {v1}", { v1: errorMessage(e) }),
+          );
         }
       }
       return team;
@@ -134,8 +136,11 @@ export function TeamsPage() {
                         <RoleChip role={t.my_role} />
                       </Stack>
                       <Typography variant="body2" color="text.secondary">
-                        {t.member_count} {t.member_count === 1 ? "member" : "members"} · created{" "}
-                        {formatDate(t.created_at)}
+                        {trx("{member_count} {v1} · created  {v2}", {
+                          member_count: t.member_count,
+                          v1: t.member_count === 1 ? "member" : "members",
+                          v2: formatDate(t.created_at),
+                        })}
                       </Typography>
                     </Stack>
                   </CardContent>

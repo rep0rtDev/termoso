@@ -1,5 +1,5 @@
 import { Alert, Button, Link, Stack, Typography } from "@mui/material";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import { Navigate, useLocation, useParams } from "react-router";
 import { CopyField } from "@/components/CopyField";
@@ -25,9 +25,10 @@ export function JoinPage() {
       <>
         <AuthTitle title={tr("Incomplete sharing link")} />
         <Alert severity="warning">
-          This link is missing the part after <b>#</b> that unlocks the shared terminal. Ask the
-          host to send the complete link — the secret is never stored on the server, so it cannot be
-          recovered here.
+          {trx(
+            "This link is missing the part after {v1} that unlocks the shared terminal. Ask the host to send the complete link — the secret is never stored on the server, so it cannot be recovered here.",
+            { v1: <b>#</b> },
+          )}
         </Alert>
       </>
     );
@@ -56,17 +57,21 @@ export function JoinPage() {
           {tr("Open in Termoso")}
         </Button>
         <Typography variant="body2" color="text.secondary">
-          Nothing happened? Paste this link into Termoso —{" "}
-          <i>{tr("Connections → Join shared terminal")}</i> on Android, or the search field on
-          desktop.
+          {trx(
+            "Nothing happened? Paste this link into Termoso —  {v1} on Android, or the search field on desktop.",
+            { v1: <i>{tr("Connections → Join shared terminal")}</i> },
+          )}
         </Typography>
         <CopyField label={tr("Sharing link")} value={webLink} />
         <Typography variant="body2" color="text.secondary">
-          No Termoso yet?{" "}
-          <Link href={RELEASES} target="_blank" rel="noreferrer">
-            {tr("Download the desktop or Android app")}
-          </Link>
-          {tr(". Live sharing is not available in the browser.")}
+          {trx("No Termoso yet?  {v1} {t2}", {
+            v1: (
+              <Link href={RELEASES} target="_blank" rel="noreferrer">
+                {tr("Download the desktop or Android app")}
+              </Link>
+            ),
+            t2: tr(". Live sharing is not available in the browser."),
+          })}
         </Typography>
       </Stack>
     </>

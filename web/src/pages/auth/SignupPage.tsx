@@ -1,5 +1,5 @@
 import { useState, type SubmitEvent } from "react";
-import { tr } from "@/i18n";
+import { tr, trx } from "@/i18n";
 import { Alert, Button, Link, Stack, TextField, Typography } from "@mui/material";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router";
 import { errorMessage } from "@/api/client";
@@ -110,7 +110,7 @@ export function SignupPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           error={pwProblem !== null}
-          helperText={pwProblem ?? "At least 10 characters. Use a passphrase you can remember."}
+          helperText={pwProblem ?? tr("At least 10 characters. Use a passphrase you can remember.")}
           disabled={busy}
         />
         <PasswordField
@@ -120,13 +120,13 @@ export function SignupPage() {
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           error={mismatch}
-          helperText={mismatch ? "Passwords do not match" : undefined}
+          helperText={mismatch ? tr("Passwords do not match") : undefined}
           disabled={busy}
         />
         <Alert severity="info">
-          After sign-up you will get a 24-word recovery key. It is the only way to reset a forgotten
-          password without losing your data — nobody, including the server operator, can recover it
-          for you.
+          {tr(
+            "After sign-up you will get a 24-word recovery key. It is the only way to reset a forgotten password without losing your data — nobody, including the server operator, can recover it for you.",
+          )}
         </Alert>
         {siteKey && <Turnstile key={captchaRound} siteKey={siteKey} onToken={setCaptcha} />}
         <Button
@@ -135,13 +135,16 @@ export function SignupPage() {
           size="large"
           disabled={busy || (siteKey !== null && captcha === null)}
         >
-          {busy ? "Creating account…" : "Create account"}
+          {busy ? tr("Creating account…") : tr("Create account")}
         </Button>
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
-          Already have an account?{" "}
-          <Link component={RouterLink} to="/login">
-            {tr("Sign in")}
-          </Link>
+          {trx("Already have an account?  {v1}", {
+            v1: (
+              <Link component={RouterLink} to="/login">
+                {tr("Sign in")}
+              </Link>
+            ),
+          })}
         </Typography>
       </Stack>
     </form>

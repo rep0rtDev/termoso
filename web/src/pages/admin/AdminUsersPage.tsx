@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { tr } from "@/i18n";
+import { tr, trx, trn } from "@/i18n";
 import {
   Alert,
   Box,
@@ -92,7 +92,7 @@ export function AdminUsersPage() {
         }
       />
       <Section
-        title={users.data ? `${users.data.total.toLocaleString()} users` : "Users"}
+        title={users.data ? trn(users.data.total, "{count} user", "{count} users") : tr("Users")}
         disablePadding
       >
         {users.isPending ? (
@@ -229,8 +229,8 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
       } else {
         snack.notify(
           kind === "revoke"
-            ? "All sessions revoked"
-            : "MFA reset; the user can sign in with password only",
+            ? tr("All sessions revoked")
+            : tr("MFA reset; the user can sign in with password only"),
         );
       }
       await refresh();
@@ -267,7 +267,7 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
             <Row label={tr("Joined")} value={formatDateTime(u.created_at)} />
             <Row label={tr("Last seen")} value={formatRelative(u.last_seen_at)} />
             <Row label={tr("Devices")} value={String(u.devices)} />
-            <Row label={tr("MFA")} value={u.mfa_enabled ? "Enabled" : "Off"} />
+            <Row label={tr("MFA")} value={u.mfa_enabled ? tr("Enabled") : tr("Off")} />
           </Stack>
           <Divider />
           <Stack>
@@ -312,7 +312,7 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
             >
               {tr("Sign out all devices")}
             </Button>
-            <Tooltip title={u.mfa_enabled ? "" : "The user has no MFA configured"}>
+            <Tooltip title={u.mfa_enabled ? "" : tr("The user has no MFA configured")}>
               <span>
                 <Button
                   variant="outlined"
@@ -343,7 +343,9 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
         onCancel={() => setConfirm(null)}
         onConfirm={() => action.mutate("revoke")}
       >
-        Every session of {u?.email} is revoked. They must sign in again on each device.
+        {trx("Every session of {email} is revoked. They must sign in again on each device.", {
+          email: u?.email,
+        })}
       </ConfirmDialog>
       <ConfirmDialog
         open={confirm === "reset-mfa"}
@@ -354,8 +356,10 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
         onCancel={() => setConfirm(null)}
         onConfirm={() => action.mutate("reset-mfa")}
       >
-        TOTP, security keys and backup codes of {u?.email} are removed and all sessions revoked.
-        Verify the request out of band first.
+        {trx(
+          "TOTP, security keys and backup codes of {email} are removed and all sessions revoked. Verify the request out of band first.",
+          { email: u?.email },
+        )}
       </ConfirmDialog>
       <ConfirmDialog
         open={confirm === "delete"}
@@ -366,8 +370,10 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
         onCancel={() => setConfirm(null)}
         onConfirm={() => action.mutate("delete")}
       >
-        {u?.email} and all their encrypted data, devices and session logs are removed permanently.
-        Users who own teams cannot be deleted.
+        {trx(
+          "{email} and all their encrypted data, devices and session logs are removed permanently. Users who own teams cannot be deleted.",
+          { email: u?.email },
+        )}
       </ConfirmDialog>
     </Drawer>
   );

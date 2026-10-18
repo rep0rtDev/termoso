@@ -1,14 +1,14 @@
 import { IconButton, ListItemText, Menu, MenuItem, Tooltip } from "@mui/material";
 import TranslateRoundedIcon from "@mui/icons-material/TranslateRounded";
 import { useState } from "react";
-import { LANGUAGES, LOCALE_NAMES, language, setLanguage, tr, type Language } from "@/i18n";
+import { LANGUAGES, LOCALE_NAMES, setLanguage, tr, useLanguage, type Language } from "@/i18n";
 
 const label = (l: Language) => (l === "system" ? tr("System") : LOCALE_NAMES[l]);
 
-/** UI language picker. Strings are resolved when modules load, so a change reloads the page. */
+/** UI language picker; the app re-renders live (module-level strings use `msg` + `tr` at render). */
 export function LanguageToggle() {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const current = language();
+  const current = useLanguage();
   return (
     <>
       <Tooltip title={tr("Language")}>
@@ -25,7 +25,6 @@ export function LanguageToggle() {
               setAnchor(null);
               if (l === current) return;
               setLanguage(l);
-              window.location.reload();
             }}
           >
             <ListItemText>{label(l)}</ListItemText>

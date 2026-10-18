@@ -147,11 +147,11 @@ export function MfaPage() {
             <Stack spacing={2}>
               {method === "email" && (
                 <Button variant="outlined" onClick={() => void sendEmail()} disabled={busy}>
-                  {emailSent ? "Resend code" : "Send code to my email"}
+                  {emailSent ? tr("Resend code") : tr("Send code to my email")}
                 </Button>
               )}
               <TextField
-                label={method === "backup_code" ? "Backup code" : "6-digit code"}
+                label={method === "backup_code" ? tr("Backup code") : tr("6-digit code")}
                 autoFocus
                 required
                 autoComplete="one-time-code"

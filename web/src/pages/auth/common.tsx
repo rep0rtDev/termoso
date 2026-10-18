@@ -11,6 +11,7 @@ import {
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
 import { useLocation } from "react-router";
+import { tr } from "@/i18n";
 
 export function AuthTitle({ title, subtitle }: { title: string; subtitle?: ReactNode }) {
   return (
@@ -40,7 +41,7 @@ export function PasswordField(props: Omit<TextFieldProps, "slotProps" | "type">)
               <IconButton
                 onClick={() => setShow((s) => !s)}
                 edge="end"
-                aria-label={show ? "Hide password" : "Show password"}
+                aria-label={show ? tr("Hide password") : tr("Show password")}
                 tabIndex={-1}
                 sx={{ mr: -0.5 }}
               >
@@ -61,7 +62,8 @@ export function PasswordField(props: Omit<TextFieldProps, "slotProps" | "type">)
 export const MIN_PASSWORD = 10;
 
 export function passwordProblem(pw: string): string | null {
-  if (pw.length < MIN_PASSWORD) return `Use at least ${MIN_PASSWORD} characters`;
+  if (pw.length < MIN_PASSWORD)
+    return tr("Use at least {MIN_PASSWORD} characters", { MIN_PASSWORD });
   return null;
 }
 
