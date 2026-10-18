@@ -715,6 +715,9 @@ schema! {
         pub sso_domains: Vec<String>,
         /// New devices of members always need email approval.
         pub device_approval: bool,
+        /// Audit log retention in days (30..=3650; the server may cap it).
+        #[serde(default = "default_audit_retention_days")]
+        pub audit_retention_days: i32,
         /// Last change.
         pub updated_at: DateTime<Utc>,
     }
@@ -744,6 +747,9 @@ schema! {
         /// See [`TeamPolicies::device_approval`].
         #[serde(default)]
         pub device_approval: Option<bool>,
+        /// See [`TeamPolicies::audit_retention_days`].
+        #[serde(default)]
+        pub audit_retention_days: Option<i32>,
     }
 }
 
@@ -775,4 +781,8 @@ schema! {
         /// What applies to the caller across all their teams.
         pub effective_for_me: EffectivePolicies,
     }
+}
+
+fn default_audit_retention_days() -> i32 {
+    365
 }

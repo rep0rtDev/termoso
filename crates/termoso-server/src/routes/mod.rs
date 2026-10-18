@@ -181,6 +181,7 @@ pub fn router(state: AppState) -> Router {
         .route("/teams/{id}/pending-keys", get(teams::pending_keys))
         .route("/teams/{id}/presence", get(teams::get_presence))
         .route("/teams/{id}/audit", get(crate::audit::list))
+        .route("/teams/{id}/audit/export", get(crate::audit::export))
         .route(
             "/teams/{id}/policies",
             get(policies::get).put(policies::put),

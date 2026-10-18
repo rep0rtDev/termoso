@@ -84,15 +84,29 @@ pub async fn put(
     if let Some(on) = req.device_approval {
         next.device_approval = on;
     }
+    if let Some(days) = req.audit_retention_days {
+        let cap = (state.cfg.audit_retention_days_max as i32).clamp(
+            policy::MIN_AUDIT_RETENTION_DAYS,
+            policy::MAX_AUDIT_RETENTION_DAYS,
+        );
+        if !(policy::MIN_AUDIT_RETENTION_DAYS..=cap).contains(&days) {
+            return Err(Error::bad_request(format!(
+                "audit_retention_days must be within {}..={cap} on this server",
+                policy::MIN_AUDIT_RETENTION_DAYS
+            )));
+        }
+        next.audit_retention_days = days;
+    }
     let mut tx = state.db.begin().await?;
     sqlx::query(
         "INSERT INTO team_policies (team_id, mfa, local_keys, session_ttl_hours, sso_only, sso_provider,
-                                    sso_domains, device_approval, updated_by, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+                                    sso_domains, device_approval, audit_retention_days, updated_by, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10, $9, now())
          ON CONFLICT (team_id) DO UPDATE SET mfa = EXCLUDED.mfa, local_keys = EXCLUDED.local_keys,
              session_ttl_hours = EXCLUDED.session_ttl_hours, sso_only = EXCLUDED.sso_only,
              sso_provider = EXCLUDED.sso_provider, sso_domains = EXCLUDED.sso_domains,
-             device_approval = EXCLUDED.device_approval, updated_by = EXCLUDED.updated_by, updated_at = now()",
+             device_approval = EXCLUDED.device_approval, audit_retention_days = EXCLUDED.audit_retention_days,
+             updated_by = EXCLUDED.updated_by, updated_at = now()",
     )
     .bind(id)
     .bind(&next.mfa)
@@ -103,6 +117,7 @@ pub async fn put(
     .bind(&next.sso_domains)
     .bind(next.device_approval)
     .bind(auth.user_id())
+    .bind(next.audit_retention_days)
     .execute(&mut *tx)
     .await?;
     // Older clients read the coarse flag.

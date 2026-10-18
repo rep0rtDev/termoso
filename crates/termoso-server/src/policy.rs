@@ -15,6 +15,8 @@ pub const MFA_LEVELS: &[&str] = &["off", "any", "passkey"];
 pub const LOCAL_KEYS: &[&str] = &["allow", "deny"];
 pub const MAX_SESSION_TTL_HOURS: i32 = 2160;
 pub const MAX_DOMAINS: usize = 50;
+pub const MIN_AUDIT_RETENTION_DAYS: i32 = 30;
+pub const MAX_AUDIT_RETENTION_DAYS: i32 = 3650;
 
 type Row = (
     String,
@@ -24,6 +26,7 @@ type Row = (
     Option<String>,
     Vec<String>,
     bool,
+    i32,
     DateTime<Utc>,
 );
 
@@ -31,7 +34,7 @@ macro_rules! policy_select {
     ($head:literal, $tail:literal) => {
         concat!(
             $head,
-            "mfa, local_keys, session_ttl_hours, sso_only, sso_provider, sso_domains, device_approval, updated_at",
+            "mfa, local_keys, session_ttl_hours, sso_only, sso_provider, sso_domains, device_approval, audit_retention_days, updated_at",
             $tail
         )
     };
@@ -46,7 +49,8 @@ fn from_row(r: Row) -> TeamPolicies {
         sso_provider: r.4,
         sso_domains: r.5,
         device_approval: r.6,
-        updated_at: r.7,
+        audit_retention_days: r.7,
+        updated_at: r.8,
     }
 }
 
@@ -59,6 +63,7 @@ pub fn defaults() -> TeamPolicies {
         sso_provider: None,
         sso_domains: Vec::new(),
         device_approval: false,
+        audit_retention_days: 365,
         updated_at: Utc::now(),
     }
 }
@@ -98,7 +103,7 @@ pub async fn attach(db: &PgPool, teams: &mut [Team]) -> ApiResult<()> {
     .await?
     .into_iter()
     .map(
-        |(id, a, b, c, d, e, f, g, h): (
+        |(id, a, b, c, d, e, f, g, h, i): (
             Uuid,
             String,
             String,
@@ -107,8 +112,9 @@ pub async fn attach(db: &PgPool, teams: &mut [Team]) -> ApiResult<()> {
             Option<String>,
             Vec<String>,
             bool,
+            i32,
             DateTime<Utc>,
-        )| { (id, (a, b, c, d, e, f, g, h)) },
+        )| { (id, (a, b, c, d, e, f, g, h, i)) },
     )
     .collect();
     let mut map: HashMap<Uuid, TeamPolicies> =
