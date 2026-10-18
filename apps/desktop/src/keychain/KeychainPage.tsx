@@ -192,7 +192,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       exportPassphrase: string | null;
     },
   ) => {
-    if (!requirePerm(card.vaultId, "keys.export")) return;
+    if (!requirePerm(card.vaultId, "keys.export")) return null;
     if (args.mode === "clipboard") {
       const text = await ipc.keyExport({
         id: card.id,

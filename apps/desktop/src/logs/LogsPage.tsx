@@ -247,7 +247,7 @@ function Viewer({
   });
 
   const exportLog = async () => {
-    if (!requirePerm(log.vaultId, "logs.export")) return;
+    if (!requirePerm(log.vaultId, "logs.export")) return null;
     const stamp = log.startedAt.replace(/[:.]/g, "-");
     const path = await saveFile({
       title: tr("Export recording"),
@@ -468,7 +468,7 @@ function Viewer({
           onCancel={() => setDialog({ kind: "none" })}
           onConfirm={() =>
             op.mutate(async () => {
-              if (!requirePerm(log.vaultId, "logs.delete")) return;
+              if (!requirePerm(log.vaultId, "logs.delete")) return null;
               await ipc.logDelete(log.id);
               onDeleted();
               return tr("Recording deleted");

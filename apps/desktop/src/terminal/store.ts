@@ -1560,9 +1560,7 @@ function connectAllowed(target: OpenTarget): boolean {
           ? "connect.telnet"
           : target.protocol === "mosh"
             ? "connect.mosh"
-            : target.protocol === "sftp"
-              ? "connect.sftp"
-              : "connect.ssh";
+            : "connect.ssh";
       return requirePerm(vaultId, perm);
     }
     case "serial":
