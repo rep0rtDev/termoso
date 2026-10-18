@@ -50,11 +50,6 @@ fn escape(s: &str) -> String {
 
 /// The page body. `site_key` is public; `theme` is one of `light`/`dark`/`auto`.
 pub fn render(site_key: &str, theme: &str, nonce: &str) -> String {
-    let bg = match theme {
-        "light" => "#ffffff",
-        "dark" => "#0f1117",
-        _ => "light-dark(#ffffff, #0f1117)",
-    };
     format!(
         r##"<!doctype html>
 <html lang="en">
@@ -65,8 +60,8 @@ pub fn render(site_key: &str, theme: &str, nonce: &str) -> String {
 <title>Verification</title>
 <style nonce="{nonce}">
   :root {{ color-scheme: {scheme}; }}
-  html, body {{ margin: 0; height: 100%; background: {bg}; }}
-  body {{ display: flex; align-items: center; justify-content: center; }}
+  html, body {{ margin: 0; height: 100%; background: transparent; }}
+  body {{ display: flex; align-items: flex-start; justify-content: center; padding-top: 4px; box-sizing: border-box; }}
 </style>
 </head>
 <body>
@@ -97,7 +92,6 @@ pub fn render(site_key: &str, theme: &str, nonce: &str) -> String {
 "##,
         nonce = escape(nonce),
         scheme = if theme == "auto" { "light dark" } else { theme },
-        bg = bg,
         site_key = escape(site_key),
         theme = theme,
     )
