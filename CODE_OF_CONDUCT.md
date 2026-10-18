@@ -28,7 +28,7 @@ messages, reviews) and anywhere you represent the project.
 ## Enforcement
 
 Report problems to the maintainers privately through
-<https://github.com/rep0rtDev/termoso/security/advisories/new> (pick the
+<https://github.com/termoso/termoso/security/advisories/new> (pick the
 "other" category) or by contacting a maintainer listed in
 `.github/CODEOWNERS`. Reports are handled confidentially. Consequences range
 from a warning to removal from the project at the maintainers' discretion.

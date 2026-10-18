@@ -53,7 +53,7 @@ docker run -d --name termoso-bridge --restart unless-stopped \
   -p 127.0.0.1:8080:8080 \
   -v /srv/termoso/bridge.json:/etc/termoso/bridge.json:ro \
   -e TERMOSO_BRIDGE_API_KEY="$(openssl rand -hex 32)" \
-  ghcr.io/rep0rtdev/termoso-bridge:latest
+  ghcr.io/termoso/termoso-bridge:latest
 ```
 
 | Variable | Default | Meaning |
@@ -230,7 +230,7 @@ Claude Desktop (`claude_desktop_config.json`) / Cursor (`.cursor/mcp.json`):
     "termoso": {
       "command": "docker",
       "args": ["run", "-i", "--rm", "-v", "/path/to/bridge.json:/etc/termoso/bridge.json:ro",
-               "ghcr.io/rep0rtdev/termoso-bridge", "mcp", "--allow-exec"]
+               "ghcr.io/termoso/termoso-bridge", "mcp", "--allow-exec"]
     }
   }
 }

@@ -489,8 +489,8 @@ jobs:
             -F draft=false -f make_latest=$latest > /dev/null
           echo "published https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME"
 
-  # Package channels: the apt/dnf repositories served from rep0rtDev/termoso-repo
-  # (GitHub Pages), the Homebrew tap rep0rtDev/homebrew-termoso and the winget
+  # Package channels: the apt/dnf repositories served from termoso/termoso-repo
+  # (GitHub Pages), the Homebrew tap termoso/homebrew-termoso and the winget
   # manifest in microsoft/winget-pkgs. Stable tags only; pre-releases stay on
   # the releases page. Pushes to the two side repositories use write-only
   # deploy keys, so this job never needs a token for the main repository.
@@ -525,7 +525,7 @@ jobs:
       - name: Check out termoso-repo
         uses: actions/checkout@v7
         with:
-          repository: rep0rtDev/termoso-repo
+          repository: termoso/termoso-repo
           ssh-key: ${{ secrets.TERMOSO_REPO_DEPLOY_KEY }}
           path: repo
       - name: Rebuild the apt + dnf repositories
@@ -540,7 +540,7 @@ jobs:
       - name: Check out the Homebrew tap
         uses: actions/checkout@v7
         with:
-          repository: rep0rtDev/homebrew-termoso
+          repository: termoso/homebrew-termoso
           ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
           path: tap
       - name: Update the cask

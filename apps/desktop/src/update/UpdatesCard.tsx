@@ -8,7 +8,7 @@ import { checkForUpdates, installUpdate, restartToUpdate, useUpdate } from "./st
 import { tr } from "@/i18n";
 
 export const DEFAULT_FEED =
-  "https://github.com/rep0rtDev/termoso/releases/latest/download/latest.json";
+  "https://github.com/termoso/termoso/releases/latest/download/latest.json";
 
 export function UpdatesCard({
   settings,

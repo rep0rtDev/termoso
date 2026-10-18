@@ -50,8 +50,8 @@ import { formatDateTime, formatRelative } from "@/components/format";
 import { generateKeyPair, loadCrypto } from "@/crypto";
 import { bridgeEligible, sealVaultKeysFor } from "@/vaults/keys";
 
-const DOCS_URL = "https://github.com/rep0rtDev/termoso/blob/main/docs/API_BRIDGE.md";
-const IMAGE = "ghcr.io/rep0rtdev/termoso-bridge:latest";
+const DOCS_URL = "https://github.com/termoso/termoso/blob/main/docs/API_BRIDGE.md";
+const IMAGE = "ghcr.io/termoso/termoso-bridge:latest";
 const MAX_NAME = 100;
 
 function credentialsFileName(bridge: Bridge): string {

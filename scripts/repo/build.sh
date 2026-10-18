@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rebuilds the APT + DNF repositories served from rep0rtDev/termoso-repo
+# Rebuilds the APT + DNF repositories served from termoso/termoso-repo
 # (GitHub Pages) out of the .deb/.rpm bundles of one release.
 #
 #   build.sh <assets dir> <repo checkout> <version> <gpg key id>
@@ -55,7 +55,7 @@ CONF
   gpg --batch --yes --local-user "$key" --digest-algo SHA256 --clearsign -o dists/stable/InRelease dists/stable/Release
   gpg --batch --yes --local-user "$key" --digest-algo SHA256 -abs -o dists/stable/Release.gpg dists/stable/Release
 )
-echo "deb [signed-by=/usr/share/keyrings/termoso.gpg] https://rep0rtdev.github.io/termoso-repo/deb stable main" > "$out/termoso.list"
+echo "deb [signed-by=/usr/share/keyrings/termoso.gpg] https://pkg.termoso.dev/deb stable main" > "$out/termoso.list"
 
 ### DNF ###################################################################
 rpm=$out/rpm
@@ -75,11 +75,11 @@ done
 cat > "$out/termoso.repo" <<REPO
 [termoso]
 name=Termoso
-baseurl=https://rep0rtdev.github.io/termoso-repo/rpm/\$basearch
+baseurl=https://pkg.termoso.dev/rpm/\$basearch
 enabled=1
 gpgcheck=1
 repo_gpgcheck=1
-gpgkey=https://rep0rtdev.github.io/termoso-repo/termoso.asc
+gpgkey=https://pkg.termoso.dev/termoso.asc
 REPO
 
 ### keys + landing ########################################################

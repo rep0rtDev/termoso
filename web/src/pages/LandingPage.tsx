@@ -35,7 +35,7 @@ import { useAuthState } from "@/auth/store";
 import { useServerInfo } from "@/api/hooks";
 import { emerald, monoFontFamily } from "@/theme/theme";
 
-const REPO = "https://github.com/rep0rtDev/termoso";
+const REPO = "https://github.com/termoso/termoso";
 const RELEASES = `${REPO}/releases/latest`;
 const README = `${REPO}#readme`;
 const SELF_HOSTING = `${REPO}/blob/main/docs/SELF_HOSTING.md`;

@@ -24,11 +24,11 @@ backing services with fixed passwords for `cargo run`/`cargo test`.
 
 | Service | Image | State | Purpose |
 |---|---|---|---|
-| `api` | `ghcr.io/rep0rtdev/termoso-server` | none | REST + WebSocket API under `/api/v1`, web cabinet on `/`, SSH ID handles, Android asset links. Runs migrations at start. |
+| `api` | `ghcr.io/termoso/termoso-server` | none | REST + WebSocket API under `/api/v1`, web cabinet on `/`, SSH ID handles, Android asset links. Runs migrations at start. |
 | `postgres` | `postgres:18-alpine` | **volume, back it up** | accounts, devices, teams, vaults, encrypted entities, audit log, avatars |
 | `redis` | `redis:8-alpine` | volume (disposable) | login handshakes, MFA/approval codes, session cache, rate limits, cross-replica event fan-out |
 | `rustfs` | `rustfs/rustfs:1.0.0` | volume | client-encrypted session logs, reached by clients through pre-signed URLs. [RustFS](https://github.com/rustfs/rustfs) is an Apache-2.0 S3-compatible store; any other S3-compatible store is a drop-in replacement — see [Scaling](#scaling). Stacks that still run the retired MinIO image: see [Migrating from MinIO](#migrating-from-minio). |
-| `bridge` (optional) | `ghcr.io/rep0rtdev/termoso-bridge` | none | Termius-compatible REST API for automation — see [API_BRIDGE.md](API_BRIDGE.md) |
+| `bridge` (optional) | `ghcr.io/termoso/termoso-bridge` | none | Termius-compatible REST API for automation — see [API_BRIDGE.md](API_BRIDGE.md) |
 | `caddy` (Compose `proxy` profile) | `caddy:2-alpine` | volume (certificates) | TLS termination for the API and RustFS |
 
 The `termoso-server` and `termoso-bridge` images are multi-architecture
@@ -203,7 +203,7 @@ origin lists the landing and all docs pages, using `TERMOSO_LANDING_URL` /
 ## Docker Compose
 
 ```bash
-git clone https://github.com/rep0rtDev/termoso.git && cd termoso
+git clone https://github.com/termoso/termoso.git && cd termoso
 cp deploy/.env.example deploy/.env && $EDITOR deploy/.env
 docker compose -f deploy/docker-compose.yml up -d --wait
 curl -fsS http://127.0.0.1:8080/readyz     # → ready
@@ -223,7 +223,7 @@ from the cabinet at `TERMOSO_BRIDGE_CREDENTIALS_FILE` (default
 `podman compose`.
 
 Pin the release you run with `TERMOSO_VERSION=0.2.0` rather than `latest`;
-the tags match [GitHub releases](https://github.com/rep0rtDev/termoso/releases).
+the tags match [GitHub releases](https://github.com/termoso/termoso/releases).
 
 ### Upgrading
 

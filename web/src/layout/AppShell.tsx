@@ -300,7 +300,7 @@ export function AppShell() {
             <Divider sx={{ my: 0.5 }} />
             <MenuItem
               component="a"
-              href="https://github.com/rep0rtDev/termoso/releases"
+              href="https://github.com/termoso/termoso/releases"
               target="_blank"
               rel="noreferrer"
               onClick={() => setMenuAnchor(null)}

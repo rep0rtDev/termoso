@@ -5,7 +5,7 @@ import { CopyField } from "@/components/CopyField";
 import { AuthTitle } from "./common";
 import { appJoinLink, isSessionId, secretFromHash, serverBase } from "./appLinks";
 
-const RELEASES = "https://github.com/rep0rtDev/termoso/releases/latest";
+const RELEASES = "https://github.com/termoso/termoso/releases/latest";
 
 /**
  * Landing page for `https://<server>/join/<id>#<secret>` live-sharing links.

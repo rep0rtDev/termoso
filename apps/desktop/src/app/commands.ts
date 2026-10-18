@@ -49,7 +49,7 @@ import * as ipc from "@/ipc/commands";
 import { errorMessage } from "@/ipc/types";
 import { tr, msg } from "@/i18n";
 
-export const DOCS_URL = "https://github.com/rep0rtDev/termoso#readme";
+export const DOCS_URL = "https://github.com/termoso/termoso#readme";
 
 // ───────────────────────────── palette state ─────────────────────────────
 

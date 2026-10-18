@@ -10,7 +10,7 @@ import { WindowControls } from "./WindowControls";
 import { tr } from "@/i18n";
 
 export const RECOVERY_DOC_URL =
-  "https://github.com/rep0rtDev/termoso/blob/main/docs/ARCHITECTURE.md#desktop-master-password-and-app-lock";
+  "https://github.com/termoso/termoso/blob/main/docs/ARCHITECTURE.md#desktop-master-password-and-app-lock";
 
 /**
  * Shown while the vault is locked: at start-up of a password-protected

@@ -6,7 +6,7 @@ that, we want to know first and quietly.
 ## Reporting a vulnerability
 
 Use GitHub's private vulnerability reporting:
-<https://github.com/rep0rtDev/termoso/security/advisories/new>. It creates a
+<https://github.com/termoso/termoso/security/advisories/new>. It creates a
 private advisory that only you and the maintainers can see. **Do not open a
 public issue or pull request for security problems.**
 

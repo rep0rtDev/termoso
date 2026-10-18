@@ -54,4 +54,4 @@ ssh deploy@web-01       # keys live in /root/.ssh like on any Linux box
 > The environment lives in app-private storage. Clearing Termoso's data in Android settings or uninstalling the app removes it together with the Local vault, with no way back. Back up the vault to your account first and copy files you care about out of the environment.
 
 > [!NOTE]
-> Nothing about this feature talks to a Termoso server. The two download URLs point at `dl-cdn.alpinelinux.org` and `cdimage.ubuntu.com`, and the checksums the app verifies against are in the [source](https://github.com/rep0rtDev/termoso/blob/main/crates/termoso-mobile/src/linux.rs).
+> Nothing about this feature talks to a Termoso server. The two download URLs point at `dl-cdn.alpinelinux.org` and `cdimage.ubuntu.com`, and the checksums the app verifies against are in the [source](https://github.com/termoso/termoso/blob/main/crates/termoso-mobile/src/linux.rs).

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Renders the Homebrew cask for rep0rtDev/homebrew-termoso from a release's
+# Renders the Homebrew cask for termoso/homebrew-termoso from a release's
 # SHA256SUMS.txt:  cask.sh <SHA256SUMS.txt> <version> > Casks/termoso.rb
 set -euo pipefail
 sums=$1 version=$2
@@ -14,8 +14,8 @@ cask "termoso" do
   sha256 arm:   "$arm",
          intel: "$x64"
 
-  url "https://github.com/rep0rtDev/termoso/releases/download/v#{version}/Termoso_#{version}_#{arch}.dmg",
-      verified: "github.com/rep0rtDev/termoso/"
+  url "https://github.com/termoso/termoso/releases/download/v#{version}/Termoso_#{version}_#{arch}.dmg",
+      verified: "github.com/termoso/termoso/"
   name "Termoso"
   desc "SSH, SFTP and terminal client with end-to-end encrypted sync"
   homepage "https://termoso.dev/"

@@ -13,7 +13,7 @@ the server's only metrics are opt-in Prometheus counters on a private listener.
 
 * Website / hosted instance: <https://termoso.dev> (the same server image
   everyone can self-host; hosted accounts are free)
-* Downloads: [GitHub Releases](https://github.com/rep0rtDev/termoso/releases)
+* Downloads: [GitHub Releases](https://github.com/termoso/termoso/releases)
   (`.deb` / `.rpm` / AppImage, NSIS / MSI, `.dmg`, APK, unsigned `.ipa`)
 * License: [AGPL-3.0](LICENSE)
 
@@ -42,8 +42,8 @@ is knowingly missing.
 | **Android** (`apps/android`, Kotlin + Compose, minSdk 26) | arm64-v8a, armeabi-v7a, x86_64 | The same core over UniFFI/JNI: SSH / Mosh / Telnet and local-shell terminal with a Termius-style key panel, autocomplete, session recording, foreground service; SFTP and WebDAV with transfer queue and pause/resume, and every SSH or WebDAV host exposed to the system Files app and document pickers (Storage Access Framework); port forwarding; keychain incl. FIDO2 over USB and NFC; snippets; account sync, teams, presence, multiplayer (host and viewer), SSH ID, security-key MFA; Material You dynamic colour; app lock (biometric / device credential); Android App Links for invite/join URLs | Serial, workspaces, import from other clients |
 | **iOS** (`apps/ios`, SwiftUI, iOS 17+) | iPhone (sideloaded — see below) | Encrypted local vault (key in the Keychain), hosts/groups/tags and host editor, SSH terminal with extra-key panel, host-key/password/passphrase prompts, session tabs, autocomplete | Account sync, SFTP, port forwarding, keychain, snippets, biometric lock, iPad layout |
 | **Web cabinet** (`web`) | any browser | Sign-up/sign-in (OPAQUE in WASM, no password ever leaves the browser), MFA (TOTP, passkeys, e-mail, backup codes), device approval, recovery key, devices, security events, teams and roles, team vaults and key rotation, API bridges, admin pages, invitation and join landing pages | Vault contents are never shown in the browser by design — hosts live in the clients |
-| **Server** (`crates/termoso-server`, Axum) | Linux container (`ghcr.io/rep0rtdev/termoso-server`, amd64 + arm64) | Accounts, devices, MFA, teams, sealed vault keys, encrypted sync with conflicts and tombstones, realtime WebSocket, session-log storage (S3), presence, multiplayer relay, audit log and e-mail digests, SSO (OpenID Connect, SAML 2.0), SSH ID, AI proxy, admin API, OpenAPI 3.1 | SAML Single Logout / IdP-initiated sign-in, session logs without S3-compatible storage |
-| **API Bridge** (`crates/termoso-bridge`) | Linux container (`ghcr.io/rep0rtdev/termoso-bridge`, amd64 + arm64) | Headless client that exposes a Termius-compatible REST API for hosts/groups and pushes only ciphertext to the server — [docs/API_BRIDGE.md](docs/API_BRIDGE.md) | Snippets, keys and identities over the bridge (hosts and groups only) |
+| **Server** (`crates/termoso-server`, Axum) | Linux container (`ghcr.io/termoso/termoso-server`, amd64 + arm64) | Accounts, devices, MFA, teams, sealed vault keys, encrypted sync with conflicts and tombstones, realtime WebSocket, session-log storage (S3), presence, multiplayer relay, audit log and e-mail digests, SSO (OpenID Connect, SAML 2.0), SSH ID, AI proxy, admin API, OpenAPI 3.1 | SAML Single Logout / IdP-initiated sign-in, session logs without S3-compatible storage |
+| **API Bridge** (`crates/termoso-bridge`) | Linux container (`ghcr.io/termoso/termoso-bridge`, amd64 + arm64) | Headless client that exposes a Termius-compatible REST API for hosts/groups and pushes only ciphertext to the server — [docs/API_BRIDGE.md](docs/API_BRIDGE.md) | Snippets, keys and identities over the bridge (hosts and groups only) |
 
 Distribution notes:
 
@@ -180,7 +180,7 @@ session logs), and — recommended — an SMTP account. PostgreSQL 18, Redis 8
 and RustFS are part of the stack.
 
 ```bash
-git clone https://github.com/rep0rtDev/termoso.git && cd termoso
+git clone https://github.com/termoso/termoso.git && cd termoso
 cp deploy/.env.example deploy/.env
 $EDITOR deploy/.env                 # TERMOSO_MASTER_KEY, passwords, public URLs
 docker compose -f deploy/docker-compose.yml up -d --wait
@@ -410,10 +410,10 @@ http://127.0.0.1:8080 --users 20 --duration 30`.
 Every `v*` tag triggers `.github/workflows/release.yml`: Linux, Windows and
 macOS bundles (minisign-signed, with `latest.json` for the built-in updater),
 signed Android APKs per ABI, the unsigned iOS `.ipa` with its AltStore source,
-`SHA256SUMS.txt`, and the `ghcr.io/rep0rtdev/termoso-server:<version>` and
+`SHA256SUMS.txt`, and the `ghcr.io/termoso/termoso-server:<version>` and
 `termoso-bridge:<version>` images; stable releases are then pushed to the
-apt/dnf repositories (`rep0rtdev.github.io/termoso-repo`), the Homebrew tap
-(`brew install --cask rep0rtDev/termoso/termoso`) and winget (`Termoso.Termoso`).
+apt/dnf repositories (`pkg.termoso.dev`), the Homebrew tap
+(`brew install --cask termoso/termoso/termoso`) and winget (`Termoso.Termoso`).
 The version must match in the workspace
 `Cargo.toml`, `apps/desktop/package.json` and `apps/ios/project.yml`. Process,
 secrets and the updater behaviour: [docs/RELEASING.md](docs/RELEASING.md);
