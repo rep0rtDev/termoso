@@ -707,3 +707,19 @@ schema! {
         pub linked_at: chrono::DateTime<chrono::Utc>,
     }
 }
+
+schema! {
+    /// `GET /auth/sso/discover?email=` — home-realm discovery: the team IdP
+    /// an email domain is routed to, if any.
+    pub struct SsoDiscoverResponse {
+        /// Team provider to start the flow with.
+        #[serde(default)]
+        pub provider: Option<SsoProvider>,
+        /// Team that owns the provider.
+        #[serde(default)]
+        pub team_name: Option<String>,
+        /// Password sign-in is refused for this address (team policy).
+        #[serde(default)]
+        pub required: bool,
+    }
+}

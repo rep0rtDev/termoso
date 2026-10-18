@@ -7,6 +7,7 @@ pub mod auth;
 pub mod bridges;
 pub mod captcha;
 pub mod history;
+pub mod idp;
 pub mod logs;
 pub mod mfa;
 pub mod policies;
@@ -77,6 +78,7 @@ pub fn router(state: AppState) -> Router {
             post(start_over::cancel_authenticated),
         )
         .route("/auth/sso/providers", get(auth::sso_providers))
+        .route("/auth/sso/discover", get(idp::discover))
         .route("/auth/sso/callback", get(auth::sso_callback))
         .route("/auth/sso/flow/{flow_id}", get(auth::sso_poll))
         .route("/auth/sso/{provider}/start", get(auth::sso_start))
@@ -216,6 +218,11 @@ pub fn router(state: AppState) -> Router {
             "/teams/{id}/policies",
             get(policies::get).put(policies::put),
         )
+        .route(
+            "/teams/{id}/idp",
+            get(idp::get).put(idp::put).delete(idp::delete),
+        )
+        .route("/teams/{id}/idp/test", post(idp::test))
         .route("/teams/{id}/permissions", get(roles::catalog))
         .route("/teams/{id}/roles", get(roles::list).post(roles::create))
         .route(

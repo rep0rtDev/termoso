@@ -215,7 +215,8 @@ pub async fn effective_for(
             eff.device_approval_by.push(team_id);
         }
         if sso_only && role != "owner" && domain_allowed(&domains, email) && !domains.is_empty() {
-            eff.sso_provider.get_or_insert(provider.unwrap_or_default());
+            eff.sso_provider
+                .get_or_insert(resolve_provider(team_id, provider));
         }
     }
     eff.mfa_satisfied = satisfies(&eff.mfa, totp, passkey);
@@ -253,9 +254,9 @@ pub async fn sso_required<'e, E: PgExecutor<'e>>(
     let rows = rows_for(db, user_id).await?;
     Ok(rows
         .into_iter()
-        .find_map(|(_, role, _, _, _, sso_only, provider, domains, _)| {
+        .find_map(|(team_id, role, _, _, _, sso_only, provider, domains, _)| {
             (sso_only && role != "owner" && !domains.is_empty() && domain_allowed(&domains, email))
-                .then(|| provider.unwrap_or_default())
+                .then(|| resolve_provider(team_id, provider))
         }))
 }
 
@@ -313,6 +314,15 @@ pub fn normalize_domains(input: &[String]) -> Result<Vec<String>, String> {
         return Err(format!("At most {MAX_DOMAINS} domains"));
     }
     Ok(out)
+}
+
+/// `team` in `sso_provider` stands for the team's own IdP (`team-<uuid>`).
+pub fn resolve_provider(team_id: Uuid, provider: Option<String>) -> String {
+    match provider.as_deref() {
+        Some("team") => crate::sso::team_provider_id(team_id),
+        Some(p) => p.to_string(),
+        None => String::new(),
+    }
 }
 
 #[cfg(test)]

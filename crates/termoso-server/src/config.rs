@@ -81,6 +81,9 @@ pub struct Config {
     pub webauthn: Option<WebauthnConfig>,
     pub metrics: MetricsConfig,
     pub sso: BTreeMap<String, SsoProviderConfig>,
+    /// Let teams configure their own identity provider (`PUT /teams/{id}/idp`).
+    /// `TERMOSO_TEAM_IDP=false` hides the feature on single-tenant servers.
+    pub team_idp: bool,
     /// AI command suggestions (`POST /ai/command`). Absent = feature off.
     pub ai: Option<AiConfig>,
     /// Serve the Swagger UI at `/api/docs`.
@@ -365,6 +368,7 @@ impl Default for Config {
             webauthn: None,
             metrics: MetricsConfig::default(),
             sso: BTreeMap::new(),
+            team_idp: true,
             ai: None,
             swagger_ui: true,
             bridges: true,

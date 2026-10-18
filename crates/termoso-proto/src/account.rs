@@ -170,6 +170,9 @@ schema! {
         pub sso_registration: bool,
         /// Configured SSO providers.
         pub sso_providers: Vec<crate::auth::SsoProvider>,
+        /// Teams may bring their own identity provider (`TERMOSO_TEAM_IDP`).
+        #[serde(default)]
+        pub team_idp: bool,
         /// Feature flags.
         pub features: ServerFeatures,
         /// Maximum entity payload size in bytes.

@@ -192,6 +192,7 @@ async fn registration_allowed(
     email: &str,
     invite: Option<&InviteRow>,
     sso_verified: bool,
+    team_jit: bool,
 ) -> ApiResult<()> {
     if state.is_bootstrap_admin(email) {
         return Ok(());
@@ -202,7 +203,7 @@ async fn registration_allowed(
         return Ok(());
     }
     let settings = state.settings().await?;
-    if !(settings.registration_open || (sso_verified && settings.sso_registration)) {
+    if !(settings.registration_open || (sso_verified && settings.sso_registration) || team_jit) {
         return Err(Error::registration_closed());
     }
     if !settings.allowed_domains.is_empty() {
@@ -266,7 +267,14 @@ pub async fn register_finish(
         Some(t) => Some(sso::consume_session(&state, t, &email).await?),
         None => None,
     };
-    registration_allowed(&state, &email, invite.as_ref(), sso_sess.is_some()).await?;
+    registration_allowed(
+        &state,
+        &email,
+        invite.as_ref(),
+        sso_sess.is_some(),
+        sso_sess.as_ref().is_some_and(|s| s.team_id.is_some()),
+    )
+    .await?;
     let invite_matches = invite
         .as_ref()
         .is_some_and(|i| i.email.eq_ignore_ascii_case(&email));

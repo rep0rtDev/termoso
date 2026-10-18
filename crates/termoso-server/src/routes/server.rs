@@ -24,6 +24,7 @@ pub async fn info(
         registration_open: settings.registration_open,
         sso_registration: settings.sso_registration && !state.sso.list().is_empty(),
         sso_providers: state.sso.list(),
+        team_idp: state.cfg.team_idp,
         features: ServerFeatures {
             session_logs: state.storage.is_some(),
             email: state.mailer.is_some(),

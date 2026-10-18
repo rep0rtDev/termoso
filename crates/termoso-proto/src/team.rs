@@ -988,3 +988,94 @@ schema! {
         pub vaults: Vec<ScimGroupVault>,
     }
 }
+
+schema! {
+    /// A team's own identity provider (`GET /teams/{id}/idp`). The client
+    /// secret is never returned.
+    pub struct TeamIdp {
+        /// `oidc` | `saml`.
+        pub kind: String,
+        /// Button label shown at sign-in.
+        pub name: String,
+        /// OIDC issuer URL (discovery).
+        #[serde(default)]
+        pub issuer: Option<String>,
+        /// OIDC client id.
+        #[serde(default)]
+        pub client_id: Option<String>,
+        /// Whether a client secret is stored.
+        pub has_client_secret: bool,
+        /// Extra OIDC scopes (space separated).
+        #[serde(default)]
+        pub scopes: Option<String>,
+        /// SAML IdP metadata: `https://` URL or inline XML.
+        #[serde(default)]
+        pub saml_metadata: Option<String>,
+        /// IdP `entityID` inside aggregate metadata.
+        #[serde(default)]
+        pub saml_idp_entity_id: Option<String>,
+        /// Email domains routed to this IdP at sign-in.
+        pub domains: Vec<String>,
+        /// Whether sign-in through this IdP is on.
+        pub enabled: bool,
+        /// A verified sign-in may create the account and join the team.
+        pub jit_join: bool,
+        /// Provider id to use with `/auth/sso/{provider}/start`.
+        pub provider_id: String,
+        /// SP metadata URL (SAML) / redirect URI (OIDC) to register at the IdP.
+        pub callback_url: String,
+        /// Updated at.
+        pub updated_at: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// `PUT /teams/{id}/idp`. Absent fields keep their value; a new
+    /// `client_secret` replaces the stored one.
+    pub struct UpdateTeamIdpRequest {
+        /// `oidc` | `saml`.
+        #[serde(default)]
+        pub kind: Option<String>,
+        /// Button label.
+        #[serde(default)]
+        pub name: Option<String>,
+        /// OIDC issuer URL.
+        #[serde(default)]
+        pub issuer: Option<String>,
+        /// OIDC client id.
+        #[serde(default)]
+        pub client_id: Option<String>,
+        /// OIDC client secret (write-only).
+        #[serde(default)]
+        pub client_secret: Option<String>,
+        /// Extra OIDC scopes.
+        #[serde(default)]
+        pub scopes: Option<String>,
+        /// SAML IdP metadata (URL or XML).
+        #[serde(default)]
+        pub saml_metadata: Option<String>,
+        /// IdP `entityID` inside aggregate metadata.
+        #[serde(default)]
+        pub saml_idp_entity_id: Option<String>,
+        /// Email domains routed to this IdP.
+        #[serde(default)]
+        pub domains: Option<Vec<String>>,
+        /// Whether sign-in through this IdP is on.
+        #[serde(default)]
+        pub enabled: Option<bool>,
+        /// Verified sign-ins may join the team.
+        #[serde(default)]
+        pub jit_join: Option<bool>,
+    }
+}
+
+schema! {
+    /// `GET`/`PUT /teams/{id}/idp`.
+    pub struct TeamIdpResponse {
+        /// `None` when the team has no IdP configured.
+        #[serde(default)]
+        pub idp: Option<TeamIdp>,
+        /// Whether this server allows per-team IdPs (`TERMOSO_TEAM_IDP`).
+        pub available: bool,
+    }
+}
