@@ -278,6 +278,8 @@ pub fn router(state: AppState) -> Router {
         .route("/logs/{id}", patch(logs::update).delete(logs::delete))
         .route("/logs/{id}/download", get(logs::download))
         .route("/vaults/{id}/logs", get(logs::list_vault))
+        .route("/teams/{id}/logs", get(logs::team_list))
+        .route("/teams/{id}/logs/export", get(logs::team_export))
         // realtime
         .route("/ws", get(crate::ws::handler))
         // multiplayer

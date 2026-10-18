@@ -97,15 +97,34 @@ pub async fn put(
         }
         next.audit_retention_days = days;
     }
+    if let Some(v) = req.session_recording {
+        if !policy::SESSION_RECORDING.contains(&v.as_str()) {
+            return Err(Error::bad_request(
+                "session_recording must be optional or required",
+            ));
+        }
+        next.session_recording = v;
+    }
+    if let Some(days) = req.log_retention_days {
+        if !(0..=policy::MAX_LOG_RETENTION_DAYS).contains(&days) {
+            return Err(Error::bad_request(format!(
+                "log_retention_days must be 0 (keep forever) or 1..={}",
+                policy::MAX_LOG_RETENTION_DAYS
+            )));
+        }
+        next.log_retention_days = days;
+    }
     let mut tx = state.db.begin().await?;
     sqlx::query(
         "INSERT INTO team_policies (team_id, mfa, local_keys, session_ttl_hours, sso_only, sso_provider,
-                                    sso_domains, device_approval, audit_retention_days, updated_by, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10, $9, now())
+                                    sso_domains, device_approval, audit_retention_days, session_recording,
+                                    log_retention_days, updated_by, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10, $11, $12, $9, now())
          ON CONFLICT (team_id) DO UPDATE SET mfa = EXCLUDED.mfa, local_keys = EXCLUDED.local_keys,
              session_ttl_hours = EXCLUDED.session_ttl_hours, sso_only = EXCLUDED.sso_only,
              sso_provider = EXCLUDED.sso_provider, sso_domains = EXCLUDED.sso_domains,
              device_approval = EXCLUDED.device_approval, audit_retention_days = EXCLUDED.audit_retention_days,
+             session_recording = EXCLUDED.session_recording, log_retention_days = EXCLUDED.log_retention_days,
              updated_by = EXCLUDED.updated_by, updated_at = now()",
     )
     .bind(id)
@@ -118,8 +137,21 @@ pub async fn put(
     .bind(next.device_approval)
     .bind(auth.user_id())
     .bind(next.audit_retention_days)
+    .bind(&next.session_recording)
+    .bind(next.log_retention_days)
     .execute(&mut *tx)
     .await?;
+    if next.session_recording == "required" {
+        // Mandatory recording switches every team vault on; managers can no
+        // longer switch it off while the policy stands.
+        sqlx::query(
+            "UPDATE vaults SET session_logging = true, updated_at = now()
+             WHERE team_id = $1 AND kind = 'team' AND session_logging = false",
+        )
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    }
     // Older clients read the coarse flag.
     sqlx::query("UPDATE teams SET require_mfa = $2, updated_at = now() WHERE id = $1")
         .bind(id)

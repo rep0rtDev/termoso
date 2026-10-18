@@ -29,9 +29,20 @@ async fn team_idp_is_validated_stored_and_discoverable() {
             Some(&serde_json::json!({ "email": bob_email, "role": "member", "vault_ids": [] })),
         )
         .await;
-    let token = invite["url"].as_str().unwrap().rsplit('/').next().unwrap().to_string();
+    let token = invite["url"]
+        .as_str()
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_string();
     let _: serde_json::Value = s
-        .json(Method::POST, &format!("/invites/{token}/accept"), Some(bob.token()), NOBODY)
+        .json(
+            Method::POST,
+            &format!("/invites/{token}/accept"),
+            Some(bob.token()),
+            NOBODY,
+        )
         .await;
 
     // Members without sso.manage cannot read the IdP settings.
@@ -45,7 +56,12 @@ async fn team_idp_is_validated_stored_and_discoverable() {
     .await;
 
     let r: serde_json::Value = s
-        .json(Method::GET, &format!("/teams/{team_id}/idp"), Some(owner.token()), NOBODY)
+        .json(
+            Method::GET,
+            &format!("/teams/{team_id}/idp"),
+            Some(owner.token()),
+            NOBODY,
+        )
         .await;
     assert!(r["idp"].is_null());
     assert_eq!(r["available"], true);
@@ -98,11 +114,21 @@ async fn team_idp_is_validated_stored_and_discoverable() {
     assert_eq!(r["idp"]["enabled"], false);
     assert_eq!(r["idp"]["provider_id"], format!("team-{team_id}"));
     assert!(r["idp"].get("client_secret").is_none());
-    assert!(r["idp"]["callback_url"].as_str().unwrap().ends_with("/api/v1/auth/sso/callback"));
+    assert!(
+        r["idp"]["callback_url"]
+            .as_str()
+            .unwrap()
+            .ends_with("/api/v1/auth/sso/callback")
+    );
 
     // A disabled IdP is not discoverable.
     let d: serde_json::Value = s
-        .json(Method::GET, "/auth/sso/discover?email=ann%40corp.example", None, NOBODY)
+        .json(
+            Method::GET,
+            "/auth/sso/discover?email=ann%40corp.example",
+            None,
+            NOBODY,
+        )
         .await;
     assert!(d["provider"].is_null());
 
@@ -138,11 +164,21 @@ async fn team_idp_is_validated_stored_and_discoverable() {
         )
         .await;
     let r: serde_json::Value = s
-        .json(Method::DELETE, &format!("/teams/{team_id}/idp"), Some(owner.token()), NOBODY)
+        .json(
+            Method::DELETE,
+            &format!("/teams/{team_id}/idp"),
+            Some(owner.token()),
+            NOBODY,
+        )
         .await;
     assert!(r["idp"].is_null());
     let p: serde_json::Value = s
-        .json(Method::GET, &format!("/teams/{team_id}/policies"), Some(owner.token()), NOBODY)
+        .json(
+            Method::GET,
+            &format!("/teams/{team_id}/policies"),
+            Some(owner.token()),
+            NOBODY,
+        )
         .await;
     assert_eq!(p["policies"]["sso_only"], false);
 }

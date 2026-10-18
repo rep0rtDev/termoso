@@ -720,9 +720,20 @@ schema! {
         /// Audit log retention in days (30..=3650; the server may cap it).
         #[serde(default = "default_audit_retention_days")]
         pub audit_retention_days: i32,
+        /// `optional` (vault managers decide per vault) or `required`
+        /// (every team vault records, authors cannot delete recordings).
+        #[serde(default = "default_session_recording")]
+        pub session_recording: String,
+        /// Days to keep unpinned team recordings; 0 = forever.
+        #[serde(default)]
+        pub log_retention_days: i32,
         /// Last change.
         pub updated_at: DateTime<Utc>,
     }
+}
+
+fn default_session_recording() -> String {
+    "optional".into()
 }
 
 schema! {
@@ -752,6 +763,12 @@ schema! {
         /// See [`TeamPolicies::audit_retention_days`].
         #[serde(default)]
         pub audit_retention_days: Option<i32>,
+        /// See [`TeamPolicies::session_recording`].
+        #[serde(default)]
+        pub session_recording: Option<String>,
+        /// See [`TeamPolicies::log_retention_days`].
+        #[serde(default)]
+        pub log_retention_days: Option<i32>,
     }
 }
 
@@ -772,6 +789,10 @@ schema! {
         pub device_approval_by: Vec<Uuid>,
         /// Provider the user must sign in through, if a team requires SSO for them.
         pub sso_provider: Option<String>,
+        /// Teams whose policy makes session recording mandatory: clients
+        /// record every session on hosts of those teams' vaults.
+        #[serde(default)]
+        pub recording_required_by: Vec<Uuid>,
     }
 }
 

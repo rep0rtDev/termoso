@@ -147,6 +147,8 @@ impl Modify for BearerAuth {
         crate::routes::logs::download,
         crate::routes::logs::delete,
         crate::routes::logs::list_vault,
+        crate::routes::logs::team_list,
+        crate::routes::logs::team_export,
         crate::ws::handler,
         crate::live::create,
         crate::live::list,

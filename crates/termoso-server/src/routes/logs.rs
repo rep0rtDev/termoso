@@ -474,6 +474,16 @@ pub async fn delete(
             "Only the author or a vault manager can delete a recording",
         ));
     }
+    if let Some(team_id) = grant.team_id()
+        && crate::policy::recording_required(&state.db, team_id).await?
+        && crate::authz::require(&state, team_id, auth.user_id(), "logs.delete")
+            .await
+            .is_err()
+    {
+        return Err(Error::forbidden(
+            "Recording is mandatory in this team; logs.delete permission required",
+        ));
+    }
     if let Some(storage) = &state.storage
         && let Err(e) = storage.delete(&object_key(log.user_id, id)).await
     {
@@ -584,4 +594,180 @@ pub async fn list_vault(
     .fetch_all(&state.db)
     .await?;
     Ok(Json(page(rows, limit, q.since, Cursor::Vault)))
+}
+
+/// Retention: every 6 hours delete unpinned recordings in team vaults that
+/// are older than the team's `log_retention_days` (0 = keep forever).
+pub async fn run_retention(state: AppState) {
+    crate::jobs::exclusive(
+        state,
+        "log-retention",
+        std::time::Duration::from_secs(6 * 3600),
+        retention_pass,
+    )
+    .await
+}
+
+pub async fn retention_pass(state: AppState) -> anyhow::Result<u64> {
+    const BATCH: i64 = 500;
+    let mut total = 0u64;
+    loop {
+        let rows: Vec<(Uuid, Uuid, Uuid)> = sqlx::query_as(
+            "SELECT s.id, s.user_id, s.vault_id
+             FROM session_logs s
+             JOIN vaults v ON v.id = s.vault_id
+             JOIN team_policies p ON p.team_id = v.team_id
+             WHERE v.kind = 'team' AND p.log_retention_days > 0
+               AND s.deleted = false AND s.pinned = false
+               AND s.created_at < now() - make_interval(days => p.log_retention_days)
+             ORDER BY s.created_at
+             LIMIT $1",
+        )
+        .bind(BATCH)
+        .fetch_all(&state.db)
+        .await?;
+        let n = rows.len() as i64;
+        for (id, user_id, vault_id) in rows {
+            if let Some(storage) = &state.storage
+                && let Err(e) = storage.delete(&object_key(user_id, id)).await
+            {
+                tracing::warn!(error = %e, log = %id, "could not delete expired log object");
+            }
+            let mut tx = state.db.begin().await?;
+            let (seq, vseq) = next_seqs(&mut tx, user_id, vault_id).await?;
+            sqlx::query(
+                "UPDATE session_logs SET deleted = true, meta = '', size_bytes = 0, note = '',
+                        note_by = NULL, seq = $2, vault_seq = $3 WHERE id = $1",
+            )
+            .bind(id)
+            .bind(seq)
+            .bind(vseq)
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            let _ = events::publish(&state, Event::LogsChanged { user_id, seq }).await;
+            let _ = events::publish(
+                &state,
+                Event::VaultLogsChanged {
+                    vault_id,
+                    seq: vseq,
+                },
+            )
+            .await;
+            total += 1;
+        }
+        if n < BATCH {
+            return Ok(total);
+        }
+    }
+}
+
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct TeamLogsQuery {
+    /// Only recordings started at or after this instant.
+    pub from: Option<DateTime<Utc>>,
+    /// Only recordings started before this instant.
+    pub to: Option<DateTime<Utc>>,
+    /// Restrict to one team vault.
+    pub vault_id: Option<Uuid>,
+    pub limit: Option<u32>,
+}
+
+const TEAM_LIMIT_MAX: i64 = 10_000;
+
+async fn team_rows(
+    state: &AppState,
+    team_id: Uuid,
+    q: &TeamLogsQuery,
+    max: i64,
+) -> ApiResult<Vec<Row>> {
+    let limit = q.limit.map_or(max, |l| (l as i64).clamp(1, max));
+    Ok(sqlx::query_as(AssertSqlSafe(format!(
+        "{SELECT} WHERE v.team_id = $1 AND v.kind = 'team' AND s.deleted = false
+            AND ($2::uuid IS NULL OR s.vault_id = $2)
+            AND ($3::timestamptz IS NULL OR s.created_at >= $3)
+            AND ($4::timestamptz IS NULL OR s.created_at < $4)
+         ORDER BY s.created_at DESC LIMIT $5"
+    )))
+    .bind(team_id)
+    .bind(q.vault_id)
+    .bind(q.from)
+    .bind(q.to)
+    .bind(limit)
+    .fetch_all(&state.db)
+    .await?)
+}
+
+/// Every recording in the team's vaults, newest first (`logs.view_team`).
+#[utoipa::path(get, path = "/api/v1/teams/{id}/logs", tag = "logs",
+    params(("id" = Uuid, Path), TeamLogsQuery), responses((status = 200, body = Vec<SessionLog>)))]
+pub async fn team_list(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(team_id): Path<Uuid>,
+    Query(q): Query<TeamLogsQuery>,
+) -> ApiResult<Json<Vec<SessionLog>>> {
+    crate::authz::require(&state, team_id, auth.user_id(), "logs.view_team").await?;
+    let rows = team_rows(&state, team_id, &q, MAX_BATCH as i64).await?;
+    Ok(Json(rows.into_iter().map(|r| stored(r).log).collect()))
+}
+
+/// Compliance export: one JSON object per recording (metadata as stored,
+/// still encrypted with the vault key) plus a short-lived download URL for
+/// the body. `logs.export`; audited as `logs.exported`.
+#[utoipa::path(get, path = "/api/v1/teams/{id}/logs/export", tag = "logs",
+    params(("id" = Uuid, Path), TeamLogsQuery),
+    responses((status = 200, description = "application/x-ndjson", body = String)))]
+pub async fn team_export(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(team_id): Path<Uuid>,
+    Query(q): Query<TeamLogsQuery>,
+) -> ApiResult<impl axum::response::IntoResponse> {
+    crate::authz::require(&state, team_id, auth.user_id(), "logs.export").await?;
+    ratelimit::check(&state, ratelimit::SYNC_PUSH, &auth.user_id().to_string()).await?;
+    let rows = team_rows(&state, team_id, &q, TEAM_LIMIT_MAX).await?;
+    let mut out = String::new();
+    let mut count = 0usize;
+    for r in rows {
+        let s = stored(r);
+        let mut v = serde_json::to_value(&s.log).unwrap_or_default();
+        if let (Some(storage), true, Some(obj)) =
+            (&state.storage, s.log.completed, v.as_object_mut())
+        {
+            match storage
+                .presign_get(&object_key(s.log.user_id, s.log.id))
+                .await
+            {
+                Ok(p) => {
+                    obj.insert("download_url".into(), p.url.into());
+                    obj.insert("download_expires_in".into(), p.expires_in.into());
+                }
+                Err(e) => tracing::warn!(error = %e, log = %s.log.id, "presign for export"),
+            }
+        }
+        out.push_str(&v.to_string());
+        out.push('\n');
+        count += 1;
+    }
+    audit::record(
+        &state.db,
+        audit::Entry::new(team_id, &auth, "logs.exported").details(serde_json::json!({
+            "count": count, "from": q.from, "to": q.to, "vault_id": q.vault_id,
+        })),
+    )
+    .await;
+    Ok((
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "application/x-ndjson".to_string(),
+            ),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"termoso-recordings-{team_id}.jsonl\""),
+            ),
+        ],
+        out,
+    ))
 }
