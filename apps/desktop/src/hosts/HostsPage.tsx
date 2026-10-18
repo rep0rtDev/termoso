@@ -832,18 +832,22 @@ export function HostsPage() {
           />
           <Tooltip
             title={
-              quickTarget
-                ? tr("Connect to {quickLabel}", { quickLabel: quickLabel(quickTarget) })
-                : visibleHosts.length === 1 && search.trim() && visibleHosts[0]
-                  ? tr("Connect to {label}", { label: visibleHosts[0].label })
-                  : ""
+              liveLink
+                ? tr("Join this multiplayer session")
+                : quickTarget
+                  ? tr("Connect to {quickLabel}", { quickLabel: quickLabel(quickTarget) })
+                  : visibleHosts.length === 1 && search.trim() && visibleHosts[0]
+                    ? tr("Connect to {label}", { label: visibleHosts[0].label })
+                    : ""
             }
           >
             <span>
               <Button
                 variant="contained"
                 startIcon={<PlayArrowRoundedIcon />}
-                disabled={!quickTarget && !(visibleHosts.length === 1 && search.trim())}
+                disabled={
+                  !quickTarget && !liveLink && !(visibleHosts.length === 1 && search.trim())
+                }
                 onClick={onSearchEnter}
                 sx={{ flexShrink: 0, height: 36 }}
               >

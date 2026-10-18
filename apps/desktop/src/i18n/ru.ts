@@ -2784,4 +2784,5 @@ export const ru: Readonly<Record<string, string>> = {
     "{what} уже существовал и был использован повторно.|{what} уже существовали и были использованы повторно.|{what} уже существовали и были использованы повторно.",
   "{who} removed from {team}": "{who} удалён из {team}",
   "“{name}” synced: {report}": "«{name}» синхронизировано: {report}",
+  "Join this multiplayer session": "Присоединиться к этой сессии мультиплеера",
 };
