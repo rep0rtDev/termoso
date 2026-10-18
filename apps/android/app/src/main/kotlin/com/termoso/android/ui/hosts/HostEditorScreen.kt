@@ -1,5 +1,7 @@
 package com.termoso.android.ui.hosts
 
+import androidx.compose.runtime.SideEffect
+import com.termoso.android.data.userMessage
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -246,6 +248,12 @@ fun HostEditorScreen(
             return@Scaffold
         }
         val vault = state.vaults.firstOrNull { it.id == draft.vaultId }
+    val revealAllowed: suspend () -> Boolean = {
+        runCatching { shell.repo.perms.require(draft.vaultId, "secrets.reveal") }
+            .onFailure { shell.notify(it.userMessage()) }
+            .isSuccess
+    }
+    SideEffect { revealCheck = revealAllowed }
         val presence = rememberVaultPresence(shell, vault)
         val viewers = remember(presence, draft.id) { draft.id?.let { viewersByHost(presence)[it] } ?: emptyList() }
         HostForm(
@@ -361,7 +369,7 @@ private fun HostForm(
                     )
                     FormField(telnet.username, { v -> vm.updateTelnet { it.copy(username = v) } }, stringResource(R.string.username))
                     PasswordField(
-                        password = telnet.password,
+                                                password = telnet.password,
                         hasPassword = telnet.hasPassword,
                         inheritedHint = false,
                         onChange = { v -> vm.updateTelnet { it.copy(password = v) } },
@@ -401,7 +409,7 @@ private fun HostForm(
                     WebDavAuthRow(webdav.auth) { mode -> vm.updateWebdav { it.copy(auth = mode) } }
                     if (webdav.auth == WEBDAV_AUTH_TOKEN) {
                         PasswordField(
-                            password = webdav.bearerToken,
+                                                        password = webdav.bearerToken,
                             hasPassword = webdav.hasBearerToken,
                             inheritedHint = false,
                             onChange = { v -> vm.updateWebdav { it.copy(bearerToken = v) } },
@@ -416,7 +424,7 @@ private fun HostForm(
                     } else {
                         FormField(webdav.username, { v -> vm.updateWebdav { it.copy(username = v) } }, stringResource(R.string.username))
                         PasswordField(
-                            password = webdav.password,
+                                                        password = webdav.password,
                             hasPassword = webdav.hasPassword,
                             inheritedHint = false,
                             onChange = { v -> vm.updateWebdav { it.copy(password = v) } },
@@ -599,7 +607,7 @@ private fun SshSection(
                     placeholder = inherited?.username ?: if (draft.sshId || inherited?.sshId == true) stringResource(R.string.ssh_id_handle) else stringResource(R.string.asked_on_connect),
                 )
                 PasswordField(
-                    password = draft.password,
+                                        password = draft.password,
                     hasPassword = draft.hasPassword,
                     inheritedHint = inherited?.hasPassword == true,
                     onChange = { v -> vm.update { it.copy(password = v) } },
@@ -865,6 +873,9 @@ private fun ProtocolHeader(title: String, removable: Boolean, onRemove: () -> Un
  * Password editor over the draft convention: `null` keeps the stored secret
  * ([hasPassword]), `""` clears it, anything else replaces it.
  */
+/** Set by the open editor so every [PasswordField] asks the team policy before revealing. */
+private var revealCheck: suspend () -> Boolean = { true }
+
 @Composable
 private fun PasswordField(
     password: String?,
@@ -873,8 +884,11 @@ private fun PasswordField(
     onChange: (String?) -> Unit,
     label: String = stringResource(R.string.password),
     savedLabel: String = stringResource(R.string.password_saved),
+    /** Team permission check before the secret is shown (client-enforced `secrets.reveal`). */
+    reveal: suspend () -> Boolean = { revealCheck() },
 ) {
     var visible by remember { mutableStateOf(false) }
+    val revealScope = rememberCoroutineScope()
     val stored = password == null && hasPassword
     FormField(
         value = password ?: "",
@@ -894,7 +908,10 @@ private fun PasswordField(
                         Text(if (stored) stringResource(R.string.clear) else stringResource(R.string.keep_saved))
                     }
                 }
-                IconButton(onClick = { visible = !visible }) {
+                IconButton(onClick = {
+                    if (visible) visible = false
+                    else revealScope.launch { if (reveal()) visible = true }
+                }) {
                     Icon(
                         if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
                         contentDescription = if (visible) stringResource(R.string.hide_password) else stringResource(R.string.show_password),
