@@ -148,9 +148,9 @@ by hand, the next release overwrites everything.
 Everything the job needs can be rebuilt locally against any release:
 
 ```sh
-gh release download v0.8.4 -p '*.deb' -p '*.rpm' -p SHA256SUMS.txt -D assets
-scripts/repo/build.sh assets path/to/termoso-repo 0.8.4 packages@termoso.dev
-scripts/repo/cask.sh assets/SHA256SUMS.txt 0.8.4 > path/to/homebrew-termoso/Casks/termoso.rb
+gh release download v0.8.5 -p '*.deb' -p '*.rpm' -p SHA256SUMS.txt -D assets
+scripts/repo/build.sh assets path/to/termoso-repo 0.8.5 packages@termoso.dev
+scripts/repo/cask.sh assets/SHA256SUMS.txt 0.8.5 > path/to/homebrew-termoso/Casks/termoso.rb
 ```
 
 ## macOS: signing and Gatekeeper
