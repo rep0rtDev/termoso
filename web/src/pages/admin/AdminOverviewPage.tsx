@@ -1,6 +1,5 @@
 import { Alert, Box, Card, CardContent, Grid, Stack, Typography } from "@mui/material";
 import { tr } from "@/i18n";
-import { formatNumber } from "@/components/format";
 import DevicesOutlinedIcon from "@mui/icons-material/DevicesOutlined";
 import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
@@ -17,7 +16,7 @@ import { IconTile } from "@/components/IconTile";
 import { Loading } from "@/components/Loading";
 import { PageHeader } from "@/components/PageHeader";
 import { Section, SettingRow } from "@/components/Section";
-import { formatBytes } from "@/components/format";
+import { formatBytes, formatNumber } from "@/components/format";
 
 function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: string | number }) {
   return (
