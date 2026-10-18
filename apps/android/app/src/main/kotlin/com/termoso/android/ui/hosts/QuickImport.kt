@@ -113,8 +113,11 @@ fun QuickImportSheet(onImport: (List<ImportedHost>) -> Unit, onDismiss: () -> Un
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { pick.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.choose_file)) }
                 OutlinedButton(onClick = { scanning = true }) { Text(stringResource(R.string.scan_qr)) }
-                Spacer(Modifier.weight(1f))
-                Button(enabled = parsed.isNotEmpty(), onClick = { onImport(parsed) }) {
+            }
+            Spacer(Modifier.height(8.dp))
+            // Own row: the localized label ("Импортировать 3 хоста") does not fit next to the pickers.
+            Row {
+                Button(modifier = Modifier.fillMaxWidth(), enabled = parsed.isNotEmpty(), onClick = { onImport(parsed) }) {
                     Text(pluralStringResource(R.plurals.import_n_hosts, parsed.size, parsed.size))
                 }
             }

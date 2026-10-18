@@ -65,7 +65,7 @@ fun LinuxScreen(shell: ShellViewModel, onBack: () -> Unit, onOpenTerminal: () ->
             text = { Text(stringResource(R.string.remove_linux_explain)) },
             confirmButton = {
                 TextButton(onClick = { confirmRemove = false; scope.launch { linux.remove() } }) {
-                    Text(stringResource(R.string.remove))
+                    Text(stringResource(R.string.remove_linux))
                 }
             },
             dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text(stringResource(R.string.cancel)) } },

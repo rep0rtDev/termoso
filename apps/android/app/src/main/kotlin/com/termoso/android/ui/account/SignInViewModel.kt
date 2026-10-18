@@ -144,6 +144,12 @@ class SignInViewModel(
     }
 
     fun editServerUrl(url: String) {
+        // The cloud address typed under "Self-hosted" is the same thing as the Cloud choice.
+        if (url.trim().trimEnd('/').removePrefix("https://") == CLOUD_URL.removePrefix("https://")) {
+            serverUrl = "https://"
+            chooseServer(ServerChoice.Cloud)
+            return
+        }
         serverUrl = url
         probe = ServerProbe.Idle
         cancelSso()

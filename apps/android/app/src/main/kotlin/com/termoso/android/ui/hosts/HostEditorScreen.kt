@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -965,10 +966,12 @@ private fun TlsBlock(vm: HostEditorViewModel, webdav: WebDavDraft) {
                     ?: vm.showError(str(R.string.clipboard_is_empty))
             }) {
                 Icon(Icons.Filled.ContentPaste, contentDescription = null, Modifier.height(18.dp))
+                Spacer(Modifier.width(6.dp))
                 Text(stringResource(R.string.paste))
             }
             TextButton(onClick = { pickPem.launch(arrayOf("*/*")) }) {
                 Icon(Icons.Filled.FolderOpen, contentDescription = null, Modifier.height(18.dp))
+                Spacer(Modifier.width(6.dp))
                 Text(stringResource(R.string.open_pem_file))
             }
         }
