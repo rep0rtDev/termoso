@@ -96,6 +96,35 @@ pub struct SsoSession {
     pub subject: String,
     pub email: String,
     pub display_name: Option<String>,
+    /// Group names asserted by the IdP (OIDC `groups`, SAML `memberOf`);
+    /// drive team role mappings.
+    #[serde(default)]
+    pub groups: Vec<String>,
+}
+
+/// `groups` claim of an already verified ID token. openidconnect's core
+/// claims type has no slot for it, so read the payload directly.
+fn groups_from_id_token(compact: &str) -> Vec<String> {
+    use base64::Engine;
+    let Some(payload) = compact.split('.').nth(1) else {
+        return Vec::new();
+    };
+    let Ok(bytes) = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload) else {
+        return Vec::new();
+    };
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return Vec::new();
+    };
+    v.get("groups")
+        .and_then(|g| g.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str())
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn flow_key(id: &str) -> String {
@@ -589,6 +618,7 @@ fn consume_saml(
             subject: identity.subject,
             email: identity.email,
             display_name: identity.name,
+            groups: identity.groups,
         },
     )
 }
@@ -629,11 +659,16 @@ async fn exchange(state: &AppState, flow: &FlowState, code: &str) -> anyhow::Res
                 .name()
                 .and_then(|n| n.get(None))
                 .map(|n| n.to_string());
+            let groups = serde_json::to_value(id_token)
+                .ok()
+                .and_then(|v| v.as_str().map(groups_from_id_token))
+                .unwrap_or_default();
             SsoSession {
                 provider: provider.id.clone(),
                 subject: claims.subject().to_string(),
                 email,
                 display_name,
+                groups,
             }
         }
         Backend::GitHub(client) => {
@@ -684,6 +719,7 @@ async fn exchange(state: &AppState, flow: &FlowState, code: &str) -> anyhow::Res
                 subject: user.id.to_string(),
                 email,
                 display_name: user.name.or(Some(user.login)),
+                groups: Vec::new(),
             }
         }
         Backend::Saml(_) => anyhow::bail!("SAML flows complete on the ACS, not the OAuth callback"),
@@ -833,6 +869,7 @@ pub async fn link_identity(
     .bind(&sess.email)
     .execute(&state.db)
     .await?;
+    crate::authz::apply_group_mappings(&state.db, user_id, &sess.groups).await?;
     Ok(())
 }
 

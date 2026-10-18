@@ -106,7 +106,17 @@ pub struct SamlIdentity {
     pub email: String,
     pub name: Option<String>,
     pub session_index: Option<String>,
+    /// Group memberships (`memberOf`, `groups`, the Microsoft/xmlsoap claim URIs).
+    pub groups: Vec<String>,
 }
+
+/// Attribute names that carry group membership.
+const GROUP_ATTRIBUTES: &[&str] = &[
+    "memberOf",
+    "groups",
+    "http://schemas.xmlsoap.org/claims/Group",
+    "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups",
+];
 
 pub struct SpConfig {
     pub entity_id: String,
@@ -508,11 +518,17 @@ impl ServiceProvider {
         let session_index = children(assertion, NS_ASSERTION, "AuthnStatement")
             .find_map(|s| s.attribute("SessionIndex"))
             .map(String::from);
+        let groups: Vec<String> = attrs
+            .iter()
+            .filter(|(n, _)| GROUP_ATTRIBUTES.iter().any(|g| g.eq_ignore_ascii_case(n)))
+            .flat_map(|(_, v)| v.iter().cloned())
+            .collect();
         Ok(SamlIdentity {
             subject: subject_id,
             email,
             name,
             session_index,
+            groups,
         })
     }
 }
