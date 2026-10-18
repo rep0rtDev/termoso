@@ -794,9 +794,10 @@ pub async fn invites(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<InviteList>> {
     crate::authz::require(&state, id, auth.user_id(), "members.invite").await?;
-    let rows: Vec<(Uuid, String, String, Uuid, DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
-        "SELECT id, email, role, invited_by, created_at, expires_at FROM team_invites
-         WHERE team_id = $1 AND accepted_at IS NULL AND expires_at > now() ORDER BY created_at",
+    let rows: Vec<(Uuid, String, String, Uuid, DateTime<Utc>, DateTime<Utc>, Option<Uuid>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT i.id, i.email, i.role, i.invited_by, i.created_at, i.expires_at, r.id, r.slug, r.name
+         FROM team_invites i LEFT JOIN team_roles r ON r.id = i.role_id
+         WHERE i.team_id = $1 AND i.accepted_at IS NULL AND i.expires_at > now() ORDER BY i.created_at",
     )
     .bind(id)
     .fetch_all(&state.db)
@@ -805,13 +806,18 @@ pub async fn invites(
         invites: rows
             .into_iter()
             .map(
-                |(id, email, role, invited_by, created_at, expires_at)| Invite {
+                |(id, email, role, invited_by, created_at, expires_at, rid, slug, name)| Invite {
                     id,
                     email,
                     role: parse_team_role(&role),
                     invited_by,
                     created_at,
                     expires_at,
+                    role_ref: rid.map(|id| RoleRef {
+                        id,
+                        slug: slug.unwrap_or_default(),
+                        name: name.unwrap_or_default(),
+                    }),
                 },
             )
             .collect(),
@@ -826,10 +832,12 @@ pub async fn create_invite(
     Path(id): Path<Uuid>,
     Body(req): Body<CreateInviteRequest>,
 ) -> ApiResult<Json<CreatedInvite>> {
-    crate::authz::require(&state, id, auth.user_id(), "members.invite").await?;
+    let me = crate::authz::require(&state, id, auth.user_id(), "members.invite").await?;
     if req.role == TeamRole::Owner {
         return Err(Error::bad_request("Cannot invite as owner"));
     }
+    let (role_ref, role_level) =
+        crate::authz::assignable_role(&state.db, &me, req.role_id, req.role).await?;
     let email = normalize_email(&req.email).ok_or_else(|| Error::bad_request("Invalid email"))?;
     let already: Option<(Uuid,)> = sqlx::query_as(
         "SELECT u.id FROM users u JOIN team_members m ON m.user_id = u.id WHERE m.team_id = $1 AND lower(u.email) = $2",
@@ -864,17 +872,18 @@ pub async fn create_invite(
     .execute(&state.db)
     .await?;
     let (created_at,): (DateTime<Utc>,) = sqlx::query_as(
-        "INSERT INTO team_invites (id, team_id, email, role, token_hash, invited_by, vault_ids, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING created_at",
+        "INSERT INTO team_invites (id, team_id, email, role, token_hash, invited_by, vault_ids, expires_at, role_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING created_at",
     )
     .bind(invite_id)
     .bind(id)
     .bind(&email)
-    .bind(team_role_str(req.role))
+    .bind(team_role_str(role_level))
     .bind(hash_token(&token))
     .bind(auth.user_id())
     .bind(&req.vault_ids)
     .bind(expires_at)
+    .bind(role_ref.id)
     .fetch_one(&state.db)
     .await?;
     let url = format!(
@@ -928,10 +937,11 @@ pub async fn create_invite(
         invite: Invite {
             id: invite_id,
             email,
-            role: req.role,
+            role: role_level,
             invited_by: auth.user_id(),
             created_at,
             expires_at,
+            role_ref: Some(role_ref),
         },
         url,
     }))
@@ -995,11 +1005,13 @@ pub async fn invite_preview(
 
 /// Join the team and create pending (unsealed) vault memberships. Used by
 /// `accept_invite` and by registration with an invite token.
+#[allow(clippy::too_many_arguments)]
 pub async fn apply_invite(
     tx: &mut Transaction<'_, Postgres>,
     invite_id: Uuid,
     team_id: Uuid,
     role: &str,
+    role_id: Option<Uuid>,
     vault_ids: &[Uuid],
     user_id: Uuid,
     device_id: Option<Uuid>,
@@ -1008,6 +1020,7 @@ pub async fn apply_invite(
     sqlx::query(
         "INSERT INTO team_members (team_id, user_id, role, role_id)
          VALUES ($1, $2, $3, COALESCE(
+             (SELECT id FROM team_roles WHERE team_id = $1 AND id = $4 AND slug <> 'owner'),
              (SELECT id FROM team_roles WHERE team_id = $1 AND slug = $3 AND builtin),
              (SELECT default_role_id FROM teams WHERE id = $1)))
          ON CONFLICT (team_id, user_id) DO NOTHING",
@@ -1015,6 +1028,7 @@ pub async fn apply_invite(
     .bind(team_id)
     .bind(user_id)
     .bind(role)
+    .bind(role_id)
     .execute(&mut **tx)
     .await?;
     for vid in vault_ids {
@@ -1055,14 +1069,14 @@ pub async fn accept_invite(
     auth: Auth,
     Path(token): Path<String>,
 ) -> ApiResult<Json<Team>> {
-    let row: Option<(Uuid, Uuid, String, String, Vec<Uuid>)> = sqlx::query_as(
-        "SELECT id, team_id, email, role, vault_ids FROM team_invites
+    let row: Option<(Uuid, Uuid, String, String, Vec<Uuid>, Option<Uuid>)> = sqlx::query_as(
+        "SELECT id, team_id, email, role, vault_ids, role_id FROM team_invites
          WHERE token_hash = $1 AND accepted_at IS NULL AND expires_at > now()",
     )
     .bind(hash_token(&token))
     .fetch_optional(&state.db)
     .await?;
-    let Some((invite_id, team_id, email, role, vault_ids)) = row else {
+    let Some((invite_id, team_id, email, role, vault_ids, role_id)) = row else {
         return Err(Error::token_expired());
     };
     let me = users::by_id(&state.db, auth.user_id()).await?;
@@ -1077,6 +1091,7 @@ pub async fn accept_invite(
         invite_id,
         team_id,
         &role,
+        role_id,
         &vault_ids,
         me.id,
         Some(auth.device_id()),

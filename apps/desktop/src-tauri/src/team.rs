@@ -248,7 +248,7 @@ pub async fn set_member_role<R: Runtime>(
 ) -> Result<()> {
     api(app)
         .await?
-        .update_team_member(team_id, user_id, &UpdateTeamMemberRequest { role })
+        .update_team_member(team_id, user_id, &UpdateTeamMemberRequest { role, role_id: None })
         .await?;
     Ok(())
 }
@@ -322,6 +322,7 @@ pub async fn invite<R: Runtime>(
         let req = CreateInviteRequest {
             email: email.clone(),
             role,
+            role_id: None,
             vault_ids: vault_ids.clone(),
         };
         out.push(match api.create_invite(team_id, &req).await {

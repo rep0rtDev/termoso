@@ -260,6 +260,41 @@ pub async fn default_role_id<'e, E: PgExecutor<'e>>(db: E, team_id: Uuid) -> Api
 }
 
 /// `RoleRef` + effective permissions from a joined row.
+/// Resolve the role an actor wants to hand out (`role_id` wins over the
+/// coarse `level`). Owner is never assignable here; a non-owner may only
+/// grant permissions they hold themselves.
+pub async fn assignable_role<'e, E: PgExecutor<'e> + Copy>(
+    db: E,
+    actor: &Membership,
+    role_id: Option<Uuid>,
+    level: TeamRole,
+) -> ApiResult<(RoleRef, TeamRole)> {
+    let team_id = actor.team_id;
+    let rid = match role_id {
+        Some(rid) => rid,
+        None => role_id_for_level(db, team_id, level).await?,
+    };
+    let row: Option<(String, String, Vec<String>)> = sqlx::query_as(
+        "SELECT slug, name, permissions FROM team_roles WHERE team_id = $1 AND id = $2",
+    )
+    .bind(team_id)
+    .bind(rid)
+    .fetch_optional(db)
+    .await?;
+    let (slug, name, perms) = row.ok_or_else(|| Error::not_found("Role"))?;
+    if slug == "owner" || perms.iter().any(|p| p == "*") {
+        return Err(Error::bad_request("The owner role cannot be assigned"));
+    }
+    if let Some(missing) = perms.iter().find(|p| !actor.has(p)) {
+        return Err(denied(missing));
+    }
+    let lvl = match slug.as_str() {
+        "admin" => TeamRole::Admin,
+        _ => TeamRole::Member,
+    };
+    Ok((RoleRef { id: rid, slug, name }, lvl))
+}
+
 pub fn role_parts(level: TeamRole, id: Uuid, slug: String, name: String, perms: Vec<String>) -> (RoleRef, Vec<String>) {
     let list = if level == TeamRole::Owner || perms.iter().any(|p| p == "*") {
         vec!["*".to_string()]
