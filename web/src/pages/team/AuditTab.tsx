@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "@/i18n";
 import {
   Alert,
   Box,
@@ -56,16 +57,20 @@ export function AuditTab({ team }: { team: Team }) {
 const KINDS: { value: WebhookKind; label: string; hint: string }[] = [
   {
     value: "generic",
-    label: "Generic JSON (HMAC)",
-    hint: "POST batches signed with X-Termoso-Signature",
+    label: tr("Generic JSON (HMAC)"),
+    hint: tr("POST batches signed with X-Termoso-Signature"),
   },
-  { value: "splunk_hec", label: "Splunk HEC", hint: "secret = HEC token" },
-  { value: "elastic", label: "Elasticsearch / OpenSearch", hint: "bulk NDJSON; secret = API key" },
-  { value: "datadog", label: "Datadog Logs", hint: "secret = API key" },
+  { value: "splunk_hec", label: tr("Splunk HEC"), hint: tr("secret = HEC token") },
+  {
+    value: "elastic",
+    label: tr("Elasticsearch / OpenSearch"),
+    hint: tr("bulk NDJSON; secret = API key"),
+  },
+  { value: "datadog", label: tr("Datadog Logs"), hint: tr("secret = API key") },
   {
     value: "syslog_tls",
-    label: "Syslog over TLS (CEF)",
-    hint: "syslog+tls://host:6514; no secret",
+    label: tr("Syslog over TLS (CEF)"),
+    hint: tr("syslog+tls://host:6514; no secret"),
   },
 ];
 
@@ -100,8 +105,10 @@ function AuditSection({ team }: { team: Team }) {
   const events = q.data?.pages.flatMap((p) => p.events) ?? [];
   return (
     <Section
-      title="Audit log"
-      description="Who did what in this team. Filter by action (exact, or a family like “vault.”); export up to a million rows as CSV or JSON Lines."
+      title={tr("Audit log")}
+      description={tr(
+        "Who did what in this team. Filter by action (exact, or a family like “vault.”); export up to a million rows as CSV or JSON Lines.",
+      )}
       actions={
         can(team, "audit.export") && (
           <Stack direction="row" spacing={1}>
@@ -110,14 +117,14 @@ function AuditSection({ team }: { team: Team }) {
               disabled={exporting !== null}
               onClick={() => exportAs("csv")}
             >
-              CSV
+              {tr("CSV")}
             </Button>
             <Button
               startIcon={<DownloadRoundedIcon />}
               disabled={exporting !== null}
               onClick={() => exportAs("jsonl")}
             >
-              JSONL
+              {tr("JSONL")}
             </Button>
           </Stack>
         )
@@ -134,14 +141,14 @@ function AuditSection({ team }: { team: Team }) {
       >
         <TextField
           size="small"
-          label="Action"
-          placeholder="vault. / member.removed"
+          label={tr("Action")}
+          placeholder={tr("vault. / member.removed")}
           value={action}
           onChange={(e) => setAction(e.target.value)}
           sx={{ width: 280 }}
         />
         <Button type="submit" variant="outlined" size="small" sx={{ flexShrink: 0 }}>
-          Filter
+          {tr("Filter")}
         </Button>
       </Box>
       {q.isPending ? (
@@ -151,17 +158,17 @@ function AuditSection({ team }: { team: Team }) {
           <Alert severity="error">{errorMessage(q.error)}</Alert>
         </Box>
       ) : events.length === 0 ? (
-        <EmptyState title="No events" />
+        <EmptyState title={tr("No events")} />
       ) : (
         <>
           <TableContainer>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>When</TableCell>
-                  <TableCell>Actor</TableCell>
-                  <TableCell>Action</TableCell>
-                  <TableCell>Details</TableCell>
+                  <TableCell>{tr("When")}</TableCell>
+                  <TableCell>{tr("Actor")}</TableCell>
+                  <TableCell>{tr("Action")}</TableCell>
+                  <TableCell>{tr("Details")}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -174,7 +181,7 @@ function AuditSection({ team }: { team: Team }) {
           {q.hasNextPage && (
             <Box sx={{ p: 2, textAlign: "center" }}>
               <Button disabled={q.isFetchingNextPage} onClick={() => q.fetchNextPage()}>
-                Load older
+                {tr("Load older")}
               </Button>
             </Box>
           )}
@@ -206,7 +213,7 @@ function EventRow({ e }: { e: AuditEvent }) {
           />
         ) : (
           <Typography variant="body2" color="text.secondary">
-            system
+            {tr("system")}
           </Typography>
         )}
       </TableCell>
@@ -262,7 +269,7 @@ function WebhooksSection({ team }: { team: Team }) {
     onSuccess: async () => {
       setDeleting(null);
       await invalidate();
-      snack.notify("Webhook deleted");
+      snack.notify(tr("Webhook deleted"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -271,30 +278,35 @@ function WebhooksSection({ team }: { team: Team }) {
   const hooks = q.data.webhooks;
   return (
     <Section
-      title="Webhooks / SIEM"
-      description="Every audit event is queued per webhook and delivered in batches with retries (30 s → 6 h). A hook is switched off after 50 consecutive failures and everyone who can manage webhooks is e-mailed. Up to 10 per team."
+      title={tr("Webhooks / SIEM")}
+      description={tr(
+        "Every audit event is queued per webhook and delivered in batches with retries (30 s → 6 h). A hook is switched off after 50 consecutive failures and everyone who can manage webhooks is e-mailed. Up to 10 per team.",
+      )}
       actions={
         <Button
           startIcon={<AddRoundedIcon />}
           disabled={hooks.length >= 10}
           onClick={() => setCreateOpen(true)}
         >
-          Add webhook
+          {tr("Add webhook")}
         </Button>
       }
       disablePadding={hooks.length > 0}
     >
       {hooks.length === 0 ? (
-        <EmptyState title="No webhooks" description="Stream the audit log to your SIEM." />
+        <EmptyState
+          title={tr("No webhooks")}
+          description={tr("Stream the audit log to your SIEM.")}
+        />
       ) : (
         <TableContainer>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Destination</TableCell>
-                <TableCell>Kind</TableCell>
-                <TableCell>Last delivery</TableCell>
-                <TableCell>On</TableCell>
+                <TableCell>{tr("Destination")}</TableCell>
+                <TableCell>{tr("Kind")}</TableCell>
+                <TableCell>{tr("Last delivery")}</TableCell>
+                <TableCell>{tr("On")}</TableCell>
                 <TableCell align="right" />
               </TableRow>
             </TableHead>
@@ -317,7 +329,7 @@ function WebhooksSection({ team }: { team: Team }) {
                       </Tooltip>
                     ) : (
                       <Typography variant="caption" color="text.secondary">
-                        never
+                        {tr("never")}
                       </Typography>
                     )}
                     {w.failures > 0 && (
@@ -341,23 +353,31 @@ function WebhooksSection({ team }: { team: Team }) {
                     />
                   </TableCell>
                   <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
-                    <Tooltip title="Send a test event and flush the queue">
+                    <Tooltip title={tr("Send a test event and flush the queue")}>
                       <IconButton
                         size="small"
                         disabled={test.isPending}
                         onClick={() => test.mutate(w)}
-                        aria-label="Test"
+                        aria-label={tr("Test")}
                       >
                         <SendRoundedIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Delivery history">
-                      <IconButton size="small" onClick={() => setHistory(w)} aria-label="History">
+                    <Tooltip title={tr("Delivery history")}>
+                      <IconButton
+                        size="small"
+                        onClick={() => setHistory(w)}
+                        aria-label={tr("History")}
+                      >
                         <HistoryRoundedIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Delete">
-                      <IconButton size="small" onClick={() => setDeleting(w)} aria-label="Delete">
+                    <Tooltip title={tr("Delete")}>
+                      <IconButton
+                        size="small"
+                        onClick={() => setDeleting(w)}
+                        aria-label={tr("Delete")}
+                      >
                         <DeleteOutlineRoundedIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -372,14 +392,14 @@ function WebhooksSection({ team }: { team: Team }) {
       <DeliveriesDialog team={team} hook={history} onClose={() => setHistory(null)} />
       <ConfirmDialog
         open={deleting !== null}
-        title="Delete webhook?"
-        confirmLabel="Delete"
+        title={tr("Delete webhook?")}
+        confirmLabel={tr("Delete")}
         danger
         busy={remove.isPending}
         onCancel={() => setDeleting(null)}
         onConfirm={() => deleting && remove.mutate(deleting)}
       >
-        Queued deliveries for it are dropped.
+        {tr("Queued deliveries for it are dropped.")}
       </ConfirmDialog>
     </Section>
   );
@@ -419,7 +439,7 @@ function CreateWebhookDialog({
       setSecret("");
       setActions("");
       await qc.invalidateQueries({ queryKey: queryKeys.teamWebhooks(team.id) });
-      snack.notify("Webhook added");
+      snack.notify(tr("Webhook added"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -427,14 +447,14 @@ function CreateWebhookDialog({
   const syslog = kind === "syslog_tls";
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Add webhook</DialogTitle>
+      <DialogTitle>{tr("Add webhook")}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
           <FormControl size="small" fullWidth>
-            <InputLabel id="kind-label">Kind</InputLabel>
+            <InputLabel id="kind-label">{tr("Kind")}</InputLabel>
             <Select
               labelId="kind-label"
-              label="Kind"
+              label={tr("Kind")}
               value={kind}
               onChange={(e) => setKind(e.target.value)}
             >
@@ -465,9 +485,9 @@ function CreateWebhookDialog({
             />
           )}
           <TextField
-            label="Only these actions (optional)"
-            placeholder="member., vault.deleted, policy.updated"
-            helperText="Comma-separated; a trailing dot matches a family. Empty = everything."
+            label={tr("Only these actions (optional)")}
+            placeholder={tr("member., vault.deleted, policy.updated")}
+            helperText={tr("Comma-separated; a trailing dot matches a family. Empty = everything.")}
             value={actions}
             onChange={(e) => setActions(e.target.value)}
             fullWidth
@@ -475,13 +495,13 @@ function CreateWebhookDialog({
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>{tr("Cancel")}</Button>
         <Button
           variant="contained"
           disabled={!url.trim() || (!syslog && secret.length < 8) || create.isPending}
           onClick={() => create.mutate()}
         >
-          Add
+          {tr("Add")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -513,17 +533,17 @@ function DeliveriesDialog({
             <Alert severity="error">{errorMessage(q.error)}</Alert>
           </Box>
         ) : q.data.deliveries.length === 0 ? (
-          <EmptyState title="Nothing delivered yet" />
+          <EmptyState title={tr("Nothing delivered yet")} />
         ) : (
           <TableContainer>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Event</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Attempt</TableCell>
-                  <TableCell>Response</TableCell>
-                  <TableCell>When</TableCell>
+                  <TableCell>{tr("Event")}</TableCell>
+                  <TableCell>{tr("Status")}</TableCell>
+                  <TableCell>{tr("Attempt")}</TableCell>
+                  <TableCell>{tr("Response")}</TableCell>
+                  <TableCell>{tr("When")}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -556,7 +576,7 @@ function DeliveriesDialog({
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose}>{tr("Close")}</Button>
       </DialogActions>
     </Dialog>
   );

@@ -1,4 +1,5 @@
 import { useState, type SubmitEvent } from "react";
+import { tr } from "@/i18n";
 import { Alert, AlertTitle, Button, Link, Stack, TextField, Typography } from "@mui/material";
 import { Link as RouterLink } from "react-router";
 import { ApiError, errorMessage } from "@/api/client";
@@ -12,12 +13,12 @@ import { Turnstile } from "@/components/Turnstile";
 export function IrreversibleWarning() {
   return (
     <Alert severity="error" variant="outlined">
-      <AlertTitle>This permanently destroys your encrypted data</AlertTitle>
+      <AlertTitle>{tr("This permanently destroys your encrypted data")}</AlertTitle>
       Your hosts, passwords, keys, snippets, settings and other vault contents are encrypted with
       keys only you hold. Without the password or the recovery key nobody — including Termoso — can
       decrypt them: the server never has a decryption key. Starting over keeps your email address
-      and team memberships but gives you a <strong>new, empty vault</strong>. The old data is
-      deleted and cannot be brought back.
+      and team memberships but gives you a <strong>{tr("new, empty vault")}</strong>. The old data
+      is deleted and cannot be brought back.
     </Alert>
   );
 }
@@ -86,22 +87,22 @@ export function StartOverPage() {
     return (
       <Stack spacing={2}>
         <AuthTitle
-          title="Reset scheduled"
+          title={tr("Reset scheduled")}
           subtitle={`The reset for ${stage.emailHint} can be completed ${formatRelative(stage.scheduledFor)} (${formatDateTime(stage.scheduledFor)}).`}
         />
         <IrreversibleWarning />
         <Alert severity="info">
-          We emailed you two links: one to <strong>finish</strong> the reset once the waiting period
-          is over, and one to <strong>cancel</strong> it. Every signed-in device of the account was
-          notified too. If you still have a signed-in Termoso app, you can cancel from there as
-          well.
+          We emailed you two links: one to <strong>{tr("finish")}</strong> the reset once the
+          waiting period is over, and one to <strong>{tr("cancel")}</strong> it. Every signed-in
+          device of the account was notified too. If you still have a signed-in Termoso app, you can
+          cancel from there as well.
         </Alert>
         <Typography variant="body2" color="text.secondary">
           The 24-hour delay exists so that the real owner can stop a reset they did not start.
           Nothing is deleted until you open the finish link and confirm.
         </Typography>
         <Button component={RouterLink} to="/login" variant="outlined">
-          Back to sign in
+          {tr("Back to sign in")}
         </Button>
       </Stack>
     );
@@ -110,8 +111,8 @@ export function StartOverPage() {
   return (
     <form onSubmit={submit}>
       <AuthTitle
-        title="Start over"
-        subtitle="For when both your password and your 24-word recovery key are gone."
+        title={tr("Start over")}
+        subtitle={tr("For when both your password and your 24-word recovery key are gone.")}
       />
       <Stack spacing={2}>
         <IrreversibleWarning />
@@ -119,7 +120,7 @@ export function StartOverPage() {
         {stage.kind === "email" && (
           <>
             <TextField
-              label="Account email"
+              label={tr("Account email")}
               type="email"
               autoComplete="username"
               required
@@ -130,8 +131,8 @@ export function StartOverPage() {
             />
             <Typography variant="body2" color="text.secondary">
               We will send a confirmation code. After you confirm, the reset is{" "}
-              <strong>scheduled 24 hours later</strong> and can be cancelled from the email or from
-              any signed-in device.
+              <strong>{tr("scheduled 24 hours later")}</strong> and can be cancelled from the email
+              or from any signed-in device.
             </Typography>
             {siteKey && <Turnstile key={captchaRound} siteKey={siteKey} onToken={setCaptcha} />}
             <Button
@@ -151,7 +152,7 @@ export function StartOverPage() {
               Enter the code we sent to <strong>{stage.emailHint}</strong>.
             </Typography>
             <TextField
-              label="6-digit code"
+              label={tr("6-digit code")}
               required
               autoFocus
               autoComplete="one-time-code"
@@ -162,12 +163,12 @@ export function StartOverPage() {
             />
             {stage.needMfa && (
               <TextField
-                label="Two-factor code (authenticator or backup code)"
+                label={tr("Two-factor code (authenticator or backup code)")}
                 required
                 autoComplete="one-time-code"
                 value={mfaCode}
                 onChange={(e) => setMfaCode(e.target.value)}
-                helperText="Two-factor authentication is enabled on this account."
+                helperText={tr("Two-factor authentication is enabled on this account.")}
                 disabled={busy}
               />
             )}
@@ -185,7 +186,7 @@ export function StartOverPage() {
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
           Still have your recovery key?{" "}
           <Link component={RouterLink} to="/forgot-password">
-            Reset the password instead
+            {tr("Reset the password instead")}
           </Link>
         </Typography>
       </Stack>

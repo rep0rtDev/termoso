@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "@/i18n";
 import { IconButton, InputAdornment, TextField, Tooltip } from "@mui/material";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
@@ -30,7 +31,7 @@ export function CopyField({ label, value, mono = true, multiline }: Props) {
           endAdornment: (
             <InputAdornment position="end">
               <Tooltip title={copied ? "Copied" : "Copy"}>
-                <IconButton onClick={copy} edge="end" size="small" aria-label="Copy">
+                <IconButton onClick={copy} edge="end" size="small" aria-label={tr("Copy")}>
                   {copied ? (
                     <CheckRoundedIcon fontSize="small" />
                   ) : (

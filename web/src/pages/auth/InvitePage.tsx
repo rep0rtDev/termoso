@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "@/i18n";
 import { Alert, Button, Chip, Divider, Stack, Typography } from "@mui/material";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -40,10 +41,10 @@ export function InvitePage() {
   if (preview.isError) {
     return (
       <>
-        <AuthTitle title="Invitation unavailable" />
+        <AuthTitle title={tr("Invitation unavailable")} />
         <Alert severity="error">{errorMessage(preview.error)}</Alert>
         <Button sx={{ mt: 2 }} variant="contained" onClick={() => navigate("/login")}>
-          Go to sign in
+          {tr("Go to sign in")}
         </Button>
       </>
     );
@@ -79,7 +80,7 @@ export function InvitePage() {
               onClick={() => accept.mutate()}
               disabled={accept.isPending}
             >
-              Accept invitation
+              {tr("Accept invitation")}
             </Button>
           )
         ) : inv.account_exists ? (
@@ -92,7 +93,7 @@ export function InvitePage() {
               size="large"
               onClick={() => navigate(`/login?next=${encodeURIComponent(`/invite/${token}`)}`)}
             >
-              Sign in
+              {tr("Sign in")}
             </Button>
           </>
         ) : (
@@ -109,24 +110,24 @@ export function InvitePage() {
                 })
               }
             >
-              Create account
+              {tr("Create account")}
             </Button>
             <Button
               color="inherit"
               onClick={() => navigate(`/login?next=${encodeURIComponent(`/invite/${token}`)}`)}
             >
-              I already have an account
+              {tr("I already have an account")}
             </Button>
           </>
         )}
-        <Divider>or</Divider>
+        <Divider>{tr("or")}</Divider>
         <Button
           color="inherit"
           href={appInviteLink(token)}
           endIcon={<OpenInNewRoundedIcon />}
           data-testid="open-in-app"
         >
-          Open in the Termoso app
+          {tr("Open in the Termoso app")}
         </Button>
       </Stack>
     </>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "@/i18n";
 import { Alert, Button, Checkbox, FormControlLabel, Stack } from "@mui/material";
 import { Navigate, useLocation, useNavigate } from "react-router";
 import { RecoveryPhraseGrid } from "@/components/RecoveryPhrase";
@@ -23,16 +24,20 @@ export function RecoveryKeyPage() {
     <>
       <AuthTitle
         title={state.title ?? "Save your recovery key"}
-        subtitle="Write these 24 words down or store them in a password manager. They are shown only once."
+        subtitle={tr(
+          "Write these 24 words down or store them in a password manager. They are shown only once.",
+        )}
       />
       <Stack spacing={2.5}>
         <RecoveryPhraseGrid phrase={state.phrase} email={state.email} />
         <Alert severity="warning">
-          If you forget your password and lose this key, your encrypted data cannot be recovered.
+          {tr(
+            "If you forget your password and lose this key, your encrypted data cannot be recovered.",
+          )}
         </Alert>
         <FormControlLabel
           control={<Checkbox checked={saved} onChange={(e) => setSaved(e.target.checked)} />}
-          label="I have stored my recovery key in a safe place"
+          label={tr("I have stored my recovery key in a safe place")}
         />
         <Button
           variant="contained"
@@ -40,7 +45,7 @@ export function RecoveryKeyPage() {
           disabled={!saved}
           onClick={() => navigate(state.next ?? "/account", { replace: true })}
         >
-          Continue
+          {tr("Continue")}
         </Button>
       </Stack>
     </>

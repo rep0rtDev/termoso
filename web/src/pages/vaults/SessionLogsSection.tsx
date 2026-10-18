@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { tr } from "@/i18n";
 import {
   Alert,
   Box,
@@ -155,7 +156,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
     onSuccess: async () => {
       setDeleting(null);
       await invalidate();
-      snack.notify("Recording deleted for every member");
+      snack.notify(tr("Recording deleted for every member"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -164,8 +165,10 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
 
   return (
     <Section
-      title="Session logs"
-      description="Recordings members make on their devices, encrypted with the vault key and shared with the vault. Editors can pin recordings and leave a comment; the server never sees terminal content."
+      title={tr("Session logs")}
+      description={tr(
+        "Recordings members make on their devices, encrypted with the vault key and shared with the vault. Editors can pin recordings and leave a comment; the server never sees terminal content.",
+      )}
       actions={
         holdKey && !vaultKey ? (
           <Button
@@ -174,7 +177,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
             disabled={unlock.isPending}
             onClick={() => unlock.mutate()}
           >
-            Show details
+            {tr("Show details")}
           </Button>
         ) : undefined
       }
@@ -182,7 +185,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
       <Stack spacing={2}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="body2">Record members' sessions</Typography>
+            <Typography variant="body2">{tr("Record members' sessions")}</Typography>
             <Typography variant="caption" color="text.secondary">
               {manager
                 ? "Every terminal session to a host of this vault is recorded on the member's device and uploaded encrypted. Members still see their own recordings when this is off."
@@ -204,7 +207,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
         {keyError && <Alert severity="warning">{keyError}</Alert>}
         {!holdKey && (
           <Alert severity="info">
-            Session details stay encrypted until a manager seals the vault key to you.
+            {tr("Session details stay encrypted until a manager seals the vault key to you.")}
           </Alert>
         )}
 
@@ -214,7 +217,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
           <Alert severity="error">{errorMessage(logs.error)}</Alert>
         ) : all.length === 0 ? (
           <EmptyState
-            title="No recordings yet"
+            title={tr("No recordings yet")}
             description={
               vault.session_logging
                 ? "Recordings appear here after members finish a session on a host of this vault."
@@ -225,14 +228,14 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
           <>
             {authors.length > 1 && (
               <FormControl size="small" sx={{ maxWidth: 320 }}>
-                <InputLabel id="log-author">Author</InputLabel>
+                <InputLabel id="log-author">{tr("Author")}</InputLabel>
                 <Select
                   labelId="log-author"
-                  label="Author"
+                  label={tr("Author")}
                   value={authorId}
                   onChange={(e) => setAuthorId(e.target.value)}
                 >
-                  <MenuItem value="">Everyone</MenuItem>
+                  <MenuItem value="">{tr("Everyone")}</MenuItem>
                   {authors.map((a) => (
                     <MenuItem key={a.user_id} value={a.user_id}>
                       {a.display_name ?? a.email}
@@ -245,10 +248,10 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Author</TableCell>
-                    <TableCell>Session</TableCell>
-                    <TableCell>When</TableCell>
-                    <TableCell align="right">Size</TableCell>
+                    <TableCell>{tr("Author")}</TableCell>
+                    <TableCell>{tr("Session")}</TableCell>
+                    <TableCell>{tr("When")}</TableCell>
+                    <TableCell align="right">{tr("Size")}</TableCell>
                     <TableCell align="right" />
                   </TableRow>
                 </TableHead>
@@ -270,7 +273,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                         <TableCell sx={{ minWidth: 220 }}>
                           <Stack direction="row" spacing={0.75} sx={{ alignItems: "center" }}>
                             {l.pinned && (
-                              <Tooltip title="Pinned">
+                              <Tooltip title={tr("Pinned")}>
                                 <PushPinRoundedIcon color="primary" sx={{ fontSize: 16 }} />
                               </Tooltip>
                             )}
@@ -278,7 +281,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                               {meta ? meta.label : "Encrypted recording"}
                             </Typography>
                             {!l.completed && (
-                              <Chip size="small" variant="outlined" label="Uploading" />
+                              <Chip size="small" variant="outlined" label={tr("Uploading")} />
                             )}
                           </Stack>
                           <Typography
@@ -336,7 +339,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                             </>
                           )}
                           {canDelete && (
-                            <Tooltip title="Delete for everyone">
+                            <Tooltip title={tr("Delete for everyone")}>
                               <IconButton size="small" onClick={() => setDeleting(l)}>
                                 <DeleteOutlineRoundedIcon fontSize="small" />
                               </IconButton>
@@ -357,7 +360,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                   disabled={logs.isFetchingNextPage}
                   onClick={() => void logs.fetchNextPage()}
                 >
-                  Load more
+                  {tr("Load more")}
                 </Button>
               </Box>
             )}
@@ -379,8 +382,8 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
       />
       <ConfirmDialog
         open={deleting !== null}
-        title="Delete recording?"
-        confirmLabel="Delete"
+        title={tr("Delete recording?")}
+        confirmLabel={tr("Delete")}
         danger
         busy={del.isPending}
         onCancel={() => setDeleting(null)}
@@ -448,7 +451,7 @@ function NoteForm({
   const tooLong = note.length > MAX_NOTE_CHARS;
   return (
     <>
-      <DialogTitle>Comment</DialogTitle>
+      <DialogTitle>{tr("Comment")}</DialogTitle>
       <DialogContent>
         <TextField
           autoFocus
@@ -456,7 +459,7 @@ function NoteForm({
           multiline
           minRows={3}
           maxRows={10}
-          placeholder="What happened in this session, what to look at…"
+          placeholder={tr("What happened in this session, what to look at…")}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           error={tooLong}
@@ -467,18 +470,18 @@ function NoteForm({
       <DialogActions sx={{ px: 3, pb: 2 }}>
         {log.note && (
           <Button color="error" disabled={busy} onClick={() => onSave("")} sx={{ mr: "auto" }}>
-            Remove
+            {tr("Remove")}
           </Button>
         )}
         <Button onClick={onClose} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           variant="contained"
           disabled={busy || tooLong || note.trim() === log.note}
           onClick={() => onSave(note.trim())}
         >
-          Save
+          {tr("Save")}
         </Button>
       </DialogActions>
     </>

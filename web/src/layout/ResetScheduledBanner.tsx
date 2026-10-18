@@ -1,4 +1,5 @@
 import { Alert, AlertTitle, Button } from "@mui/material";
+import { tr } from "@/i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@/api/client";
 import { accountApi } from "@/api/endpoints";
@@ -15,7 +16,7 @@ export function ResetScheduledBanner() {
     mutationFn: accountApi.cancelStartOver,
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: queryKeys.account });
-      snack.notify("Account reset cancelled");
+      snack.notify(tr("Account reset cancelled"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -33,7 +34,7 @@ export function ResetScheduledBanner() {
           onClick={() => cancel.mutate()}
           disabled={cancel.isPending}
         >
-          Cancel reset
+          {tr("Cancel reset")}
         </Button>
       }
     >

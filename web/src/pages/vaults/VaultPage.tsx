@@ -1,4 +1,5 @@
 import { useState, type SubmitEvent } from "react";
+import { tr } from "@/i18n";
 import {
   Alert,
   Box,
@@ -87,9 +88,16 @@ function VaultDetail({ vault }: { vault: Vault }) {
               )}{" "}
               · key version {vault.key_version} · created {formatDate(vault.created_at)}
             </span>
-            {vault.is_default && <Chip size="small" variant="outlined" label="Default vault" />}
+            {vault.is_default && (
+              <Chip size="small" variant="outlined" label={tr("Default vault")} />
+            )}
             {!vault.sealed_key && (
-              <Chip size="small" color="warning" variant="outlined" label="Your key is pending" />
+              <Chip
+                size="small"
+                color="warning"
+                variant="outlined"
+                label={tr("Your key is pending")}
+              />
             )}
           </Stack>
         }
@@ -103,8 +111,10 @@ function VaultDetail({ vault }: { vault: Vault }) {
       )}
       {vault.kind === "personal" ? (
         <Section
-          title="Personal vault"
-          description="Only you hold this key. It is wrapped with your account key and unwrapped locally when you sign in."
+          title={tr("Personal vault")}
+          description={tr(
+            "Only you hold this key. It is wrapped with your account key and unwrapped locally when you sign in.",
+          )}
         >
           <Typography variant="body2" color="text.secondary">
             Hosts, keys and snippets synced from the desktop and mobile apps are stored here. Team
@@ -178,7 +188,7 @@ function VaultActions({ vault, manager }: { vault: Vault; manager: boolean }) {
     <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
       {(manager || vault.kind === "personal") && (
         <Button variant="outlined" onClick={() => setRenameOpen(true)}>
-          Rename
+          {tr("Rename")}
         </Button>
       )}
       {manager && vault.kind === "team" && (
@@ -196,14 +206,14 @@ function VaultActions({ vault, manager }: { vault: Vault; manager: boolean }) {
               disabled={!holdKey}
               onClick={() => setRotateOpen(true)}
             >
-              Rotate key
+              {tr("Rotate key")}
             </Button>
           </span>
         </Tooltip>
       )}
       {manager && vault.kind === "team" && !vault.is_default && (
         <Button variant="outlined" color="error" onClick={() => setDeleteOpen(true)}>
-          Delete vault
+          {tr("Delete vault")}
         </Button>
       )}
 
@@ -219,12 +229,12 @@ function VaultActions({ vault, manager }: { vault: Vault; manager: boolean }) {
             rename.mutate();
           }}
         >
-          <DialogTitle>Rename vault</DialogTitle>
+          <DialogTitle>{tr("Rename vault")}</DialogTitle>
           <DialogContent>
             <TextField
               autoFocus
               fullWidth
-              label="Vault name"
+              label={tr("Vault name")}
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -233,22 +243,22 @@ function VaultActions({ vault, manager }: { vault: Vault; manager: boolean }) {
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={() => setRenameOpen(false)} color="inherit">
-              Cancel
+              {tr("Cancel")}
             </Button>
             <Button
               type="submit"
               variant="contained"
               disabled={rename.isPending || name.trim() === ""}
             >
-              Save
+              {tr("Save")}
             </Button>
           </DialogActions>
         </form>
       </Dialog>
       <ConfirmDialog
         open={rotateOpen}
-        title="Rotate vault key?"
-        confirmLabel="Rotate"
+        title={tr("Rotate vault key?")}
+        confirmLabel={tr("Rotate")}
         busy={rotate.isPending}
         onCancel={() => setRotateOpen(false)}
         onConfirm={() => rotate.mutate()}
@@ -259,8 +269,8 @@ function VaultActions({ vault, manager }: { vault: Vault; manager: boolean }) {
       </ConfirmDialog>
       <ConfirmDialog
         open={deleteOpen}
-        title="Delete vault?"
-        confirmLabel="Delete"
+        title={tr("Delete vault?")}
+        confirmLabel={tr("Delete")}
         danger
         busy={del.isPending}
         onCancel={() => setDeleteOpen(false)}
@@ -334,7 +344,10 @@ function MembersSection({
       setLeaveOpen(false);
       await invalidate();
       if (userId !== me)
-        snack.notify("Member removed. Rotate the key so their stale copy stops working.", "info");
+        snack.notify(
+          tr("Member removed. Rotate the key so their stale copy stops working."),
+          "info",
+        );
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -346,7 +359,7 @@ function MembersSection({
 
   return (
     <Section
-      title="Members"
+      title={tr("Members")}
       description={
         manager
           ? holdKey
@@ -361,7 +374,7 @@ function MembersSection({
             1 ||
           teamAdmin ? (
             <Button color="inherit" onClick={() => setLeaveOpen(true)}>
-              Leave vault
+              {tr("Leave vault")}
             </Button>
           ) : null}
           {manager && (
@@ -371,7 +384,7 @@ function MembersSection({
               disabled={!holdKey}
               onClick={() => setAddOpen(true)}
             >
-              Add member
+              {tr("Add member")}
             </Button>
           )}
         </Stack>
@@ -385,16 +398,16 @@ function MembersSection({
           <Alert severity="error">{errorMessage(members.error)}</Alert>
         </Box>
       ) : members.data.members.length === 0 ? (
-        <EmptyState title="No members" />
+        <EmptyState title={tr("No members")} />
       ) : (
         <TableContainer>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Member</TableCell>
-                <TableCell>Role</TableCell>
-                <TableCell>Key</TableCell>
-                <TableCell>Added</TableCell>
+                <TableCell>{tr("Member")}</TableCell>
+                <TableCell>{tr("Role")}</TableCell>
+                <TableCell>{tr("Key")}</TableCell>
+                <TableCell>{tr("Added")}</TableCell>
                 {manager && <TableCell align="right" />}
               </TableRow>
             </TableHead>
@@ -428,9 +441,9 @@ function MembersSection({
                           }
                           sx={{ minWidth: 120 }}
                         >
-                          <MenuItem value="viewer">Viewer</MenuItem>
-                          <MenuItem value="editor">Editor</MenuItem>
-                          <MenuItem value="manager">Manager</MenuItem>
+                          <MenuItem value="viewer">{tr("Viewer")}</MenuItem>
+                          <MenuItem value="editor">{tr("Editor")}</MenuItem>
+                          <MenuItem value="manager">{tr("Manager")}</MenuItem>
                         </Select>
                       ) : (
                         <RoleChip role={m.role} />
@@ -451,10 +464,15 @@ function MembersSection({
                               })
                             }
                           >
-                            Grant key
+                            {tr("Grant key")}
                           </Button>
                         ) : (
-                          <Chip size="small" color="warning" variant="outlined" label="Pending" />
+                          <Chip
+                            size="small"
+                            color="warning"
+                            variant="outlined"
+                            label={tr("Pending")}
+                          />
                         )
                       ) : (
                         <Chip size="small" variant="outlined" label={`v${m.key_version}`} />
@@ -464,11 +482,11 @@ function MembersSection({
                     {manager && (
                       <TableCell align="right">
                         {!isMe && (
-                          <Tooltip title="Remove from vault">
+                          <Tooltip title={tr("Remove from vault")}>
                             <IconButton
                               size="small"
                               onClick={() => setRemoving(m)}
-                              aria-label="Remove member"
+                              aria-label={tr("Remove member")}
                             >
                               <PersonRemoveRoundedIcon fontSize="small" />
                             </IconButton>
@@ -501,7 +519,7 @@ function MembersSection({
               });
           }}
         >
-          <DialogTitle>Add member</DialogTitle>
+          <DialogTitle>{tr("Add member")}</DialogTitle>
           <DialogContent sx={{ display: "grid", gap: 2 }}>
             {candidates.length === 0 ? (
               <DialogContentText>
@@ -511,10 +529,10 @@ function MembersSection({
             ) : (
               <>
                 <FormControl sx={{ mt: 1 }}>
-                  <InputLabel id="add-user">Team member</InputLabel>
+                  <InputLabel id="add-user">{tr("Team member")}</InputLabel>
                   <Select
                     labelId="add-user"
-                    label="Team member"
+                    label={tr("Team member")}
                     value={addUser}
                     onChange={(e) => setAddUser(e.target.value)}
                   >
@@ -526,16 +544,16 @@ function MembersSection({
                   </Select>
                 </FormControl>
                 <FormControl>
-                  <InputLabel id="add-role">Vault role</InputLabel>
+                  <InputLabel id="add-role">{tr("Vault role")}</InputLabel>
                   <Select
                     labelId="add-role"
-                    label="Vault role"
+                    label={tr("Vault role")}
                     value={addRole}
                     onChange={(e) => setAddRole(e.target.value)}
                   >
-                    <MenuItem value="viewer">Viewer — read only</MenuItem>
-                    <MenuItem value="editor">Editor — create and edit records</MenuItem>
-                    <MenuItem value="manager">Manager — manage members and keys</MenuItem>
+                    <MenuItem value="viewer">{tr("Viewer — read only")}</MenuItem>
+                    <MenuItem value="editor">{tr("Editor — create and edit records")}</MenuItem>
+                    <MenuItem value="manager">{tr("Manager — manage members and keys")}</MenuItem>
                   </Select>
                 </FormControl>
               </>
@@ -543,10 +561,10 @@ function MembersSection({
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={() => setAddOpen(false)} color="inherit" disabled={upsert.isPending}>
-              Cancel
+              {tr("Cancel")}
             </Button>
             <Button type="submit" variant="contained" disabled={upsert.isPending || !selected}>
-              Add
+              {tr("Add")}
             </Button>
           </DialogActions>
         </form>
@@ -554,8 +572,8 @@ function MembersSection({
 
       <ConfirmDialog
         open={removing !== null}
-        title="Remove member?"
-        confirmLabel="Remove"
+        title={tr("Remove member?")}
+        confirmLabel={tr("Remove")}
         danger
         busy={remove.isPending}
         onCancel={() => setRemoving(null)}
@@ -568,8 +586,8 @@ function MembersSection({
       </ConfirmDialog>
       <ConfirmDialog
         open={leaveOpen}
-        title="Leave vault?"
-        confirmLabel="Leave"
+        title={tr("Leave vault?")}
+        confirmLabel={tr("Leave")}
         danger
         busy={remove.isPending}
         onCancel={() => setLeaveOpen(false)}

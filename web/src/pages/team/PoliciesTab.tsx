@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "@/i18n";
 import {
   Alert,
   Box,
@@ -71,15 +72,17 @@ function PoliciesForm({
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: queryKeys.teamPolicies(team.id) });
       await qc.invalidateQueries({ queryKey: queryKeys.team(team.id) });
-      snack.notify("Policies saved");
+      snack.notify(tr("Policies saved"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
   const ro = !manage;
   return (
     <Section
-      title="Team policies"
-      description="Apply to every member. When someone belongs to several teams, the strictest value across them wins. Members see which team requires what."
+      title={tr("Team policies")}
+      description={tr(
+        "Apply to every member. When someone belongs to several teams, the strictest value across them wins. Members see which team requires what.",
+      )}
       actions={
         manage && (
           <Button
@@ -87,14 +90,16 @@ function PoliciesForm({
             disabled={!dirty || save.isPending}
             onClick={() => save.mutate()}
           >
-            Save
+            {tr("Save")}
           </Button>
         )
       }
     >
       <SettingRow
-        label="Two-factor authentication"
-        description="“Any” accepts TOTP, e-mail codes or passkeys; “Passkey” requires WebAuthn. Enforced at sign-in and before team data is served."
+        label={tr("Two-factor authentication")}
+        description={tr(
+          "“Any” accepts TOTP, e-mail codes or passkeys; “Passkey” requires WebAuthn. Enforced at sign-in and before team data is served.",
+        )}
         control={
           <FormControl size="small">
             <Select
@@ -102,9 +107,9 @@ function PoliciesForm({
               disabled={ro}
               onChange={(e) => setP({ ...p, mfa: e.target.value })}
             >
-              <MenuItem value="off">Not required</MenuItem>
-              <MenuItem value="any">Any second factor</MenuItem>
-              <MenuItem value="passkey">Passkey only</MenuItem>
+              <MenuItem value="off">{tr("Not required")}</MenuItem>
+              <MenuItem value="any">{tr("Any second factor")}</MenuItem>
+              <MenuItem value="passkey">{tr("Passkey only")}</MenuItem>
             </Select>
           </FormControl>
         }
@@ -112,11 +117,13 @@ function PoliciesForm({
       <SettingRow
         label={
           <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-            <span>Keys only in team vaults</span>
-            <Chip label="client" size="small" variant="outlined" sx={{ height: 18 }} />
+            <span>{tr("Keys only in team vaults")}</span>
+            <Chip label={tr("client")} size="small" variant="outlined" sx={{ height: 18 }} />
           </Stack>
         }
-        description="Deny device-local identities for this team's hosts; keys live in team vaults or SSH ID. Honoured by the apps — the server never sees keys."
+        description={tr(
+          "Deny device-local identities for this team's hosts; keys live in team vaults or SSH ID. Honoured by the apps — the server never sees keys.",
+        )}
         control={
           <Switch
             checked={p.local_keys === "deny"}
@@ -126,13 +133,15 @@ function PoliciesForm({
         }
       />
       <SettingRow
-        label="Session lifetime"
-        description="Hours before members must sign in again (1–2160). Existing sessions are shortened when you lower it."
+        label={tr("Session lifetime")}
+        description={tr(
+          "Hours before members must sign in again (1–2160). Existing sessions are shortened when you lower it.",
+        )}
         control={
           <TextField
             size="small"
             type="number"
-            placeholder="server default"
+            placeholder={tr("server default")}
             value={p.session_ttl_hours ?? ""}
             disabled={ro}
             onChange={(e) =>
@@ -147,8 +156,10 @@ function PoliciesForm({
         }
       />
       <SettingRow
-        label="Sign in only through SSO"
-        description="Members (except the owner) must use the configured identity provider; passwords are refused. Needs server-side SSO."
+        label={tr("Sign in only through SSO")}
+        description={tr(
+          "Members (except the owner) must use the configured identity provider; passwords are refused. Needs server-side SSO.",
+        )}
         control={
           <Switch
             checked={p.sso_only}
@@ -158,8 +169,10 @@ function PoliciesForm({
         }
       />
       <SettingRow
-        label="SSO provider"
-        description="Provider id as configured on the server (e.g. okta). Empty = any configured provider."
+        label={tr("SSO provider")}
+        description={tr(
+          "Provider id as configured on the server (e.g. okta). Empty = any configured provider.",
+        )}
         control={
           <TextField
             size="small"
@@ -171,22 +184,24 @@ function PoliciesForm({
         }
       />
       <SettingRow
-        label="Allowed e-mail domains"
-        description="Invitations are limited to these domains (comma-separated). Empty = any."
+        label={tr("Allowed e-mail domains")}
+        description={tr("Invitations are limited to these domains (comma-separated). Empty = any.")}
         control={
           <TextField
             size="small"
             value={domains}
             disabled={ro}
             onChange={(e) => setDomains(e.target.value)}
-            placeholder="example.com, corp.example.com"
+            placeholder={tr("example.com, corp.example.com")}
             sx={{ width: 280 }}
           />
         }
       />
       <SettingRow
-        label="Approve new devices"
-        description="Every new device of a member needs confirmation by e-mail before it can sync."
+        label={tr("Approve new devices")}
+        description={tr(
+          "Every new device of a member needs confirmation by e-mail before it can sync.",
+        )}
         control={
           <Switch
             checked={p.device_approval}
@@ -196,8 +211,10 @@ function PoliciesForm({
         }
       />
       <SettingRow
-        label="Audit log retention"
-        description="Days to keep audit events (30–3650, capped by the server). Export before they expire."
+        label={tr("Audit log retention")}
+        description={tr(
+          "Days to keep audit events (30–3650, capped by the server). Export before they expire.",
+        )}
         divider={false}
         control={
           <TextField

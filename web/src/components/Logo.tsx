@@ -1,4 +1,5 @@
 import { Box, Typography } from "@mui/material";
+import { tr } from "@/i18n";
 
 export function LogoMark({ size = 32 }: { size?: number }) {
   return (
@@ -25,7 +26,7 @@ export function Logo({ size = 32, showName = true }: { size?: number; showName?:
           component="span"
           sx={{ fontWeight: 700, letterSpacing: "-0.02em", lineHeight: 1 }}
         >
-          Termoso
+          {tr("Termoso")}
         </Typography>
       )}
     </Box>

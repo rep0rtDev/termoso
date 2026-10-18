@@ -23,6 +23,7 @@ import { Loading } from "@/components/Loading";
 import { PageHeader } from "@/components/PageHeader";
 import { RoleChip } from "@/components/RoleChip";
 import { formatDate } from "@/components/format";
+import { tr } from "@/i18n";
 
 export function VaultsPage() {
   const navigate = useNavigate();
@@ -54,8 +55,8 @@ export function VaultsPage() {
                 </Typography>
               </Stack>
               <Stack direction="row" spacing={0.5} sx={{ alignItems: "center", flexShrink: 0 }}>
-                {v.is_default && <Chip size="small" variant="outlined" label="Default" />}
-                {!v.sealed_key && <Chip size="small" color="warning" label="Key pending" />}
+                {v.is_default && <Chip size="small" variant="outlined" label={tr("Default")} />}
+                {!v.sealed_key && <Chip size="small" color="warning" label={tr("Key pending")} />}
                 <RoleChip role={v.my_role} />
               </Stack>
             </Stack>
@@ -68,11 +69,13 @@ export function VaultsPage() {
   return (
     <>
       <PageHeader
-        title="Vaults"
-        subtitle="Every host, key and snippet lives in a vault. Vault keys are sealed to member public keys — the server only stores ciphertext."
+        title={tr("Vaults")}
+        subtitle={tr(
+          "Every host, key and snippet lives in a vault. Vault keys are sealed to member public keys — the server only stores ciphertext.",
+        )}
       />
       {vaults.data.vaults.length === 0 ? (
-        <EmptyState icon={<LockRoundedIcon fontSize="inherit" />} title="No vaults" />
+        <EmptyState icon={<LockRoundedIcon fontSize="inherit" />} title={tr("No vaults")} />
       ) : (
         <Stack spacing={3}>
           <Grid container spacing={2}>
@@ -81,7 +84,7 @@ export function VaultsPage() {
           {team.length > 0 && (
             <>
               <Typography variant="overline" color="text.secondary">
-                Team vaults
+                {tr("Team vaults")}
               </Typography>
               <Grid container spacing={2}>
                 {team.map(card)}

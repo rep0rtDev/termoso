@@ -1,4 +1,5 @@
 import { useState, type SubmitEvent } from "react";
+import { tr } from "@/i18n";
 import { Alert, Button, Link, Stack, TextField, Typography } from "@mui/material";
 import { Link as RouterLink, useNavigate } from "react-router";
 import { errorMessage } from "@/api/client";
@@ -43,7 +44,7 @@ export function ForgotPasswordPage() {
         state: {
           phrase: out.recoveryPhrase,
           email: out.session.user.email,
-          title: "Your new recovery key",
+          title: tr("Your new recovery key"),
           next: "/account",
         },
       });
@@ -59,13 +60,15 @@ export function ForgotPasswordPage() {
   return (
     <form onSubmit={submit}>
       <AuthTitle
-        title="Reset your password"
-        subtitle="Termoso cannot email you a reset link: your data is encrypted with keys only you hold. Use your 24-word recovery key instead."
+        title={tr("Reset your password")}
+        subtitle={tr(
+          "Termoso cannot email you a reset link: your data is encrypted with keys only you hold. Use your 24-word recovery key instead.",
+        )}
       />
       <Stack spacing={2}>
         {error && <Alert severity="error">{error}</Alert>}
         <TextField
-          label="Email"
+          label={tr("Email")}
           type="email"
           autoComplete="username"
           required
@@ -74,7 +77,7 @@ export function ForgotPasswordPage() {
           disabled={busy}
         />
         <TextField
-          label="Recovery key (24 words)"
+          label={tr("Recovery key (24 words)")}
           multiline
           minRows={3}
           required
@@ -86,7 +89,7 @@ export function ForgotPasswordPage() {
           disabled={busy}
         />
         <PasswordField
-          label="New password"
+          label={tr("New password")}
           autoComplete="new-password"
           required
           value={password}
@@ -96,7 +99,7 @@ export function ForgotPasswordPage() {
           disabled={busy}
         />
         <PasswordField
-          label="Confirm new password"
+          label={tr("Confirm new password")}
           autoComplete="new-password"
           required
           value={confirm}
@@ -106,7 +109,7 @@ export function ForgotPasswordPage() {
           disabled={busy}
         />
         <Alert severity="info">
-          All other sessions will be signed out and a new recovery key will be generated.
+          {tr("All other sessions will be signed out and a new recovery key will be generated.")}
         </Alert>
         {siteKey && <Turnstile key={captchaRound} siteKey={siteKey} onToken={setCaptcha} />}
         <Button
@@ -119,13 +122,13 @@ export function ForgotPasswordPage() {
         </Button>
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
           <Link component={RouterLink} to="/login">
-            Back to sign in
+            {tr("Back to sign in")}
           </Link>
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
           Lost the recovery key too?{" "}
           <Link component={RouterLink} to="/start-over">
-            Start over with an empty vault
+            {tr("Start over with an empty vault")}
           </Link>{" "}
           — the old encrypted data cannot be recovered.
         </Typography>

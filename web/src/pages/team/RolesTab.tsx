@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { tr } from "@/i18n";
 import {
   Alert,
   Box,
@@ -101,7 +102,7 @@ function Matrix({
     mutationFn: (roleId: string) => teamsApi.setDefaultRole(team.id, roleId),
     onSuccess: async () => {
       await invalidate();
-      snack.notify("Default role updated");
+      snack.notify(tr("Default role updated"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -112,7 +113,7 @@ function Matrix({
       setDeleting(null);
       await invalidate();
       await qc.invalidateQueries({ queryKey: queryKeys.teamMembers(team.id) });
-      snack.notify("Role deleted");
+      snack.notify(tr("Role deleted"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -128,12 +129,14 @@ function Matrix({
 
   return (
     <Section
-      title="Roles"
-      description="One role per member. Built-in roles are fixed; custom roles start as a copy of one of them. Permissions marked “client” are honoured by the apps and are not a server-side boundary."
+      title={tr("Roles")}
+      description={tr(
+        "One role per member. Built-in roles are fixed; custom roles start as a copy of one of them. Permissions marked “client” are honoured by the apps and are not a server-side boundary.",
+      )}
       actions={
         manage && (
           <Button startIcon={<AddRoundedIcon />} onClick={() => setCreateOpen(true)}>
-            New role
+            {tr("New role")}
           </Button>
         )
       }
@@ -143,7 +146,7 @@ function Matrix({
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ minWidth: 260 }}>Permission</TableCell>
+              <TableCell sx={{ minWidth: 260 }}>{tr("Permission")}</TableCell>
               {sorted.map((r) => (
                 <TableCell key={r.id} align="center" sx={{ minWidth: 110 }}>
                   <Stack spacing={0.25} sx={{ alignItems: "center" }}>
@@ -162,7 +165,7 @@ function Matrix({
                               size="small"
                               disabled={r.id === defaultRoleId || setDefault.isPending}
                               onClick={() => setDefault.mutate(r.id)}
-                              aria-label="Make default role"
+                              aria-label={tr("Make default role")}
                             >
                               {r.id === defaultRoleId ? (
                                 <StarRoundedIcon fontSize="inherit" color="primary" />
@@ -174,14 +177,14 @@ function Matrix({
                         </Tooltip>
                       )}
                       {manage && !r.builtin && (
-                        <Tooltip title="Delete role">
+                        <Tooltip title={tr("Delete role")}>
                           <IconButton
                             size="small"
                             onClick={() => {
                               setReassign(defaultRoleId ?? "");
                               setDeleting(r);
                             }}
-                            aria-label="Delete role"
+                            aria-label={tr("Delete role")}
                           >
                             <DeleteOutlineRoundedIcon fontSize="inherit" />
                           </IconButton>
@@ -227,10 +230,10 @@ function Matrix({
               {deleting?.member_count ?? 0} member(s) currently hold it and will be moved to:
             </Typography>
             <FormControl size="small" fullWidth>
-              <InputLabel id="reassign-label">Role</InputLabel>
+              <InputLabel id="reassign-label">{tr("Role")}</InputLabel>
               <Select
                 labelId="reassign-label"
-                label="Role"
+                label={tr("Role")}
                 value={reassign}
                 onChange={(e) => setReassign(e.target.value)}
               >
@@ -253,7 +256,7 @@ function Matrix({
             disabled={remove.isPending || !reassign}
             onClick={() => deleting && remove.mutate({ role: deleting, to: reassign })}
           >
-            Delete
+            {tr("Delete")}
           </Button>
         </DialogActions>
       </Dialog>
@@ -293,10 +296,10 @@ function GroupRows({
                 <Typography variant="body2">{p.title}</Typography>
               </Tooltip>
               {p.enforced_by === "client" && (
-                <Chip label="client" size="small" variant="outlined" sx={{ height: 18 }} />
+                <Chip label={tr("client")} size="small" variant="outlined" sx={{ height: 18 }} />
               )}
               {p.dangerous && (
-                <Chip label="sensitive" size="small" color="warning" sx={{ height: 18 }} />
+                <Chip label={tr("sensitive")} size="small" color="warning" sx={{ height: 18 }} />
               )}
             </Stack>
             <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace" }}>
@@ -355,17 +358,17 @@ function CreateRoleDialog({
       setName("");
       setDescription("");
       await qc.invalidateQueries({ queryKey: queryKeys.teamRoles(team.id) });
-      snack.notify("Role created");
+      snack.notify(tr("Role created"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>New role</DialogTitle>
+      <DialogTitle>{tr("New role")}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
           <TextField
-            label="Name"
+            label={tr("Name")}
             value={name}
             onChange={(e) => setName(e.target.value)}
             autoFocus
@@ -373,17 +376,17 @@ function CreateRoleDialog({
             slotProps={{ htmlInput: { maxLength: 40 } }}
           />
           <TextField
-            label="Description"
+            label={tr("Description")}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             fullWidth
             slotProps={{ htmlInput: { maxLength: 200 } }}
           />
           <FormControl size="small" fullWidth>
-            <InputLabel id="copy-label">Start from</InputLabel>
+            <InputLabel id="copy-label">{tr("Start from")}</InputLabel>
             <Select
               labelId="copy-label"
-              label="Start from"
+              label={tr("Start from")}
               value={copyFrom}
               onChange={(e) => setCopyFrom(e.target.value)}
             >
@@ -399,13 +402,13 @@ function CreateRoleDialog({
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>{tr("Cancel")}</Button>
         <Button
           variant="contained"
           disabled={!name.trim() || create.isPending}
           onClick={() => create.mutate()}
         >
-          Create
+          {tr("Create")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -427,7 +430,7 @@ function MappingsSection({ team, roles }: { team: Team; roles: TeamRoleDef[] }) 
     onSuccess: async () => {
       setDraft(null);
       await qc.invalidateQueries({ queryKey: queryKeys.teamRoleMappings(team.id) });
-      snack.notify("Group mappings saved");
+      snack.notify(tr("Group mappings saved"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -438,13 +441,15 @@ function MappingsSection({ team, roles }: { team: Team; roles: TeamRoleDef[] }) 
   if (q.isError) return <Alert severity="error">{errorMessage(q.error)}</Alert>;
   return (
     <Section
-      title="Roles from identity provider groups"
-      description="Members who sign in through SSO or arrive via SCIM get the role of the first matching group (lowest priority number wins). Matching is case-insensitive; the owner is never changed."
+      title={tr("Roles from identity provider groups")}
+      description={tr(
+        "Members who sign in through SSO or arrive via SCIM get the role of the first matching group (lowest priority number wins). Matching is case-insensitive; the owner is never changed.",
+      )}
       actions={
         <Stack direction="row" spacing={1}>
           {rows.length > 0 && (
             <Button color="inherit" onClick={() => setConfirmClear(true)}>
-              Clear
+              {tr("Clear")}
             </Button>
           )}
           <Button
@@ -460,23 +465,26 @@ function MappingsSection({ team, roles }: { team: Team; roles: TeamRoleDef[] }) 
               ])
             }
           >
-            Add mapping
+            {tr("Add mapping")}
           </Button>
         </Stack>
       }
       disablePadding={rows.length > 0}
     >
       {rows.length === 0 ? (
-        <EmptyState title="No group mappings" description="Roles are assigned manually." />
+        <EmptyState
+          title={tr("No group mappings")}
+          description={tr("Roles are assigned manually.")}
+        />
       ) : (
         <>
           <TableContainer>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>IdP group</TableCell>
-                  <TableCell>Role</TableCell>
-                  <TableCell sx={{ width: 110 }}>Priority</TableCell>
+                  <TableCell>{tr("IdP group")}</TableCell>
+                  <TableCell>{tr("Role")}</TableCell>
+                  <TableCell sx={{ width: 110 }}>{tr("Priority")}</TableCell>
                   <TableCell align="right" />
                 </TableRow>
               </TableHead>
@@ -487,7 +495,7 @@ function MappingsSection({ team, roles }: { team: Team; roles: TeamRoleDef[] }) 
                       <TextField
                         size="small"
                         value={m.group_name}
-                        placeholder="e.g. engineering"
+                        placeholder={tr("e.g. engineering")}
                         onChange={(e) => update(i, { group_name: e.target.value })}
                         fullWidth
                       />
@@ -518,7 +526,7 @@ function MappingsSection({ team, roles }: { team: Team; roles: TeamRoleDef[] }) 
                       <IconButton
                         size="small"
                         onClick={() => setDraft(rows.filter((_, j) => j !== i))}
-                        aria-label="Remove mapping"
+                        aria-label={tr("Remove mapping")}
                       >
                         <DeleteOutlineRoundedIcon fontSize="small" />
                       </IconButton>
@@ -536,7 +544,7 @@ function MappingsSection({ team, roles }: { team: Team; roles: TeamRoleDef[] }) 
                 disabled={save.isPending || rows.some((m) => !m.group_name.trim() || !m.role_id)}
                 onClick={() => save.mutate(rows)}
               >
-                Save mappings
+                {tr("Save mappings")}
               </Button>
             </Box>
           )}
@@ -544,8 +552,8 @@ function MappingsSection({ team, roles }: { team: Team; roles: TeamRoleDef[] }) 
       )}
       <ConfirmDialog
         open={confirmClear}
-        title="Remove all group mappings?"
-        confirmLabel="Remove"
+        title={tr("Remove all group mappings?")}
+        confirmLabel={tr("Remove")}
         danger
         busy={save.isPending}
         onCancel={() => setConfirmClear(false)}

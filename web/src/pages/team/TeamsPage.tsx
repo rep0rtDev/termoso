@@ -1,4 +1,5 @@
 import { useState, type SubmitEvent } from "react";
+import { tr } from "@/i18n";
 import {
   Alert,
   Button,
@@ -73,8 +74,10 @@ export function TeamsPage() {
   return (
     <>
       <PageHeader
-        title="Team"
-        subtitle="Share vaults with teammates. Team data is end-to-end encrypted; the server only relays sealed keys."
+        title={tr("Team")}
+        subtitle={tr(
+          "Share vaults with teammates. Team data is end-to-end encrypted; the server only relays sealed keys.",
+        )}
         actions={
           teamsEnabled && (
             <Button
@@ -82,25 +85,29 @@ export function TeamsPage() {
               startIcon={<AddRoundedIcon />}
               onClick={() => setOpen(true)}
             >
-              New team
+              {tr("New team")}
             </Button>
           )
         }
       />
       {!teamsEnabled && teams.data.teams.length === 0 && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          Team creation is disabled on this server. You can still join teams you are invited to.
+          {tr(
+            "Team creation is disabled on this server. You can still join teams you are invited to.",
+          )}
         </Alert>
       )}
       {teams.data.teams.length === 0 ? (
         <EmptyState
           icon={<GroupsRoundedIcon fontSize="inherit" />}
-          title="You are not in a team yet"
-          description="Create a team to share hosts, keys and snippets with colleagues, or accept an invitation link."
+          title={tr("You are not in a team yet")}
+          description={tr(
+            "Create a team to share hosts, keys and snippets with colleagues, or accept an invitation link.",
+          )}
           action={
             teamsEnabled && (
               <Button variant="contained" onClick={() => setOpen(true)}>
-                Create a team
+                {tr("Create a team")}
               </Button>
             )
           }
@@ -151,15 +158,15 @@ export function TeamsPage() {
             create.mutate();
           }}
         >
-          <DialogTitle>New team</DialogTitle>
+          <DialogTitle>{tr("New team")}</DialogTitle>
           <DialogContent sx={{ display: "grid", gap: 2 }}>
             {create.isError && <Alert severity="error">{errorMessage(create.error)}</Alert>}
             <DialogContentText>
-              You become the owner and can invite members afterwards.
+              {tr("You become the owner and can invite members afterwards.")}
             </DialogContentText>
             <TextField
               autoFocus
-              label="Team name"
+              label={tr("Team name")}
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -168,14 +175,14 @@ export function TeamsPage() {
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={() => setOpen(false)} color="inherit" disabled={create.isPending}>
-              Cancel
+              {tr("Cancel")}
             </Button>
             <Button
               type="submit"
               variant="contained"
               disabled={create.isPending || name.trim() === ""}
             >
-              Create
+              {tr("Create")}
             </Button>
           </DialogActions>
         </form>

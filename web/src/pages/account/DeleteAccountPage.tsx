@@ -1,4 +1,5 @@
 import { useState, type SubmitEvent } from "react";
+import { tr } from "@/i18n";
 import { Alert, Button, Link, Stack, TextField, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { Link as RouterLink, useNavigate } from "react-router";
@@ -50,10 +51,10 @@ export function DeleteAccountPage() {
   return (
     <>
       <PageHeader
-        title="Delete account"
-        subtitle="Permanently remove your account and every encrypted record it owns."
+        title={tr("Delete account")}
+        subtitle={tr("Permanently remove your account and every encrypted record it owns.")}
       />
-      <Section title="This cannot be undone" danger>
+      <Section title={tr("This cannot be undone")} danger>
         <form onSubmit={submit}>
           <Stack spacing={2}>
             <Typography variant="body2">
@@ -66,7 +67,7 @@ export function DeleteAccountPage() {
                 {owned.map((t) => t.name).join(", ")}). Transfer ownership or delete{" "}
                 {owned.length === 1 ? "it" : "them"} first on the{" "}
                 <Link component={RouterLink} to="/team">
-                  Team
+                  {tr("Team")}
                 </Link>{" "}
                 page.
               </Alert>
@@ -82,11 +83,11 @@ export function DeleteAccountPage() {
             {codeSent && (
               <>
                 <Alert severity="info">
-                  We emailed you a confirmation code. Enter it to finish.
+                  {tr("We emailed you a confirmation code. Enter it to finish.")}
                 </Alert>
                 <TextField
                   autoFocus
-                  label="Confirmation code"
+                  label={tr("Confirmation code")}
                   required
                   inputMode="numeric"
                   autoComplete="one-time-code"
@@ -108,7 +109,7 @@ export function DeleteAccountPage() {
                 {codeSent || !mayNeedCode ? "Delete account" : "Send confirmation code"}
               </Button>
               <Button color="inherit" onClick={() => void navigate(-1)} disabled={busy}>
-                Cancel
+                {tr("Cancel")}
               </Button>
             </Stack>
           </Stack>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "@/i18n";
 import {
   Avatar,
   Box,
@@ -31,6 +32,7 @@ import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { Logo } from "@/components/Logo";
+import { LanguageToggle } from "./LanguageToggle";
 import { ThemeToggle } from "./ThemeToggle";
 import { useAuthState } from "@/auth/store";
 import { useAvatarUrl } from "@/components/UserAvatar";
@@ -48,22 +50,22 @@ interface NavItem {
 }
 
 const accountNav: NavItem[] = [
-  { to: "/account", label: "Account", icon: <PersonOutlineRoundedIcon /> },
-  { to: "/security", label: "Security", icon: <ShieldOutlinedIcon /> },
-  { to: "/devices", label: "Devices", icon: <DevicesOutlinedIcon /> },
+  { to: "/account", label: tr("Account"), icon: <PersonOutlineRoundedIcon /> },
+  { to: "/security", label: tr("Security"), icon: <ShieldOutlinedIcon /> },
+  { to: "/devices", label: tr("Devices"), icon: <DevicesOutlinedIcon /> },
 ];
 
 const workspaceNav: NavItem[] = [
-  { to: "/team", label: "Teams", icon: <GroupsOutlinedIcon /> },
-  { to: "/vaults", label: "Vaults", icon: <LockOutlinedIcon /> },
-  { to: "/bridges", label: "API Bridge", icon: <HubOutlinedIcon /> },
+  { to: "/team", label: tr("Teams"), icon: <GroupsOutlinedIcon /> },
+  { to: "/vaults", label: tr("Vaults"), icon: <LockOutlinedIcon /> },
+  { to: "/bridges", label: tr("API Bridge"), icon: <HubOutlinedIcon /> },
 ];
 
 const adminNav: NavItem[] = [
-  { to: "/admin", label: "Overview", icon: <DashboardOutlinedIcon />, end: true },
-  { to: "/admin/users", label: "Users", icon: <PeopleAltOutlinedIcon /> },
-  { to: "/admin/teams", label: "Teams", icon: <GroupsOutlinedIcon /> },
-  { to: "/admin/settings", label: "Server settings", icon: <TuneRoundedIcon /> },
+  { to: "/admin", label: tr("Overview"), icon: <DashboardOutlinedIcon />, end: true },
+  { to: "/admin/users", label: tr("Users"), icon: <PeopleAltOutlinedIcon /> },
+  { to: "/admin/teams", label: tr("Teams"), icon: <GroupsOutlinedIcon /> },
+  { to: "/admin/settings", label: tr("Server settings"), icon: <TuneRoundedIcon /> },
 ];
 
 function NavSection({
@@ -166,7 +168,7 @@ export function AppShell() {
         <NavSection items={accountNav} onNavigate={closeDrawer} />
         {info.data?.features.teams !== false && (
           <NavSection
-            title="Workspace"
+            title={tr("Workspace")}
             items={
               info.data?.features.bridges === false
                 ? workspaceNav.filter((i) => i.to !== "/bridges")
@@ -176,7 +178,7 @@ export function AppShell() {
           />
         )}
         {user?.is_admin && (
-          <NavSection title="Administration" items={adminNav} onNavigate={closeDrawer} />
+          <NavSection title={tr("Administration")} items={adminNav} onNavigate={closeDrawer} />
         )}
       </Box>
       <Box
@@ -244,7 +246,7 @@ export function AppShell() {
           }}
         >
           {!isDesktop && (
-            <IconButton onClick={() => setMobileOpen(true)} aria-label="Open navigation">
+            <IconButton onClick={() => setMobileOpen(true)} aria-label={tr("Open navigation")}>
               <MenuRoundedIcon />
             </IconButton>
           )}
@@ -254,16 +256,17 @@ export function AppShell() {
               size="small"
               color="warning"
               variant="outlined"
-              label="Email not verified"
+              label={tr("Email not verified")}
               onClick={() => navigate("/account#email")}
               sx={{ cursor: "pointer" }}
             />
           )}
+          <LanguageToggle />
           <ThemeToggle />
           <Tooltip title={user?.email ?? ""}>
             <IconButton
               onClick={(e) => setMenuAnchor(e.currentTarget)}
-              aria-label="Account menu"
+              aria-label={tr("Account menu")}
               sx={{ ml: 0.5 }}
             >
               <Avatar
@@ -308,7 +311,7 @@ export function AppShell() {
               <ListItemIcon>
                 <OpenInNewRoundedIcon fontSize="small" />
               </ListItemIcon>
-              <ListItemText>Download the app</ListItemText>
+              <ListItemText>{tr("Download the app")}</ListItemText>
             </MenuItem>
             <MenuItem
               onClick={() => {
@@ -319,7 +322,7 @@ export function AppShell() {
               <ListItemIcon>
                 <DeleteOutlineRoundedIcon fontSize="small" />
               </ListItemIcon>
-              <ListItemText>Delete account</ListItemText>
+              <ListItemText>{tr("Delete account")}</ListItemText>
             </MenuItem>
             <Divider sx={{ my: 0.5 }} />
             <MenuItem
@@ -331,7 +334,7 @@ export function AppShell() {
               <ListItemIcon>
                 <LogoutRoundedIcon fontSize="small" />
               </ListItemIcon>
-              <ListItemText>Sign out</ListItemText>
+              <ListItemText>{tr("Sign out")}</ListItemText>
             </MenuItem>
           </Menu>
         </Box>

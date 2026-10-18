@@ -1,4 +1,5 @@
 import { useMemo, useState, type SubmitEvent } from "react";
+import { tr } from "@/i18n";
 import {
   Alert,
   Box,
@@ -112,15 +113,15 @@ type TabKey = "members" | "roles" | "policies" | "audit" | "scim";
 function TeamTabs({ team, admin }: { team: Team; admin: boolean }) {
   const [params, setParams] = useSearchParams();
   const all: { key: TabKey; label: string; show: boolean }[] = [
-    { key: "members", label: "Members", show: true },
-    { key: "roles", label: "Roles", show: can(team, "roles.manage") },
-    { key: "policies", label: "Policies", show: can(team, "policies.manage") },
+    { key: "members", label: tr("Members"), show: true },
+    { key: "roles", label: tr("Roles"), show: can(team, "roles.manage") },
+    { key: "policies", label: tr("Policies"), show: can(team, "policies.manage") },
     {
       key: "audit",
-      label: "Audit",
+      label: tr("Audit"),
       show: can(team, "audit.view") || can(team, "webhooks.manage"),
     },
-    { key: "scim", label: "SCIM", show: can(team, "scim.manage") || can(team, "scim.tokens") },
+    { key: "scim", label: tr("SCIM"), show: can(team, "scim.manage") || can(team, "scim.tokens") },
   ];
   const tabs = all.filter((t) => t.show);
   const requested = params.get("tab");
@@ -178,7 +179,7 @@ function TeamActions({ team }: { team: Team }) {
     onSuccess: async () => {
       setRenameOpen(false);
       await invalidate();
-      snack.notify("Team renamed");
+      snack.notify(tr("Team renamed"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -203,17 +204,17 @@ function TeamActions({ team }: { team: Team }) {
     <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
       {isAdmin(team.my_role) && (
         <Button variant="outlined" onClick={() => setRenameOpen(true)}>
-          Rename
+          {tr("Rename")}
         </Button>
       )}
       {team.my_role !== "owner" && (
         <Button variant="outlined" color="error" onClick={() => setLeaveOpen(true)}>
-          Leave team
+          {tr("Leave team")}
         </Button>
       )}
       {team.my_role === "owner" && (
         <Button variant="outlined" color="error" onClick={() => setDeleteOpen(true)}>
-          Delete team
+          {tr("Delete team")}
         </Button>
       )}
 
@@ -229,12 +230,12 @@ function TeamActions({ team }: { team: Team }) {
             rename.mutate();
           }}
         >
-          <DialogTitle>Rename team</DialogTitle>
+          <DialogTitle>{tr("Rename team")}</DialogTitle>
           <DialogContent>
             <TextField
               autoFocus
               fullWidth
-              label="Team name"
+              label={tr("Team name")}
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -243,22 +244,22 @@ function TeamActions({ team }: { team: Team }) {
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={() => setRenameOpen(false)} color="inherit">
-              Cancel
+              {tr("Cancel")}
             </Button>
             <Button
               type="submit"
               variant="contained"
               disabled={rename.isPending || name.trim() === ""}
             >
-              Save
+              {tr("Save")}
             </Button>
           </DialogActions>
         </form>
       </Dialog>
       <ConfirmDialog
         open={leaveOpen}
-        title="Leave team?"
-        confirmLabel="Leave"
+        title={tr("Leave team?")}
+        confirmLabel={tr("Leave")}
         danger
         busy={leave.isPending}
         onCancel={() => setLeaveOpen(false)}
@@ -269,8 +270,8 @@ function TeamActions({ team }: { team: Team }) {
       </ConfirmDialog>
       <ConfirmDialog
         open={deleteOpen}
-        title="Delete team?"
-        confirmLabel="Delete"
+        title={tr("Delete team?")}
+        confirmLabel={tr("Delete")}
         danger
         busy={del.isPending}
         onCancel={() => setDeleteOpen(false)}
@@ -323,7 +324,7 @@ function MembersSection({ team }: { team: Team }) {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: queryKeys.teamMembers(team.id) });
       await qc.invalidateQueries({ queryKey: queryKeys.teamRoles(team.id) });
-      snack.notify("Role updated");
+      snack.notify(tr("Role updated"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -350,7 +351,7 @@ function MembersSection({ team }: { team: Team }) {
   const admin = isAdmin(team.my_role);
 
   return (
-    <Section title="Members" disablePadding>
+    <Section title={tr("Members")} disablePadding>
       {members.isPending ? (
         <Loading minHeight={120} />
       ) : members.isError ? (
@@ -362,9 +363,9 @@ function MembersSection({ team }: { team: Team }) {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Member</TableCell>
-                <TableCell>Role</TableCell>
-                <TableCell>Joined</TableCell>
+                <TableCell>{tr("Member")}</TableCell>
+                <TableCell>{tr("Role")}</TableCell>
+                <TableCell>{tr("Joined")}</TableCell>
                 {admin && <TableCell align="right" />}
               </TableRow>
             </TableHead>
@@ -384,8 +385,12 @@ function MembersSection({ team }: { team: Team }) {
                         />
                         <MfaBadge m={m} required={team.require_mfa === true} />
                         {m.managed && (
-                          <Tooltip title="Account was created through this team's invitation; the owner can delete it">
-                            <Chip label="Team account" size="small" variant="outlined" />
+                          <Tooltip
+                            title={tr(
+                              "Account was created through this team's invitation; the owner can delete it",
+                            )}
+                          >
+                            <Chip label={tr("Team account")} size="small" variant="outlined" />
                           </Tooltip>
                         )}
                       </Stack>
@@ -428,10 +433,10 @@ function MembersSection({ team }: { team: Team }) {
                             }}
                             sx={{ minWidth: 130 }}
                           >
-                            <MenuItem value="member">Member</MenuItem>
-                            <MenuItem value="admin">Admin</MenuItem>
+                            <MenuItem value="member">{tr("Member")}</MenuItem>
+                            <MenuItem value="admin">{tr("Admin")}</MenuItem>
                             {team.my_role === "owner" && (
-                              <MenuItem value="owner">Owner (transfer)</MenuItem>
+                              <MenuItem value="owner">{tr("Owner (transfer)")}</MenuItem>
                             )}
                           </Select>
                         ) : m.role_ref &&
@@ -462,11 +467,11 @@ function MembersSection({ team }: { team: Team }) {
                     {admin && (
                       <TableCell align="right">
                         {canEdit && (
-                          <Tooltip title="Remove from team">
+                          <Tooltip title={tr("Remove from team")}>
                             <IconButton
                               size="small"
                               onClick={() => setRemoving(m)}
-                              aria-label="Remove member"
+                              aria-label={tr("Remove member")}
                             >
                               <PersonRemoveRoundedIcon fontSize="small" />
                             </IconButton>
@@ -493,8 +498,8 @@ function MembersSection({ team }: { team: Team }) {
       />
       <ConfirmDialog
         open={transfer !== null}
-        title="Transfer ownership?"
-        confirmLabel="Transfer"
+        title={tr("Transfer ownership?")}
+        confirmLabel={tr("Transfer")}
         busy={setRole.isPending}
         onCancel={() => setTransfer(null)}
         onConfirm={() => {
@@ -549,7 +554,7 @@ function RemoveMemberDialog({
                   control={<Radio size="small" />}
                   label={
                     <>
-                      <Typography variant="body2">Remove from team</Typography>
+                      <Typography variant="body2">{tr("Remove from team")}</Typography>
                       <Typography variant="caption" color="text.secondary">
                         Becomes an individual account and keeps its personal vault; loses access to
                         the team and its vaults.
@@ -563,7 +568,7 @@ function RemoveMemberDialog({
                   label={
                     <>
                       <Typography variant="body2" color="error">
-                        Delete the account
+                        {tr("Delete the account")}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         Permanently deletes the account, its personal vault, devices and session
@@ -592,7 +597,7 @@ function RemoveMemberDialog({
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onCancel} disabled={busy} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           onClick={() => onConfirm(deleting ? "delete_account" : "remove")}
@@ -647,15 +652,17 @@ function InvitesSection({ team }: { team: Team }) {
 
   return (
     <Section
-      title="Invitations"
-      description="Pending invitations expire automatically. The invitee receives a link by email when SMTP is configured; you can also copy it."
+      title={tr("Invitations")}
+      description={tr(
+        "Pending invitations expire automatically. The invitee receives a link by email when SMTP is configured; you can also copy it.",
+      )}
       actions={
         <Button
           variant="outlined"
           startIcon={<PersonAddAltRoundedIcon />}
           onClick={() => setOpen(true)}
         >
-          Invite
+          {tr("Invite")}
         </Button>
       }
       disablePadding
@@ -667,7 +674,7 @@ function InvitesSection({ team }: { team: Team }) {
           <Alert severity="error">{errorMessage(invites.error)}</Alert>
         </Box>
       ) : invites.data.invites.length === 0 ? (
-        <EmptyState title="No pending invitations" />
+        <EmptyState title={tr("No pending invitations")} />
       ) : (
         <List disablePadding>
           {invites.data.invites.map((i) => (
@@ -675,11 +682,11 @@ function InvitesSection({ team }: { team: Team }) {
               key={i.id}
               divider
               secondaryAction={
-                <Tooltip title="Revoke invitation">
+                <Tooltip title={tr("Revoke invitation")}>
                   <IconButton
                     edge="end"
                     onClick={() => setRevoking(i.id)}
-                    aria-label="Revoke invitation"
+                    aria-label={tr("Revoke invitation")}
                   >
                     <DeleteOutlineRoundedIcon />
                   </IconButton>
@@ -717,7 +724,7 @@ function InvitesSection({ team }: { team: Team }) {
             {create.isError && <Alert severity="error">{errorMessage(create.error)}</Alert>}
             <TextField
               autoFocus
-              label="Email"
+              label={tr("Email")}
               type="email"
               required
               value={email}
@@ -725,15 +732,15 @@ function InvitesSection({ team }: { team: Team }) {
               disabled={create.isPending}
             />
             <FormControl>
-              <InputLabel id="invite-role">Team role</InputLabel>
+              <InputLabel id="invite-role">{tr("Team role")}</InputLabel>
               <Select
                 labelId="invite-role"
-                label="Team role"
+                label={tr("Team role")}
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
               >
-                <MenuItem value="member">Member</MenuItem>
-                <MenuItem value="admin">Admin</MenuItem>
+                <MenuItem value="member">{tr("Member")}</MenuItem>
+                <MenuItem value="admin">{tr("Admin")}</MenuItem>
               </Select>
             </FormControl>
             {teamVaults.length > 0 && (
@@ -760,21 +767,23 @@ function InvitesSection({ team }: { team: Team }) {
                   ))}
                 </FormGroup>
                 <Typography variant="caption" color="text.secondary">
-                  After they join, a vault manager seals the key to them under “Pending vault keys”.
+                  {tr(
+                    "After they join, a vault manager seals the key to them under “Pending vault keys”.",
+                  )}
                 </Typography>
               </FormControl>
             )}
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={() => setOpen(false)} color="inherit" disabled={create.isPending}>
-              Cancel
+              {tr("Cancel")}
             </Button>
             <Button
               type="submit"
               variant="contained"
               disabled={create.isPending || email.trim() === ""}
             >
-              Send invitation
+              {tr("Send invitation")}
             </Button>
           </DialogActions>
         </form>
@@ -786,24 +795,26 @@ function InvitesSection({ team }: { team: Team }) {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Invitation created</DialogTitle>
+        <DialogTitle>{tr("Invitation created")}</DialogTitle>
         <DialogContent sx={{ display: "grid", gap: 2 }}>
           <DialogContentText>
-            Share this link with the invitee. It works once and only for their email address.
+            {tr(
+              "Share this link with the invitee. It works once and only for their email address.",
+            )}
           </DialogContentText>
-          <CopyField label="Invitation link" value={createdUrl ?? ""} />
+          <CopyField label={tr("Invitation link")} value={createdUrl ?? ""} />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button variant="contained" onClick={() => setCreatedUrl(null)}>
-            Done
+            {tr("Done")}
           </Button>
         </DialogActions>
       </Dialog>
 
       <ConfirmDialog
         open={revoking !== null}
-        title="Revoke invitation?"
-        confirmLabel="Revoke"
+        title={tr("Revoke invitation?")}
+        confirmLabel={tr("Revoke")}
         danger
         busy={revoke.isPending}
         onCancel={() => setRevoking(null)}
@@ -811,7 +822,7 @@ function InvitesSection({ team }: { team: Team }) {
           if (revoking) revoke.mutate(revoking);
         }}
       >
-        The invitation link stops working immediately.
+        {tr("The invitation link stops working immediately.")}
       </ConfirmDialog>
     </Section>
   );
@@ -874,8 +885,10 @@ function DigestSection({ team }: { team: Team }) {
 
   return (
     <Section
-      title="Activity digest"
-      description="Get the team activity log by e-mail. It goes only to you, contains the same events as the log (who did what, never vault contents), and is skipped for quiet periods."
+      title={tr("Activity digest")}
+      description={tr(
+        "Get the team activity log by e-mail. It goes only to you, contains the same events as the log (who did what, never vault contents), and is skipped for quiet periods.",
+      )}
       actions={
         <Button
           variant="outlined"
@@ -883,7 +896,7 @@ function DigestSection({ team }: { team: Team }) {
           disabled={disabled || send.isPending}
           onClick={() => send.mutate()}
         >
-          Send now
+          {tr("Send now")}
         </Button>
       }
     >
@@ -893,7 +906,7 @@ function DigestSection({ team }: { team: Team }) {
         </Alert>
       )}
       <SettingRow
-        label="Frequency"
+        label={tr("Frequency")}
         description={
           cadence === "off"
             ? "Not subscribed."
@@ -920,7 +933,7 @@ function DigestSection({ team }: { team: Team }) {
       />
       {cadence !== "off" && sub.data?.last_sent_at && (
         <SettingRow
-          label="Last sent"
+          label={tr("Last sent")}
           control={
             <Typography variant="body2" color="text.secondary">
               {formatRelative(sub.data.last_sent_at)}
@@ -979,8 +992,10 @@ function PendingKeysSection({ team }: { team: Team }) {
 
   return (
     <Section
-      title="Pending vault keys"
-      description="These members joined a vault but do not have its key yet. Granting seals the key to their public key in your browser — the server never sees it."
+      title={tr("Pending vault keys")}
+      description={tr(
+        "These members joined a vault but do not have its key yet. Granting seals the key to their public key in your browser — the server never sees it.",
+      )}
       actions={
         <Button
           variant="contained"
@@ -1008,7 +1023,7 @@ function PendingKeysSection({ team }: { team: Team }) {
                   disabled={grant.isPending || !canGrant}
                   onClick={() => grant.mutate([p])}
                 >
-                  Grant
+                  {tr("Grant")}
                 </Button>
               }
             >
@@ -1076,12 +1091,14 @@ function TeamVaultsSection({ team }: { team: Team }) {
 
   return (
     <Section
-      title="Team vaults"
-      description="Each vault has its own key, sealed to every member. You are always the first manager of a vault you create."
+      title={tr("Team vaults")}
+      description={tr(
+        "Each vault has its own key, sealed to every member. You are always the first manager of a vault you create.",
+      )}
       actions={
         admin && (
           <Button variant="outlined" startIcon={<AddRoundedIcon />} onClick={() => setOpen(true)}>
-            New vault
+            {tr("New vault")}
           </Button>
         )
       }
@@ -1091,7 +1108,7 @@ function TeamVaultsSection({ team }: { team: Team }) {
         <Loading minHeight={100} />
       ) : teamVaults.length === 0 ? (
         <EmptyState
-          title="No team vaults yet"
+          title={tr("No team vaults yet")}
           description={admin ? "Create a vault to start sharing hosts and keys." : undefined}
         />
       ) : (
@@ -1111,7 +1128,7 @@ function TeamVaultsSection({ team }: { team: Team }) {
                     <RoleChip role={v.my_role} />
                     {!v.sealed_key && (
                       <Typography variant="caption" color="warning.main">
-                        key pending
+                        {tr("key pending")}
                       </Typography>
                     )}
                   </Stack>
@@ -1135,17 +1152,17 @@ function TeamVaultsSection({ team }: { team: Team }) {
             create.mutate();
           }}
         >
-          <DialogTitle>New team vault</DialogTitle>
+          <DialogTitle>{tr("New team vault")}</DialogTitle>
           <DialogContent sx={{ display: "grid", gap: 2 }}>
             <TextField
               autoFocus
-              label="Vault name"
+              label={tr("Vault name")}
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={create.isPending}
             />
-            <Typography variant="subtitle2">Members</Typography>
+            <Typography variant="subtitle2">{tr("Members")}</Typography>
             <TableContainer>
               <Table size="small">
                 <TableBody>
@@ -1174,10 +1191,10 @@ function TeamVaultsSection({ team }: { team: Team }) {
                               }
                               sx={{ minWidth: 130 }}
                             >
-                              <MenuItem value="none">No access</MenuItem>
-                              <MenuItem value="viewer">Viewer</MenuItem>
-                              <MenuItem value="editor">Editor</MenuItem>
-                              <MenuItem value="manager">Manager</MenuItem>
+                              <MenuItem value="none">{tr("No access")}</MenuItem>
+                              <MenuItem value="viewer">{tr("Viewer")}</MenuItem>
+                              <MenuItem value="editor">{tr("Editor")}</MenuItem>
+                              <MenuItem value="manager">{tr("Manager")}</MenuItem>
                             </Select>
                           )}
                         </TableCell>
@@ -1190,14 +1207,14 @@ function TeamVaultsSection({ team }: { team: Team }) {
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={() => setOpen(false)} color="inherit" disabled={create.isPending}>
-              Cancel
+              {tr("Cancel")}
             </Button>
             <Button
               type="submit"
               variant="contained"
               disabled={create.isPending || name.trim() === ""}
             >
-              Create
+              {tr("Create")}
             </Button>
           </DialogActions>
         </form>

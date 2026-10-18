@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { tr } from "@/i18n";
 import { Alert, Button, Stack } from "@mui/material";
 import { useNavigate, useSearchParams } from "react-router";
 import { errorMessage } from "@/api/client";
@@ -38,7 +39,7 @@ export function SsoCallbackPage() {
         switch (r.status) {
           case "pending":
             if (attempts++ < 30) window.setTimeout(() => void tick(), 1000);
-            else setError("The identity provider did not finish in time. Please try again.");
+            else setError(tr("The identity provider did not finish in time. Please try again."));
             return;
           case "failed":
             setError(r.message);
@@ -77,11 +78,11 @@ export function SsoCallbackPage() {
   if (error) {
     return (
       <>
-        <AuthTitle title="Single sign-on failed" />
+        <AuthTitle title={tr("Single sign-on failed")} />
         <Stack spacing={2}>
           <Alert severity="error">{error}</Alert>
           <Button variant="contained" onClick={() => navigate("/login", { replace: true })}>
-            Back to sign in
+            {tr("Back to sign in")}
           </Button>
         </Stack>
       </>
@@ -89,7 +90,10 @@ export function SsoCallbackPage() {
   }
   return (
     <>
-      <AuthTitle title="Completing sign-in…" subtitle="Talking to your identity provider." />
+      <AuthTitle
+        title={tr("Completing sign-in…")}
+        subtitle={tr("Talking to your identity provider.")}
+      />
       <Loading minHeight={120} />
     </>
   );

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { tr } from "@/i18n";
 import {
   Alert,
   Box,
@@ -64,12 +65,14 @@ export function AdminUsersPage() {
   return (
     <>
       <PageHeader
-        title="Users"
-        subtitle="Everyone registered on this server. The server never sees passwords or vault contents, so there is nothing to reset except MFA and sessions."
+        title={tr("Users")}
+        subtitle={tr(
+          "Everyone registered on this server. The server never sees passwords or vault contents, so there is nothing to reset except MFA and sessions.",
+        )}
         actions={
           <TextField
             size="small"
-            placeholder="Search by email or name"
+            placeholder={tr("Search by email or name")}
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -99,18 +102,18 @@ export function AdminUsersPage() {
             <Alert severity="error">{errorMessage(users.error)}</Alert>
           </Box>
         ) : users.data.items.length === 0 ? (
-          <EmptyState title="No users match" />
+          <EmptyState title={tr("No users match")} />
         ) : (
           <>
             <TableContainer>
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>User</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell align="right">Devices</TableCell>
-                    <TableCell>Last seen</TableCell>
-                    <TableCell>Joined</TableCell>
+                    <TableCell>{tr("User")}</TableCell>
+                    <TableCell>{tr("Status")}</TableCell>
+                    <TableCell align="right">{tr("Devices")}</TableCell>
+                    <TableCell>{tr("Last seen")}</TableCell>
+                    <TableCell>{tr("Joined")}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -132,27 +135,31 @@ export function AdminUsersPage() {
                       </TableCell>
                       <TableCell>
                         <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: "wrap" }}>
-                          {u.is_owner && <Chip size="small" color="secondary" label="Owner" />}
-                          {u.is_admin && !u.is_owner && (
-                            <Chip size="small" color="primary" label="Admin" />
+                          {u.is_owner && (
+                            <Chip size="small" color="secondary" label={tr("Owner")} />
                           )}
-                          {u.disabled && <Chip size="small" color="error" label="Disabled" />}
+                          {u.is_admin && !u.is_owner && (
+                            <Chip size="small" color="primary" label={tr("Admin")} />
+                          )}
+                          {u.disabled && <Chip size="small" color="error" label={tr("Disabled")} />}
                           {u.email_verified ? (
                             <Chip
                               size="small"
                               variant="outlined"
                               color="success"
-                              label="Verified"
+                              label={tr("Verified")}
                             />
                           ) : (
                             <Chip
                               size="small"
                               variant="outlined"
                               color="warning"
-                              label="Unverified"
+                              label={tr("Unverified")}
                             />
                           )}
-                          {u.mfa_enabled && <Chip size="small" variant="outlined" label="MFA" />}
+                          {u.mfa_enabled && (
+                            <Chip size="small" variant="outlined" label={tr("MFA")} />
+                          )}
                         </Stack>
                       </TableCell>
                       <TableCell align="right">{u.devices}</TableCell>
@@ -218,7 +225,7 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
       setConfirm(null);
       if (kind === "delete") {
         onClose();
-        snack.notify("User deleted");
+        snack.notify(tr("User deleted"));
       } else {
         snack.notify(
           kind === "revoke"
@@ -240,8 +247,8 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
       slotProps={{ paper: { sx: { width: { xs: "100%", sm: 420 }, p: 3 } } }}
     >
       <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", mb: 2 }}>
-        <Typography variant="h6">User</Typography>
-        <IconButton onClick={onClose} aria-label="Close">
+        <Typography variant="h6">{tr("User")}</Typography>
+        <IconButton onClick={onClose} aria-label={tr("Close")}>
           <CloseRoundedIcon />
         </IconButton>
       </Stack>
@@ -257,10 +264,10 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
             you={isMe}
           />
           <Stack spacing={0.5}>
-            <Row label="Joined" value={formatDateTime(u.created_at)} />
-            <Row label="Last seen" value={formatRelative(u.last_seen_at)} />
-            <Row label="Devices" value={String(u.devices)} />
-            <Row label="MFA" value={u.mfa_enabled ? "Enabled" : "Off"} />
+            <Row label={tr("Joined")} value={formatDateTime(u.created_at)} />
+            <Row label={tr("Last seen")} value={formatRelative(u.last_seen_at)} />
+            <Row label={tr("Devices")} value={String(u.devices)} />
+            <Row label={tr("MFA")} value={u.mfa_enabled ? "Enabled" : "Off"} />
           </Stack>
           <Divider />
           <Stack>
@@ -272,7 +279,7 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
                   onChange={(e) => update.mutate({ is_admin: e.target.checked })}
                 />
               }
-              label="Server administrator"
+              label={tr("Server administrator")}
             />
             <FormControlLabel
               control={
@@ -282,7 +289,7 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
                   onChange={(e) => update.mutate({ email_verified: e.target.checked })}
                 />
               }
-              label="Email verified"
+              label={tr("Email verified")}
             />
             <FormControlLabel
               control={
@@ -293,7 +300,7 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
                   onChange={(e) => update.mutate({ disabled: e.target.checked })}
                 />
               }
-              label="Disabled (cannot sign in; sessions revoked)"
+              label={tr("Disabled (cannot sign in; sessions revoked)")}
             />
           </Stack>
           <Divider />
@@ -303,7 +310,7 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
               onClick={() => setConfirm("revoke")}
               disabled={u.devices === 0}
             >
-              Sign out all devices
+              {tr("Sign out all devices")}
             </Button>
             <Tooltip title={u.mfa_enabled ? "" : "The user has no MFA configured"}>
               <span>
@@ -313,7 +320,7 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
                   onClick={() => setConfirm("reset-mfa")}
                   disabled={!u.mfa_enabled || (u.is_owner && !isMe)}
                 >
-                  Reset MFA
+                  {tr("Reset MFA")}
                 </Button>
               </span>
             </Tooltip>
@@ -323,15 +330,15 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
               onClick={() => setConfirm("delete")}
               disabled={isMe || u.is_owner}
             >
-              Delete user
+              {tr("Delete user")}
             </Button>
           </Stack>
         </Stack>
       )}
       <ConfirmDialog
         open={confirm === "revoke"}
-        title="Sign out all devices?"
-        confirmLabel="Sign out"
+        title={tr("Sign out all devices?")}
+        confirmLabel={tr("Sign out")}
         busy={action.isPending}
         onCancel={() => setConfirm(null)}
         onConfirm={() => action.mutate("revoke")}
@@ -340,8 +347,8 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
       </ConfirmDialog>
       <ConfirmDialog
         open={confirm === "reset-mfa"}
-        title="Reset two-factor authentication?"
-        confirmLabel="Reset MFA"
+        title={tr("Reset two-factor authentication?")}
+        confirmLabel={tr("Reset MFA")}
         danger
         busy={action.isPending}
         onCancel={() => setConfirm(null)}
@@ -352,8 +359,8 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
       </ConfirmDialog>
       <ConfirmDialog
         open={confirm === "delete"}
-        title="Delete user?"
-        confirmLabel="Delete"
+        title={tr("Delete user?")}
+        confirmLabel={tr("Delete")}
         danger
         busy={action.isPending}
         onCancel={() => setConfirm(null)}

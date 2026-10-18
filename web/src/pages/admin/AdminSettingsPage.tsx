@@ -1,4 +1,5 @@
 import { useState, type SubmitEvent } from "react";
+import { tr } from "@/i18n";
 import { Alert, Box, Button, Grid, Stack, Switch, TextField, Typography } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@/api/client";
@@ -21,8 +22,10 @@ export function AdminSettingsPage() {
   return (
     <>
       <PageHeader
-        title="Server settings"
-        subtitle="Runtime policy for this server. Connection settings (database, SMTP, S3, SSO) live in the environment."
+        title={tr("Server settings")}
+        subtitle={tr(
+          "Runtime policy for this server. Connection settings (database, SMTP, S3, SSO) live in the environment.",
+        )}
       />
       <SettingsForm key={settings.dataUpdatedAt} initial={settings.data} />
       <TestEmailSection />
@@ -48,7 +51,7 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
     onSuccess: async (saved) => {
       qc.setQueryData(queryKeys.adminSettings, saved);
       await qc.invalidateQueries({ queryKey: queryKeys.serverInfo });
-      snack.notify("Settings saved");
+      snack.notify(tr("Settings saved"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -70,11 +73,11 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
         save.mutate();
       }}
     >
-      <Section title="Registration & sign-in" disablePadding>
+      <Section title={tr("Registration & sign-in")} disablePadding>
         <Box sx={{ px: 2.5, py: 0.5 }}>
           <SettingRow
-            label="Open registration"
-            description="Anyone who can reach this server can create an account."
+            label={tr("Open registration")}
+            description={tr("Anyone who can reach this server can create an account.")}
             control={
               <Switch
                 checked={s.registration_open}
@@ -83,21 +86,25 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
             }
           />
           <SettingRow
-            label="Allowed email domains"
-            description="Comma-separated, e.g. example.com, corp.example.org. Empty allows any domain."
+            label={tr("Allowed email domains")}
+            description={tr(
+              "Comma-separated, e.g. example.com, corp.example.org. Empty allows any domain.",
+            )}
             control={
               <TextField
                 value={domains}
                 onChange={(e) => setDomains(e.target.value)}
-                placeholder="Any domain"
+                placeholder={tr("Any domain")}
                 fullWidth={false}
                 sx={{ width: { xs: 180, sm: 280 } }}
               />
             }
           />
           <SettingRow
-            label="Sign-up via single sign-on"
-            description="Users verified by a configured SSO provider may create an account even when registration is closed. Allowed domains still apply."
+            label={tr("Sign-up via single sign-on")}
+            description={tr(
+              "Users verified by a configured SSO provider may create an account even when registration is closed. Allowed domains still apply.",
+            )}
             control={
               <Switch
                 checked={s.sso_registration}
@@ -106,8 +113,8 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
             }
           />
           <SettingRow
-            label="Require verified email"
-            description="Accounts cannot be used until the address is confirmed."
+            label={tr("Require verified email")}
+            description={tr("Accounts cannot be used until the address is confirmed.")}
             control={
               <Switch
                 checked={s.require_email_verification}
@@ -116,8 +123,8 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
             }
           />
           <SettingRow
-            label="New-device approval"
-            description="Signing in from an unknown device requires a code sent by email."
+            label={tr("New-device approval")}
+            description={tr("Signing in from an unknown device requires a code sent by email.")}
             control={
               <Switch
                 checked={s.new_device_email_approval}
@@ -126,8 +133,8 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
             }
           />
           <SettingRow
-            label="Users can create teams"
-            description="When off, only administrators create teams."
+            label={tr("Users can create teams")}
+            description={tr("When off, only administrators create teams.")}
             control={
               <Switch
                 checked={s.users_can_create_teams}
@@ -137,13 +144,13 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
           />
         </Box>
       </Section>
-      <Section title="Sessions & limits">
+      <Section title={tr("Sessions & limits")}>
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <TextField
               fullWidth
               type="number"
-              label="Session lifetime (days)"
+              label={tr("Session lifetime (days)")}
               value={s.session_ttl_days}
               onChange={(e) => set("session_ttl_days", num(e.target.value, s.session_ttl_days))}
               slotProps={{ htmlInput: { min: 1, max: 3650 } }}
@@ -153,7 +160,7 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
             <TextField
               fullWidth
               type="number"
-              label="Max record size (MiB)"
+              label={tr("Max record size (MiB)")}
               value={s.max_entity_bytes / MiB}
               onChange={(e) =>
                 set(
@@ -168,7 +175,7 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
             <TextField
               fullWidth
               type="number"
-              label="Max session log size (MiB)"
+              label={tr("Max session log size (MiB)")}
               value={s.max_log_bytes / MiB}
               onChange={(e) =>
                 set("max_log_bytes", Math.round(num(e.target.value, s.max_log_bytes / MiB) * MiB))
@@ -180,7 +187,7 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
             <TextField
               fullWidth
               type="number"
-              label="Log quota per user (MiB)"
+              label={tr("Log quota per user (MiB)")}
               value={s.log_quota_bytes / MiB}
               onChange={(e) =>
                 set(
@@ -195,7 +202,7 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
             <TextField
               fullWidth
               type="number"
-              label="Team activity log retention (days)"
+              label={tr("Team activity log retention (days)")}
               value={s.audit_retention_days}
               onChange={(e) =>
                 set("audit_retention_days", num(e.target.value, s.audit_retention_days))
@@ -207,7 +214,7 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
         </Grid>
         <Stack direction="row" spacing={1} sx={{ mt: 2.5 }}>
           <Button type="submit" variant="contained" disabled={!dirty || save.isPending}>
-            Save settings
+            {tr("Save settings")}
           </Button>
           <Button
             color="inherit"
@@ -217,7 +224,7 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
               setDomains(initial.allowed_domains.join(", "));
             }}
           >
-            Reset
+            {tr("Reset")}
           </Button>
         </Stack>
       </Section>
@@ -238,8 +245,8 @@ function TestEmailSection() {
   const enabled = info.data?.features.email ?? false;
   return (
     <Section
-      title="Outgoing email"
-      description="SMTP is configured through TERMOSO_SMTP_* environment variables."
+      title={tr("Outgoing email")}
+      description={tr("SMTP is configured through TERMOSO_SMTP_* environment variables.")}
     >
       {!enabled ? (
         <Alert severity="info">
@@ -256,7 +263,7 @@ function TestEmailSection() {
           sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}
         >
           <TextField
-            placeholder="Send a test email to"
+            placeholder={tr("Send a test email to")}
             type="email"
             required
             value={to}
@@ -270,10 +277,10 @@ function TestEmailSection() {
             disabled={test.isPending || to.trim() === ""}
             sx={{ height: 36 }}
           >
-            Send test
+            {tr("Send test")}
           </Button>
           <Typography variant="body2" color="text.secondary">
-            Verifies the SMTP connection end-to-end.
+            {tr("Verifies the SMTP connection end-to-end.")}
           </Typography>
         </Box>
       )}

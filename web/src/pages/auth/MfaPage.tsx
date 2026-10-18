@@ -1,4 +1,5 @@
 import { useState, type SubmitEvent } from "react";
+import { tr } from "@/i18n";
 import { Alert, Button, Stack, Tab, Tabs, TextField, Typography } from "@mui/material";
 import FingerprintRoundedIcon from "@mui/icons-material/FingerprintRounded";
 import { Navigate, useLocation, useNavigate } from "react-router";
@@ -54,7 +55,7 @@ export function MfaPage() {
           next: state.next,
         },
       });
-    else setError("Unexpected response from server");
+    else setError(tr("Unexpected response from server"));
   };
 
   const run = async (fn: () => Promise<LoginOutcome>) => {
@@ -104,8 +105,8 @@ export function MfaPage() {
   return (
     <>
       <AuthTitle
-        title="Two-factor verification"
-        subtitle="Confirm it's you to finish signing in."
+        title={tr("Two-factor verification")}
+        subtitle={tr("Confirm it's you to finish signing in.")}
       />
       {state.methods.length > 1 && (
         <Tabs
@@ -129,7 +130,7 @@ export function MfaPage() {
         {method === "webauthn" ? (
           <>
             <Typography variant="body2" color="text.secondary">
-              Use the passkey or hardware security key registered on your account.
+              {tr("Use the passkey or hardware security key registered on your account.")}
             </Typography>
             <Button
               variant="contained"
@@ -138,7 +139,7 @@ export function MfaPage() {
               onClick={() => void authenticateWithKey()}
               disabled={busy}
             >
-              Use security key
+              {tr("Use security key")}
             </Button>
           </>
         ) : (
@@ -165,7 +166,7 @@ export function MfaPage() {
                 size="large"
                 disabled={busy || code.trim().length === 0}
               >
-                Verify
+                {tr("Verify")}
               </Button>
             </Stack>
           </form>
@@ -175,7 +176,7 @@ export function MfaPage() {
           onClick={() => navigate("/login", { replace: true })}
           disabled={busy}
         >
-          Back to sign in
+          {tr("Back to sign in")}
         </Button>
       </Stack>
     </>

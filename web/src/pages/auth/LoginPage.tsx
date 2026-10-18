@@ -1,4 +1,5 @@
 import { useState, type SubmitEvent } from "react";
+import { tr } from "@/i18n";
 import { Alert, Box, Button, Divider, Link, Stack, TextField, Typography } from "@mui/material";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router";
 import { ApiError, errorMessage } from "@/api/client";
@@ -59,7 +60,7 @@ export function LoginPage() {
     } catch (err) {
       if (err instanceof ApiError && err.code === "turnstile_required" && siteKey) {
         setNeedCaptcha(true);
-        setError("Please confirm you are human below, then sign in again.");
+        setError(tr("Please confirm you are human below, then sign in again."));
       } else {
         setError(errorMessage(err));
       }
@@ -91,7 +92,7 @@ export function LoginPage() {
         )}
         {error && <Alert severity="error">{error}</Alert>}
         <TextField
-          label="Email"
+          label={tr("Email")}
           type="email"
           autoComplete="username"
           autoFocus={!sso}
@@ -101,7 +102,7 @@ export function LoginPage() {
           disabled={busy || sso !== undefined}
         />
         <PasswordField
-          label="Password"
+          label={tr("Password")}
           autoComplete="current-password"
           autoFocus={sso !== undefined}
           required
@@ -111,7 +112,7 @@ export function LoginPage() {
         />
         <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
           <Link component={RouterLink} to="/forgot-password" variant="body2">
-            Forgot password?
+            {tr("Forgot password?")}
           </Link>
         </Box>
         {needCaptcha && siteKey && (
@@ -130,7 +131,7 @@ export function LoginPage() {
           <>
             <Divider>
               <Typography variant="caption" color="text.secondary">
-                or continue with
+                {tr("or continue with")}
               </Typography>
             </Divider>
             <Stack spacing={1}>
@@ -159,7 +160,7 @@ export function LoginPage() {
               component={RouterLink}
               to={next === "/account" ? "/signup" : `/signup?next=${encodeURIComponent(next)}`}
             >
-              Create an account
+              {tr("Create an account")}
             </Link>
           </Typography>
         )}

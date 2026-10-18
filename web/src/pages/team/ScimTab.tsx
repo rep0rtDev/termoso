@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "@/i18n";
 import {
   Alert,
   Button,
@@ -80,7 +81,7 @@ function TokensSection({ team }: { team: Team }) {
     onSuccess: async () => {
       setRevoking(null);
       await invalidate();
-      snack.notify("Token revoked");
+      snack.notify(tr("Token revoked"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -88,7 +89,7 @@ function TokensSection({ team }: { team: Team }) {
   if (q.isError) return <Alert severity="error">{errorMessage(q.error)}</Alert>;
   return (
     <Section
-      title="SCIM provisioning"
+      title={tr("SCIM provisioning")}
       description={
         <>
           Point your identity provider (Okta, Entra ID, Google, …) at{" "}
@@ -105,22 +106,25 @@ function TokensSection({ team }: { team: Team }) {
           disabled={q.data.tokens.length >= 3}
           onClick={() => setCreateOpen(true)}
         >
-          New token
+          {tr("New token")}
         </Button>
       }
       disablePadding={q.data.tokens.length > 0}
     >
       {q.data.tokens.length === 0 ? (
-        <EmptyState title="No SCIM tokens" description="Create one and paste it into your IdP." />
+        <EmptyState
+          title={tr("No SCIM tokens")}
+          description={tr("Create one and paste it into your IdP.")}
+        />
       ) : (
         <TableContainer>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Created</TableCell>
-                <TableCell>Expires</TableCell>
-                <TableCell>Last used</TableCell>
+                <TableCell>{tr("Name")}</TableCell>
+                <TableCell>{tr("Created")}</TableCell>
+                <TableCell>{tr("Expires")}</TableCell>
+                <TableCell>{tr("Last used")}</TableCell>
                 <TableCell align="right" />
               </TableRow>
             </TableHead>
@@ -132,11 +136,11 @@ function TokensSection({ team }: { team: Team }) {
                   <TableCell>{t.expires_at ? formatDate(t.expires_at) : "never"}</TableCell>
                   <TableCell>{t.last_used_at ? formatRelative(t.last_used_at) : "never"}</TableCell>
                   <TableCell align="right">
-                    <Tooltip title="Revoke token">
+                    <Tooltip title={tr("Revoke token")}>
                       <IconButton
                         size="small"
                         onClick={() => setRevoking(t.id)}
-                        aria-label="Revoke"
+                        aria-label={tr("Revoke")}
                       >
                         <DeleteOutlineRoundedIcon fontSize="small" />
                       </IconButton>
@@ -149,20 +153,20 @@ function TokensSection({ team }: { team: Team }) {
         </TableContainer>
       )}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>New SCIM token</DialogTitle>
+        <DialogTitle>{tr("New SCIM token")}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField
-              label="Name"
-              placeholder="Okta production"
+              label={tr("Name")}
+              placeholder={tr("Okta production")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus
               fullWidth
             />
             <TextField
-              label="Expires in days"
-              placeholder="never"
+              label={tr("Expires in days")}
+              placeholder={tr("never")}
               type="number"
               value={days}
               onChange={(e) => setDays(e.target.value)}
@@ -177,31 +181,31 @@ function TokensSection({ team }: { team: Team }) {
             disabled={!name.trim() || create.isPending}
             onClick={() => create.mutate()}
           >
-            Create
+            {tr("Create")}
           </Button>
         </DialogActions>
       </Dialog>
       <Dialog open={created !== null} onClose={() => setCreated(null)} maxWidth="sm" fullWidth>
-        <DialogTitle>Token created</DialogTitle>
+        <DialogTitle>{tr("Token created")}</DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            Copy the secret now — it is shown once and stored only as a hash.
+            {tr("Copy the secret now — it is shown once and stored only as a hash.")}
           </DialogContentText>
           <Stack spacing={2}>
-            <CopyField label="SCIM base URL" value={created?.base_url ?? ""} />
-            <CopyField label="Bearer token" value={created?.secret ?? ""} />
+            <CopyField label={tr("SCIM base URL")} value={created?.base_url ?? ""} />
+            <CopyField label={tr("Bearer token")} value={created?.secret ?? ""} />
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button variant="contained" onClick={() => setCreated(null)}>
-            Done
+            {tr("Done")}
           </Button>
         </DialogActions>
       </Dialog>
       <ConfirmDialog
         open={revoking !== null}
-        title="Revoke SCIM token?"
-        confirmLabel="Revoke"
+        title={tr("Revoke SCIM token?")}
+        confirmLabel={tr("Revoke")}
         danger
         busy={revoke.isPending}
         onCancel={() => setRevoking(null)}
@@ -230,7 +234,7 @@ function GroupsSection({ team, manage }: { team: Team; manage: boolean }) {
     onSuccess: async () => {
       setEditing(null);
       await qc.invalidateQueries({ queryKey: queryKeys.teamScimGroups(team.id) });
-      snack.notify("Vault grants saved");
+      snack.notify(tr("Vault grants saved"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -239,23 +243,25 @@ function GroupsSection({ team, manage }: { team: Team; manage: boolean }) {
   const vaultName = (id: string) => teamVaults.find((v) => v.id === id)?.name ?? id.slice(0, 8);
   return (
     <Section
-      title="Provisioned groups"
-      description="Groups pushed by the identity provider. Map them to roles on the Roles tab; here you grant team vaults to a group — members get a pending key the next time an admin is online."
+      title={tr("Provisioned groups")}
+      description={tr(
+        "Groups pushed by the identity provider. Map them to roles on the Roles tab; here you grant team vaults to a group — members get a pending key the next time an admin is online.",
+      )}
       disablePadding={q.data.groups.length > 0}
     >
       {q.data.groups.length === 0 ? (
         <EmptyState
-          title="No groups yet"
-          description="Groups appear once the identity provider pushes them."
+          title={tr("No groups yet")}
+          description={tr("Groups appear once the identity provider pushes them.")}
         />
       ) : (
         <TableContainer>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Group</TableCell>
-                <TableCell>Members</TableCell>
-                <TableCell>Vaults</TableCell>
+                <TableCell>{tr("Group")}</TableCell>
+                <TableCell>{tr("Members")}</TableCell>
+                <TableCell>{tr("Vaults")}</TableCell>
                 {manage && <TableCell align="right" />}
               </TableRow>
             </TableHead>
@@ -279,7 +285,7 @@ function GroupsSection({ team, manage }: { team: Team; manage: boolean }) {
                     <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", gap: 0.5 }}>
                       {g.vaults.length === 0 && (
                         <Typography variant="caption" color="text.secondary">
-                          none
+                          {tr("none")}
                         </Typography>
                       )}
                       {g.vaults.map((v) => (
@@ -301,7 +307,7 @@ function GroupsSection({ team, manage }: { team: Team; manage: boolean }) {
                           setDraft(g.vaults);
                         }}
                       >
-                        Vault access
+                        {tr("Vault access")}
                       </Button>
                     </TableCell>
                   )}
@@ -315,7 +321,7 @@ function GroupsSection({ team, manage }: { team: Team; manage: boolean }) {
         <DialogTitle>Vaults for “{editing?.display_name}”</DialogTitle>
         <DialogContent>
           {teamVaults.length === 0 ? (
-            <DialogContentText>This team has no shared vaults yet.</DialogContentText>
+            <DialogContentText>{tr("This team has no shared vaults yet.")}</DialogContentText>
           ) : (
             <Stack spacing={1} sx={{ pt: 1 }}>
               {teamVaults.map((v) => {
@@ -344,10 +350,10 @@ function GroupsSection({ team, manage }: { team: Team; manage: boolean }) {
                       }}
                       sx={{ minWidth: 140 }}
                     >
-                      <MenuItem value="none">No access</MenuItem>
-                      <MenuItem value="viewer">Viewer</MenuItem>
-                      <MenuItem value="editor">Editor</MenuItem>
-                      <MenuItem value="manager">Manager</MenuItem>
+                      <MenuItem value="none">{tr("No access")}</MenuItem>
+                      <MenuItem value="viewer">{tr("Viewer")}</MenuItem>
+                      <MenuItem value="editor">{tr("Editor")}</MenuItem>
+                      <MenuItem value="manager">{tr("Manager")}</MenuItem>
                     </Select>
                   </Stack>
                 );
@@ -358,7 +364,7 @@ function GroupsSection({ team, manage }: { team: Team; manage: boolean }) {
         <DialogActions>
           <Button onClick={() => setEditing(null)}>Cancel</Button>
           <Button variant="contained" disabled={save.isPending} onClick={() => save.mutate()}>
-            Save
+            {tr("Save")}
           </Button>
         </DialogActions>
       </Dialog>

@@ -1,4 +1,5 @@
 import { useState, type SubmitEvent } from "react";
+import { tr } from "@/i18n";
 import {
   Alert,
   Button,
@@ -191,7 +192,7 @@ function Body() {
         {stage.kind === "password" && (
           <TextField
             autoFocus
-            label="Password"
+            label={tr("Password")}
             type="password"
             autoComplete="current-password"
             value={password}
@@ -202,7 +203,7 @@ function Body() {
         {stage.kind === "email" && (
           <TextField
             autoFocus
-            label="6-digit code"
+            label={tr("6-digit code")}
             required
             autoComplete="one-time-code"
             inputMode="numeric"
@@ -215,7 +216,7 @@ function Body() {
           (method === "webauthn" ? (
             <Stack spacing={1.5}>
               <Typography variant="body2" color="text.secondary">
-                Use the passkey or hardware security key registered on your account.
+                {tr("Use the passkey or hardware security key registered on your account.")}
               </Typography>
               <Button
                 variant="contained"
@@ -223,7 +224,7 @@ function Body() {
                 onClick={() => void authenticateWithKey(stage.mfaToken)}
                 disabled={busy}
               >
-                Use security key
+                {tr("Use security key")}
               </Button>
             </Stack>
           ) : (
@@ -252,7 +253,7 @@ function Body() {
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={cancel} disabled={busy} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         {!(stage.kind === "mfa" && method === "webauthn") && (
           <Button type="submit" variant="contained" disabled={busy || !canSubmit}>

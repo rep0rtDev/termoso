@@ -1,4 +1,5 @@
 import { useState, type SubmitEvent } from "react";
+import { tr } from "@/i18n";
 import { Alert, Button, Link, Stack, TextField, Typography } from "@mui/material";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router";
 import { errorMessage } from "@/api/client";
@@ -66,11 +67,11 @@ export function SignupPage() {
     return (
       <>
         <AuthTitle
-          title="Registration is closed"
-          subtitle="This server accepts new accounts by invitation only."
+          title={tr("Registration is closed")}
+          subtitle={tr("This server accepts new accounts by invitation only.")}
         />
         <Button component={RouterLink} to="/login" variant="contained">
-          Back to sign in
+          {tr("Back to sign in")}
         </Button>
       </>
     );
@@ -79,13 +80,15 @@ export function SignupPage() {
   return (
     <form onSubmit={submit}>
       <AuthTitle
-        title="Create your account"
-        subtitle="Everything you store is end-to-end encrypted. Your password unlocks your keys locally; the server only ever sees ciphertext."
+        title={tr("Create your account")}
+        subtitle={tr(
+          "Everything you store is end-to-end encrypted. Your password unlocks your keys locally; the server only ever sees ciphertext.",
+        )}
       />
       <Stack spacing={2}>
         {error && <Alert severity="error">{error}</Alert>}
         <TextField
-          label="Email"
+          label={tr("Email")}
           type="email"
           autoComplete="username"
           required
@@ -94,14 +97,14 @@ export function SignupPage() {
           disabled={busy || lockEmail}
         />
         <TextField
-          label="Name (optional)"
+          label={tr("Name (optional)")}
           autoComplete="name"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           disabled={busy}
         />
         <PasswordField
-          label="Password"
+          label={tr("Password")}
           autoComplete="new-password"
           required
           value={password}
@@ -111,7 +114,7 @@ export function SignupPage() {
           disabled={busy}
         />
         <PasswordField
-          label="Confirm password"
+          label={tr("Confirm password")}
           autoComplete="new-password"
           required
           value={confirm}
@@ -137,7 +140,7 @@ export function SignupPage() {
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
           Already have an account?{" "}
           <Link component={RouterLink} to="/login">
-            Sign in
+            {tr("Sign in")}
           </Link>
         </Typography>
       </Stack>
