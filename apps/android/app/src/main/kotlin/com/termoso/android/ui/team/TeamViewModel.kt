@@ -10,6 +10,7 @@ import com.termoso.android.str
 import com.termoso.core.InviteCard
 import com.termoso.core.InviteSent
 import com.termoso.core.PendingKeyCard
+import com.termoso.android.data.can
 import com.termoso.core.TeamCard
 import com.termoso.core.MobileException
 import com.termoso.core.TeamMemberCard
@@ -27,10 +28,6 @@ val TeamRole.isAdmin: Boolean get() = this == TeamRole.ADMIN || this == TeamRole
 
 /** Team policy `mfa` blocks the request until the account enrols a second factor. */
 fun Throwable.isMfaRequired(): Boolean = this is MobileException.Other && kind == "mfa_required"
-
-/** Holds [permission] in this team; owners carry `*`. 0.8 servers send no list — fall back to the coarse role. */
-fun TeamCard.can(permission: String): Boolean =
-    if (myPermissions.isEmpty()) myRole.isAdmin else myPermissions.any { it == "*" || it == permission }
 
 /** Can do at least one of invite / change role / remove — enough to show the admin blocks. */
 val TeamCard.canManageMembers: Boolean

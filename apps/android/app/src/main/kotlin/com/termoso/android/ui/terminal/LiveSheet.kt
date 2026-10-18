@@ -81,7 +81,10 @@ fun LiveSheet(session: TerminalSession, shell: ShellViewModel, onClose: () -> Un
     fun start() {
         busy = true
         scope.launch {
-            runCatching { shell.sessions.share(session.id) }
+            runCatching {
+                shell.repo.perms.requireAnywhere("live.start")
+                shell.sessions.share(session.id)
+            }
                 .onFailure { shell.notify(it.userMessage()) }
             busy = false
         }

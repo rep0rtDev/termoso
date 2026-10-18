@@ -1,5 +1,7 @@
 package com.termoso.android.ui.keychain
 
+import com.termoso.android.data.userMessage
+
 import androidx.compose.ui.res.pluralStringResource
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -357,6 +359,8 @@ private fun ExportDialog(key: KeyItem, vm: KeyDetailViewModel, onNotify: (String
     val needPassphrase = key.encrypted && !key.hasPassphrase
 
     suspend fun export(): String? {
+        runCatching { vm.perms.require(key.vaultId, "keys.export") }
+            .onFailure { onNotify(it.userMessage()); return null }
         busy = true
         val text = vm.exportPrivate(
             passphrase = passphrase.takeIf { needPassphrase && it.isNotEmpty() },

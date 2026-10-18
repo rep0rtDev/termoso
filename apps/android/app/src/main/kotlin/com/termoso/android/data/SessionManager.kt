@@ -271,9 +271,17 @@ class SessionManager(
      * from; Rust refuses a host of any other vault before reading credentials.
      */
     suspend fun connectHost(hostId: String, vaultId: String, transport: Transport = Transport.AUTO): TerminalSession {
+        val host: HostItem = repo.read { host(hostId) }
+        repo.perms.require(
+            vaultId,
+            when {
+                transport == Transport.TELNET || host.protocol == "telnet" -> "connect.telnet"
+                transport == Transport.MOSH || (transport == Transport.AUTO && host.useMosh) -> "connect.mosh"
+                else -> "connect.ssh"
+            },
+        )
         val bridge = SessionBridge()
         val rust = repo.read { connectHost(hostId, vaultId, options(transport), bridge) }
-        val host: HostItem = repo.read { host(hostId) }
         val telnet = transport == Transport.TELNET || host.protocol == "telnet"
         val user = host.username.takeIf { it.isNotBlank() && !telnet }?.let { "$it@" } ?: ""
         val mosh = !telnet && (transport == Transport.MOSH || (transport == Transport.AUTO && host.useMosh))
@@ -314,6 +322,7 @@ class SessionManager(
      * on the wire, so nothing is saved except the connection history.
      */
     suspend fun connectSerial(adapterKey: String, line: SerialLine): TerminalSession {
+        repo.perms.requireAnywhere("connect.serial")
         val adapter = UsbSerial.find(context, adapterKey)
             ?: throw IllegalStateException(str(R.string.usb_adapter_not_found))
         if (!UsbSerial.requestPermission(context, adapter.device)) {
@@ -386,6 +395,7 @@ class SessionManager(
         shell: LocalShell = LocalShell(argv = emptyList(), home = "", env = emptyList()),
         title: String? = null,
     ): TerminalSession {
+        repo.perms.requireAnywhere("connect.local_terminal")
         // No program named: the installed Linux system when there is one, else the Android shell.
         val linuxShell = if (shell.argv.isEmpty()) linux.shell() else null
         val shell = linuxShell?.shell ?: shell
