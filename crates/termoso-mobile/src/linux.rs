@@ -421,16 +421,18 @@ async fn install_url(
     let expected = sha256
         .map(|s| s.trim().to_ascii_lowercase())
         .filter(|s| !s.is_empty());
-    if let Some(sha) = &expected {
-        if sha.len() != 64 || !sha.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err(MobileError::invalid("SHA-256 must be 64 hex characters"));
-        }
+    if expected
+        .as_deref()
+        .is_some_and(|sha| sha.len() != 64 || !sha.bytes().all(|b| b.is_ascii_hexdigit()))
+    {
+        return Err(MobileError::invalid("SHA-256 must be 64 hex characters"));
     }
     fs::create_dir_all(root)?;
-    if let Some(sha) = &expected {
-        if already_installed(root, sha) {
-            return Ok(());
-        }
+    if expected
+        .as_deref()
+        .is_some_and(|sha| already_installed(root, sha))
+    {
+        return Ok(());
     }
     let tarball = cached_or_download(root, url, expected.as_deref(), 0, listener).await?;
     let digest = match &expected {
