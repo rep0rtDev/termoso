@@ -11,6 +11,7 @@ import type {
   Settings,
   Uuid,
   VaultStatus,
+  ColorSchemeData,
 } from "./types";
 
 export const keys = {
@@ -28,6 +29,7 @@ export const keys = {
   identities: (vaultId: Uuid | null) => ["identities", vaultId] as const,
   sshKeys: (vaultId: Uuid | null) => ["sshKeys", vaultId] as const,
   proxies: (vaultId: Uuid | null) => ["proxies", vaultId] as const,
+  colorSchemes: (vaultId: Uuid | null) => ["colorSchemes", vaultId] as const,
   hostChains: (vaultId: Uuid | null) => ["hostChains", vaultId] as const,
   history: ["history"] as const,
   commandHistory: ["history", "commands"] as const,
@@ -152,6 +154,29 @@ export const useHostChains = (vaultId: Uuid | null) =>
     queryKey: keys.hostChains(vaultId),
     queryFn: () => ipc.entitiesList<HostChainData>("host_chain", vaultId),
   });
+
+export const useColorSchemes = (vaultId: Uuid | null) =>
+  useQuery({
+    queryKey: keys.colorSchemes(vaultId),
+    queryFn: () => ipc.entitiesList<ColorSchemeData>("color_scheme", vaultId),
+  });
+
+export function useSaveColorScheme() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (a: { vaultId: Uuid; id: Uuid | null; data: ColorSchemeData }) =>
+      ipc.entitySave("color_scheme", a.vaultId, a.id, a.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["colorSchemes"] }),
+  });
+}
+
+export function useDeleteColorScheme() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: Uuid) => ipc.entityDelete(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["colorSchemes"] }),
+  });
+}
 
 export function useSaveProxy() {
   const qc = useQueryClient();

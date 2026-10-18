@@ -33,6 +33,8 @@ tokio = { workspace = true }
 tokio-util = { version = "0.7" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+plist = "1"
+toml = "0.8"
 uuid = { workspace = true }
 chrono = { workspace = true }
 thiserror = { workspace = true }

@@ -57,7 +57,7 @@ import { VariablesDialog } from "@/snippets/SnippetsPage";
 import { ALL_HOSTS, CommandHistoryList, ConnectionHistoryList } from "@/history/ShellHistory";
 import { RunTargets } from "@/snippets/RunStatus";
 import { startRun, summarize, useRuns, watchRun } from "@/snippets/run";
-import { AUTO_THEME, terminalThemeById, terminalThemes } from "./themes";
+import { AUTO_THEME, allTerminalThemes, terminalThemeById, useCustomThemes } from "./themes";
 import {
   autocompleteOn,
   copyText,
@@ -722,9 +722,12 @@ function ThemesPanel({ tab, pane }: { tab: TerminalTab; pane: Pane }) {
     save.mutate({ ...s, ...patch }, { onError: (e) => snackbar.error(errorMessage(e)) });
   };
   const size = s?.terminalFontSize ?? 14;
+  const custom = useCustomThemes();
   const list = useMemo(
-    () => terminalThemes.filter((t) => filter === "all" || (filter === "dark") === t.dark),
-    [filter],
+    () => allTerminalThemes().filter((t) => filter === "all" || (filter === "dark") === t.dark),
+    // `custom` only re-runs the memo; `allTerminalThemes` already includes it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filter, custom],
   );
   const inherited = pane.hostTheme ?? settings.data?.terminalTheme ?? AUTO_THEME;
   const inheritedName =

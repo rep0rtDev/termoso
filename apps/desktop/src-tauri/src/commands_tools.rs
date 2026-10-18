@@ -678,6 +678,15 @@ pub async fn import_parse_file(source: ImportSource, path: String) -> Result<Imp
         .map(import::remember)
 }
 
+/// Parse a colour scheme file (iTerm2, Windows Terminal, Alacritty, Kitty,
+/// Ghostty, Gogh) into vault-ready payloads; nothing is saved here.
+#[tauri::command]
+pub async fn theme_import_file(path: String) -> Result<crate::theme_import::ThemeImport> {
+    tauri::async_runtime::spawn_blocking(move || crate::theme_import::import_file(&path))
+        .await
+        .map_err(|e| crate::error::DesktopError::new("import", e.to_string()))?
+}
+
 #[tauri::command]
 pub async fn import_scan_securecrt_dir(path: String) -> Result<ImportPreview> {
     tauri::async_runtime::spawn_blocking(move || import::scan_securecrt_dir(&path))

@@ -118,6 +118,7 @@ import type {
   WorkspacesState,
   SshIdFido2Form,
   SshIdView,
+  ThemeImport,
 } from "./types";
 
 export const appInfo = () => invoke<AppInfo>("app_info");
@@ -489,6 +490,7 @@ export const importParseFile = (source: ImportSource, path: string) =>
 export const importScanPuttyRegistry = () => invoke<ImportPreview>("import_scan_putty_registry");
 export const importScanSecurecrtDir = (path: string) =>
   invoke<ImportPreview>("import_scan_securecrt_dir", { path });
+export const themeImportFile = (path: string) => invoke<ThemeImport>("theme_import_file", { path });
 export const importSshDirDefault = () => invoke<string | null>("import_ssh_dir_default");
 export const importCsvTemplate = () => invoke<string>("import_csv_template");
 export const importCsvTemplateSave = (path: string) =>

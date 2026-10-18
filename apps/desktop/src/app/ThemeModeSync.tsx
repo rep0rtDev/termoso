@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { useColorScheme } from "@mui/material";
-import { useSettings } from "@/ipc/hooks";
+import { useColorSchemes, useSettings } from "@/ipc/hooks";
 import { setLanguage } from "@/i18n";
 import { applyTerminalScheme, applyTerminalSettings } from "@/terminal/store";
+import { setCustomThemes } from "@/terminal/themes";
 import { applyNotificationSettings } from "./notifications";
 import { applyTraySettings } from "./tray";
 
@@ -19,9 +20,12 @@ export function ThemeModeSync() {
       applyTraySettings(data);
     }
   }, [data, setMode]);
+  const schemes = useColorSchemes(null);
   useEffect(() => {
+    // User colour schemes live in the vault; re-resolve every pane when they change.
+    if (schemes.data) setCustomThemes(schemes.data);
     const resolved = mode === "system" ? systemMode : mode;
     applyTerminalScheme(resolved === "light" ? "light" : "dark");
-  }, [mode, systemMode]);
+  }, [schemes.data, mode, systemMode]);
   return null;
 }

@@ -37,6 +37,7 @@ pub const KINDS: &[&str] = &[
     "workspace",
     "workspace_template",
     "log_bookmark",
+    "color_scheme",
 ];
 
 /// Whether `kind` is a known entity kind.
@@ -626,6 +627,29 @@ pub mod payload {
             /// Note.
             #[serde(default)]
             pub note: String,
+        }
+    }
+
+    schema! {
+        /// User-defined terminal colour scheme (imported or built in the
+        /// editor). Referenced from `Host::color_scheme` / `Group::color_scheme`
+        /// by entity id. Colours are `#rrggbb`; `selection` may carry alpha.
+        #[derive(Default)]
+        pub struct ColorScheme {
+            /// Display name.
+            pub name: String,
+            /// Background.
+            pub background: String,
+            /// Default text.
+            pub foreground: String,
+            /// Cursor.
+            pub cursor: String,
+            /// Selection background (`#rrggbbaa`); derived from the foreground when absent.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub selection: Option<String>,
+            /// The 16 ANSI colours in xterm order: black, red, green, yellow,
+            /// blue, magenta, cyan, white, then the bright eight.
+            pub ansi: Vec<String>,
         }
     }
 }

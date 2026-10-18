@@ -3,6 +3,8 @@
 // Night, …) in xterm's 16-colour order. Settings store a scheme by `id`.
 
 import type { ITheme } from "@xterm/xterm";
+import type { ColorSchemeData, Entity } from "@/ipc/types";
+import { createStore, useStore } from "@/lib/store";
 import { dark as appDark, emerald, light as appLight } from "@/theme/theme";
 
 export interface TerminalTheme {
@@ -318,8 +320,39 @@ export const terminalThemes: readonly TerminalTheme[] = [
 
 const byId = new Map(terminalThemes.map((th) => [th.id, th]));
 
+/** A vault `color_scheme` entity as a theme; the entity id is the theme id. */
+export function customTheme(e: Entity<ColorSchemeData>): TerminalTheme {
+  const d = e.data;
+  return t(
+    e.id,
+    d.name,
+    d.background,
+    d.foreground,
+    d.cursor,
+    d.selection ?? `${d.foreground.slice(0, 7)}40`,
+    d.ansi,
+  );
+}
+
+const customStore = createStore<{ themes: TerminalTheme[] }>({ themes: [] });
+let custom = new Map<string, TerminalTheme>();
+
+/** Replace the user schemes (called whenever the vault's `color_scheme` list changes). */
+export function setCustomThemes(list: Entity<ColorSchemeData>[]) {
+  const themes = list.map(customTheme).sort((a, b) => a.name.localeCompare(b.name));
+  custom = new Map(themes.map((th) => [th.id, th]));
+  customStore.set({ themes });
+}
+
+export const useCustomThemes = () => useStore(customStore, (s) => s.themes);
+
+/** Built-in schemes followed by the user's own. */
+export function allTerminalThemes(): TerminalTheme[] {
+  return [...terminalThemes, ...custom.values()];
+}
+
 export function terminalThemeById(id: string): TerminalTheme | undefined {
-  return byId.get(id);
+  return byId.get(id) ?? custom.get(id);
 }
 
 /** Scheme to render for a settings value; unknown ids fall back to the Termoso pair. */
@@ -329,7 +362,7 @@ export function resolveTerminalTheme(
 ): TerminalTheme {
   const fallback = scheme === "light" ? termosoLight : termosoDark;
   if (!id || id === AUTO_THEME) return fallback;
-  return byId.get(id) ?? fallback;
+  return byId.get(id) ?? custom.get(id) ?? fallback;
 }
 
 export function toXtermTheme(th: TerminalTheme): ITheme {
