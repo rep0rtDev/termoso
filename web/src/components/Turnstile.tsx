@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import Box from "@mui/material/Box";
-import { useTheme } from "@mui/material/styles";
+import { useColorScheme } from "@mui/material/styles";
 
 declare global {
   interface Window {
@@ -44,7 +44,8 @@ export function Turnstile({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const cb = useRef(onToken);
-  const mode = useTheme().palette.mode;
+  const { mode, systemMode } = useColorScheme();
+  const theme = (mode === "system" ? systemMode : mode) ?? "auto";
   useEffect(() => {
     cb.current = onToken;
   }, [onToken]);
@@ -57,7 +58,7 @@ export function Turnstile({
         if (cancelled || !el || !window.turnstile) return;
         id = window.turnstile.render(el, {
           sitekey: siteKey,
-          theme: mode,
+          theme,
           callback: (t: string) => cb.current(t),
           "expired-callback": () => cb.current(null),
           "error-callback": () => cb.current(null),
@@ -68,6 +69,6 @@ export function Turnstile({
       cancelled = true;
       if (id) window.turnstile?.remove(id);
     };
-  }, [siteKey, mode]);
+  }, [siteKey, theme]);
   return <Box ref={ref} sx={{ minHeight: 65, display: "flex", justifyContent: "center" }} />;
 }
