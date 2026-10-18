@@ -665,7 +665,7 @@ pub async fn get(
     auth: Auth,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<DigestSubscription>> {
-    teams::require_admin(&state, id, auth.user_id()).await?;
+    crate::authz::require(&state, id, auth.user_id(), "digest.manage").await?;
     Ok(Json(subscription(&state.db, id, auth.user_id()).await?))
 }
 
@@ -691,7 +691,7 @@ pub async fn put(
     Path(id): Path<Uuid>,
     Body(req): Body<UpdateDigestRequest>,
 ) -> ApiResult<Json<DigestSubscription>> {
-    teams::require_admin(&state, id, auth.user_id()).await?;
+    crate::authz::require(&state, id, auth.user_id(), "digest.manage").await?;
     match req.cadence {
         Some(cadence) => {
             require_mailbox(&state, auth.user_id()).await?;
@@ -727,7 +727,7 @@ pub async fn send_now(
     Path(id): Path<Uuid>,
     Body(req): Body<SendDigestRequest>,
 ) -> ApiResult<Json<SendDigestResponse>> {
-    teams::require_admin(&state, id, auth.user_id()).await?;
+    crate::authz::require(&state, id, auth.user_id(), "digest.manage").await?;
     let email = require_mailbox(&state, auth.user_id()).await?;
     let Some(mailer) = &state.mailer else {
         return Err(Error::feature_disabled("Email"));

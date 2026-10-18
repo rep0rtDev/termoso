@@ -44,11 +44,12 @@ pub async fn access<'e, E: PgExecutor<'e>>(
         i32,
         Option<String>,
         Option<bool>,
-        Option<String>,
+        Option<Vec<String>>,
         Option<bool>,
         bool,
     )> = sqlx::query_as(
-        "SELECT v.kind, v.team_id, v.key_version, vm.role, vm.sealed_key IS NULL, tm.role,
+        "SELECT v.kind, v.team_id, v.key_version, vm.role, vm.sealed_key IS NULL,
+                (SELECT r.permissions FROM team_roles r WHERE r.id = tm.role_id),
                 t.require_mfa,
                 EXISTS (SELECT 1 FROM users u WHERE u.id = $2 AND (u.totp_enabled
                         OR EXISTS (SELECT 1 FROM webauthn_credentials w WHERE w.user_id = u.id)))
@@ -74,8 +75,11 @@ pub async fn access<'e, E: PgExecutor<'e>>(
     } else {
         VaultKind::Personal
     };
+    // A role holding `vaults.members` (or `*`) acts as manager on every
+    // team vault, like team admins did before fine-grained roles.
     let team_admin = trole
-        .map(|r| teams::parse_team_role(&r).is_admin())
+        .as_ref()
+        .map(|p| p.iter().any(|x| x == "*" || x == "vaults.members"))
         .unwrap_or(false);
     let role = match (vrole, team_admin) {
         (Some(r), true) => parse_vault_role(&r).max(VaultRole::Manager),

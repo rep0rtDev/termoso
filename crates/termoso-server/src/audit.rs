@@ -232,7 +232,7 @@ pub async fn list(
                 actor_email,
                 actor_name,
                 actor_avatar,
-                device_id: device_id.filter(|_| role.is_admin() || actor_id == Some(me)),
+                device_id: device_id.filter(|_| role.has("audit.view_ips") || actor_id == Some(me)),
                 action,
                 vault_id,
                 target_user,
