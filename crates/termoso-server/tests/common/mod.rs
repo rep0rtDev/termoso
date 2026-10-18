@@ -318,6 +318,7 @@ async fn boot() -> Option<TestServer> {
         swagger_ui: true,
         s3,
         smtp: smtp.map(|(cfg, _)| cfg),
+        webhooks_allow_private: true,
         webauthn: Some(WebauthnConfig {
             rp_id: WEBAUTHN_RP_ID.into(),
             origins: WEBAUTHN_ORIGIN.into(),

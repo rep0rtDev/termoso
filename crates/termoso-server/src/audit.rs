@@ -42,6 +42,18 @@ impl Entry {
 
     /// Same as `new` for code paths without an `Auth` (registration with an
     /// invite token, relay cleanup).
+    /// An entry without an actor (background jobs).
+    pub fn system(team_id: Uuid, action: &'static str) -> Self {
+        Self {
+            team_id,
+            actor: None,
+            action,
+            vault_id: None,
+            target_user: None,
+            details: serde_json::Value::Object(Default::default()),
+        }
+    }
+
     pub fn by(team_id: Uuid, user_id: Uuid, device_id: Option<Uuid>, action: &'static str) -> Self {
         Self {
             team_id,
@@ -83,9 +95,16 @@ pub async fn record<'e, E: PgExecutor<'e>>(db: E, e: Entry) {
         Some((u, d)) => (Some(u), (!d.is_nil()).then_some(d)),
         None => (None, None),
     };
+    // One statement: the event plus an outbox row for every enabled webhook
+    // of the team whose filter matches the action.
     let res = sqlx::query(
-        "INSERT INTO team_audit_events (team_id, actor_id, device_id, action, vault_id, target_user, details)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "WITH ev AS (
+             INSERT INTO team_audit_events (team_id, actor_id, device_id, action, vault_id, target_user, details)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, team_id, action)
+         INSERT INTO audit_deliveries (webhook_id, event_id)
+         SELECT w.id, ev.id FROM ev JOIN team_webhooks w ON w.team_id = ev.team_id AND w.enabled
+         WHERE w.actions IS NULL OR ev.action = ANY(w.actions)
+            OR EXISTS (SELECT 1 FROM unnest(w.actions) a WHERE right(a, 1) = '.' AND ev.action LIKE a || '%')",
     )
     .bind(e.team_id)
     .bind(actor_id)

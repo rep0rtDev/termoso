@@ -786,3 +786,111 @@ schema! {
 fn default_audit_retention_days() -> i32 {
     365
 }
+
+// ───────────────────────────── audit webhooks ─────────────────────────────
+
+/// Delivery formats for audit webhooks.
+pub const WEBHOOK_KINDS: &[&str] = &["generic", "splunk_hec", "elastic", "datadog"];
+
+schema! {
+    /// An audit webhook (`/teams/{id}/webhooks`). The secret is write-only.
+    pub struct Webhook {
+        /// Id.
+        pub id: Uuid,
+        /// Destination.
+        pub url: String,
+        /// `generic` (HMAC-signed JSON) | `splunk_hec` | `elastic` | `datadog`.
+        pub kind: String,
+        /// Actions to send (`vault.` = family); `None` = everything.
+        pub actions: Option<Vec<String>>,
+        /// Disabled hooks keep their history but receive nothing.
+        pub enabled: bool,
+        /// Created.
+        pub created_at: DateTime<Utc>,
+        /// HTTP status of the last attempt.
+        pub last_status: Option<i32>,
+        /// Error of the last failed attempt.
+        pub last_error: Option<String>,
+        /// Last successful delivery.
+        pub last_delivered_at: Option<DateTime<Utc>>,
+        /// Consecutive failures (50 disables the hook).
+        pub failures: i32,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/webhooks`
+    pub struct WebhookList {
+        /// Hooks.
+        pub webhooks: Vec<Webhook>,
+    }
+}
+
+schema! {
+    /// `POST /teams/{id}/webhooks`
+    pub struct CreateWebhookRequest {
+        /// `https://` URL (plain http / private addresses only when the server allows it).
+        pub url: String,
+        /// HMAC secret (`generic`) or the destination's token (`splunk_hec`, `elastic`, `datadog`).
+        pub secret: String,
+        /// See [`Webhook::kind`]; default `generic`.
+        #[serde(default)]
+        pub kind: Option<String>,
+        /// See [`Webhook::actions`].
+        #[serde(default)]
+        pub actions: Option<Vec<String>>,
+    }
+}
+
+schema! {
+    /// `PATCH /teams/{id}/webhooks/{wid}` — only given fields change.
+    pub struct UpdateWebhookRequest {
+        /// New URL.
+        #[serde(default)]
+        pub url: Option<String>,
+        /// New secret / token.
+        #[serde(default)]
+        pub secret: Option<String>,
+        /// New kind.
+        #[serde(default)]
+        pub kind: Option<String>,
+        /// New action filter (`Some(vec![])` = everything).
+        #[serde(default)]
+        pub actions: Option<Vec<String>>,
+        /// Enable / disable (re-enabling resets the failure counter).
+        #[serde(default)]
+        pub enabled: Option<bool>,
+    }
+}
+
+schema! {
+    /// One delivery attempt record.
+    pub struct WebhookDelivery {
+        /// Id.
+        pub id: i64,
+        /// Audit event.
+        pub event_id: i64,
+        /// Event action.
+        pub action: String,
+        /// Attempts made so far.
+        pub attempt: i32,
+        /// `pending` | `sending` | `ok` | `dead`.
+        pub status: String,
+        /// HTTP status of the last attempt.
+        pub response_status: Option<i32>,
+        /// First KiB of the last response body.
+        pub response_body: Option<String>,
+        /// Next attempt (for pending).
+        pub next_at: DateTime<Utc>,
+        /// When it succeeded.
+        pub delivered_at: Option<DateTime<Utc>>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/webhooks/{wid}/deliveries`
+    pub struct WebhookDeliveryList {
+        /// Newest first, at most 100.
+        pub deliveries: Vec<WebhookDelivery>,
+    }
+}
