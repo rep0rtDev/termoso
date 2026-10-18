@@ -40,6 +40,8 @@ flate2 = "1"
 tar = "0.4"
 sha2 = { workspace = true }
 futures-util = "0.3"
+xz2 = "0.1"
+lzma-sys = { version = "0.1", features = ["static"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 tracing-android = "0.2"

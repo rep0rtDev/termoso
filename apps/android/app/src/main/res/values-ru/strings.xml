@@ -308,6 +308,15 @@
     <string name="configuring">Настройка</string>
     <string name="choose_a_distribution">Выберите дистрибутив</string>
     <string name="replace_with">Заменить на</string>
+    <string name="custom_rootfs">Свой образ</string>
+    <string name="custom_rootfs_from_file">Из файла…</string>
+    <string name="custom_rootfs_from_file_hint">tar, tar.gz или tar.xz с /bin/sh под этот аппарат (Debian, Fedora, Arch…)</string>
+    <string name="custom_rootfs_from_url">По ссылке…</string>
+    <string name="custom_rootfs_from_url_hint">Прямая ссылка на архив rootfs, при желании с проверкой SHA-256</string>
+    <string name="rootfs_url">URL</string>
+    <string name="rootfs_sha256_optional">SHA-256 (необязательно)</string>
+    <string name="rootfs_name_optional">Название (необязательно)</string>
+    <string name="install_action">Установить</string>
     <string name="android_shell">Оболочка Android</string>
     <string name="files">Файлы</string>
     <string name="files_protocols_subtitle">SFTP / WebDAV</string>
