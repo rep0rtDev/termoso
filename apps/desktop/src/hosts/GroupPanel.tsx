@@ -185,7 +185,7 @@ function GroupEditor({
   return (
     <SidePanel
       title={groupId ? form.label || tr("Group details") : tr("New group")}
-      subtitle={groupId ? ["Group", contents].filter(Boolean).join(" · ") : undefined}
+      subtitle={groupId ? [tr("Group"), contents].filter(Boolean).join(" · ") : undefined}
       onClose={onClose}
       width={sizes.panel}
       actions={
@@ -474,8 +474,8 @@ function GroupEditor({
 
 function groupContents(g: GroupNode) {
   return [
-    g.groupCount > 0 ? `${g.groupCount} group${g.groupCount === 1 ? "" : "s"}` : null,
-    `${g.hostCount} host${g.hostCount === 1 ? "" : "s"}`,
+    g.groupCount > 0 ? trn(g.groupCount, "{count} group", "{count} groups") : null,
+    trn(g.hostCount, "{count} host", "{count} hosts"),
   ]
     .filter(Boolean)
     .join(", ");

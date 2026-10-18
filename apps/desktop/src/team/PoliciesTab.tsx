@@ -228,7 +228,7 @@ function PoliciesForm({
       />
       <Box sx={{ pt: 1.5 }}>
         <Typography variant="caption" color="text.secondary">
-          Last changed {new Date(saved.updated_at).toLocaleString()}
+          {tr("Last changed {when}", { when: new Date(saved.updated_at).toLocaleString() })}
         </Typography>
       </Box>
     </Section>

@@ -54,8 +54,8 @@ export function ServerKeyField({
 
   const vaultName = (id: Uuid) => {
     const v = (vaults.data ?? []).find((x) => x.id === id);
-    if (!v) return "another vault";
-    return v.kind === "local" ? "this device" : v.name;
+    if (!v) return tr("another vault");
+    return v.kind === "local" ? tr("this device") : v.name;
   };
   const list = pins.data ?? [];
   const here = list.filter((p) => p.vaultId === vaultId);

@@ -234,6 +234,8 @@ pub struct WebDavConfig {
     /// contents before the PUT; defaults to the OS temp dir (not writable by
     /// apps on Android — pass the app cache dir there).
     pub spool_dir: Option<PathBuf>,
+    /// Optional SOCKS/HTTP proxy every request goes through.
+    pub proxy: Option<crate::ssh::proxy::ProxyConfig>,
 }
 
 impl Default for WebDavConfig {
@@ -249,6 +251,7 @@ impl Default for WebDavConfig {
             client_identity: None,
             connect_timeout: Duration::from_secs(20),
             spool_dir: None,
+            proxy: None,
         }
     }
 }
@@ -839,6 +842,35 @@ fn target(cfg: &WebDavConfig) -> Result<Target> {
     })
 }
 
+/// `reqwest` proxy for a SOCKS/HTTP proxy config. SOCKS4 carries the
+/// username only; HTTP and SOCKS5 take username + password.
+fn reqwest_proxy(p: &crate::ssh::proxy::ProxyConfig) -> Result<reqwest::Proxy> {
+    use crate::ssh::proxy::ProxyKind;
+    let scheme = match p.kind {
+        ProxyKind::Http => "http",
+        ProxyKind::Socks4 => "socks4a",
+        ProxyKind::Socks5 => "socks5h",
+    };
+    let host = if p.host.contains(':') && !p.host.starts_with('[') {
+        format!("[{}]", p.host)
+    } else {
+        p.host.clone()
+    };
+    let mut url = reqwest::Url::parse(&format!("{scheme}://{host}:{}", p.port))
+        .map_err(|e| CoreError::Invalid(format!("proxy {}:{}: {e}", p.host, p.port)))?;
+    if let Some(u) = p.username.as_deref().filter(|u| !u.is_empty()) {
+        url.set_username(u)
+            .map_err(|_| CoreError::Invalid("proxy username is not valid in a URL".into()))?;
+        if p.kind.supports_password()
+            && let Some(pw) = p.password.as_deref().filter(|s| !s.is_empty())
+        {
+            url.set_password(Some(pw))
+                .map_err(|_| CoreError::Invalid("proxy password is not valid in a URL".into()))?;
+        }
+    }
+    reqwest::Proxy::all(url).map_err(|e| CoreError::Invalid(format!("proxy: {e}")))
+}
+
 fn http_client(
     cfg: &WebDavConfig,
     tls: Option<rustls::ClientConfig>,
@@ -851,6 +883,9 @@ fn http_client(
         .http1_only();
     if let Some((name, addrs)) = resolve {
         b = b.resolve_to_addrs(name, addrs);
+    }
+    if let Some(p) = &cfg.proxy {
+        b = b.proxy(reqwest_proxy(p)?);
     }
     match tls {
         // A preconfigured config carries the client certificate itself.

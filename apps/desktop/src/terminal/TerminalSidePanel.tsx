@@ -273,7 +273,7 @@ function TerminalPanel({ pane }: { pane: Pane }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const globalOff = settings.data?.autocomplete === false;
   const label = globalOff
-    ? "Disabled"
+    ? tr("Disabled")
     : paused
       ? tr("Paused today")
       : pane.autocomplete

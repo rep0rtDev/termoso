@@ -32,7 +32,7 @@ import {
   lanSubtitle,
   type LanAddressMode,
 } from "./lan";
-import { tr, trx } from "@/i18n";
+import { tr, trn, trx } from "@/i18n";
 
 /** How long one browse listens for announcements; devices answer within a second or two. */
 export const LAN_BROWSE_MS = 3000;
@@ -137,12 +137,18 @@ function Body({ vaultId, onClose, onImported }: Omit<Props, "open">) {
         await save.mutateAsync(form);
         added += 1;
       }
-      snackbar.notify(`Added ${added} host${added === 1 ? "" : "s"} from the local network`);
+      snackbar.notify(
+        trn(
+          added,
+          "Added {count} host from the local network",
+          "Added {count} hosts from the local network",
+        ),
+      );
       onImported();
       onClose();
     } catch (e) {
       snackbar.error(
-        `${errorMessage(e)}${added ? ` — ${added} host${added === 1 ? "" : "s"} were added before the error` : ""}`,
+        `${errorMessage(e)}${added ? ` — ${trn(added, "{count} host was added before the error", "{count} hosts were added before the error")}` : ""}`,
       );
     } finally {
       if (alive.current) setAdding(false);
@@ -212,7 +218,7 @@ function Body({ vaultId, onClose, onImported }: Omit<Props, "open">) {
                   tone={dup ? "neutral" : undefined}
                   title={lanLabel(d)}
                   subtitle={lanSubtitle(d, mode)}
-                  meta={dup ? `Already added as “${dup.label}”` : undefined}
+                  meta={dup ? tr("Already added as “{label}”", { label: dup.label }) : undefined}
                   checked={selected.has(k) && !dup}
                   onToggle={() => {
                     if (!dup) toggle(d);

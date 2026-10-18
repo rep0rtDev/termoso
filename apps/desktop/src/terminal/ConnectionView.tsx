@@ -38,12 +38,12 @@ const pulse = keyframes`
 function statusLine(pane: Pane): string {
   const p = pane.progress;
   if (pane.status === "error") return pane.message ?? tr("Connection failed");
-  if (pane.status === "closed") return pane.message ?? "Cancelled";
+  if (pane.status === "closed") return pane.message ?? tr("Cancelled");
   if (!p) {
     if (pane.protocol === "local" || pane.target.kind === "local") return tr("Starting shell…");
     return pane.protocol === "serial" ? tr("Opening device…") : tr("Connecting…");
   }
-  const where = p.hop ? ` through ${p.hop}` : "";
+  const where = p.hop ? ` ${tr("through {hop}", { hop: p.hop })}` : "";
   switch (p.phase.kind) {
     case "resolving":
       return tr("Resolving address{where}…", { where });
@@ -93,7 +93,7 @@ function paneProtocol(pane: Pane, host: HostCard | undefined): SessionInfo["prot
 
 function protocolLabel(pane: Pane, host: HostCard | undefined): string {
   const proto = paneProtocol(pane, host).toUpperCase();
-  if (pane.via.length) return `${proto} · via ${pane.via.join(" → ")}`;
+  if (pane.via.length) return `${proto} · ${tr("via {hops}", { hops: pane.via.join(" → ") })}`;
   return proto;
 }
 

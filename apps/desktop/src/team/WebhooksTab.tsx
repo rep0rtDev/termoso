@@ -152,7 +152,7 @@ function WebhooksSection({ team }: { team: Team }) {
                       {w.url}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
-                      {w.actions?.length ? w.actions.join(", ") : "all events"}
+                      {w.actions?.length ? w.actions.join(", ") : tr("all events")}
                     </Typography>
                   </TableCell>
                   <TableCell>{KINDS.find((k) => k.value === w.kind)?.label ?? w.kind}</TableCell>
@@ -183,7 +183,7 @@ function WebhooksSection({ team }: { team: Team }) {
                       checked={w.enabled}
                       disabled={toggle.isPending}
                       onChange={() => toggle.mutate(w)}
-                      slotProps={{ input: { "aria-label": "Enabled" } }}
+                      slotProps={{ input: { "aria-label": tr("Enabled") } }}
                     />
                   </TableCell>
                   <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
@@ -303,7 +303,7 @@ function CreateWebhookDialog({
             {k?.hint}
           </Typography>
           <TextField
-            label={syslog ? "Destination (syslog+tls://host:port)" : "URL (https://…)"}
+            label={syslog ? tr("Destination (syslog+tls://host:port)") : tr("URL (https://…)")}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             fullWidth
@@ -311,7 +311,9 @@ function CreateWebhookDialog({
           />
           {!syslog && (
             <TextField
-              label={kind === "generic" ? "Signing secret (8–512 chars)" : "Token / API key"}
+              label={
+                kind === "generic" ? tr("Signing secret (8–512 chars)") : tr("Token / API key")
+              }
               type="password"
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
@@ -358,7 +360,9 @@ function DeliveriesDialog({
   });
   return (
     <Dialog open={hook !== null} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Deliveries · {hook?.url}</DialogTitle>
+      <DialogTitle>
+        {tr("Deliveries")} · {hook?.url}
+      </DialogTitle>
       <DialogContent sx={{ p: 0 }}>
         {q.isPending ? (
           <Loading pt={120} />

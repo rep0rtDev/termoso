@@ -70,7 +70,7 @@ function syncLine(a: AccountStatus): string {
       return s.lastError ?? tr("Sync error");
     case "idle":
       return s.lastSyncAt
-        ? `Synced ${new Date(s.lastSyncAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}${s.realtime ? " · live" : ""}`
+        ? `${tr("Synced {time}", { time: new Date(s.lastSyncAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })}${s.realtime ? ` · ${tr("live")}` : ""}`
         : tr("Signed in");
   }
 }
@@ -211,7 +211,7 @@ function AccountAvatar() {
                   close();
                   op.mutate(async () => {
                     const r = await ipc.accountSyncNow();
-                    return r.state === "error" ? null : "Synced";
+                    return r.state === "error" ? null : tr("Synced");
                   });
                 }}
               >

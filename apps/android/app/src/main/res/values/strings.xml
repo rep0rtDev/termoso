@@ -394,6 +394,7 @@
     <string name="alias">Alias</string>
     <string name="hostname_or_ip_address">Hostname or IP address</string>
     <string name="group">Group</string>
+    <string name="proxy_credentials_hint">Used when the proxy asks for a login. SOCKS4 has no password.</string>
     <string name="none">None</string>
     <string name="tags">Tags</string>
     <string name="port">Port</string>

@@ -213,7 +213,7 @@ export const isWorkspaceTab = (tab: TerminalTab) => tab.name !== null;
 export function tabTitle(tab: TerminalTab, s: TerminalState = terminalStore.get()): string {
   if (tab.name !== null) return tab.name;
   const pane = s.panes[tab.activePaneId];
-  const title = pane?.title ?? "Terminal";
+  const title = pane?.title ?? tr("Terminal");
   return tab.paneIds.length > 1 ? `${title} (+${tab.paneIds.length - 1})` : title;
 }
 
@@ -771,8 +771,21 @@ export function fitPane(paneId: Uuid) {
   const { width, height } = rt.container.getBoundingClientRect();
   if (width < 20 || height < 20) return;
   try {
-    if (rt.fixedSize) rt.term.resize(rt.fixedSize.cols, rt.fixedSize.rows);
-    else rt.fit.fit();
+    const el = rt.term.element;
+    if (rt.fixedSize) {
+      rt.term.resize(rt.fixedSize.cols, rt.fixedSize.rows);
+      // A pinned grid (multiplayer: somebody else's size) is scaled to fit
+      // instead of being clipped.
+      if (el) {
+        const natural = el.querySelector<HTMLElement>(".xterm-screen") ?? el;
+        const scale = Math.min(1, width / natural.offsetWidth, height / natural.offsetHeight);
+        el.style.transformOrigin = "0 0";
+        el.style.transform = scale < 0.999 ? `scale(${scale})` : "";
+      }
+    } else {
+      if (el) el.style.transform = "";
+      rt.fit.fit();
+    }
     requestAnimationFrame(() => rt.term.refresh(0, rt.term.rows - 1));
   } catch {
     // container not laid out yet

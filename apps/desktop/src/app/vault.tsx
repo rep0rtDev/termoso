@@ -83,9 +83,9 @@ export const vaultIcon = (v: LocalVault) =>
 
 export const vaultHint = (v: LocalVault) =>
   !v.unlocked
-    ? "Locked"
+    ? tr("Locked")
     : v.role === "viewer"
-      ? "Read-only"
+      ? tr("Read-only")
       : v.kind === "team"
         ? tr("Team vault")
         : v.kind === "personal"

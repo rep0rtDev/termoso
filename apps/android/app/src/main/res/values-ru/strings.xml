@@ -400,6 +400,7 @@
     <string name="alias">Псевдоним</string>
     <string name="hostname_or_ip_address">Имя хоста или IP-адрес</string>
     <string name="group">Группа</string>
+    <string name="proxy_credentials_hint">Используются, если прокси требует вход. У SOCKS4 пароля нет.</string>
     <string name="none">Нет</string>
     <string name="tags">Теги</string>
     <string name="port">Порт</string>

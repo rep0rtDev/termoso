@@ -479,6 +479,11 @@ private fun HostForm(
             FilesSection(draft, vm, files)
         }
 
+        if (draft.ssh || draft.telnet != null || draft.webdav != null) {
+            Spacer(Modifier.height(12.dp))
+            SectionCard { ConnectionSection(state, draft, vm) }
+        }
+
         Row(
             Modifier
                 .fillMaxWidth()
@@ -512,10 +517,6 @@ private fun HostForm(
                         placeholder = stringResource(R.string.app_default),
                         keyboard = KeyboardType.Number,
                     )
-                }
-                if (draft.ssh) {
-                    RowDivider()
-                    ConnectionSection(state, draft, vm)
                 }
                 RowDivider()
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

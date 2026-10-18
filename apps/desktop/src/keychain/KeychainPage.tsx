@@ -125,7 +125,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
   const snackbar = useSnackbar();
   const qc = useQueryClient();
   const vaultId = vault.data?.id ?? null;
-  const vaultName = vault.data?.name ?? "Vault";
+  const vaultName = vault.data?.name ?? tr("Vault");
   const readOnly = vault.readOnly;
   const sshKeys = useSshKeys(vaultId);
   const identities = useIdentities(vaultId);
@@ -373,7 +373,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
     const cs = certificateState(k.certificate, k.certificateUnreadable);
     const certLabel =
       cs === "valid"
-        ? "Certificate"
+        ? tr("Certificate")
         : cs === "expired"
           ? tr("Certificate expired")
           : cs === "not_yet"

@@ -42,12 +42,23 @@ export function ProxyDialog({
     host: "",
     port: 1080,
     identity_id: null,
+    username: null,
+    password: null,
   });
   const valid = data.host.trim().length > 0 && data.port >= 1 && data.port <= 65535;
 
   const submit = () => {
     save.mutate(
-      { vaultId, id: null, data: { ...data, host: data.host.trim() } },
+      {
+        vaultId,
+        id: null,
+        data: {
+          ...data,
+          host: data.host.trim(),
+          username: data.identity_id ? null : nonEmpty(data.username?.trim()),
+          password: (data.identity_id ?? data.kind === "socks4") ? null : nonEmpty(data.password),
+        },
+      },
       {
         onSuccess: (e) => {
           onCreated(e.id);
@@ -93,8 +104,10 @@ export function ProxyDialog({
           </Field>
         </Box>
         <Field
-          label={tr("Credentials")}
-          hint={tr("Optional identity used to authenticate with the proxy.")}
+          label={tr("Identity")}
+          hint={tr(
+            "Optional saved identity used to authenticate with the proxy; leave it empty to type a username and password here.",
+          )}
         >
           <TextField
             select
@@ -113,6 +126,30 @@ export function ProxyDialog({
             ))}
           </TextField>
         </Field>
+        {!data.identity_id && (
+          <Box sx={{ display: "flex", gap: 1.5 }}>
+            <Field label={tr("Username")} sx={{ flex: 1 }}>
+              <TextField
+                value={data.username ?? ""}
+                onChange={(e) => setData({ ...data, username: e.target.value || null })}
+                autoComplete="off"
+              />
+            </Field>
+            <Field
+              label={tr("Password")}
+              sx={{ flex: 1 }}
+              hint={data.kind === "socks4" ? tr("SOCKS4 has no password.") : undefined}
+            >
+              <TextField
+                type="password"
+                value={data.kind === "socks4" ? "" : (data.password ?? "")}
+                disabled={data.kind === "socks4"}
+                onChange={(e) => setData({ ...data, password: e.target.value || null })}
+                autoComplete="new-password"
+              />
+            </Field>
+          </Box>
+        )}
       </DialogContent>
       <DialogActions>
         <Button color="inherit" onClick={onClose}>
@@ -125,6 +162,9 @@ export function ProxyDialog({
     </Dialog>
   );
 }
+
+const nonEmpty = (s: string | null | undefined): string | null =>
+  s !== undefined && s !== null && s.length > 0 ? s : null;
 
 /** Create a host chain (ordered jump hosts) and hand its id back. */
 export function ChainDialog({
@@ -145,7 +185,9 @@ export function ChainDialog({
   const save = useSaveHostChain();
   const [label, setLabel] = useState("");
   const [ids, setIds] = useState<Uuid[]>([]);
-  const candidates = (hosts.data ?? []).filter((h) => h.id !== excludeHostId);
+  const candidates = (hosts.data ?? []).filter(
+    (h) => h.id !== excludeHostId && h.protocol === "ssh",
+  );
 
   const toggle = (id: Uuid) =>
     setIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
@@ -185,7 +227,7 @@ export function ChainDialog({
         >
           {candidates.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              {tr("Add another host first — a chain needs at least one intermediate host.")}
+              {tr("Add another SSH host first — a chain needs at least one intermediate SSH host.")}
             </Typography>
           ) : (
             <List

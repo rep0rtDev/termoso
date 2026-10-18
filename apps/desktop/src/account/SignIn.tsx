@@ -214,7 +214,7 @@ export function SignInForm({
   const serverLine = info.isError
     ? errorMessage(info.error)
     : info.data
-      ? `${info.data.name} · v${info.data.version}${registrationClosed ? " · invite only" : ""}`
+      ? `${info.data.name} · v${info.data.version}${registrationClosed ? ` · ${tr("invite only")}` : ""}`
       : info.isFetching
         ? tr("Checking server…")
         : where === "cloud"

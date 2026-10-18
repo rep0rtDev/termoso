@@ -357,6 +357,8 @@ impl TermosoApp {
                 port: e.data.port,
                 identity_id: e.data.identity_id.map(|i| i.to_string()),
                 identity_label: label(e.data.identity_id),
+                username: e.data.username.clone(),
+                password: e.data.password.clone(),
             })
             .collect())
     }
@@ -379,6 +381,11 @@ impl TermosoApp {
             host,
             port: draft.port,
             identity_id: parse_opt_id(&draft.identity_id)?,
+            username: draft
+                .username
+                .map(|u| u.trim().to_string())
+                .filter(|u| !u.is_empty()),
+            password: draft.password.filter(|p| !p.is_empty()),
         };
         Ok(match parse_opt_id(&draft.id)? {
             Some(id) => {
@@ -1439,6 +1446,10 @@ impl TermosoApp {
                 host_id: Some(resolved.host.id),
                 vault_id: Some(resolved.host.vault_id),
                 label: resolved.host.data.label.clone(),
+                proxy: match &resolved.proxy {
+                    Some(p) => Some(crate::connect::proxy_config(&self.store, &p.data)?),
+                    None => None,
+                },
             },
             "ssh" => LaunchTarget::Ssh {
                 target: ssh_target(&resolved),
@@ -1568,6 +1579,7 @@ impl TermosoApp {
                     host_id: None,
                     vault_id: None,
                     label: host.to_string(),
+                    proxy: None,
                 }
             }
             _ => LaunchTarget::Ssh {
@@ -1671,6 +1683,40 @@ impl TermosoApp {
     /// session type as SFTP; `capabilities()` tells the UI what to hide.
     /// Write-mode files spool under the profile directory before the PUT.
     /// `vault_id` as in [`Self::connect_host`].
+    /// Open SFTP over the SSH connection of an open terminal — the same
+    /// login, no prompts, like the desktop's "Open SFTP for this
+    /// connection". `label`/`target` are what the files tab shows. Fails for
+    /// Mosh, Telnet, local and shared-view terminals.
+    pub fn sftp_session(
+        &self,
+        session: Arc<SshSession>,
+        label: String,
+        target: String,
+        listener: Arc<dyn SftpListener>,
+    ) -> Result<Arc<SftpSession>> {
+        let client = session
+            .ssh_client()
+            .ok_or_else(|| MobileError::invalid("This terminal has no SSH connection to reuse"))?;
+        let host_id = session.saved_host_id();
+        let presence = host_id.map(|id| self.presence.slot(id, "sftp"));
+        Ok(SftpSession::launch(
+            RUNTIME.handle().clone(),
+            SftpLaunch {
+                store: self.store.clone(),
+                secrets: self.secrets.clone(),
+                backend: FileBackend::Session {
+                    client,
+                    host_id,
+                    label,
+                    target_display: target,
+                },
+                settings: MobileSettings::load(&self.store)?,
+                listener,
+                presence,
+            },
+        ))
+    }
+
     pub fn webdav_host(
         &self,
         host_id: String,

@@ -443,7 +443,7 @@ impl InteractivePrompt for InteractiveAsk {
     }
 }
 
-fn proxy_config(store: &Store, p: &termoso_core::model::Proxy) -> Result<ProxyConfig> {
+pub(crate) fn proxy_config(store: &Store, p: &termoso_core::model::Proxy) -> Result<ProxyConfig> {
     let kind = ProxyKind::parse(&p.kind)
         .ok_or_else(|| MobileError::invalid(format!("unsupported proxy type {}", p.kind)))?;
     let (username, password) = match p.identity_id {
@@ -457,7 +457,13 @@ fn proxy_config(store: &Store, p: &termoso_core::model::Proxy) -> Result<ProxyCo
                     .map(Zeroizing::new),
             )
         }
-        None => (None, None),
+        None => (
+            p.username.clone().filter(|u| !u.is_empty()),
+            p.password
+                .clone()
+                .filter(|s| !s.is_empty())
+                .map(Zeroizing::new),
+        ),
     };
     Ok(ProxyConfig {
         kind,

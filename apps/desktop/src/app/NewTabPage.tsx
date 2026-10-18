@@ -185,7 +185,7 @@ export function NewTabPage() {
                     </IconTile>
                     <ListItemText
                       primary={tr("Connect to {quickLabel}", { quickLabel: quickLabel(quick) })}
-                      secondary={`Quick connect · ${quick.protocol === "telnet" ? "Telnet" : "SSH"} · not saved`}
+                      secondary={`${tr("Quick connect")} · ${quick.protocol === "telnet" ? "Telnet" : "SSH"} · ${tr("not saved")}`}
                       slotProps={rowText}
                     />
                   </ListItemButton>
@@ -362,7 +362,7 @@ function WorkspaceTemplates() {
                   <ListItemText
                     primary={tpl.name}
                     secondary={`${connectionsN(targets.length)} · ${
-                      tpl.viewMode === "list" ? "list" : "side by side"
+                      tpl.viewMode === "list" ? tr("list") : tr("side by side")
                     }`}
                     slotProps={rowText}
                   />

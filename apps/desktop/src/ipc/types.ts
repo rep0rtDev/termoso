@@ -624,7 +624,11 @@ export interface ProxyData {
   kind: "socks4" | "socks5" | "http";
   host: string;
   port: number;
+  /** Identity for proxy auth; wins over the inline username/password. */
   identity_id?: Uuid | null;
+  username?: string | null;
+  /** Not sent for SOCKS4 (the protocol has no password). */
+  password?: string | null;
 }
 
 /** Raw `host_chain` entity payload. */

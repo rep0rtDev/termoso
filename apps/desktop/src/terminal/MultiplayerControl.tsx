@@ -206,7 +206,9 @@ export function MultiplayerPopover({
         />
       ) : reason === "team" ? (
         <Hint
-          text={`Multiplayer is turned off for ${blockedByTeam?.name ?? "your team"}.`}
+          text={tr("Multiplayer is turned off for {team}.", {
+            team: blockedByTeam?.name ?? tr("your team"),
+          })}
           action={
             blockedByTeam && can(blockedByTeam, "team.settings") ? tr("Team settings") : undefined
           }

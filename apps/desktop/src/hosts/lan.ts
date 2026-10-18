@@ -57,7 +57,7 @@ export function lanSubtitle(d: LocalDevice, mode: LanAddressMode): string {
     parts.push(addr);
     if (name && name !== addr) parts.push(name);
   }
-  if (d.port !== 22) parts.push(`port ${d.port}`);
+  if (d.port !== 22) parts.push(tr("port {port}", { port: d.port }));
   parts.push(d.services.map((s) => s.toUpperCase()).join(" + "));
   return parts.join(" · ");
 }

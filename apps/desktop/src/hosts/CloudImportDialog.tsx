@@ -325,18 +325,21 @@ function Body({
   if (step.kind === "done") {
     const r = step.report;
     const rows: [string, number][] = [
-      ["Added", r.created],
-      ["Updated", r.updated],
-      ["Unchanged", r.unchanged],
-      ["Removed", r.removed],
-      ["Skipped", r.skipped],
+      [tr("Added"), r.created],
+      [tr("Updated"), r.updated],
+      [tr("Unchanged"), r.unchanged],
+      [tr("Removed"), r.removed],
+      [tr("Skipped"), r.skipped],
     ];
-    const n = (count: number) => (count === 1 ? "1 host" : `${count} hosts`);
+    const n = (count: number) => trn(count, "{count} host", "{count} hosts");
     const headline =
       r.created > 0
-        ? `${n(r.created)} added from ${step.providerName}`
+        ? tr("{hosts} added from {provider}", { hosts: n(r.created), provider: step.providerName })
         : r.updated > 0
-          ? `${n(r.updated)} updated from ${step.providerName}`
+          ? tr("{hosts} updated from {provider}", {
+              hosts: n(r.updated),
+              provider: step.providerName,
+            })
           : r.removed > 0
             ? tr("{n} removed — no longer on {providerName}", {
                 n: n(r.removed),
@@ -585,9 +588,9 @@ function Body({
             : selected.length === 0
               ? tr("Import")
               : updCount === 0
-                ? `Add ${newCount} host${newCount === 1 ? "" : "s"}`
+                ? trn(newCount, "Add {count} host", "Add {count} hosts")
                 : newCount === 0
-                  ? `Update ${updCount} host${updCount === 1 ? "" : "s"}`
+                  ? trn(updCount, "Update {count} host", "Update {count} hosts")
                   : tr("Add {newCount}, update {updCount}", { newCount, updCount })}
         </Button>
       </DialogActions>

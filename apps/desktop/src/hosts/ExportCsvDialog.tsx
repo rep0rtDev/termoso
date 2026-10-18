@@ -19,14 +19,14 @@ import { tr, trn, trx, msg } from "@/i18n";
 import { requirePerm } from "@/team/perms";
 
 const COLUMNS: [string, string][] = [
-  ["Groups", msg("group path, joined with /")],
-  ["Label", msg("host name")],
-  ["Tags", msg("comma separated")],
-  ["Hostname/IP", msg("address")],
-  ["Protocol", msg("ssh or telnet")],
-  ["Port", msg("effective port")],
-  ["Username", msg("effective username (own or inherited)")],
-  ["Password", "empty unless enabled below"],
+  [msg("Groups"), msg("group path, joined with /")],
+  [msg("Label"), msg("host name")],
+  [msg("Tags"), msg("comma separated")],
+  [msg("Hostname/IP"), msg("address")],
+  [msg("Protocol"), msg("ssh or telnet")],
+  [msg("Port"), msg("effective port")],
+  [msg("Username"), msg("effective username (own or inherited)")],
+  [msg("Password"), msg("empty unless enabled below")],
 ];
 
 /** Termius-compatible CSV of the current vault's hosts; keys, certificates and proxies never leave the app. */
@@ -64,7 +64,8 @@ export function ExportCsvDialog({
       if (passwords && !requirePerm(vault.id, "secrets.reveal")) return;
       const r = await ipc.hostsExportCsv(vault.id, passwords, path);
       snackbar.notify(
-        `Exported ${r.hosts} host${r.hosts === 1 ? "" : "s"}${r.passwordsIncluded ? " with passwords" : ""}`,
+        trn(r.hosts, "Exported {count} host", "Exported {count} hosts") +
+          (r.passwordsIncluded ? ` ${tr("with passwords")}` : ""),
       );
       close();
     } catch (e) {

@@ -537,7 +537,11 @@ function TeamView({
             label={tr("Require 2FA for all team members")}
             hint={
               withoutMfa > 0
-                ? `Members without two-factor authentication cannot open team vaults. ${withoutMfa} member${withoutMfa === 1 ? " has" : "s have"} no 2FA yet.`
+                ? trn(
+                    withoutMfa,
+                    "Members without two-factor authentication cannot open team vaults. {count} member has no 2FA yet.",
+                    "Members without two-factor authentication cannot open team vaults. {count} members have no 2FA yet.",
+                  )
                 : tr("Members without two-factor authentication cannot open team vaults.")
             }
             enabled={team.require_mfa}
@@ -723,9 +727,12 @@ function TeamView({
                     }
                     onRemove={() =>
                       op.mutate(() =>
-                        ipc
-                          .teamMemberRemove(team.id, m.user_id)
-                          .then(() => `${m.display_name ?? m.email} removed from ${team.name}`),
+                        ipc.teamMemberRemove(team.id, m.user_id).then(() =>
+                          tr("{who} removed from {team}", {
+                            who: m.display_name ?? m.email,
+                            team: team.name,
+                          }),
+                        ),
                       )
                     }
                     onDeleteAccount={() =>
@@ -840,9 +847,12 @@ function TeamView({
                 denyPerm("team.delete");
                 return;
               }
-              op.mutate(() => ipc.teamDelete(team.id).then(() => `${team.name} deleted`), {
-                onSuccess: () => setConfirm(null),
-              });
+              op.mutate(
+                () => ipc.teamDelete(team.id).then(() => tr("{name} deleted", { name: team.name })),
+                {
+                  onSuccess: () => setConfirm(null),
+                },
+              );
             }}
           >
             {tr(
@@ -928,7 +938,7 @@ export function SecurityRow({
   onChange: (on: boolean) => void;
 }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const text = enabled ? "Enabled" : "Disabled";
+  const text = enabled ? tr("Enabled") : tr("Disabled");
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 2, minHeight: 44 }}>
       <Tooltip title={hint} placement="top-start" enterDelay={600}>
@@ -1335,7 +1345,7 @@ function PendingKeys({
                 />
               }
               title={m?.display_name ?? m?.email ?? tr("Unknown member")}
-              subtitle={`${v?.name ?? "Vault"} · ${tr(vaultRoleLabel[k.role])}`}
+              subtitle={`${v?.name ?? tr("Vault")} · ${tr(vaultRoleLabel[k.role])}`}
               trailing={
                 can ? (
                   <Button

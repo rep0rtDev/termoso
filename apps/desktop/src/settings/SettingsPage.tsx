@@ -60,7 +60,7 @@ import {
   type TermType,
   type ThemeMode,
 } from "@/ipc/types";
-import { tr, msg, LOCALE_NAMES, type Language } from "@/i18n";
+import { tr, trn, msg, LOCALE_NAMES, type Language } from "@/i18n";
 
 const PAGES: { id: PageId; label: string; icon: ReactNode }[] = [
   { id: "account", label: msg("Account & sync"), icon: <PersonRoundedIcon /> },
@@ -201,7 +201,9 @@ function DeepLinksRow() {
     onSuccess: (schemes) =>
       snackbar.notify(
         schemes.length
-          ? `Termoso now opens ${schemes.map((s) => `${s}://`).join(", ")} links`
+          ? tr("Termoso now opens {schemes} links", {
+              schemes: schemes.map((s) => `${s}://`).join(", "),
+            })
           : tr("Registration ran, but the system reports no handler — check your desktop settings"),
       ),
     onError: (e) => snackbar.error(errorMessage(e)),
@@ -447,7 +449,11 @@ function AgentKeyList() {
             : a?.available
               ? a.keys.length === 0
                 ? tr("Agent reachable, no keys loaded (ssh-add to add one).")
-                : `Agent reachable · ${a.keys.length} key${a.keys.length === 1 ? "" : "s"}`
+                : trn(
+                    a.keys.length,
+                    "Agent reachable · {count} key",
+                    "Agent reachable · {count} keys",
+                  )
               : tr("No agent: {value}", { value: a?.error ?? errorMessage(q.error) })}
         </Typography>
         <Button

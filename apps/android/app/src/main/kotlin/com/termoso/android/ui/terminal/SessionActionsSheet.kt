@@ -145,9 +145,7 @@ fun SessionActionsSheet(
                         Icons.Filled.FolderOpen,
                         stringResource(R.string.open_sftp),
                         onClick = then {
-                            val vaultId = session.vaultId
-                            if (hostId != null && vaultId != null) shell.launch { shell.openSftpHost(hostId, vaultId)?.let { onOpenSftp(it.id) } }
-                            else if (quick != null) shell.launch { shell.openSftpQuick(quick)?.let { onOpenSftp(it.id) } }
+                            shell.launch { shell.openSftpSession(session)?.let { onOpenSftp(it.id) } }
                         },
                     )
                     RowDivider()

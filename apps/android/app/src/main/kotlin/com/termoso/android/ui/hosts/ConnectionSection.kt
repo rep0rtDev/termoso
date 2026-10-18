@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.termoso.android.R
 import com.termoso.android.ui.components.FormField
@@ -63,7 +64,7 @@ fun ConnectionSection(state: HostEditorState, draft: HostDraft, vm: HostEditorVi
         Text(stringResource(R.string.connection), style = MaterialTheme.typography.labelLarge)
 
         val chain = state.chains.firstOrNull { it.id == draft.hostChainId }
-        PickerRow(
+        if (draft.ssh) PickerRow(
             label = stringResource(R.string.host_chaining),
             value = chain?.let { it.label.ifBlank { it.hostLabels.joinToString(" → ") } } ?: stringResource(R.string.none),
             options = listOf<Pair<String?, String>>(null to stringResource(R.string.none)) +
@@ -76,7 +77,7 @@ fun ConnectionSection(state: HostEditorState, draft: HostDraft, vm: HostEditorVi
             },
             empty = null,
         )
-        if (chain != null) {
+        if (draft.ssh && chain != null) {
             EditLink { chainEditor = HostChainDraft(chain.id, chain.vaultId, chain.label, chain.hostIds) }
         }
 
@@ -89,16 +90,16 @@ fun ConnectionSection(state: HostEditorState, draft: HostDraft, vm: HostEditorVi
                 (NEW to stringResource(R.string.new_proxy)),
             selected = draft.proxyId,
             onPick = { id ->
-                if (id == NEW) proxyEditor = ProxyDraft(null, draft.vaultId, "socks5", "", 1080u, null)
+                if (id == NEW) proxyEditor = ProxyDraft(null, draft.vaultId, "socks5", "", 1080u, null, null, null)
                 else vm.update { it.copy(proxyId = id) }
             },
             empty = null,
         )
         if (proxy != null) {
-            EditLink { proxyEditor = ProxyDraft(proxy.id, proxy.vaultId, proxy.kind, proxy.host, proxy.port, proxy.identityId) }
+            EditLink { proxyEditor = ProxyDraft(proxy.id, proxy.vaultId, proxy.kind, proxy.host, proxy.port, proxy.identityId, proxy.username, proxy.password) }
         }
 
-        PickerRow(
+        if (draft.ssh) PickerRow(
             label = stringResource(R.string.color_scheme),
             value = themes.firstOrNull { it.id == draft.colorScheme || it.name == draft.colorScheme }?.name
                 ?: draft.colorScheme ?: stringResource(R.string.app_default),
@@ -107,7 +108,7 @@ fun ConnectionSection(state: HostEditorState, draft: HostDraft, vm: HostEditorVi
             onPick = { id -> vm.update { it.copy(colorScheme = id) } },
             empty = null,
         )
-        PickerRow(
+        if (draft.ssh) PickerRow(
             label = stringResource(R.string.charset),
             value = draft.charset ?: "UTF-8",
             options = listOf<Pair<String?, String>>(null to "UTF-8") + CHARSETS.map { it to it },
@@ -116,8 +117,8 @@ fun ConnectionSection(state: HostEditorState, draft: HostDraft, vm: HostEditorVi
             empty = null,
         )
     }
-    RowDivider()
-    SwitchRow(
+    if (draft.ssh) RowDivider()
+    if (draft.ssh) SwitchRow(
         title = stringResource(R.string.backspace_sends_ctrl_h),
         subtitle = stringResource(R.string.for_hosts_whose_shell_expects_h_instead_of_del),
         checked = draft.backspace == "ctrl-h",
@@ -163,6 +164,8 @@ private fun ProxyEditorDialog(
     var host by remember { mutableStateOf(initial.host) }
     var port by remember { mutableStateOf(initial.port.toString()) }
     var identityId by remember { mutableStateOf(initial.identityId) }
+    var username by remember { mutableStateOf(initial.username ?: "") }
+    var password by remember { mutableStateOf(initial.password ?: "") }
     val valid = host.isNotBlank() && (port.toIntOrNull() ?: 0) in 1..65535
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -188,12 +191,31 @@ private fun ProxyEditorDialog(
                     onPick = { identityId = it },
                     empty = null,
                 )
+                if (identityId == null) {
+                    FormField(username, { username = it }, stringResource(R.string.username))
+                    if (kind != "socks4") {
+                        FormField(password, { password = it }, stringResource(R.string.password), keyboard = KeyboardType.Password, visual = PasswordVisualTransformation())
+                    }
+                    Text(
+                        stringResource(R.string.proxy_credentials_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         },
         confirmButton = {
             Button(
                 enabled = valid,
-                onClick = { onSave(ProxyDraft(initial.id, initial.vaultId, kind, host.trim(), port.toInt().toUShort(), identityId)) },
+                onClick = {
+                    onSave(
+                        ProxyDraft(
+                            initial.id, initial.vaultId, kind, host.trim(), port.toInt().toUShort(), identityId,
+                            username.trim().ifEmpty { null }.takeIf { identityId == null },
+                            password.ifEmpty { null }.takeIf { identityId == null && kind != "socks4" },
+                        ),
+                    )
+                },
             ) { Text(stringResource(R.string.save)) }
         },
         dismissButton = {

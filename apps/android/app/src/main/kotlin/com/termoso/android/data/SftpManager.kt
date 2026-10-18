@@ -165,6 +165,32 @@ class SftpManager(
         )
     }
 
+    /**
+     * Files browser over the SSH connection of an open terminal — the same
+     * login the terminal already did, so no username/password prompts (the
+     * desktop's "Open SFTP for this connection"). Fails for Mosh/Telnet/local.
+     */
+    suspend fun openSession(session: TerminalSession, background: Boolean = false): SftpConnection {
+        session.vaultId?.let { repo.perms.require(it, "connect.sftp") }
+        val bridge = SftpBridge()
+        val rust = repo.read { sftpSession(session.rust, session.label, session.target, bridge) }
+        return register(
+            SftpConnection(
+                id = rust.id(),
+                label = session.label,
+                target = session.target,
+                hostId = session.hostId,
+                vaultId = session.vaultId,
+                quick = session.quick,
+                osName = session.detectedOs.value ?: session.savedOsName,
+                rust = rust,
+                bridge = bridge,
+                cacheDir = cacheFor(rust.id()),
+                background = background,
+            ),
+        )
+    }
+
     suspend fun openQuick(target: QuickTarget): SftpConnection {
         val bridge = SftpBridge()
         val rust = repo.read { sftpQuick(target, bridge) }

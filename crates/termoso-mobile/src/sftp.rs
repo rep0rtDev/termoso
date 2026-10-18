@@ -318,12 +318,20 @@ pub(crate) enum Backend {
     },
     /// The local shell's home; paths are relative to it and cannot leave it.
     Local { root: PathBuf },
+    /// SFTP over the SSH connection of an open terminal: no new login, no
+    /// prompts — exactly what the terminal already authenticated with.
+    Session {
+        client: Arc<SshClient>,
+        host_id: Option<Uuid>,
+        label: String,
+        target_display: String,
+    },
 }
 
 impl Backend {
     fn protocol(&self) -> FileProtocol {
         match self {
-            Self::Sftp { .. } => FileProtocol::Sftp,
+            Self::Sftp { .. } | Self::Session { .. } => FileProtocol::Sftp,
             Self::WebDav { .. } => FileProtocol::Webdav,
             Self::Local { .. } => FileProtocol::Local,
         }
@@ -331,7 +339,7 @@ impl Backend {
 
     fn capabilities(&self) -> FileCapabilities {
         match self {
-            Self::Sftp { .. } => FileCapabilities {
+            Self::Sftp { .. } | Self::Session { .. } => FileCapabilities {
                 permissions: true,
                 symlinks: true,
                 ownership: true,
@@ -1162,6 +1170,12 @@ async fn run(inner: Arc<Inner>, backend: Backend, settings: MobileSettings) {
                 .map(|w| w.url.clone())
                 .unwrap_or_default(),
         ),
+        Backend::Session {
+            host_id,
+            label,
+            target_display,
+            ..
+        } => (*host_id, label.clone(), target_display.clone()),
         Backend::Local { .. } => unreachable!("handled above"),
     };
     let protocol = backend.protocol();
@@ -1203,6 +1217,14 @@ async fn run(inner: Arc<Inner>, backend: Backend, settings: MobileSettings) {
                 Ok(Live {
                     fs: Arc::new(dav),
                     ssh: None,
+                })
+            }
+            Backend::Session { client, .. } => {
+                inner.set_state(SessionState::connecting(ConnectStage::OpeningSftp, None));
+                let sftp = Sftp::open(client).await?;
+                Ok(Live {
+                    fs: Arc::new(sftp),
+                    ssh: Some((client.clone(), Vec::new())),
                 })
             }
             Backend::Local { .. } => unreachable!("handled above"),

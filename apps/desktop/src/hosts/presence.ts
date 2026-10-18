@@ -1,5 +1,5 @@
 import type { PresenceEntry, PresenceSession, TeamPresence, Uuid } from "@/ipc/types";
-import { tr, msg } from "@/i18n";
+import { tr, trn, msg } from "@/i18n";
 
 /** One teammate's device on one host: the sessions it has open there. */
 export interface HostViewer {
@@ -79,11 +79,11 @@ export function connectedFor(sinceIso: string, now = Date.now()): string {
   const t = Date.parse(sinceIso);
   if (Number.isNaN(t)) return "";
   const s = Math.max(0, Math.floor((now - t) / 1000));
-  if (s < 60) return "just now";
+  if (s < 60) return tr("just now");
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m} min`;
+  if (m < 60) return tr("{m} min", { m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} h ${String(m % 60).padStart(2, "0")} min`;
+  if (h < 24) return tr("{h} h {m} min", { h, m: String(m % 60).padStart(2, "0") });
   const d = Math.floor(h / 24);
   return `${d} d ${h % 24} h`;
 }
@@ -113,10 +113,13 @@ export const platformLabel = (p: string) => PLATFORM_LABEL[p] ?? p;
 
 /** `Alice`, `Alice and Bob`, `Alice, Bob and 2 others` — for a card tooltip. */
 export function viewersSummary(viewers: HostViewer[]): string {
-  const names = distinctPeople(viewers).map((v) => (v.me ? "You" : viewerName(v)));
+  const names = distinctPeople(viewers).map((v) => (v.me ? tr("You") : viewerName(v)));
   if (names.length === 0) return "";
   if (names.length === 1) return names[0] ?? "";
-  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  if (names.length === 2) return tr("{a} and {b}", { a: names[0] ?? "", b: names[1] ?? "" });
   const rest = names.length - 2;
-  return `${names[0]}, ${names[1]} and ${rest} other${rest === 1 ? "" : "s"}`;
+  return trn(rest, "{a}, {b} and {count} other", "{a}, {b} and {count} others", {
+    a: names[0] ?? "",
+    b: names[1] ?? "",
+  });
 }

@@ -95,8 +95,12 @@ function skippedSummary(r: ImportApplyReport) {
     r.skippedKeys > 0 && plural(r.skippedKeys, "key"),
   ].filter((p): p is string => typeof p === "string");
   if (parts.length === 0) return tr("Everything selected was new.");
-  const verb = r.skippedHosts + r.skippedKeys === 1 ? "was" : "were";
-  return `${parts.join(" and ")} already existed and ${verb} reused.`;
+  return trn(
+    r.skippedHosts + r.skippedKeys,
+    "{what} already existed and was reused.",
+    "{what} already existed and were reused.",
+    { what: parts.join(tr(" and ")) },
+  );
 }
 
 /**
@@ -523,11 +527,11 @@ function Body({
   if (step.kind === "done") {
     const r = step.report;
     const rows: [string, number][] = [
-      ["Hosts", r.hosts],
-      ["Groups", r.groups],
-      ["Tags", r.tags],
-      ["Keys", r.keys],
-      ["Proxies", r.proxies],
+      [tr("Hosts"), r.hosts],
+      [tr("Groups"), r.groups],
+      [tr("Tags"), r.tags],
+      [tr("Keys"), r.keys],
+      [tr("Proxies"), r.proxies],
       [tr("Host chains"), r.hostChains],
       [tr("Forwarding rules"), r.pfRules],
       [tr("Known hosts"), r.knownHosts],
@@ -625,7 +629,7 @@ function Body({
             color="warning"
             variant="outlined"
             icon={<WarningAmberRoundedIcon />}
-            label={`${preview.warnings.length} warning${preview.warnings.length === 1 ? "" : "s"}`}
+            label={trn(preview.warnings.length, "{count} warning", "{count} warnings")}
             onClick={() => setShowWarnings((v) => !v)}
           />
         )}
@@ -750,7 +754,7 @@ function Body({
                         {r.kind === "dynamic"
                           ? `${r.boundAddress || "127.0.0.1"}:${r.localPort} → SOCKS`
                           : r.kind === "remote"
-                            ? `remote ${r.boundAddress || "*"}:${r.localPort} → ${r.remoteHost}:${r.remotePort}`
+                            ? `${tr("remote")} ${r.boundAddress || "*"}:${r.localPort} → ${r.remoteHost}:${r.remotePort}`
                             : `${r.boundAddress || "127.0.0.1"}:${r.localPort} → ${r.remoteHost}:${r.remotePort}`}
                       </Mono>
                     }
@@ -960,7 +964,7 @@ function HostRow({
             <Chip size="small" icon={<LockOutlinedIcon />} label={tr("Password")} />
           )}
           {host.jumpHosts.length > 0 && (
-            <Chip size="small" label={`via ${host.jumpHosts.join(" → ")}`} />
+            <Chip size="small" label={tr("via {hops}", { hops: host.jumpHosts.join(" → ") })} />
           )}
           {host.proxy && (
             <Chip

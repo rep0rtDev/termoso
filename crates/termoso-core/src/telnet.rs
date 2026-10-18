@@ -44,6 +44,8 @@ pub struct TelnetOptions {
     pub timeout: Duration,
     /// Address family to use when the host resolves to both.
     pub ip_version: IpVersion,
+    /// Optional SOCKS/HTTP proxy for the TCP leg.
+    pub proxy: Option<crate::ssh::proxy::ProxyConfig>,
 }
 
 /// A live telnet connection.
@@ -193,6 +195,11 @@ impl TelnetTerminal {
     /// Connect.
     pub async fn connect(opts: TelnetOptions) -> Result<(Arc<TelnetTerminal>, TermEvents)> {
         let stream = tokio::time::timeout(opts.timeout, async {
+            if let Some(p) = &opts.proxy {
+                let crate::ssh::proxy::ProxyStream::Tcp(s) =
+                    crate::ssh::proxy::connect(p, &opts.host, opts.port).await?;
+                return Ok(s);
+            }
             let addrs = opts.ip_version.filter(
                 tokio::net::lookup_host((opts.host.as_str(), opts.port))
                     .await?
@@ -350,6 +357,7 @@ mod tests {
             size: TermSize { cols: 80, rows: 24 },
             timeout: Duration::from_secs(5),
             ip_version,
+            proxy: None,
         }
     }
 

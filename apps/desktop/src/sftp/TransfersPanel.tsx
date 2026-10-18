@@ -32,7 +32,7 @@ import {
   type Edit,
   type Transfer,
 } from "./store";
-import { tr } from "@/i18n";
+import { tr, trn } from "@/i18n";
 
 export function TransfersPanel() {
   const order = useSftp((s) => s.transferOrder);
@@ -61,33 +61,37 @@ export function TransfersPanel() {
       ? tr("Preparing dropped files… {staging}", { staging })
       : running.length > 0
         ? [
-            `${running.length} active`,
-            queued > 0 ? `${queued} queued` : null,
-            paused > 0 ? `${paused} paused` : null,
+            tr("{n} active", { n: running.length }),
+            queued > 0 ? tr("{n} queued", { n: queued }) : null,
+            paused > 0 ? tr("{n} paused", { n: paused }) : null,
             pct !== undefined ? `${Math.round(pct)}%` : null,
             speed > 0 ? formatSpeed(speed) : null,
             pct !== undefined && speed > 0
-              ? `${formatDuration((total - done) / speed)} left`
+              ? tr("{duration} left", { duration: formatDuration((total - done) / speed) })
               : null,
           ]
             .filter(Boolean)
             .join(" · ")
         : paused > 0 || queued > 0
           ? [
-              paused > 0 ? `${paused} paused` : null,
-              queued > 0 ? `${queued} queued` : null,
-              failed > 0 ? `${failed} failed` : null,
+              paused > 0 ? tr("{n} paused", { n: paused }) : null,
+              queued > 0 ? tr("{n} queued", { n: queued }) : null,
+              failed > 0 ? tr("{n} failed", { n: failed }) : null,
             ]
               .filter(Boolean)
               .join(" · ")
           : all.length > 0
             ? [
-                all.length - failed > 0 ? `${all.length - failed} finished` : null,
-                failed > 0 ? `${failed} failed` : null,
+                all.length - failed > 0 ? tr("{n} finished", { n: all.length - failed }) : null,
+                failed > 0 ? tr("{n} failed", { n: failed }) : null,
               ]
                 .filter(Boolean)
                 .join(" · ")
-            : `${editing.length} ${editing.length === 1 ? "file" : "files"} open for editing`;
+            : trn(
+                editing.length,
+                "{count} file open for editing",
+                "{count} files open for editing",
+              );
 
   return (
     <Box
@@ -162,13 +166,13 @@ export function TransfersPanel() {
 function detail(t: Transfer): string {
   switch (t.status) {
     case "failed":
-      return t.message ?? "Failed";
+      return t.message ?? tr("Failed");
     case "cancelled":
       return tr("Cancelled · {formatSize}", { formatSize: formatSize(t.done) });
     case "queued":
       return t.cancelling ? tr("Cancelling…") : tr("Waiting…");
     case "paused":
-      return `Paused · ${formatSize(t.done)}${t.total !== null ? ` / ${formatSize(t.total)}` : ""}`;
+      return `${tr("Paused")} · ${formatSize(t.done)}${t.total !== null ? ` / ${formatSize(t.total)}` : ""}`;
     case "done": {
       const secs = ((t.finishedAt ?? Date.now()) - t.startedAt) / 1000;
       const avg = secs > 0.5 ? ` · ${formatSpeed(t.done / secs)}` : "";
@@ -186,7 +190,9 @@ function detail(t: Transfer): string {
       if (t.speed !== null && t.speed > 0) {
         parts.push(formatSpeed(t.speed));
         if (t.total !== null && t.total > t.done) {
-          parts.push(`${formatDuration((t.total - t.done) / t.speed)} left`);
+          parts.push(
+            tr("{duration} left", { duration: formatDuration((t.total - t.done) / t.speed) }),
+          );
         }
       }
       return parts.join(" · ");
@@ -322,8 +328,14 @@ function editDetail(e: Edit): string {
       return e.message ?? tr("Upload failed");
     case "watching":
       return e.uploadedAt !== null
-        ? `Saved ${formatSize(e.uploadedBytes)} · uploaded ${new Date(e.uploadedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-        : `${formatSize(e.info.size)} · waiting for changes${e.info.app ? ` in ${e.info.app}` : ""}`;
+        ? tr("Saved {size} · uploaded {time}", {
+            size: formatSize(e.uploadedBytes),
+            time: new Date(e.uploadedAt).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          })
+        : `${formatSize(e.info.size)} · ${tr("waiting for changes")}${e.info.app ? ` ${tr("in {app}", { app: e.info.app })}` : ""}`;
   }
 }
 

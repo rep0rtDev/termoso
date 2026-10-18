@@ -532,9 +532,16 @@ pub mod payload {
             pub host: String,
             /// Port.
             pub port: u16,
-            /// Identity for proxy auth.
+            /// Identity for proxy auth; takes precedence over the inline
+            /// username/password below.
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub identity_id: Option<Uuid>,
+            /// Inline proxy username (HTTP, SOCKS5; SOCKS4 sends it as the user id).
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub username: Option<String>,
+            /// Inline proxy password (HTTP, SOCKS5 only).
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub password: Option<String>,
         }
     }
 

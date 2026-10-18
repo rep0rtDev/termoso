@@ -24,7 +24,9 @@ export function RestoreBanner() {
             size="small"
             onClick={() => {
               restorePrevious();
-              snackbar.notify(`Restoring ${n} connection${n === 1 ? "" : "s"}`);
+              snackbar.notify(
+                trn(n, "Restoring {count} connection", "Restoring {count} connections"),
+              );
             }}
           >
             {tr("Restore")}

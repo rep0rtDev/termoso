@@ -52,6 +52,8 @@ pub enum FrameKind {
     Meta,
     /// "This participant is typing": the viewer's user id (viewer → host).
     Typing,
+    /// Controller's grid size: user id + cols + rows (viewer → host).
+    Resize,
 }
 
 impl FrameKind {
@@ -61,6 +63,7 @@ impl FrameKind {
             FrameKind::Input => 1,
             FrameKind::Meta => 2,
             FrameKind::Typing => 3,
+            FrameKind::Resize => 4,
         }
     }
 
@@ -70,6 +73,7 @@ impl FrameKind {
             1 => FrameKind::Input,
             2 => FrameKind::Meta,
             3 => FrameKind::Typing,
+            4 => FrameKind::Resize,
             _ => return None,
         })
     }

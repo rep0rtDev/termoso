@@ -25,7 +25,7 @@ import { SearchField, SectionCard } from "@/components/ui";
 import { omit } from "@/lib/store";
 import type { Settings } from "@/ipc/types";
 import { IS_MAC } from "@/lib/platform";
-import { tr } from "@/i18n";
+import { tr, msg } from "@/i18n";
 
 const MOD = IS_MAC ? "Cmd" : "Ctrl";
 const ALT = IS_MAC ? "Option" : "Alt";
@@ -36,7 +36,15 @@ interface Props {
   update: (patch: Partial<Settings>) => void;
 }
 
-const GROUP_ORDER = ["Navigation", "Tabs", "Panes", "Terminal", "Workspace", "Create", "Window"];
+const GROUP_ORDER = [
+  msg("Navigation"),
+  msg("Tabs"),
+  msg("Panes"),
+  msg("Terminal"),
+  msg("Workspace"),
+  msg("Create"),
+  msg("Window"),
+];
 
 /**
  * Settings → Keyboard: every command with its current chord. Click a row to

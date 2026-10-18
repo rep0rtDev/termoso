@@ -122,8 +122,8 @@ function Body({
         {
           onSuccess: () =>
             done(
-              `${move ? "Moved" : "Copied"} ${what} to ${name}${
-                withCredentials ? "" : " without credentials"
+              `${move ? tr("Moved {what} to {name}", { what, name }) : tr("Copied {what} to {name}", { what, name })}${
+                withCredentials ? "" : ` ${tr("without credentials")}`
               }`,
             ),
           onError: fail,

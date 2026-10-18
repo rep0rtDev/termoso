@@ -11,7 +11,7 @@ import { useTeamMembers, useVaults } from "@/ipc/hooks";
 import { errorMessage, type AuditEvent, type AuditFilter, type Team, type Uuid } from "@/ipc/types";
 import { PersonAvatar, initialsOf } from "./PersonAvatar";
 import { ACTIVITY_GROUPS, describeEvent, formatWhen, type ActivityContext } from "./activity";
-import { tr, trx } from "@/i18n";
+import { tr, trn, trx } from "@/i18n";
 
 const PAGE = 50;
 
@@ -277,7 +277,7 @@ export function ActivityLog({ team }: { team: Team }) {
           <Chip
             size="small"
             variant="outlined"
-            label={`${events.length} event${events.length === 1 ? "" : "s"}`}
+            label={trn(events.length, "{count} event", "{count} events")}
           />
           <Box sx={{ flex: 1 }} />
           {q.hasNextPage && (

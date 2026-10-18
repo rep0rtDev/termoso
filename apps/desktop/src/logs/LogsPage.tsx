@@ -318,7 +318,9 @@ function Viewer({
                   : tr("Pin for the team")
             }
             disabled={!log.canAnnotate || op.isPending}
-            onClick={() => annotate({ pinned: !log.pinned }, log.pinned ? "Unpinned" : "Pinned")}
+            onClick={() =>
+              annotate({ pinned: !log.pinned }, log.pinned ? tr("Unpinned") : tr("Pinned"))
+            }
           >
             {log.pinned ? (
               <PushPinRoundedIcon fontSize="small" color="primary" />
@@ -785,7 +787,7 @@ export function LogsPage() {
                       </>
                     }
                     subtitle={`${
-                      l.author && l.team ? `${l.mine ? "You" : authorName(l.author)} · ` : ""
+                      l.author && l.team ? `${l.mine ? tr("You") : authorName(l.author)} · ` : ""
                     }${new Date(l.startedAt).toLocaleString()} · ${duration(
                       l.durationSecs,
                     )} · ${formatSize(l.sizeBytes)}`}

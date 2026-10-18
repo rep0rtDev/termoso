@@ -332,7 +332,7 @@ function useJumpItems(q: string): Item[] {
     for (const t of tabs) {
       const pane = panes[t.activePaneId];
       const host = pane?.hostId ? hostById.get(pane.hostId) : undefined;
-      const title = t.name ?? pane?.title ?? "Terminal";
+      const title = t.name ?? pane?.title ?? tr("Terminal");
       const extra = t.paneIds.length > 1 ? ` (+${t.paneIds.length - 1})` : "";
       out.push({
         key: `tab:${t.id}`,

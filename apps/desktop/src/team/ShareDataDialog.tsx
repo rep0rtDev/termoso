@@ -181,9 +181,9 @@ function Body({
         ),
       );
       snackbar.notify(
-        `Moved ${moved} item${moved === 1 ? "" : "s"} to ${target.name}${
-          shared ? "" : " — members use their own credentials"
-        }`,
+        trn(moved, "Moved {count} item to {name}", "Moved {count} items to {name}", {
+          name: target.name,
+        }) + (shared ? "" : ` — ${tr("members use their own credentials")}`),
       );
       onDone?.();
       onClose();

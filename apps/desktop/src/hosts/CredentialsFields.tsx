@@ -285,7 +285,9 @@ export function CredentialsFields({
           />
           {ssh && identity?.sshId && (
             <TextField
-              value={`SSH ID · ${sshIdTypeLabel(identity.sshIdKeyType ?? SSH_ID_DEFAULT_TYPE)} first`}
+              value={tr("SSH ID · {type} first", {
+                type: sshIdTypeLabel(identity.sshIdKeyType ?? SSH_ID_DEFAULT_TYPE),
+              })}
               disabled
               slotProps={{ input: { startAdornment: adornment(<FingerprintRoundedIcon />) } }}
             />

@@ -876,6 +876,8 @@ pub struct ProxyItem {
     /// Identity used for proxy authentication.
     pub identity_id: Option<String>,
     pub identity_label: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
 }
 
 /// Editor model of a proxy; `id` is `None` for a new one.
@@ -887,6 +889,8 @@ pub struct ProxyDraft {
     pub host: String,
     pub port: u16,
     pub identity_id: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
 }
 
 /// Ordered jump hosts a connection goes through before the target.

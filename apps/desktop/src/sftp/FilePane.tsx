@@ -1097,7 +1097,7 @@ export function FilePane(props: Props) {
             {dialog.entries.map((e) => (
               <li key={e.path}>
                 {e.name}
-                {e.kind === "dir" ? "/ (and everything inside)" : ""}
+                {e.kind === "dir" ? `/ ${tr("(and everything inside)")}` : ""}
               </li>
             ))}
           </Box>
