@@ -23,6 +23,9 @@ pub mod codes {
     pub const UNAUTHORIZED: &str = "unauthorized";
     /// Authenticated but not allowed.
     pub const FORBIDDEN: &str = "forbidden";
+    /// The caller lacks a specific team permission; `details.permission`
+    /// names it (e.g. `vaults.create`).
+    pub const PERMISSION_DENIED: &str = "permission_denied";
     /// Resource not found.
     pub const NOT_FOUND: &str = "not_found";
     /// Wrong email/password (client-side OPAQUE failure is reported as this too).

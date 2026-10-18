@@ -37,6 +37,12 @@ schema! {
         pub created_at: DateTime<Utc>,
         /// Requesting user's role.
         pub my_role: TeamRole,
+        /// Requesting user's fine-grained role (0.9.0+).
+        #[serde(default)]
+        pub my_role_ref: Option<RoleRef>,
+        /// Requesting user's effective permissions (`*` for the owner).
+        #[serde(default)]
+        pub my_permissions: Vec<String>,
         /// Number of members.
         pub member_count: i64,
         /// Members may share live terminal sessions with each other.
@@ -105,6 +111,12 @@ schema! {
         pub avatar: Option<String>,
         /// Role.
         pub role: TeamRole,
+        /// Fine-grained role (0.9.0+).
+        #[serde(default)]
+        pub role_ref: Option<RoleRef>,
+        /// `manual`, `idp` or `scim` — who assigned the role.
+        #[serde(default)]
+        pub role_source: Option<String>,
         /// X25519 public key (base64).
         pub public_key: String,
         /// Joined.
@@ -188,7 +200,10 @@ schema! {
     pub struct UpdateTeamMemberRequest {
         /// New role (`owner` transfers ownership; only the owner may do that).
         pub role: TeamRole,
-    }
+            /// Fine-grained role to assign (preferred over `role`).
+        #[serde(default)]
+        pub role_id: Option<Uuid>,
+}
 }
 
 schema! {
@@ -413,5 +428,164 @@ schema! {
         pub events: u32,
         /// Whether an e-mail went out.
         pub sent: bool,
+    }
+}
+
+// ───────────────────────────── roles & permissions ─────────────────────────────
+
+/// Every team permission the server understands, as `domain.action`. The
+/// built-in `owner` role holds `*`; everything else is an explicit subset.
+pub const PERMISSIONS: &[&str] = &[
+    "team.view", "team.rename", "team.delete", "team.transfer",
+    "members.view", "members.invite", "members.remove", "members.role", "roles.manage",
+    "vaults.create", "vaults.delete", "vaults.rename", "vaults.members", "vaults.rotate_key",
+    "entities.read", "entities.write", "secrets.reveal",
+    "connect.ssh", "connect.sftp", "connect.port_forward",
+    "live.start", "live.join", "live.control",
+    "logs.view_own", "logs.view_team", "logs.export",
+    "export.vault", "import.vault",
+    "audit.view", "audit.export", "audit.webhooks",
+    "policies.manage", "sso.manage", "scim.manage",
+];
+
+/// Permissions only the owner may hold; they cannot be put on any role.
+pub const OWNER_ONLY_PERMISSIONS: &[&str] = &["team.delete", "team.transfer"];
+
+/// Whether `key` is a known permission.
+pub fn is_permission(key: &str) -> bool {
+    PERMISSIONS.contains(&key)
+}
+
+schema! {
+    /// A permission in the catalog (`GET /teams/{id}/permissions`).
+    pub struct PermissionInfo {
+        /// `domain.action`.
+        pub key: String,
+        /// Group for display (`team`, `members`, `vaults`, …).
+        pub group: String,
+        /// Short title.
+        pub title: String,
+        /// One-line description.
+        pub description: String,
+        /// Granting this widens access to secrets or administration.
+        pub dangerous: bool,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/permissions`
+    pub struct PermissionCatalog {
+        /// All permissions.
+        pub permissions: Vec<PermissionInfo>,
+    }
+}
+
+schema! {
+    /// Short reference to a role, embedded in members and the team.
+    pub struct RoleRef {
+        /// Role id.
+        pub id: Uuid,
+        /// Stable slug (`owner`, `admin`, `member`, `viewer`, `auditor`, or custom).
+        pub slug: String,
+        /// Display name.
+        pub name: String,
+    }
+}
+
+schema! {
+    /// A team role (`GET /teams/{id}/roles`).
+    pub struct TeamRoleDef {
+        /// Id.
+        pub id: Uuid,
+        /// Slug.
+        pub slug: String,
+        /// Name.
+        pub name: String,
+        /// Description.
+        pub description: String,
+        /// Permissions (`*` for the owner role).
+        pub permissions: Vec<String>,
+        /// Seeded by the server; cannot be deleted.
+        pub builtin: bool,
+        /// Sort position (lower first).
+        pub position: i32,
+        /// Members holding this role.
+        pub member_count: i64,
+        /// Created.
+        pub created_at: DateTime<Utc>,
+        /// Updated.
+        pub updated_at: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/roles`
+    pub struct TeamRoleList {
+        /// Roles, by position.
+        pub roles: Vec<TeamRoleDef>,
+        /// Role new members get (invites, IdP users without a mapping).
+        pub default_role_id: Option<Uuid>,
+    }
+}
+
+schema! {
+    /// `POST /teams/{id}/roles`
+    pub struct CreateRoleRequest {
+        /// Name, 1..40 characters.
+        pub name: String,
+        /// Description, up to 200 characters.
+        #[serde(default)]
+        pub description: String,
+        /// Permissions; unknown or owner-only keys are rejected.
+        pub permissions: Vec<String>,
+        /// Copy permissions from this role when `permissions` is empty.
+        #[serde(default)]
+        pub copy_from: Option<Uuid>,
+    }
+}
+
+schema! {
+    /// `PATCH /teams/{id}/roles/{role_id}`
+    pub struct UpdateRoleRequest {
+        /// New name.
+        #[serde(default)]
+        pub name: Option<String>,
+        /// New description.
+        #[serde(default)]
+        pub description: Option<String>,
+        /// Replace the permission set (not allowed for `owner`).
+        #[serde(default)]
+        pub permissions: Option<Vec<String>>,
+        /// New position.
+        #[serde(default)]
+        pub position: Option<i32>,
+    }
+}
+
+schema! {
+    /// `PUT /teams/{id}/default-role`
+    pub struct SetDefaultRoleRequest {
+        /// Role new members get.
+        pub role_id: Uuid,
+    }
+}
+
+schema! {
+    /// Group (IdP claim / SCIM group) → role mapping.
+    pub struct RoleMapping {
+        /// Group name as the IdP sends it.
+        pub group_name: String,
+        /// Role granted.
+        pub role_id: Uuid,
+        /// Lower wins when several groups match.
+        pub priority: i32,
+    }
+}
+
+schema! {
+    /// `GET`/`PUT /teams/{id}/role-mappings`
+    pub struct RoleMappingList {
+        /// Mappings.
+        pub mappings: Vec<RoleMapping>,
     }
 }

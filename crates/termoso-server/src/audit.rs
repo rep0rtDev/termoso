@@ -12,7 +12,6 @@ use uuid::Uuid;
 
 use crate::error::{ApiResult, Error};
 use crate::extract::Auth;
-use crate::routes::teams;
 use crate::state::AppState;
 
 const PAGE: usize = 100;
@@ -166,7 +165,7 @@ pub async fn list(
     Path(team_id): Path<Uuid>,
     Query(q): Query<AuditQuery>,
 ) -> ApiResult<Json<AuditEventList>> {
-    let role = teams::my_role(&state.db, team_id, auth.user_id()).await?;
+    let role = crate::authz::require(&state, team_id, auth.user_id(), "audit.view").await?;
     let retention = state.settings().await?.audit_retention_days;
     purge(&state, team_id, retention).await?;
     let limit = q

@@ -228,10 +228,7 @@ pub async fn create_team_vault(
     Path(team_id): Path<Uuid>,
     Body(req): Body<CreateVaultRequest>,
 ) -> ApiResult<Json<Vault>> {
-    let role = teams::my_role(&state.db, team_id, auth.user_id()).await?;
-    if !role.is_admin() {
-        return Err(Error::forbidden("Team admin role required"));
-    }
+    crate::authz::require(&state, team_id, auth.user_id(), "vaults.create").await?;
     let name = validate_name(&req.name)?;
     let me = req
         .members

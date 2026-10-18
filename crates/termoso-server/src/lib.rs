@@ -7,6 +7,7 @@
 
 pub mod ai;
 pub mod audit;
+pub mod authz;
 pub mod avatar;
 pub mod cache;
 pub mod codes;
