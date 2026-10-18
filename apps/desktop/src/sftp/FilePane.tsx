@@ -234,6 +234,8 @@ export function FilePane(props: Props) {
     enabled: side === "local",
     staleTime: 60_000,
   });
+  // The query cache is shared by both panes; only the local side may offer drives.
+  const driveList = side === "local" ? (drives.data ?? []) : [];
 
   const resolvedPath = listing.data?.path ?? null;
   useEffect(() => {
@@ -514,7 +516,7 @@ export function FilePane(props: Props) {
         >
           <ArrowForwardRoundedIcon fontSize="small" />
         </ToolIconButton>
-        {(drives.data?.length ?? 0) > 0 && (
+        {driveList.length > 0 && (
           <Button
             color="inherit"
             size="small"
@@ -621,7 +623,7 @@ export function FilePane(props: Props) {
         onClose={() => setDrivesAnchor(null)}
         onClick={() => setDrivesAnchor(null)}
       >
-        {(drives.data ?? []).map((d) => (
+        {driveList.map((d) => (
           <MenuItem
             key={d}
             selected={resolvedPath?.toLowerCase().startsWith(d.toLowerCase()) ?? false}
