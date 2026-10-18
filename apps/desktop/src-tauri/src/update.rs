@@ -17,7 +17,7 @@ pub const UPDATE_EVENT: &str = "update";
 
 /// Release feed used when `Settings::update_url` is empty.
 pub const DEFAULT_FEED: &str =
-    "https://github.com/rep0rtDev/termoso/releases/latest/download/latest.json";
+    "https://github.com/termoso/termoso/releases/latest/download/latest.json";
 
 /// Pending update found by the last check; kept in Rust so the webview only
 /// ever sees metadata.

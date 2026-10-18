@@ -10,7 +10,7 @@ import { sizes } from "@/theme/theme";
 import { WindowControls } from "@/app/WindowControls";
 import { tr, trx } from "@/i18n";
 
-const REPO_URL = "https://github.com/rep0rtDev/termoso";
+const REPO_URL = "https://github.com/termoso/termoso";
 
 /**
  * First thing shown while nobody is signed in: sign in to Termoso Cloud, to

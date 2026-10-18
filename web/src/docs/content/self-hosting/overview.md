@@ -9,7 +9,7 @@ The server is the same one that runs the free cloud. It stores only ciphertext, 
 
 | Service    | Image                              | Keep?          | Purpose                                                                                                  |
 | ---------- | ---------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------- |
-| `api`      | `ghcr.io/rep0rtdev/termoso-server` | stateless      | REST and WebSocket API under `/api/v1`, the web cabinet and these docs on `/`. Runs migrations on start. |
+| `api`      | `ghcr.io/termoso/termoso-server` | stateless      | REST and WebSocket API under `/api/v1`, the web cabinet and these docs on `/`. Runs migrations on start. |
 | `postgres` | `postgres:18-alpine`               | **back it up** | Accounts, devices, teams, vaults, encrypted items, audit log                                             |
 | `redis`    | `redis:8-alpine`                   | disposable     | Login handshakes, MFA codes, rate limits, realtime fan-out                                               |
 | `rustfs`   | `rustfs/rustfs`                    | optional       | Encrypted session logs (any S3-compatible store works)                                                   |
@@ -20,7 +20,7 @@ Images are published for `linux/amd64` and `linux/arm64`, so the same file runs 
 ## Quick start
 
 ```bash
-git clone https://github.com/rep0rtDev/termoso.git && cd termoso
+git clone https://github.com/termoso/termoso.git && cd termoso
 cp deploy/.env.example deploy/.env && $EDITOR deploy/.env
 docker compose -f deploy/docker-compose.yml --profile proxy up -d --wait
 curl -fsS https://termoso.example.com/readyz     # → ready
@@ -37,4 +37,4 @@ In any app choose **Sign in → Use another server** and enter your `TERMOSO_PUB
 
 ## Podman
 
-The same stack ships as Podman Quadlet units in `deploy/quadlet/` for servers that run everything through systemd, rootful or rootless. See the [full self-hosting guide](https://github.com/rep0rtDev/termoso/blob/main/docs/SELF_HOSTING.md#podman-quadlet) for the steps.
+The same stack ships as Podman Quadlet units in `deploy/quadlet/` for servers that run everything through systemd, rootful or rootless. See the [full self-hosting guide](https://github.com/termoso/termoso/blob/main/docs/SELF_HOSTING.md#podman-quadlet) for the steps.

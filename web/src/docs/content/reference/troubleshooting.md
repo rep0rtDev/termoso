@@ -136,4 +136,4 @@ The resolver file is rewritten from the phone's DNS at every shell start. If a V
 
 ## Getting help
 
-Issues and discussions live on [GitHub](https://github.com/rep0rtDev/termoso/issues). Include the app version (**Settings → About**), the platform, and — for connection problems — the output of `ssh -vv user@host` from the same network. Never paste keys, passwords or recovery words; Termoso's own logs do not contain them, and neither should an issue.
+Issues and discussions live on [GitHub](https://github.com/termoso/termoso/issues). Include the app version (**Settings → About**), the platform, and — for connection problems — the output of `ssh -vv user@host` from the same network. Never paste keys, passwords or recovery words; Termoso's own logs do not contain them, and neither should an issue.

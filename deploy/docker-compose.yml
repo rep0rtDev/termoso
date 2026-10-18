@@ -24,7 +24,7 @@ name: termoso
 
 services:
   api:
-    image: ghcr.io/rep0rtdev/termoso-server:${TERMOSO_VERSION:-latest}
+    image: ghcr.io/termoso/termoso-server:${TERMOSO_VERSION:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -125,7 +125,7 @@ services:
   # The bridge talks to the server through its public URL like any client.
   bridge:
     profiles: ["bridge"]
-    image: ghcr.io/rep0rtdev/termoso-bridge:${TERMOSO_VERSION:-latest}
+    image: ghcr.io/termoso/termoso-bridge:${TERMOSO_VERSION:-latest}
     build:
       context: ..
       dockerfile: deploy/Dockerfile.bridge

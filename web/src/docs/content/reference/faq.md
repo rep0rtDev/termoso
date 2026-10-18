@@ -77,4 +77,4 @@ One account at a time per app, plus the Local vault that is always there. Sign o
 The [API Bridge](/docs/self-hosting/api-bridge) exposes a Termius-compatible REST API for hosts and groups (hosted cloud or self-hosted server), encrypting locally so the server still only sees ciphertext. The server's own HTTP API is documented in Swagger UI when `TERMOSO_SWAGGER_UI` is on.
 
 **Where do I report a bug?**
-[GitHub issues](https://github.com/rep0rtDev/termoso/issues). The [Troubleshooting](/docs/reference/troubleshooting) page covers the common ones first.
+[GitHub issues](https://github.com/termoso/termoso/issues). The [Troubleshooting](/docs/reference/troubleshooting) page covers the common ones first.

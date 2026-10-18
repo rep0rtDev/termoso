@@ -19,7 +19,7 @@ docker run -d --name termoso-bridge --restart unless-stopped \
   -p 127.0.0.1:8081:8080 \
   -v "$PWD/termoso-bridge.json:/etc/termoso/bridge.json:ro" \
   -e TERMOSO_BRIDGE_API_KEY="$(openssl rand -hex 32)" \
-  ghcr.io/rep0rtdev/termoso-bridge:latest
+  ghcr.io/termoso/termoso-bridge:latest
 ```
 
 With Docker Compose use the `bridge` profile: `docker compose -f deploy/docker-compose.yml --profile bridge up -d`.
@@ -46,7 +46,7 @@ assistant off. Config for Claude Desktop / Cursor:
         "--rm",
         "-v",
         "/path/to/bridge.json:/etc/termoso/bridge.json:ro",
-        "ghcr.io/rep0rtdev/termoso-bridge",
+        "ghcr.io/termoso/termoso-bridge",
         "mcp"
       ]
     }
@@ -62,4 +62,4 @@ Full tool list and flags: `docs/API_BRIDGE.md` in the repository.
 - Revoking the bridge in the cabinet kills its token at once. After a vault key rotation, the bridge needs the new key re-sealed from the cabinet before it can write again.
 - The server never receives host addresses, usernames, passwords or keys from the bridge — only ciphertext, like from any other device.
 
-Full API reference: [docs/API_BRIDGE.md](https://github.com/rep0rtDev/termoso/blob/main/docs/API_BRIDGE.md).
+Full API reference: [docs/API_BRIDGE.md](https://github.com/termoso/termoso/blob/main/docs/API_BRIDGE.md).

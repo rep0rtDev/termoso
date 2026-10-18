@@ -5,7 +5,7 @@ description: Move to a new release, pin versions, and handle PostgreSQL major up
 
 ## Pin the version
 
-Set `TERMOSO_VERSION` in `deploy/.env` to the release you run (for example `0.7.0`) rather than `latest`. Tags match the [GitHub releases](https://github.com/rep0rtDev/termoso/releases).
+Set `TERMOSO_VERSION` in `deploy/.env` to the release you run (for example `0.7.0`) rather than `latest`. Tags match the [GitHub releases](https://github.com/termoso/termoso/releases).
 
 ## Upgrade
 

@@ -61,7 +61,7 @@ export function AuthLayout() {
         <Typography variant="caption">
           {info.data?.name ?? "Termoso"} · self-hosted, open source ·{" "}
           <Link
-            href="https://github.com/rep0rtDev/termoso"
+            href="https://github.com/termoso/termoso"
             target="_blank"
             rel="noreferrer"
             color="inherit"

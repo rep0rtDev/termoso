@@ -3,7 +3,7 @@ title: Configuration
 description: The environment variables that matter, the reverse proxy, domains, e-mail, passkeys and SSO.
 ---
 
-The server reads `TERMOSO_*` environment variables; nested sections use a double underscore (`TERMOSO_S3__ENDPOINT`). The complete annotated list is [`deploy/.env.example`](https://github.com/rep0rtDev/termoso/blob/main/deploy/.env.example). The server validates its configuration on start and refuses to run with an invalid one.
+The server reads `TERMOSO_*` environment variables; nested sections use a double underscore (`TERMOSO_S3__ENDPOINT`). The complete annotated list is [`deploy/.env.example`](https://github.com/termoso/termoso/blob/main/deploy/.env.example). The server validates its configuration on start and refuses to run with an invalid one.
 
 ## Minimum
 

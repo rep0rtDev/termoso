@@ -24,7 +24,7 @@ before the week is over, so in practice the app just keeps working.
 2. In the store app open **Sources → +** and add:
 
    ```
-   https://github.com/rep0rtDev/termoso/releases/latest/download/termoso-altstore.json
+   https://github.com/termoso/termoso/releases/latest/download/termoso-altstore.json
    ```
 
    The URL never changes: `releases/latest/download/…` always resolves to the

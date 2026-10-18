@@ -71,6 +71,9 @@ that is how packaging changes are smoke-tested.
 | `ANDROID_KEYSTORE_PASSWORD` | its store password (the single key uses alias `termoso` and the same password) |
 | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` | *optional* — Developer ID signing, see [macOS](#macos-signing-and-gatekeeper) |
 | `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | *optional* — notarization with `notarytool` (app-specific password) |
+| `TERMOSO_REPO_GPG_KEY` | armored RSA signing key for the apt/dnf repositories (no passphrase), see [Package channels](#package-channels) |
+| `TERMOSO_REPO_DEPLOY_KEY`, `HOMEBREW_TAP_DEPLOY_KEY` | write deploy keys (ed25519 private halves) of `termoso/termoso-repo` and `termoso/homebrew-termoso` |
+| `WINGET_TOKEN` | *optional* — GitHub token with `public_repo` for the winget-pkgs fork; without it the winget step is skipped |
 
 Generate a key pair once with
 
@@ -118,6 +121,37 @@ Self-hosted servers are still reachable from the app through the same links:
 the web landing pages (`/invite/<token>`, `/join/<id>#<secret>`) offer *Open in
 Termoso*, which hands the link to the installed app over the `termoso://`
 scheme, so App Links are an optimisation, not a requirement.
+
+## Package channels
+
+The `distribute` job of `release.yml` runs after `publish` for stable tags
+(no `-` in the tag) and feeds three channels from the assets that were just
+published:
+
+| Channel | Where | How |
+| --- | --- | --- |
+| apt + dnf | [termoso/termoso-repo](https://github.com/termoso/termoso-repo) → GitHub Pages `pkg.termoso.dev` | `scripts/repo/build.sh` rebuilds `deb/` (apt-ftparchive, `InRelease` + `Release.gpg`) and `rpm/<arch>/` (rpms re-signed with `rpmsign`, `createrepo_c`, `repomd.xml.asc`), keeps the two newest versions in the pools, pushes over the `TERMOSO_REPO_DEPLOY_KEY` deploy key |
+| Homebrew | [termoso/homebrew-termoso](https://github.com/termoso/homebrew-termoso) | `scripts/repo/cask.sh` renders `Casks/termoso.rb` from `SHA256SUMS.txt` (both dmg architectures), pushes over `HOMEBREW_TAP_DEPLOY_KEY` |
+| winget | `microsoft/winget-pkgs`, package `Termoso.Termoso` | [Komac](https://github.com/russellbanks/Komac) `update --submit` opens the version PR from the fork owned by `WINGET_TOKEN`; `continue-on-error`, so a winget hiccup never fails the release |
+
+The repositories are signed with the "Termoso Packages <packages@termoso.dev>"
+RSA key held in `TERMOSO_REPO_GPG_KEY`; its public half is served as
+`termoso.gpg` / `termoso.asc` next to the repositories. Rotating it means
+replacing the secret and telling users to re-import the key — the previous
+`InRelease` and `repomd.xml.asc` stop verifying.
+
+First-time winget submission is manual (`komac new Termoso.Termoso --version X --urls <msi url> ...`
+answers a few prompts and opens the PR); the job only handles updates once the
+package exists upstream. Both side repositories are generated — never edit them
+by hand, the next release overwrites everything.
+
+Everything the job needs can be rebuilt locally against any release:
+
+```sh
+gh release download v0.8.4 -p '*.deb' -p '*.rpm' -p SHA256SUMS.txt -D assets
+scripts/repo/build.sh assets path/to/termoso-repo 0.8.4 packages@termoso.dev
+scripts/repo/cask.sh assets/SHA256SUMS.txt 0.8.4 > path/to/homebrew-termoso/Casks/termoso.rb
+```
 
 ## macOS: signing and Gatekeeper
 
@@ -184,7 +218,7 @@ installed) cross-builds the Intel one on an Apple Silicon machine.
 
 ## Self-hosting the update feed
 
-The default feed is `https://github.com/rep0rtDev/termoso/releases/latest/download/latest.json`.
+The default feed is `https://github.com/termoso/termoso/releases/latest/download/latest.json`.
 To keep updates entirely on infrastructure you control:
 
 1. Download `latest.json`, the updater artifacts and their `.sig` files from

@@ -42,7 +42,7 @@ Work on what you touch; nothing below is needed for everything.
 ### First run
 
 ```bash
-git clone https://github.com/rep0rtDev/termoso.git && cd termoso
+git clone https://github.com/termoso/termoso.git && cd termoso
 docker compose -f deploy/docker-compose.dev.yml up -d --wait
 cargo test --workspace
 cargo run -p termoso-server            # http://localhost:8080 (API only until web/ is built)

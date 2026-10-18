@@ -33,7 +33,7 @@ For *developing* (hot reload, running tests) see the shorter
 ## Before you start
 
 ```bash
-git clone https://github.com/rep0rtDev/termoso.git
+git clone https://github.com/termoso/termoso.git
 cd termoso
 git checkout v0.3.0          # a release tag; omit to build `main`
 ```
@@ -93,10 +93,10 @@ host toolchain other than Docker/Podman is needed, and the build context is the
 repository root.
 
 ```bash
-# API server + web cabinet in one image (what ghcr.io/rep0rtdev/termoso-server is)
+# API server + web cabinet in one image (what ghcr.io/termoso/termoso-server is)
 docker build -f deploy/Dockerfile -t termoso-server:local .
 
-# API Bridge (what ghcr.io/rep0rtdev/termoso-bridge is)
+# API Bridge (what ghcr.io/termoso/termoso-bridge is)
 docker build -f deploy/Dockerfile.bridge -t termoso-bridge:local .
 ```
 

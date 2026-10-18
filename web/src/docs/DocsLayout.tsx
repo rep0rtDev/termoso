@@ -22,7 +22,7 @@ import { hrefOf, sections } from "./manifest";
 import { DocsSearch, useSearchShortcut } from "./DocsSearch";
 
 export const DOCS_HEADER = 60;
-export const REPO = "https://github.com/rep0rtDev/termoso";
+export const REPO = "https://github.com/termoso/termoso";
 const SIDEBAR = 264;
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {

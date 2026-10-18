@@ -21,7 +21,7 @@ version = "0.8.4"
 edition = "2024"
 rust-version = "1.94"
 license = "AGPL-3.0-only"
-repository = "https://github.com/rep0rtDev/termoso"
+repository = "https://github.com/termoso/termoso"
 homepage = "https://termoso.dev"
 authors = ["Termoso contributors"]
 

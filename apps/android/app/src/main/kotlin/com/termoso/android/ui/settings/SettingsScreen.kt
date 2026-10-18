@@ -89,7 +89,7 @@ private val languages = listOf(
     "ru" to R.string.language_russian,
 )
 
-private const val SOURCE_URL = "https://github.com/rep0rtDev/termoso"
+private const val SOURCE_URL = "https://github.com/termoso/termoso"
 
 /** Settings tab: account/sync, appearance, terminal, security (app lock), about. */
 @OptIn(ExperimentalMaterial3Api::class)
