@@ -40,6 +40,7 @@ pub async fn info(
         landing_only,
         docs: state.cfg.docs,
         docs_url: state.cfg.docs_url().unwrap_or("").to_string(),
+        turnstile_site_key: state.cfg.turnstile.as_ref().map(|t| t.site_key.clone()),
     }))
 }
 

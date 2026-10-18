@@ -241,6 +241,7 @@ list; the source of truth is
 | `TERMOSO_REDIS_URL` / `TERMOSO_REDIS_PREFIX` | `redis://127.0.0.1:6379` / `termoso:` | Redis; the prefix lets deployments share one instance |
 | `TERMOSO_ADMIN_EMAILS` | empty | comma-separated e-mails granted the admin role on sign-up / sign-in |
 | `TERMOSO_OWNER_EMAIL` | empty | the server owner — the only account that can grant or revoke admin and cannot be disabled, demoted or deleted; empty = the first registered account |
+| `TERMOSO_TURNSTILE__SITE_KEY` / `TERMOSO_TURNSTILE__SECRET_KEY` | empty | Cloudflare Turnstile; when both are set a captcha is required on sign-up, start over, account recovery and on login after 3 failed attempts from one IP. Unset = no captcha |
 | `TERMOSO_SERVER_NAME` | `Termoso` | name shown in e-mails and server info |
 | `TERMOSO_CORS_ORIGINS` | empty | extra browser origins allowed to call the API |
 | `TERMOSO_TRUST_PROXY` | `false` | honour `X-Forwarded-For` / `X-Real-IP` (set behind a reverse proxy) |

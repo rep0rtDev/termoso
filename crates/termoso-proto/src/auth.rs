@@ -70,6 +70,10 @@ schema! {
         pub email: String,
         /// OPAQUE `RegistrationRequest`.
         pub opaque_request: String,
+        /// Cloudflare Turnstile response token; required when the server has
+        /// Turnstile configured (see `ServerInfo::turnstile_site_key`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub turnstile_token: Option<String>,
     }
 }
 
@@ -116,6 +120,10 @@ schema! {
         /// SSO session (skips new-device email approval).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub sso_session: Option<String>,
+        /// Cloudflare Turnstile response token; required when the server has
+        /// Turnstile configured (see `ServerInfo::turnstile_site_key`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub turnstile_token: Option<String>,
     }
 }
 
@@ -337,6 +345,10 @@ schema! {
     pub struct StartOverRequest {
         /// Account email.
         pub email: String,
+        /// Cloudflare Turnstile response token; required when the server has
+        /// Turnstile configured (see `ServerInfo::turnstile_site_key`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub turnstile_token: Option<String>,
     }
 }
 
@@ -489,6 +501,10 @@ schema! {
         pub email: String,
         /// Recovery verifier derived from the mnemonic (base64, 32 bytes).
         pub recovery_verifier: String,
+        /// Cloudflare Turnstile response token; required when the server has
+        /// Turnstile configured (see `ServerInfo::turnstile_site_key`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub turnstile_token: Option<String>,
     }
 }
 

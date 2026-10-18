@@ -85,6 +85,7 @@ async fn assert_spent(s: &TestServer, email: &str, sso_session: String) {
             opaque_request: request,
             device: device("policy device"),
             sso_session: Some(sso_session),
+            turnstile_token: None,
         }),
         StatusCode::UNAUTHORIZED,
     )

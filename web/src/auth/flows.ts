@@ -159,10 +159,17 @@ export async function login(
   email: string,
   password: string,
   ssoSession?: string,
+  turnstileToken?: string,
 ): Promise<LoginOutcome> {
   await loadCrypto();
   const step = beginLogin(password, email);
-  const start = await authApi.loginStart(email, step.request, deviceInfo(), ssoSession);
+  const start = await authApi.loginStart(
+    email,
+    step.request,
+    deviceInfo(),
+    ssoSession,
+    turnstileToken,
+  );
   const out = step.finish(start.opaque_response);
   pending = { email, exportKey: out.exportKey };
   try {
@@ -191,6 +198,7 @@ export interface RegisterInput {
   displayName?: string;
   inviteToken?: string;
   ssoSession?: string;
+  turnstileToken?: string;
 }
 
 export interface RegisterOutput {
@@ -201,7 +209,7 @@ export interface RegisterOutput {
 export async function register(input: RegisterInput): Promise<RegisterOutput> {
   await loadCrypto();
   const step = beginRegistration(input.password, input.email);
-  const start = await authApi.registerStart(input.email, step.request);
+  const start = await authApi.registerStart(input.email, step.request, input.turnstileToken);
   const reg = step.finish(start.opaque_response);
   const keys = createAccountKeys(reg.exportKey);
   const displayName = input.displayName?.trim();
@@ -272,10 +280,11 @@ export async function recoverAccount(
   email: string,
   phrase: string,
   newPassword: string,
+  turnstileToken?: string,
 ): Promise<RecoverOutput> {
   await loadCrypto();
   const verifier = recoveryVerifier(phrase);
-  const start = await authApi.recoveryStart(email, verifier);
+  const start = await authApi.recoveryStart(email, verifier, turnstileToken);
   const privateKey = unlockWithRecovery(
     phrase,
     start.recovery_wrapped_private_key,

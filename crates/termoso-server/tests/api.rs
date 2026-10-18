@@ -299,6 +299,7 @@ async fn register_login_and_sessions() {
         Some(&termoso_proto::auth::RegisterStartRequest {
             email: email.clone(),
             opaque_request: req,
+            turnstile_token: None,
         }),
         StatusCode::CONFLICT,
     )

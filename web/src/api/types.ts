@@ -41,6 +41,8 @@ export interface ServerInfo {
   /** SSO-verified identities may sign up even while registration is closed. */
   sso_registration: boolean;
   sso_providers: SsoProvider[];
+  /** Set when the server requires a Cloudflare Turnstile token (sign-up, start over, recovery, repeated failed logins). */
+  turnstile_site_key?: string | null;
   features: ServerFeatures;
   max_entity_bytes: number;
   max_log_bytes: number;

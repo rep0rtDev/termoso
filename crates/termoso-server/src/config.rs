@@ -75,6 +75,9 @@ pub struct Config {
     pub log_format: LogFormat,
     pub s3: Option<S3Config>,
     pub smtp: Option<SmtpConfig>,
+    /// Cloudflare Turnstile (`TERMOSO_TURNSTILE__SITE_KEY` / `__SECRET_KEY`).
+    /// Unset = no captcha anywhere.
+    pub turnstile: Option<TurnstileConfig>,
     pub webauthn: Option<WebauthnConfig>,
     pub metrics: MetricsConfig,
     pub sso: BTreeMap<String, SsoProviderConfig>,
@@ -113,6 +116,14 @@ pub struct S3Config {
     pub force_path_style: bool,
     #[serde(default = "default_presign_secs")]
     pub presign_secs: u64,
+}
+
+/// Cloudflare Turnstile keys. The site key is public (sent to clients via
+/// `/server/info`); the secret is only used for `siteverify`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TurnstileConfig {
+    pub site_key: String,
+    pub secret_key: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -338,6 +349,7 @@ impl Default for Config {
             log_format: LogFormat::Text,
             s3: None,
             smtp: None,
+            turnstile: None,
             webauthn: None,
             metrics: MetricsConfig::default(),
             sso: BTreeMap::new(),

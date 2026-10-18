@@ -5,6 +5,7 @@ import { errorMessage } from "@/api/client";
 import { useServerInfo } from "@/api/hooks";
 import { register } from "@/auth/flows";
 import { AuthTitle, PasswordField, passwordProblem, useNextPath } from "./common";
+import { Turnstile } from "@/components/Turnstile";
 
 export interface SignupState {
   inviteToken?: string;
@@ -25,6 +26,9 @@ export function SignupPage() {
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const siteKey = info.data?.turnstile_site_key ?? null;
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaRound, setCaptchaRound] = useState(0);
 
   const pwProblem = password.length > 0 ? passwordProblem(password) : null;
   const mismatch = confirm.length > 0 && confirm !== password;
@@ -42,6 +46,7 @@ export function SignupPage() {
         displayName,
         inviteToken: state.inviteToken,
         ssoSession: state.sso?.ssoSession,
+        turnstileToken: captcha ?? undefined,
       });
       void navigate("/signup/recovery-key", {
         replace: true,
@@ -49,6 +54,9 @@ export function SignupPage() {
       });
     } catch (err) {
       setError(errorMessage(err));
+      // Tokens are single-use: get a fresh one for the next attempt.
+      setCaptcha(null);
+      setCaptchaRound((n) => n + 1);
     } finally {
       setBusy(false);
     }
@@ -117,7 +125,13 @@ export function SignupPage() {
           password without losing your data — nobody, including the server operator, can recover it
           for you.
         </Alert>
-        <Button type="submit" variant="contained" size="large" disabled={busy}>
+        {siteKey && <Turnstile key={captchaRound} siteKey={siteKey} onToken={setCaptcha} />}
+        <Button
+          type="submit"
+          variant="contained"
+          size="large"
+          disabled={busy || (siteKey !== null && captcha === null)}
+        >
           {busy ? "Creating account…" : "Create account"}
         </Button>
         <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>

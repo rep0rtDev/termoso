@@ -32,6 +32,15 @@ TERMOSO_SMTP__FROM=Termoso <no-reply@example.com>
 
 Without SMTP the server still runs, but e-mail verification, device approval by e-mail, e-mail MFA and team digests are off.
 
+## Captcha
+
+```dotenv
+TERMOSO_TURNSTILE__SITE_KEY=0x4AAAAAAA…
+TERMOSO_TURNSTILE__SECRET_KEY=0x4AAAAAAA…
+```
+
+Optional [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/). With both keys set, sign-up, "start over", account recovery and — after three failed attempts from one address — login require a Turnstile token, verified server-side against `siteverify`. Without the keys there is no captcha anywhere; the site key is published through `/api/v1/server/info` so clients know when to show the widget.
+
 ## Reverse proxy
 
 The API and the cabinet share one origin. Forward everything to `api:8080`, including WebSocket upgrades on `/api/v1/ws`, and set `X-Forwarded-For`. The Compose `proxy` profile does this with Caddy:

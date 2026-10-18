@@ -32,6 +32,7 @@ use crate::routes::auth::{
 };
 use crate::session;
 use crate::state::AppState;
+use crate::turnstile;
 use crate::users::{self, UserRow};
 use crate::util::{hash_token, mask_email, normalize_email, random_token};
 
@@ -96,6 +97,7 @@ pub async fn request(
     Body(req): Body<StartOverRequest>,
 ) -> ApiResult<Json<StartOverRequestResponse>> {
     ratelimit::check_ip(&state, ratelimit::AUTH_IP, client.ip.as_deref()).await?;
+    turnstile::require(&state, req.turnstile_token.as_deref(), client.ip.as_deref()).await?;
     if state.mailer.is_none() {
         return Err(Error::feature_disabled("Email"));
     }

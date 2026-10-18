@@ -555,6 +555,7 @@ async fn start_over_is_delayed_cancellable_and_destroys_the_old_vault() {
             None,
             Some(&StartOverRequest {
                 email: ghost.clone(),
+                turnstile_token: None,
             }),
         )
         .await;
@@ -581,6 +582,7 @@ async fn start_over_is_delayed_cancellable_and_destroys_the_old_vault() {
             None,
             Some(&StartOverRequest {
                 email: u.email.clone(),
+                turnstile_token: None,
             }),
         )
         .await;
@@ -664,6 +666,7 @@ async fn start_over_is_delayed_cancellable_and_destroys_the_old_vault() {
             None,
             Some(&StartOverRequest {
                 email: u.email.clone(),
+                turnstile_token: None,
             }),
         )
         .await;
@@ -700,6 +703,7 @@ async fn start_over_is_delayed_cancellable_and_destroys_the_old_vault() {
             None,
             Some(&StartOverRequest {
                 email: u.email.clone(),
+                turnstile_token: None,
             }),
         )
         .await;
@@ -862,6 +866,7 @@ async fn start_over_keeps_asking_for_the_second_factor() {
             None,
             Some(&StartOverRequest {
                 email: u.email.clone(),
+                turnstile_token: None,
             }),
         )
         .await;
@@ -889,6 +894,7 @@ async fn start_over_keeps_asking_for_the_second_factor() {
             None,
             Some(&StartOverRequest {
                 email: u.email.clone(),
+                turnstile_token: None,
             }),
         )
         .await;

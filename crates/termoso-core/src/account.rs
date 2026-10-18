@@ -133,6 +133,7 @@ impl LoginFlow {
                 opaque_request: request,
                 device,
                 sso_session,
+                turnstile_token: None,
             })
             .await?;
         let out = finish_opaque(state, password, &email, &start.opaque_response)?;
@@ -422,6 +423,7 @@ pub async fn register(
         .register_start(&RegisterStartRequest {
             email: email.clone(),
             opaque_request: request,
+            turnstile_token: None,
         })
         .await?;
     let out = opaque::client_registration_finish(

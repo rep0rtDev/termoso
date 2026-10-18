@@ -1,11 +1,12 @@
 import { useState, type SubmitEvent } from "react";
 import { Alert, Box, Button, Divider, Link, Stack, TextField, Typography } from "@mui/material";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router";
-import { errorMessage } from "@/api/client";
+import { ApiError, errorMessage } from "@/api/client";
 import { useServerInfo } from "@/api/hooks";
 import { login } from "@/auth/flows";
 import { startSso } from "@/auth/sso";
 import { AuthTitle, PasswordField, useNextPath } from "./common";
+import { Turnstile } from "@/components/Turnstile";
 
 export interface SsoLoginState {
   ssoSession: string;
@@ -28,13 +29,18 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The server asks for a captcha only after several failed attempts from this address.
+  const siteKey = info.data?.turnstile_site_key ?? null;
+  const [needCaptcha, setNeedCaptcha] = useState(false);
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaRound, setCaptchaRound] = useState(0);
 
   const submit = async (e: SubmitEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const outcome = await login(email, password, sso?.ssoSession);
+      const outcome = await login(email, password, sso?.ssoSession, captcha ?? undefined);
       switch (outcome.kind) {
         case "done":
           void navigate(next, { replace: true });
@@ -51,7 +57,14 @@ export function LoginPage() {
           break;
       }
     } catch (err) {
-      setError(errorMessage(err));
+      if (err instanceof ApiError && err.code === "turnstile_required" && siteKey) {
+        setNeedCaptcha(true);
+        setError("Please confirm you are human below, then sign in again.");
+      } else {
+        setError(errorMessage(err));
+      }
+      setCaptcha(null);
+      setCaptchaRound((n) => n + 1);
     } finally {
       setBusy(false);
     }
@@ -101,7 +114,15 @@ export function LoginPage() {
             Forgot password?
           </Link>
         </Box>
-        <Button type="submit" variant="contained" size="large" disabled={busy}>
+        {needCaptcha && siteKey && (
+          <Turnstile key={captchaRound} siteKey={siteKey} onToken={setCaptcha} />
+        )}
+        <Button
+          type="submit"
+          variant="contained"
+          size="large"
+          disabled={busy || (needCaptcha && captcha === null)}
+        >
           {busy ? "Signing in…" : "Sign in"}
         </Button>
 

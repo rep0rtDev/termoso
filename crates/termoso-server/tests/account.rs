@@ -122,6 +122,7 @@ async fn recovery_phrase_restores_the_account_and_is_single_use() {
         Some(&RecoveryStartRequest {
             email: u.email.clone(),
             recovery_verifier: other.verifier_b64().unwrap(),
+            turnstile_token: None,
         }),
         StatusCode::UNAUTHORIZED,
     )
@@ -133,6 +134,7 @@ async fn recovery_phrase_restores_the_account_and_is_single_use() {
         Some(&RecoveryStartRequest {
             email: unique_email("nobody"),
             recovery_verifier: u.recovery.verifier_b64().unwrap(),
+            turnstile_token: None,
         }),
         StatusCode::UNAUTHORIZED,
     )
@@ -144,6 +146,7 @@ async fn recovery_phrase_restores_the_account_and_is_single_use() {
         Some(&RecoveryStartRequest {
             email: u.email.clone(),
             recovery_verifier: b64(&[1u8; 16]),
+            turnstile_token: None,
         }),
         StatusCode::BAD_REQUEST,
     )
@@ -155,6 +158,7 @@ async fn recovery_phrase_restores_the_account_and_is_single_use() {
         Some(&RecoveryStartRequest {
             email: "not an email".into(),
             recovery_verifier: u.recovery.verifier_b64().unwrap(),
+            turnstile_token: None,
         }),
         StatusCode::BAD_REQUEST,
     )
@@ -170,6 +174,7 @@ async fn recovery_phrase_restores_the_account_and_is_single_use() {
             Some(&RecoveryStartRequest {
                 email: u.email.to_uppercase(),
                 recovery_verifier: typed.verifier_b64().unwrap(),
+                turnstile_token: None,
             }),
         )
         .await;
@@ -321,6 +326,7 @@ async fn recovery_phrase_restores_the_account_and_is_single_use() {
         Some(&RecoveryStartRequest {
             email: u.email.clone(),
             recovery_verifier: u.recovery.verifier_b64().unwrap(),
+            turnstile_token: None,
         }),
         StatusCode::UNAUTHORIZED,
     )
@@ -333,6 +339,7 @@ async fn recovery_phrase_restores_the_account_and_is_single_use() {
             Some(&RecoveryStartRequest {
                 email: u.email.clone(),
                 recovery_verifier: new_recovery.verifier_b64().unwrap(),
+                turnstile_token: None,
             }),
         )
         .await;
@@ -472,6 +479,7 @@ async fn authenticated_password_change_and_recovery_rotation() {
         Some(&RecoveryStartRequest {
             email: u.email.clone(),
             recovery_verifier: u.recovery.verifier_b64().unwrap(),
+            turnstile_token: None,
         }),
         StatusCode::UNAUTHORIZED,
     )
@@ -484,6 +492,7 @@ async fn authenticated_password_change_and_recovery_rotation() {
             Some(&RecoveryStartRequest {
                 email: u.email.clone(),
                 recovery_verifier: rotated.verifier_b64().unwrap(),
+                turnstile_token: None,
             }),
         )
         .await;
@@ -1104,6 +1113,7 @@ async fn account_deletion_is_confirmed_by_email() {
         Some(&RecoveryStartRequest {
             email: email.clone(),
             recovery_verifier: u.recovery.verifier_b64().unwrap(),
+            turnstile_token: None,
         }),
         StatusCode::UNAUTHORIZED,
     )

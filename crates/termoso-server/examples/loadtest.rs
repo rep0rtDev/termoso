@@ -209,6 +209,7 @@ async fn register(api: &Api, n: usize) -> Result<VirtualUser, String> {
             Some(&RegisterStartRequest {
                 email: email.clone(),
                 opaque_request: request,
+                turnstile_token: None,
             }),
         )
         .await?;
