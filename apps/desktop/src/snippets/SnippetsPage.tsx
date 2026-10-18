@@ -137,7 +137,7 @@ function SnippetDialog({
               multiline
               minRows={6}
               maxRows={16}
-              helperText={VAR_HINT}
+              helperText={tr(VAR_HINT)}
               slotProps={{ htmlInput: { spellCheck: false, style: { fontFamily: "monospace" } } }}
             />
           </Field>

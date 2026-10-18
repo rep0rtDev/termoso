@@ -2754,4 +2754,9 @@ export const ru: Readonly<Record<string, string>> = {
   "{who} removed from {team}": "{who} удалён из {team}",
   "“{name}” synced: {report}": "«{name}» синхронизировано: {report}",
   "Join this multiplayer session": "Присоединиться к этой сессии мультиплеера",
+  "Side panel: snippets, history, themes, info":
+    "Боковая панель: сниппеты, история, темы, информация",
+  "Toggle focus mode": "Переключить режим фокуса",
+  Recent: "Недавние",
+  Workspaces: "Рабочие пространства",
 };

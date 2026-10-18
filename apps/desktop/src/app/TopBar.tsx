@@ -223,7 +223,7 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 0.25, px: 1 }}>
       {tab.zoom !== 1 && (
-        <Tooltip title={withHint("Reset zoom", "term.zoomReset")}>
+        <Tooltip title={withHint(tr("Reset zoom"), "term.zoomReset")}>
           <Box
             component="button"
             onClick={() => resetZoom(tab.id)}
@@ -245,7 +245,9 @@ function PaneTools({ tab }: { tab: TerminalTab }) {
           </Box>
         </Tooltip>
       )}
-      <Tooltip title={withHint("Side panel: snippets, history, themes, info", "term.sidePanel")}>
+      <Tooltip
+        title={withHint(tr("Side panel: snippets, history, themes, info"), "term.sidePanel")}
+      >
         <IconButton
           onClick={() => toggleSidePanel()}
           sx={sidePanel ? { color: "text.primary", bgcolor: "action.selected" } : undefined}
