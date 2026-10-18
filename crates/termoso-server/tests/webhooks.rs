@@ -211,3 +211,187 @@ async fn webhooks_deliver_signed_batches() {
     )
     .await;
 }
+
+async fn failing_receiver() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/hook", listener.local_addr().unwrap());
+    let app = Router::new().route(
+        "/hook",
+        post(|| async { (StatusCode::INTERNAL_SERVER_ERROR, "boom") }),
+    );
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    url
+}
+
+async fn team_with_owner(s: &TestServer) -> (User, String, String) {
+    let owner_email = unique_email("owner");
+    let owner = register(s, &owner_email, "pw-owner-1234567").await;
+    let team: serde_json::Value = s
+        .json(
+            Method::POST,
+            "/teams",
+            Some(owner.token()),
+            Some(&serde_json::json!({ "name": "Ops" })),
+        )
+        .await;
+    let team_id = team["id"].as_str().unwrap().to_string();
+    (owner, owner_email, team_id)
+}
+
+/// The 50th consecutive failure switches the hook off and emails everyone
+/// with `webhooks.manage`.
+#[tokio::test]
+async fn webhook_auto_disable_emails_admins() {
+    let Some(s) = server().await else { return };
+    let (owner, owner_email, team_id) = team_with_owner(s).await;
+    let url = failing_receiver().await;
+    let hook: serde_json::Value = s
+        .json(
+            Method::POST,
+            &format!("/teams/{team_id}/webhooks"),
+            Some(owner.token()),
+            Some(&serde_json::json!({ "url": url, "secret": "s3cret-s3cret" })),
+        )
+        .await;
+    let wid = hook["id"].as_str().unwrap().to_string();
+    s.sql(
+        "UPDATE team_webhooks SET failures = 49 WHERE id = $1::uuid",
+        &wid,
+    )
+    .await;
+    let d: serde_json::Value = s
+        .json(
+            Method::POST,
+            &format!("/teams/{team_id}/webhooks/{wid}/test"),
+            Some(owner.token()),
+            NOBODY,
+        )
+        .await;
+    assert!(
+        d["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|x| x["response_status"] == 500),
+        "{d}"
+    );
+    let list: serde_json::Value = s
+        .json(
+            Method::GET,
+            &format!("/teams/{team_id}/webhooks"),
+            Some(owner.token()),
+            NOBODY,
+        )
+        .await;
+    let w = list["webhooks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["id"] == wid.as_str())
+        .unwrap();
+    assert_eq!(w["enabled"], false, "{w}");
+    assert_eq!(w["failures"], 50, "{w}");
+    if s.mailpit.is_some() {
+        let body = s.emailed_body(&owner_email, "Audit webhook disabled").await;
+        assert!(body.contains("50 deliveries"), "{body}");
+        assert!(body.contains("/hook"), "{body}");
+    }
+}
+
+/// `syslog_tls`: RFC 5425 framing over TLS, one CEF line per event, the
+/// private CA from `TERMOSO_WEBHOOKS_SYSLOG_CA` is trusted.
+#[tokio::test]
+async fn webhook_syslog_tls_delivers_cef() {
+    use tokio::io::AsyncReadExt;
+    use tokio_rustls::rustls;
+    let Some(s) = server().await else { return };
+    let (owner, _, team_id) = team_with_owner(s).await;
+
+    let ck = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+    std::fs::write(syslog_ca_path(), ck.cert.pem()).unwrap();
+    let key = rustls::pki_types::PrivateKeyDer::Pkcs8(ck.key_pair.serialize_der().into());
+    let cfg = rustls::ServerConfig::builder_with_provider(Arc::new(
+        rustls::crypto::aws_lc_rs::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .unwrap()
+    .with_no_client_auth()
+    .with_single_cert(vec![ck.cert.der().clone()], key)
+    .unwrap();
+    let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(cfg));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let got: Arc<Mutex<Vec<u8>>> = Arc::default();
+    let sink = got.clone();
+    tokio::spawn(async move {
+        loop {
+            let Ok((tcp, _)) = listener.accept().await else {
+                break;
+            };
+            let acceptor = acceptor.clone();
+            let sink = sink.clone();
+            tokio::spawn(async move {
+                if let Ok(mut tls) = acceptor.accept(tcp).await {
+                    let mut buf = Vec::new();
+                    let _ = tls.read_to_end(&mut buf).await;
+                    sink.lock().unwrap().extend_from_slice(&buf);
+                }
+            });
+        }
+    });
+
+    // Kind/URL must agree; an empty secret is fine for syslog.
+    s.expect_status(
+        Method::POST,
+        &format!("/teams/{team_id}/webhooks"),
+        Some(owner.token()),
+        Some(&serde_json::json!({ "url": format!("syslog+tls://localhost:{port}"), "secret": "" })),
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+    let hook: serde_json::Value = s
+        .json(
+            Method::POST,
+            &format!("/teams/{team_id}/webhooks"),
+            Some(owner.token()),
+            Some(&serde_json::json!({
+                "url": format!("syslog+tls://localhost:{port}"), "secret": "", "kind": "syslog_tls"
+            })),
+        )
+        .await;
+    let wid = hook["id"].as_str().unwrap().to_string();
+    let d: serde_json::Value = s
+        .json(
+            Method::POST,
+            &format!("/teams/{team_id}/webhooks/{wid}/test"),
+            Some(owner.token()),
+            NOBODY,
+        )
+        .await;
+    assert!(
+        d["deliveries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|x| x["status"] == "ok" && x["response_status"] == 200),
+        "{d}"
+    );
+    let mut text = String::new();
+    for _ in 0..50 {
+        text = String::from_utf8_lossy(&got.lock().unwrap()).into_owned();
+        if text.contains("webhook.test") {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(text.contains("CEF:0|Termoso|Termoso|"), "{text}");
+    assert!(text.contains("|webhook.test|webhook.test|"), "{text}");
+    // Octet counting: "<len> <PRI>1 <ts> ...".
+    let (len, rest) = text.split_once(' ').unwrap();
+    let len: usize = len.parse().unwrap();
+    assert!(
+        rest.starts_with("<110>1 ") || rest.starts_with("<108>1 "),
+        "{text}"
+    );
+    assert!(rest.len() >= len, "{text}");
+}

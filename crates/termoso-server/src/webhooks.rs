@@ -2,18 +2,21 @@
 //! per matching webhook (see `audit::record`); a worker on any replica claims
 //! due rows with `SKIP LOCKED`, posts batches of up to 100 events, retries
 //! with exponential backoff (30 s → 6 h, six attempts) and disables a hook
-//! after 50 consecutive failures.
+//! after 50 consecutive failures (and emails everyone with `webhooks.manage`).
+//! `syslog_tls` hooks speak RFC 5425 (TLS, octet-counted) with one CEF line
+//! per event instead of HTTP.
 
 use axum::Json;
 use axum::extract::{Path, State};
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 use std::net::IpAddr;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use termoso_proto::team::{
     CreateWebhookRequest, UpdateWebhookRequest, WEBHOOK_KINDS, Webhook, WebhookDelivery,
     WebhookDeliveryList, WebhookList,
 };
+use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
 use crate::audit;
@@ -27,6 +30,24 @@ pub const MAX_ATTEMPTS: i32 = 6;
 pub const DISABLE_AFTER: i32 = 50;
 const BACKOFF_SECS: [i64; 6] = [30, 60, 300, 1800, 7200, 21600];
 const SECRET_PURPOSE: &str = "webhook-secret";
+/// RFC 5425 default port.
+const SYSLOG_PORT: u16 = 6514;
+
+/// `syslog_tls` hooks take `syslog+tls://host[:port]`, every other kind an
+/// http(s) URL.
+fn check_url_kind(kind: &str, url: &str) -> ApiResult<()> {
+    let syslog = url.starts_with("syslog+tls://");
+    match (kind, syslog) {
+        ("syslog_tls", false) => Err(Error::bad_request(
+            "syslog_tls webhooks need a syslog+tls://host:port URL",
+        )),
+        ("syslog_tls", true) => Ok(()),
+        (_, true) => Err(Error::bad_request(
+            "syslog+tls:// URLs are only valid for kind syslog_tls",
+        )),
+        _ => Ok(()),
+    }
+}
 
 fn client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
@@ -103,14 +124,18 @@ pub async fn validate_url(state: &AppState, raw: &str) -> ApiResult<String> {
     let url = url::Url::parse(raw.trim()).map_err(|_| Error::bad_request("Invalid webhook URL"))?;
     let allow_private = state.cfg.webhooks_allow_private;
     match url.scheme() {
-        "https" => {}
+        "https" | "syslog+tls" => {}
         "http" if allow_private => {}
         "http" => {
             return Err(Error::bad_request(
                 "Webhooks must use https:// (set TERMOSO_WEBHOOKS_ALLOW_PRIVATE for internal http)",
             ));
         }
-        _ => return Err(Error::bad_request("Webhook URL must be http(s)")),
+        _ => {
+            return Err(Error::bad_request(
+                "Webhook URL must be https:// or syslog+tls://",
+            ));
+        }
     }
     if !url.username().is_empty() || url.password().is_some() {
         return Err(Error::bad_request("Webhook URL must not embed credentials"));
@@ -123,7 +148,11 @@ pub async fn validate_url(state: &AppState, raw: &str) -> ApiResult<String> {
         return Err(Error::bad_request("Webhook URL is too long"));
     }
     if !allow_private {
-        let port = url.port_or_known_default().unwrap_or(443);
+        let port = url.port().unwrap_or(if url.scheme() == "syslog+tls" {
+            SYSLOG_PORT
+        } else {
+            443
+        });
         let addrs: Vec<IpAddr> = match host.parse::<IpAddr>() {
             Ok(ip) => vec![ip],
             Err(_) => tokio::net::lookup_host((host, port))
@@ -174,7 +203,7 @@ fn check_kind(kind: &str) -> ApiResult<()> {
         Ok(())
     } else {
         Err(Error::bad_request(
-            "kind must be generic, splunk_hec, elastic or datadog",
+            "kind must be generic, splunk_hec, elastic, datadog or syslog_tls",
         ))
     }
 }
@@ -265,10 +294,13 @@ pub async fn create(
     let kind = req.kind.unwrap_or_else(|| "generic".into());
     check_kind(&kind)?;
     let secret = req.secret.trim();
-    if secret.len() < 8 || secret.len() > 512 {
-        return Err(Error::bad_request("secret must be 8..=512 characters"));
+    if secret.len() > 512 || (secret.len() < 8 && kind != "syslog_tls") {
+        return Err(Error::bad_request(
+            "secret must be 8..=512 characters (syslog_tls: may be empty)",
+        ));
     }
     let url = validate_url(&state, &req.url).await?;
+    check_url_kind(&kind, &url)?;
     let actions = normalize_actions(req.actions)?;
     let wid = Uuid::new_v4();
     let secret_enc = state.encrypt_secret(SECRET_PURPOSE, secret.as_bytes())?;
@@ -317,13 +349,14 @@ pub async fn update(
         None => cur.actions,
     };
     let secret_enc = match req.secret.as_deref().map(str::trim) {
-        Some(s) if s.len() < 8 || s.len() > 512 => {
+        Some(s) if s.len() > 512 || (s.len() < 8 && kind != "syslog_tls") => {
             return Err(Error::bad_request("secret must be 8..=512 characters"));
         }
         Some(s) => Some(state.encrypt_secret(SECRET_PURPOSE, s.as_bytes())?),
         None => None,
     };
     let enabled = req.enabled.unwrap_or(cur.enabled);
+    check_url_kind(&kind, &url)?;
     sqlx::query(
         "UPDATE team_webhooks SET url = $3, kind = $4, actions = $5, enabled = $6,
              secret_enc = COALESCE($7, secret_enc),
@@ -555,6 +588,7 @@ fn render(
                 ],
             )
         }
+        "syslog_tls" => (cef_frames(events), vec![]),
         "datadog" => {
             let body = serde_json::Value::Array(
                 events
@@ -678,20 +712,23 @@ async fn send_batch(
     let payload: Vec<serde_json::Value> = events.iter().map(event_json).collect();
     let delivery = Uuid::new_v4();
     let (body, headers) = render(&kind, &secret, &payload, delivery);
-    let mut req = client().post(&url).body(body);
-    for (k, v) in headers {
-        req = req.header(k, v);
-    }
-    let outcome = req.send().await;
-    let (status, snippet, ok) = match outcome {
-        Ok(resp) => {
-            let status = resp.status().as_u16() as i32;
-            let ok = resp.status().is_success();
-            let text = resp.text().await.unwrap_or_default();
-            let snippet: String = text.chars().take(1024).collect();
-            (Some(status), snippet, ok)
+    let (status, snippet, ok) = if kind == "syslog_tls" {
+        send_syslog(state, &url, &body).await
+    } else {
+        let mut req = client().post(&url).body(body);
+        for (k, v) in headers {
+            req = req.header(k, v);
         }
-        Err(e) => (None, e.to_string().chars().take(1024).collect(), false),
+        match req.send().await {
+            Ok(resp) => {
+                let status = resp.status().as_u16() as i32;
+                let ok = resp.status().is_success();
+                let text = resp.text().await.unwrap_or_default();
+                let snippet: String = text.chars().take(1024).collect();
+                (Some(status), snippet, ok)
+            }
+            Err(e) => (None, e.to_string().chars().take(1024).collect(), false),
+        }
     };
     if ok {
         sqlx::query(
@@ -771,8 +808,219 @@ async fn send_batch(
             })),
         )
         .await;
+        notify_disabled(state, team_id, wid, &url, new_failures, &err).await;
     }
     Ok(())
+}
+
+/// Email everyone in the team who can manage webhooks that this one was
+/// switched off. Best effort; failures only log.
+async fn notify_disabled(
+    state: &AppState,
+    team_id: Uuid,
+    wid: Uuid,
+    url: &str,
+    failures: i32,
+    last_error: &str,
+) {
+    let Some(mailer) = state.mailer.as_ref() else {
+        return;
+    };
+    let rows: Vec<(String, String)> = match sqlx::query_as(
+        "SELECT u.email, t.name
+         FROM team_members m
+         JOIN team_roles r ON r.id = m.role_id
+         JOIN users u ON u.id = m.user_id
+         JOIN teams t ON t.id = m.team_id
+         WHERE m.team_id = $1 AND u.email_verified AND NOT u.disabled
+           AND ('*' = ANY(r.permissions) OR 'webhooks.manage' = ANY(r.permissions))",
+    )
+    .bind(team_id)
+    .fetch_all(&state.db)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!(error = %e, "webhook.disabled: could not list recipients");
+            return;
+        }
+    };
+    let Some(team_name) = rows.first().map(|r| r.1.clone()) else {
+        return;
+    };
+    // Scheme + host + path only: query strings may carry tokens.
+    let shown = url::Url::parse(url)
+        .map(|u| {
+            format!(
+                "{}://{}{}",
+                u.scheme(),
+                u.host_str().unwrap_or(""),
+                u.path()
+            )
+        })
+        .unwrap_or_else(|_| url.to_string());
+    let link = format!(
+        "{}/teams/{team_id}/webhooks",
+        state.cfg.web_url().trim_end_matches('/')
+    );
+    let email = crate::mail::Email::new(
+        "Audit webhook disabled",
+        format!("A webhook in \"{team_name}\" was disabled"),
+    )
+    .paragraph(format!(
+        "The audit webhook {shown} failed {failures} deliveries in a row and was switched off by {}. \
+         Events that could not be delivered are kept in the delivery history; new events are not queued for it until it is re-enabled.",
+        state.cfg.server_name
+    ))
+    .paragraph(format!("Last error: {}", last_error.chars().take(300).collect::<String>()))
+    .button("Open webhooks", &link)
+    .note(format!(
+        "You receive this because you can manage webhooks in \"{team_name}\". Webhook id: {wid}."
+    ));
+    for (to, _) in rows {
+        if let Err(e) = mailer.send(&to, &email).await {
+            tracing::warn!(error = %e, "could not send webhook.disabled email");
+        }
+    }
+}
+
+// ───────────────────────────── syslog / CEF ──────────────────────────────
+
+fn cef_escape_header(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('|', "\\|")
+}
+
+fn cef_escape_ext(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('=', "\\=")
+        .replace(['\r', '\n'], " ")
+}
+
+/// 0..10 per the CEF spec; mapped from the action family.
+fn cef_severity(action: &str) -> u8 {
+    match action {
+        a if a.ends_with(".deleted") || a.ends_with(".removed") || a.ends_with(".revoked") => 5,
+        a if a.starts_with("webhook.disabled") || a.starts_with("scim.rejected") => 6,
+        a if a.starts_with("member.") || a.starts_with("role.") || a.starts_with("policy.") => 4,
+        a if a.starts_with("sso.") || a.starts_with("scim.") || a.starts_with("token.") => 4,
+        _ => 2,
+    }
+}
+
+/// One RFC 5424 message with a CEF payload per event, octet-counted (RFC 5425).
+pub fn cef_frames(events: &[serde_json::Value]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for e in events {
+        let action = e["action"].as_str().unwrap_or("unknown");
+        let sev = cef_severity(action);
+        // syslog PRI: facility 13 (log audit) × 8 + severity (6 info / 4 warning).
+        let pri = 13 * 8 + if sev >= 5 { 4 } else { 6 };
+        let ts = e["ts"].as_str().unwrap_or("-");
+        let mut ext = Vec::new();
+        ext.push(format!(
+            "rt={}",
+            e["ts"]
+                .as_str()
+                .and_then(|t| t.parse::<DateTime<Utc>>().ok())
+                .map(|t| t.timestamp_millis())
+                .unwrap_or(0)
+        ));
+        ext.push(format!("externalId={}", e["id"]));
+        ext.push(format!(
+            "cs1Label=team cs1={}",
+            cef_escape_ext(e["team_id"].as_str().unwrap_or(""))
+        ));
+        if let Some(actor) = e["actor"].as_object() {
+            if let Some(em) = actor.get("email").and_then(|v| v.as_str()) {
+                ext.push(format!("suser={}", cef_escape_ext(em)));
+            }
+            if let Some(id) = actor.get("user_id").and_then(|v| v.as_str()) {
+                ext.push(format!("suid={id}"));
+            }
+        }
+        if let Some(t) = e["target_email"].as_str() {
+            ext.push(format!("duser={}", cef_escape_ext(t)));
+        }
+        if let Some(t) = e["target_user"].as_str() {
+            ext.push(format!("duid={t}"));
+        }
+        if let Some(v) = e["vault_id"].as_str() {
+            ext.push(format!("cs2Label=vault cs2={v}"));
+        }
+        if let Some(d) = e["device_id"].as_str() {
+            ext.push(format!("deviceExternalId={d}"));
+        }
+        if !e["details"].is_null() {
+            let d: String = e["details"].to_string().chars().take(4096).collect();
+            ext.push(format!("cs3Label=details cs3={}", cef_escape_ext(&d)));
+        }
+        let cef = format!(
+            "CEF:0|Termoso|Termoso|{}|{}|{}|{}|{}",
+            env!("CARGO_PKG_VERSION"),
+            cef_escape_header(action),
+            cef_escape_header(action),
+            sev,
+            ext.join(" ")
+        );
+        let msg = format!("<{pri}>1 {ts} termoso termoso-audit - {} - {cef}", e["id"]);
+        out.extend_from_slice(format!("{} ", msg.len()).as_bytes());
+        out.extend_from_slice(msg.as_bytes());
+    }
+    out
+}
+
+fn tls_connector(state: &AppState) -> anyhow::Result<tokio_rustls::TlsConnector> {
+    use rustls_pki_types::pem::PemObject;
+    use tokio_rustls::rustls;
+    let mut roots = rustls::RootCertStore::empty();
+    let native = rustls_native_certs::load_native_certs();
+    for c in native.certs {
+        let _ = roots.add(c);
+    }
+    if let Some(path) = state.cfg.webhooks_syslog_ca.as_deref() {
+        for c in rustls_pki_types::CertificateDer::pem_file_iter(path)
+            .map_err(|e| anyhow::anyhow!("syslog CA {path}: {e}"))?
+        {
+            let c = c.map_err(|e| anyhow::anyhow!("syslog CA {path}: {e}"))?;
+            roots
+                .add(c)
+                .map_err(|e| anyhow::anyhow!("syslog CA {path}: {e}"))?;
+        }
+    }
+    let cfg = rustls::ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::aws_lc_rs::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()?
+    .with_root_certificates(roots)
+    .with_no_client_auth();
+    Ok(tokio_rustls::TlsConnector::from(Arc::new(cfg)))
+}
+
+/// Open a TLS connection, write the frames, half-close, wait for the peer
+/// to close. A clean close counts as delivered (syslog has no ack).
+async fn send_syslog(state: &AppState, url: &str, body: &[u8]) -> (Option<i32>, String, bool) {
+    let attempt = async {
+        let u = url::Url::parse(url)?;
+        let host = u
+            .host_str()
+            .ok_or_else(|| anyhow::anyhow!("no host"))?
+            .trim_matches(['[', ']'])
+            .to_string();
+        let port = u.port().unwrap_or(SYSLOG_PORT);
+        let connector = tls_connector(state)?;
+        let server_name = rustls_pki_types::ServerName::try_from(host.clone())?;
+        let tcp = tokio::net::TcpStream::connect((host.as_str(), port)).await?;
+        let mut tls = connector.connect(server_name, tcp).await?;
+        tls.write_all(body).await?;
+        tls.flush().await?;
+        tls.shutdown().await?;
+        anyhow::Ok(())
+    };
+    match tokio::time::timeout(std::time::Duration::from_secs(10), attempt).await {
+        Ok(Ok(())) => (Some(200), String::new(), true),
+        Ok(Err(e)) => (None, e.to_string().chars().take(1024).collect(), false),
+        Err(_) => (None, "timed out after 10s".into(), false),
+    }
 }
 
 #[cfg(test)]

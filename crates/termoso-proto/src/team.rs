@@ -790,7 +790,7 @@ fn default_audit_retention_days() -> i32 {
 // ───────────────────────────── audit webhooks ─────────────────────────────
 
 /// Delivery formats for audit webhooks.
-pub const WEBHOOK_KINDS: &[&str] = &["generic", "splunk_hec", "elastic", "datadog"];
+pub const WEBHOOK_KINDS: &[&str] = &["generic", "splunk_hec", "elastic", "datadog", "syslog_tls"];
 
 schema! {
     /// An audit webhook (`/teams/{id}/webhooks`). The secret is write-only.

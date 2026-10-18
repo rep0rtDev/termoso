@@ -102,6 +102,9 @@ pub struct Config {
     /// Allow webhooks to private/loopback addresses (self-hosted internal
     /// SIEMs). Default: false.
     pub webhooks_allow_private: bool,
+    /// Extra PEM bundle trusted by `syslog_tls` webhooks in addition to the
+    /// OS trust store (private CAs). `TERMOSO_WEBHOOKS_SYSLOG_CA=/path.pem`.
+    pub webhooks_syslog_ca: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -369,6 +372,7 @@ impl Default for Config {
             audit_retention_days_max: 3650,
             audit_sink: false,
             webhooks_allow_private: false,
+            webhooks_syslog_ca: None,
         }
     }
 }
