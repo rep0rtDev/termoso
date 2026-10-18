@@ -74,6 +74,7 @@ import {
   type TerminalTab,
 } from "./store";
 import { tr, trx, msg } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 export const SIDE_PANEL_WIDTH = 300;
 
@@ -165,7 +166,11 @@ function ForwardingPanel({ pane }: { pane: Pane }) {
   const mine = (rules.data ?? []).filter((r) => r.hostId === hostId);
   const toggle = useMutation({
     mutationFn: (rule: (typeof mine)[number]) =>
-      rule.runtime.state === "stopped" ? ipc.pfStart(rule.id) : ipc.pfStop(rule.id),
+      rule.runtime.state === "stopped"
+        ? requirePerm(rule.vaultId, "connect.port_forward")
+          ? ipc.pfStart(rule.id)
+          : Promise.resolve(null)
+        : ipc.pfStop(rule.id),
     onSettled: () => void qc.invalidateQueries({ queryKey: keys.pfRules(vault.data?.id ?? null) }),
     onError: (e) => snackbar.error(errorMessage(e)),
   });

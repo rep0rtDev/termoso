@@ -56,6 +56,7 @@ import {
 import { KIND_NAME, emptyRuleForm, routeLine, ruleTitle, ruleToForm } from "./model";
 import { RuleEditor, RuleTile, RuleWizard } from "./ForwardingPanels";
 import { tr, trx, msg } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 type Panel =
   | { mode: "closed" }
@@ -208,8 +209,10 @@ export function ForwardingPage() {
     if (busyId) return;
     setBusyId(r.id);
     op.mutate(async () => {
-      if (r.runtime.state === "stopped") await ipc.pfStart(r.id);
-      else await ipc.pfStop(r.id);
+      if (r.runtime.state === "stopped") {
+        if (!requirePerm(r.vaultId, "connect.port_forward")) return null;
+        await ipc.pfStart(r.id);
+      } else await ipc.pfStop(r.id);
       return null;
     });
   };
