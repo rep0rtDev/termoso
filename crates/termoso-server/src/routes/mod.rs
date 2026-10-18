@@ -271,6 +271,7 @@ pub fn router(state: AppState) -> Router {
             dir,
             state.cfg.landing_on_cabinet(),
             state.cfg.docs,
+            state.cfg.turnstile.is_some(),
             seo,
         ));
     }

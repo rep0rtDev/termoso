@@ -133,7 +133,9 @@ export function AdminUsersPage() {
                       <TableCell>
                         <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: "wrap" }}>
                           {u.is_owner && <Chip size="small" color="secondary" label="Owner" />}
-                          {u.is_admin && <Chip size="small" color="primary" label="Admin" />}
+                          {u.is_admin && !u.is_owner && (
+                            <Chip size="small" color="primary" label="Admin" />
+                          )}
                           {u.disabled && <Chip size="small" color="error" label="Disabled" />}
                           {u.email_verified ? (
                             <Chip
@@ -247,7 +249,13 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
       {user.isError && <Alert severity="error">{errorMessage(user.error)}</Alert>}
       {u && (
         <Stack spacing={2.5}>
-          <UserCell userId={u.id} email={u.email} displayName={u.display_name} you={isMe} />
+          <UserCell
+            userId={u.id}
+            email={u.email}
+            displayName={u.display_name}
+            avatar={u.avatar}
+            you={isMe}
+          />
           <Stack spacing={0.5}>
             <Row label="Joined" value={formatDateTime(u.created_at)} />
             <Row label="Last seen" value={formatRelative(u.last_seen_at)} />
