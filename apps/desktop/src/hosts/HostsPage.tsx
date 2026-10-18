@@ -86,7 +86,9 @@ import {
   requestForwardingRule,
   useCreateRequests,
   useEditRequests,
+  useOpenFileRequests,
 } from "@/app/navigation";
+import { isSshConfigFile } from "@/app/deepLinks";
 import { HostGrid, hostTarget } from "./HostGrid";
 import { HostList } from "./HostList";
 import { useVaultPresence } from "./PresenceViews";
@@ -199,6 +201,11 @@ export function HostsPage() {
   const [anchorId, setAnchorId] = useState<Uuid | null>(null);
   const [moveCopy, setMoveCopy] = useState<MoveCopyRequest | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<string | null>(null);
+  useOpenFileRequests(isSshConfigFile, (path) => {
+    setImportFile(path);
+    setImportOpen(true);
+  });
   const [cloudProvider, setCloudProvider] = useState<CloudProvider | null>(null);
   const [lanOpen, setLanOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -1240,8 +1247,12 @@ export function HostsPage() {
       {vaultId && (
         <ImportDialog
           open={importOpen}
+          initialFile={importFile}
           vaultId={vaultId}
-          onClose={() => setImportOpen(false)}
+          onClose={() => {
+            setImportOpen(false);
+            setImportFile(null);
+          }}
           onImported={clearSelection}
         />
       )}

@@ -322,6 +322,7 @@ export function NewKeyPanel({
   vaultId,
   vaultName,
   focusCertificate,
+  initialFile = null,
   busy,
   error,
   onImport,
@@ -331,6 +332,8 @@ export function NewKeyPanel({
   vaultId: Uuid;
   vaultName: string;
   focusCertificate?: boolean;
+  /** A key file the OS opened with the app: taken as the private key right away. */
+  initialFile?: string | null;
   busy: boolean;
   error: string | null;
   onImport: (form: ImportKeyForm) => void;
@@ -402,6 +405,13 @@ export function NewKeyPanel({
     }
   };
   useFileDrop(takePaths);
+  const takeRef = useRef(takePaths);
+  useEffect(() => {
+    takeRef.current = takePaths;
+  });
+  useEffect(() => {
+    if (initialFile) takeRef.current([initialFile]);
+  }, [initialFile]);
 
   const pickPrivate = async () => {
     const picked = await openFile({

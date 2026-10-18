@@ -308,6 +308,9 @@
     <string name="configuring">Настройка</string>
     <string name="choose_a_distribution">Выберите дистрибутив</string>
     <string name="replace_with">Заменить на</string>
+    <string name="shortcut_new_connection">Новое подключение</string>
+    <string name="shortcut_local_terminal">Локальный терминал</string>
+    <string name="shortcut_sftp">SFTP</string>
     <string name="custom_rootfs">Свой образ</string>
     <string name="custom_rootfs_from_file">Из файла…</string>
     <string name="custom_rootfs_from_file_hint">tar, tar.gz или tar.xz с /bin/sh под этот аппарат (Debian, Fedora, Arch…)</string>

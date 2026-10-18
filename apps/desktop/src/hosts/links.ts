@@ -99,8 +99,12 @@ export function protocolLink(h: HostCard, protocol: HostProtocol = h.protocol): 
 }
 
 /** Everything a link can ask the app to open. */
+/** `termoso://new`, `termoso://local`, `termoso://sftp` — launcher / Jump List / Dock quick actions. */
+export type QuickAction = "new" | "local" | "sftp";
+
 export type LinkTarget =
   | { kind: "host"; hostId: Uuid }
+  | { kind: "action"; action: QuickAction }
   | { kind: "quick"; target: QuickTarget }
   /** Multiplayer invitation (`https://<server>/join/<session>#<secret>` or `termoso://join/…`). */
   | { kind: "live"; link: string }
@@ -118,6 +122,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function parseLink(url: string): LinkTarget {
   const s = url.trim();
   if (isLiveLink(s)) return { kind: "live", link: s };
+  const a = /^termoso:\/\/(new|local|sftp)\/?(?:[?#].*)?$/i.exec(s);
+  if (a?.[1]) return { kind: "action", action: a[1].toLowerCase() as QuickAction };
   const m = /^termoso:\/\/host\/([^/?#]+)\/?(?:[?#].*)?$/i.exec(s);
   if (m?.[1]) {
     const id = decodeURIComponent(m[1]);

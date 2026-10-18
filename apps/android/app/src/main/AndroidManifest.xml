@@ -66,6 +66,15 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="termoso" android:host="host" />
+                <data android:scheme="termoso" android:host="new" />
+                <data android:scheme="termoso" android:host="local" />
+                <data android:scheme="termoso" android:host="sftp" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="termoso" android:host="invite" />
             </intent-filter>
             <intent-filter>

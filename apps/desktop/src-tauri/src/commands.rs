@@ -52,6 +52,13 @@ pub fn app_quit<R: Runtime>(app: AppHandle<R>) {
     app.exit(0);
 }
 
+/// Files the app was launched with (file associations, "Open with…"),
+/// reported once; later ones arrive as the `files-opened` event.
+#[tauri::command]
+pub fn launch_files(files: tauri::State<'_, crate::quick::LaunchFiles>) -> Vec<String> {
+    files.take()
+}
+
 /// Register this binary as the handler for the `termoso://`, `ssh://` and
 /// `telnet://` schemes for the current user. Installers do this already; the command
 /// covers AppImage / portable builds. Returns the schemes now registered.

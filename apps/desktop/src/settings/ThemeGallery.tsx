@@ -1,3 +1,5 @@
+import { useOpenFileRequests } from "@/app/navigation";
+import { isThemeFile } from "@/app/deepLinks";
 import { useState } from "react";
 import {
   Box,
@@ -132,8 +134,16 @@ function CustomSchemes({
       ],
     });
     if (typeof picked !== "string") return;
+    await importFromPath(picked);
+  };
+
+  const importFromPath = async (path: string) => {
+    if (!targetVault) {
+      toast(tr("Unlock a vault to save colour schemes"), "warning");
+      return;
+    }
     try {
-      const out = await ipc.themeImportFile(picked);
+      const out = await ipc.themeImportFile(path);
       for (const data of out.schemes) {
         await save.mutateAsync({ vaultId: targetVault, id: null, data });
       }
@@ -143,6 +153,8 @@ function CustomSchemes({
       toast(errorMessage(e), "error");
     }
   };
+
+  useOpenFileRequests(isThemeFile, (path) => void importFromPath(path));
 
   const list = (schemes.data ?? [])
     .map((e) => ({ entity: e, theme: customTheme(e) }))

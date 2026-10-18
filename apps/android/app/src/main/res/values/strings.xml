@@ -302,6 +302,9 @@
     <string name="configuring">Configuring</string>
     <string name="choose_a_distribution">Choose a distribution</string>
     <string name="replace_with">Replace with</string>
+    <string name="shortcut_new_connection">New connection</string>
+    <string name="shortcut_local_terminal">Local terminal</string>
+    <string name="shortcut_sftp">SFTP</string>
     <string name="custom_rootfs">Your own image</string>
     <string name="custom_rootfs_from_file">From file…</string>
     <string name="custom_rootfs_from_file_hint">tar, tar.gz or tar.xz with /bin/sh built for this device (Debian, Fedora, Arch…)</string>

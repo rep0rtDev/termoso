@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -40,6 +41,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.font.FontFamily
+import com.termoso.android.QuickAction
+import com.termoso.android.data.RecentShortcuts
 import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.OpenTarget
@@ -192,6 +195,7 @@ fun MainShell(
     val showBar = vaultsTabRoute || tabs.any { it.route == currentRoute }
     val snackbar = remember { SnackbarHostState() }
 
+    val context = LocalContext.current
     val notice by shell.notice.collectAsStateWithLifecycle()
     LaunchedEffect(notice) {
         val text = notice ?: return@LaunchedEffect
@@ -264,6 +268,30 @@ fun MainShell(
         shell.launch { if (shell.joinLive(link) != null) openTerminal() }
     }
 
+    // Launcher shortcuts and termoso://host links: act once the shell is up.
+    val pendingAction by container.pendingAction.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingAction, restoring) {
+        val action = pendingAction ?: return@LaunchedEffect
+        if (restoring) return@LaunchedEffect
+        container.consumeAction()
+        when (action) {
+            QuickAction.NewConnection -> nav.navigate(Routes.hostNew(null)) { launchSingleTop = true }
+            QuickAction.LocalTerminal -> shell.launch { if (shell.connectLocal() != null) openTerminal() }
+            QuickAction.Sftp -> nav.navigate(Routes.CONNECTIONS) {
+                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
+    val pendingHost by container.pendingHost.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingHost, restoring) {
+        val id = pendingHost ?: return@LaunchedEffect
+        if (restoring) return@LaunchedEffect
+        container.consumeHost()
+        shell.launch { if (shell.connectHost(id) != null) openTerminal() }
+    }
+
     // Files shared into the app: sent to the active terminal, or held until one is opened.
     val pendingShare by container.pendingShare.collectAsStateWithLifecycle()
     val openSessions by shell.sessions.sessions.collectAsStateWithLifecycle()
@@ -331,6 +359,7 @@ fun MainShell(
             if (!shell.hasTerminal(hostId)) {
                 shell.openSftpHost(hostId, FileProtocol.WEBDAV)?.let { openSftp(it.id) }
             } else if (shell.connectHost(hostId, transport) != null) {
+                shell.selectedVaultId.value?.let { RecentShortcuts.record(context, shell.repo, hostId, it) }
                 openTerminal()
             }
         }

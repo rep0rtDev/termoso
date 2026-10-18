@@ -120,6 +120,8 @@ class MainActivity : FragmentActivity() {
         when (classifyLink(link)) {
             LinkKind.Invite -> container.offerInvite(link)
             LinkKind.Join -> container.offerJoin(link)
+            LinkKind.Host -> hostLinkId(link)?.let(container::offerHost)
+            LinkKind.Action -> quickAction(link)?.let(container::offerAction)
             LinkKind.Other -> Unit
         }
     }

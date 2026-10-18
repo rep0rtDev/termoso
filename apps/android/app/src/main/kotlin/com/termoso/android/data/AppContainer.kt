@@ -1,6 +1,7 @@
 package com.termoso.android.data
 
 import android.content.Context
+import com.termoso.android.QuickAction
 import android.net.Uri
 import android.os.SystemClock
 import android.view.KeyEvent
@@ -38,6 +39,10 @@ sealed interface VaultState {
  * Keystore-wrapped master key and the open [TermosoApp] handle.
  */
 class AppContainer(context: Context) {
+    init {
+        RecentShortcuts.ensureBase(context)
+    }
+
     private val appContext = context.applicationContext
     val profileDir: File = File(context.noBackupFilesDir, "profile")
 
@@ -96,6 +101,30 @@ class AppContainer(context: Context) {
 
     fun consumeJoin() {
         _pendingJoin.value = null
+    }
+
+    /** A launcher shortcut (`termoso://new|local|sftp`) the app was opened with. */
+    private val _pendingAction = MutableStateFlow<QuickAction?>(null)
+    val pendingAction: StateFlow<QuickAction?> = _pendingAction.asStateFlow()
+
+    fun offerAction(action: QuickAction) {
+        _pendingAction.value = action
+    }
+
+    fun consumeAction() {
+        _pendingAction.value = null
+    }
+
+    /** Host id from a `termoso://host/<id>` link or a recent-host shortcut. */
+    private val _pendingHost = MutableStateFlow<String?>(null)
+    val pendingHost: StateFlow<String?> = _pendingHost.asStateFlow()
+
+    fun offerHost(hostId: String) {
+        _pendingHost.value = hostId
+    }
+
+    fun consumeHost() {
+        _pendingHost.value = null
     }
 
     /**

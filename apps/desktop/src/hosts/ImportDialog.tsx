@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode, useRef } from "react";
 import {
   Alert,
   Box,
@@ -107,11 +107,14 @@ function skippedSummary(r: ImportApplyReport) {
 export function ImportDialog({
   open,
   vaultId,
+  initialFile = null,
   onClose,
   onImported,
 }: {
   open: boolean;
   vaultId: Uuid;
+  /** An OpenSSH config the OS opened with the app: parsed as soon as the dialog shows. */
+  initialFile?: string | null;
   onClose: () => void;
   onImported: () => void;
 }) {
@@ -127,17 +130,19 @@ export function ImportDialog({
         paper: { sx: { height: tall ? "min(720px, calc(100vh - 64px))" : undefined } },
       }}
     >
-      {open && <Body vaultId={vaultId} onClose={onClose} onImported={onImported} onStep={onStep} />}
+      {open && <Body vaultId={vaultId} initialFile={initialFile} onClose={onClose} onImported={onImported} onStep={onStep} />}
     </Dialog>
   );
 }
 
 function Body({
+  initialFile,
   vaultId,
   onClose,
   onImported,
   onStep,
 }: {
+  initialFile: string | null;
   vaultId: Uuid;
   onClose: () => void;
   onImported: () => void;
@@ -189,6 +194,16 @@ function Body({
       setStep({ kind: "source", busy: null });
     }
   };
+
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  });
+  useEffect(() => {
+    if (initialFile) {
+      void loadRef.current(tr("Parsing…"), () => ipc.importParseFile("ssh_config", initialFile));
+    }
+  }, [initialFile]);
 
   const pickFile = async (title: string, filters?: { name: string; extensions: string[] }[]) => {
     const picked = await openFile({ multiple: false, directory: false, title, filters });

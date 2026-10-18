@@ -209,6 +209,7 @@ export const ru: Readonly<Record<string, string>> = {
   "Command finished in a background tab": "Команда завершилась в фоновой вкладке",
   "Connection lost": "Соединение потеряно",
   "CSV file…": "CSV-файл…",
+  "Can't open file: {name}": "Не удалось открыть файл: {name}",
   "Can't open link: {url}": "Не удалось открыть ссылку: {url}",
   Cancel: "Отмена",
   Cancelled: "Отменено",

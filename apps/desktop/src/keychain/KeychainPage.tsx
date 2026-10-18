@@ -1,3 +1,5 @@
+import { useOpenFileRequests } from "@/app/navigation";
+import { isKeyFile } from "@/app/deepLinks";
 import { useMemo, useState, type MouseEvent, type ReactElement } from "react";
 import {
   Alert,
@@ -90,7 +92,7 @@ import { requirePerm } from "@/team/perms";
 
 type Panel =
   | { kind: "none" }
-  | { kind: "newKey"; certificate: boolean }
+  | { kind: "newKey"; certificate: boolean; file?: string }
   | { kind: "generate" }
   | { kind: "editKey"; id: string }
   | { kind: "identity"; id: string | null }
@@ -133,6 +135,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
   const saveSettings = useSaveSettings();
 
   const [panel, setPanel] = useState<Panel>({ kind: "none" });
+  useOpenFileRequests(isKeyFile, (file) => setPanel({ kind: "newKey", certificate: false, file }));
   const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
   const [ctx, setCtx] = useState<Ctx | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -652,6 +655,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           vaultId={vaultId}
           vaultName={vaultName}
           focusCertificate={panel.certificate}
+          initialFile={panel.file ?? null}
           busy={panelOp.isPending}
           error={panelError}
           onClose={closePanel}
