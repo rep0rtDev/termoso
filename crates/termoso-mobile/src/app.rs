@@ -41,6 +41,7 @@ use crate::team::{
     AuditPage, InviteCard, InviteSent, PendingKeyCard, TeamCard, TeamMemberCard, TeamRole,
     VaultAccessDraft, VaultMemberCard,
 };
+use crate::themes::TerminalTheme;
 
 const DB_FILE: &str = "vault.db";
 const AVATARS_DIR: &str = "avatars";
@@ -1822,6 +1823,22 @@ impl TermosoApp {
     }
 
     /// Packages of one vault (all when `None`), sorted by label.
+    /// Built-in colour schemes followed by the user's own (`color_scheme`
+    /// entities of `vault_id`, or of every unlocked vault when `None`).
+    pub fn terminal_themes_all(&self, vault_id: Option<String>) -> Result<Vec<TerminalTheme>> {
+        let mut all = crate::themes::terminal_themes();
+        all.extend(crate::themes::custom_themes(
+            &self.store,
+            parse_opt_id(&vault_id)?,
+        ));
+        Ok(all)
+    }
+
+    /// Scheme by built-in id/name or by user-scheme entity id.
+    pub fn terminal_theme_resolve(&self, key: String) -> Option<TerminalTheme> {
+        crate::themes::resolve(&self.store, &key)
+    }
+
     pub fn snippet_packages(&self, vault_id: Option<String>) -> Result<Vec<SnippetPackageItem>> {
         snippets::packages(&self.store, &vault_id)
     }

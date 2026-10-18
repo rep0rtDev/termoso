@@ -608,7 +608,7 @@ impl SshSession {
         let palette = options
             .palette
             .clone()
-            .unwrap_or_else(|| crate::themes::palette_for(&settings.terminal_theme));
+            .unwrap_or_else(|| crate::themes::palette_for_in(&store, &settings.terminal_theme));
         let (emulator, signals) = Emulator::new(
             options.cols,
             options.rows,
@@ -750,7 +750,7 @@ impl SshSession {
         let palette = options
             .palette
             .clone()
-            .unwrap_or_else(|| crate::themes::palette_for(&settings.terminal_theme));
+            .unwrap_or_else(|| crate::themes::palette_for_in(&store, &settings.terminal_theme));
         let (emulator, signals) = Emulator::new(
             options.cols,
             options.rows,

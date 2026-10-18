@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.termoso.core.terminalThemes
 
 /** [WebDavDraft.auth] values, as the store spells them. */
 const val WEBDAV_AUTH_PASSWORD = "password"
@@ -132,6 +133,9 @@ class HostEditorViewModel(
     /** For a new host: the quick-connect target (`user@host:port`, `telnet://host`) to start the form from. */
     private val prefill: QuickTarget? = null,
 ) : ViewModel() {
+    /** Built-in colour schemes plus the user's own from the vault. */
+    suspend fun allThemes() = runCatching { repo.read { terminalThemesAll(null) } }.getOrDefault(terminalThemes())
+
     private val _state = MutableStateFlow(HostEditorState())
     val state: StateFlow<HostEditorState> = _state.asStateFlow()
 
