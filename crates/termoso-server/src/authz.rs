@@ -221,6 +221,11 @@ fn describe(key: &str) -> (&'static str, &'static str, bool) {
             "See overdue keys and passwords, queue and cancel rotation jobs.",
             true,
         ),
+        "access.approve" => (
+            "Approve access requests",
+            "Grant, deny and revoke temporary (just-in-time) access to team vaults.",
+            true,
+        ),
         "vaults.rotate_key" => (
             "Rotate vault keys",
             "Rotate a vault key after access changes.",
@@ -403,6 +408,7 @@ pub const BUILTIN_ROLES: &[(&str, &str, &str, &[&str], i32)] = &[
             "vaults.members",
             "acl.manage",
             "rotation.manage",
+            "access.approve",
             "vaults.rotate_key",
             "vaults.history",
             "entities.read",

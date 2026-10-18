@@ -1,5 +1,6 @@
 //! HTTP routing.
 
+pub mod access;
 pub mod account;
 pub mod acl;
 pub mod admin;
@@ -281,6 +282,20 @@ pub fn router(state: AppState) -> Router {
         .route("/vaults/{id}/logs", get(logs::list_vault))
         .route("/teams/{id}/logs", get(logs::team_list))
         .route("/teams/{id}/logs/export", get(logs::team_export))
+        .route(
+            "/teams/{id}/access-requests",
+            get(access::list).post(access::create),
+        )
+        .route("/teams/{id}/access-requests/{rid}", delete(access::cancel))
+        .route(
+            "/teams/{id}/access-requests/{rid}/approve",
+            post(access::approve),
+        )
+        .route("/teams/{id}/access-requests/{rid}/deny", post(access::deny))
+        .route(
+            "/teams/{id}/access-requests/{rid}/revoke",
+            post(access::revoke),
+        )
         .route("/teams/{id}/rotation", get(rotation::overview))
         .route("/teams/{id}/rotation/jobs", post(rotation::create))
         .route("/rotation/jobs", get(rotation::mine))

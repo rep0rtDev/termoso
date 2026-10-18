@@ -118,8 +118,7 @@ async fn rotation_policy_due_list_and_jobs() {
     let fresh_key = Uuid::new_v4();
     let old_host = Uuid::new_v4();
     let change = |id: Uuid, kind: &str, rotated_days_ago: Option<i64>| EntityChange {
-        secret_rotated_at: rotated_days_ago
-            .map(|d| chrono::Utc::now() - chrono::Duration::days(d)),
+        secret_rotated_at: rotated_days_ago.map(|d| chrono::Utc::now() - chrono::Duration::days(d)),
         id,
         kind: kind.into(),
         vault_id: vault.id,
@@ -142,7 +141,9 @@ async fn rotation_policy_due_list_and_jobs() {
         StatusCode::FORBIDDEN,
     )
     .await;
-    let o: RotationOverview = s.json(Method::GET, &path, Some(owner.token()), NOBODY).await;
+    let o: RotationOverview = s
+        .json(Method::GET, &path, Some(owner.token()), NOBODY)
+        .await;
     let due: Vec<Uuid> = o.due.iter().map(|d| d.entity_id).collect();
     assert!(due.contains(&old_key) && due.contains(&old_host), "{due:?}");
     assert!(!due.contains(&fresh_key));
@@ -179,7 +180,12 @@ async fn rotation_policy_due_list_and_jobs() {
         )
         .await;
     assert_eq!(created.jobs.len(), 2);
-    assert!(created.jobs.iter().all(|j| j.status == "pending" && j.note == "quarterly"));
+    assert!(
+        created
+            .jobs
+            .iter()
+            .all(|j| j.status == "pending" && j.note == "quarterly")
+    );
     let again: RotationJobList = s
         .json(
             Method::POST,
@@ -264,9 +270,14 @@ async fn rotation_policy_due_list_and_jobs() {
     assert_eq!(failed.error.as_deref(), Some("host unreachable"));
 
     // Done stamps the entity: the key is no longer due, the host still is.
-    let o: RotationOverview = s.json(Method::GET, &path, Some(owner.token()), NOBODY).await;
+    let o: RotationOverview = s
+        .json(Method::GET, &path, Some(owner.token()), NOBODY)
+        .await;
     let due: Vec<Uuid> = o.due.iter().map(|d| d.entity_id).collect();
-    assert!(!due.contains(&old_key) && due.contains(&old_host), "{due:?}");
+    assert!(
+        !due.contains(&old_key) && due.contains(&old_host),
+        "{due:?}"
+    );
     assert_eq!(o.jobs.len(), 2);
 
     // Audit trail and cleanup.
@@ -278,7 +289,11 @@ async fn rotation_policy_due_list_and_jobs() {
             NOBODY,
         )
         .await;
-    for a in ["rotation.requested", "rotation.completed", "rotation.failed"] {
+    for a in [
+        "rotation.requested",
+        "rotation.completed",
+        "rotation.failed",
+    ] {
         assert!(events.events.iter().any(|e| e.action == a), "{a}");
     }
     s.expect_status(

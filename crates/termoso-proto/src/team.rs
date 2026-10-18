@@ -473,6 +473,7 @@ pub const PERMISSIONS: &[&str] = &[
     // acl
     "acl.manage",
     "rotation.manage",
+    "access.approve",
     "vaults.history",
     // entities
     "entities.read",
@@ -869,6 +870,92 @@ schema! {
         /// Free-form note shown to whoever executes the jobs.
         #[serde(default)]
         pub note: String,
+    }
+}
+
+schema! {
+    /// A just-in-time request for temporary access to a team vault.
+    pub struct AccessRequest {
+        /// Request id.
+        pub id: Uuid,
+        /// Owning team.
+        pub team_id: Uuid,
+        /// Vault the access is for.
+        pub vault_id: Uuid,
+        /// Vault name at the time of reading.
+        pub vault_name: String,
+        /// Requester.
+        pub user_id: Uuid,
+        /// Requester's e-mail.
+        pub user_email: String,
+        /// `viewer` or `editor`.
+        pub role: String,
+        /// Requested (or granted) window in hours.
+        pub hours: i32,
+        /// Why access is needed.
+        pub reason: String,
+        /// `pending`, `approved`, `denied`, `cancelled`, `revoked` or `expired`.
+        pub status: String,
+        /// Approver / denier.
+        pub decided_by: Option<Uuid>,
+        /// When the decision was made.
+        pub decided_at: Option<DateTime<Utc>>,
+        /// Approver's note.
+        pub decision_note: Option<String>,
+        /// When the granted access ends.
+        pub expires_at: Option<DateTime<Utc>>,
+        /// Requested at.
+        pub created_at: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/access-requests`.
+    pub struct AccessRequestList {
+        /// Whether the caller may approve/deny/revoke.
+        pub can_approve: bool,
+        /// Requests, pending first.
+        pub requests: Vec<AccessRequest>,
+    }
+}
+
+schema! {
+    /// Ask for temporary access.
+    pub struct CreateAccessRequest {
+        /// Team vault.
+        pub vault_id: Uuid,
+        /// `viewer` (default) or `editor`.
+        #[serde(default = "default_viewer")]
+        pub role: String,
+        /// Window in hours (1..=720, default 8).
+        #[serde(default = "default_hours")]
+        pub hours: i32,
+        /// Why access is needed.
+        #[serde(default)]
+        pub reason: String,
+    }
+}
+
+fn default_viewer() -> String {
+    "viewer".into()
+}
+
+fn default_hours() -> i32 {
+    8
+}
+
+schema! {
+    /// Approve (optionally trimming the grant) or deny a request.
+    pub struct DecideAccessRequest {
+        /// Override the granted hours.
+        #[serde(default)]
+        pub hours: Option<i32>,
+        /// Override the granted role.
+        #[serde(default)]
+        pub role: Option<String>,
+        /// Note for the requester.
+        #[serde(default)]
+        pub note: Option<String>,
     }
 }
 
