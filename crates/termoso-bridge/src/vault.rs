@@ -162,6 +162,7 @@ impl VaultState {
         let plaintext = serde_json::to_string(data)?;
         let ct = aead::encrypt_str(key, &Aad::entity(kind, &id.to_string()), &plaintext)?;
         Ok(EntityChange {
+            secret_rotated_at: None,
             id,
             kind: kind.to_string(),
             vault_id: self.id,

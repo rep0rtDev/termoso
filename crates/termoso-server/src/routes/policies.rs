@@ -114,17 +114,40 @@ pub async fn put(
         }
         next.log_retention_days = days;
     }
+    for (field, value, slot) in [
+        (
+            "key_max_age_days",
+            req.key_max_age_days,
+            &mut next.key_max_age_days,
+        ),
+        (
+            "password_max_age_days",
+            req.password_max_age_days,
+            &mut next.password_max_age_days,
+        ),
+    ] {
+        if let Some(days) = value {
+            if !(0..=policy::MAX_SECRET_AGE_DAYS).contains(&days) {
+                return Err(Error::bad_request(format!(
+                    "{field} must be 0 (off) or 1..={}",
+                    policy::MAX_SECRET_AGE_DAYS
+                )));
+            }
+            *slot = days;
+        }
+    }
     let mut tx = state.db.begin().await?;
     sqlx::query(
         "INSERT INTO team_policies (team_id, mfa, local_keys, session_ttl_hours, sso_only, sso_provider,
                                     sso_domains, device_approval, audit_retention_days, session_recording,
-                                    log_retention_days, updated_by, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10, $11, $12, $9, now())
+                                    log_retention_days, key_max_age_days, password_max_age_days, updated_by, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10, $11, $12, $13, $14, $9, now())
          ON CONFLICT (team_id) DO UPDATE SET mfa = EXCLUDED.mfa, local_keys = EXCLUDED.local_keys,
              session_ttl_hours = EXCLUDED.session_ttl_hours, sso_only = EXCLUDED.sso_only,
              sso_provider = EXCLUDED.sso_provider, sso_domains = EXCLUDED.sso_domains,
              device_approval = EXCLUDED.device_approval, audit_retention_days = EXCLUDED.audit_retention_days,
              session_recording = EXCLUDED.session_recording, log_retention_days = EXCLUDED.log_retention_days,
+             key_max_age_days = EXCLUDED.key_max_age_days, password_max_age_days = EXCLUDED.password_max_age_days,
              updated_by = EXCLUDED.updated_by, updated_at = now()",
     )
     .bind(id)
@@ -139,6 +162,8 @@ pub async fn put(
     .bind(next.audit_retention_days)
     .bind(&next.session_recording)
     .bind(next.log_retention_days)
+    .bind(next.key_max_age_days)
+    .bind(next.password_max_age_days)
     .execute(&mut *tx)
     .await?;
     if next.session_recording == "required" {

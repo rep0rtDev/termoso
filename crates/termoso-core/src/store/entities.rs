@@ -46,6 +46,7 @@ impl EntityRow {
     /// Build the push item for this row.
     pub fn to_change(&self) -> EntityChange {
         EntityChange {
+            secret_rotated_at: None,
             id: self.id,
             kind: self.kind.clone(),
             vault_id: self.vault_id,
@@ -895,6 +896,7 @@ mod tests {
         )
         .unwrap();
         s.apply_remote(&SyncEntity {
+            secret_rotated_at: None,
             id,
             kind: "host".into(),
             vault_id: v,
@@ -928,6 +930,7 @@ mod tests {
         )
         .unwrap();
         s.apply_remote(&SyncEntity {
+            secret_rotated_at: None,
             id: Uuid::new_v4(),
             kind: "host".into(),
             vault_id: v,
@@ -1181,6 +1184,7 @@ mod tests {
         .unwrap();
         let locked_identity = Uuid::new_v4();
         s.apply_remote(&SyncEntity {
+            secret_rotated_at: None,
             id: locked_identity,
             kind: Identity::KIND.into(),
             vault_id: locked,

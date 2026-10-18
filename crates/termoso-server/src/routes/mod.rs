@@ -13,6 +13,7 @@ pub mod logs;
 pub mod mfa;
 pub mod policies;
 pub mod roles;
+pub mod rotation;
 pub mod scim_admin;
 pub mod server;
 pub mod sshid;
@@ -280,6 +281,13 @@ pub fn router(state: AppState) -> Router {
         .route("/vaults/{id}/logs", get(logs::list_vault))
         .route("/teams/{id}/logs", get(logs::team_list))
         .route("/teams/{id}/logs/export", get(logs::team_export))
+        .route("/teams/{id}/rotation", get(rotation::overview))
+        .route("/teams/{id}/rotation/jobs", post(rotation::create))
+        .route("/rotation/jobs", get(rotation::mine))
+        .route(
+            "/rotation/jobs/{id}",
+            patch(rotation::update).delete(rotation::delete),
+        )
         // realtime
         .route("/ws", get(crate::ws::handler))
         // multiplayer

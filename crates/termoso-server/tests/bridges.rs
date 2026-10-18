@@ -117,6 +117,7 @@ async fn bridge_lifecycle_and_confinement() {
     let host_id = Uuid::new_v4();
     let push = PushRequest {
         changes: vec![EntityChange {
+            secret_rotated_at: None,
             id: host_id,
             kind: "host".into(),
             vault_id,
@@ -265,6 +266,7 @@ async fn bridge_is_confined_to_sealed_vaults_and_rotation_unseals() {
     assert!(pulled.entities.is_empty());
     let host_id = Uuid::new_v4();
     let change = |key_version: i32| EntityChange {
+        secret_rotated_at: None,
         id: host_id,
         kind: "host".into(),
         vault_id,
@@ -349,6 +351,7 @@ async fn bridge_is_confined_to_sealed_vaults_and_rotation_unseals() {
             Some(&token),
             Some(&PushRequest {
                 changes: vec![EntityChange {
+                    secret_rotated_at: None,
                     id: Uuid::new_v4(),
                     ..change(2)
                 }],

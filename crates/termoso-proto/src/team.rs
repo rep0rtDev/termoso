@@ -472,6 +472,7 @@ pub const PERMISSIONS: &[&str] = &[
     "vaults.rotate_key",
     // acl
     "acl.manage",
+    "rotation.manage",
     "vaults.history",
     // entities
     "entities.read",
@@ -727,6 +728,12 @@ schema! {
         /// Days to keep unpinned team recordings; 0 = forever.
         #[serde(default)]
         pub log_retention_days: i32,
+        /// Rotate SSH keys/certificates older than this many days; 0 = off.
+        #[serde(default)]
+        pub key_max_age_days: i32,
+        /// Rotate identity/host passwords older than this many days; 0 = off.
+        #[serde(default)]
+        pub password_max_age_days: i32,
         /// Last change.
         pub updated_at: DateTime<Utc>,
     }
@@ -769,6 +776,110 @@ schema! {
         /// See [`TeamPolicies::log_retention_days`].
         #[serde(default)]
         pub log_retention_days: Option<i32>,
+        /// See [`TeamPolicies::key_max_age_days`].
+        #[serde(default)]
+        pub key_max_age_days: Option<i32>,
+        /// See [`TeamPolicies::password_max_age_days`].
+        #[serde(default)]
+        pub password_max_age_days: Option<i32>,
+    }
+}
+
+schema! {
+    /// A secret past the team's max age.
+    pub struct RotationDue {
+        /// Entity the secret lives in.
+        pub entity_id: Uuid,
+        /// Team vault holding the entity.
+        pub vault_id: Uuid,
+        /// Entity kind (`ssh_key`, `ssh_certificate`, `identity`, `host`).
+        pub kind: String,
+        /// Last rotation the owning client reported; `None` = never.
+        pub secret_rotated_at: Option<DateTime<Utc>>,
+        /// Days since the last rotation (or since creation).
+        pub age_days: i32,
+        /// Open rotation job for this entity, if any.
+        pub job_id: Option<Uuid>,
+    }
+}
+
+schema! {
+    /// A queued rotation; executed by a client with write access to the vault.
+    pub struct RotationJob {
+        /// Job id.
+        pub id: Uuid,
+        /// Owning team.
+        pub team_id: Uuid,
+        /// Team vault holding the entity.
+        pub vault_id: Uuid,
+        /// Entity the secret lives in.
+        pub entity_id: Uuid,
+        /// Entity kind (`ssh_key`, `ssh_certificate`, `identity`, `host`).
+        pub entity_kind: String,
+        /// `pending`, `running`, `done`, `failed` or `cancelled`.
+        pub status: String,
+        /// Free-form note from the requester.
+        pub note: String,
+        /// Failure reason reported by the executing client.
+        pub error: Option<String>,
+        /// Who queued the job.
+        pub requested_by: Uuid,
+        /// E-mail of the requester.
+        pub requested_by_email: String,
+        /// Member whose client is executing (or executed) the job.
+        pub claimed_by: Option<Uuid>,
+        /// Queued at.
+        pub created_at: DateTime<Utc>,
+        /// Last status change.
+        pub updated_at: DateTime<Utc>,
+        /// When the job reached a final state.
+        pub finished_at: Option<DateTime<Utc>>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/rotation`: policy, overdue secrets and recent jobs.
+    pub struct RotationOverview {
+        /// Current key max-age policy (0 = off).
+        pub key_max_age_days: i32,
+        /// Current password max-age policy (0 = off).
+        pub password_max_age_days: i32,
+        /// Secrets past their max age.
+        pub due: Vec<RotationDue>,
+        /// Jobs, newest first.
+        pub jobs: Vec<RotationJob>,
+    }
+}
+
+schema! {
+    /// A list of rotation jobs.
+    pub struct RotationJobList {
+        /// Jobs, newest first.
+        pub jobs: Vec<RotationJob>,
+    }
+}
+
+schema! {
+    /// Queue rotation jobs for entities of one team vault.
+    pub struct CreateRotationJobsRequest {
+        /// Team vault holding the entity.
+        pub vault_id: Uuid,
+        /// Entities of `vault_id` to rotate (1..=1000).
+        pub entity_ids: Vec<Uuid>,
+        /// Free-form note shown to whoever executes the jobs.
+        #[serde(default)]
+        pub note: String,
+    }
+}
+
+schema! {
+    /// Advance a rotation job.
+    pub struct UpdateRotationJobRequest {
+        /// `running`, `done`, `failed` or `cancelled`.
+        pub status: String,
+        /// Failure reason (for `failed`).
+        #[serde(default)]
+        pub error: Option<String>,
     }
 }
 

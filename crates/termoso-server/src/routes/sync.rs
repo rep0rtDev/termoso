@@ -35,6 +35,7 @@ type Row = (
     String,
     DateTime<Utc>,
     Option<Uuid>,
+    Option<DateTime<Utc>>,
 );
 
 fn to_entity(r: Row) -> SyncEntity {
@@ -49,8 +50,10 @@ fn to_entity(r: Row) -> SyncEntity {
         data,
         updated_at,
         updated_by_device,
+        secret_rotated_at,
     ) = r;
     SyncEntity {
+        secret_rotated_at,
         id,
         kind,
         vault_id,
@@ -64,7 +67,7 @@ fn to_entity(r: Row) -> SyncEntity {
     }
 }
 
-const SELECT: &str = "SELECT id, kind, vault_id, version, seq, deleted, key_version, data, updated_at, updated_by_device FROM entities";
+const SELECT: &str = "SELECT id, kind, vault_id, version, seq, deleted, key_version, data, updated_at, updated_by_device, secret_rotated_at FROM entities";
 
 async fn fetch_entity(
     tx: &mut Transaction<'_, Postgres>,
@@ -227,7 +230,8 @@ pub async fn push(
                 let version = base + 1;
                 sqlx::query(
                     "UPDATE entities SET kind = $2, version = $3, seq = $4, deleted = false, key_version = $5, data = $6,
-                            updated_at = LEAST($8, now()), updated_by_device = $7 WHERE id = $1",
+                            updated_at = LEAST($8, now()), updated_by_device = $7,
+                            secret_rotated_at = COALESCE(LEAST($9, now()), secret_rotated_at) WHERE id = $1",
                 )
                 .bind(c.id)
                 .bind(&c.kind)
@@ -237,6 +241,7 @@ pub async fn push(
                 .bind(&c.data)
                 .bind(device_id)
                 .bind(c.updated_at)
+                .bind(c.secret_rotated_at)
                 .execute(&mut *tx)
                 .await?;
                 touched.insert(c.vault_id, seq);
@@ -256,8 +261,8 @@ pub async fn push(
             (None, None) => {
                 let seq = next_seq(&mut tx, c.vault_id).await?;
                 sqlx::query(
-                    "INSERT INTO entities (id, vault_id, kind, version, seq, deleted, key_version, data, updated_by_device, updated_at)
-                     VALUES ($1, $2, $3, 1, $4, false, $5, $6, $7, LEAST($8, now()))",
+                    "INSERT INTO entities (id, vault_id, kind, version, seq, deleted, key_version, data, updated_by_device, updated_at, secret_rotated_at)
+                     VALUES ($1, $2, $3, 1, $4, false, $5, $6, $7, LEAST($8, now()), LEAST($9, now()))",
                 )
                 .bind(c.id)
                 .bind(c.vault_id)
@@ -267,6 +272,7 @@ pub async fn push(
                 .bind(&c.data)
                 .bind(device_id)
                 .bind(c.updated_at)
+                .bind(c.secret_rotated_at)
                 .execute(&mut *tx)
                 .await?;
                 touched.insert(c.vault_id, seq);

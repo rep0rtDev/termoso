@@ -19,6 +19,10 @@ pub const MAX_BATCH: usize = 500;
 schema! {
     /// Create or update one entity.
     pub struct EntityChange {
+        /// When the secret inside (key, password) was last rotated; plaintext
+        /// so the server can apply max-age policies without the vault key.
+        #[serde(default)]
+        pub secret_rotated_at: Option<DateTime<Utc>>,
         /// Client-generated UUID.
         pub id: Uuid,
         /// Kind.

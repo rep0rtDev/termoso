@@ -19,6 +19,7 @@ pub const MIN_AUDIT_RETENTION_DAYS: i32 = 30;
 pub const MAX_AUDIT_RETENTION_DAYS: i32 = 3650;
 pub const SESSION_RECORDING: &[&str] = &["optional", "required"];
 pub const MAX_LOG_RETENTION_DAYS: i32 = 3650;
+pub const MAX_SECRET_AGE_DAYS: i32 = 3650;
 
 type Row = (
     String,
@@ -31,6 +32,8 @@ type Row = (
     i32,
     String,
     i32,
+    i32,
+    i32,
     DateTime<Utc>,
 );
 
@@ -38,7 +41,7 @@ macro_rules! policy_select {
     ($head:literal, $tail:literal) => {
         concat!(
             $head,
-            "mfa, local_keys, session_ttl_hours, sso_only, sso_provider, sso_domains, device_approval, audit_retention_days, session_recording, log_retention_days, updated_at",
+            "mfa, local_keys, session_ttl_hours, sso_only, sso_provider, sso_domains, device_approval, audit_retention_days, session_recording, log_retention_days, key_max_age_days, password_max_age_days, updated_at",
             $tail
         )
     };
@@ -56,7 +59,9 @@ fn from_row(r: Row) -> TeamPolicies {
         audit_retention_days: r.7,
         session_recording: r.8,
         log_retention_days: r.9,
-        updated_at: r.10,
+        key_max_age_days: r.10,
+        password_max_age_days: r.11,
+        updated_at: r.12,
     }
 }
 
@@ -72,6 +77,8 @@ pub fn defaults() -> TeamPolicies {
         audit_retention_days: 365,
         session_recording: "optional".into(),
         log_retention_days: 0,
+        key_max_age_days: 0,
+        password_max_age_days: 0,
         updated_at: Utc::now(),
     }
 }
@@ -111,7 +118,7 @@ pub async fn attach(db: &PgPool, teams: &mut [Team]) -> ApiResult<()> {
     .await?
     .into_iter()
     .map(
-        |(id, a, b, c, d, e, f, g, h, i, j, k): (
+        |(id, a, b, c, d, e, f, g, h, i, j, k, l, m): (
             Uuid,
             String,
             String,
@@ -123,8 +130,10 @@ pub async fn attach(db: &PgPool, teams: &mut [Team]) -> ApiResult<()> {
             i32,
             String,
             i32,
+            i32,
+            i32,
             DateTime<Utc>,
-        )| { (id, (a, b, c, d, e, f, g, h, i, j, k)) },
+        )| { (id, (a, b, c, d, e, f, g, h, i, j, k, l, m)) },
     )
     .collect();
     let mut map: HashMap<Uuid, TeamPolicies> =

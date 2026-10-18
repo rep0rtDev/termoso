@@ -294,6 +294,7 @@ async fn run_user(api: Arc<Api>, mut user: VirtualUser, o: &Options, deadline: I
                 })
                 .to_string();
                 EntityChange {
+                    secret_rotated_at: None,
                     id,
                     kind: "host".into(),
                     vault_id: user.vault_id,

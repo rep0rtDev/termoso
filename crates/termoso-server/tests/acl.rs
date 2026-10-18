@@ -105,6 +105,7 @@ async fn entity_acl_is_resolved_and_enforced() {
         .await;
     let host_id = Uuid::new_v4();
     let change = |u: &User, base: Option<i64>, label: &str| EntityChange {
+        secret_rotated_at: None,
         id: host_id,
         kind: "host".into(),
         vault_id: vault.id,

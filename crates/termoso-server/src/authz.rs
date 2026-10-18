@@ -216,6 +216,11 @@ fn describe(key: &str) -> (&'static str, &'static str, bool) {
             "Set per-group/per-host access rules (hidden, connect only, read, edit) for roles, members and IdP groups inside team vaults.",
             true,
         ),
+        "rotation.manage" => (
+            "Manage credential rotation",
+            "See overdue keys and passwords, queue and cancel rotation jobs.",
+            true,
+        ),
         "vaults.rotate_key" => (
             "Rotate vault keys",
             "Rotate a vault key after access changes.",
@@ -397,6 +402,7 @@ pub const BUILTIN_ROLES: &[(&str, &str, &str, &[&str], i32)] = &[
             "vaults.transfer",
             "vaults.members",
             "acl.manage",
+            "rotation.manage",
             "vaults.rotate_key",
             "vaults.history",
             "entities.read",
