@@ -726,6 +726,7 @@ async fn teams_vaults_invites_and_sharing() {
             Some(&CreateInviteRequest {
                 email: bob_email.clone(),
                 role: TeamRole::Member,
+                role_id: None,
                 vault_ids: vec![vault.id],
             }),
         )
@@ -1665,6 +1666,7 @@ async fn invite(s: &TestServer, team_id: Uuid, token: &str, email: &str, role: T
             Some(&CreateInviteRequest {
                 email: email.to_string(),
                 role,
+                role_id: None,
                 vault_ids: vec![],
             }),
         )
@@ -1805,6 +1807,7 @@ async fn reseal_my_key_upgrades_own_copy_without_granting_access() {
             Some(&CreateInviteRequest {
                 email: mallory.email.clone(),
                 role: TeamRole::Member,
+                role_id: None,
                 vault_ids: vec![vault.id],
             }),
         )
@@ -1846,4 +1849,127 @@ async fn reseal_my_key_upgrades_own_copy_without_granting_access() {
             .sealed_key
             .is_none()
     );
+}
+
+/// Custom team roles: catalog, create, invite with a role, enforcement,
+/// reassignment and deletion.
+#[tokio::test]
+async fn custom_roles_are_enforced() {
+    let s = server!();
+    let owner = register(s, &unique_email("owner"), "pw-owner-1234567").await;
+    let bob_email = unique_email("bob");
+    let bob = register(s, &bob_email, "pw-bob-123456789").await;
+    let team: Team = s
+        .json(
+            Method::POST,
+            "/teams",
+            Some(owner.token()),
+            Some(&CreateTeamRequest { name: "Ops".into() }),
+        )
+        .await;
+    assert_eq!(team.my_permissions, vec!["*".to_string()]);
+
+    let catalog: serde_json::Value = s
+        .json(
+            Method::GET,
+            &format!("/teams/{}/permissions", team.id),
+            Some(owner.token()),
+            NOBODY,
+        )
+        .await;
+    assert!(catalog["permissions"].as_array().unwrap().len() >= 30);
+
+    // Built-ins are seeded; an unknown or owner-only permission is rejected.
+    let roles: serde_json::Value = s
+        .json(Method::GET, &format!("/teams/{}/roles", team.id), Some(owner.token()), NOBODY)
+        .await;
+    let slugs: Vec<&str> = roles["roles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["slug"].as_str().unwrap())
+        .collect();
+    assert_eq!(slugs, vec!["owner", "admin", "member", "viewer", "auditor"]);
+    let admin_id = roles["roles"][1]["id"].as_str().unwrap().to_string();
+    for bad in ["team.delete", "nope.nothing"] {
+        s.expect_status(
+            Method::POST,
+            &format!("/teams/{}/roles", team.id),
+            Some(owner.token()),
+            Some(&serde_json::json!({ "name": "Bad", "permissions": [bad] })),
+            StatusCode::BAD_REQUEST,
+        )
+        .await;
+    }
+    let role: serde_json::Value = s
+        .json(
+            Method::POST,
+            &format!("/teams/{}/roles", team.id),
+            Some(owner.token()),
+            Some(&serde_json::json!({
+                "name": "Connect only",
+                "permissions": ["team.view", "entities.read", "connect.ssh"]
+            })),
+        )
+        .await;
+    assert_eq!(role["slug"], "connect-only");
+    let role_id: Uuid = role["id"].as_str().unwrap().parse().unwrap();
+
+    // Invite Bob into the custom role; the invite carries the role.
+    let invite: serde_json::Value = s
+        .json(
+            Method::POST,
+            &format!("/teams/{}/invites", team.id),
+            Some(owner.token()),
+            Some(&serde_json::json!({
+                "email": bob_email, "role": "member", "role_id": role_id, "vault_ids": []
+            })),
+        )
+        .await;
+    assert_eq!(invite["role_ref"]["slug"], "connect-only");
+    let token = invite["url"].as_str().unwrap().rsplit('/').next().unwrap().to_string();
+    let joined: Team = s
+        .json(Method::POST, &format!("/invites/{token}/accept"), Some(bob.token()), NOBODY)
+        .await;
+    assert_eq!(joined.my_role, TeamRole::Member);
+    assert_eq!(joined.my_role_ref.as_ref().unwrap().slug, "connect-only");
+    assert!(joined.my_permissions.iter().any(|p| p == "connect.ssh"));
+    assert!(!joined.my_permissions.iter().any(|p| p == "vaults.create"));
+
+    // Enforcement: no `members.invite` → 403 permission_denied naming it.
+    let resp = s
+        .call(
+            Method::GET,
+            &format!("/teams/{}/invites", team.id),
+            Some(bob.token()),
+            NOBODY,
+        )
+        .await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let err: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(err["code"], "permission_denied");
+    assert_eq!(err["details"]["permission"], "members.invite");
+    // Bob cannot give himself a role he does not hold the permissions of.
+    s.expect_status(
+        Method::PATCH,
+        &format!("/teams/{}/members/{}", team.id, bob.id()),
+        Some(bob.token()),
+        Some(&serde_json::json!({ "role": "member", "role_id": admin_id })),
+        StatusCode::FORBIDDEN,
+    )
+    .await;
+    // A role in use cannot be deleted without a target; with one, members move.
+    s.expect_status(
+        Method::DELETE,
+        &format!("/teams/{}/roles/{role_id}?reassign_to={admin_id}", team.id),
+        Some(owner.token()),
+        NOBODY,
+        StatusCode::NO_CONTENT,
+    )
+    .await;
+    let after: serde_json::Value = s
+        .json(Method::GET, "/teams", Some(bob.token()), NOBODY)
+        .await;
+    assert_eq!(after["teams"][0]["my_role_ref"]["slug"], "admin");
+    assert_eq!(after["teams"][0]["my_role"], "admin");
 }

@@ -161,22 +161,24 @@ struct InviteRow {
     email: String,
     role: String,
     vault_ids: Vec<Uuid>,
+    role_id: Option<Uuid>,
 }
 
 async fn load_invite(state: &AppState, token: &str) -> ApiResult<Option<InviteRow>> {
-    let row: Option<(Uuid, Uuid, String, String, Vec<Uuid>)> = sqlx::query_as(
-        "SELECT id, team_id, email, role, vault_ids FROM team_invites
+    let row: Option<(Uuid, Uuid, String, String, Vec<Uuid>, Option<Uuid>)> = sqlx::query_as(
+        "SELECT id, team_id, email, role, vault_ids, role_id FROM team_invites
          WHERE token_hash = $1 AND accepted_at IS NULL AND expires_at > now()",
     )
     .bind(hash_token(token))
     .fetch_optional(&state.db)
     .await?;
-    Ok(row.map(|(id, team_id, email, role, vault_ids)| InviteRow {
+    Ok(row.map(|(id, team_id, email, role, vault_ids, role_id)| InviteRow {
         id,
         team_id,
         email,
         role,
         vault_ids,
+        role_id,
     }))
 }
 
@@ -309,6 +311,7 @@ pub async fn register_finish(
             inv.id,
             inv.team_id,
             &inv.role,
+            inv.role_id,
             &inv.vault_ids,
             user_id,
             None,

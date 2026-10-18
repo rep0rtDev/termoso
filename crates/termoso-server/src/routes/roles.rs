@@ -240,7 +240,11 @@ pub async fn delete(
     }
     load_role(&state, id, target).await?;
     let mut tx = state.db.begin().await?;
-    let moved = sqlx::query("UPDATE team_members SET role_id = $3 WHERE team_id = $1 AND role_id = $2")
+    let moved = sqlx::query(
+        "UPDATE team_members SET role_id = $3,
+             role = CASE WHEN (SELECT slug FROM team_roles WHERE id = $3) = 'admin' THEN 'admin' ELSE 'member' END
+         WHERE team_id = $1 AND role_id = $2",
+    )
         .bind(id).bind(role_id).bind(target)
         .execute(&mut *tx)
         .await?

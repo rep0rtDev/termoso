@@ -66,3 +66,8 @@ UPDATE teams t SET default_role_id = r.id
 FROM team_roles r WHERE r.team_id = t.id AND r.slug = 'member';
 
 ALTER TABLE team_members ALTER COLUMN role_id SET NOT NULL;
+
+-- Invitations may name a fine-grained role; NULL falls back to the coarse
+-- `role` level (built-in slug) and then to the team default.
+ALTER TABLE team_invites
+    ADD COLUMN role_id uuid REFERENCES team_roles(id) ON DELETE SET NULL;

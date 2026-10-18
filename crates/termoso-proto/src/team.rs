@@ -211,8 +211,11 @@ schema! {
     pub struct CreateInviteRequest {
         /// Invitee email.
         pub email: String,
-        /// Role on acceptance.
+        /// Role on acceptance (coarse level; `role_id` wins when set).
         pub role: TeamRole,
+        /// Fine-grained role on acceptance (0.9.0+).
+        #[serde(default)]
+        pub role_id: Option<Uuid>,
         /// Vaults to grant on acceptance (keys are sealed later by an admin
         /// once the invitee's public key is known).
         #[serde(default)]
@@ -235,6 +238,9 @@ schema! {
         pub created_at: DateTime<Utc>,
         /// Expires.
         pub expires_at: DateTime<Utc>,
+        /// Fine-grained role on acceptance (0.9.0+).
+        #[serde(default)]
+        pub role_ref: Option<RoleRef>,
     }
 }
 

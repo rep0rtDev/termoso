@@ -476,7 +476,7 @@ impl AccountRuntime {
             .update_team_member(
                 parse_id(&team_id)?,
                 parse_id(&user_id)?,
-                &UpdateTeamMemberRequest { role: role.into() },
+                &UpdateTeamMemberRequest { role: role.into(), role_id: None },
             )
             .await?;
         Ok(())
@@ -545,6 +545,7 @@ impl AccountRuntime {
             let req = CreateInviteRequest {
                 email: email.clone(),
                 role: role.into(),
+                role_id: None,
                 vault_ids: vault_ids.clone(),
             };
             out.push(match api.create_invite(team_id, &req).await {
