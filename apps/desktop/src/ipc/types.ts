@@ -200,6 +200,24 @@ export interface Team {
   require_mfa: boolean;
   /** Members can see who is connected to which team-vault host right now. */
   presence_enabled: boolean;
+  /** Fine-grained role (0.9.0+ servers). */
+  my_role_ref?: { id: Uuid; slug: string; name: string } | null;
+  /** Permission keys the caller holds; `*` for the owner. Absent on 0.8 servers. */
+  my_permissions?: string[];
+  policies?: TeamPolicies | null;
+}
+
+export interface TeamPolicies {
+  mfa: "off" | "any" | "passkey";
+  /** `deny` = device-local identities must not be used for this team's hosts (client-enforced). */
+  local_keys: "allow" | "deny";
+  session_ttl_hours: number | null;
+  sso_only: boolean;
+  sso_provider: string | null;
+  sso_domains: string[];
+  device_approval: boolean;
+  audit_retention_days: number;
+  updated_at: string;
 }
 
 /** One open connection of a device to a team-vault host (routing metadata only). */

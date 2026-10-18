@@ -77,7 +77,7 @@ import { vaultIcon } from "@/app/vault";
 import { ActivityCard, ActivityLog } from "./ActivityLog";
 import { InviteDialog, InviteResultRow } from "./InviteDialog";
 import { PersonAvatar, initialsOf } from "./PersonAvatar";
-import { isTeamAdmin, teamRoleHint, teamRoleLabel, vaultRoleLabel } from "./roles";
+import { teamRoleHint, teamRoleLabel, vaultRoleLabel, can, canManageMembers } from "./roles";
 import { tr, trn } from "@/i18n";
 
 /**
@@ -103,7 +103,7 @@ export function TeamPage() {
   const myId = account.data?.account?.userId ?? null;
 
   useSettingsIntent(["invite"], () => {
-    if (team && isTeamAdmin(team.my_role)) setInviting(true);
+    if (team && can(team, "members.invite")) setInviting(true);
   });
 
   if (account.isPending || (signedIn && teams.isPending)) {
@@ -238,7 +238,7 @@ function TeamView({
 }) {
   const snackbar = useSnackbar();
   const invalidate = useInvalidateTeam();
-  const admin = isTeamAdmin(team.my_role);
+  const admin = canManageMembers(team);
   const owner = team.my_role === "owner";
   const members = useTeamMembers(team.id);
   const invites = useTeamInvites(team.id, admin);
@@ -914,12 +914,12 @@ function MemberRow({
   onRemove: () => void;
   onDeleteAccount: () => void;
 }) {
-  const admin = isTeamAdmin(team.my_role);
+  const admin = canManageMembers(team);
   const owner = team.my_role === "owner";
   const [confirmOwner, setConfirmOwner] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const canChange = admin && !me && m.role !== "owner";
-  const canRemove = admin && !me && m.role !== "owner";
+  const canChange = can(team, "members.role") && !me && m.role !== "owner";
+  const canRemove = can(team, "members.remove") && !me && m.role !== "owner";
   const canDeleteAccount = canRemove && owner && m.managed;
   const name = m.display_name ?? m.email;
   return (

@@ -39,7 +39,7 @@ import {
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
 import { AVATAR as BLOCK, PersonAvatar, initialsOf } from "@/team/PersonAvatar";
-import { isTeamAdmin, teamRoleLabel } from "@/team/roles";
+import { teamRoleLabel, can } from "@/team/roles";
 import { goToSettings, goToSettingsWith } from "./navigation";
 import { tr, trn } from "@/i18n";
 
@@ -303,7 +303,7 @@ function TeamButton() {
     teams.data?.[0] ??
     null;
   const members = useTeamMembers(team?.id ?? null);
-  const invites = useTeamInvites(team?.id ?? null, team !== null && isTeamAdmin(team.my_role));
+  const invites = useTeamInvites(team?.id ?? null, team !== null && can(team, "invites.view"));
   const close = () => setAnchor(null);
 
   const others: TeamMember[] = (members.data ?? []).filter((m) => m.user_id !== account?.userId);

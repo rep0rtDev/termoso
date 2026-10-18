@@ -63,7 +63,8 @@ jobs:
       TERMOSO_TEST_REQUIRE_SERVICES: "1"
       TERMOSO_TEST_REQUIRE_MOSH: "1"
       # backup/restore round trip needs pg_dump of the server's major version.
-      TERMOSO_TEST_PG_DUMP: "1"
+      TERMOSO_TEST_PG_DUMP: /usr/lib/postgresql/18/bin/pg_dump
+      TERMOSO_TEST_PG_RESTORE: /usr/lib/postgresql/18/bin/pg_restore
     steps:
       - uses: actions/checkout@v7
       - name: Tauri system libraries + mosh-server (Mosh interop tests)
@@ -80,7 +81,7 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends postgresql-client-18
-          pg_dump --version
+          /usr/lib/postgresql/18/bin/pg_dump --version
       - name: Start RustFS (S3-compatible storage for session-log tests)
         run: |
           docker run -d --name rustfs -p 9000:9000 \

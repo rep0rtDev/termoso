@@ -24,6 +24,14 @@ import kotlinx.coroutines.launch
 
 val TeamRole.isAdmin: Boolean get() = this == TeamRole.ADMIN || this == TeamRole.OWNER
 
+/** Holds [permission] in this team; owners carry `*`. 0.8 servers send no list — fall back to the coarse role. */
+fun TeamCard.can(permission: String): Boolean =
+    if (myPermissions.isEmpty()) myRole.isAdmin else myPermissions.any { it == "*" || it == permission }
+
+/** Can do at least one of invite / change role / remove — enough to show the admin blocks. */
+val TeamCard.canManageMembers: Boolean
+    get() = can("members.invite") || can("members.role") || can("members.remove")
+
 fun TeamRole.label(): String = when (this) {
     TeamRole.MEMBER -> str(R.string.member)
     TeamRole.ADMIN -> str(R.string.admin)
@@ -89,7 +97,7 @@ data class TeamUiState(
     val error: String? = null,
 ) {
     val me: TeamMemberCard? get() = members.firstOrNull { it.me }
-    val isAdmin: Boolean get() = team?.myRole?.isAdmin == true
+    val isAdmin: Boolean get() = team?.canManageMembers == true
     val isOwner: Boolean get() = team?.myRole == TeamRole.OWNER
 }
 
@@ -125,7 +133,7 @@ class TeamViewModel(
                 _state.update { it.copy(loading = false, team = null, error = str(R.string.you_are_no_longer_in_this_team)) }
                 return@launch
             }
-            val admin = team.myRole.isAdmin
+            val admin = team.canManageMembers
             runCatching {
                 repo.read {
                     Triple(

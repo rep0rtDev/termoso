@@ -83,10 +83,20 @@ pub struct TeamCard {
     pub presence_enabled: bool,
     /// RFC 3339.
     pub created_at: String,
+    /// Permission keys the caller holds in this team (`*` for the owner);
+    /// empty on 0.8 servers — callers fall back to `my_role`.
+    pub my_permissions: Vec<String>,
+    /// Name of the fine-grained role, when the server reports one.
+    pub my_role_name: Option<String>,
+    /// Team MFA policy: `off`, `any` or `passkey`.
+    pub mfa_policy: String,
+    /// Device-local keys must not be used for this team's hosts (client-enforced).
+    pub local_keys_denied: bool,
 }
 
 impl From<proto::Team> for TeamCard {
     fn from(t: proto::Team) -> Self {
+        let policies = t.policies.as_ref();
         Self {
             id: t.id.to_string(),
             name: t.name,
@@ -96,6 +106,12 @@ impl From<proto::Team> for TeamCard {
             require_mfa: t.require_mfa,
             presence_enabled: t.presence_enabled,
             created_at: t.created_at.to_rfc3339(),
+            mfa_policy: policies
+                .map(|p| p.mfa.clone())
+                .unwrap_or_else(|| "off".to_owned()),
+            local_keys_denied: policies.is_some_and(|p| p.local_keys == "deny"),
+            my_permissions: t.my_permissions,
+            my_role_name: t.my_role_ref.map(|r| r.name),
         }
     }
 }

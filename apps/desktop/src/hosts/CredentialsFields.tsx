@@ -24,7 +24,7 @@ import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
 import WorkspacePremiumOutlinedIcon from "@mui/icons-material/WorkspacePremiumOutlined";
 import { SettingRow } from "@/components/ui";
 import { goToSection } from "@/app/navigation";
-import { useIdentities, useSshKeys } from "@/ipc/hooks";
+import { useIdentities, useSshKeys, useTeams, useVaults } from "@/ipc/hooks";
 import { certificateName, certificateSummary, isHardwareKey } from "@/keychain/model";
 import {
   SSH_ID_DEFAULT_TYPE,
@@ -87,6 +87,14 @@ export function CredentialsFields({
 }) {
   const identities = useIdentities(vaultId);
   const sshKeys = useSshKeys(vaultId);
+  const vaults = useVaults();
+  const teamId = (vaults.data ?? []).find((v) => v.id === vaultId)?.team_id ?? null;
+  const teams = useTeams(teamId !== null);
+  // Team policy `local_keys = deny`: keys must live in the team vault, so keys
+  // that only reference the system SSH agent are hidden (client-enforced).
+  const denyLocalKeys =
+    teamId !== null &&
+    (teams.data ?? []).some((t) => t.id === teamId && t.policies?.local_keys === "deny");
   const [showPassword, setShowPassword] = useState(false);
   const [keyRow, setKeyRow] = useState<"key" | "fido2" | null>(null);
   const [certRow, setCertRow] = useState(false);
@@ -97,7 +105,7 @@ export function CredentialsFields({
   const usingIdentity = value.identityId !== null;
   const from = inherited && inherited.groupPath.length > 0 ? inherited.groupPath.join(" / ") : null;
   const inheritedKey = inherited?.sshKeyLabel ?? null;
-  const allKeys = sshKeys.data ?? [];
+  const allKeys = (sshKeys.data ?? []).filter((k) => !denyLocalKeys || !k.agentBacked);
   const selectedKey = value.sshKeyId
     ? (allKeys.find((k) => k.id === value.sshKeyId) ?? null)
     : null;
@@ -448,12 +456,16 @@ export function CredentialsFields({
                       : undefined
                   : selectedKey?.agentBacked
                     ? tr("Signed by the system SSH agent; it must hold this key when you connect.")
-                    : value.sshKeyId === null && inheritedKey && from
-                      ? tr("Without a key here “{inheritedKey}” from {from} is used.", {
-                          inheritedKey,
-                          from,
-                        })
-                      : undefined
+                    : denyLocalKeys && !selectedKey
+                      ? tr(
+                          "This team allows only keys stored in its vaults — agent-backed keys are hidden.",
+                        )
+                      : value.sshKeyId === null && inheritedKey && from
+                        ? tr("Without a key here “{inheritedKey}” from {from} is used.", {
+                            inheritedKey,
+                            from,
+                          })
+                        : undefined
               }
               slotProps={{
                 htmlInput: {
