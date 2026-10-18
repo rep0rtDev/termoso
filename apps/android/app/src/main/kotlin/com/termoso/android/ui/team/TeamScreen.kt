@@ -158,7 +158,7 @@ fun TeamScreen(
             SectionCard {
                 ListRow(
                     title = team.name,
-                    subtitle = stringResource(R.string.you_are, team.myRole.label().lowercase(), members(team.memberCount)),
+                    subtitle = stringResource(R.string.you_are, team.myRoleName ?: team.myRole.label().lowercase(), members(team.memberCount)),
                     leading = { IconTile(Icons.Filled.Group) },
                     trailing = if (state.isAdmin) {
                         { IconButton(onClick = { renaming = true }) { Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.rename)) } }

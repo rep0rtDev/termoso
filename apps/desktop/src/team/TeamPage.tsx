@@ -580,7 +580,9 @@ function TeamView({
             )}
             <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
               {trn(team.member_count, "{count} member", "{count} members")} ·{" "}
-              {tr("you are {role}", { role: tr(teamRoleLabel[team.my_role]).toLowerCase() })}
+              {tr("you are {role}", {
+                role: team.my_role_ref?.name ?? tr(teamRoleLabel[team.my_role]).toLowerCase(),
+              })}
               {teamVaults.length > 0 &&
                 ` · ${trn(teamVaults.length, "{count} vault", "{count} vaults")}`}
             </Typography>
