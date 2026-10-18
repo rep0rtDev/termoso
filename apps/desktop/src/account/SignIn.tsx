@@ -250,7 +250,13 @@ export function SignInForm({
             placeholder="https://termoso.example.com"
             value={serverUrl}
             onChange={(e) => {
-              setServerUrl(e.target.value);
+              // The cloud address typed under "Own server" is the same thing as the Cloud tab.
+              if (normalizeServerUrl(e.target.value) === CLOUD_URL) {
+                setServerUrl("");
+                setWhere("cloud");
+              } else {
+                setServerUrl(e.target.value);
+              }
               setTouched(true);
             }}
             error={info.isError}
