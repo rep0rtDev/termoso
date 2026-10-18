@@ -71,6 +71,7 @@ import {
   type TeamMember,
   type TeamRole,
   type Uuid,
+  isDesktopError,
 } from "@/ipc/types";
 import { goToSettings, goToSettingsWith, useSettingsIntent } from "@/app/navigation";
 import { vaultIcon } from "@/app/vault";
@@ -134,10 +135,26 @@ export function TeamPage() {
   }
 
   if (teams.error) {
+    const mfa = isDesktopError(teams.error) && teams.error.kind === "mfa_required";
     return (
       <Page>
         <PageBody>
-          <Alert severity="error">{errorMessage(teams.error)}</Alert>
+          {mfa ? (
+            <Alert
+              severity="info"
+              action={
+                <Button color="inherit" size="small" onClick={() => goToSettings("security")}>
+                  {tr("Set up two-factor")}
+                </Button>
+              }
+            >
+              {tr(
+                "A team you belong to requires two-factor authentication. Turn it on in Security to see team data.",
+              )}
+            </Alert>
+          ) : (
+            <Alert severity="error">{errorMessage(teams.error)}</Alert>
+          )}
         </PageBody>
       </Page>
     );

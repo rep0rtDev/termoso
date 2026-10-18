@@ -34,6 +34,8 @@ export const ru: Readonly<Record<string, string>> = {
     "Достаточно персонального токена с правом чтения (API → Tokens в панели DigitalOcean).",
   "A team owns shared vaults: hosts, keys, snippets and port-forwarding rules everyone you invite can use. Keys are sealed per member — the server never sees them.":
     "У команды есть общие хранилища: хосты, ключи, сниппеты и правила проброса портов, доступные всем, кого вы пригласите. Ключи запечатываются для каждого участника — сервер их не видит.",
+  "A team you belong to requires two-factor authentication. Turn it on in Security to see team data.":
+    "Одна из ваших команд требует двухфакторную аутентификацию. Включите её в разделе «Безопасность», чтобы видеть данные команды.",
   "A token is stored. Type to replace it or clear it to remove.":
     "Токен сохранён. Введите новый, чтобы заменить, или очистите поле, чтобы удалить.",
   "A vault manager can turn on session logging so the whole vault sees each other's recordings. Your own recordings appear here when recording is on in Settings.":
@@ -1510,6 +1512,7 @@ export const ru: Readonly<Record<string, string>> = {
     "Работает в конфиденциальных вычислениях (TEE): оператор не может прочитать ваш запрос, но сама модель — может. Это не сквозное шифрование.",
   "Runs right after the shell opens.": "Выполняется сразу после открытия shell.",
   "Seconds. 0 reports every command.": "Секунды. 0 — сообщать о каждой команде.",
+  "Set up two-factor": "Настроить двухфакторную",
   "SHA-256 of the server certificate; pins self-signed or private-CA servers. Left empty, the system trust store decides and an unknown certificate is offered on first connect.":
     "SHA-256 сертификата сервера; закрепляет самоподписанные серверы или серверы с частным CA. Если пусто, решает системное хранилище доверия, а неизвестный сертификат предлагается при первом подключении.",
   "Shown by the operating system for things that happen while the window or tab is not in front. Only the host or file name and a status are included, never command text.":
@@ -1629,6 +1632,8 @@ export const ru: Readonly<Record<string, string>> = {
   "Only when the certificate is issued to a different name than the address — a share behind a reverse proxy reached by IP, or a name that is not in DNS. Sent as SNI and Host and checked against the certificate.":
     "Только если сертификат выдан на другое имя, чем адрес: шара за обратным прокси по IP или имя, которого нет в DNS. Отправляется как SNI и Host и сверяется с сертификатом.",
   "Certificate authority (PEM)": "Удостоверяющий центр (PEM)",
+  "This team allows only keys stored in its vaults — agent-backed keys are hidden.":
+    "Эта команда разрешает только ключи из своих хранилищ — ключи из SSH-агента скрыты.",
   "Your own CA that signed the server certificate, instead of the system trust store. Several certificates may follow one another.":
     "Собственный УЦ, подписавший сертификат сервера, вместо системного хранилища. Сертификатов может быть несколько подряд.",
   "Alternatively pin exactly one server certificate by its SHA-256; a pin takes precedence over the CA. Left empty with no CA, the system trust store decides and an unknown certificate is offered on first connect.":
