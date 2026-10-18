@@ -114,7 +114,7 @@ pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<T
     .bind(auth.user_id())
     .fetch_all(&state.db)
     .await?;
-    Ok(Json(TeamList {
+    let mut out = TeamList {
         teams: rows
             .into_iter()
             .map(
@@ -146,11 +146,14 @@ pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<T
                         multiplayer_enabled,
                         require_mfa,
                         presence_enabled,
+                        policies: None,
                     }
                 },
             )
             .collect(),
-    }))
+    };
+    crate::policy::attach(&state.db, &mut out.teams).await?;
+    Ok(Json(out))
 }
 
 #[utoipa::path(post, path = "/api/v1/teams", tag = "teams",
@@ -208,6 +211,7 @@ pub async fn create(
         multiplayer_enabled: true,
         require_mfa: false,
         presence_enabled: false,
+        policies: None,
     }))
 }
 
@@ -245,6 +249,7 @@ pub async fn get(
         multiplayer_enabled,
         require_mfa,
         presence_enabled,
+        policies: Some(crate::policy::load(&state.db, id).await?),
     }))
 }
 
@@ -295,6 +300,18 @@ pub async fn update(
             .bind(on)
             .execute(&state.db)
             .await?;
+        sqlx::query(
+            "INSERT INTO team_policies (team_id, mfa, updated_by) VALUES ($1, $2, $3)
+             ON CONFLICT (team_id) DO UPDATE SET
+                 mfa = CASE WHEN EXCLUDED.mfa = 'off' THEN 'off'
+                            WHEN team_policies.mfa = 'passkey' THEN 'passkey' ELSE 'any' END,
+                 updated_by = $3, updated_at = now()",
+        )
+        .bind(id)
+        .bind(if on { "any" } else { "off" })
+        .bind(auth.user_id())
+        .execute(&state.db)
+        .await?;
         audit::record(
             &state.db,
             audit::Entry::new(id, &auth, "team.settings")
@@ -850,6 +867,15 @@ pub async fn create_invite(
     let (role_ref, role_level) =
         crate::authz::assignable_role(&state.db, &me, req.role_id, req.role).await?;
     let email = normalize_email(&req.email).ok_or_else(|| Error::bad_request("Invalid email"))?;
+    let pol = crate::policy::load(&state.db, id).await?;
+    if !crate::policy::domain_allowed(&pol.sso_domains, &email) {
+        return Err(Error::new(
+            axum::http::StatusCode::BAD_REQUEST,
+            termoso_proto::error::codes::DOMAIN_NOT_ALLOWED,
+            "This team only accepts members from its SSO domains",
+        )
+        .with_details(serde_json::json!({ "domains": pol.sso_domains })));
+    }
     let already: Option<(Uuid,)> = sqlx::query_as(
         "SELECT u.id FROM users u JOIN team_members m ON m.user_id = u.id WHERE m.team_id = $1 AND lower(u.email) = $2",
     )

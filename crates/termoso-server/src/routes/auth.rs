@@ -408,6 +408,16 @@ pub async fn login_start(
     };
     let sso_verified = sso_sess.is_some();
     let user = users::by_email(&state.db, &email).await?;
+    if let (Some(u), false) = (&user, sso_verified)
+        && let Some(provider) = crate::policy::sso_required(&state.db, u.id, &email).await?
+    {
+        return Err(Error::new(
+            axum::http::StatusCode::UNAUTHORIZED,
+            termoso_proto::error::codes::SSO_REQUIRED,
+            "Your team requires signing in through its identity provider",
+        )
+        .with_details(serde_json::json!({ "provider": provider })));
+    }
     let record = user.as_ref().and_then(|u| u.opaque_record.as_deref());
     let (opaque_response, server_state) =
         state
@@ -516,8 +526,9 @@ async fn continue_login(
             .fetch_one(&state.db)
             .await?;
     let settings = state.settings().await?;
+    let forced = crate::policy::mandatory_device_approval(&state.db, user.id).await?;
     let needs_approval = (is_new || !approved.0)
-        && settings.new_device_email_approval
+        && (settings.new_device_email_approval || forced)
         && state.mailer.is_some()
         && user.email_verified
         && !sso_verified;
