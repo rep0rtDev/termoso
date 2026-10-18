@@ -113,7 +113,23 @@ schema! {
         /// Keep team activity-log entries this many days (0 = forever).
         #[serde(default = "default_audit_retention_days")]
         pub audit_retention_days: u32,
+        /// Corporate mode: every account on this server joins this team
+        /// automatically (default role of the team).
+        #[serde(default)]
+        pub home_team_id: Option<Uuid>,
+        /// Corporate mode: password sign-in and e-mail sign-up are off;
+        /// only SSO (server providers or the home team's IdP).
+        #[serde(default)]
+        pub sso_only: bool,
+        /// Show personal vaults in clients. `false` = team vaults only
+        /// (the personal vault still exists, it is just hidden).
+        #[serde(default = "default_true")]
+        pub personal_vaults: bool,
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_audit_retention_days() -> u32 {
@@ -134,6 +150,9 @@ impl Default for ServerSettings {
             max_log_bytes: 512 * 1024 * 1024,
             log_quota_bytes: 0,
             audit_retention_days: default_audit_retention_days(),
+            home_team_id: None,
+            sso_only: false,
+            personal_vaults: true,
         }
     }
 }

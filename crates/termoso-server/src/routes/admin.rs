@@ -441,6 +441,7 @@ pub async fn put_settings(
     if s.audit_retention_days > 3650 {
         return Err(Error::bad_request("audit_retention_days must be 0..=3650"));
     }
+    crate::enterprise::validate_settings(&state, &s).await?;
     let mut s = s;
     s.allowed_domains = s
         .allowed_domains

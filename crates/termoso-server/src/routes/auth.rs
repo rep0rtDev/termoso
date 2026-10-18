@@ -203,6 +203,9 @@ async fn registration_allowed(
         return Ok(());
     }
     let settings = state.settings().await?;
+    if settings.sso_only && !sso_verified {
+        return Err(crate::enterprise::sso_required(state, email).await);
+    }
     if !(settings.registration_open || (sso_verified && settings.sso_registration) || team_jit) {
         return Err(Error::registration_closed());
     }
@@ -341,6 +344,7 @@ pub async fn register_finish(
         .await?;
     }
     tx.commit().await?;
+    crate::enterprise::ensure_home_team(&state, user_id).await?;
 
     let user = users::by_id(&state.db, user_id).await?;
     if let Some(s) = &sso_sess {
@@ -427,6 +431,7 @@ pub async fn login_start(
         None => None,
     };
     let sso_verified = sso_sess.is_some();
+    crate::enterprise::require_sso(&state, sso_verified, &email).await?;
     let user = users::by_email(&state.db, &email).await?;
     if let (Some(u), false) = (&user, sso_verified)
         && let Some(provider) = crate::policy::sso_required(&state.db, u.id, &email).await?
@@ -521,6 +526,7 @@ async fn continue_login(
     sso_verified: bool,
     mfa_done: bool,
 ) -> ApiResult<AuthResponse> {
+    crate::enterprise::ensure_home_team(state, user.id).await?;
     if !mfa_done && users::mfa_enabled(state, user).await? {
         let methods = available_mfa_methods(state, user).await?;
         let mfa_token = codes::put_flow(

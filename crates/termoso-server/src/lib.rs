@@ -15,6 +15,7 @@ pub mod cache;
 pub mod codes;
 pub mod config;
 pub mod digest;
+pub mod enterprise;
 pub mod error;
 pub mod events;
 pub mod extract;
