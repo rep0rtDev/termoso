@@ -41,7 +41,13 @@ import LockOpenRoundedIcon from "@mui/icons-material/LockOpenRounded";
 import PersonAddAltRoundedIcon from "@mui/icons-material/PersonAddAltRounded";
 import PersonRemoveRoundedIcon from "@mui/icons-material/PersonRemoveRounded";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link as RouterLink, useNavigate, useParams } from "react-router";
+import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router";
+import { Tab, Tabs } from "@mui/material";
+import { AuditTab } from "./AuditTab";
+import { PoliciesTab } from "./PoliciesTab";
+import { RolesTab } from "./RolesTab";
+import { ScimTab } from "./ScimTab";
+import { can } from "./perm";
 import { errorMessage } from "@/api/client";
 import { teamsApi, vaultsApi } from "@/api/endpoints";
 import { queryKeys, useServerInfo } from "@/api/hooks";
@@ -96,11 +102,60 @@ function TeamDetail({ team }: { team: Team }) {
         }
         actions={<TeamActions team={team} />}
       />
-      {admin && <PendingKeysSection team={team} />}
-      <MembersSection team={team} />
-      {admin && <InvitesSection team={team} />}
-      <TeamVaultsSection team={team} />
-      {admin && <DigestSection team={team} />}
+      <TeamTabs team={team} admin={admin} />
+    </>
+  );
+}
+
+type TabKey = "members" | "roles" | "policies" | "audit" | "scim";
+
+function TeamTabs({ team, admin }: { team: Team; admin: boolean }) {
+  const [params, setParams] = useSearchParams();
+  const all: { key: TabKey; label: string; show: boolean }[] = [
+    { key: "members", label: "Members", show: true },
+    { key: "roles", label: "Roles", show: can(team, "roles.manage") },
+    { key: "policies", label: "Policies", show: can(team, "policies.manage") },
+    {
+      key: "audit",
+      label: "Audit",
+      show: can(team, "audit.view") || can(team, "webhooks.manage"),
+    },
+    { key: "scim", label: "SCIM", show: can(team, "scim.manage") || can(team, "scim.tokens") },
+  ];
+  const tabs = all.filter((t) => t.show);
+  const requested = params.get("tab");
+  const tab: TabKey = tabs.find((t) => t.key === requested)?.key ?? "members";
+  return (
+    <>
+      {tabs.length > 1 && (
+        <Tabs
+          value={tab}
+          onChange={(_, v: TabKey) => {
+            const next = new URLSearchParams(params);
+            if (v === "members") next.delete("tab");
+            else next.set("tab", v);
+            setParams(next, { replace: true });
+          }}
+          sx={{ mb: 2, borderBottom: 1, borderColor: "divider" }}
+        >
+          {tabs.map((t) => (
+            <Tab key={t.key} value={t.key} label={t.label} />
+          ))}
+        </Tabs>
+      )}
+      {tab === "members" && (
+        <>
+          {admin && <PendingKeysSection team={team} />}
+          <MembersSection team={team} />
+          {admin && <InvitesSection team={team} />}
+          <TeamVaultsSection team={team} />
+          {admin && <DigestSection team={team} />}
+        </>
+      )}
+      {tab === "roles" && <RolesTab team={team} />}
+      {tab === "policies" && <PoliciesTab team={team} />}
+      {tab === "audit" && <AuditTab team={team} />}
+      {tab === "scim" && <ScimTab team={team} />}
     </>
   );
 }
@@ -254,6 +309,24 @@ function MembersSection({ team }: { team: Team }) {
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
+  const rolesQuery = useQuery({
+    queryKey: queryKeys.teamRoles(team.id),
+    queryFn: () => teamsApi.roles(team.id),
+    enabled: isAdmin(team.my_role),
+  });
+  const roleDefs = rolesQuery.data
+    ? [...rolesQuery.data.roles].sort((a, b) => a.position - b.position)
+    : null;
+  const setRoleId = useMutation({
+    mutationFn: ({ userId, role, roleId }: { userId: string; role: TeamRole; roleId: string }) =>
+      teamsApi.setMemberRole(team.id, userId, role, roleId),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: queryKeys.teamMembers(team.id) });
+      await qc.invalidateQueries({ queryKey: queryKeys.teamRoles(team.id) });
+      snack.notify("Role updated");
+    },
+    onError: (e) => snack.error(errorMessage(e)),
+  });
   const remove = useMutation({
     mutationFn: ({ userId, action }: { userId: string; action: MemberRemoval }) =>
       action === "delete_account"
@@ -318,26 +391,72 @@ function MembersSection({ team }: { team: Team }) {
                       </Stack>
                     </TableCell>
                     <TableCell>
-                      {canEdit ? (
-                        <Select
-                          size="small"
-                          value={m.role}
-                          onChange={(e) => {
-                            const role = e.target.value;
-                            if (role === "owner") setTransfer(m);
-                            else setRole.mutate({ userId: m.user_id, role });
-                          }}
-                          sx={{ minWidth: 130 }}
-                        >
-                          <MenuItem value="member">Member</MenuItem>
-                          <MenuItem value="admin">Admin</MenuItem>
-                          {team.my_role === "owner" && (
-                            <MenuItem value="owner">Owner (transfer)</MenuItem>
-                          )}
-                        </Select>
-                      ) : (
-                        <RoleChip role={m.role} />
-                      )}
+                      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                        {canEdit && roleDefs ? (
+                          <Select
+                            size="small"
+                            value={m.role_ref?.id ?? ""}
+                            onChange={(e) => {
+                              const def = roleDefs.find((r) => r.id === e.target.value);
+                              if (!def) return;
+                              if (def.slug === "owner") setTransfer(m);
+                              else
+                                setRoleId.mutate({
+                                  userId: m.user_id,
+                                  role: def.slug === "admin" ? "admin" : "member",
+                                  roleId: def.id,
+                                });
+                            }}
+                            sx={{ minWidth: 150 }}
+                          >
+                            {roleDefs
+                              .filter((r) => r.slug !== "owner" || team.my_role === "owner")
+                              .map((r) => (
+                                <MenuItem key={r.id} value={r.id}>
+                                  {r.slug === "owner" ? "Owner (transfer)" : r.name}
+                                </MenuItem>
+                              ))}
+                          </Select>
+                        ) : canEdit ? (
+                          <Select
+                            size="small"
+                            value={m.role}
+                            onChange={(e) => {
+                              const role = e.target.value;
+                              if (role === "owner") setTransfer(m);
+                              else setRole.mutate({ userId: m.user_id, role });
+                            }}
+                            sx={{ minWidth: 130 }}
+                          >
+                            <MenuItem value="member">Member</MenuItem>
+                            <MenuItem value="admin">Admin</MenuItem>
+                            {team.my_role === "owner" && (
+                              <MenuItem value="owner">Owner (transfer)</MenuItem>
+                            )}
+                          </Select>
+                        ) : m.role_ref &&
+                          !["owner", "admin", "member"].includes(m.role_ref.slug) ? (
+                          <Chip
+                            size="small"
+                            label={m.role_ref.name}
+                            sx={{ color: "text.secondary" }}
+                          />
+                        ) : (
+                          <RoleChip role={m.role} />
+                        )}
+                        {m.role_source && m.role_source !== "manual" && (
+                          <Tooltip
+                            title={`Assigned from ${m.role_source === "scim" ? "SCIM" : "identity provider"} groups`}
+                          >
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={m.role_source === "scim" ? "SCIM" : "IdP"}
+                              sx={{ height: 20 }}
+                            />
+                          </Tooltip>
+                        )}
+                      </Stack>
                     </TableCell>
                     <TableCell>{formatDate(m.joined_at)}</TableCell>
                     {admin && (
