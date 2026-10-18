@@ -15,6 +15,8 @@
 pub mod bridge;
 pub mod credentials;
 pub mod error;
+pub mod exec;
+pub mod mcp;
 pub mod model;
 pub mod rest;
 pub mod server;

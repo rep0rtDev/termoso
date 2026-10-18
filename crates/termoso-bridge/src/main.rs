@@ -10,13 +10,19 @@
 //!   (default 60, `0` disables).
 //! - `TERMOSO_BRIDGE_RATE_LIMIT` — sustained `/v1` requests per second
 //!   (default 50, burst 2×, `0` disables).
-//! - `RUST_LOG` — log filter (default `info`).
+//! - `RUST_LOG` — log filter (default `info`, written to stderr).
+//!
+//! `termoso-bridge mcp [--allow-write] [--allow-exec] [--strict-host-key]`
+//! runs the MCP stdio server instead of the REST API (same credentials file;
+//! `TERMOSO_BRIDGE_MCP_WRITE`, `TERMOSO_BRIDGE_MCP_EXEC` and
+//! `TERMOSO_BRIDGE_MCP_STRICT_HOST_KEY` = `true` are the env equivalents).
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use termoso_bridge::mcp::{McpConfig, McpServer};
 use termoso_bridge::rest::DEFAULT_RATE_LIMIT;
 use termoso_bridge::{Bridge, RestConfig, load_credentials, router};
 use tracing_subscriber::EnvFilter;
@@ -24,6 +30,7 @@ use tracing_subscriber::EnvFilter;
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
@@ -37,6 +44,9 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args().nth(1).as_deref() == Some("mcp") {
+        return run_mcp(std::env::args().skip(2)).await;
+    }
     let creds_path = PathBuf::from(
         std::env::var("TERMOSO_BRIDGE_CREDENTIALS")
             .unwrap_or_else(|_| "/etc/termoso/bridge.json".into()),
@@ -127,4 +137,44 @@ async fn shutdown() {
     {
         let _ = ctrl_c.await;
     }
+}
+
+fn env_flag(name: &str) -> bool {
+    std::env::var(name)
+        .map(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+async fn run_mcp(args: impl Iterator<Item = String>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut cfg = McpConfig {
+        allow_write: env_flag("TERMOSO_BRIDGE_MCP_WRITE"),
+        allow_exec: env_flag("TERMOSO_BRIDGE_MCP_EXEC"),
+        strict_host_key: env_flag("TERMOSO_BRIDGE_MCP_STRICT_HOST_KEY"),
+    };
+    let mut creds_path = PathBuf::from(
+        std::env::var("TERMOSO_BRIDGE_CREDENTIALS")
+            .unwrap_or_else(|_| "/etc/termoso/bridge.json".into()),
+    );
+    let mut args = args.peekable();
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--allow-write" => cfg.allow_write = true,
+            "--allow-exec" => cfg.allow_exec = true,
+            "--strict-host-key" => cfg.strict_host_key = true,
+            "--credentials" | "-c" => {
+                creds_path = PathBuf::from(args.next().ok_or("--credentials needs a path")?);
+            }
+            other => return Err(format!("unknown argument `{other}`").into()),
+        }
+    }
+    let creds = load_credentials(&creds_path)?;
+    tracing::info!(server = %creds.server, bridge = %creds.bridge_id, write = cfg.allow_write, exec = cfg.allow_exec, "mcp: connecting");
+    let bridge = Arc::new(Bridge::connect(creds).await?);
+    McpServer::new(bridge, cfg).serve_stdio().await?;
+    Ok(())
 }

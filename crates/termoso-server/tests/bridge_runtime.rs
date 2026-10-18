@@ -35,6 +35,7 @@ const KEY_PEM: &str = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEA
 
 struct Rig {
     user: User,
+    bridge: Arc<Bridge>,
     vault_id: Uuid,
     bridge_id: Uuid,
     kp: KeyPair,
@@ -174,7 +175,7 @@ async fn rig_with(s: &TestServer, name: &str, rate_limit: u32) -> Rig {
 
     let key = format!("k-{}", Uuid::new_v4().simple());
     let app = router(
-        bridge,
+        bridge.clone(),
         RestConfig {
             api_key: Some(key.clone()),
             rate_limit,
@@ -187,6 +188,7 @@ async fn rig_with(s: &TestServer, name: &str, rate_limit: u32) -> Rig {
     });
     Rig {
         user,
+        bridge,
         vault_id,
         bridge_id: created.bridge.id,
         kp,
@@ -791,3 +793,136 @@ async fn rotation_pauses_writes_until_reseal() {
 }
 
 type Bridge_ = termoso_proto::bridge::Bridge;
+
+#[tokio::test]
+async fn mcp_server_lists_hosts_and_gates_tools() {
+    use termoso_bridge::mcp::{McpConfig, McpServer};
+
+    let s = server!();
+    let r = rig(s, "bridge-mcp").await;
+    r.ok(
+        Method::POST,
+        "/v1/group/prod/",
+        Some(serde_json::json!({ "label": "Production", "ssh": { "port": 2222 } })),
+    )
+    .await;
+    r.ok(
+        Method::POST,
+        "/v1/host/i-mcp/",
+        Some(serde_json::json!({
+            "group": "prod",
+            "address": "10.255.255.1",
+            "label": "db-1",
+            "tags": ["db"],
+            "ssh": { "credentials": { "username": "ubuntu", "password": PASSWORD } }
+        })),
+    )
+    .await;
+
+    let mcp = McpServer::new(
+        r.bridge.clone(),
+        McpConfig {
+            allow_write: false,
+            allow_exec: true,
+            strict_host_key: false,
+        },
+    );
+    let call = |id: u64, method: &str, params: serde_json::Value| serde_json::json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
+    let text = |v: &serde_json::Value| -> serde_json::Value {
+        serde_json::from_str(v["result"]["content"][0]["text"].as_str().expect("text"))
+            .expect("json text")
+    };
+
+    let init = mcp
+        .handle(call(
+            1,
+            "initialize",
+            serde_json::json!({"protocolVersion": "2025-03-26"}),
+        ))
+        .await
+        .expect("response");
+    assert_eq!(init["result"]["protocolVersion"], "2025-03-26");
+    assert_eq!(init["result"]["serverInfo"]["name"], "termoso-bridge");
+    assert!(
+        mcp.handle(serde_json::json!({"jsonrpc": "2.0", "method": "notifications/initialized"}))
+            .await
+            .is_none()
+    );
+
+    let tools = mcp
+        .handle(call(2, "tools/list", serde_json::json!({})))
+        .await
+        .unwrap();
+    let names: Vec<&str> = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"ssh_exec"));
+    assert!(!names.contains(&"upsert_host"));
+
+    let hosts = mcp
+        .handle(call(
+            3,
+            "tools/call",
+            serde_json::json!({"name": "list_hosts", "arguments": {}}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(hosts["result"]["isError"], false);
+    let list = text(&hosts);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    assert_eq!(list[0]["label"], "db-1");
+    assert_eq!(list[0]["group"], "Production");
+    assert_eq!(list[0]["username"], "ubuntu");
+    assert_eq!(list[0]["has_credentials"], true);
+    assert!(list[0].get("password").is_none());
+
+    let host = mcp
+        .handle(call(
+            4,
+            "tools/call",
+            serde_json::json!({"name": "get_host", "arguments": {"host": "db-1"}}),
+        ))
+        .await
+        .unwrap();
+    let h = text(&host);
+    assert_eq!(h["ssh"]["port"], 2222, "port inherited from the group");
+    assert_eq!(h["ssh"]["username"], "ubuntu");
+
+    let denied = mcp
+        .handle(call(
+            5,
+            "tools/call",
+            serde_json::json!({"name": "delete_host", "arguments": {"external_id": "i-mcp"}}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(denied["result"]["isError"], true);
+    assert!(
+        denied["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("--allow-write")
+    );
+
+    let exec = mcp
+        .handle(call(
+            6,
+            "tools/call",
+            serde_json::json!({"name": "ssh_exec", "arguments": {"host": "db-1", "command": "id", "timeout_secs": 1}}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        exec["result"]["isError"], true,
+        "unreachable host must fail, not hang"
+    );
+
+    let unknown = mcp
+        .handle(call(7, "nope", serde_json::json!({})))
+        .await
+        .unwrap();
+    assert_eq!(unknown["error"]["code"], -32601);
+}
