@@ -89,7 +89,20 @@ fn validate_name(name: &str) -> ApiResult<String> {
 #[utoipa::path(get, path = "/api/v1/teams", tag = "teams", responses((status = 200, body = TeamList)))]
 pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<TeamList>> {
     #[allow(clippy::type_complexity)]
-    let rows: Vec<(Uuid, String, DateTime<Utc>, String, i64, bool, bool, bool, Uuid, String, String, Vec<String>)> = sqlx::query_as(
+    let rows: Vec<(
+        Uuid,
+        String,
+        DateTime<Utc>,
+        String,
+        i64,
+        bool,
+        bool,
+        bool,
+        Uuid,
+        String,
+        String,
+        Vec<String>,
+    )> = sqlx::query_as(
         "SELECT t.id, t.name, t.created_at, m.role,
                 (SELECT count(*) FROM team_members x WHERE x.team_id = t.id),
                 t.multiplayer_enabled, t.require_mfa, t.presence_enabled,
@@ -165,12 +178,14 @@ pub async fn create(
     .fetch_one(&mut *tx)
     .await?;
     let owner_role_id = crate::authz::seed_builtin_roles(&mut tx, id).await?;
-    sqlx::query("INSERT INTO team_members (team_id, user_id, role, role_id) VALUES ($1, $2, 'owner', $3)")
-        .bind(id)
-        .bind(auth.user_id())
-        .bind(owner_role_id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "INSERT INTO team_members (team_id, user_id, role, role_id) VALUES ($1, $2, 'owner', $3)",
+    )
+    .bind(id)
+    .bind(auth.user_id())
+    .bind(owner_role_id)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     metrics::counter!("termoso_teams_created_total").increment(1);
     audit::record(
@@ -183,7 +198,11 @@ pub async fn create(
         name,
         created_at,
         my_role: TeamRole::Owner,
-        my_role_ref: Some(RoleRef { id: owner_role_id, slug: "owner".into(), name: "Owner".into() }),
+        my_role_ref: Some(RoleRef {
+            id: owner_role_id,
+            slug: "owner".into(),
+            name: "Owner".into(),
+        }),
         my_permissions: vec!["*".to_string()],
         member_count: 1,
         multiplayer_enabled: true,
@@ -420,7 +439,11 @@ pub async fn members(
                     managed,
                 )| {
                     TeamMember {
-                        role_ref: Some(RoleRef { id: role_id, slug: role_slug, name: role_name }),
+                        role_ref: Some(RoleRef {
+                            id: role_id,
+                            slug: role_slug,
+                            name: role_name,
+                        }),
                         role_source: Some(role_source),
                         user_id,
                         email,

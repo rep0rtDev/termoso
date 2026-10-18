@@ -6,7 +6,9 @@ use std::collections::HashSet;
 
 use sqlx::PgExecutor;
 use termoso_proto::error::codes;
-use termoso_proto::team::{CLIENT_ENFORCED_PERMISSIONS, PermissionInfo, RoleRef, TeamRole, PERMISSIONS};
+use termoso_proto::team::{
+    CLIENT_ENFORCED_PERMISSIONS, PERMISSIONS, PermissionInfo, RoleRef, TeamRole,
+};
 use uuid::Uuid;
 
 use crate::error::{ApiResult, Error};
@@ -106,12 +108,14 @@ pub async fn require(
 /// Validate a permission set for a custom/admin role: known keys only, no
 /// owner-only keys, deduplicated and sorted.
 pub fn normalize_permissions(perms: &[String]) -> ApiResult<Vec<String>> {
-    use termoso_proto::team::{is_permission, OWNER_ONLY_PERMISSIONS};
+    use termoso_proto::team::{OWNER_ONLY_PERMISSIONS, is_permission};
     let mut set = HashSet::new();
     for p in perms {
         let p = p.trim();
         if p == "*" || OWNER_ONLY_PERMISSIONS.contains(&p) {
-            return Err(Error::bad_request(format!("`{p}` belongs to the owner only")));
+            return Err(Error::bad_request(format!(
+                "`{p}` belongs to the owner only"
+            )));
         }
         if !is_permission(p) {
             return Err(Error::bad_request(format!("Unknown permission `{p}`")));
@@ -135,7 +139,12 @@ pub fn catalog() -> Vec<PermissionInfo> {
                 title: title.to_string(),
                 description: description.to_string(),
                 dangerous,
-                enforced_by: if CLIENT_ENFORCED_PERMISSIONS.contains(&key) { "client" } else { "server" }.to_string(),
+                enforced_by: if CLIENT_ENFORCED_PERMISSIONS.contains(&key) {
+                    "client"
+                } else {
+                    "server"
+                }
+                .to_string(),
             }
         })
         .collect()
@@ -145,67 +154,207 @@ fn describe(key: &str) -> (&'static str, &'static str, bool) {
     match key {
         "team.view" => ("View team", "See the team, its name and settings.", false),
         "team.rename" => ("Rename team", "Change the team name.", false),
-        "team.settings" => ("Team settings", "Change presence, multiplayer and other team-wide switches.", false),
+        "team.settings" => (
+            "Team settings",
+            "Change presence, multiplayer and other team-wide switches.",
+            false,
+        ),
         "team.delete" => ("Delete team", "Owner only.", true),
         "team.transfer" => ("Transfer ownership", "Owner only.", true),
         "members.view" => ("View members", "See who is in the team.", false),
-        "members.view_mfa" => ("View MFA status", "See which members have MFA or a passkey enabled.", false),
-        "members.invite" => ("Invite members", "Create, list and revoke invitations.", false),
-        "invites.view" => ("View invitations", "See pending invitations without creating them.", false),
+        "members.view_mfa" => (
+            "View MFA status",
+            "See which members have MFA or a passkey enabled.",
+            false,
+        ),
+        "members.invite" => (
+            "Invite members",
+            "Create, list and revoke invitations.",
+            false,
+        ),
+        "invites.view" => (
+            "View invitations",
+            "See pending invitations without creating them.",
+            false,
+        ),
         "members.remove" => ("Remove members", "Remove a member from the team.", true),
-        "members.suspend" => ("Suspend members", "Temporarily block a member without removing them.", true),
-        "members.role" => ("Change roles", "Assign roles to members (never above your own permissions).", true),
-        "roles.manage" => ("Manage roles", "Create, edit and delete custom roles and group mappings.", true),
+        "members.suspend" => (
+            "Suspend members",
+            "Temporarily block a member without removing them.",
+            true,
+        ),
+        "members.role" => (
+            "Change roles",
+            "Assign roles to members (never above your own permissions).",
+            true,
+        ),
+        "roles.manage" => (
+            "Manage roles",
+            "Create, edit and delete custom roles and group mappings.",
+            true,
+        ),
         "vaults.create" => ("Create vaults", "Create team vaults and folders.", false),
         "vaults.rename" => ("Rename vaults", "Rename a vault or folder.", false),
         "vaults.archive" => ("Archive vaults", "Archive and restore vaults.", false),
-        "vaults.delete" => ("Delete vaults", "Permanently delete a vault and its contents.", true),
-        "vaults.transfer" => ("Move vaults", "Move a vault or folder to another parent or team.", true),
-        "vaults.members" => ("Manage vault access", "Grant and revoke vault membership.", true),
-        "vaults.rotate_key" => ("Rotate vault keys", "Rotate a vault key after access changes.", true),
-        "vaults.history" => ("Vault history", "See change history and roll back entities.", false),
-        "entities.read" => ("Read entities", "See hosts, snippets, keys and identities.", false),
-        "entities.write" => ("Edit entities", "Create and edit hosts, snippets, keys and identities.", false),
-        "entities.delete" => ("Delete entities", "Delete hosts, snippets, keys and identities.", true),
-        "entities.move" => ("Move entities", "Move entities between vaults and folders.", false),
-        "entities.share_link" => ("Share links", "Create share links for hosts and snippets.", false),
-        "secrets.reveal" => ("Reveal secrets", "Show passwords, keys and passphrases in clear text.", true),
-        "secrets.copy" => ("Copy secrets", "Copy passwords and keys to the clipboard without showing them.", false),
-        "keys.generate" => ("Generate keys", "Generate SSH keys inside team vaults.", false),
+        "vaults.delete" => (
+            "Delete vaults",
+            "Permanently delete a vault and its contents.",
+            true,
+        ),
+        "vaults.transfer" => (
+            "Move vaults",
+            "Move a vault or folder to another parent or team.",
+            true,
+        ),
+        "vaults.members" => (
+            "Manage vault access",
+            "Grant and revoke vault membership.",
+            true,
+        ),
+        "vaults.rotate_key" => (
+            "Rotate vault keys",
+            "Rotate a vault key after access changes.",
+            true,
+        ),
+        "vaults.history" => (
+            "Vault history",
+            "See change history and roll back entities.",
+            false,
+        ),
+        "entities.read" => (
+            "Read entities",
+            "See hosts, snippets, keys and identities.",
+            false,
+        ),
+        "entities.write" => (
+            "Edit entities",
+            "Create and edit hosts, snippets, keys and identities.",
+            false,
+        ),
+        "entities.delete" => (
+            "Delete entities",
+            "Delete hosts, snippets, keys and identities.",
+            true,
+        ),
+        "entities.move" => (
+            "Move entities",
+            "Move entities between vaults and folders.",
+            false,
+        ),
+        "entities.share_link" => (
+            "Share links",
+            "Create share links for hosts and snippets.",
+            false,
+        ),
+        "secrets.reveal" => (
+            "Reveal secrets",
+            "Show passwords, keys and passphrases in clear text.",
+            true,
+        ),
+        "secrets.copy" => (
+            "Copy secrets",
+            "Copy passwords and keys to the clipboard without showing them.",
+            false,
+        ),
+        "keys.generate" => (
+            "Generate keys",
+            "Generate SSH keys inside team vaults.",
+            false,
+        ),
         "keys.export" => ("Export keys", "Export private keys from team vaults.", true),
         "snippets.run" => ("Run snippets", "Run snippets on hosts.", false),
         "connect.ssh" => ("SSH", "Open SSH sessions to team hosts.", false),
         "connect.sftp" => ("SFTP", "Open SFTP sessions to team hosts.", false),
-        "connect.port_forward" => ("Port forwarding", "Create local, remote and dynamic forwards.", false),
+        "connect.port_forward" => (
+            "Port forwarding",
+            "Create local, remote and dynamic forwards.",
+            false,
+        ),
         "connect.telnet" => ("Telnet", "Open Telnet sessions.", false),
         "connect.serial" => ("Serial", "Open serial sessions.", false),
         "connect.mosh" => ("Mosh", "Open Mosh sessions.", false),
-        "connect.local_terminal" => ("Local terminal", "Use the local terminal and on-device Linux.", false),
-        "connect.record" => ("Record sessions", "Record terminal sessions to team logs.", false),
-        "connect.bridge" => ("Connect via bridge", "Use team bridges and connect-only access.", false),
+        "connect.local_terminal" => (
+            "Local terminal",
+            "Use the local terminal and on-device Linux.",
+            false,
+        ),
+        "connect.record" => (
+            "Record sessions",
+            "Record terminal sessions to team logs.",
+            false,
+        ),
+        "connect.bridge" => (
+            "Connect via bridge",
+            "Use team bridges and connect-only access.",
+            false,
+        ),
         "live.start" => ("Start multiplayer", "Share a session with others.", false),
         "live.join" => ("Join multiplayer", "Join a shared session.", false),
-        "live.control" => ("Control multiplayer", "Give and take control in a shared session.", false),
+        "live.control" => (
+            "Control multiplayer",
+            "Give and take control in a shared session.",
+            false,
+        ),
         "logs.view_own" => ("View own logs", "See your own session logs.", false),
         "logs.view_team" => ("View team logs", "See session logs of every member.", true),
         "logs.export" => ("Export logs", "Download session logs.", true),
         "logs.delete" => ("Delete logs", "Delete session logs.", true),
         "export.vault" => ("Export vaults", "Export vault contents.", true),
         "import.vault" => ("Import", "Import hosts and keys into team vaults.", false),
-        "bridges.manage" => ("Manage bridges", "Enrol, configure and remove team bridges.", true),
+        "bridges.manage" => (
+            "Manage bridges",
+            "Enrol, configure and remove team bridges.",
+            true,
+        ),
         "bridges.use" => ("Use bridges", "Connect through team bridges.", false),
-        "sshid.manage" => ("Manage SSH ID", "Manage the team SSH identity and agent.", true),
+        "sshid.manage" => (
+            "Manage SSH ID",
+            "Manage the team SSH identity and agent.",
+            true,
+        ),
         "ai.use" => ("Use AI", "Use the AI assistant with team context.", false),
         "mcp.use" => ("Use MCP", "Expose team data to MCP clients.", false),
-        "digest.manage" => ("Activity digest", "Configure the team activity digest.", false),
+        "digest.manage" => (
+            "Activity digest",
+            "Configure the team activity digest.",
+            false,
+        ),
         "audit.view" => ("View audit log", "Read the team audit log.", false),
-        "audit.view_ips" => ("View IPs in audit", "See IP addresses in audit entries.", true),
-        "audit.export" => ("Export audit log", "Download the audit log as CSV or JSONL.", true),
-        "webhooks.manage" => ("Manage webhooks", "Configure audit webhooks and SIEM delivery.", true),
-        "tokens.manage" => ("Manage API tokens", "Create and revoke team API tokens.", true),
-        "policies.manage" => ("Manage policies", "Set MFA, key, session and SSO policies.", true),
-        "sso.manage" => ("Manage SSO", "Configure identity providers and domains.", true),
-        "scim.manage" => ("Manage SCIM", "Configure SCIM provisioning and group mappings.", true),
+        "audit.view_ips" => (
+            "View IPs in audit",
+            "See IP addresses in audit entries.",
+            true,
+        ),
+        "audit.export" => (
+            "Export audit log",
+            "Download the audit log as CSV or JSONL.",
+            true,
+        ),
+        "webhooks.manage" => (
+            "Manage webhooks",
+            "Configure audit webhooks and SIEM delivery.",
+            true,
+        ),
+        "tokens.manage" => (
+            "Manage API tokens",
+            "Create and revoke team API tokens.",
+            true,
+        ),
+        "policies.manage" => (
+            "Manage policies",
+            "Set MFA, key, session and SSO policies.",
+            true,
+        ),
+        "sso.manage" => (
+            "Manage SSO",
+            "Configure identity providers and domains.",
+            true,
+        ),
+        "scim.manage" => (
+            "Manage SCIM",
+            "Configure SCIM provisioning and group mappings.",
+            true,
+        ),
         "scim.tokens" => ("SCIM tokens", "Issue and revoke SCIM bearer tokens.", true),
         _ => ("", "", false),
     }
@@ -213,42 +362,160 @@ fn describe(key: &str) -> (&'static str, &'static str, bool) {
 
 /// Built-in roles every team gets: `(slug, name, description, permissions, position)`.
 pub const BUILTIN_ROLES: &[(&str, &str, &str, &[&str], i32)] = &[
-    ("owner", "Owner", "Everything, including deleting the team and transferring ownership.", &[
-        "*",
-    ], 0),
-    ("admin", "Admin", "Manages members, roles, vaults, policies, audit and integrations.", &[
-        "team.view", "team.rename", "team.settings", "members.view", "members.view_mfa",
-        "members.invite", "invites.view", "members.remove", "members.suspend", "members.role",
-        "roles.manage", "vaults.create", "vaults.rename", "vaults.archive", "vaults.delete",
-        "vaults.transfer", "vaults.members", "vaults.rotate_key", "vaults.history",
-        "entities.read", "entities.write", "entities.delete", "entities.move",
-        "entities.share_link", "secrets.reveal", "secrets.copy", "keys.generate", "keys.export",
-        "snippets.run", "connect.ssh", "connect.sftp", "connect.port_forward", "connect.telnet",
-        "connect.serial", "connect.mosh", "connect.local_terminal", "connect.record",
-        "connect.bridge", "live.start", "live.join", "live.control", "logs.view_own",
-        "logs.view_team", "logs.export", "logs.delete", "export.vault", "import.vault",
-        "bridges.manage", "bridges.use", "sshid.manage", "ai.use", "mcp.use", "digest.manage",
-        "audit.view", "audit.view_ips", "audit.export", "webhooks.manage", "tokens.manage",
-        "policies.manage", "sso.manage", "scim.manage", "scim.tokens",
-    ], 10),
-    ("member", "Member", "Works with the vaults they are given access to.", &[
-        "team.view", "members.view", "invites.view", "entities.read", "entities.write",
-        "entities.delete", "entities.move", "entities.share_link", "secrets.reveal",
-        "secrets.copy", "keys.generate", "snippets.run", "connect.ssh", "connect.sftp",
-        "connect.port_forward", "connect.telnet", "connect.serial", "connect.mosh",
-        "connect.local_terminal", "connect.record", "connect.bridge", "live.start", "live.join",
-        "live.control", "logs.view_own", "import.vault", "bridges.use", "ai.use", "mcp.use",
-        "audit.view", "vaults.history",
-    ], 20),
-    ("viewer", "Viewer", "Connects to hosts but cannot change anything or see secrets.", &[
-        "team.view", "members.view", "entities.read", "secrets.copy", "connect.ssh",
-        "connect.sftp", "connect.port_forward", "connect.telnet", "connect.mosh",
-        "connect.local_terminal", "connect.bridge", "bridges.use", "live.join", "logs.view_own",
-    ], 30),
-    ("auditor", "Auditor", "Reads the audit log and team session logs; no vault access.", &[
-        "team.view", "members.view", "members.view_mfa", "invites.view", "audit.view",
-        "audit.view_ips", "audit.export", "logs.view_team",
-    ], 40),
+    (
+        "owner",
+        "Owner",
+        "Everything, including deleting the team and transferring ownership.",
+        &["*"],
+        0,
+    ),
+    (
+        "admin",
+        "Admin",
+        "Manages members, roles, vaults, policies, audit and integrations.",
+        &[
+            "team.view",
+            "team.rename",
+            "team.settings",
+            "members.view",
+            "members.view_mfa",
+            "members.invite",
+            "invites.view",
+            "members.remove",
+            "members.suspend",
+            "members.role",
+            "roles.manage",
+            "vaults.create",
+            "vaults.rename",
+            "vaults.archive",
+            "vaults.delete",
+            "vaults.transfer",
+            "vaults.members",
+            "vaults.rotate_key",
+            "vaults.history",
+            "entities.read",
+            "entities.write",
+            "entities.delete",
+            "entities.move",
+            "entities.share_link",
+            "secrets.reveal",
+            "secrets.copy",
+            "keys.generate",
+            "keys.export",
+            "snippets.run",
+            "connect.ssh",
+            "connect.sftp",
+            "connect.port_forward",
+            "connect.telnet",
+            "connect.serial",
+            "connect.mosh",
+            "connect.local_terminal",
+            "connect.record",
+            "connect.bridge",
+            "live.start",
+            "live.join",
+            "live.control",
+            "logs.view_own",
+            "logs.view_team",
+            "logs.export",
+            "logs.delete",
+            "export.vault",
+            "import.vault",
+            "bridges.manage",
+            "bridges.use",
+            "sshid.manage",
+            "ai.use",
+            "mcp.use",
+            "digest.manage",
+            "audit.view",
+            "audit.view_ips",
+            "audit.export",
+            "webhooks.manage",
+            "tokens.manage",
+            "policies.manage",
+            "sso.manage",
+            "scim.manage",
+            "scim.tokens",
+        ],
+        10,
+    ),
+    (
+        "member",
+        "Member",
+        "Works with the vaults they are given access to.",
+        &[
+            "team.view",
+            "members.view",
+            "invites.view",
+            "entities.read",
+            "entities.write",
+            "entities.delete",
+            "entities.move",
+            "entities.share_link",
+            "secrets.reveal",
+            "secrets.copy",
+            "keys.generate",
+            "snippets.run",
+            "connect.ssh",
+            "connect.sftp",
+            "connect.port_forward",
+            "connect.telnet",
+            "connect.serial",
+            "connect.mosh",
+            "connect.local_terminal",
+            "connect.record",
+            "connect.bridge",
+            "live.start",
+            "live.join",
+            "live.control",
+            "logs.view_own",
+            "import.vault",
+            "bridges.use",
+            "ai.use",
+            "mcp.use",
+            "audit.view",
+            "vaults.history",
+        ],
+        20,
+    ),
+    (
+        "viewer",
+        "Viewer",
+        "Connects to hosts but cannot change anything or see secrets.",
+        &[
+            "team.view",
+            "members.view",
+            "entities.read",
+            "secrets.copy",
+            "connect.ssh",
+            "connect.sftp",
+            "connect.port_forward",
+            "connect.telnet",
+            "connect.mosh",
+            "connect.local_terminal",
+            "connect.bridge",
+            "bridges.use",
+            "live.join",
+            "logs.view_own",
+        ],
+        30,
+    ),
+    (
+        "auditor",
+        "Auditor",
+        "Reads the audit log and team session logs; no vault access.",
+        &[
+            "team.view",
+            "members.view",
+            "members.view_mfa",
+            "invites.view",
+            "audit.view",
+            "audit.view_ips",
+            "audit.export",
+            "logs.view_team",
+        ],
+        40,
+    ),
 ];
 
 /// Create the built-in roles for a new team and set `member` as default.
@@ -273,31 +540,54 @@ pub async fn seed_builtin_roles(
         }
         if *slug == "member" {
             sqlx::query("UPDATE teams SET default_role_id = $2 WHERE id = $1")
-                .bind(team_id).bind(id).execute(&mut **tx).await?;
+                .bind(team_id)
+                .bind(id)
+                .execute(&mut **tx)
+                .await?;
         }
     }
     Ok(owner)
 }
 
 /// Id of a built-in role by slug.
-pub async fn builtin_role_id<'e, E: PgExecutor<'e>>(db: E, team_id: Uuid, slug: &str) -> ApiResult<Uuid> {
+pub async fn builtin_role_id<'e, E: PgExecutor<'e>>(
+    db: E,
+    team_id: Uuid,
+    slug: &str,
+) -> ApiResult<Uuid> {
     let (id,): (Uuid,) =
         sqlx::query_as("SELECT id FROM team_roles WHERE team_id = $1 AND slug = $2 AND builtin")
-            .bind(team_id).bind(slug).fetch_one(db).await?;
+            .bind(team_id)
+            .bind(slug)
+            .fetch_one(db)
+            .await?;
     Ok(id)
 }
 
 /// Role for a coarse level, used by pre-0.9.0 request bodies.
-pub async fn role_id_for_level<'e, E: PgExecutor<'e>>(db: E, team_id: Uuid, level: TeamRole) -> ApiResult<Uuid> {
-    let slug = match level { TeamRole::Owner => "owner", TeamRole::Admin => "admin", TeamRole::Member => "member" };
+pub async fn role_id_for_level<'e, E: PgExecutor<'e>>(
+    db: E,
+    team_id: Uuid,
+    level: TeamRole,
+) -> ApiResult<Uuid> {
+    let slug = match level {
+        TeamRole::Owner => "owner",
+        TeamRole::Admin => "admin",
+        TeamRole::Member => "member",
+    };
     builtin_role_id(db, team_id, slug).await
 }
 
 /// Default role for new members (falls back to built-in `member`).
 pub async fn default_role_id<'e, E: PgExecutor<'e>>(db: E, team_id: Uuid) -> ApiResult<Uuid> {
-    let row: Option<(Option<Uuid>,)> = sqlx::query_as("SELECT default_role_id FROM teams WHERE id = $1")
-        .bind(team_id).fetch_optional(db).await?;
-    if let Some((Some(id),)) = row { return Ok(id); }
+    let row: Option<(Option<Uuid>,)> =
+        sqlx::query_as("SELECT default_role_id FROM teams WHERE id = $1")
+            .bind(team_id)
+            .fetch_optional(db)
+            .await?;
+    if let Some((Some(id),)) = row {
+        return Ok(id);
+    }
     Err(Error::not_found("Team"))
 }
 
@@ -334,14 +624,98 @@ pub async fn assignable_role<'e, E: PgExecutor<'e> + Copy>(
         "admin" => TeamRole::Admin,
         _ => TeamRole::Member,
     };
-    Ok((RoleRef { id: rid, slug, name }, lvl))
+    Ok((
+        RoleRef {
+            id: rid,
+            slug,
+            name,
+        },
+        lvl,
+    ))
 }
 
-pub fn role_parts(level: TeamRole, id: Uuid, slug: String, name: String, perms: Vec<String>) -> (RoleRef, Vec<String>) {
+/// Apply the team group → role mappings for a user who just signed in
+/// through an IdP with `groups` (OIDC `groups` claim, SAML `memberOf`).
+/// Per team: the matching mapping with the lowest `priority` wins and the
+/// member becomes `role_source = 'idp'`; a member the IdP previously placed
+/// who now matches nothing falls back to the team default role; manual
+/// assignments and the owner are never touched.
+pub async fn apply_group_mappings(
+    db: &sqlx::PgPool,
+    user_id: Uuid,
+    groups: &[String],
+) -> ApiResult<Vec<Uuid>> {
+    let lowered: Vec<String> = groups
+        .iter()
+        .map(|g| g.trim().to_lowercase())
+        .filter(|g| !g.is_empty())
+        .collect();
+    let rows: Vec<(
+        Uuid,
+        String,
+        Uuid,
+        Option<Uuid>,
+        Option<Uuid>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT m.team_id, m.role_source, m.role_id,
+                (SELECT x.role_id FROM team_role_mappings x
+                  WHERE x.team_id = m.team_id AND lower(x.group_name) = ANY($2)
+                  ORDER BY x.priority, x.group_name LIMIT 1),
+                t.default_role_id,
+                (SELECT slug FROM team_roles WHERE id = m.role_id)
+         FROM team_members m JOIN teams t ON t.id = m.team_id
+         WHERE m.user_id = $1 AND m.role <> 'owner'",
+    )
+    .bind(user_id)
+    .bind(&lowered)
+    .fetch_all(db)
+    .await?;
+    let mut changed = Vec::new();
+    for (team_id, source, current, mapped, default_role, _slug) in rows {
+        let target = match (mapped, source.as_str()) {
+            (Some(r), _) => r,
+            (None, "idp") => match default_role {
+                Some(d) => d,
+                None => continue,
+            },
+            (None, _) => continue,
+        };
+        if target == current && source == "idp" {
+            continue;
+        }
+        let done = sqlx::query(
+            "UPDATE team_members SET role_id = $3, role_source = 'idp',
+                 role = CASE WHEN (SELECT slug FROM team_roles WHERE id = $3) = 'admin' THEN 'admin' ELSE 'member' END
+             WHERE team_id = $1 AND user_id = $2 AND role <> 'owner'
+               AND EXISTS (SELECT 1 FROM team_roles r WHERE r.id = $3 AND r.team_id = $1 AND r.slug <> 'owner')",
+        )
+        .bind(team_id)
+        .bind(user_id)
+        .bind(target)
+        .execute(db)
+        .await?
+        .rows_affected();
+        if done > 0 {
+            changed.push(team_id);
+        }
+    }
+    Ok(changed)
+}
+
+pub fn role_parts(
+    level: TeamRole,
+    id: Uuid,
+    slug: String,
+    name: String,
+    perms: Vec<String>,
+) -> (RoleRef, Vec<String>) {
     let list = if level == TeamRole::Owner || perms.iter().any(|p| p == "*") {
         vec!["*".to_string()]
     } else {
-        let mut v = perms; v.sort(); v
+        let mut v = perms;
+        v.sort();
+        v
     };
     (RoleRef { id, slug, name }, list)
 }
@@ -358,7 +732,10 @@ mod tests {
         }
         for (slug, _, _, perms, _) in BUILTIN_ROLES {
             for p in *perms {
-                assert!(*p == "*" || termoso_proto::team::is_permission(p), "{slug}: unknown {p}");
+                assert!(
+                    *p == "*" || termoso_proto::team::is_permission(p),
+                    "{slug}: unknown {p}"
+                );
             }
         }
         assert!(PERMISSIONS.len() >= 60);
@@ -368,7 +745,10 @@ mod tests {
     fn builtin_roles_only_use_known_permissions() {
         for (slug, _, _, perms, _) in BUILTIN_ROLES {
             for p in *perms {
-                assert!(*p == "*" || termoso_proto::team::is_permission(p), "{slug}: {p}");
+                assert!(
+                    *p == "*" || termoso_proto::team::is_permission(p),
+                    "{slug}: {p}"
+                );
             }
         }
         assert_eq!(catalog().len(), PERMISSIONS.len());
@@ -379,7 +759,12 @@ mod tests {
         assert!(normalize_permissions(&["team.delete".into()]).is_err());
         assert!(normalize_permissions(&["*".into()]).is_err());
         assert!(normalize_permissions(&["nope.x".into()]).is_err());
-        let v = normalize_permissions(&["vaults.create".into(), " vaults.create ".into(), "audit.view".into()]).unwrap();
+        let v = normalize_permissions(&[
+            "vaults.create".into(),
+            " vaults.create ".into(),
+            "audit.view".into(),
+        ])
+        .unwrap();
         assert_eq!(v, vec!["audit.view", "vaults.create"]);
     }
 
@@ -389,14 +774,22 @@ mod tests {
             team_id: Uuid::nil(),
             user_id: Uuid::nil(),
             level: TeamRole::Owner,
-            role: RoleRef { id: Uuid::nil(), slug: "owner".into(), name: "Owner".into() },
+            role: RoleRef {
+                id: Uuid::nil(),
+                slug: "owner".into(),
+                name: "Owner".into(),
+            },
             role_source: "manual".into(),
             permissions: HashSet::new(),
             wildcard: false,
         };
         assert!(m.has("scim.manage"));
         assert_eq!(m.permission_list(), vec!["*"]);
-        let v = Membership { level: TeamRole::Member, permissions: ["team.view".to_string()].into_iter().collect(), ..m };
+        let v = Membership {
+            level: TeamRole::Member,
+            permissions: ["team.view".to_string()].into_iter().collect(),
+            ..m
+        };
         assert!(v.has("team.view") && !v.has("vaults.create"));
     }
 }

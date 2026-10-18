@@ -1881,7 +1881,12 @@ async fn custom_roles_are_enforced() {
 
     // Built-ins are seeded; an unknown or owner-only permission is rejected.
     let roles: serde_json::Value = s
-        .json(Method::GET, &format!("/teams/{}/roles", team.id), Some(owner.token()), NOBODY)
+        .json(
+            Method::GET,
+            &format!("/teams/{}/roles", team.id),
+            Some(owner.token()),
+            NOBODY,
+        )
         .await;
     let slugs: Vec<&str> = roles["roles"]
         .as_array()
@@ -1927,9 +1932,20 @@ async fn custom_roles_are_enforced() {
         )
         .await;
     assert_eq!(invite["role_ref"]["slug"], "connect-only");
-    let token = invite["url"].as_str().unwrap().rsplit('/').next().unwrap().to_string();
+    let token = invite["url"]
+        .as_str()
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_string();
     let joined: Team = s
-        .json(Method::POST, &format!("/invites/{token}/accept"), Some(bob.token()), NOBODY)
+        .json(
+            Method::POST,
+            &format!("/invites/{token}/accept"),
+            Some(bob.token()),
+            NOBODY,
+        )
         .await;
     assert_eq!(joined.my_role, TeamRole::Member);
     assert_eq!(joined.my_role_ref.as_ref().unwrap().slug, "connect-only");

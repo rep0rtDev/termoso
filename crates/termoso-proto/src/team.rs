@@ -443,38 +443,71 @@ schema! {
 /// built-in `owner` role holds `*`; everything else is an explicit subset.
 pub const PERMISSIONS: &[&str] = &[
     // team
-    "team.view", "team.rename", "team.settings", "team.delete", "team.transfer",
+    "team.view",
+    "team.rename",
+    "team.settings",
+    "team.delete",
+    "team.transfer",
     // members
-    "members.view", "members.view_mfa", "members.invite", "members.remove", "members.suspend",
+    "members.view",
+    "members.view_mfa",
+    "members.invite",
+    "members.remove",
+    "members.suspend",
     "members.role",
     // invites
     "invites.view",
     // roles
     "roles.manage",
     // vaults
-    "vaults.create", "vaults.rename", "vaults.archive", "vaults.delete", "vaults.transfer",
-    "vaults.members", "vaults.rotate_key", "vaults.history",
+    "vaults.create",
+    "vaults.rename",
+    "vaults.archive",
+    "vaults.delete",
+    "vaults.transfer",
+    "vaults.members",
+    "vaults.rotate_key",
+    "vaults.history",
     // entities
-    "entities.read", "entities.write", "entities.delete", "entities.move", "entities.share_link",
+    "entities.read",
+    "entities.write",
+    "entities.delete",
+    "entities.move",
+    "entities.share_link",
     // secrets
-    "secrets.reveal", "secrets.copy",
+    "secrets.reveal",
+    "secrets.copy",
     // keys
-    "keys.generate", "keys.export",
+    "keys.generate",
+    "keys.export",
     // snippets
     "snippets.run",
     // connect
-    "connect.ssh", "connect.sftp", "connect.port_forward", "connect.telnet", "connect.serial",
-    "connect.mosh", "connect.local_terminal", "connect.record", "connect.bridge",
+    "connect.ssh",
+    "connect.sftp",
+    "connect.port_forward",
+    "connect.telnet",
+    "connect.serial",
+    "connect.mosh",
+    "connect.local_terminal",
+    "connect.record",
+    "connect.bridge",
     // live
-    "live.start", "live.join", "live.control",
+    "live.start",
+    "live.join",
+    "live.control",
     // logs
-    "logs.view_own", "logs.view_team", "logs.export", "logs.delete",
+    "logs.view_own",
+    "logs.view_team",
+    "logs.export",
+    "logs.delete",
     // export
     "export.vault",
     // import
     "import.vault",
     // bridges
-    "bridges.manage", "bridges.use",
+    "bridges.manage",
+    "bridges.use",
     // sshid
     "sshid.manage",
     // ai
@@ -484,7 +517,9 @@ pub const PERMISSIONS: &[&str] = &[
     // digest
     "digest.manage",
     // audit
-    "audit.view", "audit.view_ips", "audit.export",
+    "audit.view",
+    "audit.view_ips",
+    "audit.export",
     // webhooks
     "webhooks.manage",
     // tokens
@@ -494,14 +529,19 @@ pub const PERMISSIONS: &[&str] = &[
     // sso
     "sso.manage",
     // scim
-    "scim.manage", "scim.tokens",
+    "scim.manage",
+    "scim.tokens",
 ];
 
 /// Permissions the server cannot enforce on its own: zero-knowledge clients
 /// hold the secrets, so these are honoured by Termoso clients and listed as
 /// such in the catalog (`enforced_by = "client"`).
 pub const CLIENT_ENFORCED_PERMISSIONS: &[&str] = &[
-    "secrets.reveal", "secrets.copy", "keys.export", "snippets.run", "connect.serial",
+    "secrets.reveal",
+    "secrets.copy",
+    "keys.export",
+    "snippets.run",
+    "connect.serial",
     "connect.local_terminal",
 ];
 

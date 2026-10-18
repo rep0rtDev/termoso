@@ -36,6 +36,7 @@ async fn sso_sign_in(s: &TestServer, email: &str) -> SsoResult {
         email_verified: true,
         name: None,
         nonce,
+        groups: vec![],
     };
     let resp = reqwest::Client::builder()
         .redirect(Policy::none())

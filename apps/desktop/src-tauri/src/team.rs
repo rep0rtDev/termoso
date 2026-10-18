@@ -248,7 +248,14 @@ pub async fn set_member_role<R: Runtime>(
 ) -> Result<()> {
     api(app)
         .await?
-        .update_team_member(team_id, user_id, &UpdateTeamMemberRequest { role, role_id: None })
+        .update_team_member(
+            team_id,
+            user_id,
+            &UpdateTeamMemberRequest {
+                role,
+                role_id: None,
+            },
+        )
         .await?;
     Ok(())
 }

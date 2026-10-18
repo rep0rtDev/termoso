@@ -172,14 +172,16 @@ async fn load_invite(state: &AppState, token: &str) -> ApiResult<Option<InviteRo
     .bind(hash_token(token))
     .fetch_optional(&state.db)
     .await?;
-    Ok(row.map(|(id, team_id, email, role, vault_ids, role_id)| InviteRow {
-        id,
-        team_id,
-        email,
-        role,
-        vault_ids,
-        role_id,
-    }))
+    Ok(
+        row.map(|(id, team_id, email, role, vault_ids, role_id)| InviteRow {
+            id,
+            team_id,
+            email,
+            role,
+            vault_ids,
+            role_id,
+        }),
+    )
 }
 
 /// Sign-up policy: the bootstrap admin and invited addresses always get in;

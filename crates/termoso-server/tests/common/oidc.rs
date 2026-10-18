@@ -31,6 +31,9 @@ pub struct Identity {
     pub name: Option<String>,
     /// Nonce taken from the authorization URL, echoed into the ID token.
     pub nonce: String,
+    /// `groups` claim (empty = claim omitted).
+    #[serde(default)]
+    pub groups: Vec<String>,
 }
 
 /// Encode an identity into an opaque authorization code.
@@ -148,6 +151,9 @@ async fn token(
     });
     if let Some(n) = &id.name {
         claims["name"] = serde_json::Value::String(n.clone());
+    }
+    if !id.groups.is_empty() {
+        claims["groups"] = serde_json::json!(id.groups);
     }
     let signing_input = format!(
         "{}.{}",

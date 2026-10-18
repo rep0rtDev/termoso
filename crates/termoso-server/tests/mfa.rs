@@ -934,7 +934,7 @@ async fn team_members_expose_mfa_status_to_admins_only() {
         Some(owner.token()),
         Some(&termoso_proto::team::UpdateTeamMemberRequest {
             role: TeamRole::Admin,
-                    role_id: None,
+            role_id: None,
         }),
         StatusCode::NO_CONTENT,
     )

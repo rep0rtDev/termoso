@@ -42,11 +42,44 @@ fn validate_description(d: &str) -> ApiResult<String> {
     Ok(d.trim().to_string())
 }
 
-type RoleRow = (Uuid, String, String, String, Vec<String>, bool, i32, i64, DateTime<Utc>, DateTime<Utc>);
+type RoleRow = (
+    Uuid,
+    String,
+    String,
+    String,
+    Vec<String>,
+    bool,
+    i32,
+    i64,
+    DateTime<Utc>,
+    DateTime<Utc>,
+);
 
 fn to_def(r: RoleRow) -> TeamRoleDef {
-    let (id, slug, name, description, permissions, builtin, position, member_count, created_at, updated_at) = r;
-    TeamRoleDef { id, slug, name, description, permissions, builtin, position, member_count, created_at, updated_at }
+    let (
+        id,
+        slug,
+        name,
+        description,
+        permissions,
+        builtin,
+        position,
+        member_count,
+        created_at,
+        updated_at,
+    ) = r;
+    TeamRoleDef {
+        id,
+        slug,
+        name,
+        description,
+        permissions,
+        builtin,
+        position,
+        member_count,
+        created_at,
+        updated_at,
+    }
 }
 
 macro_rules! role_select {
@@ -61,12 +94,11 @@ macro_rules! role_select {
 }
 
 async fn load_role(state: &AppState, team_id: Uuid, role_id: Uuid) -> ApiResult<TeamRoleDef> {
-    let row: Option<RoleRow> =
-        sqlx::query_as(role_select!("WHERE r.team_id = $1 AND r.id = $2"))
-            .bind(team_id)
-            .bind(role_id)
-            .fetch_optional(&state.db)
-            .await?;
+    let row: Option<RoleRow> = sqlx::query_as(role_select!("WHERE r.team_id = $1 AND r.id = $2"))
+        .bind(team_id)
+        .bind(role_id)
+        .fetch_optional(&state.db)
+        .await?;
     row.map(to_def).ok_or_else(|| Error::not_found("Role"))
 }
 
@@ -78,7 +110,9 @@ pub async fn catalog(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<PermissionCatalog>> {
     authz::require(&state, id, auth.user_id(), "team.view").await?;
-    Ok(Json(PermissionCatalog { permissions: authz::catalog() }))
+    Ok(Json(PermissionCatalog {
+        permissions: authz::catalog(),
+    }))
 }
 
 #[utoipa::path(get, path = "/api/v1/teams/{id}/roles", tag = "teams",
@@ -89,17 +123,21 @@ pub async fn list(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<TeamRoleList>> {
     authz::require(&state, id, auth.user_id(), "team.view").await?;
-    let rows: Vec<RoleRow> =
-        sqlx::query_as(role_select!("WHERE r.team_id = $1 ORDER BY r.position, r.created_at"))
-            .bind(id)
-            .fetch_all(&state.db)
-            .await?;
+    let rows: Vec<RoleRow> = sqlx::query_as(role_select!(
+        "WHERE r.team_id = $1 ORDER BY r.position, r.created_at"
+    ))
+    .bind(id)
+    .fetch_all(&state.db)
+    .await?;
     let (default_role_id,): (Option<Uuid>,) =
         sqlx::query_as("SELECT default_role_id FROM teams WHERE id = $1")
             .bind(id)
             .fetch_one(&state.db)
             .await?;
-    Ok(Json(TeamRoleList { roles: rows.into_iter().map(to_def).collect(), default_role_id }))
+    Ok(Json(TeamRoleList {
+        roles: rows.into_iter().map(to_def).collect(),
+        default_role_id,
+    }))
 }
 
 #[utoipa::path(post, path = "/api/v1/teams/{id}/roles", tag = "teams",
@@ -119,7 +157,9 @@ pub async fn create(
             .fetch_one(&state.db)
             .await?;
     if count >= MAX_CUSTOM_ROLES {
-        return Err(Error::bad_request(format!("A team can have at most {MAX_CUSTOM_ROLES} custom roles")));
+        return Err(Error::bad_request(format!(
+            "A team can have at most {MAX_CUSTOM_ROLES} custom roles"
+        )));
     }
     let mut perms = req.permissions.clone();
     if let (true, Some(src)) = (perms.is_empty(), req.copy_from) {
@@ -129,18 +169,23 @@ pub async fn create(
     let perms = authz::normalize_permissions(&perms)?;
     // A non-owner cannot hand out more than they hold themselves.
     if let Some(p) = perms.iter().find(|p| !me.has(p)) {
-        return Err(Error::bad_request(format!("You cannot grant `{p}`: you do not hold it")));
+        return Err(Error::bad_request(format!(
+            "You cannot grant `{p}`: you do not hold it"
+        )));
     }
     let base = slugify(&name);
     let mut slug = base.clone();
     for n in 2.. {
-        let (taken,): (bool,) =
-            sqlx::query_as("SELECT EXISTS (SELECT 1 FROM team_roles WHERE team_id = $1 AND slug = $2)")
-                .bind(id)
-                .bind(&slug)
-                .fetch_one(&state.db)
-                .await?;
-        if !taken { break; }
+        let (taken,): (bool,) = sqlx::query_as(
+            "SELECT EXISTS (SELECT 1 FROM team_roles WHERE team_id = $1 AND slug = $2)",
+        )
+        .bind(id)
+        .bind(&slug)
+        .fetch_one(&state.db)
+        .await?;
+        if !taken {
+            break;
+        }
         slug = format!("{base}-{n}");
     }
     let role_id = Uuid::new_v4();
@@ -172,18 +217,31 @@ pub async fn update(
     if cur.slug == "owner" {
         return Err(Error::bad_request("The owner role cannot be changed"));
     }
-    let name = match &req.name { Some(n) => validate_name(n)?, None => cur.name.clone() };
-    let description = match &req.description { Some(d) => validate_description(d)?, None => cur.description.clone() };
+    let name = match &req.name {
+        Some(n) => validate_name(n)?,
+        None => cur.name.clone(),
+    };
+    let description = match &req.description {
+        Some(d) => validate_description(d)?,
+        None => cur.description.clone(),
+    };
     let perms = match &req.permissions {
         Some(p) => {
             let p = authz::normalize_permissions(p)?;
             if let Some(x) = p.iter().find(|x| !me.has(x)) {
-                return Err(Error::bad_request(format!("You cannot grant `{x}`: you do not hold it")));
+                return Err(Error::bad_request(format!(
+                    "You cannot grant `{x}`: you do not hold it"
+                )));
             }
             // Never lock the team out of role administration: the editor
             // keeps `roles.manage` on their own role unless they are the owner.
-            if me.role.id == role_id && me.level != TeamRole::Owner && !p.iter().any(|x| x == "roles.manage") {
-                return Err(Error::bad_request("You cannot remove `roles.manage` from your own role"));
+            if me.role.id == role_id
+                && me.level != TeamRole::Owner
+                && !p.iter().any(|x| x == "roles.manage")
+            {
+                return Err(Error::bad_request(
+                    "You cannot remove `roles.manage` from your own role",
+                ));
             }
             p
         }
@@ -197,13 +255,23 @@ pub async fn update(
     .bind(id).bind(role_id).bind(&name).bind(&description).bind(&perms).bind(position)
     .execute(&state.db)
     .await?;
-    let added: Vec<&String> = perms.iter().filter(|p| !cur.permissions.contains(p)).collect();
-    let removed: Vec<&String> = cur.permissions.iter().filter(|p| !perms.contains(p)).collect();
-    audit::record(&state.db, audit::Entry {
-        details: serde_json::json!({ "role_id": role_id, "slug": cur.slug, "name": name,
+    let added: Vec<&String> = perms
+        .iter()
+        .filter(|p| !cur.permissions.contains(p))
+        .collect();
+    let removed: Vec<&String> = cur
+        .permissions
+        .iter()
+        .filter(|p| !perms.contains(p))
+        .collect();
+    audit::record(
+        &state.db,
+        audit::Entry {
+            details: serde_json::json!({ "role_id": role_id, "slug": cur.slug, "name": name,
             "added": added, "removed": removed }),
-        ..audit::Entry::new(id, &auth, "role.updated")
-    })
+            ..audit::Entry::new(id, &auth, "role.updated")
+        },
+    )
     .await;
     Ok(Json(load_role(&state, id, role_id).await?))
 }
@@ -236,7 +304,9 @@ pub async fn delete(
         None => authz::default_role_id(&state.db, id).await?,
     };
     if target == role_id {
-        return Err(Error::bad_request("Pick a different role to move members to"));
+        return Err(Error::bad_request(
+            "Pick a different role to move members to",
+        ));
     }
     load_role(&state, id, target).await?;
     let mut tx = state.db.begin().await?;
@@ -250,19 +320,25 @@ pub async fn delete(
         .await?
         .rows_affected();
     sqlx::query("UPDATE teams SET default_role_id = $3 WHERE id = $1 AND default_role_id = $2")
-        .bind(id).bind(role_id).bind(target)
+        .bind(id)
+        .bind(role_id)
+        .bind(target)
         .execute(&mut *tx)
         .await?;
     sqlx::query("DELETE FROM team_roles WHERE team_id = $1 AND id = $2")
-        .bind(id).bind(role_id)
+        .bind(id)
+        .bind(role_id)
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
-    audit::record(&state.db, audit::Entry {
-        details: serde_json::json!({ "role_id": role_id, "slug": cur.slug, "name": cur.name,
+    audit::record(
+        &state.db,
+        audit::Entry {
+            details: serde_json::json!({ "role_id": role_id, "slug": cur.slug, "name": cur.name,
             "moved_members": moved, "reassigned_to": target }),
-        ..audit::Entry::new(id, &auth, "role.deleted")
-    })
+            ..audit::Entry::new(id, &auth, "role.deleted")
+        },
+    )
     .await;
     Ok(NoContent)
 }
@@ -281,13 +357,17 @@ pub async fn set_default(
         return Err(Error::bad_request("The owner role cannot be the default"));
     }
     sqlx::query("UPDATE teams SET default_role_id = $2 WHERE id = $1")
-        .bind(id).bind(req.role_id)
+        .bind(id)
+        .bind(req.role_id)
         .execute(&state.db)
         .await?;
-    audit::record(&state.db, audit::Entry {
-        details: serde_json::json!({ "role_id": req.role_id, "slug": role.slug }),
-        ..audit::Entry::new(id, &auth, "role.default_changed")
-    })
+    audit::record(
+        &state.db,
+        audit::Entry {
+            details: serde_json::json!({ "role_id": req.role_id, "slug": role.slug }),
+            ..audit::Entry::new(id, &auth, "role.default_changed")
+        },
+    )
     .await;
     Ok(NoContent)
 }
@@ -308,7 +388,14 @@ pub async fn mappings(
     .fetch_all(&state.db)
     .await?;
     Ok(Json(RoleMappingList {
-        mappings: rows.into_iter().map(|(group_name, role_id, priority)| RoleMapping { group_name, role_id, priority }).collect(),
+        mappings: rows
+            .into_iter()
+            .map(|(group_name, role_id, priority)| RoleMapping {
+                group_name,
+                role_id,
+                priority,
+            })
+            .collect(),
     }))
 }
 
@@ -339,7 +426,10 @@ pub async fn set_mappings(
         }
     }
     let mut tx = state.db.begin().await?;
-    sqlx::query("DELETE FROM team_role_mappings WHERE team_id = $1").bind(id).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM team_role_mappings WHERE team_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
     for m in &req.mappings {
         sqlx::query(
             "INSERT INTO team_role_mappings (team_id, group_name, role_id, priority) VALUES ($1, $2, $3, $4)",
@@ -349,10 +439,13 @@ pub async fn set_mappings(
         .await?;
     }
     tx.commit().await?;
-    audit::record(&state.db, audit::Entry {
-        details: serde_json::json!({ "count": req.mappings.len() }),
-        ..audit::Entry::new(id, &auth, "role_mapping.updated")
-    })
+    audit::record(
+        &state.db,
+        audit::Entry {
+            details: serde_json::json!({ "count": req.mappings.len() }),
+            ..audit::Entry::new(id, &auth, "role_mapping.updated")
+        },
+    )
     .await;
     mappings(State(state), auth, Path(id)).await
 }

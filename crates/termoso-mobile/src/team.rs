@@ -476,7 +476,10 @@ impl AccountRuntime {
             .update_team_member(
                 parse_id(&team_id)?,
                 parse_id(&user_id)?,
-                &UpdateTeamMemberRequest { role: role.into(), role_id: None },
+                &UpdateTeamMemberRequest {
+                    role: role.into(),
+                    role_id: None,
+                },
             )
             .await?;
         Ok(())
