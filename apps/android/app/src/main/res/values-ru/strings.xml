@@ -1519,4 +1519,6 @@
     <string name="qr_scan_title">Сканируйте QR-код</string>
     <string name="qr_scan_hint">Наведите камеру на QR-код с ssh_config, user@host:port или ссылкой ssh://. Ничего не покидает устройство.</string>
     <string name="camera_permission_needed">Для сканирования нужен доступ к камере.</string>
+    <string name="confirm_you_are_human">Подтвердите, что вы человек</string>
+    <string name="captcha_sheet_hint">Пройдите проверку ниже, чтобы продолжить. Её показывает ваш сервер и Cloudflare.</string>
 </resources>

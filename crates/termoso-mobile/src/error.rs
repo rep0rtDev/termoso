@@ -194,6 +194,7 @@ fn stable_api_kind(code: &str) -> Option<&'static str> {
         codes::AI_QUOTA_EXCEEDED => Some(codes::AI_QUOTA_EXCEEDED),
         codes::AI_BUSY => Some(codes::AI_BUSY),
         codes::AI_UNAVAILABLE => Some(codes::AI_UNAVAILABLE),
+        codes::TURNSTILE_REQUIRED => Some(codes::TURNSTILE_REQUIRED),
         codes::UNAUTHORIZED | codes::TOKEN_EXPIRED => Some("unauthorized"),
         _ => None,
     }

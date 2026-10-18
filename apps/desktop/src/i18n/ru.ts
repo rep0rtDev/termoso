@@ -772,6 +772,7 @@ export const ru: Readonly<Record<string, string>> = {
   "Invite members": "Пригласить участников",
   "Invite team members": "Пригласить участников команды",
   "Invite token": "Токен приглашения",
+  "Confirm you are human": "Подтвердите, что вы человек",
   "Invite your teammates": "Пригласите коллег",
   Invited: "Приглашён",
   "Invited to {name}": "Приглашение в {name}",

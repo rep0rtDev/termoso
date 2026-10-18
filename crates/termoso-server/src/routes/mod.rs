@@ -5,6 +5,7 @@ pub mod admin;
 pub mod ai;
 pub mod auth;
 pub mod bridges;
+pub mod captcha;
 pub mod history;
 pub mod logs;
 pub mod mfa;
@@ -245,6 +246,7 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(server::healthz))
         .route("/readyz", get(server::readyz))
         .route("/.well-known/assetlinks.json", get(server::assetlinks))
+        .route("/captcha", get(captcha::page))
         .route("/sshid/{handle}", get(sshid::public_default))
         .route("/sshid/{handle}/{type}", get(sshid::public_typed))
         .nest(

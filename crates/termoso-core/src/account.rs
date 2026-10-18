@@ -124,6 +124,7 @@ impl LoginFlow {
         password: &str,
         device: DeviceInfo,
         sso_session: Option<String>,
+        turnstile_token: Option<String>,
     ) -> Result<(Self, LoginStep)> {
         let email = email.trim().to_lowercase();
         let (request, state) = opaque::client_login_start(password.as_bytes())?;
@@ -133,7 +134,7 @@ impl LoginFlow {
                 opaque_request: request,
                 device,
                 sso_session,
-                turnstile_token: None,
+                turnstile_token,
             })
             .await?;
         let out = finish_opaque(state, password, &email, &start.opaque_response)?;
@@ -391,6 +392,9 @@ pub struct RegisterInput {
     pub invite_token: Option<String>,
     /// Verified SSO session to bind.
     pub sso_session: Option<String>,
+    /// Cloudflare Turnstile token when the server demands one
+    /// (`turnstile_required`); native clients get it from `/captcha`.
+    pub turnstile_token: Option<String>,
 }
 
 /// Result of a successful registration.
@@ -423,7 +427,7 @@ pub async fn register(
         .register_start(&RegisterStartRequest {
             email: email.clone(),
             opaque_request: request,
-            turnstile_token: None,
+            turnstile_token: input.turnstile_token.clone(),
         })
         .await?;
     let out = opaque::client_registration_finish(

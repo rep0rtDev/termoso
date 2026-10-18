@@ -83,6 +83,12 @@ TERMOSO_SMTP__HOST=… PORT=… USERNAME=… PASSWORD=… SECURITY=starttls FROM
 TERMOSO_TURNSTILE__SITE_KEY=… TERMOSO_TURNSTILE__SECRET_KEY=…   # optional Cloudflare Turnstile captcha
 ```
 
+With Turnstile keys the server demands a captcha token for sign-up, account
+recovery and repeated failed logins from one address. The web cabinet renders
+the widget itself; the desktop and mobile apps load the server's `/captcha`
+page (the widget alone, nothing else) when the server asks — only the
+server's own hostname has to be allowed for the site key in Cloudflare.
+
 Without SMTP the server still runs, but e-mail verification, device approval
 by e-mail, e-mail MFA and team digests are off. Without `TERMOSO_S3__*` the
 session-log feature is absent from the clients.

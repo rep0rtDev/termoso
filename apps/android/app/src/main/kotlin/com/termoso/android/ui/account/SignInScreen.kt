@@ -133,6 +133,9 @@ fun SignInScreen(container: AppContainer, account: AccountManager, mode: AuthMod
             Spacer(Modifier.height(16.dp))
         }
     }
+    vm.captchaUrl?.let { url ->
+        CaptchaSheet(serverUrl = url, onToken = vm::solveCaptcha, onDismiss = vm::dismissCaptcha)
+    }
 }
 
 /** Opens [url] in a Custom Tab (falls back to the default browser); false when no browser exists. */

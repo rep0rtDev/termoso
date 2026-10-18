@@ -1491,4 +1491,6 @@
     <string name="qr_scan_title">Scan a QR code</string>
     <string name="qr_scan_hint">Point the camera at a QR code with an ssh_config, user@host:port or ssh:// link. Nothing leaves the device.</string>
     <string name="camera_permission_needed">Camera access is needed to scan a code.</string>
+    <string name="confirm_you_are_human">Confirm you are human</string>
+    <string name="captcha_sheet_hint">Pass the check below to continue. It is served by your server and Cloudflare.</string>
 </resources>

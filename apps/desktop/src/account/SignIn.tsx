@@ -16,6 +16,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
   Typography,
+  useColorScheme,
 } from "@mui/material";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import CloudOutlinedIcon from "@mui/icons-material/CloudOutlined";
@@ -28,7 +29,13 @@ import * as ipc from "@/ipc/commands";
 import { keys, type useAccount } from "@/ipc/hooks";
 import { createStore, useStore } from "@/lib/store";
 import { CLOUD_HOST, CLOUD_URL, normalizeServerUrl } from "@/lib/cloud";
-import { errorMessage, type LoginOutcome, type MfaMethod, type SsoProvider } from "@/ipc/types";
+import {
+  errorMessage,
+  isDesktopError,
+  type LoginOutcome,
+  type MfaMethod,
+  type SsoProvider,
+} from "@/ipc/types";
 import { cancelSso, clearSso, ssoStore, startSso } from "./sso";
 import { tr, trx, msg } from "@/i18n";
 
@@ -128,26 +135,38 @@ export function SignInForm({
     if (ssoState.phase !== "idle" && url !== null && ssoState.serverUrl !== url) void cancelSso();
   }, [ssoState, url]);
 
+  // The server may demand a Turnstile token (bots, repeated failures): the
+  // widget is then shown in a frame from the server and the attempt repeats.
+  const [captchaFor, setCaptchaFor] = useState<{ mode: Mode; url: string | null } | null>(null);
+  const captcha = captchaFor !== null && captchaFor.mode === mode && captchaFor.url === url;
+  const setCaptcha = (on: boolean) => setCaptchaFor(on ? { mode, url } : null);
+  const onAuthError = (e: unknown) => {
+    if (isDesktopError(e) && e.kind === "turnstile_required") {
+      setCaptcha(true);
+      return;
+    }
+    if (verified) clearSso();
+    snackbar.error(errorMessage(e));
+  };
   const login = useMutation({
-    mutationFn: () =>
+    mutationFn: (token?: string) =>
       ipc.accountLogin({
         serverUrl: url ?? "",
         email: (verified?.email ?? email).trim(),
         password,
         sso: verified !== null,
+        captcha: token ?? null,
       }),
     onSuccess: (o) => {
       setPassword("");
+      setCaptcha(false);
       if (verified) clearSso();
       onOutcome(o);
     },
-    onError: (e) => {
-      if (verified) clearSso();
-      snackbar.error(errorMessage(e));
-    },
+    onError: onAuthError,
   });
   const register = useMutation({
-    mutationFn: () =>
+    mutationFn: (token?: string) =>
       ipc.accountRegister({
         serverUrl: url ?? "",
         email: (verified?.email ?? email).trim(),
@@ -155,17 +174,16 @@ export function SignInForm({
         displayName: displayName.trim() || null,
         inviteToken: invite.trim() || null,
         sso: verified !== null,
+        captcha: token ?? null,
       }),
     onSuccess: (r) => {
       setPassword("");
+      setCaptcha(false);
       if (verified) clearSso();
       recoveryStore.set(r.recoveryPhrase);
       invalidateAll(qc);
     },
-    onError: (e) => {
-      if (verified) clearSso();
-      snackbar.error(errorMessage(e));
-    },
+    onError: onAuthError,
   });
   const ssoStart = useMutation({
     mutationFn: (provider: SsoProvider) =>
@@ -187,9 +205,10 @@ export function SignInForm({
     (mode === "login"
       ? password.length > 0
       : password.length >= 12 && (!needsInvite || invite.trim().length > 0));
-  const submit = () => (mode === "login" ? login.mutate() : register.mutate());
+  const submit = (token?: string) =>
+    mode === "login" ? login.mutate(token) : register.mutate(token);
   const onEnter = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && canSubmit && !busy) submit();
+    if (e.key === "Enter" && canSubmit && !busy && !captcha) submit();
   };
 
   const serverLine = info.isError
@@ -356,8 +375,24 @@ export function SignInForm({
             </Field>
           )}
 
+          {captcha && url && (
+            <Field label={tr("Confirm you are human")}>
+              <CaptchaFrame
+                serverUrl={url}
+                onToken={(token) => {
+                  setCaptcha(false);
+                  submit(token);
+                }}
+              />
+            </Field>
+          )}
           {
-            <Button variant="contained" size="large" disabled={!canSubmit || busy} onClick={submit}>
+            <Button
+              variant="contained"
+              size="large"
+              disabled={!canSubmit || busy || captcha}
+              onClick={() => submit()}
+            >
               {busy ? (
                 <CircularProgress size={18} color="inherit" />
               ) : mode === "login" ? (
@@ -677,4 +712,39 @@ export function usePendingLogin(status: ReturnType<typeof useAccount>) {
     else void qc.invalidateQueries({ queryKey: keys.account });
   };
   return { pending: pending && pending.step !== "done" ? pending : null, onOutcome };
+}
+
+/**
+ * The server's `/captcha` page (Cloudflare Turnstile) in a frame; the token
+ * arrives by `postMessage` from the server origin.
+ */
+function CaptchaFrame({
+  serverUrl,
+  onToken,
+}: {
+  serverUrl: string;
+  onToken: (token: string) => void;
+}) {
+  const { mode, systemMode } = useColorScheme();
+  const theme = (mode === "system" ? systemMode : mode) ?? "auto";
+  const origin = new URL(serverUrl).origin;
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== origin) return;
+      const data = e.data as { type?: unknown; token?: unknown } | null;
+      if (data?.type === "termoso:captcha" && typeof data.token === "string" && data.token) {
+        onToken(data.token);
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [origin, onToken]);
+  return (
+    <Box
+      component="iframe"
+      title="captcha"
+      src={`${origin}/captcha?theme=${theme}`}
+      sx={{ display: "block", width: "100%", height: 72, border: 0, borderRadius: 1 }}
+    />
+  );
 }

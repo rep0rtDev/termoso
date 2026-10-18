@@ -108,6 +108,7 @@ async fn register_login_resume_and_sign_out() {
         "definitely not it",
         common::device("bad", &s.store()),
         None,
+        None,
     )
     .await;
     assert!(
@@ -190,6 +191,7 @@ async fn login_with_totp_second_factor() {
         PASSWORD,
         common::device("phone", &store),
         None,
+        None,
     )
     .await
     .unwrap();
@@ -249,6 +251,7 @@ async fn new_device_needs_emailed_approval() {
         &email,
         PASSWORD,
         common::device("laptop", &store),
+        None,
         None,
     )
     .await
