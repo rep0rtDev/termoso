@@ -572,36 +572,42 @@ fn take_sso_session(
     server_url: &str,
     email: &str,
 ) -> Result<(Arc<ApiClient>, Option<Zeroizing<String>>)> {
-    // Borrowed, not taken: the caller drops the flow once the attempt is
-    // over, unless the server first wants a captcha and the retry needs it.
-    let flow = inner
-        .sso
-        .as_ref()
-        .ok_or_else(|| DesktopError::invalid("no single sign-on in progress"))?;
-    if flow.server_url != server_url {
-        return Err(DesktopError::invalid(
-            "single sign-on was started against a different server",
-        ));
-    }
-    let verified = match &flow.outcome {
-        Some(SsoOutcome::LoginRequired { email: e })
-        | Some(SsoOutcome::RegistrationRequired { email: e, .. }) => e,
-        _ => {
+    // Borrowed, not taken: a successful hand-over leaves the flow in place so
+    // the caller can repeat the very same request after a captcha; the caller
+    // drops it once the attempt settles. A rejected hand-over drops it here.
+    let Some(flow) = inner.sso.as_ref() else {
+        return Err(DesktopError::invalid("no single sign-on in progress"));
+    };
+    let handed = (|| {
+        if flow.server_url != server_url {
             return Err(DesktopError::invalid(
-                "single sign-on has not completed yet",
+                "single sign-on was started against a different server",
             ));
         }
-    };
-    if !verified.eq_ignore_ascii_case(email.trim()) {
-        return Err(DesktopError::invalid(
-            "email does not match the single sign-on identity",
-        ));
+        let verified = match &flow.outcome {
+            Some(SsoOutcome::LoginRequired { email: e })
+            | Some(SsoOutcome::RegistrationRequired { email: e, .. }) => e,
+            _ => {
+                return Err(DesktopError::invalid(
+                    "single sign-on has not completed yet",
+                ));
+            }
+        };
+        if !verified.eq_ignore_ascii_case(email.trim()) {
+            return Err(DesktopError::invalid(
+                "email does not match the single sign-on identity",
+            ));
+        }
+        let session = flow
+            .session
+            .clone()
+            .ok_or_else(|| DesktopError::invalid("single sign-on session is missing"))?;
+        Ok((flow.api.clone(), Some(session)))
+    })();
+    if handed.is_err() {
+        inner.sso = None;
     }
-    let session = flow
-        .session
-        .clone()
-        .ok_or_else(|| DesktopError::invalid("single sign-on session is missing"))?;
-    Ok((flow.api.clone(), Some(session)))
+    handed
 }
 
 async fn finish_step<R: Runtime>(
@@ -1270,7 +1276,10 @@ mod tests {
         let mut inner = sso_inner(verified("ann@example.com"), Some("sess"));
         let (_, session) = take_sso_session(&mut inner, SERVER, " Ann@Example.com ").unwrap();
         assert_eq!(session.as_deref().map(String::as_str), Some("sess"));
-        assert!(inner.sso.is_none());
+        // The flow stays for a captcha retry of the same request; the caller
+        // drops it once the attempt settles.
+        assert!(inner.sso.is_some());
+        inner.sso = None;
         assert!(take_sso_session(&mut inner, SERVER, "ann@example.com").is_err());
     }
 
