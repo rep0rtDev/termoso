@@ -710,15 +710,16 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           busy={panelOp.isPending}
           error={panelError}
           onClose={closePanel}
-          onGenerate={(form) =>
-            runPanel(async () => {
+          onGenerate={(form) => {
+            if (!requirePerm(form.vaultId, "keys.generate")) return;
+            return runPanel(async () => {
               const k = await ipc.keyGenerate(form);
               return {
                 msg: tr("Generated {label}", { label: k.label }),
                 next: { kind: "editKey", id: k.id },
               };
-            })
-          }
+            });
+          }}
         />
       )}
       {panel.kind === "editKey" && editing && (

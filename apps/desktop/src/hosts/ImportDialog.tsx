@@ -51,6 +51,7 @@ import {
 } from "@/ipc/types";
 import { vaultHint, vaultIcon } from "@/app/vault";
 import { tr, trn, msg } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 type Section = keyof ImportSelection;
 
@@ -266,6 +267,7 @@ function Body({
   const apply = async () => {
     if (step.kind !== "preview") return;
     const vault = (vaults.data ?? []).find((v) => v.id === target);
+    if (!requirePerm(target, "import.vault")) return;
     setApplying(true);
     try {
       const report = await ipc.importApply(target, step.preview.id, selection);
