@@ -39,10 +39,17 @@ const IMMUTABLE: HeaderValue = HeaderValue::from_static("public, max-age=3153600
 const REVALIDATE: HeaderValue = HeaderValue::from_static("no-cache");
 /// The cabinet is a same-origin SPA: scripts, styles, fonts and API calls all
 /// come from this server. `wasm-unsafe-eval` is needed to instantiate the
-/// crypto module; Emotion (MUI) injects styles at runtime.
+/// crypto module; Emotion (MUI) injects styles at runtime. With Turnstile
+/// configured the widget script and its challenge iframe come from Cloudflare.
 const CSP: HeaderValue = HeaderValue::from_static(
     "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; \
      img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; \
+     frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+);
+const CSP_TURNSTILE: HeaderValue = HeaderValue::from_static(
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com; \
+     style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; \
+     connect-src 'self'; worker-src 'self'; frame-src https://challenges.cloudflare.com; \
      object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
 );
 
@@ -248,14 +255,23 @@ pub fn router<S: Clone + Send + Sync + 'static>(
     dir: PathBuf,
     landing_on_root: bool,
     docs: bool,
+    turnstile: bool,
     mut seo: Seo,
 ) -> Router<S> {
     let index = std::fs::read_to_string(dir.join("index.html")).unwrap_or_default();
     seo.prerender(&index);
     let dir = Arc::new(dir);
     let seo = Arc::new(seo);
-    Router::new()
-        .fallback(move |req: Request| serve(dir.clone(), seo.clone(), landing_on_root, docs, req))
+    Router::new().fallback(move |req: Request| {
+        serve(
+            dir.clone(),
+            seo.clone(),
+            landing_on_root,
+            docs,
+            turnstile,
+            req,
+        )
+    })
 }
 
 /// Rewrites requests addressed to the dedicated landing or docs origins.
@@ -318,6 +334,7 @@ async fn serve(
     seo: Arc<Seo>,
     landing_on_root: bool,
     docs: bool,
+    turnstile: bool,
     req: Request,
 ) -> Response {
     if req.method() != Method::GET && req.method() != Method::HEAD {
@@ -373,7 +390,10 @@ async fn serve(
     };
     headers.insert(header::CACHE_CONTROL, cache);
     if html {
-        headers.insert(header::CONTENT_SECURITY_POLICY, CSP);
+        headers.insert(
+            header::CONTENT_SECURITY_POLICY,
+            if turnstile { CSP_TURNSTILE } else { CSP },
+        );
         headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
     }
     res
@@ -434,10 +454,34 @@ mod tests {
             *req.uri_mut() = rest.parse().unwrap();
             req.extensions_mut().insert(DocsHost);
         }
-        router::<()>(dist(), landing_on_root, docs, seo())
+        router::<()>(dist(), landing_on_root, docs, false, seo())
             .oneshot(req)
             .await
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn csp_opens_cloudflare_only_with_turnstile() {
+        let csp = |turnstile: bool| async move {
+            let req = Request::get("/login").body(Body::empty()).unwrap();
+            let res = router::<()>(dist(), false, false, turnstile, seo())
+                .oneshot(req)
+                .await
+                .unwrap();
+            res.headers()["content-security-policy"]
+                .to_str()
+                .unwrap()
+                .to_owned()
+        };
+        let plain = csp(false).await;
+        assert!(plain.contains("frame-src 'none'"));
+        assert!(!plain.contains("challenges.cloudflare.com"));
+        let with = csp(true).await;
+        assert!(
+            with.contains("script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com")
+        );
+        assert!(with.contains("frame-src https://challenges.cloudflare.com"));
+        assert!(with.contains("frame-ancestors 'none'"));
     }
 
     fn seo() -> Seo {
@@ -546,7 +590,7 @@ mod tests {
         let mut seo = seo();
         seo.origins.docs = None;
         let req = Request::get("/robots.txt").body(Body::empty()).unwrap();
-        let res = router::<()>(dist(), false, true, seo)
+        let res = router::<()>(dist(), false, true, false, seo)
             .oneshot(req)
             .await
             .unwrap();

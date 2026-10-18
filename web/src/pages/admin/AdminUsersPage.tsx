@@ -247,7 +247,7 @@ function UserDrawer({ id, onClose }: { id: string | null; onClose: () => void })
       {user.isError && <Alert severity="error">{errorMessage(user.error)}</Alert>}
       {u && (
         <Stack spacing={2.5}>
-          <UserCell userId={u.id} email={u.email} displayName={u.display_name} you={isMe} />
+          <UserCell userId={u.id} email={u.email} displayName={u.display_name} avatar={u.avatar} you={isMe} />
           <Stack spacing={0.5}>
             <Row label="Joined" value={formatDateTime(u.created_at)} />
             <Row label="Last seen" value={formatRelative(u.last_seen_at)} />
