@@ -404,6 +404,28 @@ impl Bridge {
             .map(|(id, h)| host_summary(v, id, &h)))
     }
 
+    /// Read-only view of the mirrored vaults (refreshed first if stale).
+    /// `vault` narrows the view to one vault by name or id.
+    pub async fn with_vaults<R>(
+        &self,
+        vault: Option<&str>,
+        f: impl FnOnce(&[&VaultState]) -> Result<R>,
+    ) -> Result<R> {
+        let mut inner = self.inner.lock().await;
+        self.refresh(&mut inner, false).await?;
+        let only = match vault {
+            Some(_) => Some(Self::resolve_vault(&inner, vault, None)?),
+            None => None,
+        };
+        let mut views: Vec<&VaultState> = inner
+            .vaults
+            .values()
+            .filter(|v| only.is_none_or(|id| id == v.id))
+            .collect();
+        views.sort_by(|a, b| a.name.cmp(&b.name));
+        f(&views)
+    }
+
     /// Hosts carrying an `external_id`, across all (or one) vault.
     pub async fn list_hosts(&self, vault: Option<&str>) -> Result<Vec<HostSummary>> {
         let mut inner = self.inner.lock().await;

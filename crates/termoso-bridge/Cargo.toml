@@ -18,8 +18,10 @@ name = "termoso-bridge"
 path = "src/main.rs"
 
 [dependencies]
+termoso-core = { workspace = true }
 termoso-crypto = { workspace = true }
 termoso-proto = { workspace = true }
+zeroize = { workspace = true }
 
 tokio = { workspace = true }
 axum = { workspace = true }

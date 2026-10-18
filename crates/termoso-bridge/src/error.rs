@@ -17,6 +17,9 @@ pub enum BridgeError {
     /// Caller did not present the local API key.
     #[error("missing or invalid API key")]
     Unauthorized,
+    /// The operation is switched off for this process (MCP permission flags).
+    #[error("{0}")]
+    Forbidden(String),
     /// Local request budget exhausted.
     #[error("too many requests; slow down")]
     RateLimited,
@@ -65,6 +68,7 @@ impl BridgeError {
             BridgeError::Invalid(_) | BridgeError::Json(_) => StatusCode::BAD_REQUEST,
             BridgeError::NotFound(_) => StatusCode::NOT_FOUND,
             BridgeError::Unauthorized => StatusCode::UNAUTHORIZED,
+            BridgeError::Forbidden(_) => StatusCode::FORBIDDEN,
             BridgeError::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             BridgeError::Pending(_) => StatusCode::CONFLICT,
             BridgeError::Conflict(_) => StatusCode::CONFLICT,
@@ -85,6 +89,7 @@ impl BridgeError {
             BridgeError::Invalid(_) | BridgeError::Json(_) => "invalid_request",
             BridgeError::NotFound(_) => "not_found",
             BridgeError::Unauthorized => "unauthorized",
+            BridgeError::Forbidden(_) => "forbidden",
             BridgeError::RateLimited => "rate_limited",
             BridgeError::Pending(_) => "vault_key_pending",
             BridgeError::Conflict(_) => "conflict",

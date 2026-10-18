@@ -24,6 +24,38 @@ docker run -d --name termoso-bridge --restart unless-stopped \
 
 With Docker Compose use the `bridge` profile: `docker compose -f deploy/docker-compose.yml --profile bridge up -d`.
 
+## MCP server for AI assistants
+
+`termoso-bridge mcp` serves the [Model Context Protocol](https://modelcontextprotocol.io)
+over stdio with the same credentials file. Read-only by default (`list_vaults`,
+`list_hosts`, `get_host`, `list_groups`, `sync`); add `--allow-write` for
+host/group changes and `--allow-exec` for `ssh_exec`, which runs one
+non-interactive command on a host with the identity stored in the vault.
+Passwords and keys are never returned to the assistant, host keys are checked
+against the pins synced in the vault, and revoking the bridge cuts the
+assistant off. Config for Claude Desktop / Cursor:
+
+```json
+{
+  "mcpServers": {
+    "termoso": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "/path/to/bridge.json:/etc/termoso/bridge.json:ro",
+        "ghcr.io/rep0rtdev/termoso-bridge",
+        "mcp"
+      ]
+    }
+  }
+}
+```
+
+Full tool list and flags: `docs/API_BRIDGE.md` in the repository.
+
 ## Security
 
 - Keep the port bound to localhost or set `TERMOSO_BRIDGE_API_KEY`; callers then send it as a bearer token.

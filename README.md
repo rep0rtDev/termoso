@@ -70,7 +70,7 @@ crates/
                         port forwarding, SSH agent, FIDO2 (CTAP2 over HID/NFC), account + sync client
   termoso-client        higher-level client modules shared by desktop and mobile (keychain, snippets, …)
   termoso-mobile        UniFFI façade over termoso-core for Android (JNI) and iOS (Swift)
-  termoso-bridge        API Bridge: headless client with a Termius-compatible REST API
+  termoso-bridge        API Bridge: headless client with a Termius-compatible REST API and an MCP server
   termoso-wasm          termoso-crypto compiled to WebAssembly for the web cabinet
 apps/
   desktop/              Tauri 2 app: Rust owns state, storage and sessions; React + MUI renders

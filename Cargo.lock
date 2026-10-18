@@ -8915,6 +8915,7 @@ dependencies = [
  "serde",
  "serde_json",
  "subtle",
+ "termoso-core",
  "termoso-crypto",
  "termoso-proto",
  "thiserror 2.0.20",
@@ -8924,6 +8925,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

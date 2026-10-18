@@ -187,6 +187,58 @@ Bodies up to 256 KiB; labels 200 characters; addresses 253; notes 4 KiB; 32
 tags per host; private keys 64 KiB. Requests that fail validation write
 nothing.
 
+## MCP server
+
+The same binary can serve the [Model Context Protocol](https://modelcontextprotocol.io)
+over stdio, so an AI assistant (Claude Desktop, Cursor, Zed, any MCP client)
+can look up your hosts and — only if you switch it on — change them or run
+commands on them. Nothing new is stored server-side: it is the same bridge
+credentials file, the same sealed vault keys and the same zero-knowledge sync.
+
+```
+termoso-bridge mcp [--credentials bridge.json] [--allow-write] [--allow-exec] [--strict-host-key]
+```
+
+Everything is read-only unless you pass a flag (or set the env equivalent
+`TERMOSO_BRIDGE_MCP_WRITE` / `TERMOSO_BRIDGE_MCP_EXEC` /
+`TERMOSO_BRIDGE_MCP_STRICT_HOST_KEY` to `true`); the client cannot ask for
+more permissions at runtime.
+
+| Tool | Needs | What it does |
+| --- | --- | --- |
+| `list_vaults` | — | vaults the bridge is sealed to, counts, key state |
+| `list_hosts` | — | all hosts (label, address, group, tags, port, username, `has_credentials`), optional `query` |
+| `get_host` | — | one host by id / `external_id` / label / address, with its resolved SSH target |
+| `list_groups` | — | groups with parent and host counts |
+| `sync` | — | pull the latest changes from the server now |
+| `upsert_host`, `delete_host`, `upsert_group`, `delete_group` | `--allow-write` | same payloads as the REST API, keyed by `external_id` |
+| `ssh_exec` | `--allow-exec` | run one non-interactive command on a host with the identity stored in the vault; returns exit code, stdout, stderr (64 KiB each), default budget 60 s, max 600 s |
+
+Secrets never cross the wire: passwords and private keys are used to
+authenticate and are not part of any tool result. `ssh_exec` has no PTY, so
+anything that prompts (`sudo` without `NOPASSWD`, interactive editors) fails
+instead of hanging; jump-host chains, proxies and FIDO2 keys are not supported
+by it yet. Host keys are checked against the `known_host` pins synced in the
+vault: a changed key is always rejected; an unknown host is accepted on first
+use unless `--strict-host-key` is set.
+
+Claude Desktop (`claude_desktop_config.json`) / Cursor (`.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "termoso": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-v", "/path/to/bridge.json:/etc/termoso/bridge.json:ro",
+               "ghcr.io/rep0rtdev/termoso-bridge", "mcp", "--allow-exec"]
+    }
+  }
+}
+```
+
+or, with a native build, `"command": "termoso-bridge", "args": ["mcp", "--credentials", "/path/to/bridge.json"]`.
+Revoking the bridge in the cabinet cuts the assistant off immediately.
+
 ## Threat model in one paragraph
 
 Whoever can reach the bridge's port with the API key can write to the assigned
