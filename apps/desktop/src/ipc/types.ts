@@ -1990,3 +1990,93 @@ export type EditEvent =
   | { type: "uploaded"; id: Uuid; bytes: number; at: string }
   | { type: "failed"; id: Uuid; message: string }
   | { type: "closed"; id: Uuid };
+
+// ── team roles, policies, webhooks (0.9.0) ──
+
+export interface RoleRef {
+  id: string;
+  slug: string;
+  name: string;
+}
+
+export interface PermissionInfo {
+  key: string;
+  group: string;
+  title: string;
+  description: string;
+  dangerous: boolean;
+  /** `server` or `client` (honoured by clients, not a security boundary). */
+  enforced_by: "server" | "client";
+}
+
+export interface TeamRoleDef {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  permissions: string[];
+  builtin: boolean;
+  position: number;
+  member_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamRoleList {
+  roles: TeamRoleDef[];
+  default_role_id: string | null;
+}
+
+export interface RoleMapping {
+  group_name: string;
+  role_id: string;
+  priority: number;
+}
+
+export type MfaPolicy = "off" | "any" | "passkey";
+
+export type LocalKeysPolicy = "allow" | "deny";
+
+export type UpdateTeamPolicies = Partial<Omit<TeamPolicies, "updated_at">>;
+
+export interface EffectivePolicies {
+  mfa: MfaPolicy;
+  mfa_team_id: string | null;
+  mfa_satisfied: boolean;
+  session_ttl_hours: number | null;
+  local_keys_denied_by: string[];
+  device_approval_by: string[];
+  sso_provider: string | null;
+}
+
+export interface TeamPoliciesResponse {
+  policies: TeamPolicies;
+  effective_for_me: EffectivePolicies;
+}
+
+export type WebhookKind = "generic" | "splunk_hec" | "elastic" | "datadog" | "syslog_tls";
+
+export interface Webhook {
+  id: string;
+  url: string;
+  kind: WebhookKind;
+  actions: string[] | null;
+  enabled: boolean;
+  created_at: string;
+  last_status: number | null;
+  last_error: string | null;
+  last_delivered_at: string | null;
+  failures: number;
+}
+
+export interface WebhookDelivery {
+  id: number;
+  event_id: number;
+  action: string;
+  attempt: number;
+  status: "pending" | "sending" | "ok" | "dead";
+  response_status: number | null;
+  response_body: string | null;
+  next_at: string;
+  delivered_at: string | null;
+}

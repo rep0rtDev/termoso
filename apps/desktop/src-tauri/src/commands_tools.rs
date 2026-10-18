@@ -2,6 +2,7 @@
 //! and account/sync. Thin adapters; the façades own validation and secrets.
 
 use std::collections::HashMap;
+use termoso_proto::team as proto;
 
 use serde::Deserialize;
 
@@ -1351,6 +1352,148 @@ pub async fn team_audit<R: Runtime>(
     filter: Option<team::AuditFilter>,
 ) -> Result<team::AuditPage> {
     team::audit(&app, team_id, filter.unwrap_or_default()).await
+}
+
+#[tauri::command]
+pub async fn team_permissions<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::PermissionCatalog> {
+    team::permissions(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_roles<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::TeamRoleList> {
+    team::roles(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_role_create<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    req: proto::CreateRoleRequest,
+) -> Result<proto::TeamRoleDef> {
+    team::role_create(&app, team_id, req).await
+}
+
+#[tauri::command]
+pub async fn team_role_update<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    role_id: Uuid,
+    req: proto::UpdateRoleRequest,
+) -> Result<proto::TeamRoleDef> {
+    team::role_update(&app, team_id, role_id, req).await
+}
+
+#[tauri::command]
+pub async fn team_role_delete<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    role_id: Uuid,
+    reassign_to: Option<Uuid>,
+) -> Result<()> {
+    team::role_delete(&app, team_id, role_id, reassign_to).await
+}
+
+#[tauri::command]
+pub async fn team_set_default_role<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    role_id: Uuid,
+) -> Result<()> {
+    team::set_default_role(&app, team_id, role_id).await
+}
+
+#[tauri::command]
+pub async fn team_role_mappings<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<Vec<proto::RoleMapping>> {
+    team::role_mappings(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_set_role_mappings<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    mappings: Vec<proto::RoleMapping>,
+) -> Result<Vec<proto::RoleMapping>> {
+    team::set_role_mappings(&app, team_id, mappings).await
+}
+
+#[tauri::command]
+pub async fn team_policies<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::TeamPoliciesResponse> {
+    team::policies(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_update_policies<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    patch: proto::UpdateTeamPoliciesRequest,
+) -> Result<proto::TeamPoliciesResponse> {
+    team::update_policies(&app, team_id, patch).await
+}
+
+#[tauri::command]
+pub async fn team_webhooks<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<Vec<proto::Webhook>> {
+    team::webhooks(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_webhook_create<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    req: proto::CreateWebhookRequest,
+) -> Result<proto::Webhook> {
+    team::webhook_create(&app, team_id, req).await
+}
+
+#[tauri::command]
+pub async fn team_webhook_update<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    hook_id: Uuid,
+    req: proto::UpdateWebhookRequest,
+) -> Result<proto::Webhook> {
+    team::webhook_update(&app, team_id, hook_id, req).await
+}
+
+#[tauri::command]
+pub async fn team_webhook_delete<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    hook_id: Uuid,
+) -> Result<()> {
+    team::webhook_delete(&app, team_id, hook_id).await
+}
+
+#[tauri::command]
+pub async fn team_webhook_test<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    hook_id: Uuid,
+) -> Result<Vec<proto::WebhookDelivery>> {
+    team::webhook_test(&app, team_id, hook_id).await
+}
+
+#[tauri::command]
+pub async fn team_webhook_deliveries<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    hook_id: Uuid,
+) -> Result<Vec<proto::WebhookDelivery>> {
+    team::webhook_deliveries(&app, team_id, hook_id).await
 }
 
 #[tauri::command]
