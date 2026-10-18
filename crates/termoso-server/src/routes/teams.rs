@@ -612,7 +612,7 @@ pub async fn update_member(
 /// Remove a member: drops their team membership and access to every team
 /// vault. An account the team created keeps existing as an individual one;
 /// returns whether that conversion happened.
-async fn remove(state: &AppState, team_id: Uuid, user_id: Uuid) -> ApiResult<bool> {
+pub(crate) async fn remove(state: &AppState, team_id: Uuid, user_id: Uuid) -> ApiResult<bool> {
     let mut tx = state.db.begin().await?;
     sqlx::query("DELETE FROM team_members WHERE team_id = $1 AND user_id = $2")
         .bind(team_id)

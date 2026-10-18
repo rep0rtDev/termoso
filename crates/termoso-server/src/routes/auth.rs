@@ -274,6 +274,20 @@ pub async fn register_finish(
 
     let record = opaque::Server::registration_finish(&req.opaque_upload)?;
     let user_id = Uuid::new_v4();
+    // A SCIM-provisioned account (no password yet) is completed in place when
+    // the IdP or an invitation vouches for the email, keeping its id.
+    let provisioned: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM users WHERE lower(email) = $1 AND opaque_record IS NULL
+           AND provisioned_at IS NOT NULL AND NOT disabled",
+    )
+    .bind(&email)
+    .fetch_optional(&state.db)
+    .await?;
+    let takeover = provisioned.is_some() && (sso_sess.is_some() || invite_matches);
+    let user_id = provisioned
+        .filter(|_| takeover)
+        .map(|p| p.0)
+        .unwrap_or(user_id);
     let is_admin = state.is_bootstrap_admin(&email);
 
     let mut tx = state.db.begin().await?;
@@ -281,13 +295,11 @@ pub async fn register_finish(
         .as_ref()
         .filter(|_| invite_matches)
         .map(|i| i.team_id);
-    let inserted = sqlx::query(
-        "INSERT INTO users (id, email, email_verified, display_name, opaque_record, public_key,
-            wrapped_private_key, recovery_wrapped_private_key, recovery_verifier_hash, is_admin,
-            managed_by_team_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-         ON CONFLICT DO NOTHING",
-    )
+    let inserted = sqlx::query(if takeover {
+        USERS_TAKEOVER_SQL
+    } else {
+        USERS_INSERT_SQL
+    })
     .bind(user_id)
     .bind(&email)
     .bind(email_verified)
@@ -1362,3 +1374,14 @@ const SSO_DONE_HTML: &str = r#"<!doctype html><html lang="en"><head><meta charse
 .card{background:#1A1E2B;border:1px solid #2D3345;border-radius:12px;padding:32px 40px;text-align:center;max-width:420px}
 h1{font-size:20px;margin:0 0 8px;color:#5FD0A4}p{margin:0;color:#8E93A8}</style></head>
 <body><div class="card"><h1>Signed in</h1><p>You can close this window and return to {name}.</p></div></body></html>"#;
+
+const USERS_INSERT_SQL: &str =
+    "INSERT INTO users (id, email, email_verified, display_name, opaque_record, public_key,
+            wrapped_private_key, recovery_wrapped_private_key, recovery_verifier_hash, is_admin,
+            managed_by_team_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT DO NOTHING";
+const USERS_TAKEOVER_SQL: &str = "UPDATE users SET email = $2, email_verified = $3, display_name = COALESCE($4, display_name),
+        opaque_record = $5, public_key = $6, wrapped_private_key = $7, recovery_wrapped_private_key = $8,
+        recovery_verifier_hash = $9, is_admin = $10, managed_by_team_id = COALESCE($11, managed_by_team_id)
+     WHERE id = $1 AND opaque_record IS NULL";

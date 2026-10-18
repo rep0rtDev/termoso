@@ -645,6 +645,18 @@ pub async fn apply_group_mappings(
     user_id: Uuid,
     groups: &[String],
 ) -> ApiResult<Vec<Uuid>> {
+    apply_group_mappings_scoped(db, user_id, groups, None, "idp").await
+}
+
+/// Same as [`apply_group_mappings`], optionally limited to one team and
+/// with a different `role_source` (`scim` for SCIM group sync).
+pub async fn apply_group_mappings_scoped(
+    db: &sqlx::PgPool,
+    user_id: Uuid,
+    groups: &[String],
+    only_team: Option<Uuid>,
+    new_source: &str,
+) -> ApiResult<Vec<Uuid>> {
     let lowered: Vec<String> = groups
         .iter()
         .map(|g| g.trim().to_lowercase())
@@ -665,27 +677,28 @@ pub async fn apply_group_mappings(
                 t.default_role_id,
                 (SELECT slug FROM team_roles WHERE id = m.role_id)
          FROM team_members m JOIN teams t ON t.id = m.team_id
-         WHERE m.user_id = $1 AND m.role <> 'owner'",
+         WHERE m.user_id = $1 AND m.role <> 'owner' AND ($3::uuid IS NULL OR m.team_id = $3)",
     )
     .bind(user_id)
     .bind(&lowered)
+    .bind(only_team)
     .fetch_all(db)
     .await?;
     let mut changed = Vec::new();
     for (team_id, source, current, mapped, default_role, _slug) in rows {
         let target = match (mapped, source.as_str()) {
             (Some(r), _) => r,
-            (None, "idp") => match default_role {
+            (None, "idp" | "scim") => match default_role {
                 Some(d) => d,
                 None => continue,
             },
             (None, _) => continue,
         };
-        if target == current && source == "idp" {
+        if target == current && source == new_source {
             continue;
         }
         let done = sqlx::query(
-            "UPDATE team_members SET role_id = $3, role_source = 'idp',
+            "UPDATE team_members SET role_id = $3, role_source = $4,
                  role = CASE WHEN (SELECT slug FROM team_roles WHERE id = $3) = 'admin' THEN 'admin' ELSE 'member' END
              WHERE team_id = $1 AND user_id = $2 AND role <> 'owner'
                AND EXISTS (SELECT 1 FROM team_roles r WHERE r.id = $3 AND r.team_id = $1 AND r.slug <> 'owner')",
@@ -693,6 +706,7 @@ pub async fn apply_group_mappings(
         .bind(team_id)
         .bind(user_id)
         .bind(target)
+        .bind(new_source)
         .execute(db)
         .await?
         .rows_affected();

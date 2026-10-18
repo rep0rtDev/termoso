@@ -894,3 +894,97 @@ schema! {
         pub deliveries: Vec<WebhookDelivery>,
     }
 }
+
+// ───────────────────────────── SCIM ─────────────────────────────
+
+schema! {
+    /// A SCIM bearer token of a team (`/teams/{id}/scim/tokens`); the secret
+    /// is shown once at creation.
+    pub struct ScimToken {
+        /// Id.
+        pub id: Uuid,
+        /// Label (e.g. "Okta").
+        pub name: String,
+        /// Created.
+        pub created_at: DateTime<Utc>,
+        /// Expiry, if any.
+        pub expires_at: Option<DateTime<Utc>>,
+        /// Last request with this token.
+        pub last_used_at: Option<DateTime<Utc>>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/scim/tokens`
+    pub struct ScimTokenList {
+        /// Active tokens (at most 3).
+        pub tokens: Vec<ScimToken>,
+        /// SCIM base URL to paste into the IdP.
+        pub base_url: String,
+    }
+}
+
+schema! {
+    /// `POST /teams/{id}/scim/tokens`
+    pub struct CreateScimTokenRequest {
+        /// Label.
+        pub name: String,
+        /// Days until expiry (omit = never).
+        #[serde(default)]
+        pub expires_in_days: Option<u32>,
+    }
+}
+
+schema! {
+    /// Response of token creation.
+    pub struct CreatedScimToken {
+        /// The token record.
+        pub token: ScimToken,
+        /// Bearer secret — shown once.
+        pub secret: String,
+        /// SCIM base URL.
+        pub base_url: String,
+    }
+}
+
+schema! {
+    /// A SCIM group as seen by the team (`GET /teams/{id}/scim/groups`).
+    pub struct ScimGroupInfo {
+        /// Id.
+        pub id: Uuid,
+        /// IdP display name (matches `team_role_mappings.group_name`).
+        pub display_name: String,
+        /// IdP id.
+        pub external_id: Option<String>,
+        /// Members.
+        pub member_count: i64,
+        /// Vault grants.
+        pub vaults: Vec<ScimGroupVault>,
+    }
+}
+
+schema! {
+    /// Vault granted to every member of a SCIM group.
+    pub struct ScimGroupVault {
+        /// Vault.
+        pub vault_id: Uuid,
+        /// `viewer` | `editor` | `manager`.
+        pub role: String,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/scim/groups`
+    pub struct ScimGroupList {
+        /// Groups.
+        pub groups: Vec<ScimGroupInfo>,
+    }
+}
+
+schema! {
+    /// `PUT /teams/{id}/scim/groups/{gid}/vaults`
+    pub struct SetScimGroupVaultsRequest {
+        /// Full replacement list.
+        pub vaults: Vec<ScimGroupVault>,
+    }
+}

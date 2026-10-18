@@ -11,6 +11,7 @@ pub mod logs;
 pub mod mfa;
 pub mod policies;
 pub mod roles;
+pub mod scim_admin;
 pub mod server;
 pub mod sshid;
 pub mod start_over;
@@ -199,6 +200,19 @@ pub fn router(state: AppState) -> Router {
             get(crate::webhooks::deliveries),
         )
         .route(
+            "/teams/{id}/scim/tokens",
+            get(scim_admin::list_tokens).post(scim_admin::create_token),
+        )
+        .route(
+            "/teams/{id}/scim/tokens/{tid}",
+            delete(scim_admin::revoke_token),
+        )
+        .route("/teams/{id}/scim/groups", get(scim_admin::list_groups))
+        .route(
+            "/teams/{id}/scim/groups/{gid}/vaults",
+            put(scim_admin::set_group_vaults),
+        )
+        .route(
             "/teams/{id}/policies",
             get(policies::get).put(policies::put),
         )
@@ -281,6 +295,7 @@ pub fn router(state: AppState) -> Router {
         .route("/readyz", get(server::readyz))
         .route("/.well-known/assetlinks.json", get(server::assetlinks))
         .route("/captcha", get(captcha::page))
+        .nest("/scim/v2", crate::scim::router())
         .route("/sshid/{handle}", get(sshid::public_default))
         .route("/sshid/{handle}/{type}", get(sshid::public_typed))
         .nest(

@@ -25,6 +25,7 @@ pub mod presence;
 pub mod ratelimit;
 pub mod routes;
 pub mod saml;
+pub mod scim;
 pub mod session;
 pub mod sso;
 pub mod state;

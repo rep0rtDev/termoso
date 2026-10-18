@@ -35,6 +35,7 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(termoso_server::digest::run(state.clone()));
     tokio::spawn(termoso_server::audit::run_retention(state.clone()));
     tokio::spawn(termoso_server::webhooks::run(state.clone()));
+    tokio::spawn(termoso_server::scim::run_retention(state.clone()));
     termoso_server::audit::enable_sink(state.cfg.audit_sink);
 
     let listener = tokio::net::TcpListener::bind(cfg.bind)
