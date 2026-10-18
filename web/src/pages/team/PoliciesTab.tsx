@@ -91,7 +91,6 @@ function PoliciesForm({
           </Button>
         )
       }
-      disablePadding
     >
       <SettingRow
         label="Two-factor authentication"
@@ -212,7 +211,7 @@ function PoliciesForm({
           />
         }
       />
-      <Box sx={{ px: 3, pb: 2 }}>
+      <Box sx={{ pt: 1.5 }}>
         <Typography variant="caption" color="text.secondary">
           Last changed {new Date(saved.updated_at).toLocaleString()}
         </Typography>

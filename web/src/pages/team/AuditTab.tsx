@@ -130,7 +130,7 @@ function AuditSection({ team }: { team: Team }) {
           e.preventDefault();
           setApplied(action.trim());
         }}
-        sx={{ p: 2, display: "flex", gap: 1 }}
+        sx={{ p: 2, display: "flex", gap: 1, alignItems: "center" }}
       >
         <TextField
           size="small"
@@ -140,7 +140,7 @@ function AuditSection({ team }: { team: Team }) {
           onChange={(e) => setAction(e.target.value)}
           sx={{ width: 280 }}
         />
-        <Button type="submit" variant="outlined">
+        <Button type="submit" variant="outlined" size="small" sx={{ flexShrink: 0 }}>
           Filter
         </Button>
       </Box>
