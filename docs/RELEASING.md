@@ -261,3 +261,12 @@ Clients of a fork trust the fork's key only.
   }
 }
 ```
+
+## PostgreSQL major upgrades
+
+`deploy/Dockerfile.backup` pins `postgresql-client-18` and the Compose stack
+runs `postgres:18`; `pg_dump`/`pg_restore` must be at least the server's
+major. When the stack moves to a new PostgreSQL major, bump both in the same
+release, note in the changelog that operators restore *old* dumps with the
+*new* image (allowed), and run `deploy/restore-test.sh` against a dump taken
+on the previous major before tagging.

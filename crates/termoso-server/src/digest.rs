@@ -80,14 +80,16 @@ pub async fn run(state: AppState) {
         return;
     };
     let web_url = state.cfg.web_url().to_string();
-    loop {
-        match send_due(&state.db, &mailer, &web_url, Utc::now()).await {
-            Ok(0) => {}
-            Ok(n) => tracing::info!(count = n, "sent team activity digests"),
-            Err(e) => tracing::warn!(error = %e, "team activity digests failed"),
+    crate::jobs::exclusive(state, "team-digest", TICK, move |s| {
+        let mailer = mailer.clone();
+        let web_url = web_url.clone();
+        async move {
+            send_due(&s.db, &mailer, &web_url, Utc::now())
+                .await
+                .map(|n| n as u64)
         }
-        tokio::time::sleep(TICK).await;
-    }
+    })
+    .await
 }
 
 type DueRow = (Uuid, Uuid, String, String, String, DateTime<Utc>);

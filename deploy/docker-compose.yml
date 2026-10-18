@@ -14,6 +14,7 @@
 #   rustfs    S3-compatible object storage (RustFS, Apache-2.0) for encrypted
 #             session logs; any S3 store can replace it.
 #   bridge    (profile `bridge`)  API Bridge with a Termius-compatible REST API.
+#   backup    (profile `backup`)  One-shot pg_dump + manifest / restore (docs → Backups).
 #   caddy     (profile `proxy`)   Reverse proxy with automatic TLS for api + rustfs.
 #
 # Published ports bind to 127.0.0.1 by default so nothing is reachable from the
@@ -146,6 +147,29 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  # Optional, one-shot: `docker compose --profile backup run --rm backup`
+  # Writes termoso-<utc>.dump + .manifest.json to ./backups (TERMOSO_BACKUP_DIR).
+  # Set TERMOSO_BACKUP_AGE_RECIPIENT in .env to get age-encrypted dumps.
+  # Restore: `docker compose --profile backup run --rm backup restore --from /backups/<file> --yes`
+  # with the api stopped. See docs/SELF_HOSTING.md → Backups.
+  backup:
+    profiles: ["backup"]
+    image: ghcr.io/termoso/termoso-backup:${TERMOSO_VERSION:-latest}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backup
+    env_file: ${TERMOSO_ENV_FILE:-.env}
+    environment:
+      TERMOSO_DATABASE_URL: postgres://termoso:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/termoso
+      TERMOSO_REDIS_URL: redis://redis:6379
+    volumes:
+      - ${TERMOSO_BACKUP_DIR:-./backups}:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
     security_opt:
       - no-new-privileges:true
 

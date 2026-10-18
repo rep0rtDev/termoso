@@ -1327,29 +1327,33 @@ pub async fn resync_user(
         .map_err(|e| anyhow::anyhow!("scim resync: {}", e.detail).into())
 }
 
-/// Nightly: hard-delete provisioned accounts deprovisioned > 30 days ago.
+/// Every 6 h on one replica: hard-delete provisioned accounts deprovisioned
+/// more than 30 days ago.
 pub async fn run_retention(state: AppState) {
-    loop {
-        let rows: Vec<(Uuid,)> = match sqlx::query_as(
-            "SELECT id FROM users WHERE managed_by_team_id IS NOT NULL AND disabled AND deprovisioned_at < now() - make_interval(days => $1) LIMIT 100",
-        )
-        .bind(REACTIVATION_DAYS as i32)
-        .fetch_all(&state.db)
-        .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::warn!(error = %e, "scim retention query failed");
-                Vec::new()
-            }
-        };
-        for (id,) in rows {
-            if let Err(e) = crate::users::delete(&state, id).await {
-                tracing::warn!(error = %e, user = %id, "scim retention delete failed");
-            }
+    crate::jobs::exclusive(
+        state,
+        "scim-retention",
+        std::time::Duration::from_secs(6 * 3600),
+        retention_pass,
+    )
+    .await
+}
+
+pub async fn retention_pass(state: AppState) -> anyhow::Result<u64> {
+    let rows: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM users WHERE managed_by_team_id IS NOT NULL AND disabled AND deprovisioned_at < now() - make_interval(days => $1) LIMIT 100",
+    )
+    .bind(REACTIVATION_DAYS as i32)
+    .fetch_all(&state.db)
+    .await?;
+    let mut n = 0;
+    for (id,) in rows {
+        match crate::users::delete(&state, id).await {
+            Ok(()) => n += 1,
+            Err(e) => tracing::warn!(error = %e, user = %id, "scim retention delete failed"),
         }
-        tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
     }
+    Ok(n)
 }
 
 #[cfg(test)]

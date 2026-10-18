@@ -295,12 +295,20 @@ The API keeps no local state. Run more replicas behind a proxy that
 load-balances them (drop the `ports:` mapping of `api` and let the proxy join
 the Compose network, or run replicas on several hosts) and they share
 sessions through PostgreSQL and realtime events through Redis pub/sub.
+Periodic jobs (digests, retention) take a PostgreSQL advisory lock so only
+one replica runs them; the webhook worker runs on every replica and claims
+rows with `SKIP LOCKED`. Health-check replicas on `/readyz`; on `SIGTERM` a
+replica answers 503 there for `TERMOSO_DRAIN_SECS` (default 3) before it
+stops accepting connections.
 
 PostgreSQL, Redis and RustFS are single instances in this stack;
 replace them with managed services by pointing `TERMOSO_DATABASE_URL`,
 `TERMOSO_REDIS_URL` and `TERMOSO_S3__*` elsewhere and removing the services
 you no longer need. Any S3-compatible store works, including AWS S3
-(`TERMOSO_S3__FORCE_PATH_STYLE=false`, no `ENDPOINT`).
+(`TERMOSO_S3__FORCE_PATH_STYLE=false`, no `ENDPOINT`). Redis Sentinel is
+supported through `redis+sentinel://s1:26379,s2:26379/mymaster`; PgBouncer
+must run in `session` mode. Topology, failure modes and the restore runbook:
+[HA.md](HA.md).
 
 ## Podman Quadlet
 
@@ -404,43 +412,56 @@ Back up, in this order of importance:
 1. **PostgreSQL** — the deployment.
 2. **`TERMOSO_MASTER_KEY`** (in `.env`) — without it the database is only
    partially usable.
-3. **RustFS data** — session logs, if you care about them.
+3. **RustFS data** — session logs, if you care about them (or turn on bucket
+   versioning instead).
 4. The `.env` file itself.
 
 Redis holds nothing worth keeping.
 
+The `backup` profile ships `termoso-server backup|restore|backup-check` next
+to `pg_dump`/`pg_restore` 18 and `age`:
+
 ```bash
-# Compose
-docker compose -f deploy/docker-compose.yml exec -T postgres \
-  pg_dump -U termoso -Fc termoso > termoso-$(date +%F).dump
+# Compose — nightly from cron or a systemd timer
+docker compose -f deploy/docker-compose.yml --profile backup run --rm backup
+#   → ./backups/termoso-20261018T020000Z.dump + .manifest.json
+# verify a file against this server (checksum, schema, master key), no DB access
+docker compose -f deploy/docker-compose.yml --profile backup run --rm backup \
+  backup-check --from /backups/termoso-20261018T020000Z.dump
+
+# Quadlet / bare metal: same binary, pg_dump of the server's major on PATH
+TERMOSO_DATABASE_URL=… TERMOSO_MASTER_KEY=… termoso-server backup --out /var/backups/termoso
+
+# session logs (skip when the bucket is versioned)
 docker run --rm -v termoso_rustfs:/data:ro -v "$PWD":/backup alpine \
   tar czf /backup/termoso-logs-$(date +%F).tgz -C /data .
-
-# Quadlet
-podman exec termoso-postgres pg_dump -U termoso -Fc termoso > termoso-$(date +%F).dump
-podman volume export termoso-rustfs > termoso-logs-$(date +%F).tar
 ```
 
-`pg_dump` runs online; taking it nightly from a timer is enough for most
-teams. Keep dumps encrypted at rest — they contain e-mail addresses, team
-structure and ciphertext that a future key compromise could unlock.
+Set `TERMOSO_BACKUP_AGE_RECIPIENT=age1…` in `.env` (`age-keygen` makes the
+pair) to get `age`-encrypted dumps; keep the identity file with the master
+key, not with the dumps. Dumps contain e-mail addresses, team structure and
+ciphertext that a future key compromise could unlock.
 
-Restore onto an empty stack (stop the API first so it does not race the
-restore with migrations):
+The manifest next to each dump records the server version, schema version,
+master-key fingerprint, row counts and SHA-256. `restore` refuses a dump
+from a newer schema or a different master key, runs `pg_restore --clean`,
+applies newer migrations and compares row counts:
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d postgres --wait
-docker compose -f deploy/docker-compose.yml exec -T postgres \
-  pg_restore -U termoso -d termoso --clean --if-exists < termoso-YYYY-MM-DD.dump
+docker compose -f deploy/docker-compose.yml stop api
+docker compose -f deploy/docker-compose.yml --profile backup run --rm backup \
+  restore --from /backups/termoso-YYYYMMDDTHHMMSSZ.dump --yes   # [--age-identity /backups/key.txt]
 docker compose -f deploy/docker-compose.yml up -d --wait
 ```
 
-The API applies any migrations newer than the dump on start, so restoring an
-older dump into a newer version works; the reverse does not.
+Restoring an older dump into a newer version works; the reverse does not
+(`restore` tells you which image to install first). Rehearse with
+`deploy/restore-test.sh <dump>` — it restores into a throwaway stack and
+checks the API comes up.
 
 ## Monitoring
 
-* `GET /healthz` — process is up. `GET /readyz` — PostgreSQL and Redis
+* `GET /healthz` — process is up. `GET /readyz` — JSON with `pg`, `redis`, `s3`, `draining`; 503 while any is false. PostgreSQL and Redis
   answer. Both are unauthenticated and cheap.
 * `TERMOSO_METRICS__ENABLED=true` exposes Prometheus metrics on a **separate**
   listener (`TERMOSO_METRICS__BIND`, default `127.0.0.1:9090`) that is never

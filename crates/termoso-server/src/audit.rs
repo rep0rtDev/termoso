@@ -502,14 +502,13 @@ pub async fn export(
 /// Retention: every 6 hours delete events older than each team's
 /// `audit_retention_days`, 10k rows per statement.
 pub async fn run_retention(state: AppState) {
-    loop {
-        match retention_pass(&state.db).await {
-            Ok(0) => {}
-            Ok(n) => tracing::info!(deleted = n, "audit retention"),
-            Err(e) => tracing::warn!(error = %e, "audit retention failed"),
-        }
-        tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
-    }
+    crate::jobs::exclusive(
+        state,
+        "audit-retention",
+        std::time::Duration::from_secs(6 * 3600),
+        |s| async move { retention_pass(&s.db).await },
+    )
+    .await
 }
 
 pub async fn retention_pass(db: &PgPool) -> anyhow::Result<u64> {
