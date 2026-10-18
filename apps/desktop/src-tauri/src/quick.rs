@@ -89,10 +89,12 @@ pub fn install_jump_list() {
     use windows::Win32::System::Com::{
         CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
     };
-    use windows::Win32::UI::Shell::PropertiesSystem::{IPropertyStore, PROPERTYKEY};
+    use windows::Win32::Foundation::PROPERTYKEY;
+    use windows::Win32::UI::Shell::Common::{IObjectArray, IObjectCollection};
+    use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
     use windows::Win32::UI::Shell::{
-        DestinationList, EnumerableObjectCollection, ICustomDestinationList, IObjectArray,
-        IObjectCollection, IShellLinkW, ShellLink,
+        DestinationList, EnumerableObjectCollection, ICustomDestinationList, IShellLinkW,
+        ShellLink,
     };
     use windows::core::GUID;
     use windows::core::{HSTRING, Interface, PCWSTR};
