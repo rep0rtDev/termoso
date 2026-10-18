@@ -586,7 +586,7 @@ export const ru: Readonly<Record<string, string>> = {
   "secret = API key": "секрет = API-ключ",
   "secret = HEC token": "секрет = HEC-токен",
   sensitive: "чувствительное",
-  "server default": "по умолчанию сервера",
+  "server default": "по умолчанию",
   source: "источник",
   "syslog+tls://host:6514; no secret": "syslog+tls://host:6514; без секрета",
   system: "системная",

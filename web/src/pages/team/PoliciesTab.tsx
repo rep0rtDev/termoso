@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { tr, trx } from "@/i18n";
+import { tr } from "@/i18n";
+import { formatDateTime } from "@/components/format";
 import {
   Alert,
   Box,
@@ -230,7 +231,7 @@ function PoliciesForm({
       />
       <Box sx={{ pt: 1.5 }}>
         <Typography variant="caption" color="text.secondary">
-          {trx("Last changed {v1}", { v1: new Date(saved.updated_at).toLocaleString() })}
+          {tr("Last changed {v1}", { v1: formatDateTime(saved.updated_at) })}
         </Typography>
       </Box>
     </Section>

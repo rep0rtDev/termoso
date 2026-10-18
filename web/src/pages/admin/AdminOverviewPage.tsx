@@ -1,5 +1,6 @@
 import { Alert, Box, Card, CardContent, Grid, Stack, Typography } from "@mui/material";
 import { tr } from "@/i18n";
+import { formatNumber } from "@/components/format";
 import DevicesOutlinedIcon from "@mui/icons-material/DevicesOutlined";
 import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
@@ -27,7 +28,7 @@ function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: s
             <IconTile>{icon}</IconTile>
             <Stack sx={{ minWidth: 0 }}>
               <Typography variant="h3" component="div" sx={{ lineHeight: 1.2 }}>
-                {typeof value === "number" ? value.toLocaleString() : value}
+                {typeof value === "number" ? formatNumber(value) : value}
               </Typography>
               <Typography variant="body2" color="text.secondary" noWrap>
                 {label}

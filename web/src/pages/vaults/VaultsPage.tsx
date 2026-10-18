@@ -41,11 +41,15 @@ export function VaultsPage() {
       <Card sx={{ height: "100%" }}>
         <CardActionArea onClick={() => void navigate(`/vaults/${v.id}`)} sx={{ height: "100%" }}>
           <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-            <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+            <Stack
+              direction="row"
+              spacing={1.5}
+              sx={{ alignItems: "center", flexWrap: "wrap", rowGap: 1 }}
+            >
               <IconTile>
                 {v.kind === "personal" ? <PersonOutlineRoundedIcon /> : <GroupsOutlinedIcon />}
               </IconTile>
-              <Stack sx={{ minWidth: 0, flex: 1 }}>
+              <Stack sx={{ minWidth: 140, flex: 1 }}>
                 <Typography variant="body1" sx={{ fontWeight: 500 }} noWrap>
                   {v.name}
                 </Typography>
@@ -60,7 +64,11 @@ export function VaultsPage() {
                   })}
                 </Typography>
               </Stack>
-              <Stack direction="row" spacing={0.5} sx={{ alignItems: "center", flexShrink: 0 }}>
+              <Stack
+                direction="row"
+                spacing={0.5}
+                sx={{ alignItems: "center", flexShrink: 0, ml: "auto" }}
+              >
                 {v.is_default && <Chip size="small" variant="outlined" label={tr("Default")} />}
                 {!v.sealed_key && <Chip size="small" color="warning" label={tr("Key pending")} />}
                 <RoleChip role={v.my_role} />
