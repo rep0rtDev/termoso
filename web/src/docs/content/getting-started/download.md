@@ -5,6 +5,34 @@ description: Native builds for every platform, published with each release on Gi
 
 Every release on [GitHub](https://github.com/rep0rtDev/termoso/releases/latest) ships the same version for all platforms, together with `SHA256SUMS.txt` and signatures for the desktop updater.
 
+## Package managers
+
+Stable releases are also published to package repositories, so you get updates
+with the rest of your system:
+
+```sh
+# Debian / Ubuntu
+sudo install -d -m 0755 /usr/share/keyrings
+curl -fsSL https://rep0rtdev.github.io/termoso-repo/termoso.gpg | sudo tee /usr/share/keyrings/termoso.gpg > /dev/null
+curl -fsSL https://rep0rtdev.github.io/termoso-repo/termoso.list | sudo tee /etc/apt/sources.list.d/termoso.list
+sudo apt update && sudo apt install termoso
+
+# Fedora / RHEL / openSUSE
+sudo curl -fsSL -o /etc/yum.repos.d/termoso.repo https://rep0rtdev.github.io/termoso-repo/termoso.repo
+sudo dnf install termoso
+
+# macOS
+brew install --cask rep0rtDev/termoso/termoso
+
+# Windows
+winget install Termoso.Termoso
+```
+
+The apt and dnf repositories are signed; the key fingerprint is shown at
+[rep0rtdev.github.io/termoso-repo](https://rep0rtdev.github.io/termoso-repo/).
+Packages installed this way still use the built-in updater on Windows and
+macOS; on Linux the repository is the update channel.
+
 ## Desktop
 
 | Platform               | Files                                              | Notes                                                                                                        |

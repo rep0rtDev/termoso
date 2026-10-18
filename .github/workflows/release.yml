@@ -488,3 +488,82 @@ jobs:
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/${{ steps.rel.outputs.id }}" \
             -F draft=false -f make_latest=$latest > /dev/null
           echo "published https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME"
+
+  # Package channels: the apt/dnf repositories served from rep0rtDev/termoso-repo
+  # (GitHub Pages), the Homebrew tap rep0rtDev/homebrew-termoso and the winget
+  # manifest in microsoft/winget-pkgs. Stable tags only; pre-releases stay on
+  # the releases page. Pushes to the two side repositories use write-only
+  # deploy keys, so this job never needs a token for the main repository.
+  distribute:
+    name: apt/dnf repo, Homebrew tap, winget
+    if: github.ref_type == 'tag' && !contains(github.ref_name, '-')
+    needs: [version, publish]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/repo
+          path: src
+      - name: Download the published bundles
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" -D assets \
+            -p '*.deb' -p '*.rpm' -p 'SHA256SUMS.txt'
+          ls -l assets
+      - name: Install repository tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends createrepo-c rpm apt-utils
+      - name: Import the repository signing key
+        run: |
+          printf '%s\n' "${{ secrets.TERMOSO_REPO_GPG_KEY }}" | gpg --batch --quiet --import
+          gpg --batch --list-secret-keys --with-colons | awk -F: '$1=="fpr"{print $10; exit}' > keyid
+          test -s keyid
+      - name: Check out termoso-repo
+        uses: actions/checkout@v7
+        with:
+          repository: rep0rtDev/termoso-repo
+          ssh-key: ${{ secrets.TERMOSO_REPO_DEPLOY_KEY }}
+          path: repo
+      - name: Rebuild the apt + dnf repositories
+        run: |
+          src/scripts/repo/build.sh assets repo "$VERSION" "$(cat keyid)"
+          cd repo
+          git config user.name "Termoso release"
+          git config user.email "packages@termoso.dev"
+          git add -A
+          git commit -q -m "Termoso $VERSION"
+          git push -q
+      - name: Check out the Homebrew tap
+        uses: actions/checkout@v7
+        with:
+          repository: rep0rtDev/homebrew-termoso
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          path: tap
+      - name: Update the cask
+        run: |
+          mkdir -p tap/Casks
+          src/scripts/repo/cask.sh assets/SHA256SUMS.txt "$VERSION" > tap/Casks/termoso.rb
+          cd tap
+          git config user.name "Termoso release"
+          git config user.email "packages@termoso.dev"
+          git add -A
+          git commit -q -m "termoso $VERSION" || echo "cask unchanged"
+          git push -q
+      # Opens the version-bump PR in microsoft/winget-pkgs from a fork owned by
+      # the token's account (WINGET_TOKEN needs public_repo). The first
+      # submission of a new package is manual (`komac new`), so this only runs
+      # once the package exists upstream. Failures here must not fail the release.
+      - name: Submit the winget update
+        if: env.WINGET_TOKEN != ''
+        continue-on-error: true
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          curl -fsSL -o komac.tgz https://github.com/russellbanks/Komac/releases/download/v2.17.1/komac-2.17.1-x86_64-unknown-linux-gnu.tar.gz
+          tar xzf komac.tgz
+          ./komac update Termoso.Termoso --version "$VERSION" --submit --token "$WINGET_TOKEN" \
+            --urls "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/Termoso_${VERSION}_x64_en-US.msi"

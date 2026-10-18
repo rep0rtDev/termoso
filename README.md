@@ -411,7 +411,10 @@ Every `v*` tag triggers `.github/workflows/release.yml`: Linux, Windows and
 macOS bundles (minisign-signed, with `latest.json` for the built-in updater),
 signed Android APKs per ABI, the unsigned iOS `.ipa` with its AltStore source,
 `SHA256SUMS.txt`, and the `ghcr.io/rep0rtdev/termoso-server:<version>` and
-`termoso-bridge:<version>` images. The version must match in the workspace
+`termoso-bridge:<version>` images; stable releases are then pushed to the
+apt/dnf repositories (`rep0rtdev.github.io/termoso-repo`), the Homebrew tap
+(`brew install --cask rep0rtDev/termoso/termoso`) and winget (`Termoso.Termoso`).
+The version must match in the workspace
 `Cargo.toml`, `apps/desktop/package.json` and `apps/ios/project.yml`. Process,
 secrets and the updater behaviour: [docs/RELEASING.md](docs/RELEASING.md);
 building the same artifacts on your own machine, with your own signing keys:
