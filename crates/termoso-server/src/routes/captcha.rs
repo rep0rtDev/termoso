@@ -106,7 +106,7 @@ pub fn render(site_key: &str, theme: &str, nonce: &str) -> String {
 /// Origins allowed to frame the page: the server itself and the Tauri
 /// desktop app (its webview origin differs per platform).
 const FRAME_ANCESTORS: &str =
-    "'self' tauri://localhost http://tauri.localhost https://tauri.localhost http://localhost:1420";
+    "'self' tauri://localhost http://tauri.localhost https://tauri.localhost http://localhost:5174";
 
 pub async fn page(State(state): State<AppState>, Query(q): Query<Params>) -> Response {
     let Some(cfg) = &state.cfg.turnstile else {
