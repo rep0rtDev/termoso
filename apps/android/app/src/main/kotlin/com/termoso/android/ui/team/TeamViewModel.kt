@@ -11,6 +11,7 @@ import com.termoso.core.InviteCard
 import com.termoso.core.InviteSent
 import com.termoso.core.PendingKeyCard
 import com.termoso.core.TeamCard
+import com.termoso.core.MobileException
 import com.termoso.core.TeamMemberCard
 import com.termoso.core.TeamRole
 import com.termoso.core.VaultAccess
@@ -23,6 +24,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 val TeamRole.isAdmin: Boolean get() = this == TeamRole.ADMIN || this == TeamRole.OWNER
+
+/** Team policy `mfa` blocks the request until the account enrols a second factor. */
+fun Throwable.isMfaRequired(): Boolean = this is MobileException.Other && kind == "mfa_required"
 
 /** Holds [permission] in this team; owners carry `*`. 0.8 servers send no list — fall back to the coarse role. */
 fun TeamCard.can(permission: String): Boolean =
@@ -95,6 +99,8 @@ data class TeamUiState(
     val pendingKeys: List<PendingKeyCard> = emptyList(),
     val vaults: List<VaultInfo> = emptyList(),
     val error: String? = null,
+    /** The server refused team data until this account turns on two-factor authentication (team policy). */
+    val mfaRequired: Boolean = false,
 ) {
     val me: TeamMemberCard? get() = members.firstOrNull { it.me }
     val isAdmin: Boolean get() = team?.canManageMembers == true
@@ -126,7 +132,7 @@ class TeamViewModel(
         viewModelScope.launch {
             val team = runCatching { repo.read { teams().firstOrNull { it.id == teamId } } }
                 .getOrElse { e ->
-                    _state.update { it.copy(loading = false, error = e.userMessage()) }
+                    _state.update { it.copy(loading = false, mfaRequired = e.isMfaRequired(), error = e.userMessage().takeUnless { _ -> e.isMfaRequired() }) }
                     return@launch
                 }
             if (team == null) {
@@ -147,7 +153,7 @@ class TeamViewModel(
                     it.copy(loading = false, team = team, members = members, invites = invites, pendingKeys = pending, error = null)
                 }
             }.onFailure { e ->
-                _state.update { it.copy(loading = false, team = team, error = e.userMessage()) }
+                _state.update { it.copy(loading = false, team = team, mfaRequired = e.isMfaRequired(), error = e.userMessage().takeUnless { _ -> e.isMfaRequired() }) }
             }
         }
     }

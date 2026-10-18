@@ -906,6 +906,8 @@
     <string name="you_have_not_been_given_access_to_any">You have not been given access to any vault of this team.</string>
     <string name="terminal_sharing">Terminal sharing</string>
     <string name="members_may_share_a_live_terminal_with_each">Members may share a live terminal with each other (end-to-end encrypted)</string>
+    <string name="team_requires_two_factor">This team requires two-factor authentication. Turn it on in your account to see team data.</string>
+    <string name="set_up_two_factor">Set up two-factor</string>
     <string name="require_two_factor_authentication">Require two-factor authentication</string>
     <string name="members_without_2fa_cannot_open_team_vaults">Members without 2FA cannot open team vaults</string>
     <string name="show_who_is_connected">Show who is connected</string>

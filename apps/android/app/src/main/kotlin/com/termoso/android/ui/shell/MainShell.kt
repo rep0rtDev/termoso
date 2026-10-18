@@ -483,6 +483,7 @@ fun MainShell(
                     onBack = { nav.popBackStack() },
                     onOpenVault = { nav.navigate(Routes.teamVault(it)) },
                     onActivity = { nav.navigate(Routes.teamActivity(id)) },
+                    onOpenAccount = { nav.navigate(Routes.ACCOUNT) },
                 )
             }
             composable(Routes.TEAM_ACTIVITY, arguments = listOf(idArg)) { entry ->

@@ -4,6 +4,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,6 +34,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -88,6 +90,7 @@ fun TeamScreen(
     onBack: () -> Unit,
     onOpenVault: (String) -> Unit,
     onActivity: () -> Unit,
+    onOpenAccount: () -> Unit = {},
 ) {
     val vm: TeamViewModel = viewModel(key = "team-$teamId") { TeamViewModel(shell.repo, account, teamId) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -148,6 +151,15 @@ fun TeamScreen(
                 .padding(horizontal = 16.dp),
         ) {
             Spacer(Modifier.height(8.dp))
+            if (state.mfaRequired) {
+                SectionCard {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(stringResource(R.string.team_requires_two_factor), style = MaterialTheme.typography.bodyMedium)
+                        Button(onClick = onOpenAccount) { Text(stringResource(R.string.set_up_two_factor)) }
+                    }
+                }
+                if (team == null) return@SubScreen
+            }
             if (team == null) {
                 Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                     if (state.loading) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)

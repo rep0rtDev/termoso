@@ -911,6 +911,8 @@
     <string name="you_have_not_been_given_access_to_any">Вам не выдан доступ ни к одному хранилищу этой команды.</string>
     <string name="terminal_sharing">Общий доступ к терминалу</string>
     <string name="members_may_share_a_live_terminal_with_each">Участники могут делиться друг с другом терминалом в реальном времени (сквозное шифрование)</string>
+    <string name="team_requires_two_factor">Эта команда требует двухфакторную аутентификацию. Включите её в аккаунте, чтобы видеть данные команды.</string>
+    <string name="set_up_two_factor">Настроить 2FA</string>
     <string name="require_two_factor_authentication">Требовать двухфакторную аутентификацию</string>
     <string name="members_without_2fa_cannot_open_team_vaults">Участники без 2FA не могут открывать командные хранилища</string>
     <string name="show_who_is_connected">Показывать, кто подключён</string>
