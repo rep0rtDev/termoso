@@ -173,6 +173,16 @@ pub async fn push(
         };
         access.insert(vid, a);
     }
+    // Entity-level rules (team vaults only): below `edit` → no writes.
+    let mut acl: HashMap<Uuid, HashMap<Uuid, String>> = HashMap::new();
+    for (vid, a) in &access {
+        if a.as_ref().is_some_and(|a| a.team_id.is_some()) {
+            acl.insert(
+                *vid,
+                crate::acl::direct_modes(&state.db, *vid, auth.user_id()).await?,
+            );
+        }
+    }
 
     let device_id = auth.device_id();
     let mut results = Vec::with_capacity(req.changes.len() + req.deletes.len());
@@ -196,6 +206,14 @@ pub async fn push(
         }
         if c.key_version != a.key_version {
             results.push(err(c.id, "stale_key_version"));
+            continue;
+        }
+        if acl
+            .get(&c.vault_id)
+            .and_then(|m| m.get(&c.id))
+            .is_some_and(|m| crate::acl::blocks_write(m))
+        {
+            results.push(err(c.id, "forbidden"));
             continue;
         }
         let existing = fetch_entity(&mut tx, c.id).await?;
@@ -286,6 +304,18 @@ pub async fn push(
             results.push(err(d.id, "forbidden"));
             continue;
         };
+        if a.team_id.is_some() && !acl.contains_key(&e.vault_id) {
+            let m = crate::acl::direct_modes(&state.db, e.vault_id, auth.user_id()).await?;
+            acl.insert(e.vault_id, m);
+        }
+        if acl
+            .get(&e.vault_id)
+            .and_then(|m| m.get(&d.id))
+            .is_some_and(|m| crate::acl::blocks_write(m))
+        {
+            results.push(err(d.id, "forbidden"));
+            continue;
+        }
         if e.deleted {
             results.push(PushResult::Ok {
                 id: d.id,

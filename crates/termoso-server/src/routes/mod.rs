@@ -1,6 +1,7 @@
 //! HTTP routing.
 
 pub mod account;
+pub mod acl;
 pub mod admin;
 pub mod ai;
 pub mod auth;
@@ -223,6 +224,15 @@ pub fn router(state: AppState) -> Router {
             get(idp::get).put(idp::put).delete(idp::delete),
         )
         .route("/teams/{id}/idp/test", post(idp::test))
+        .route(
+            "/teams/{id}/vaults/{vault_id}/acl",
+            get(acl::list).put(acl::upsert),
+        )
+        .route(
+            "/teams/{id}/vaults/{vault_id}/acl/{rule_id}",
+            delete(acl::delete),
+        )
+        .route("/acl/me", get(acl::me))
         .route("/teams/{id}/permissions", get(roles::catalog))
         .route("/teams/{id}/roles", get(roles::list).post(roles::create))
         .route(

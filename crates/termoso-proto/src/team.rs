@@ -470,6 +470,8 @@ pub const PERMISSIONS: &[&str] = &[
     "vaults.transfer",
     "vaults.members",
     "vaults.rotate_key",
+    // acl
+    "acl.manage",
     "vaults.history",
     // entities
     "entities.read",
@@ -1077,5 +1079,92 @@ schema! {
         pub idp: Option<TeamIdp>,
         /// Whether this server allows per-team IdPs (`TERMOSO_TEAM_IDP`).
         pub available: bool,
+    }
+}
+
+schema! {
+    /// One access rule on a group or host of a team vault.
+    pub struct EntityAclRule {
+        /// Rule id.
+        pub id: Uuid,
+        /// Team vault the entity lives in.
+        pub vault_id: Uuid,
+        /// Group or host entity id (client-encrypted entity).
+        pub entity_id: Uuid,
+        /// `group` | `host`.
+        pub entity_kind: String,
+        /// `role` | `member` | `group` (IdP/SCIM group name).
+        pub principal_kind: String,
+        /// Team role (principal_kind = role).
+        #[serde(default)]
+        pub role_id: Option<Uuid>,
+        /// Team member (principal_kind = member).
+        #[serde(default)]
+        pub user_id: Option<Uuid>,
+        /// IdP/SCIM group display name (principal_kind = group).
+        #[serde(default)]
+        pub group_name: Option<String>,
+        /// Human-readable principal (role name / member e-mail / group).
+        pub principal_name: String,
+        /// `none` (hidden) | `connect` (no secrets) | `read` | `edit`.
+        pub mode: String,
+        /// Last change.
+        pub updated_at: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// `PUT /teams/{id}/vaults/{vault_id}/acl` — create or replace a rule for
+    /// (entity, principal).
+    pub struct UpsertEntityAclRequest {
+        /// Group or host entity id.
+        pub entity_id: Uuid,
+        /// `group` | `host`.
+        pub entity_kind: String,
+        /// `role` | `member` | `group`.
+        pub principal_kind: String,
+        /// Team role id.
+        #[serde(default)]
+        pub role_id: Option<Uuid>,
+        /// Team member id.
+        #[serde(default)]
+        pub user_id: Option<Uuid>,
+        /// IdP/SCIM group name.
+        #[serde(default)]
+        pub group_name: Option<String>,
+        /// `none` | `connect` | `read` | `edit`.
+        pub mode: String,
+    }
+}
+
+schema! {
+    /// Rules of one team vault.
+    pub struct EntityAclResponse {
+        /// All rules, most recent last.
+        pub rules: Vec<EntityAclRule>,
+    }
+}
+
+schema! {
+    /// A rule resolved for the caller (`GET /acl/me`). Clients apply group →
+    /// host inheritance; a host rule beats the nearest group rule. Entities
+    /// without a rule keep vault-level access.
+    pub struct MyAclRule {
+        /// Team vault.
+        pub vault_id: Uuid,
+        /// Group or host entity id.
+        pub entity_id: Uuid,
+        /// `group` | `host`.
+        pub entity_kind: String,
+        /// `none` | `connect` | `read` | `edit`.
+        pub mode: String,
+    }
+}
+
+schema! {
+    /// `GET /acl/me`.
+    pub struct MyAclResponse {
+        /// Rules that apply to the caller across all team vaults.
+        pub rules: Vec<MyAclRule>,
     }
 }

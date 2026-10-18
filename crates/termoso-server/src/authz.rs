@@ -211,6 +211,11 @@ fn describe(key: &str) -> (&'static str, &'static str, bool) {
             "Grant and revoke vault membership.",
             true,
         ),
+        "acl.manage" => (
+            "Manage group and host access",
+            "Set per-group/per-host access rules (hidden, connect only, read, edit) for roles, members and IdP groups inside team vaults.",
+            true,
+        ),
         "vaults.rotate_key" => (
             "Rotate vault keys",
             "Rotate a vault key after access changes.",
@@ -391,6 +396,7 @@ pub const BUILTIN_ROLES: &[(&str, &str, &str, &[&str], i32)] = &[
             "vaults.delete",
             "vaults.transfer",
             "vaults.members",
+            "acl.manage",
             "vaults.rotate_key",
             "vaults.history",
             "entities.read",
