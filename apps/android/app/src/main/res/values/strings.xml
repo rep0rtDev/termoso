@@ -1507,4 +1507,37 @@
     <string name="camera_permission_needed">Camera access is needed to scan a code.</string>
     <string name="confirm_you_are_human">Confirm you are human</string>
     <string name="captcha_sheet_hint">Pass the check below to continue. It is served by your server and Cloudflare.</string>
+    <!-- team roles & policies (read-only) -->
+    <string name="roles_and_policies">Roles &amp; policies</string>
+    <string name="roles">Roles</string>
+    <string name="team_policies">Team policies</string>
+    <string name="roles_edit_hint">Roles and policies are edited in the web cabinet or the desktop app.</string>
+    <string name="default_role">default</string>
+    <string name="all_permissions">All permissions</string>
+    <string name="hide_permissions">Hide permissions</string>
+    <string name="sensitive_flag">sensitive</string>
+    <string name="client_flag">client</string>
+    <string name="two_factor">Two-factor authentication</string>
+    <string name="mfa_any">Any second factor</string>
+    <string name="mfa_passkey_only">Passkey only</string>
+    <string name="not_required">Not required</string>
+    <string name="keys_only_in_team_vaults">Keys only in team vaults</string>
+    <string name="session_lifetime">Session lifetime</string>
+    <string name="hours_n">%1$d h</string>
+    <string name="server_default">server default</string>
+    <string name="sign_in_only_through_sso">Sign in only through SSO</string>
+    <string name="allowed_email_domains">Allowed e-mail domains</string>
+    <string name="any_domain">any</string>
+    <string name="approve_new_devices">Approve new devices</string>
+    <string name="audit_log_retention">Audit log retention</string>
+    <string name="days_n">%1$d days</string>
+    <string name="roles_and_policies_hint">Who may do what; MFA, keys, sessions</string>
+    <plurals name="members_count">
+        <item quantity="one">%1$d member</item>
+        <item quantity="other">%1$d members</item>
+    </plurals>
+    <plurals name="permissions_count">
+        <item quantity="one">%1$d permission</item>
+        <item quantity="other">%1$d permissions</item>
+    </plurals>
 </resources>

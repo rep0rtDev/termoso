@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.termoso.android.R
+import com.termoso.android.data.can
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
@@ -91,6 +92,7 @@ fun TeamScreen(
     onOpenVault: (String) -> Unit,
     onActivity: () -> Unit,
     onOpenAccount: () -> Unit = {},
+    onRoles: () -> Unit = {},
 ) {
     val vm: TeamViewModel = viewModel(key = "team-$teamId") { TeamViewModel(shell.repo, account, teamId) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -295,6 +297,15 @@ fun TeamScreen(
                         leading = { IconTile(Icons.Filled.History) },
                         modifier = Modifier.clickable(onClick = onActivity),
                     )
+                    if (team.can("roles.manage") || team.can("policies.manage")) {
+                        RowDivider()
+                        ChevronRow(
+                            title = stringResource(R.string.roles_and_policies),
+                            subtitle = stringResource(R.string.roles_and_policies_hint),
+                            leading = { IconTile(Icons.Filled.Lock) },
+                            modifier = Modifier.clickable(onClick = onRoles),
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(24.dp))

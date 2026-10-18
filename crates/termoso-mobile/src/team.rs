@@ -238,6 +238,41 @@ pub struct AuditPage {
     pub next_before: Option<i64>,
 }
 
+/// A team role for the read-only roles screen.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TeamRoleCard {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub permissions: Vec<String>,
+    pub builtin: bool,
+    pub is_default: bool,
+    pub member_count: i64,
+}
+
+/// One permission of the catalog (key, title, group, flags).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct PermissionCard {
+    pub key: String,
+    pub title: String,
+    pub group: String,
+    pub sensitive: bool,
+    pub client_enforced: bool,
+}
+
+/// Team policies as the server stores them (read-only on mobile).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TeamPoliciesCard {
+    pub mfa: String,
+    pub local_keys: String,
+    pub session_ttl_hours: Option<i32>,
+    pub sso_only: bool,
+    pub sso_provider: Option<String>,
+    pub sso_domains: Vec<String>,
+    pub device_approval: bool,
+    pub audit_retention_days: i32,
+}
+
 fn clean_name(name: &str) -> Result<String> {
     let n = name.trim();
     if n.is_empty() || n.chars().count() > 80 {
@@ -615,6 +650,67 @@ impl AccountRuntime {
         Ok(AuditPage {
             events: page.events.into_iter().map(Into::into).collect(),
             next_before: page.next_before,
+        })
+    }
+
+    /// `GET /teams/{id}/roles` — roles with the default one flagged.
+    pub async fn team_roles(self: &Arc<Self>, team_id: String) -> Result<Vec<TeamRoleCard>> {
+        let list = self.api().await?.team_roles(parse_id(&team_id)?).await?;
+        Ok(list
+            .roles
+            .into_iter()
+            .map(|r| TeamRoleCard {
+                id: r.id.to_string(),
+                name: r.name,
+                description: r.description,
+                permissions: r.permissions,
+                builtin: r.builtin,
+                is_default: list.default_role_id == Some(r.id),
+                member_count: r.member_count,
+            })
+            .collect())
+    }
+
+    /// `GET /teams/{id}/permissions` — the catalog, for showing role contents.
+    pub async fn team_permissions(
+        self: &Arc<Self>,
+        team_id: String,
+    ) -> Result<Vec<PermissionCard>> {
+        let cat = self
+            .api()
+            .await?
+            .team_permissions(parse_id(&team_id)?)
+            .await?;
+        Ok(cat
+            .permissions
+            .into_iter()
+            .map(|p| PermissionCard {
+                key: p.key,
+                title: p.title,
+                group: p.group,
+                sensitive: p.dangerous,
+                client_enforced: p.enforced_by == "client",
+            })
+            .collect())
+    }
+
+    /// `GET /teams/{id}/policies`.
+    pub async fn team_policies(self: &Arc<Self>, team_id: String) -> Result<TeamPoliciesCard> {
+        let p = self
+            .api()
+            .await?
+            .team_policies(parse_id(&team_id)?)
+            .await?
+            .policies;
+        Ok(TeamPoliciesCard {
+            mfa: p.mfa,
+            local_keys: p.local_keys,
+            session_ttl_hours: p.session_ttl_hours,
+            sso_only: p.sso_only,
+            sso_provider: p.sso_provider,
+            sso_domains: p.sso_domains,
+            device_approval: p.device_approval,
+            audit_retention_days: p.audit_retention_days,
         })
     }
 

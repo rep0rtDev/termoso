@@ -38,8 +38,8 @@ use crate::sftp::{Backend as FileBackend, SftpLaunch, SftpListener, SftpSession}
 use crate::snippets::{self, SnippetDraft, SnippetItem, SnippetPackageItem, SnippetRun};
 use crate::sshid::SshIdView;
 use crate::team::{
-    AuditPage, InviteCard, InviteSent, PendingKeyCard, TeamCard, TeamMemberCard, TeamRole,
-    VaultAccessDraft, VaultMemberCard,
+    AuditPage, InviteCard, InviteSent, PendingKeyCard, PermissionCard, TeamCard, TeamMemberCard,
+    TeamPoliciesCard, TeamRole, TeamRoleCard, VaultAccessDraft, VaultMemberCard,
 };
 use crate::themes::TerminalTheme;
 
@@ -1341,6 +1341,18 @@ impl TermosoApp {
         limit: Option<u32>,
     ) -> Result<AuditPage> {
         RUNTIME.block_on(self.account.team_audit(team_id, before, limit))
+    }
+
+    pub fn team_roles(&self, team_id: String) -> Result<Vec<TeamRoleCard>> {
+        RUNTIME.block_on(self.account.team_roles(team_id))
+    }
+
+    pub fn team_permissions(&self, team_id: String) -> Result<Vec<PermissionCard>> {
+        RUNTIME.block_on(self.account.team_permissions(team_id))
+    }
+
+    pub fn team_policies(&self, team_id: String) -> Result<TeamPoliciesCard> {
+        RUNTIME.block_on(self.account.team_policies(team_id))
     }
 
     pub fn team_pending_keys(&self, team_id: String) -> Result<Vec<PendingKeyCard>> {
