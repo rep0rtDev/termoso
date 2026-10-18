@@ -1,5 +1,5 @@
 //! Quick actions outside the window: files handed to the app by the OS, the
-//! macOS Dock menu and the Windows Jump List. Linux desktop actions live in
+//! macOS application menu and the Windows Jump List. Linux desktop actions live in
 //! `templates/termoso.desktop`; all of them end up as `termoso://new|local|sftp`
 //! links or a `files-opened` event the web view routes.
 
@@ -53,19 +53,24 @@ pub fn forward_urls<R: Runtime>(app: &AppHandle<R>, urls: &[tauri::Url]) {
     }
 }
 
-/// Dock menu with the three quick actions; picks are emitted as deep links.
+/// macOS: Tauri has no Dock-menu API, so the three quick actions go into a
+/// "Connect" menu of the application menu bar; picks are emitted as deep links.
 #[cfg(target_os = "macos")]
-pub fn install_dock_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
-    use tauri::menu::{Menu, MenuItem};
-    let menu = Menu::with_items(
+pub fn install_app_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem, Submenu};
+    let connect = Submenu::with_items(
         app,
+        "Connect",
+        true,
         &[
             &MenuItem::with_id(app, "quick:new", "New Connection", true, None::<&str>)?,
             &MenuItem::with_id(app, "quick:local", "Local Terminal", true, None::<&str>)?,
             &MenuItem::with_id(app, "quick:sftp", "SFTP", true, None::<&str>)?,
         ],
     )?;
-    app.set_dock_menu(&menu)?;
+    let menu = Menu::default(app.handle())?;
+    menu.append(&connect)?;
+    app.set_menu(menu)?;
     app.on_menu_event(|app, event| {
         if let Some(action) = event.id().as_ref().strip_prefix("quick:") {
             let _ = app.emit("quick-action", format!("termoso://{action}"));

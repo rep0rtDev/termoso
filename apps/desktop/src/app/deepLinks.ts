@@ -8,7 +8,13 @@ import { parseLink, quickLabel } from "@/hosts/links";
 import { handleSsoLink } from "@/account/sso";
 import { isSsoLink, parseSsoLink } from "@/account/ssoLink";
 import { openTerminal } from "@/terminal/store";
-import { goToSection, goToSettings, goToSftp, requestCreate, requestOpenFile } from "@/app/navigation";
+import {
+  goToSection,
+  goToSettings,
+  goToSftp,
+  requestCreate,
+  requestOpenFile,
+} from "@/app/navigation";
 import { tr } from "@/i18n";
 
 /** URLs already handled — the launch batch can be reported twice on some platforms. */
@@ -69,9 +75,11 @@ async function openLink(url: string) {
 const fileName = (path: string) => (path.split(/[\\/]/).pop() ?? path).toLowerCase();
 
 /** Colour schemes: iTerm2, Windows Terminal, Alacritty, Kitty, Ghostty, Gogh. */
-export const isThemeFile = (path: string) => /\.(itermcolors|json|toml|ya?ml|conf)$/.test(fileName(path));
+export const isThemeFile = (path: string) =>
+  /\.(itermcolors|json|toml|ya?ml|conf)$/.test(fileName(path));
 /** Private keys the keychain can import. */
-export const isKeyFile = (path: string) => /\.(pem|ppk|key)$/.test(fileName(path)) || /^id_[a-z0-9]+$/.test(fileName(path));
+export const isKeyFile = (path: string) =>
+  /\.(pem|ppk|key)$/.test(fileName(path)) || /^id_[a-z0-9]+$/.test(fileName(path));
 /** OpenSSH client configuration. */
 export const isSshConfigFile = (path: string) => /^(ssh_)?config$/.test(fileName(path));
 

@@ -137,7 +137,10 @@ export function requestOpenFile(path: string) {
  * Consume `requestOpenFile` paths accepted by `matches` — one made just before
  * the page mounted and later ones while it shows.
  */
-export function useOpenFileRequests(matches: (path: string) => boolean, onFile: (path: string) => void) {
+export function useOpenFileRequests(
+  matches: (path: string) => boolean,
+  onFile: (path: string) => void,
+) {
   const cb = useRef({ matches, onFile });
   useEffect(() => {
     cb.current = { matches, onFile };

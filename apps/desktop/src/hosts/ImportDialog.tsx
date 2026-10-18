@@ -130,7 +130,15 @@ export function ImportDialog({
         paper: { sx: { height: tall ? "min(720px, calc(100vh - 64px))" : undefined } },
       }}
     >
-      {open && <Body vaultId={vaultId} initialFile={initialFile} onClose={onClose} onImported={onImported} onStep={onStep} />}
+      {open && (
+        <Body
+          vaultId={vaultId}
+          initialFile={initialFile}
+          onClose={onClose}
+          onImported={onImported}
+          onStep={onStep}
+        />
+      )}
     </Dialog>
   );
 }

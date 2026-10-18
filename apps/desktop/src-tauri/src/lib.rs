@@ -95,8 +95,8 @@ pub fn run() {
             app.manage(UpdateHub::default());
             app.manage(quick::LaunchFiles::from_args(std::env::args().skip(1)));
             #[cfg(target_os = "macos")]
-            if let Err(e) = quick::install_dock_menu(app) {
-                tracing::debug!(error = %e, "dock menu not installed");
+            if let Err(e) = quick::install_app_menu(app) {
+                tracing::debug!(error = %e, "app menu not installed");
             }
             #[cfg(windows)]
             std::thread::spawn(quick::install_jump_list);
