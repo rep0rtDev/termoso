@@ -35,7 +35,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Termoso"
         android:enableOnBackInvokedCallback="true"
-        tools:targetApi="34">
+        tools:targetApi="34"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"
