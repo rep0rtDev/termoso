@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { tr, trx } from "@/i18n";
+import { tr, trn, trx } from "@/i18n";
 import {
   Alert,
   Box,
@@ -41,6 +41,12 @@ import { Loading } from "@/components/Loading";
 import { Section } from "@/components/Section";
 import { useSnackbar } from "@/components/Snackbar";
 import { can } from "./perm";
+
+function groupLabel(group: string): string {
+  const k = `perm_group:${group}`;
+  const v = tr(k);
+  return v === k ? group : v;
+}
 
 export function RolesTab({ team }: { team: Team }) {
   const manage = can(team, "roles.manage");
@@ -152,7 +158,7 @@ function Matrix({
                   <Stack spacing={0.25} sx={{ alignItems: "center" }}>
                     <Stack direction="row" spacing={0.25} sx={{ alignItems: "center" }}>
                       <Typography variant="subtitle2" noWrap>
-                        {r.name}
+                        {tr(r.name)}
                       </Typography>
                       {manage && r.slug !== "owner" && (
                         <Tooltip
@@ -194,7 +200,7 @@ function Matrix({
                       )}
                     </Stack>
                     <Typography variant="caption" color="text.secondary">
-                      {r.member_count} {r.member_count === 1 ? "member" : "members"}
+                      {trn(r.member_count, "{count} member", "{count} members")}
                       {r.builtin ? tr(" · built-in") : ""}
                     </Typography>
                   </Stack>
@@ -245,7 +251,7 @@ function Matrix({
                   .filter((r) => r.id !== deleting?.id && r.slug !== "owner")
                   .map((r) => (
                     <MenuItem key={r.id} value={r.id}>
-                      {r.name}
+                      {tr(r.name)}
                     </MenuItem>
                   ))}
               </Select>
@@ -289,15 +295,15 @@ function GroupRows({
     <>
       <TableRow>
         <TableCell colSpan={roles.length + 1} sx={{ bgcolor: "action.hover" }}>
-          <Typography variant="overline">{group}</Typography>
+          <Typography variant="overline">{groupLabel(group)}</Typography>
         </TableCell>
       </TableRow>
       {perms.map((p) => (
         <TableRow key={p.key} hover>
           <TableCell>
             <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-              <Tooltip title={p.description} placement="right">
-                <Typography variant="body2">{p.title}</Typography>
+              <Tooltip title={tr(p.description)} placement="right">
+                <Typography variant="body2">{tr(p.title)}</Typography>
               </Tooltip>
               {p.enforced_by === "client" && (
                 <Chip label={tr("client")} size="small" variant="outlined" sx={{ height: 18 }} />
@@ -320,7 +326,7 @@ function GroupRows({
                   checked={on}
                   disabled={!editable || busy}
                   onChange={(e) => onToggle(r, p.key, e.target.checked)}
-                  slotProps={{ input: { "aria-label": `${r.name}: ${p.title}` } }}
+                  slotProps={{ input: { "aria-label": `${tr(r.name)}: ${p.title}` } }}
                 />
               </TableCell>
             );
@@ -398,7 +404,7 @@ function CreateRoleDialog({
                 .filter((r) => r.slug !== "owner")
                 .map((r) => (
                   <MenuItem key={r.id} value={r.id}>
-                    {r.name}
+                    {tr(r.name)}
                   </MenuItem>
                 ))}
             </Select>
@@ -513,7 +519,7 @@ function MappingsSection({ team, roles }: { team: Team; roles: TeamRoleDef[] }) 
                       >
                         {assignable.map((r) => (
                           <MenuItem key={r.id} value={r.id}>
-                            {r.name}
+                            {tr(r.name)}
                           </MenuItem>
                         ))}
                       </Select>

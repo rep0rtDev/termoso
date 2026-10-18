@@ -1,5 +1,5 @@
 import { useMemo, useState, type SubmitEvent } from "react";
-import { tr, trx } from "@/i18n";
+import { tr, trn, trx } from "@/i18n";
 import {
   Alert,
   Box,
@@ -96,9 +96,8 @@ function TeamDetail({ team }: { team: Team }) {
           <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
             <RoleChip role={team.my_role} />
             <span>
-              {trx("{member_count} {v1} · created  {v2}", {
-                member_count: team.member_count,
-                v1: team.member_count === 1 ? "member" : "members",
+              {tr("{members} · created {v2}", {
+                members: trn(team.member_count, "{count} member", "{count} members"),
                 v2: formatDate(team.created_at),
               })}
             </span>

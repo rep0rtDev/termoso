@@ -1,3 +1,4 @@
+import { tr } from "@/i18n";
 import { Chip } from "@mui/material";
 import type { TeamRole, VaultRole } from "@/api/types";
 
@@ -14,7 +15,7 @@ export function RoleChip({ role }: { role: TeamRole | VaultRole }) {
     <Chip
       size="small"
       color={color ?? "default"}
-      label={role.charAt(0).toUpperCase() + role.slice(1)}
+      label={tr(role.charAt(0).toUpperCase() + role.slice(1))}
       sx={color ? undefined : { color: "text.secondary" }}
     />
   );
