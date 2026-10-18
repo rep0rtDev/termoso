@@ -183,6 +183,22 @@ pub fn router(state: AppState) -> Router {
         .route("/teams/{id}/audit", get(crate::audit::list))
         .route("/teams/{id}/audit/export", get(crate::audit::export))
         .route(
+            "/teams/{id}/webhooks",
+            get(crate::webhooks::list).post(crate::webhooks::create),
+        )
+        .route(
+            "/teams/{id}/webhooks/{wid}",
+            patch(crate::webhooks::update).delete(crate::webhooks::delete),
+        )
+        .route(
+            "/teams/{id}/webhooks/{wid}/test",
+            post(crate::webhooks::test),
+        )
+        .route(
+            "/teams/{id}/webhooks/{wid}/deliveries",
+            get(crate::webhooks::deliveries),
+        )
+        .route(
             "/teams/{id}/policies",
             get(policies::get).put(policies::put),
         )

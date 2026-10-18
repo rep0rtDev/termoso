@@ -32,6 +32,7 @@ pub mod storage;
 pub mod turnstile;
 pub mod users;
 pub mod util;
+pub mod webhooks;
 pub mod ws;
 
 pub use state::{AppState, Inner, VERSION};
