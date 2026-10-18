@@ -93,6 +93,15 @@ pub struct Config {
     /// allowed to complete it. The waiting period is what lets the real owner
     /// cancel a reset they did not ask for. Default: 24 hours.
     pub start_over_delay_secs: u64,
+    /// Upper bound teams may set for `audit_retention_days` (30..=3650).
+    /// Default: 3650.
+    pub audit_retention_days_max: u32,
+    /// Also write every team audit event as one JSON line to the log
+    /// (target `termoso_audit`) for log shippers. Default: false.
+    pub audit_sink: bool,
+    /// Allow webhooks to private/loopback addresses (self-hosted internal
+    /// SIEMs). Default: false.
+    pub webhooks_allow_private: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -357,6 +366,9 @@ impl Default for Config {
             swagger_ui: true,
             bridges: true,
             start_over_delay_secs: 24 * 3600,
+            audit_retention_days_max: 3650,
+            audit_sink: false,
+            webhooks_allow_private: false,
         }
     }
 }
