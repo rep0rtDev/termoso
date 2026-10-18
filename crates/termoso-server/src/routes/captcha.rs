@@ -66,7 +66,7 @@ pub fn render(site_key: &str, theme: &str, nonce: &str) -> String {
 <style nonce="{nonce}">
   :root {{ color-scheme: {scheme}; }}
   html, body {{ margin: 0; height: 100%; background: {bg}; }}
-  body {{ display: flex; align-items: center; justify-content: center; }}
+  body {{ display: flex; align-items: flex-start; justify-content: center; padding-top: 4px; box-sizing: border-box; }}
 </style>
 </head>
 <body>
