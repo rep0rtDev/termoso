@@ -68,18 +68,6 @@ pub async fn my_role<'e, E: PgExecutor<'e>>(
         .ok_or_else(|| Error::not_found("Team"))
 }
 
-pub(crate) async fn require_admin(
-    state: &AppState,
-    team_id: Uuid,
-    user_id: Uuid,
-) -> ApiResult<TeamRole> {
-    let role = my_role(&state.db, team_id, user_id).await?;
-    if !role.is_admin() {
-        return Err(Error::forbidden("Team admin role required"));
-    }
-    Ok(role)
-}
-
 pub async fn member_ids<'e, E: PgExecutor<'e>>(db: E, team_id: Uuid) -> ApiResult<Vec<Uuid>> {
     let rows: Vec<(Uuid,)> = sqlx::query_as("SELECT user_id FROM team_members WHERE team_id = $1")
         .bind(team_id)
@@ -379,11 +367,11 @@ pub async fn members(
     auth: Auth,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<TeamMemberList>> {
-    let me = my_role(&state.db, id, auth.user_id()).await?;
-    // Whether a member has a second factor is visible to the team's admins
-    // (who are responsible for enforcing `require_mfa`) and to the member
+    let me = crate::authz::membership(&state.db, id, auth.user_id()).await?;
+    // Whether a member has a second factor is visible to roles holding
+    // `members.view_mfa` (they enforce `require_mfa`) and to the member
     // themself; other members do not learn each other's security posture.
-    let sees_mfa = me.is_admin() || auth.session.is_admin;
+    let sees_mfa = me.has("members.view_mfa") || auth.session.is_admin;
     type Row = (
         Uuid,
         String,
@@ -1124,7 +1112,7 @@ pub async fn pending_keys(
     auth: Auth,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<PendingVaultKeys>> {
-    let role = my_role(&state.db, id, auth.user_id()).await?;
+    let me = crate::authz::membership(&state.db, id, auth.user_id()).await?;
     let rows: Vec<(Uuid, Uuid, String, String)> = sqlx::query_as(
         "SELECT vm.vault_id, vm.user_id, u.public_key, vm.role
          FROM vault_members vm
@@ -1136,7 +1124,7 @@ pub async fn pending_keys(
     )
     .bind(id)
     .bind(auth.user_id())
-    .bind(role.is_admin())
+    .bind(me.has("vaults.members"))
     .fetch_all(&state.db)
     .await?;
     Ok(Json(PendingVaultKeys {
