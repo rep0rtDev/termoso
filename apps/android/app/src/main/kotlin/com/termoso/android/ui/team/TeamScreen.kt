@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.termoso.android.R
+import com.termoso.android.data.PermissionDenied
 import com.termoso.android.data.can
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.VaultRepository
@@ -402,7 +403,10 @@ fun TeamScreen(
             onConfirm = {
                 deleting = false
                 scope.launch {
-                    runCatching { vm.delete() }
+                    runCatching {
+                        if (!team.can("team.delete")) throw PermissionDenied("team.delete", team.name)
+                        vm.delete()
+                    }
                         .onSuccess { shell.notify(str(R.string.team_deleted)); onBack() }
                         .onFailure { shell.notify(it.userMessage()) }
                 }

@@ -139,6 +139,7 @@ class SftpManager(
      * means the primary one (WebDAV only for WebDAV-only hosts).
      */
     suspend fun openHost(hostId: String, vaultId: String, protocol: FileProtocol? = null, background: Boolean = false): SftpConnection {
+        repo.perms.require(vaultId, "connect.sftp")
         val host: HostItem = repo.read { host(hostId) }
         val wanted = protocol ?: defaultProtocol(host)
         val bridge = SftpBridge()

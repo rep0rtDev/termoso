@@ -15,6 +15,7 @@ import {
   remainingToday,
 } from "./askai";
 import * as ipc from "@/ipc/commands";
+import { requireAnywhere } from "@/team/perms";
 import { keys, useAccount, useAiStatus } from "@/ipc/hooks";
 import { goToSettings } from "@/app/navigation";
 import { EmptyState } from "@/components/EmptyState";
@@ -162,6 +163,7 @@ function Ask({ pane, status }: { pane: Pane; status: AiStatus }) {
     const text = prompt.trim();
     if (!text || ask.isPending) return;
     setAnswer(null);
+    if (!requireAnywhere("ai.use")) return;
     ask.mutate(text);
   };
 

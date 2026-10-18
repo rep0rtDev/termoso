@@ -421,6 +421,8 @@ private fun ExportDialog(key: KeyItem, vm: KeyDetailViewModel, onNotify: (String
                 }
                 TextButton(enabled = !busy && (!needPassphrase || passphrase.isNotEmpty()), onClick = {
                     scope.launch {
+                        runCatching { vm.perms.require(key.vaultId, "secrets.copy") }
+                            .onFailure { onNotify(it.userMessage()); return@launch }
                         val text = export() ?: return@launch
                         copyText(context, str(R.string.private_key), text, sensitive = true)
                         onNotify(str(R.string.private_key_copied_clear_the_clipboard_when_done))

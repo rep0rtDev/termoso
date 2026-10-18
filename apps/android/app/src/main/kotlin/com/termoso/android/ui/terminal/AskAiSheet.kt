@@ -87,7 +87,10 @@ fun AskAiSheet(
         busy = true
         failure = null
         scope.launch {
-            runCatching { shell.ai.ask(text, target) }
+            runCatching {
+                shell.repo.perms.requireAnywhere("ai.use")
+                shell.ai.ask(text, target)
+            }
                 .onSuccess { answer = it }
                 .onFailure { failure = aiFailure(it) }
             busy = false

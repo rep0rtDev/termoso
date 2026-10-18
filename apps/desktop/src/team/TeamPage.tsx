@@ -37,6 +37,7 @@ import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
 import { MfaBadge } from "./MfaBadge";
+import { denyPerm } from "@/team/perms";
 import { RolesTab } from "./RolesTab";
 import { PoliciesTab } from "./PoliciesTab";
 import { WebhooksTab } from "./WebhooksTab";
@@ -834,11 +835,15 @@ function TeamView({
             danger
             busy={op.isPending}
             onCancel={() => setConfirm(null)}
-            onConfirm={() =>
+            onConfirm={() => {
+              if (!can(team, "team.delete")) {
+                denyPerm("team.delete");
+                return;
+              }
               op.mutate(() => ipc.teamDelete(team.id).then(() => `${team.name} deleted`), {
                 onSuccess: () => setConfirm(null),
-              })
-            }
+              });
+            }}
           >
             {tr(
               "Every team vault and everything inside is deleted for all {count} members. This cannot be undone.",

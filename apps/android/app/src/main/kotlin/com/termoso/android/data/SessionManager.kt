@@ -429,6 +429,7 @@ class SessionManager(
      * Kotlin never sees the secret in its fragment separately.
      */
     suspend fun joinLive(link: String): TerminalSession {
+        repo.perms.requireAnywhere("live.join")
         val bridge = SessionBridge()
         val live = LiveBridge(viewer = true)
         val rust = repo.read { joinLive(link, options(Transport.SSH), bridge, live) }
