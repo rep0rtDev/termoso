@@ -24,6 +24,7 @@ import {
   ToolIconButton,
 } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
+import { PersonAvatar } from "@/team/PersonAvatar";
 import * as ipc from "@/ipc/commands";
 import { keys, useAccount, useAiStatus, useDevices, useProfile, useSettings } from "@/ipc/hooks";
 import { Disclosure as AiDisclosure } from "@/terminal/AskAiPanel";
@@ -192,7 +193,12 @@ function SignedIn({
     <>
       <SectionCard>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-          <IconTile tone="accent">{(a.displayName ?? a.email).slice(0, 1).toUpperCase()}</IconTile>
+          <PersonAvatar
+            label={a.displayName ?? a.email}
+            userId={profile.data?.id}
+            avatar={profile.data?.avatar}
+            size={40}
+          />
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="body1" noWrap sx={{ fontWeight: 500 }}>
               {a.displayName ?? a.email}
