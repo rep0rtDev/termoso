@@ -41,12 +41,12 @@ export const LOCAL_ONLY: HostFilter = { kind: "local" };
 export function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.round(diff / 60_000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m} min ago`;
+  if (m < 1) return tr("just now");
+  if (m < 60) return tr("{m} min ago", { m });
   const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
+  if (h < 24) return tr("{h} h ago", { h });
   const d = Math.round(h / 24);
-  if (d < 7) return `${d} d ago`;
+  if (d < 7) return tr("{d} d ago", { d });
   return new Date(iso).toLocaleDateString();
 }
 
@@ -211,7 +211,7 @@ export function CommandHistoryList({
             const command = latest.data.command;
             const where = latest.data.host_id
               ? (hostLabel.get(latest.data.host_id) ?? tr("Removed host"))
-              : "Local";
+              : tr("Local");
             if (saving?.id === latest.id) {
               return (
                 <Stack

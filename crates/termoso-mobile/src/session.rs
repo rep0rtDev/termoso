@@ -18,6 +18,7 @@ use termoso_core::model::ResolvedHost;
 use termoso_core::mosh::{self, MoshError};
 use termoso_core::pty::{LocalShellOptions, LocalTerminal};
 use termoso_core::sftp::{Progress, Sftp, TransferOptions};
+use termoso_core::ssh::proxy::ProxyConfig;
 use termoso_core::ssh::{IpVersion, SshClient, SshTarget};
 use termoso_core::store::{CommandHistory, ConnectionHistory, LogMeta, Recorder, Store};
 use termoso_core::telnet::{TelnetOptions, TelnetTerminal};
@@ -492,6 +493,7 @@ pub(crate) enum LaunchTarget {
         host_id: Option<Uuid>,
         vault_id: Option<Uuid>,
         label: String,
+        proxy: Option<ProxyConfig>,
     },
     /// A shell on this device.
     Local {
@@ -690,6 +692,7 @@ impl SshSession {
                 host_id,
                 vault_id,
                 label,
+                proxy,
             } => {
                 runtime.spawn(run_telnet(
                     inner,
@@ -701,6 +704,7 @@ impl SshSession {
                         vault_id,
                         label,
                         term_type,
+                        proxy,
                     },
                     settings,
                     signals,
@@ -877,7 +881,14 @@ impl SshSession {
                 *inner.share.lock().expect("share poisoned") = None;
             }
         });
-        let (live, state) = LiveShare::attach(self.runtime.clone(), share, rx, listener, detach);
+        let weak = Arc::downgrade(&self.inner);
+        let resize: Box<dyn Fn(u16, u16) + Send + Sync> = Box::new(move |cols, rows| {
+            if let Some(inner) = weak.upgrade() {
+                apply_grid(&inner, cols, rows);
+            }
+        });
+        let (live, state) =
+            LiveShare::attach(self.runtime.clone(), share, rx, listener, detach, resize);
         *self.inner.share.lock().expect("share poisoned") = Some(state);
         Ok(live)
     }
@@ -909,6 +920,33 @@ impl SshSession {
                 .ok()
         })?;
         Some(termoso_core::autocomplete::parse_ls(&out.stdout_str()))
+    }
+}
+
+/// Follow a grid size decided elsewhere (a controlling viewer): the local
+/// emulator and bookkeeping change, nothing is sent back.
+fn apply_grid(inner: &Inner, cols: u16, rows: u16) {
+    let cols = cols.max(2);
+    let rows = rows.max(1);
+    *inner.size.lock().expect("size poisoned") = TermSize { cols, rows };
+    inner
+        .emulator
+        .lock()
+        .expect("emulator poisoned")
+        .resize(cols, rows);
+    inner.listener.on_render();
+}
+
+impl SshSession {
+    /// The authenticated SSH connection behind a plain SSH shell, for side
+    /// channels (SFTP over the same login); `None` for Mosh, Telnet, local
+    /// and shared views.
+    pub(crate) fn ssh_client(&self) -> Option<Arc<SshClient>> {
+        self.inner.ssh.lock().expect("ssh poisoned").clone()
+    }
+
+    pub(crate) fn saved_host_id(&self) -> Option<Uuid> {
+        self.inner.host_id
     }
 }
 
@@ -1177,8 +1215,14 @@ impl SshSession {
     }
 
     pub fn resize(&self, cols: u16, rows: u16) {
-        if self.inner.view.is_some() {
-            // The grid follows the host; the view scales to fit.
+        // The grid belongs to whoever holds control (tmux's `window-size
+        // latest`): a view without control and a host with a controlling
+        // viewer keep the remote size and only scale it to fit.
+        if let Some(v) = &self.inner.view {
+            if !v.can_write.load(std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
+        } else if self.inner.share().is_some_and(|s| s.pinned()) {
             return;
         }
         let cols = cols.max(2);
@@ -1514,6 +1558,7 @@ struct TelnetLaunch {
     vault_id: Option<Uuid>,
     label: String,
     term_type: String,
+    proxy: Option<ProxyConfig>,
 }
 
 async fn run_telnet(
@@ -1530,6 +1575,7 @@ async fn run_telnet(
         vault_id,
         label,
         term_type,
+        proxy,
     } = launch;
     let row = ConnectionHistory {
         host_id,
@@ -1559,6 +1605,7 @@ async fn run_telnet(
                 size,
                 timeout: TELNET_TIMEOUT,
                 ip_version,
+                proxy,
             })
             .await?;
             Ok((term as SharedTerminal, events))

@@ -7,7 +7,9 @@
 
 pub mod ai;
 pub mod audit;
+pub mod authz;
 pub mod avatar;
+pub mod backup;
 pub mod cache;
 pub mod codes;
 pub mod config;
@@ -15,14 +17,17 @@ pub mod digest;
 pub mod error;
 pub mod events;
 pub mod extract;
+pub mod jobs;
 pub mod live;
 pub mod mail;
 pub mod metrics;
 pub mod openapi;
+pub mod policy;
 pub mod presence;
 pub mod ratelimit;
 pub mod routes;
 pub mod saml;
+pub mod scim;
 pub mod session;
 pub mod sso;
 pub mod state;
@@ -30,6 +35,7 @@ pub mod storage;
 pub mod turnstile;
 pub mod users;
 pub mod util;
+pub mod webhooks;
 pub mod ws;
 
 pub use state::{AppState, Inner, VERSION};

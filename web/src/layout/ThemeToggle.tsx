@@ -1,4 +1,5 @@
 import { IconButton, Menu, MenuItem, ListItemIcon, ListItemText, Tooltip } from "@mui/material";
+import { msg, tr } from "@/i18n";
 import { useColorScheme } from "@mui/material/styles";
 import DarkModeRoundedIcon from "@mui/icons-material/DarkModeRounded";
 import LightModeRoundedIcon from "@mui/icons-material/LightModeRounded";
@@ -6,9 +7,13 @@ import SettingsBrightnessRoundedIcon from "@mui/icons-material/SettingsBrightnes
 import { useState } from "react";
 
 const options = [
-  { value: "dark", label: "Dark", icon: <DarkModeRoundedIcon fontSize="small" /> },
-  { value: "light", label: "Light", icon: <LightModeRoundedIcon fontSize="small" /> },
-  { value: "system", label: "System", icon: <SettingsBrightnessRoundedIcon fontSize="small" /> },
+  { value: "dark", label: msg("Dark"), icon: <DarkModeRoundedIcon fontSize="small" /> },
+  { value: "light", label: msg("Light"), icon: <LightModeRoundedIcon fontSize="small" /> },
+  {
+    value: "system",
+    label: msg("System"),
+    icon: <SettingsBrightnessRoundedIcon fontSize="small" />,
+  },
 ] as const;
 
 export function ThemeToggle() {
@@ -17,8 +22,8 @@ export function ThemeToggle() {
   const current = options.find((o) => o.value === mode) ?? options[0];
   return (
     <>
-      <Tooltip title="Appearance">
-        <IconButton onClick={(e) => setAnchor(e.currentTarget)} aria-label="Appearance">
+      <Tooltip title={tr("Appearance")}>
+        <IconButton onClick={(e) => setAnchor(e.currentTarget)} aria-label={tr("Appearance")}>
           {current.icon}
         </IconButton>
       </Tooltip>
@@ -33,7 +38,7 @@ export function ThemeToggle() {
             }}
           >
             <ListItemIcon>{o.icon}</ListItemIcon>
-            <ListItemText>{o.label}</ListItemText>
+            <ListItemText>{tr(o.label)}</ListItemText>
           </MenuItem>
         ))}
       </Menu>

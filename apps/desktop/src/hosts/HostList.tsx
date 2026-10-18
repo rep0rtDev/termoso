@@ -34,13 +34,13 @@ export function relativeTime(iso: string | null, now = Date.now()) {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return "—";
   const s = Math.max(0, Math.round((now - t) / 1000));
-  if (s < 60) return "just now";
+  if (s < 60) return tr("just now");
   const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
+  if (m < 60) return tr("{m} min ago", { m });
   const h = Math.round(m / 60);
-  if (h < 24) return `${h} h ago`;
+  if (h < 24) return tr("{h} h ago", { h });
   const d = Math.round(h / 24);
-  if (d < 14) return `${d} d ago`;
+  if (d < 14) return tr("{d} d ago", { d });
   return new Date(t).toLocaleDateString();
 }
 

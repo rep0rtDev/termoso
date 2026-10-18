@@ -70,6 +70,7 @@ import { monoFontFamily, sizes } from "@/theme/theme";
 import { ChainDialog, ProxyDialog } from "./HostAdvancedDialogs";
 import { ConnectedNowCard, useVaultPresence } from "./PresenceViews";
 import { tr, trn, msg } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 const IP_VERSIONS: { value: IpVersion; label: string }[] = [
   { value: "auto", label: msg("Auto") },
@@ -345,6 +346,7 @@ function HostEditor({
 
   const onDelete = () => {
     if (!id) return;
+    if (!requirePerm(vaultId, "entities.delete")) return;
     del.mutate(
       { id, vaultId },
       {
@@ -377,6 +379,45 @@ function HostEditor({
         onClick={connect}
       />
     </Box>
+  );
+
+  const proxyField = (
+    <Field label={tr("Proxy")}>
+      <TextField
+        select
+        value={form.proxyId ?? ""}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === "__new") setDialog("proxy");
+          else set("proxyId", v === "" ? null : v);
+        }}
+      >
+        <MenuItem value="">
+          <em>
+            {inh?.proxyId && proxyName(inh.proxyId)
+              ? tr("Inherited — {name}", { name: proxyName(inh.proxyId) ?? "" })
+              : tr("None")}
+          </em>
+        </MenuItem>
+        {(proxies.data ?? []).map((p) => (
+          <MenuItem key={p.id} value={p.id}>
+            {p.data.kind.toUpperCase()}
+            <Typography
+              component="span"
+              variant="caption"
+              color="text.secondary"
+              sx={{ ml: 1, fontFamily: monoFontFamily }}
+            >
+              {p.data.host}:{p.data.port}
+            </Typography>
+          </MenuItem>
+        ))}
+        <MenuItem value="__new" sx={{ color: "primary.main" }}>
+          <AddRoundedIcon fontSize="small" sx={{ mr: 1 }} />
+          {tr("New proxy…")}
+        </MenuItem>
+      </TextField>
+    </Field>
   );
 
   return (
@@ -659,42 +700,7 @@ function HostEditor({
                       </MenuItem>
                     </TextField>
                   </Field>
-                  <Field label={tr("Proxy")}>
-                    <TextField
-                      select
-                      value={form.proxyId ?? ""}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === "__new") setDialog("proxy");
-                        else set("proxyId", v === "" ? null : v);
-                      }}
-                    >
-                      <MenuItem value="">
-                        <em>
-                          {inh?.proxyId && proxyName(inh.proxyId)
-                            ? tr("Inherited — {name}", { name: proxyName(inh.proxyId) ?? "" })
-                            : tr("None")}
-                        </em>
-                      </MenuItem>
-                      {(proxies.data ?? []).map((p) => (
-                        <MenuItem key={p.id} value={p.id}>
-                          {p.data.kind.toUpperCase()}
-                          <Typography
-                            component="span"
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ ml: 1, fontFamily: monoFontFamily }}
-                          >
-                            {p.data.host}:{p.data.port}
-                          </Typography>
-                        </MenuItem>
-                      ))}
-                      <MenuItem value="__new" sx={{ color: "primary.main" }}>
-                        <AddRoundedIcon fontSize="small" sx={{ mr: 1 }} />
-                        {tr("New proxy…")}
-                      </MenuItem>
-                    </TextField>
-                  </Field>
+                  {proxyField}
                   <Field
                     label={tr("Environment Variables")}
                     hint={
@@ -873,6 +879,7 @@ function HostEditor({
                 value={form.telnet.colorScheme}
                 onChange={(v) => patchTelnet({ colorScheme: v })}
               />
+              {proxyField}
             </SectionCard>
           ) : (
             <AddSectionButton
@@ -922,23 +929,25 @@ function HostEditor({
                   "The share is reached at the host's address above; the port defaults to 443 (80 over plain HTTP).",
                 )}
               </Typography>
+              {proxyField}
+              <Divider />
+              <WebDavAuthFields vaultId={vaultId} value={form.webdav} onChange={patchWebDav} />
+              <Divider />
+              <Typography variant="subtitle2">{tr("Security")}</Typography>
               <FormControlLabel
+                sx={{ ml: 0, mr: 0, alignSelf: "flex-start" }}
                 control={
                   <Switch
                     size="small"
                     checked={form.webdav.http}
                     onChange={(e) => patchWebDav({ http: e.target.checked })}
+                    sx={{ mr: 0.5 }}
                   />
                 }
                 label={tr("Plain HTTP (no TLS)")}
               />
-              <Divider />
-              <WebDavAuthFields vaultId={vaultId} value={form.webdav} onChange={patchWebDav} />
-              <Divider />
               {!form.webdav.http && (
                 <>
-                  <Divider />
-                  <Typography variant="subtitle2">TLS</Typography>
                   <Field
                     label={tr("Server name (SNI)")}
                     hint={tr(

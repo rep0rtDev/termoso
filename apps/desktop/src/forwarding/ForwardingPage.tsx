@@ -56,6 +56,7 @@ import {
 import { KIND_NAME, emptyRuleForm, routeLine, ruleTitle, ruleToForm } from "./model";
 import { RuleEditor, RuleTile, RuleWizard } from "./ForwardingPanels";
 import { tr, trx, msg } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 type Panel =
   | { mode: "closed" }
@@ -86,7 +87,7 @@ function RuleStatus({ r }: { r: PfRuleCard }) {
   if (rt.state === "reconnecting") {
     return (
       <Tooltip
-        title={`Reconnecting, attempt ${rt.attempt}${rt.lastError ? ` — ${rt.lastError}` : ""}`}
+        title={`${tr("Reconnecting, attempt {n}", { n: rt.attempt })}${rt.lastError ? ` — ${rt.lastError}` : ""}`}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
           <CircularProgress size={16} color="warning" />
@@ -208,8 +209,10 @@ export function ForwardingPage() {
     if (busyId) return;
     setBusyId(r.id);
     op.mutate(async () => {
-      if (r.runtime.state === "stopped") await ipc.pfStart(r.id);
-      else await ipc.pfStop(r.id);
+      if (r.runtime.state === "stopped") {
+        if (!requirePerm(r.vaultId, "connect.port_forward")) return null;
+        await ipc.pfStart(r.id);
+      } else await ipc.pfStop(r.id);
       return null;
     });
   };
@@ -247,7 +250,9 @@ export function ForwardingPage() {
       await ipc.pfCopyToVault(r.id, targetVaultId, move);
       if (move && panel.mode === "edit" && panel.id === r.id) setPanel({ mode: "closed" });
       const target = (vaults.data ?? []).find((v) => v.id === targetVaultId);
-      return `${move ? "Moved" : "Copied"} to ${target?.name ?? "vault"}`;
+      return move
+        ? tr("Moved to {name}", { name: target?.name ?? tr("vault") })
+        : tr("Copied to {name}", { name: target?.name ?? tr("vault") });
     });
 
   const vaultTargets = (r: PfRuleCard, move: boolean): MenuAction[] => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode, useRef } from "react";
 import {
   Alert,
   Box,
@@ -51,6 +51,7 @@ import {
 } from "@/ipc/types";
 import { vaultHint, vaultIcon } from "@/app/vault";
 import { tr, trn, msg } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 type Section = keyof ImportSelection;
 
@@ -94,8 +95,12 @@ function skippedSummary(r: ImportApplyReport) {
     r.skippedKeys > 0 && plural(r.skippedKeys, "key"),
   ].filter((p): p is string => typeof p === "string");
   if (parts.length === 0) return tr("Everything selected was new.");
-  const verb = r.skippedHosts + r.skippedKeys === 1 ? "was" : "were";
-  return `${parts.join(" and ")} already existed and ${verb} reused.`;
+  return trn(
+    r.skippedHosts + r.skippedKeys,
+    "{what} already existed and was reused.",
+    "{what} already existed and were reused.",
+    { what: parts.join(tr(" and ")) },
+  );
 }
 
 /**
@@ -106,11 +111,14 @@ function skippedSummary(r: ImportApplyReport) {
 export function ImportDialog({
   open,
   vaultId,
+  initialFile = null,
   onClose,
   onImported,
 }: {
   open: boolean;
   vaultId: Uuid;
+  /** An OpenSSH config the OS opened with the app: parsed as soon as the dialog shows. */
+  initialFile?: string | null;
   onClose: () => void;
   onImported: () => void;
 }) {
@@ -126,17 +134,27 @@ export function ImportDialog({
         paper: { sx: { height: tall ? "min(720px, calc(100vh - 64px))" : undefined } },
       }}
     >
-      {open && <Body vaultId={vaultId} onClose={onClose} onImported={onImported} onStep={onStep} />}
+      {open && (
+        <Body
+          vaultId={vaultId}
+          initialFile={initialFile}
+          onClose={onClose}
+          onImported={onImported}
+          onStep={onStep}
+        />
+      )}
     </Dialog>
   );
 }
 
 function Body({
+  initialFile,
   vaultId,
   onClose,
   onImported,
   onStep,
 }: {
+  initialFile: string | null;
   vaultId: Uuid;
   onClose: () => void;
   onImported: () => void;
@@ -188,6 +206,16 @@ function Body({
       setStep({ kind: "source", busy: null });
     }
   };
+
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  });
+  useEffect(() => {
+    if (initialFile) {
+      void loadRef.current(tr("Parsing…"), () => ipc.importParseFile("ssh_config", initialFile));
+    }
+  }, [initialFile]);
 
   const pickFile = async (title: string, filters?: { name: string; extensions: string[] }[]) => {
     const picked = await openFile({ multiple: false, directory: false, title, filters });
@@ -266,6 +294,7 @@ function Body({
   const apply = async () => {
     if (step.kind !== "preview") return;
     const vault = (vaults.data ?? []).find((v) => v.id === target);
+    if (!requirePerm(target, "import.vault")) return;
     setApplying(true);
     try {
       const report = await ipc.importApply(target, step.preview.id, selection);
@@ -498,11 +527,11 @@ function Body({
   if (step.kind === "done") {
     const r = step.report;
     const rows: [string, number][] = [
-      ["Hosts", r.hosts],
-      ["Groups", r.groups],
-      ["Tags", r.tags],
-      ["Keys", r.keys],
-      ["Proxies", r.proxies],
+      [tr("Hosts"), r.hosts],
+      [tr("Groups"), r.groups],
+      [tr("Tags"), r.tags],
+      [tr("Keys"), r.keys],
+      [tr("Proxies"), r.proxies],
       [tr("Host chains"), r.hostChains],
       [tr("Forwarding rules"), r.pfRules],
       [tr("Known hosts"), r.knownHosts],
@@ -600,7 +629,7 @@ function Body({
             color="warning"
             variant="outlined"
             icon={<WarningAmberRoundedIcon />}
-            label={`${preview.warnings.length} warning${preview.warnings.length === 1 ? "" : "s"}`}
+            label={trn(preview.warnings.length, "{count} warning", "{count} warnings")}
             onClick={() => setShowWarnings((v) => !v)}
           />
         )}
@@ -725,7 +754,7 @@ function Body({
                         {r.kind === "dynamic"
                           ? `${r.boundAddress || "127.0.0.1"}:${r.localPort} → SOCKS`
                           : r.kind === "remote"
-                            ? `remote ${r.boundAddress || "*"}:${r.localPort} → ${r.remoteHost}:${r.remotePort}`
+                            ? `${tr("remote")} ${r.boundAddress || "*"}:${r.localPort} → ${r.remoteHost}:${r.remotePort}`
                             : `${r.boundAddress || "127.0.0.1"}:${r.localPort} → ${r.remoteHost}:${r.remotePort}`}
                       </Mono>
                     }
@@ -935,7 +964,7 @@ function HostRow({
             <Chip size="small" icon={<LockOutlinedIcon />} label={tr("Password")} />
           )}
           {host.jumpHosts.length > 0 && (
-            <Chip size="small" label={`via ${host.jumpHosts.join(" → ")}`} />
+            <Chip size="small" label={tr("via {hops}", { hops: host.jumpHosts.join(" → ") })} />
           )}
           {host.proxy && (
             <Chip

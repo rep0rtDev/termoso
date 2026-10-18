@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr, trx } from "@/i18n";
 import { Alert, Button, Chip, Divider, Stack, Typography } from "@mui/material";
 import OpenInNewRoundedIcon from "@mui/icons-material/OpenInNewRounded";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -40,10 +41,10 @@ export function InvitePage() {
   if (preview.isError) {
     return (
       <>
-        <AuthTitle title="Invitation unavailable" />
+        <AuthTitle title={tr("Invitation unavailable")} />
         <Alert severity="error">{errorMessage(preview.error)}</Alert>
         <Button sx={{ mt: 2 }} variant="contained" onClick={() => navigate("/login")}>
-          Go to sign in
+          {tr("Go to sign in")}
         </Button>
       </>
     );
@@ -59,8 +60,11 @@ export function InvitePage() {
         title={`Join ${inv.team_name}`}
         subtitle={
           <>
-            {inv.inviter} invited <b>{inv.email}</b> to the team as{" "}
-            <Chip size="small" label={inv.role} sx={{ verticalAlign: "middle" }} />.
+            {trx("{inviter} invited {v1} to the team as  {v2}.", {
+              inviter: inv.inviter,
+              v1: <b>{inv.email}</b>,
+              v2: <Chip size="small" label={inv.role} sx={{ verticalAlign: "middle" }} />,
+            })}
           </>
         }
       />
@@ -69,8 +73,10 @@ export function InvitePage() {
         {session ? (
           emailMismatch ? (
             <Alert severity="warning">
-              You are signed in as {session.user.email}, but this invitation is for {inv.email}.
-              Sign out and use the invited account to accept it.
+              {trx(
+                "You are signed in as {email}, but this invitation is for {email1}. Sign out and use the invited account to accept it.",
+                { email: session.user.email, email1: inv.email },
+              )}
             </Alert>
           ) : (
             <Button
@@ -79,26 +85,26 @@ export function InvitePage() {
               onClick={() => accept.mutate()}
               disabled={accept.isPending}
             >
-              Accept invitation
+              {tr("Accept invitation")}
             </Button>
           )
         ) : inv.account_exists ? (
           <>
             <Typography variant="body2" color="text.secondary">
-              Sign in with {inv.email} to accept.
+              {trx("Sign in with {email} to accept.", { email: inv.email })}
             </Typography>
             <Button
               variant="contained"
               size="large"
               onClick={() => navigate(`/login?next=${encodeURIComponent(`/invite/${token}`)}`)}
             >
-              Sign in
+              {tr("Sign in")}
             </Button>
           </>
         ) : (
           <>
             <Typography variant="body2" color="text.secondary">
-              Create a Termoso account for {inv.email} to join the team.
+              {trx("Create a Termoso account for {email} to join the team.", { email: inv.email })}
             </Typography>
             <Button
               variant="contained"
@@ -109,24 +115,24 @@ export function InvitePage() {
                 })
               }
             >
-              Create account
+              {tr("Create account")}
             </Button>
             <Button
               color="inherit"
               onClick={() => navigate(`/login?next=${encodeURIComponent(`/invite/${token}`)}`)}
             >
-              I already have an account
+              {tr("I already have an account")}
             </Button>
           </>
         )}
-        <Divider>or</Divider>
+        <Divider>{tr("or")}</Divider>
         <Button
           color="inherit"
           href={appInviteLink(token)}
           endIcon={<OpenInNewRoundedIcon />}
           data-testid="open-in-app"
         >
-          Open in the Termoso app
+          {tr("Open in the Termoso app")}
         </Button>
       </Stack>
     </>

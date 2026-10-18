@@ -8,7 +8,7 @@
 //! official mirrors and are checked against the SHA-256 pinned below.
 
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -125,6 +125,13 @@ pub struct LinuxInstalled {
     pub name: String,
     pub version: String,
     pub installed_at: i64,
+    /// SHA-256 of the tarball the system was unpacked from; lets a repeat
+    /// install of the same image become a no-op.
+    #[serde(default)]
+    pub sha256: String,
+    /// `official`, `file` or `url`.
+    #[serde(default)]
+    pub source: String,
 }
 
 const MARKER: &str = "installed.json";
@@ -167,6 +174,57 @@ pub fn linux_install(
 ) {
     RUNTIME.spawn(async move {
         let result = install(Path::new(&root_dir), &distro_id, &dns, listener.as_ref()).await;
+        listener.on_finished(result.err().map(|e| e.to_string()));
+    });
+}
+
+/// Install a root filesystem the user picked themselves (tar, tar.gz or
+/// tar.xz). The archive must contain `/bin/sh` built for this device's CPU;
+/// anything else is removed again and reported. `name` is what the picker
+/// shows afterwards. The file is deleted once unpacked.
+#[uniffi::export]
+pub fn linux_install_file(
+    root_dir: String,
+    path: String,
+    name: String,
+    dns: Vec<String>,
+    listener: Arc<dyn LinuxInstallListener>,
+) {
+    RUNTIME.spawn(async move {
+        let result = install_file(
+            Path::new(&root_dir),
+            Path::new(&path),
+            &name,
+            &dns,
+            listener.as_ref(),
+        )
+        .await;
+        listener.on_finished(result.err().map(|e| e.to_string()));
+    });
+}
+
+/// Download a root filesystem from `url` and install it like
+/// [`linux_install_file`]. With `sha256` set the download is verified
+/// against it and a system already unpacked from the same digest is kept.
+#[uniffi::export]
+pub fn linux_install_url(
+    root_dir: String,
+    url: String,
+    sha256: Option<String>,
+    name: String,
+    dns: Vec<String>,
+    listener: Arc<dyn LinuxInstallListener>,
+) {
+    RUNTIME.spawn(async move {
+        let result = install_url(
+            Path::new(&root_dir),
+            &url,
+            sha256.as_deref(),
+            &name,
+            &dns,
+            listener.as_ref(),
+        )
+        .await;
         listener.on_finished(result.err().map(|e| e.to_string()));
     });
 }
@@ -295,6 +353,8 @@ pub fn linux_shell(
     })
 }
 
+const CACHE: &str = "cache";
+
 async fn install(
     root: &Path,
     distro_id: &str,
@@ -305,12 +365,148 @@ async fn install(
     let (url, sha, bytes) =
         arch_source(src).ok_or_else(|| MobileError::invalid("unsupported CPU architecture"))?;
     fs::create_dir_all(root)?;
-    let _ = fs::remove_file(root.join(MARKER));
-    let rootfs = root.join(ROOTFS);
-    if rootfs.exists() {
-        remove_tree(&rootfs)?;
+    if already_installed(root, sha) {
+        return Ok(());
     }
-    let tarball = root.join("download.tar.gz");
+    let tarball = cached_or_download(root, url, Some(sha), bytes, listener).await?;
+    let info = LinuxInstalled {
+        distro_id: src.id.into(),
+        name: src.name.into(),
+        version: src.version.into(),
+        installed_at: now(),
+        sha256: sha.into(),
+        source: "official".into(),
+    };
+    // Official tarballs stay in the cache so a reinstall skips the download.
+    finish(root, &tarball, false, info, dns, listener).await
+}
+
+async fn install_file(
+    root: &Path,
+    path: &Path,
+    name: &str,
+    dns: &[String],
+    listener: &dyn LinuxInstallListener,
+) -> Result<()> {
+    fs::create_dir_all(root)?;
+    listener.on_progress(LinuxStage::Verifying, 0, 0);
+    let digest = sha256_file(path)?;
+    if already_installed(root, &digest) {
+        let _ = fs::remove_file(path);
+        return Ok(());
+    }
+    let info = LinuxInstalled {
+        distro_id: format!("file:{}", &digest[..12]),
+        name: name.trim().to_string(),
+        version: String::new(),
+        installed_at: now(),
+        sha256: digest,
+        source: "file".into(),
+    };
+    finish(root, path, true, info, dns, listener).await
+}
+
+async fn install_url(
+    root: &Path,
+    url: &str,
+    sha256: Option<&str>,
+    name: &str,
+    dns: &[String],
+    listener: &dyn LinuxInstallListener,
+) -> Result<()> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| MobileError::invalid("invalid URL"))?;
+    if !matches!(parsed.scheme(), "https" | "http") {
+        return Err(MobileError::invalid("only http(s) URLs are supported"));
+    }
+    let expected = sha256
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty());
+    if expected
+        .as_deref()
+        .is_some_and(|sha| sha.len() != 64 || !sha.bytes().all(|b| b.is_ascii_hexdigit()))
+    {
+        return Err(MobileError::invalid("SHA-256 must be 64 hex characters"));
+    }
+    fs::create_dir_all(root)?;
+    if expected
+        .as_deref()
+        .is_some_and(|sha| already_installed(root, sha))
+    {
+        return Ok(());
+    }
+    let tarball = cached_or_download(root, url, expected.as_deref(), 0, listener).await?;
+    let digest = match &expected {
+        Some(sha) => sha.clone(),
+        None => sha256_file(&tarball)?,
+    };
+    let label = if name.trim().is_empty() {
+        parsed
+            .path_segments()
+            .and_then(|mut p| p.next_back())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("Custom Linux")
+            .to_string()
+    } else {
+        name.trim().to_string()
+    };
+    let info = LinuxInstalled {
+        distro_id: format!("url:{}", &digest[..12]),
+        name: label,
+        version: String::new(),
+        installed_at: now(),
+        sha256: digest,
+        source: "url".into(),
+    };
+    finish(root, &tarball, true, info, dns, listener).await
+}
+
+fn now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// The same image is already unpacked and usable.
+fn already_installed(root: &Path, sha: &str) -> bool {
+    linux_installed(root.to_string_lossy().into_owned())
+        .map(|i| i.sha256 == sha && !sha.is_empty())
+        .unwrap_or(false)
+}
+
+fn sha256_file(path: &Path) -> Result<String> {
+    let mut file = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher)?;
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Returns a verified tarball: from `root/cache/<sha>` when it is there and
+/// still matches, otherwise freshly downloaded (into the cache when a digest
+/// is known, else into `root/download.img`).
+async fn cached_or_download(
+    root: &Path,
+    url: &str,
+    sha: Option<&str>,
+    bytes: u64,
+    listener: &dyn LinuxInstallListener,
+) -> Result<PathBuf> {
+    let dest = match sha {
+        Some(sha) => {
+            let cache = root.join(CACHE);
+            fs::create_dir_all(&cache)?;
+            let p = cache.join(sha);
+            if p.is_file() {
+                listener.on_progress(LinuxStage::Verifying, 0, 0);
+                if sha256_file(&p).ok().as_deref() == Some(sha) {
+                    return Ok(p);
+                }
+                let _ = fs::remove_file(&p);
+            }
+            p
+        }
+        None => root.join("download.img"),
+    };
 
     listener.on_progress(LinuxStage::Downloading, 0, bytes);
     let client = reqwest::Client::builder()
@@ -324,7 +520,7 @@ async fn install(
         .and_then(|r| r.error_for_status())
         .map_err(|e| MobileError::invalid(format!("download failed: {e}")))?;
     let total = resp.content_length().unwrap_or(bytes);
-    let mut file = fs::File::create(&tarball)?;
+    let mut file = fs::File::create(&dest)?;
     let mut hasher = Sha256::new();
     let mut done = 0u64;
     let mut stream = resp.bytes_stream();
@@ -338,47 +534,141 @@ async fn install(
     file.flush()?;
     drop(file);
 
-    listener.on_progress(LinuxStage::Verifying, 0, 0);
-    let digest = format!("{:x}", hasher.finalize());
-    if digest != sha {
-        let _ = fs::remove_file(&tarball);
-        return Err(MobileError::invalid(
-            "checksum mismatch — the download was corrupted or tampered with",
-        ));
+    if let Some(sha) = sha {
+        listener.on_progress(LinuxStage::Verifying, 0, 0);
+        let digest = format!("{:x}", hasher.finalize());
+        if digest != sha {
+            let _ = fs::remove_file(&dest);
+            return Err(MobileError::invalid(
+                "checksum mismatch — the download was corrupted or tampered with",
+            ));
+        }
     }
+    Ok(dest)
+}
 
+/// Unpack, check the image runs on this CPU, configure and write the marker.
+/// `consume` deletes the tarball afterwards.
+async fn finish(
+    root: &Path,
+    tarball: &Path,
+    consume: bool,
+    info: LinuxInstalled,
+    dns: &[String],
+    listener: &dyn LinuxInstallListener,
+) -> Result<()> {
+    let _ = fs::remove_file(root.join(MARKER));
+    let rootfs = root.join(ROOTFS);
+    if rootfs.exists() {
+        remove_tree(&rootfs)?;
+    }
     listener.on_progress(LinuxStage::Unpacking, 0, 0);
     let rootfs2 = rootfs.clone();
-    let tarball2 = tarball.clone();
+    let tarball2 = tarball.to_path_buf();
     let unpack = tokio::task::spawn_blocking(move || unpack(&tarball2, &rootfs2))
         .await
         .map_err(|e| MobileError::invalid(e.to_string()))?;
-    let _ = fs::remove_file(&tarball);
-    let entries = unpack?;
+    if consume {
+        let _ = fs::remove_file(tarball);
+    }
+    let entries = match unpack.and_then(|n| validate(&rootfs).map(|_| n)) {
+        Ok(n) => n,
+        Err(e) => {
+            let _ = remove_tree(&rootfs);
+            return Err(e);
+        }
+    };
     listener.on_progress(LinuxStage::Unpacking, entries, entries);
 
     listener.on_progress(LinuxStage::Configuring, 0, 0);
     configure(&rootfs, dns)?;
-    let info = LinuxInstalled {
-        distro_id: src.id.into(),
-        name: src.name.into(),
-        version: src.version.into(),
-        installed_at: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0),
-    };
     fs::write(root.join(MARKER), serde_json::to_vec(&info)?)?;
     Ok(())
 }
 
-/// Unpack a gzip tarball as an unprivileged user: symlinks kept, hard links
-/// turned into copies (apt and apk cope), device nodes and ownership dropped.
+/// ELF `e_machine` of this build's CPU.
+const fn this_machine() -> Option<u16> {
+    if cfg!(target_arch = "aarch64") {
+        Some(0xB7)
+    } else if cfg!(target_arch = "x86_64") {
+        Some(0x3E)
+    } else {
+        None
+    }
+}
+
+/// A usable image has a shell binary built for this CPU. Symlinks are
+/// followed inside the rootfs only.
+fn validate(rootfs: &Path) -> Result<()> {
+    let candidates = [
+        "bin/sh",
+        "usr/bin/sh",
+        "bin/busybox",
+        "bin/bash",
+        "usr/bin/bash",
+    ];
+    let mut found = None;
+    for c in candidates {
+        let mut p = rootfs.join(c);
+        for _ in 0..8 {
+            match fs::symlink_metadata(&p) {
+                Ok(m) if m.file_type().is_symlink() => {
+                    let target = fs::read_link(&p)?;
+                    p = if target.is_absolute() {
+                        rootfs.join(strip(&target))
+                    } else {
+                        p.parent().unwrap_or(rootfs).join(target)
+                    };
+                }
+                Ok(m) if m.is_file() => {
+                    found = Some(p.clone());
+                    break;
+                }
+                _ => break,
+            }
+        }
+        if found.is_some() {
+            break;
+        }
+    }
+    let sh = found.ok_or_else(|| {
+        MobileError::invalid("not a Linux root filesystem: no /bin/sh inside the archive")
+    })?;
+    let mut head = [0u8; 20];
+    let n = fs::File::open(&sh)?.read(&mut head)?;
+    if n < 20 || &head[..4] != b"\x7fELF" {
+        return Err(MobileError::invalid(
+            "/bin/sh in the archive is not an ELF binary",
+        ));
+    }
+    let machine = u16::from_le_bytes([head[18], head[19]]);
+    match this_machine() {
+        Some(m) if m == machine => Ok(()),
+        Some(_) => Err(MobileError::invalid(
+            "this image was built for another CPU architecture",
+        )),
+        None => Ok(()),
+    }
+}
+
+/// Picks the decoder by magic bytes: gzip, xz or a plain tar.
+fn open_tar(path: &Path) -> Result<Box<dyn Read + Send>> {
+    let mut file = fs::File::open(path)?;
+    let mut magic = [0u8; 6];
+    let n = file.read(&mut magic)?;
+    file.seek(SeekFrom::Start(0))?;
+    Ok(if n >= 2 && magic[..2] == [0x1f, 0x8b] {
+        Box::new(flate2::read::GzDecoder::new(file))
+    } else if n >= 6 && magic == [0xfd, b'7', b'z', b'X', b'Z', 0x00] {
+        Box::new(xz2::read::XzDecoder::new(file))
+    } else {
+        Box::new(file)
+    })
+}
+
 fn unpack(tarball: &Path, rootfs: &Path) -> Result<u64> {
     fs::create_dir_all(rootfs)?;
-    let file = fs::File::open(tarball)?;
-    let gz = flate2::read::GzDecoder::new(file);
-    let mut archive = tar::Archive::new(gz);
+    let mut archive = tar::Archive::new(open_tar(tarball)?);
     archive.set_preserve_permissions(true);
     archive.set_preserve_ownerships(false);
     archive.set_unpack_xattrs(false);

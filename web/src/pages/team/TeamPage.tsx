@@ -1,4 +1,5 @@
 import { useMemo, useState, type SubmitEvent } from "react";
+import { tr, trn, trx } from "@/i18n";
 import {
   Alert,
   Box,
@@ -41,7 +42,13 @@ import LockOpenRoundedIcon from "@mui/icons-material/LockOpenRounded";
 import PersonAddAltRoundedIcon from "@mui/icons-material/PersonAddAltRounded";
 import PersonRemoveRoundedIcon from "@mui/icons-material/PersonRemoveRounded";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link as RouterLink, useNavigate, useParams } from "react-router";
+import { Link as RouterLink, useNavigate, useParams, useSearchParams } from "react-router";
+import { Tab, Tabs } from "@mui/material";
+import { AuditTab } from "./AuditTab";
+import { PoliciesTab } from "./PoliciesTab";
+import { RolesTab } from "./RolesTab";
+import { ScimTab } from "./ScimTab";
+import { can } from "./perm";
 import { errorMessage } from "@/api/client";
 import { teamsApi, vaultsApi } from "@/api/endpoints";
 import { queryKeys, useServerInfo } from "@/api/hooks";
@@ -89,18 +96,69 @@ function TeamDetail({ team }: { team: Team }) {
           <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
             <RoleChip role={team.my_role} />
             <span>
-              {team.member_count} {team.member_count === 1 ? "member" : "members"} · created{" "}
-              {formatDate(team.created_at)}
+              {tr("{members} · created {v2}", {
+                members: trn(team.member_count, "{count} member", "{count} members"),
+                v2: formatDate(team.created_at),
+              })}
             </span>
           </Stack>
         }
         actions={<TeamActions team={team} />}
       />
-      {admin && <PendingKeysSection team={team} />}
-      <MembersSection team={team} />
-      {admin && <InvitesSection team={team} />}
-      <TeamVaultsSection team={team} />
-      {admin && <DigestSection team={team} />}
+      <TeamTabs team={team} admin={admin} />
+    </>
+  );
+}
+
+type TabKey = "members" | "roles" | "policies" | "audit" | "scim";
+
+function TeamTabs({ team, admin }: { team: Team; admin: boolean }) {
+  const [params, setParams] = useSearchParams();
+  const all: { key: TabKey; label: string; show: boolean }[] = [
+    { key: "members", label: tr("Members"), show: true },
+    { key: "roles", label: tr("Roles"), show: can(team, "roles.manage") },
+    { key: "policies", label: tr("Policies"), show: can(team, "policies.manage") },
+    {
+      key: "audit",
+      label: tr("Audit"),
+      show: can(team, "audit.view") || can(team, "webhooks.manage"),
+    },
+    { key: "scim", label: tr("SCIM"), show: can(team, "scim.manage") || can(team, "scim.tokens") },
+  ];
+  const tabs = all.filter((t) => t.show);
+  const requested = params.get("tab");
+  const tab: TabKey = tabs.find((t) => t.key === requested)?.key ?? "members";
+  return (
+    <>
+      {tabs.length > 1 && (
+        <Tabs
+          value={tab}
+          onChange={(_, v: TabKey) => {
+            const next = new URLSearchParams(params);
+            if (v === "members") next.delete("tab");
+            else next.set("tab", v);
+            setParams(next, { replace: true });
+          }}
+          sx={{ mb: 2, borderBottom: 1, borderColor: "divider" }}
+        >
+          {tabs.map((t) => (
+            <Tab key={t.key} value={t.key} label={t.label} />
+          ))}
+        </Tabs>
+      )}
+      {tab === "members" && (
+        <>
+          {admin && <PendingKeysSection team={team} />}
+          <MembersSection team={team} />
+          {admin && <InvitesSection team={team} />}
+          <TeamVaultsSection team={team} />
+          {admin && <DigestSection team={team} />}
+        </>
+      )}
+      {tab === "roles" && <RolesTab team={team} />}
+      {tab === "policies" && <PoliciesTab team={team} />}
+      {tab === "audit" && <AuditTab team={team} />}
+      {tab === "scim" && <ScimTab team={team} />}
     </>
   );
 }
@@ -123,7 +181,7 @@ function TeamActions({ team }: { team: Team }) {
     onSuccess: async () => {
       setRenameOpen(false);
       await invalidate();
-      snack.notify("Team renamed");
+      snack.notify(tr("Team renamed"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -148,17 +206,17 @@ function TeamActions({ team }: { team: Team }) {
     <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
       {isAdmin(team.my_role) && (
         <Button variant="outlined" onClick={() => setRenameOpen(true)}>
-          Rename
+          {tr("Rename")}
         </Button>
       )}
       {team.my_role !== "owner" && (
         <Button variant="outlined" color="error" onClick={() => setLeaveOpen(true)}>
-          Leave team
+          {tr("Leave team")}
         </Button>
       )}
       {team.my_role === "owner" && (
         <Button variant="outlined" color="error" onClick={() => setDeleteOpen(true)}>
-          Delete team
+          {tr("Delete team")}
         </Button>
       )}
 
@@ -174,12 +232,12 @@ function TeamActions({ team }: { team: Team }) {
             rename.mutate();
           }}
         >
-          <DialogTitle>Rename team</DialogTitle>
+          <DialogTitle>{tr("Rename team")}</DialogTitle>
           <DialogContent>
             <TextField
               autoFocus
               fullWidth
-              label="Team name"
+              label={tr("Team name")}
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -188,41 +246,45 @@ function TeamActions({ team }: { team: Team }) {
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={() => setRenameOpen(false)} color="inherit">
-              Cancel
+              {tr("Cancel")}
             </Button>
             <Button
               type="submit"
               variant="contained"
               disabled={rename.isPending || name.trim() === ""}
             >
-              Save
+              {tr("Save")}
             </Button>
           </DialogActions>
         </form>
       </Dialog>
       <ConfirmDialog
         open={leaveOpen}
-        title="Leave team?"
-        confirmLabel="Leave"
+        title={tr("Leave team?")}
+        confirmLabel={tr("Leave")}
         danger
         busy={leave.isPending}
         onCancel={() => setLeaveOpen(false)}
         onConfirm={() => leave.mutate()}
       >
-        You lose access to all vaults of “{team.name}”. A manager should rotate the vault keys
-        afterwards.
+        {trx(
+          "You lose access to all vaults of “{name}”. A manager should rotate the vault keys afterwards.",
+          { name: team.name },
+        )}
       </ConfirmDialog>
       <ConfirmDialog
         open={deleteOpen}
-        title="Delete team?"
-        confirmLabel="Delete"
+        title={tr("Delete team?")}
+        confirmLabel={tr("Delete")}
         danger
         busy={del.isPending}
         onCancel={() => setDeleteOpen(false)}
         onConfirm={() => del.mutate()}
       >
-        Every team vault and all data inside it is deleted for all {team.member_count} members. This
-        cannot be undone.
+        {trx(
+          "Every team vault and all data inside it is deleted for all {member_count} members. This cannot be undone.",
+          { member_count: team.member_count },
+        )}
       </ConfirmDialog>
     </Stack>
   );
@@ -254,6 +316,24 @@ function MembersSection({ team }: { team: Team }) {
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
+  const rolesQuery = useQuery({
+    queryKey: queryKeys.teamRoles(team.id),
+    queryFn: () => teamsApi.roles(team.id),
+    enabled: isAdmin(team.my_role),
+  });
+  const roleDefs = rolesQuery.data
+    ? [...rolesQuery.data.roles].sort((a, b) => a.position - b.position)
+    : null;
+  const setRoleId = useMutation({
+    mutationFn: ({ userId, role, roleId }: { userId: string; role: TeamRole; roleId: string }) =>
+      teamsApi.setMemberRole(team.id, userId, role, roleId),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: queryKeys.teamMembers(team.id) });
+      await qc.invalidateQueries({ queryKey: queryKeys.teamRoles(team.id) });
+      snack.notify(tr("Role updated"));
+    },
+    onError: (e) => snack.error(errorMessage(e)),
+  });
   const remove = useMutation({
     mutationFn: ({ userId, action }: { userId: string; action: MemberRemoval }) =>
       action === "delete_account"
@@ -264,8 +344,8 @@ function MembersSection({ team }: { team: Team }) {
       await invalidate();
       snack.notify(
         action === "delete_account"
-          ? "Account deleted. Rotate affected vault keys to revoke their stale copies."
-          : "Member removed. Rotate affected vault keys to revoke their stale copies.",
+          ? tr("Account deleted. Rotate affected vault keys to revoke their stale copies.")
+          : tr("Member removed. Rotate affected vault keys to revoke their stale copies."),
         "info",
       );
     },
@@ -277,7 +357,7 @@ function MembersSection({ team }: { team: Team }) {
   const admin = isAdmin(team.my_role);
 
   return (
-    <Section title="Members" disablePadding>
+    <Section title={tr("Members")} disablePadding>
       {members.isPending ? (
         <Loading minHeight={120} />
       ) : members.isError ? (
@@ -289,9 +369,9 @@ function MembersSection({ team }: { team: Team }) {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Member</TableCell>
-                <TableCell>Role</TableCell>
-                <TableCell>Joined</TableCell>
+                <TableCell>{tr("Member")}</TableCell>
+                <TableCell>{tr("Role")}</TableCell>
+                <TableCell>{tr("Joined")}</TableCell>
                 {admin && <TableCell align="right" />}
               </TableRow>
             </TableHead>
@@ -311,43 +391,95 @@ function MembersSection({ team }: { team: Team }) {
                         />
                         <MfaBadge m={m} required={team.require_mfa === true} />
                         {m.managed && (
-                          <Tooltip title="Account was created through this team's invitation; the owner can delete it">
-                            <Chip label="Team account" size="small" variant="outlined" />
+                          <Tooltip
+                            title={tr(
+                              "Account was created through this team's invitation; the owner can delete it",
+                            )}
+                          >
+                            <Chip label={tr("Team account")} size="small" variant="outlined" />
                           </Tooltip>
                         )}
                       </Stack>
                     </TableCell>
                     <TableCell>
-                      {canEdit ? (
-                        <Select
-                          size="small"
-                          value={m.role}
-                          onChange={(e) => {
-                            const role = e.target.value;
-                            if (role === "owner") setTransfer(m);
-                            else setRole.mutate({ userId: m.user_id, role });
-                          }}
-                          sx={{ minWidth: 130 }}
-                        >
-                          <MenuItem value="member">Member</MenuItem>
-                          <MenuItem value="admin">Admin</MenuItem>
-                          {team.my_role === "owner" && (
-                            <MenuItem value="owner">Owner (transfer)</MenuItem>
-                          )}
-                        </Select>
-                      ) : (
-                        <RoleChip role={m.role} />
-                      )}
+                      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                        {canEdit && roleDefs ? (
+                          <Select
+                            size="small"
+                            value={m.role_ref?.id ?? ""}
+                            onChange={(e) => {
+                              const def = roleDefs.find((r) => r.id === e.target.value);
+                              if (!def) return;
+                              if (def.slug === "owner") setTransfer(m);
+                              else
+                                setRoleId.mutate({
+                                  userId: m.user_id,
+                                  role: def.slug === "admin" ? "admin" : "member",
+                                  roleId: def.id,
+                                });
+                            }}
+                            sx={{ minWidth: 150 }}
+                          >
+                            {roleDefs
+                              .filter((r) => r.slug !== "owner" || team.my_role === "owner")
+                              .map((r) => (
+                                <MenuItem key={r.id} value={r.id}>
+                                  {r.slug === "owner" ? tr("Owner (transfer)") : r.name}
+                                </MenuItem>
+                              ))}
+                          </Select>
+                        ) : canEdit ? (
+                          <Select
+                            size="small"
+                            value={m.role}
+                            onChange={(e) => {
+                              const role = e.target.value;
+                              if (role === "owner") setTransfer(m);
+                              else setRole.mutate({ userId: m.user_id, role });
+                            }}
+                            sx={{ minWidth: 130 }}
+                          >
+                            <MenuItem value="member">{tr("Member")}</MenuItem>
+                            <MenuItem value="admin">{tr("Admin")}</MenuItem>
+                            {team.my_role === "owner" && (
+                              <MenuItem value="owner">{tr("Owner (transfer)")}</MenuItem>
+                            )}
+                          </Select>
+                        ) : m.role_ref &&
+                          !["owner", "admin", "member"].includes(m.role_ref.slug) ? (
+                          <Chip
+                            size="small"
+                            label={m.role_ref.name}
+                            sx={{ color: "text.secondary" }}
+                          />
+                        ) : (
+                          <RoleChip role={m.role} />
+                        )}
+                        {m.role_source && m.role_source !== "manual" && (
+                          <Tooltip
+                            title={tr("Assigned from {v1} groups", {
+                              v1: m.role_source === "scim" ? "SCIM" : "identity provider",
+                            })}
+                          >
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label={m.role_source === "scim" ? "SCIM" : tr("IdP")}
+                              sx={{ height: 20 }}
+                            />
+                          </Tooltip>
+                        )}
+                      </Stack>
                     </TableCell>
                     <TableCell>{formatDate(m.joined_at)}</TableCell>
                     {admin && (
                       <TableCell align="right">
                         {canEdit && (
-                          <Tooltip title="Remove from team">
+                          <Tooltip title={tr("Remove from team")}>
                             <IconButton
                               size="small"
                               onClick={() => setRemoving(m)}
-                              aria-label="Remove member"
+                              aria-label={tr("Remove member")}
                             >
                               <PersonRemoveRoundedIcon fontSize="small" />
                             </IconButton>
@@ -374,15 +506,18 @@ function MembersSection({ team }: { team: Team }) {
       />
       <ConfirmDialog
         open={transfer !== null}
-        title="Transfer ownership?"
-        confirmLabel="Transfer"
+        title={tr("Transfer ownership?")}
+        confirmLabel={tr("Transfer")}
         busy={setRole.isPending}
         onCancel={() => setTransfer(null)}
         onConfirm={() => {
           if (transfer) setRole.mutate({ userId: transfer.user_id, role: "owner" });
         }}
       >
-        {transfer?.email} becomes the owner of “{team.name}” and you become an admin.
+        {trx("{email} becomes the owner of “{name}” and you become an admin.", {
+          email: transfer?.email,
+          name: team.name,
+        })}
       </ConfirmDialog>
     </Section>
   );
@@ -412,14 +547,16 @@ function RemoveMemberDialog({
 
   return (
     <Dialog open={member !== null} onClose={busy ? undefined : onCancel} maxWidth="xs" fullWidth>
-      <DialogTitle>{deleting ? "Delete account?" : "Remove member?"}</DialogTitle>
+      <DialogTitle>{deleting ? tr("Delete account?") : tr("Remove member?")}</DialogTitle>
       <DialogContent>
         <Stack spacing={2}>
           {offerDelete ? (
             <>
               <DialogContentText>
-                {email} was created through this team's invitation. Choose what happens to the
-                account.
+                {trx(
+                  "{email} was created through this team's invitation. Choose what happens to the account.",
+                  { email: email },
+                )}
               </DialogContentText>
               <RadioGroup
                 value={action}
@@ -430,10 +567,11 @@ function RemoveMemberDialog({
                   control={<Radio size="small" />}
                   label={
                     <>
-                      <Typography variant="body2">Remove from team</Typography>
+                      <Typography variant="body2">{tr("Remove from team")}</Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Becomes an individual account and keeps its personal vault; loses access to
-                        the team and its vaults.
+                        {tr(
+                          "Becomes an individual account and keeps its personal vault; loses access to the team and its vaults.",
+                        )}
                       </Typography>
                     </>
                   }
@@ -444,11 +582,12 @@ function RemoveMemberDialog({
                   label={
                     <>
                       <Typography variant="body2" color="error">
-                        Delete the account
+                        {tr("Delete the account")}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Permanently deletes the account, its personal vault, devices and session
-                        logs. Cannot be undone.
+                        {tr(
+                          "Permanently deletes the account, its personal vault, devices and session logs. Cannot be undone.",
+                        )}
                       </Typography>
                     </>
                   }
@@ -456,7 +595,7 @@ function RemoveMemberDialog({
               </RadioGroup>
               {deleting && (
                 <TextField
-                  label={`Type ${email} to confirm`}
+                  label={tr("Type {email} to confirm", { email })}
                   value={typed}
                   onChange={(e) => setTyped(e.target.value)}
                   autoComplete="off"
@@ -467,13 +606,15 @@ function RemoveMemberDialog({
               )}
             </>
           ) : (
-            <DialogContentText>{email} loses access to the team and its vaults.</DialogContentText>
+            <DialogContentText>
+              {trx("{email} loses access to the team and its vaults.", { email: email })}
+            </DialogContentText>
           )}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onCancel} disabled={busy} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           onClick={() => onConfirm(deleting ? "delete_account" : "remove")}
@@ -481,7 +622,7 @@ function RemoveMemberDialog({
           color="error"
           disabled={busy || !confirmed}
         >
-          {deleting ? "Delete account" : "Remove"}
+          {deleting ? tr("Delete account") : tr("Remove")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -528,15 +669,17 @@ function InvitesSection({ team }: { team: Team }) {
 
   return (
     <Section
-      title="Invitations"
-      description="Pending invitations expire automatically. The invitee receives a link by email when SMTP is configured; you can also copy it."
+      title={tr("Invitations")}
+      description={tr(
+        "Pending invitations expire automatically. The invitee receives a link by email when SMTP is configured; you can also copy it.",
+      )}
       actions={
         <Button
           variant="outlined"
           startIcon={<PersonAddAltRoundedIcon />}
           onClick={() => setOpen(true)}
         >
-          Invite
+          {tr("Invite")}
         </Button>
       }
       disablePadding
@@ -548,7 +691,7 @@ function InvitesSection({ team }: { team: Team }) {
           <Alert severity="error">{errorMessage(invites.error)}</Alert>
         </Box>
       ) : invites.data.invites.length === 0 ? (
-        <EmptyState title="No pending invitations" />
+        <EmptyState title={tr("No pending invitations")} />
       ) : (
         <List disablePadding>
           {invites.data.invites.map((i) => (
@@ -556,11 +699,11 @@ function InvitesSection({ team }: { team: Team }) {
               key={i.id}
               divider
               secondaryAction={
-                <Tooltip title="Revoke invitation">
+                <Tooltip title={tr("Revoke invitation")}>
                   <IconButton
                     edge="end"
                     onClick={() => setRevoking(i.id)}
-                    aria-label="Revoke invitation"
+                    aria-label={tr("Revoke invitation")}
                   >
                     <DeleteOutlineRoundedIcon />
                   </IconButton>
@@ -574,7 +717,10 @@ function InvitesSection({ team }: { team: Team }) {
                     <RoleChip role={i.role} />
                   </Stack>
                 }
-                secondary={`Sent ${formatRelative(i.created_at)} · expires ${formatDate(i.expires_at)}`}
+                secondary={tr("Sent {v1} · expires {v2}", {
+                  v1: formatRelative(i.created_at),
+                  v2: formatDate(i.expires_at),
+                })}
               />
             </ListItem>
           ))}
@@ -593,12 +739,12 @@ function InvitesSection({ team }: { team: Team }) {
             create.mutate();
           }}
         >
-          <DialogTitle>Invite to {team.name}</DialogTitle>
+          <DialogTitle>{trx("Invite to {name}", { name: team.name })}</DialogTitle>
           <DialogContent sx={{ display: "grid", gap: 2 }}>
             {create.isError && <Alert severity="error">{errorMessage(create.error)}</Alert>}
             <TextField
               autoFocus
-              label="Email"
+              label={tr("Email")}
               type="email"
               required
               value={email}
@@ -606,21 +752,21 @@ function InvitesSection({ team }: { team: Team }) {
               disabled={create.isPending}
             />
             <FormControl>
-              <InputLabel id="invite-role">Team role</InputLabel>
+              <InputLabel id="invite-role">{tr("Team role")}</InputLabel>
               <Select
                 labelId="invite-role"
-                label="Team role"
+                label={tr("Team role")}
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
               >
-                <MenuItem value="member">Member</MenuItem>
-                <MenuItem value="admin">Admin</MenuItem>
+                <MenuItem value="member">{tr("Member")}</MenuItem>
+                <MenuItem value="admin">{tr("Admin")}</MenuItem>
               </Select>
             </FormControl>
             {teamVaults.length > 0 && (
               <FormControl component="fieldset" variant="standard">
                 <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                  Grant access to vaults (as viewer)
+                  {tr("Grant access to vaults (as viewer)")}
                 </Typography>
                 <FormGroup>
                   {teamVaults.map((v) => (
@@ -641,21 +787,23 @@ function InvitesSection({ team }: { team: Team }) {
                   ))}
                 </FormGroup>
                 <Typography variant="caption" color="text.secondary">
-                  After they join, a vault manager seals the key to them under “Pending vault keys”.
+                  {tr(
+                    "After they join, a vault manager seals the key to them under “Pending vault keys”.",
+                  )}
                 </Typography>
               </FormControl>
             )}
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={() => setOpen(false)} color="inherit" disabled={create.isPending}>
-              Cancel
+              {tr("Cancel")}
             </Button>
             <Button
               type="submit"
               variant="contained"
               disabled={create.isPending || email.trim() === ""}
             >
-              Send invitation
+              {tr("Send invitation")}
             </Button>
           </DialogActions>
         </form>
@@ -667,24 +815,26 @@ function InvitesSection({ team }: { team: Team }) {
         maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Invitation created</DialogTitle>
+        <DialogTitle>{tr("Invitation created")}</DialogTitle>
         <DialogContent sx={{ display: "grid", gap: 2 }}>
           <DialogContentText>
-            Share this link with the invitee. It works once and only for their email address.
+            {tr(
+              "Share this link with the invitee. It works once and only for their email address.",
+            )}
           </DialogContentText>
-          <CopyField label="Invitation link" value={createdUrl ?? ""} />
+          <CopyField label={tr("Invitation link")} value={createdUrl ?? ""} />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button variant="contained" onClick={() => setCreatedUrl(null)}>
-            Done
+            {tr("Done")}
           </Button>
         </DialogActions>
       </Dialog>
 
       <ConfirmDialog
         open={revoking !== null}
-        title="Revoke invitation?"
-        confirmLabel="Revoke"
+        title={tr("Revoke invitation?")}
+        confirmLabel={tr("Revoke")}
         danger
         busy={revoke.isPending}
         onCancel={() => setRevoking(null)}
@@ -692,7 +842,7 @@ function InvitesSection({ team }: { team: Team }) {
           if (revoking) revoke.mutate(revoking);
         }}
       >
-        The invitation link stops working immediately.
+        {tr("The invitation link stops working immediately.")}
       </ConfirmDialog>
     </Section>
   );
@@ -728,8 +878,11 @@ function DigestSection({ team }: { team: Team }) {
       await qc.invalidateQueries({ queryKey: queryKeys.teamDigest(team.id) });
       snack.notify(
         next === "off"
-          ? "Activity digest turned off"
-          : `You'll receive the ${digestLabel[next].toLowerCase()} digest at ${session?.user.email ?? "your address"}`,
+          ? tr("Activity digest turned off")
+          : tr("You'll receive the {v1} digest at {v2}", {
+              v1: digestLabel[next].toLowerCase(),
+              v2: session?.user.email ?? "your address",
+            }),
       );
     },
     onError: (e) => snack.error(errorMessage(e)),
@@ -739,8 +892,13 @@ function DigestSection({ team }: { team: Team }) {
     onSuccess: (r) => {
       snack.notify(
         r.sent
-          ? `Sent — ${r.events} ${r.events === 1 ? "event" : "events"}`
-          : `Nothing to send: no activity in the last ${cadence === "weekly" ? "week" : "day"}`,
+          ? tr("Sent — {events} {v1}", {
+              events: r.events,
+              v1: r.events === 1 ? "event" : "events",
+            })
+          : tr("Nothing to send: no activity in the last {v1}", {
+              v1: cadence === "weekly" ? "week" : "day",
+            }),
       );
     },
     onError: (e) => snack.error(errorMessage(e)),
@@ -748,15 +906,17 @@ function DigestSection({ team }: { team: Team }) {
 
   const disabled = !emailOk || !verified || update.isPending;
   const hint = !emailOk
-    ? "This server has no outgoing e-mail configured, so digests can't be sent."
+    ? tr("This server has no outgoing e-mail configured, so digests can't be sent.")
     : !verified
-      ? "Verify your e-mail address in Account first."
+      ? tr("Verify your e-mail address in Account first.")
       : undefined;
 
   return (
     <Section
-      title="Activity digest"
-      description="Get the team activity log by e-mail. It goes only to you, contains the same events as the log (who did what, never vault contents), and is skipped for quiet periods."
+      title={tr("Activity digest")}
+      description={tr(
+        "Get the team activity log by e-mail. It goes only to you, contains the same events as the log (who did what, never vault contents), and is skipped for quiet periods.",
+      )}
       actions={
         <Button
           variant="outlined"
@@ -764,7 +924,7 @@ function DigestSection({ team }: { team: Team }) {
           disabled={disabled || send.isPending}
           onClick={() => send.mutate()}
         >
-          Send now
+          {tr("Send now")}
         </Button>
       }
     >
@@ -774,13 +934,13 @@ function DigestSection({ team }: { team: Team }) {
         </Alert>
       )}
       <SettingRow
-        label="Frequency"
+        label={tr("Frequency")}
         description={
           cadence === "off"
-            ? "Not subscribed."
+            ? tr("Not subscribed.")
             : cadence === "daily"
-              ? "Every morning (07:00 UTC) for the previous day."
-              : "Every Monday morning (07:00 UTC) for the previous week."
+              ? tr("Every morning (07:00 UTC) for the previous day.")
+              : tr("Every Monday morning (07:00 UTC) for the previous week.")
         }
         control={
           <Select<DigestChoice>
@@ -801,7 +961,7 @@ function DigestSection({ team }: { team: Team }) {
       />
       {cadence !== "off" && sub.data?.last_sent_at && (
         <SettingRow
-          label="Last sent"
+          label={tr("Last sent")}
           control={
             <Typography variant="body2" color="text.secondary">
               {formatRelative(sub.data.last_sent_at)}
@@ -842,7 +1002,7 @@ function PendingKeysSection({ team }: { team: Team }) {
     onSuccess: async (n) => {
       await qc.invalidateQueries({ queryKey: queryKeys.teamPendingKeys(team.id) });
       await qc.invalidateQueries({ queryKey: ["vaults"] });
-      snack.notify(n === 1 ? "Vault key granted" : `${n} vault keys granted`);
+      snack.notify(n === 1 ? tr("Vault key granted") : tr("{n} vault keys granted", { n }));
     },
     onError: (e) => {
       if (!(e instanceof UnlockCancelled)) snack.error(errorMessage(e));
@@ -852,7 +1012,8 @@ function PendingKeysSection({ team }: { team: Team }) {
   const items = pending.data?.items ?? [];
   if (pending.isPending || items.length === 0) return null;
 
-  const vaultName = (id: string) => vaults.data?.vaults.find((v) => v.id === id)?.name ?? "Vault";
+  const vaultName = (id: string) =>
+    vaults.data?.vaults.find((v) => v.id === id)?.name ?? tr("Vault");
   const memberOf = (id: string) => members.data?.members.find((m) => m.user_id === id);
   const grantable = items.filter(
     (p) => vaults.data?.vaults.find((v) => v.id === p.vault_id)?.sealed_key,
@@ -860,8 +1021,10 @@ function PendingKeysSection({ team }: { team: Team }) {
 
   return (
     <Section
-      title="Pending vault keys"
-      description="These members joined a vault but do not have its key yet. Granting seals the key to their public key in your browser — the server never sees it."
+      title={tr("Pending vault keys")}
+      description={tr(
+        "These members joined a vault but do not have its key yet. Granting seals the key to their public key in your browser — the server never sees it.",
+      )}
       actions={
         <Button
           variant="contained"
@@ -869,7 +1032,7 @@ function PendingKeysSection({ team }: { team: Team }) {
           disabled={grant.isPending || grantable.length === 0}
           onClick={() => grant.mutate(grantable)}
         >
-          Grant all ({grantable.length})
+          {trx("Grant all ({length})", { length: grantable.length })}
         </Button>
       }
       disablePadding
@@ -889,7 +1052,7 @@ function PendingKeysSection({ team }: { team: Team }) {
                   disabled={grant.isPending || !canGrant}
                   onClick={() => grant.mutate([p])}
                 >
-                  Grant
+                  {tr("Grant")}
                 </Button>
               }
             >
@@ -957,12 +1120,14 @@ function TeamVaultsSection({ team }: { team: Team }) {
 
   return (
     <Section
-      title="Team vaults"
-      description="Each vault has its own key, sealed to every member. You are always the first manager of a vault you create."
+      title={tr("Team vaults")}
+      description={tr(
+        "Each vault has its own key, sealed to every member. You are always the first manager of a vault you create.",
+      )}
       actions={
         admin && (
           <Button variant="outlined" startIcon={<AddRoundedIcon />} onClick={() => setOpen(true)}>
-            New vault
+            {tr("New vault")}
           </Button>
         )
       }
@@ -972,8 +1137,8 @@ function TeamVaultsSection({ team }: { team: Team }) {
         <Loading minHeight={100} />
       ) : teamVaults.length === 0 ? (
         <EmptyState
-          title="No team vaults yet"
-          description={admin ? "Create a vault to start sharing hosts and keys." : undefined}
+          title={tr("No team vaults yet")}
+          description={admin ? tr("Create a vault to start sharing hosts and keys.") : undefined}
         />
       ) : (
         <List disablePadding>
@@ -992,12 +1157,15 @@ function TeamVaultsSection({ team }: { team: Team }) {
                     <RoleChip role={v.my_role} />
                     {!v.sealed_key && (
                       <Typography variant="caption" color="warning.main">
-                        key pending
+                        {tr("key pending")}
                       </Typography>
                     )}
                   </Stack>
                 }
-                secondary={`Key version ${v.key_version} · created ${formatDate(v.created_at)}`}
+                secondary={tr("Key version {key_version} · created {v1}", {
+                  key_version: v.key_version,
+                  v1: formatDate(v.created_at),
+                })}
               />
             </ListItem>
           ))}
@@ -1016,17 +1184,17 @@ function TeamVaultsSection({ team }: { team: Team }) {
             create.mutate();
           }}
         >
-          <DialogTitle>New team vault</DialogTitle>
+          <DialogTitle>{tr("New team vault")}</DialogTitle>
           <DialogContent sx={{ display: "grid", gap: 2 }}>
             <TextField
               autoFocus
-              label="Vault name"
+              label={tr("Vault name")}
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={create.isPending}
             />
-            <Typography variant="subtitle2">Members</Typography>
+            <Typography variant="subtitle2">{tr("Members")}</Typography>
             <TableContainer>
               <Table size="small">
                 <TableBody>
@@ -1055,10 +1223,10 @@ function TeamVaultsSection({ team }: { team: Team }) {
                               }
                               sx={{ minWidth: 130 }}
                             >
-                              <MenuItem value="none">No access</MenuItem>
-                              <MenuItem value="viewer">Viewer</MenuItem>
-                              <MenuItem value="editor">Editor</MenuItem>
-                              <MenuItem value="manager">Manager</MenuItem>
+                              <MenuItem value="none">{tr("No access")}</MenuItem>
+                              <MenuItem value="viewer">{tr("Viewer")}</MenuItem>
+                              <MenuItem value="editor">{tr("Editor")}</MenuItem>
+                              <MenuItem value="manager">{tr("Manager")}</MenuItem>
                             </Select>
                           )}
                         </TableCell>
@@ -1071,14 +1239,14 @@ function TeamVaultsSection({ team }: { team: Team }) {
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={() => setOpen(false)} color="inherit" disabled={create.isPending}>
-              Cancel
+              {tr("Cancel")}
             </Button>
             <Button
               type="submit"
               variant="contained"
               disabled={create.isPending || name.trim() === ""}
             >
-              Create
+              {tr("Create")}
             </Button>
           </DialogActions>
         </form>

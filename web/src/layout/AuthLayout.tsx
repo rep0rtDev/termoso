@@ -1,6 +1,8 @@
 import { Box, Link, Typography } from "@mui/material";
+import { tr, trx } from "@/i18n";
 import { Link as RouterLink, Outlet } from "react-router";
 import { Logo } from "@/components/Logo";
+import { LanguageToggle } from "./LanguageToggle";
 import { ThemeToggle } from "./ThemeToggle";
 import { useServerInfo } from "@/api/hooks";
 
@@ -32,6 +34,7 @@ export function AuthLayout() {
         >
           <Logo size={26} />
         </Box>
+        <LanguageToggle />
         <ThemeToggle />
       </Box>
       <Box
@@ -59,15 +62,19 @@ export function AuthLayout() {
       </Box>
       <Box component="footer" sx={{ textAlign: "center", py: 2.5, color: "text.disabled" }}>
         <Typography variant="caption">
-          {info.data?.name ?? "Termoso"} · self-hosted, open source ·{" "}
-          <Link
-            href="https://github.com/termoso/termoso"
-            target="_blank"
-            rel="noreferrer"
-            color="inherit"
-          >
-            source
-          </Link>
+          {trx("{v1} · self-hosted, open source ·  {v2}", {
+            v1: info.data?.name ?? tr("Termoso"),
+            v2: (
+              <Link
+                href="https://github.com/termoso/termoso"
+                target="_blank"
+                rel="noreferrer"
+                color="inherit"
+              >
+                {tr("source")}
+              </Link>
+            ),
+          })}
         </Typography>
       </Box>
     </Box>

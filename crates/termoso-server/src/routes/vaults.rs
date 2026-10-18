@@ -44,14 +44,16 @@ pub async fn access<'e, E: PgExecutor<'e>>(
         i32,
         Option<String>,
         Option<bool>,
+        Option<Vec<String>>,
         Option<String>,
-        Option<bool>,
+        bool,
         bool,
     )> = sqlx::query_as(
-        "SELECT v.kind, v.team_id, v.key_version, vm.role, vm.sealed_key IS NULL, tm.role,
-                t.require_mfa,
-                EXISTS (SELECT 1 FROM users u WHERE u.id = $2 AND (u.totp_enabled
-                        OR EXISTS (SELECT 1 FROM webauthn_credentials w WHERE w.user_id = u.id)))
+        "SELECT v.kind, v.team_id, v.key_version, vm.role, vm.sealed_key IS NULL,
+                (SELECT r.permissions FROM team_roles r WHERE r.id = tm.role_id),
+                (SELECT p.mfa FROM team_policies p WHERE p.team_id = v.team_id),
+                EXISTS (SELECT 1 FROM users u WHERE u.id = $2 AND u.totp_enabled),
+                EXISTS (SELECT 1 FROM webauthn_credentials w WHERE w.user_id = $2)
          FROM vaults v
          LEFT JOIN vault_members vm ON vm.vault_id = v.id AND vm.user_id = $2
          LEFT JOIN team_members tm ON tm.team_id = v.team_id AND tm.user_id = $2
@@ -62,20 +64,28 @@ pub async fn access<'e, E: PgExecutor<'e>>(
     .bind(user_id)
     .fetch_optional(db)
     .await?;
-    let Some((kind, team_id, key_version, vrole, pending, trole, require_mfa, has_mfa)) = row
+    let Some((kind, team_id, key_version, vrole, pending, trole, mfa_level, has_totp, has_passkey)) =
+        row
     else {
         return Err(Error::not_found("Vault"));
     };
-    if require_mfa.unwrap_or(false) && !has_mfa && (vrole.is_some() || trole.is_some()) {
-        return Err(Error::mfa_required());
+    let level = mfa_level.as_deref().unwrap_or("off");
+    if !crate::policy::satisfies(level, has_totp, has_passkey)
+        && (vrole.is_some() || trole.is_some())
+    {
+        return Err(Error::mfa_required()
+            .with_details(serde_json::json!({ "team_id": team_id, "level": level })));
     }
     let kind = if kind == "team" {
         VaultKind::Team
     } else {
         VaultKind::Personal
     };
+    // A role holding `vaults.members` (or `*`) acts as manager on every
+    // team vault, like team admins did before fine-grained roles.
     let team_admin = trole
-        .map(|r| teams::parse_team_role(&r).is_admin())
+        .as_ref()
+        .map(|p| p.iter().any(|x| x == "*" || x == "vaults.members"))
         .unwrap_or(false);
     let role = match (vrole, team_admin) {
         (Some(r), true) => parse_vault_role(&r).max(VaultRole::Manager),
@@ -228,10 +238,7 @@ pub async fn create_team_vault(
     Path(team_id): Path<Uuid>,
     Body(req): Body<CreateVaultRequest>,
 ) -> ApiResult<Json<Vault>> {
-    let role = teams::my_role(&state.db, team_id, auth.user_id()).await?;
-    if !role.is_admin() {
-        return Err(Error::forbidden("Team admin role required"));
-    }
+    crate::authz::require(&state, team_id, auth.user_id(), "vaults.create").await?;
     let name = validate_name(&req.name)?;
     let me = req
         .members

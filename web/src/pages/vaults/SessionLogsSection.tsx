@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Box,
@@ -70,7 +71,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
       await qc.invalidateQueries({ queryKey: queryKeys.vault(vault.id) });
       await qc.invalidateQueries({ queryKey: queryKeys.vaults });
       snack.notify(
-        on ? "Members' sessions in this vault are now recorded" : "Recording turned off",
+        on ? tr("Members' sessions in this vault are now recorded") : tr("Recording turned off"),
       );
     },
     onError: (e) => snack.error(errorMessage(e)),
@@ -155,7 +156,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
     onSuccess: async () => {
       setDeleting(null);
       await invalidate();
-      snack.notify("Recording deleted for every member");
+      snack.notify(tr("Recording deleted for every member"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -164,8 +165,10 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
 
   return (
     <Section
-      title="Session logs"
-      description="Recordings members make on their devices, encrypted with the vault key and shared with the vault. Editors can pin recordings and leave a comment; the server never sees terminal content."
+      title={tr("Session logs")}
+      description={tr(
+        "Recordings members make on their devices, encrypted with the vault key and shared with the vault. Editors can pin recordings and leave a comment; the server never sees terminal content.",
+      )}
       actions={
         holdKey && !vaultKey ? (
           <Button
@@ -174,7 +177,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
             disabled={unlock.isPending}
             onClick={() => unlock.mutate()}
           >
-            Show details
+            {tr("Show details")}
           </Button>
         ) : undefined
       }
@@ -182,20 +185,22 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
       <Stack spacing={2}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="body2">Record members' sessions</Typography>
+            <Typography variant="body2">{tr("Record members' sessions")}</Typography>
             <Typography variant="caption" color="text.secondary">
               {manager
-                ? "Every terminal session to a host of this vault is recorded on the member's device and uploaded encrypted. Members still see their own recordings when this is off."
-                : "Only vault managers change this."}
+                ? tr(
+                    "Every terminal session to a host of this vault is recorded on the member's device and uploaded encrypted. Members still see their own recordings when this is off.",
+                  )
+                : tr("Only vault managers change this.")}
             </Typography>
           </Box>
-          <Tooltip title={manager ? "" : "Only vault managers change this"}>
+          <Tooltip title={manager ? "" : tr("Only vault managers change this")}>
             <span>
               <Switch
                 checked={vault.session_logging}
                 disabled={!manager || policy.isPending}
                 onChange={(e) => policy.mutate(e.target.checked)}
-                slotProps={{ input: { "aria-label": "Record members' sessions" } }}
+                slotProps={{ input: { "aria-label": tr("Record members' sessions") } }}
               />
             </span>
           </Tooltip>
@@ -204,7 +209,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
         {keyError && <Alert severity="warning">{keyError}</Alert>}
         {!holdKey && (
           <Alert severity="info">
-            Session details stay encrypted until a manager seals the vault key to you.
+            {tr("Session details stay encrypted until a manager seals the vault key to you.")}
           </Alert>
         )}
 
@@ -214,25 +219,29 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
           <Alert severity="error">{errorMessage(logs.error)}</Alert>
         ) : all.length === 0 ? (
           <EmptyState
-            title="No recordings yet"
+            title={tr("No recordings yet")}
             description={
               vault.session_logging
-                ? "Recordings appear here after members finish a session on a host of this vault."
-                : "Turn on recording above, or members can record their own sessions from the app settings."
+                ? tr(
+                    "Recordings appear here after members finish a session on a host of this vault.",
+                  )
+                : tr(
+                    "Turn on recording above, or members can record their own sessions from the app settings.",
+                  )
             }
           />
         ) : (
           <>
             {authors.length > 1 && (
               <FormControl size="small" sx={{ maxWidth: 320 }}>
-                <InputLabel id="log-author">Author</InputLabel>
+                <InputLabel id="log-author">{tr("Author")}</InputLabel>
                 <Select
                   labelId="log-author"
-                  label="Author"
+                  label={tr("Author")}
                   value={authorId}
                   onChange={(e) => setAuthorId(e.target.value)}
                 >
-                  <MenuItem value="">Everyone</MenuItem>
+                  <MenuItem value="">{tr("Everyone")}</MenuItem>
                   {authors.map((a) => (
                     <MenuItem key={a.user_id} value={a.user_id}>
                       {a.display_name ?? a.email}
@@ -245,10 +254,10 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Author</TableCell>
-                    <TableCell>Session</TableCell>
-                    <TableCell>When</TableCell>
-                    <TableCell align="right">Size</TableCell>
+                    <TableCell>{tr("Author")}</TableCell>
+                    <TableCell>{tr("Session")}</TableCell>
+                    <TableCell>{tr("When")}</TableCell>
+                    <TableCell align="right">{tr("Size")}</TableCell>
                     <TableCell align="right" />
                   </TableRow>
                 </TableHead>
@@ -261,7 +270,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                         <TableCell sx={{ minWidth: 200 }}>
                           <UserCell
                             userId={l.user_id}
-                            email={l.author?.email ?? "Former member"}
+                            email={l.author?.email ?? tr("Former member")}
                             displayName={l.author?.display_name}
                             avatar={l.author?.avatar_tag}
                             you={l.user_id === me}
@@ -270,15 +279,15 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                         <TableCell sx={{ minWidth: 220 }}>
                           <Stack direction="row" spacing={0.75} sx={{ alignItems: "center" }}>
                             {l.pinned && (
-                              <Tooltip title="Pinned">
+                              <Tooltip title={tr("Pinned")}>
                                 <PushPinRoundedIcon color="primary" sx={{ fontSize: 16 }} />
                               </Tooltip>
                             )}
                             <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
-                              {meta ? meta.label : "Encrypted recording"}
+                              {meta ? meta.label : tr("Encrypted recording")}
                             </Typography>
                             {!l.completed && (
-                              <Chip size="small" variant="outlined" label="Uploading" />
+                              <Chip size="small" variant="outlined" label={tr("Uploading")} />
                             )}
                           </Stack>
                           <Typography
@@ -290,10 +299,10 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                             {meta
                               ? `${meta.protocol} · ${meta.target} · ${durationOf(meta)}`
                               : !vaultKey
-                                ? "Details are decrypted only in your browser"
+                                ? tr("Details are decrypted only in your browser")
                                 : meta === null
-                                  ? "Could not decrypt (recorded with another key version?)"
-                                  : "Decrypting…"}
+                                  ? tr("Could not decrypt (recorded with another key version?)")
+                                  : tr("Decrypting…")}
                           </Typography>
                           {l.note && (
                             <Typography
@@ -313,7 +322,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                         <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
                           {canAnnotate && (
                             <>
-                              <Tooltip title={l.pinned ? "Unpin" : "Pin"}>
+                              <Tooltip title={l.pinned ? tr("Unpin") : tr("Pin")}>
                                 <IconButton
                                   size="small"
                                   disabled={annotate.isPending}
@@ -328,7 +337,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                                   )}
                                 </IconButton>
                               </Tooltip>
-                              <Tooltip title={l.note ? "Edit comment" : "Comment"}>
+                              <Tooltip title={l.note ? tr("Edit comment") : tr("Comment")}>
                                 <IconButton size="small" onClick={() => setEditing(l)}>
                                   <CommentOutlinedIcon fontSize="small" />
                                 </IconButton>
@@ -336,7 +345,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                             </>
                           )}
                           {canDelete && (
-                            <Tooltip title="Delete for everyone">
+                            <Tooltip title={tr("Delete for everyone")}>
                               <IconButton size="small" onClick={() => setDeleting(l)}>
                                 <DeleteOutlineRoundedIcon fontSize="small" />
                               </IconButton>
@@ -357,7 +366,7 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
                   disabled={logs.isFetchingNextPage}
                   onClick={() => void logs.fetchNextPage()}
                 >
-                  Load more
+                  {tr("Load more")}
                 </Button>
               </Box>
             )}
@@ -379,8 +388,8 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
       />
       <ConfirmDialog
         open={deleting !== null}
-        title="Delete recording?"
-        confirmLabel="Delete"
+        title={tr("Delete recording?")}
+        confirmLabel={tr("Delete")}
         danger
         busy={del.isPending}
         onCancel={() => setDeleting(null)}
@@ -388,8 +397,10 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
           if (deleting) del.mutate(deleting.id);
         }}
       >
-        The recording is removed from the server for every member of “{vault.name}”; copies already
-        downloaded to members' devices are deleted on their next sync. This cannot be undone.
+        {trx(
+          "The recording is removed from the server for every member of “{name}”; copies already downloaded to members' devices are deleted on their next sync. This cannot be undone.",
+          { name: vault.name },
+        )}
       </ConfirmDialog>
     </Section>
   );
@@ -448,7 +459,7 @@ function NoteForm({
   const tooLong = note.length > MAX_NOTE_CHARS;
   return (
     <>
-      <DialogTitle>Comment</DialogTitle>
+      <DialogTitle>{tr("Comment")}</DialogTitle>
       <DialogContent>
         <TextField
           autoFocus
@@ -456,29 +467,32 @@ function NoteForm({
           multiline
           minRows={3}
           maxRows={10}
-          placeholder="What happened in this session, what to look at…"
+          placeholder={tr("What happened in this session, what to look at…")}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           error={tooLong}
-          helperText={`${note.length} / ${MAX_NOTE_CHARS} · visible to every member of the vault`}
+          helperText={tr("{length} / {MAX_NOTE_CHARS} · visible to every member of the vault", {
+            length: note.length,
+            MAX_NOTE_CHARS,
+          })}
           sx={{ mt: 1 }}
         />
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         {log.note && (
           <Button color="error" disabled={busy} onClick={() => onSave("")} sx={{ mr: "auto" }}>
-            Remove
+            {tr("Remove")}
           </Button>
         )}
         <Button onClick={onClose} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           variant="contained"
           disabled={busy || tooLong || note.trim() === log.note}
           onClick={() => onSave(note.trim())}
         >
-          Save
+          {tr("Save")}
         </Button>
       </DialogActions>
     </>

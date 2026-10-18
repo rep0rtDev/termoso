@@ -56,9 +56,27 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "fileAssociations": [
+      {
+        "ext": ["pem", "ppk"],
+        "name": "SSH private key",
+        "description": "Private key for the Termoso keychain",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["itermcolors"],
+        "name": "iTerm2 colour scheme",
+        "description": "Terminal colour scheme",
+        "role": "Viewer"
+      }
+    ],
     "linux": {
       "deb": {
-        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"],
+        "desktopTemplate": "templates/termoso.desktop"
+      },
+      "rpm": {
+        "desktopTemplate": "templates/termoso.desktop"
       }
     },
     "windows": {

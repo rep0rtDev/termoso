@@ -14,11 +14,20 @@ import { toast } from "@/components/Snackbar";
 import { useSaveColorScheme } from "@/ipc/hooks";
 import type { ColorSchemeData, LocalVault, Uuid } from "@/ipc/types";
 import { customTheme } from "@/terminal/themes";
-import { tr } from "@/i18n";
+import { tr, msg } from "@/i18n";
 import { errorMessage } from "@/ipc/types";
 import { ThemeCard } from "./ThemeGallery";
 
-const ANSI_LABELS = ["Black", "Red", "Green", "Yellow", "Blue", "Magenta", "Cyan", "White"];
+const ANSI_LABELS = [
+  msg("Black"),
+  msg("Red"),
+  msg("Green"),
+  msg("Yellow"),
+  msg("Blue"),
+  msg("Magenta"),
+  msg("Cyan"),
+  msg("White"),
+];
 
 export const BLANK_SCHEME: ColorSchemeData = {
   name: "",

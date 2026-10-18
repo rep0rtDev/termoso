@@ -6,13 +6,12 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
-use sqlx::PgExecutor;
+use sqlx::{PgExecutor, PgPool};
 use termoso_proto::team::{AuditEvent, AuditEventList};
 use uuid::Uuid;
 
 use crate::error::{ApiResult, Error};
 use crate::extract::Auth;
-use crate::routes::teams;
 use crate::state::AppState;
 
 const PAGE: usize = 100;
@@ -43,6 +42,18 @@ impl Entry {
 
     /// Same as `new` for code paths without an `Auth` (registration with an
     /// invite token, relay cleanup).
+    /// An entry without an actor (background jobs).
+    pub fn system(team_id: Uuid, action: &'static str) -> Self {
+        Self {
+            team_id,
+            actor: None,
+            action,
+            vault_id: None,
+            target_user: None,
+            details: serde_json::Value::Object(Default::default()),
+        }
+    }
+
     pub fn by(team_id: Uuid, user_id: Uuid, device_id: Option<Uuid>, action: &'static str) -> Self {
         Self {
             team_id,
@@ -72,14 +83,28 @@ impl Entry {
 
 /// Insert one entry. Failures are logged, never propagated: the audit trail
 /// must not turn a successful mutation into an error for the caller.
+/// Mirror every event to the log as JSON (`TERMOSO_AUDIT_SINK=true`).
+static SINK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn enable_sink(on: bool) {
+    SINK.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 pub async fn record<'e, E: PgExecutor<'e>>(db: E, e: Entry) {
     let (actor_id, device_id) = match e.actor {
         Some((u, d)) => (Some(u), (!d.is_nil()).then_some(d)),
         None => (None, None),
     };
+    // One statement: the event plus an outbox row for every enabled webhook
+    // of the team whose filter matches the action.
     let res = sqlx::query(
-        "INSERT INTO team_audit_events (team_id, actor_id, device_id, action, vault_id, target_user, details)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "WITH ev AS (
+             INSERT INTO team_audit_events (team_id, actor_id, device_id, action, vault_id, target_user, details)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, team_id, action)
+         INSERT INTO audit_deliveries (webhook_id, event_id)
+         SELECT w.id, ev.id FROM ev JOIN team_webhooks w ON w.team_id = ev.team_id AND w.enabled
+         WHERE w.actions IS NULL OR ev.action = ANY(w.actions)
+            OR EXISTS (SELECT 1 FROM unnest(w.actions) a WHERE right(a, 1) = '.' AND ev.action LIKE a || '%')",
     )
     .bind(e.team_id)
     .bind(actor_id)
@@ -92,7 +117,15 @@ pub async fn record<'e, E: PgExecutor<'e>>(db: E, e: Entry) {
     .await;
     match res {
         Ok(_) => {
-            metrics::counter!("termoso_team_audit_events_total", "action" => e.action).increment(1)
+            metrics::counter!("termoso_team_audit_events_total", "action" => e.action).increment(1);
+            if SINK.load(std::sync::atomic::Ordering::Relaxed) {
+                let line = serde_json::json!({
+                    "ts": chrono::Utc::now(), "team_id": e.team_id, "actor_id": actor_id,
+                    "device_id": device_id, "action": e.action, "vault_id": e.vault_id,
+                    "target_user": e.target_user, "details": e.details,
+                });
+                tracing::info!(target: "termoso_audit", event = %line);
+            }
         }
         Err(err) => tracing::warn!(error = %err, action = e.action, "could not write audit event"),
     }
@@ -166,7 +199,7 @@ pub async fn list(
     Path(team_id): Path<Uuid>,
     Query(q): Query<AuditQuery>,
 ) -> ApiResult<Json<AuditEventList>> {
-    let role = teams::my_role(&state.db, team_id, auth.user_id()).await?;
+    let role = crate::authz::require(&state, team_id, auth.user_id(), "audit.view").await?;
     let retention = state.settings().await?.audit_retention_days;
     purge(&state, team_id, retention).await?;
     let limit = q
@@ -233,7 +266,7 @@ pub async fn list(
                 actor_email,
                 actor_name,
                 actor_avatar,
-                device_id: device_id.filter(|_| role.is_admin() || actor_id == Some(me)),
+                device_id: device_id.filter(|_| role.has("audit.view_ips") || actor_id == Some(me)),
                 action,
                 vault_id,
                 target_user,
@@ -252,4 +285,248 @@ pub async fn list(
         events,
         next_before,
     }))
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+pub struct ExportQuery {
+    /// Oldest event to include (inclusive).
+    pub from: Option<DateTime<Utc>>,
+    /// Newest event to include (exclusive).
+    pub to: Option<DateTime<Utc>>,
+    /// Only this action (exact) or family (`vault.` prefix).
+    pub action: Option<String>,
+    /// Only this actor.
+    pub actor: Option<Uuid>,
+    /// Only this vault.
+    pub vault: Option<Uuid>,
+    /// `csv` (default) or `jsonl`.
+    pub format: Option<String>,
+}
+
+const EXPORT_PAGE: i64 = 1000;
+const EXPORT_MAX_ROWS: usize = 1_000_000;
+const CSV_HEADER: &str = "\u{feff}id,created_at,team_id,action,actor_id,actor_email,actor_name,device_id,vault_id,target_user,target_email,details\n";
+
+fn csv_field(v: &str) -> String {
+    if v.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", v.replace('"', "\"\""))
+    } else {
+        v.to_string()
+    }
+}
+
+fn csv_line(e: &AuditEvent) -> String {
+    let o = |v: &Option<String>| csv_field(v.as_deref().unwrap_or(""));
+    let u = |v: &Option<Uuid>| v.map(|x| x.to_string()).unwrap_or_default();
+    format!(
+        "{},{},{},{},{},{},{},{},{},{},{},{}\n",
+        e.id,
+        e.created_at.to_rfc3339(),
+        e.team_id,
+        csv_field(&e.action),
+        u(&e.actor_id),
+        o(&e.actor_email),
+        o(&e.actor_name),
+        u(&e.device_id),
+        u(&e.vault_id),
+        u(&e.target_user),
+        o(&e.target_email),
+        csv_field(&e.details.to_string()),
+    )
+}
+
+struct ExportCursor {
+    after: i64,
+    rows: usize,
+    done: bool,
+    header: bool,
+}
+
+/// `GET /teams/{id}/audit/export` — the log (within the filters) as a streamed
+/// CSV or JSONL download; `audit.export`, 10 exports per hour per team.
+#[utoipa::path(get, path = "/api/v1/teams/{id}/audit/export", tag = "teams",
+    params(("id" = Uuid, Path), ExportQuery), responses((status = 200, description = "CSV or JSONL stream")))]
+pub async fn export(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(team_id): Path<Uuid>,
+    Query(q): Query<ExportQuery>,
+) -> ApiResult<axum::response::Response> {
+    let role = crate::authz::require(&state, team_id, auth.user_id(), "audit.export").await?;
+    crate::ratelimit::check(&state, crate::ratelimit::AUDIT_EXPORT, &team_id.to_string()).await?;
+    let jsonl = match q.format.as_deref().unwrap_or("csv") {
+        "csv" => false,
+        "jsonl" => true,
+        _ => return Err(Error::bad_request("format must be csv or jsonl")),
+    };
+    let see_devices = role.has("audit.view_ips");
+    let me = auth.user_id();
+    let (exact, prefix) = match q.action.as_deref().map(str::trim) {
+        None | Some("") => (None, None),
+        Some(a) if a.ends_with('.') => (None, Some(format!("{a}%"))),
+        Some(a) => (Some(a.to_string()), None),
+    };
+    record(
+        &state.db,
+        Entry::new(team_id, &auth, "audit.exported").details(serde_json::json!({
+            "from": q.from, "to": q.to, "action": q.action, "format": if jsonl { "jsonl" } else { "csv" }
+        })),
+    )
+    .await;
+    let db = state.db.clone();
+    let init = ExportCursor {
+        after: 0,
+        rows: 0,
+        done: false,
+        header: !jsonl,
+    };
+    let (from, to, actor, vault) = (q.from, q.to, q.actor, q.vault);
+    let stream = futures::stream::unfold(init, move |mut c| {
+        let db = db.clone();
+        let (exact, prefix) = (exact.clone(), prefix.clone());
+        async move {
+            if c.header {
+                c.header = false;
+                return Some((
+                    Ok::<_, std::io::Error>(bytes::Bytes::from_static(CSV_HEADER.as_bytes())),
+                    c,
+                ));
+            }
+            if c.done {
+                return None;
+            }
+            let remaining = EXPORT_MAX_ROWS.saturating_sub(c.rows);
+            if remaining == 0 {
+                return None;
+            }
+            let page: Vec<Row> = match sqlx::query_as(
+                "SELECT e.id, e.team_id, e.actor_id, a.email, a.display_name, a.avatar_tag, e.device_id, e.action,
+                        e.vault_id, e.target_user, t.email, e.details, e.created_at
+                 FROM team_audit_events e
+                 LEFT JOIN users a ON a.id = e.actor_id
+                 LEFT JOIN users t ON t.id = e.target_user
+                 WHERE e.team_id = $1 AND e.id > $2
+                   AND ($3::timestamptz IS NULL OR e.created_at >= $3)
+                   AND ($4::timestamptz IS NULL OR e.created_at < $4)
+                   AND ($5::text IS NULL OR e.action = $5)
+                   AND ($6::text IS NULL OR e.action LIKE $6)
+                   AND ($7::uuid IS NULL OR e.actor_id = $7)
+                   AND ($8::uuid IS NULL OR e.vault_id = $8)
+                 ORDER BY e.id ASC LIMIT $9",
+            )
+            .bind(team_id)
+            .bind(c.after)
+            .bind(from)
+            .bind(to)
+            .bind(&exact)
+            .bind(&prefix)
+            .bind(actor)
+            .bind(vault)
+            .bind((remaining as i64).min(EXPORT_PAGE))
+            .fetch_all(&db)
+            .await
+            {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::warn!(error = %e, "audit export page failed");
+                    c.done = true;
+                    return Some((Err(std::io::Error::other(e.to_string())), c));
+                }
+            };
+            if page.is_empty() {
+                return None;
+            }
+            c.after = page.last().map(|r| r.0).unwrap_or(c.after);
+            c.rows += page.len();
+            let mut out = String::new();
+            for (
+                id,
+                team_id,
+                actor_id,
+                actor_email,
+                actor_name,
+                actor_avatar,
+                device_id,
+                action,
+                vault_id,
+                target_user,
+                target_email,
+                details,
+                created_at,
+            ) in page
+            {
+                let ev = AuditEvent {
+                    id,
+                    team_id,
+                    actor_id,
+                    actor_email,
+                    actor_name,
+                    actor_avatar,
+                    device_id: device_id.filter(|_| see_devices || actor_id == Some(me)),
+                    action,
+                    vault_id,
+                    target_user,
+                    target_email,
+                    details,
+                    created_at,
+                };
+                if jsonl {
+                    out.push_str(&serde_json::to_string(&ev).unwrap_or_default());
+                    out.push('\n');
+                } else {
+                    out.push_str(&csv_line(&ev));
+                }
+            }
+            Some((Ok(bytes::Bytes::from(out)), c))
+        }
+    });
+    let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    let (ctype, ext) = if jsonl {
+        ("application/x-ndjson; charset=utf-8", "jsonl")
+    } else {
+        ("text/csv; charset=utf-8", "csv")
+    };
+    let resp = axum::response::Response::builder()
+        .status(axum::http::StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, ctype)
+        .header(
+            axum::http::header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"termoso-audit-{team_id}-{stamp}.{ext}\""),
+        )
+        .header(axum::http::header::CACHE_CONTROL, "no-store")
+        .body(axum::body::Body::from_stream(stream))
+        .map_err(|e| anyhow::anyhow!("response: {e}"))?;
+    Ok(resp)
+}
+
+/// Retention: every 6 hours delete events older than each team's
+/// `audit_retention_days`, 10k rows per statement.
+pub async fn run_retention(state: AppState) {
+    crate::jobs::exclusive(
+        state,
+        "audit-retention",
+        std::time::Duration::from_secs(6 * 3600),
+        |s| async move { retention_pass(&s.db).await },
+    )
+    .await
+}
+
+pub async fn retention_pass(db: &PgPool) -> anyhow::Result<u64> {
+    let mut total = 0u64;
+    loop {
+        let n = sqlx::query(
+            "DELETE FROM team_audit_events WHERE id IN (
+                 SELECT e.id FROM team_audit_events e
+                 JOIN team_policies p ON p.team_id = e.team_id
+                 WHERE e.created_at < now() - make_interval(days => p.audit_retention_days)
+                 LIMIT 10000)",
+        )
+        .execute(db)
+        .await?
+        .rows_affected();
+        total += n;
+        if n < 10000 {
+            return Ok(total);
+        }
+    }
 }

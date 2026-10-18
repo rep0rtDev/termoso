@@ -1,0 +1,31 @@
+# Backup/restore image: the termoso-server binary next to pg_dump/pg_restore
+# of the PostgreSQL major the stack runs (18), plus `age` for encrypted dumps.
+#
+#   docker compose -f deploy/docker-compose.yml --profile backup run --rm backup
+#
+# Same build stage as deploy/Dockerfile so the binary matches the API image.
+FROM rust:1-bookworm AS server
+WORKDIR /src
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY apps/desktop/src-tauri ./apps/desktop/src-tauri
+RUN --mount=type=cache,id=cargo-registry-server,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=target-server,target=/src/target \
+    cargo build --release --locked -p termoso-server \
+    && cp target/release/termoso-server /termoso-server
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg lsb-release age \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update && apt-get install -y --no-install-recommends postgresql-client-18 \
+    && apt-get purge -y curl gnupg lsb-release && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+COPY --from=server /termoso-server /usr/local/bin/termoso-server
+# `backup` is already a Debian base-passwd account, so the service user gets its own name.
+RUN useradd --system --uid 65532 --create-home termoso && install -d -o termoso -g termoso /backups
+VOLUME /backups
+USER termoso
+ENTRYPOINT ["/usr/local/bin/termoso-server"]
+CMD ["backup", "--out", "/backups"]

@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -40,6 +41,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.font.FontFamily
+import com.termoso.android.QuickAction
+import com.termoso.android.data.RecentShortcuts
 import com.termoso.android.R
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.OpenTarget
@@ -82,6 +85,7 @@ import com.termoso.android.ui.sftp.SftpScreen
 import com.termoso.android.ui.snippets.SnippetEditorScreen
 import com.termoso.android.ui.snippets.SnippetsScreen
 import com.termoso.android.ui.team.TeamActivityScreen
+import com.termoso.android.ui.team.TeamRolesScreen
 import com.termoso.android.ui.team.TeamScreen
 import com.termoso.android.ui.team.TeamVaultScreen
 import com.termoso.android.ui.team.TeamsScreen
@@ -127,6 +131,7 @@ object Routes {
     const val SECURITY_KEYS = "securityKeys"
     const val TEAM = "team/{id}"
     const val TEAM_ACTIVITY = "team/{id}/activity"
+    const val TEAM_ROLES = "team/{id}/roles"
     const val TEAM_VAULT = "teamVault/{id}"
     const val SIGN_IN = "signIn/{mode}"
     const val SFTP = "sftp/{id}"
@@ -151,6 +156,7 @@ object Routes {
     fun signIn(mode: AuthMode) = "signIn/${mode.name}"
     fun team(id: String) = "team/$id"
     fun teamActivity(id: String) = "team/$id/activity"
+    fun teamRoles(id: String) = "team/$id/roles"
     fun teamVault(id: String) = "teamVault/$id"
     fun sftp(id: String) = "sftp/$id"
     fun pfNew(kind: PfKind, vault: String?, host: String?) =
@@ -192,6 +198,7 @@ fun MainShell(
     val showBar = vaultsTabRoute || tabs.any { it.route == currentRoute }
     val snackbar = remember { SnackbarHostState() }
 
+    val context = LocalContext.current
     val notice by shell.notice.collectAsStateWithLifecycle()
     LaunchedEffect(notice) {
         val text = notice ?: return@LaunchedEffect
@@ -264,6 +271,30 @@ fun MainShell(
         shell.launch { if (shell.joinLive(link) != null) openTerminal() }
     }
 
+    // Launcher shortcuts and termoso://host links: act once the shell is up.
+    val pendingAction by container.pendingAction.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingAction, restoring) {
+        val action = pendingAction ?: return@LaunchedEffect
+        if (restoring) return@LaunchedEffect
+        container.consumeAction()
+        when (action) {
+            QuickAction.NewConnection -> nav.navigate(Routes.hostNew(null)) { launchSingleTop = true }
+            QuickAction.LocalTerminal -> shell.launch { if (shell.connectLocal() != null) openTerminal() }
+            QuickAction.Sftp -> nav.navigate(Routes.CONNECTIONS) {
+                popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
+    val pendingHost by container.pendingHost.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingHost, restoring) {
+        val id = pendingHost ?: return@LaunchedEffect
+        if (restoring) return@LaunchedEffect
+        container.consumeHost()
+        shell.launch { if (shell.connectHost(id) != null) openTerminal() }
+    }
+
     // Files shared into the app: sent to the active terminal, or held until one is opened.
     val pendingShare by container.pendingShare.collectAsStateWithLifecycle()
     val openSessions by shell.sessions.sessions.collectAsStateWithLifecycle()
@@ -331,6 +362,7 @@ fun MainShell(
             if (!shell.hasTerminal(hostId)) {
                 shell.openSftpHost(hostId, FileProtocol.WEBDAV)?.let { openSftp(it.id) }
             } else if (shell.connectHost(hostId, transport) != null) {
+                shell.selectedVaultId.value?.let { RecentShortcuts.record(context, shell.repo, hostId, it) }
                 openTerminal()
             }
         }
@@ -483,11 +515,17 @@ fun MainShell(
                     onBack = { nav.popBackStack() },
                     onOpenVault = { nav.navigate(Routes.teamVault(it)) },
                     onActivity = { nav.navigate(Routes.teamActivity(id)) },
+                    onRoles = { nav.navigate(Routes.teamRoles(id)) },
+                    onOpenAccount = { nav.navigate(Routes.ACCOUNT) },
                 )
             }
             composable(Routes.TEAM_ACTIVITY, arguments = listOf(idArg)) { entry ->
                 val id = entry.arguments?.getString("id") ?: return@composable
                 TeamActivityScreen(shell = shell, teamId = id, onBack = { nav.popBackStack() })
+            }
+            composable(Routes.TEAM_ROLES, arguments = listOf(idArg)) { entry ->
+                val id = entry.arguments?.getString("id") ?: return@composable
+                TeamRolesScreen(shell = shell, teamId = id, onBack = { nav.popBackStack() })
             }
             composable(Routes.TEAM_VAULT, arguments = listOf(idArg)) { entry ->
                 val id = entry.arguments?.getString("id") ?: return@composable

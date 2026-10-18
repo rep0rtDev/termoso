@@ -7,6 +7,7 @@ import { router } from "./router";
 import { configureClient, ApiError } from "./api/client";
 import { authStore } from "./auth/store";
 import { SnackbarProvider } from "./components/Snackbar";
+import { useLanguage } from "./i18n";
 
 configureClient({
   token: authStore.token,
@@ -17,6 +18,7 @@ configureClient({
 });
 
 export function App() {
+  const lang = useLanguage();
   const queryClient = useMemo(
     () =>
       new QueryClient({
@@ -35,7 +37,7 @@ export function App() {
       <CssBaseline enableColorScheme />
       <QueryClientProvider client={queryClient}>
         <SnackbarProvider>
-          <RouterProvider router={router} />
+          <RouterProvider key={lang} router={router} />
         </SnackbarProvider>
       </QueryClientProvider>
     </ThemeProvider>

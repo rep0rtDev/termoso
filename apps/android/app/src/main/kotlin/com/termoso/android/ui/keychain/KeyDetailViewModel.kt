@@ -26,6 +26,8 @@ data class KeyDetailState(
 
 /** One stored key: metadata, public half, and every mutation the Rust keychain offers. */
 class KeyDetailViewModel(private val repo: VaultRepository, private val id: String) : ViewModel() {
+    /** Team permission checks for this key's vault. */
+    val perms get() = repo.perms
     private val _state = MutableStateFlow(KeyDetailState())
     val state: StateFlow<KeyDetailState> = _state.asStateFlow()
     private var deleting = false

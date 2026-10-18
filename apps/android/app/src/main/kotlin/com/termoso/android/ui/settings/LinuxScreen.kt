@@ -1,5 +1,7 @@
 package com.termoso.android.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -20,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,8 +50,9 @@ import com.termoso.core.LinuxStage
 import kotlinx.coroutines.launch
 
 /**
- * Settings → Linux environment: pick Alpine or Ubuntu, watch it download and
- * unpack, open a shell in it or remove it. One system at a time.
+ * Settings → Linux environment: pick Alpine or Ubuntu, or bring your own
+ * rootfs (file or URL), watch it download and unpack, open a shell in it or
+ * remove it. One system at a time.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,6 +63,10 @@ fun LinuxScreen(shell: ShellViewModel, onBack: () -> Unit, onOpenTerminal: () ->
     val error by linux.error.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var confirmRemove by remember { mutableStateOf(false) }
+    var urlDialog by remember { mutableStateOf(false) }
+    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch { linux.installFromUri(uri) }
+    }
 
     if (confirmRemove) {
         AlertDialog(
@@ -157,7 +167,50 @@ fun LinuxScreen(shell: ShellViewModel, onBack: () -> Unit, onOpenTerminal: () ->
                     )
                 }
             }
+            Spacer(Modifier.height(16.dp))
+            SectionLabel(stringResource(R.string.custom_rootfs))
+            SectionCard {
+                ChevronRow(
+                    title = stringResource(R.string.custom_rootfs_from_file),
+                    subtitle = stringResource(R.string.custom_rootfs_from_file_hint),
+                    leading = { IconTile(Icons.Filled.FolderOpen) },
+                    modifier = Modifier.clickable(enabled = progress == null) { pickFile.launch(arrayOf("*/*")) },
+                )
+                RowDivider()
+                ChevronRow(
+                    title = stringResource(R.string.custom_rootfs_from_url),
+                    subtitle = stringResource(R.string.custom_rootfs_from_url_hint),
+                    leading = { IconTile(Icons.Filled.Link) },
+                    modifier = Modifier.clickable(enabled = progress == null) { urlDialog = true },
+                )
+            }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (urlDialog) {
+        var url by remember { mutableStateOf("") }
+        var sha by remember { mutableStateOf("") }
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { urlDialog = false },
+            title = { Text(stringResource(R.string.custom_rootfs_from_url)) },
+            text = {
+                Column {
+                    OutlinedTextField(url, { url = it }, label = { Text(stringResource(R.string.rootfs_url)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(sha, { sha = it }, label = { Text(stringResource(R.string.rootfs_sha256_optional)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.rootfs_name_optional)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = url.trim().startsWith("http"), onClick = {
+                    urlDialog = false
+                    linux.installFromUrl(url, sha, name)
+                }) { Text(stringResource(R.string.install_action)) }
+            },
+            dismissButton = { TextButton(onClick = { urlDialog = false }) { Text(stringResource(android.R.string.cancel)) } },
+        )
     }
 }

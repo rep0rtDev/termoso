@@ -3,6 +3,7 @@
 //! members, roles, invitation links and pending states.
 
 use std::collections::HashMap;
+use termoso_proto::team as proto;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -248,7 +249,14 @@ pub async fn set_member_role<R: Runtime>(
 ) -> Result<()> {
     api(app)
         .await?
-        .update_team_member(team_id, user_id, &UpdateTeamMemberRequest { role })
+        .update_team_member(
+            team_id,
+            user_id,
+            &UpdateTeamMemberRequest {
+                role,
+                role_id: None,
+            },
+        )
         .await?;
     Ok(())
 }
@@ -322,6 +330,7 @@ pub async fn invite<R: Runtime>(
         let req = CreateInviteRequest {
             email: email.clone(),
             role,
+            role_id: None,
             vault_ids: vault_ids.clone(),
         };
         out.push(match api.create_invite(team_id, &req).await {
@@ -371,6 +380,162 @@ pub async fn audit<R: Runtime>(
         events: page.events,
         next_before: page.next_before,
     })
+}
+
+// ───────────────── roles, policies, webhooks (0.9.0) ─────────────────
+
+pub async fn permissions<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::PermissionCatalog> {
+    Ok(api(app).await?.team_permissions(team_id).await?)
+}
+
+pub async fn roles<R: Runtime>(app: &AppHandle<R>, team_id: Uuid) -> Result<proto::TeamRoleList> {
+    Ok(api(app).await?.team_roles(team_id).await?)
+}
+
+pub async fn role_create<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    req: proto::CreateRoleRequest,
+) -> Result<proto::TeamRoleDef> {
+    Ok(api(app).await?.team_role_create(team_id, &req).await?)
+}
+
+pub async fn role_update<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    role_id: Uuid,
+    req: proto::UpdateRoleRequest,
+) -> Result<proto::TeamRoleDef> {
+    Ok(api(app)
+        .await?
+        .team_role_update(team_id, role_id, &req)
+        .await?)
+}
+
+pub async fn role_delete<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    role_id: Uuid,
+    reassign_to: Option<Uuid>,
+) -> Result<()> {
+    Ok(api(app)
+        .await?
+        .team_role_delete(team_id, role_id, reassign_to)
+        .await?)
+}
+
+pub async fn set_default_role<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    role_id: Uuid,
+) -> Result<()> {
+    Ok(api(app)
+        .await?
+        .team_set_default_role(team_id, role_id)
+        .await?)
+}
+
+pub async fn role_mappings<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+) -> Result<Vec<proto::RoleMapping>> {
+    Ok(api(app).await?.team_role_mappings(team_id).await?.mappings)
+}
+
+pub async fn set_role_mappings<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    mappings: Vec<proto::RoleMapping>,
+) -> Result<Vec<proto::RoleMapping>> {
+    let req = proto::RoleMappingList { mappings };
+    Ok(api(app)
+        .await?
+        .team_set_role_mappings(team_id, &req)
+        .await?
+        .mappings)
+}
+
+pub async fn policies<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::TeamPoliciesResponse> {
+    Ok(api(app).await?.team_policies(team_id).await?)
+}
+
+pub async fn update_policies<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    patch: proto::UpdateTeamPoliciesRequest,
+) -> Result<proto::TeamPoliciesResponse> {
+    Ok(api(app)
+        .await?
+        .team_update_policies(team_id, &patch)
+        .await?)
+}
+
+pub async fn webhooks<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+) -> Result<Vec<proto::Webhook>> {
+    Ok(api(app).await?.team_webhooks(team_id).await?.webhooks)
+}
+
+pub async fn webhook_create<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    req: proto::CreateWebhookRequest,
+) -> Result<proto::Webhook> {
+    Ok(api(app).await?.team_webhook_create(team_id, &req).await?)
+}
+
+pub async fn webhook_update<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    hook_id: Uuid,
+    req: proto::UpdateWebhookRequest,
+) -> Result<proto::Webhook> {
+    Ok(api(app)
+        .await?
+        .team_webhook_update(team_id, hook_id, &req)
+        .await?)
+}
+
+pub async fn webhook_delete<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    hook_id: Uuid,
+) -> Result<()> {
+    Ok(api(app)
+        .await?
+        .team_webhook_delete(team_id, hook_id)
+        .await?)
+}
+
+pub async fn webhook_test<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    hook_id: Uuid,
+) -> Result<Vec<proto::WebhookDelivery>> {
+    Ok(api(app)
+        .await?
+        .team_webhook_test(team_id, hook_id)
+        .await?
+        .deliveries)
+}
+
+pub async fn webhook_deliveries<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    hook_id: Uuid,
+) -> Result<Vec<proto::WebhookDelivery>> {
+    Ok(api(app)
+        .await?
+        .team_webhook_deliveries(team_id, hook_id)
+        .await?
+        .deliveries)
 }
 
 // ───────────────────────────── vaults ─────────────────────────────

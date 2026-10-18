@@ -30,6 +30,8 @@ interface NavState {
   pendingForwardHost: Uuid | null;
   /** Something the Team / Vaults settings page should open as soon as it shows. */
   pendingSettingsIntent: SettingsIntent | null;
+  /** A file the OS opened with the app (Open with… / drop on the icon); the matching page imports it. */
+  pendingOpenFile: string | null;
 }
 
 export type SettingsPage =
@@ -59,6 +61,7 @@ export const navStore = createStore<NavState>({
   pendingEdit: null,
   pendingForwardHost: null,
   pendingSettingsIntent: null,
+  pendingOpenFile: null,
 });
 
 export const useNav = <S>(selector: (s: NavState) => S) => useStore(navStore, selector);
@@ -123,6 +126,39 @@ export function requestCreate(kind: CreateKind) {
     pendingCreate: kind,
   }));
   setActiveTab(HOME_TAB);
+}
+
+/** Hand a file path to the page that imports that kind of file. */
+export function requestOpenFile(path: string) {
+  navStore.set((s) => ({ ...s, pendingOpenFile: path }));
+}
+
+/**
+ * Consume `requestOpenFile` paths accepted by `matches` — one made just before
+ * the page mounted and later ones while it shows.
+ */
+export function useOpenFileRequests(
+  matches: (path: string) => boolean,
+  onFile: (path: string) => void,
+) {
+  const cb = useRef({ matches, onFile });
+  useEffect(() => {
+    cb.current = { matches, onFile };
+  });
+  useEffect(() => {
+    const take = () => {
+      const path = navStore.get().pendingOpenFile;
+      if (!path || !cb.current.matches(path)) return;
+      navStore.set((s) => ({ ...s, pendingOpenFile: null }));
+      cb.current.onFile(path);
+    };
+    const timer = setTimeout(take, 0);
+    const unsubscribe = navStore.subscribe(take);
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+    };
+  }, []);
 }
 
 export function requestEditHost(id: Uuid) {

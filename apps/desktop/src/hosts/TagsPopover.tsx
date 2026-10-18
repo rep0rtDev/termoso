@@ -19,9 +19,9 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
 import { useCreateTag, useDeleteTag, useTags, useUpdateTag } from "@/ipc/hooks";
 import { errorMessage, type TagInfo, type Uuid } from "@/ipc/types";
-import { tr } from "@/i18n";
+import { tr, trn } from "@/i18n";
 
-const hostsLabel = (n: number) => `${n} host${n === 1 ? "" : "s"}`;
+const hostsLabel = (n: number) => trn(n, "{count} host", "{count} hosts");
 
 /** Termius' round mark: grey ring, filled blue with a white check when on. */
 function RoundCheck({ on, label, onToggle }: { on: boolean; label: string; onToggle: () => void }) {

@@ -41,7 +41,11 @@ pub(crate) async fn connect_webdav(
     let base = webdav::config_for(&resolved.host.data.address, &cfg)?;
     let url = base.url.clone();
     let identity = resolved.webdav_identity.as_ref().map(|i| &i.data);
-    let base = base.with_identity(identity)?;
+    let mut base = base.with_identity(identity)?;
+    base.proxy = match &resolved.proxy {
+        Some(p) => Some(crate::connect::proxy_config(&conn.store, &p.data)?),
+        None => None,
+    };
     let username = base.username.clone();
     let mut password = base.password.clone().map(Zeroizing::new);
     let mut tls = base.tls.clone();

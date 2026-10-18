@@ -11,7 +11,7 @@ import { HostAvatar } from "./HostAvatar";
 import type { HostDnd } from "./dnd";
 import type { HostViewer } from "./presence";
 import { PresenceStack } from "./PresenceViews";
-import { tr } from "@/i18n";
+import { tr, trn } from "@/i18n";
 
 export interface HostCollectionProps {
   groups: GroupNode[];
@@ -63,8 +63,8 @@ export function hostTarget(h: HostCard, protocol: string = h.protocol) {
 
 export function groupSubtitle(g: GroupNode) {
   const parts = [];
-  if (g.groupCount > 0) parts.push(`${g.groupCount} group${g.groupCount === 1 ? "" : "s"}`);
-  parts.push(`${g.hostCount} host${g.hostCount === 1 ? "" : "s"}`);
+  if (g.groupCount > 0) parts.push(trn(g.groupCount, "{count} group", "{count} groups"));
+  parts.push(trn(g.hostCount, "{count} host", "{count} hosts"));
   return parts.join(", ");
 }
 

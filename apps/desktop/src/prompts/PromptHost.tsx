@@ -17,7 +17,7 @@ import type { HostKeyInfo, PromptAnswer, PromptEvent } from "@/ipc/types";
 import { useTerminal } from "@/terminal/store";
 import { Field } from "@/components/ui";
 import { answerPrompt, usePrompts } from "./store";
-import { tr, trx } from "@/i18n";
+import { tr, trn, trx } from "@/i18n";
 
 /**
  * Shows prompts as dialogs — except those of a terminal pane that is still on
@@ -120,7 +120,7 @@ function PromptDialog({
           label={tr("Username")}
           visible
           rememberLabel={tr("Save to this host in the vault")}
-          warning={prompt.retry ? "Enter a username to continue." : null}
+          warning={prompt.retry ? tr("Enter a username to continue.") : null}
           onAnswer={onAnswer}
           onCancel={cancel}
         />
@@ -132,7 +132,7 @@ function PromptDialog({
           title={tr("Password for {username}", { username: prompt.username })}
           target={prompt.target}
           label={tr("Password")}
-          warning={prompt.retry ? "Authentication failed. Try again." : null}
+          warning={prompt.retry ? tr("Authentication failed. Try again.") : null}
           onAnswer={onAnswer}
           onCancel={cancel}
         />
@@ -160,8 +160,12 @@ function PromptDialog({
           warning={
             prompt.retry
               ? prompt.retries === null
-                ? "Wrong PIN. Try again."
-                : `Wrong PIN. ${prompt.retries} ${prompt.retries === 1 ? "attempt" : "attempts"} left before the key locks.`
+                ? tr("Wrong PIN. Try again.")
+                : trn(
+                    prompt.retries,
+                    "Wrong PIN. {count} attempt left before the key locks.",
+                    "Wrong PIN. {count} attempts left before the key locks.",
+                  )
               : null
           }
           onAnswer={onAnswer}

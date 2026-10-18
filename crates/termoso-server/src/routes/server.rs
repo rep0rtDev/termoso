@@ -87,12 +87,40 @@ pub async fn assetlinks(State(state): State<AppState>) -> Response {
 }
 
 /// Readiness: database + Redis reachable.
-pub async fn readyz(State(state): State<AppState>) -> (StatusCode, &'static str) {
-    let db = sqlx::query("SELECT 1").execute(&state.db).await.is_ok();
-    let redis = state.cache.ping().await.is_ok();
-    if db && redis {
-        (StatusCode::OK, "ready")
+pub async fn readyz(State(state): State<AppState>) -> Response {
+    use std::time::Duration;
+    let t = Duration::from_secs(1);
+    let pg = tokio::time::timeout(t, sqlx::query("SELECT 1").execute(&state.db))
+        .await
+        .map(|r| r.is_ok())
+        .unwrap_or(false);
+    let redis = tokio::time::timeout(t, state.cache.ping())
+        .await
+        .map(|r| r.is_ok())
+        .unwrap_or(false);
+    let s3 = match &state.storage {
+        Some(st) => Some(
+            tokio::time::timeout(Duration::from_secs(2), st.ping())
+                .await
+                .map(|r| r.is_ok())
+                .unwrap_or(false),
+        ),
+        None => None,
+    };
+    let draining = state.draining.load(std::sync::atomic::Ordering::Relaxed);
+    let ready = pg && redis && s3 != Some(false) && !draining;
+    let body = serde_json::json!({
+        "status": if ready { "ready" } else { "not_ready" },
+        "pg": pg,
+        "redis": redis,
+        "s3": s3,
+        "draining": draining,
+        "version": VERSION,
+    });
+    let code = if ready {
+        StatusCode::OK
     } else {
-        (StatusCode::SERVICE_UNAVAILABLE, "not ready")
-    }
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (code, Json(body)).into_response()
 }

@@ -830,6 +830,7 @@ async fn connect<R: Runtime>(
                     size,
                     timeout: Duration::from_secs(20),
                     ip_version: IpVersion::Auto,
+                    proxy: None,
                 })
                 .await?;
                 return Ok(Opened {
@@ -931,6 +932,10 @@ async fn connect<R: Runtime>(
                     size,
                     timeout: Duration::from_secs(20),
                     ip_version: IpVersion::parse(&resolved.host.data.ip_version),
+                    proxy: match &resolved.proxy {
+                        Some(p) => Some(proxy_config(&state, &p.data)?),
+                        None => None,
+                    },
                 })
                 .await?;
                 return Ok(Opened {
@@ -1671,7 +1676,10 @@ fn keepalive(state: &AppState, cfg: &SshConfig) -> Option<Duration> {
     (secs > 0).then(|| Duration::from_secs(secs as u64))
 }
 
-fn proxy_config(state: &AppState, p: &termoso_core::model::Proxy) -> Result<ProxyConfig> {
+pub(crate) fn proxy_config(
+    state: &AppState,
+    p: &termoso_core::model::Proxy,
+) -> Result<ProxyConfig> {
     let kind = ProxyKind::parse(&p.kind)
         .ok_or_else(|| DesktopError::invalid(format!("unsupported proxy type {}", p.kind)))?;
     let (username, password) = match p.identity_id {
@@ -1685,7 +1693,13 @@ fn proxy_config(state: &AppState, p: &termoso_core::model::Proxy) -> Result<Prox
                     .map(Zeroizing::new),
             )
         }
-        None => (None, None),
+        None => (
+            p.username.clone().filter(|u| !u.is_empty()),
+            p.password
+                .clone()
+                .filter(|s| !s.is_empty())
+                .map(Zeroizing::new),
+        ),
     };
     Ok(ProxyConfig {
         kind,

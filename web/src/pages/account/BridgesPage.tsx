@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Avatar,
@@ -104,8 +105,9 @@ function VaultPicker({
   if (vaults.length === 0) {
     return (
       <Alert severity="info">
-        No vault is available: a bridge needs a vault where you are an editor or manager and hold
-        the current key.
+        {tr(
+          "No vault is available: a bridge needs a vault where you are an editor or manager and hold the current key.",
+        )}
       </Alert>
     );
   }
@@ -125,11 +127,11 @@ function VaultPicker({
                     {v.name}
                     <RoleChip role={v.my_role} />
                     {assigned && isPending(assigned) && (
-                      <Chip size="small" color="warning" label="Key rotated — will re-seal" />
+                      <Chip size="small" color="warning" label={tr("Key rotated — will re-seal")} />
                     )}
                   </Box>
                 }
-                secondary={v.kind === "team" ? "Team vault" : "Personal vault"}
+                secondary={v.kind === "team" ? tr("Team vault") : tr("Personal vault")}
               />
             </ListItemButton>
           </ListItem>
@@ -194,42 +196,44 @@ function CreateBridgeDialog({
 
   return (
     <Dialog open onClose={create.isPending ? undefined : onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>New API bridge</DialogTitle>
+      <DialogTitle>{tr("New API bridge")}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           <TextField
-            label="Name"
-            placeholder="ansible-prod"
+            label={tr("Name")}
+            placeholder={tr("ansible-prod")}
             value={name}
             onChange={(e) => setName(e.target.value)}
             autoFocus
             fullWidth
             slotProps={{ htmlInput: { maxLength: MAX_NAME } }}
-            helperText="Shown here and in the team activity log; the bridge appears as a device."
+            helperText={tr(
+              "Shown here and in the team activity log; the bridge appears as a device.",
+            )}
           />
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              Vaults the bridge may write to
+              {tr("Vaults the bridge may write to")}
             </Typography>
             <VaultPicker vaults={vaults} selected={selected} onToggle={toggle} />
           </Box>
           <Alert severity="info" icon={<LockOutlinedIcon fontSize="inherit" />}>
-            The bridge key pair is generated in this browser. Each selected vault key is sealed to
-            it here; the server stores only the sealed boxes and never sees the private key or the
-            vault contents.
+            {tr(
+              "The bridge key pair is generated in this browser. Each selected vault key is sealed to it here; the server stores only the sealed boxes and never sees the private key or the vault contents.",
+            )}
           </Alert>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} disabled={create.isPending} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button
           variant="contained"
           onClick={() => create.mutate()}
           disabled={!canCreate || create.isPending}
         >
-          Create bridge
+          {tr("Create bridge")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -251,13 +255,14 @@ function CredentialsDialog({
   const file = credentialsFileName(bridge);
   return (
     <Dialog open maxWidth="sm" fullWidth>
-      <DialogTitle>Download bridge credentials</DialogTitle>
+      <DialogTitle>{tr("Download bridge credentials")}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           <Alert severity="warning">
-            This file is shown <strong>once</strong>. It contains the bridge private key and its
-            access token; the server keeps neither. Store it like an SSH private key and never
-            commit it. If it is lost, revoke the bridge and create a new one.
+            {trx(
+              "This file is shown {v1}. It contains the bridge private key and its access token; the server keeps neither. Store it like an SSH private key and never commit it. If it is lost, revoke the bridge and create a new one.",
+              { v1: <strong>{tr("once")}</strong> },
+            )}
           </Alert>
           <Button
             variant="contained"
@@ -268,20 +273,26 @@ function CredentialsDialog({
               setDownloaded(true);
             }}
           >
-            {downloaded ? `Download ${file} again` : `Download ${file}`}
+            {downloaded ? tr("Download {file} again", { file }) : `Download ${file}`}
           </Button>
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              Run it next to your automation
+              {tr("Run it next to your automation")}
             </Typography>
             <CopyField value={dockerSnippet(file)} multiline />
             <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
-              Keep the port bound to localhost or set <code>TERMOSO_BRIDGE_API_KEY</code>; callers
-              then send it as <code>Authorization: Bearer</code>. Full REST reference in the{" "}
-              <Link href={DOCS_URL} target="_blank" rel="noreferrer">
-                API Bridge docs
-              </Link>
-              .
+              {trx(
+                "Keep the port bound to localhost or set {v1}; callers then send it as {v2}. Full REST reference in the  {v3} .",
+                {
+                  v1: <code>{tr("TERMOSO_BRIDGE_API_KEY")}</code>,
+                  v2: <code>{tr("Authorization: Bearer")}</code>,
+                  v3: (
+                    <Link href={DOCS_URL} target="_blank" rel="noreferrer">
+                      {tr("API Bridge docs")}
+                    </Link>
+                  ),
+                },
+              )}
             </Typography>
           </Box>
           <FormControlLabel
@@ -292,13 +303,13 @@ function CredentialsDialog({
                 disabled={!downloaded}
               />
             }
-            label="I have saved the file in a safe place"
+            label={tr("I have saved the file in a safe place")}
           />
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button variant="contained" onClick={onClose} disabled={!confirmed}>
-          Done
+          {tr("Done")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -329,7 +340,7 @@ function EditVaultsDialog({
       return withStepUp(() => bridgesApi.setVaults(bridge.id, sealed));
     },
     onSuccess: () => {
-      snack.notify("Bridge vaults updated");
+      snack.notify(tr("Bridge vaults updated"));
       onSaved();
     },
     onError: (e) => {
@@ -339,28 +350,34 @@ function EditVaultsDialog({
 
   return (
     <Dialog open onClose={save.isPending ? undefined : onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Vaults for “{bridge.name}”</DialogTitle>
+      <DialogTitle>{trx("Vaults for “{name}”", { name: bridge.name })}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           <VaultPicker vaults={vaults} selected={selected} onToggle={toggle} bridge={bridge} />
           {dropped.length > 0 && (
             <Alert severity="warning">
-              You no longer hold a writable key for {dropped.map((v) => `“${v.name}”`).join(", ")};
-              saving removes {dropped.length === 1 ? "it" : "them"} from the bridge.
+              {trx(
+                "You no longer hold a writable key for {v1}; saving removes {v2} from the bridge.",
+                {
+                  v1: dropped.map((v) => `“${v.name}”`).join(", "),
+                  v2: dropped.length === 1 ? "it" : "them",
+                },
+              )}
             </Alert>
           )}
           <DialogContentText variant="body2">
-            Saving seals the current key of every selected vault to the bridge in this browser, so
-            it also clears “key rotated” states. Unselected vaults are removed immediately.
+            {tr(
+              "Saving seals the current key of every selected vault to the bridge in this browser, so it also clears “key rotated” states. Unselected vaults are removed immediately.",
+            )}
           </DialogContentText>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} disabled={save.isPending} color="inherit">
-          Cancel
+          {tr("Cancel")}
         </Button>
         <Button variant="contained" onClick={() => save.mutate()} disabled={save.isPending}>
-          Save
+          {tr("Save")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -385,7 +402,7 @@ export function BridgesPage() {
     onSuccess: async () => {
       setRevoking(null);
       await refresh();
-      snack.notify("Bridge revoked");
+      snack.notify(tr("Bridge revoked"));
     },
     onError: (e) => {
       if (!(e instanceof UnlockCancelled)) snack.error(errorMessage(e));
@@ -403,8 +420,10 @@ export function BridgesPage() {
   return (
     <>
       <PageHeader
-        title="API Bridge"
-        subtitle="A container in your own infrastructure that lets scripts and CI manage hosts and groups over a Termius-compatible REST API. It encrypts locally; the server only ever relays sealed data."
+        title={tr("API Bridge")}
+        subtitle={tr(
+          "A container in your own infrastructure that lets scripts and CI manage hosts and groups over a Termius-compatible REST API. It encrypts locally; the server only ever relays sealed data.",
+        )}
         actions={
           <Button
             variant="contained"
@@ -412,7 +431,7 @@ export function BridgesPage() {
             onClick={() => setCreating(true)}
             disabled={eligible.length === 0}
           >
-            New bridge
+            {tr("New bridge")}
           </Button>
         }
       />
@@ -421,11 +440,13 @@ export function BridgesPage() {
         {list.length === 0 ? (
           <EmptyState
             icon={<HubOutlinedIcon />}
-            title="No API bridges yet"
+            title={tr("No API bridges yet")}
             description={
               eligible.length === 0
-                ? "You need a vault where you are an editor or manager to create one."
-                : "Create a bridge, download its credentials once and run the container next to your automation."
+                ? tr("You need a vault where you are an editor or manager to create one.")
+                : tr(
+                    "Create a bridge, download its credentials once and run the container next to your automation.",
+                  )
             }
           />
         ) : (
@@ -439,17 +460,17 @@ export function BridgesPage() {
                   alignItems="flex-start"
                   secondaryAction={
                     <Stack direction="row" spacing={0.5}>
-                      <Tooltip title="Vaults">
-                        <IconButton onClick={() => setEditing(b)} aria-label="Edit vaults">
+                      <Tooltip title={tr("Vaults")}>
+                        <IconButton onClick={() => setEditing(b)} aria-label={tr("Edit vaults")}>
                           <KeyRoundedIcon />
                         </IconButton>
                       </Tooltip>
-                      <Tooltip title="Revoke bridge">
+                      <Tooltip title={tr("Revoke bridge")}>
                         <IconButton
                           edge="end"
                           color="error"
                           onClick={() => setRevoking(b)}
-                          aria-label="Revoke bridge"
+                          aria-label={tr("Revoke bridge")}
                         >
                           <DeleteOutlineRoundedIcon />
                         </IconButton>
@@ -481,7 +502,10 @@ export function BridgesPage() {
                           <Chip
                             size="small"
                             color="warning"
-                            label={`${pending.length} ${pending.length === 1 ? "key" : "keys"} rotated — re-seal`}
+                            label={tr("{length} {v1} rotated — re-seal", {
+                              length: pending.length,
+                              v1: pending.length === 1 ? "key" : "keys",
+                            })}
                             onClick={() => setEditing(b)}
                           />
                         )}
@@ -490,14 +514,17 @@ export function BridgesPage() {
                     secondary={
                       <Box sx={{ mt: 0.5, pr: 10 }}>
                         <Typography variant="body2" color="text.secondary">
-                          {b.last_used_at
-                            ? `Last used ${formatRelative(b.last_used_at)}${b.last_ip ? ` from ${b.last_ip}` : ""}`
-                            : "Never used"}
-                          {" · "}Created {formatDateTime(b.created_at)}
+                          {trx("{v1} {v2}Created {v3}", {
+                            v1: b.last_used_at
+                              ? `Last used ${formatRelative(b.last_used_at)}${b.last_ip ? ` from ${b.last_ip}` : ""}`
+                              : "Never used",
+                            v2: " · ",
+                            v3: formatDateTime(b.created_at),
+                          })}
                         </Typography>
                         <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap", mt: 1 }}>
                           {b.vaults.length === 0 && (
-                            <Chip size="small" variant="outlined" label="No vaults" />
+                            <Chip size="small" variant="outlined" label={tr("No vaults")} />
                           )}
                           {b.vaults.map((v) => (
                             <Chip
@@ -506,7 +533,7 @@ export function BridgesPage() {
                               variant="outlined"
                               color={isPending(v) ? "warning" : "default"}
                               icon={<LockOutlinedIcon />}
-                              label={`${v.name} · ${v.role}${isPending(v) ? " · pending" : ""}`}
+                              label={`${v.name} · ${v.role}${isPending(v) ? tr(" · pending") : ""}`}
                             />
                           ))}
                         </Box>
@@ -521,32 +548,39 @@ export function BridgesPage() {
       </Section>
 
       <Section
-        title="How it stays private"
-        description="The central server never receives host addresses, usernames, passwords or keys from a bridge."
+        title={tr("How it stays private")}
+        description={tr(
+          "The central server never receives host addresses, usernames, passwords or keys from a bridge.",
+        )}
       >
         <Typography variant="body2" color="text.secondary" component="div">
           <ol style={{ margin: 0, paddingLeft: "1.25em" }}>
-            <li>You create the bridge here: a key pair is generated in this browser.</li>
+            <li>{tr("You create the bridge here: a key pair is generated in this browser.")}</li>
             <li>
-              Your copy of each chosen vault key is sealed to that key pair; only sealed boxes and
-              the public key reach the server.
+              {tr(
+                "Your copy of each chosen vault key is sealed to that key pair; only sealed boxes and the public key reach the server.",
+              )}
             </li>
             <li>
-              The credentials file (private key + token) is downloaded once and mounted into the{" "}
-              <code>termoso-bridge</code> container.
+              {trx(
+                "The credentials file (private key + token) is downloaded once and mounted into the  {v1} container.",
+                { v1: <code>{tr("termoso-bridge")}</code> },
+              )}
             </li>
             <li>
-              Your scripts talk plaintext to the container on your network; it encrypts with the
-              vault key and pushes ciphertext through ordinary sync.
+              {tr(
+                "Your scripts talk plaintext to the container on your network; it encrypts with the vault key and pushes ciphertext through ordinary sync.",
+              )}
             </li>
             <li>
-              Revoking a bridge kills its token at once. After a vault key rotation the bridge
-              pauses writes to that vault until you re-seal the new key here.
+              {tr(
+                "Revoking a bridge kills its token at once. After a vault key rotation the bridge pauses writes to that vault until you re-seal the new key here.",
+              )}
             </li>
           </ol>
           <Box sx={{ mt: 1.5 }}>
             <Link href={DOCS_URL} target="_blank" rel="noreferrer">
-              REST reference and deployment guide
+              {tr("REST reference and deployment guide")}
             </Link>
           </Box>
         </Typography>
@@ -584,8 +618,8 @@ export function BridgesPage() {
       )}
       <ConfirmDialog
         open={revoking !== null}
-        title="Revoke bridge?"
-        confirmLabel="Revoke"
+        title={tr("Revoke bridge?")}
+        confirmLabel={tr("Revoke")}
         danger
         busy={revoke.isPending}
         onCancel={() => setRevoking(null)}
@@ -593,8 +627,10 @@ export function BridgesPage() {
           if (revoking) revoke.mutate(revoking.id);
         }}
       >
-        “{revoking?.name}” stops working immediately: its token is invalidated and its sealed vault
-        keys are deleted. Hosts it already created stay in the vaults.
+        {trx(
+          "“{name}” stops working immediately: its token is invalidated and its sealed vault keys are deleted. Hosts it already created stay in the vaults.",
+          { name: revoking?.name },
+        )}
       </ConfirmDialog>
     </>
   );

@@ -75,6 +75,7 @@ import {
   type ReconnectQueue,
 } from "./reconnect";
 import { tr } from "@/i18n";
+import { requireAnywhere, requirePerm } from "@/team/perms";
 
 export type { SplitDirection, SplitNode } from "./layout";
 
@@ -212,7 +213,7 @@ export const isWorkspaceTab = (tab: TerminalTab) => tab.name !== null;
 export function tabTitle(tab: TerminalTab, s: TerminalState = terminalStore.get()): string {
   if (tab.name !== null) return tab.name;
   const pane = s.panes[tab.activePaneId];
-  const title = pane?.title ?? "Terminal";
+  const title = pane?.title ?? tr("Terminal");
   return tab.paneIds.length > 1 ? `${title} (+${tab.paneIds.length - 1})` : title;
 }
 
@@ -770,8 +771,21 @@ export function fitPane(paneId: Uuid) {
   const { width, height } = rt.container.getBoundingClientRect();
   if (width < 20 || height < 20) return;
   try {
-    if (rt.fixedSize) rt.term.resize(rt.fixedSize.cols, rt.fixedSize.rows);
-    else rt.fit.fit();
+    const el = rt.term.element;
+    if (rt.fixedSize) {
+      rt.term.resize(rt.fixedSize.cols, rt.fixedSize.rows);
+      // A pinned grid (multiplayer: somebody else's size) is scaled to fit
+      // instead of being clipped.
+      if (el) {
+        const natural = el.querySelector<HTMLElement>(".xterm-screen") ?? el;
+        const scale = Math.min(1, width / natural.offsetWidth, height / natural.offsetHeight);
+        el.style.transformOrigin = "0 0";
+        el.style.transform = scale < 0.999 ? `scale(${scale})` : "";
+      }
+    } else {
+      if (el) el.style.transform = "";
+      rt.fit.fit();
+    }
     requestAnimationFrame(() => rt.term.refresh(0, rt.term.rows - 1));
   } catch {
     // container not laid out yet
@@ -1549,7 +1563,30 @@ function newPane(paneId: Uuid, target: OpenTarget): Pane {
  * Open a terminal for `target` in a new tab, or split the target tab's active
  * pane. Returns `null` when the tab already holds `MAX_PANES` panes.
  */
+/** Team permissions for the transport (client-enforced; team vaults only). */
+function connectAllowed(target: OpenTarget): boolean {
+  switch (target.kind) {
+    case "host": {
+      const vaultId = target.vault_id ?? null;
+      const perm =
+        target.protocol === "telnet"
+          ? "connect.telnet"
+          : target.protocol === "mosh"
+            ? "connect.mosh"
+            : "connect.ssh";
+      return requirePerm(vaultId, perm);
+    }
+    case "serial":
+      return requireAnywhere("connect.serial");
+    case "local":
+      return requireAnywhere("connect.local_terminal");
+    default:
+      return true;
+  }
+}
+
 export function openTerminal(target: OpenTarget, opts: OpenOptions = {}): Uuid | null {
+  if (!connectAllowed(target)) return null;
   const state = terminalStore.get();
   const existing = opts.intoTab ? state.tabs.find((t) => t.id === opts.intoTab) : undefined;
   if (existing && existing.paneIds.length >= MAX_PANES) return null;

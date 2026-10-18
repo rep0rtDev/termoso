@@ -235,7 +235,7 @@ export function KnownHostsPage() {
                         onClick={() =>
                           op.mutate(async () => {
                             await copyToClipboard(`${h.hostname} ${h.keyType} ${h.publicKey}`);
-                            return "Copied";
+                            return tr("Copied");
                           })
                         }
                       >

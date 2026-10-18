@@ -318,6 +318,8 @@ async fn boot() -> Option<TestServer> {
         swagger_ui: true,
         s3,
         smtp: smtp.map(|(cfg, _)| cfg),
+        webhooks_allow_private: true,
+        webhooks_syslog_ca: Some(syslog_ca_path()),
         webauthn: Some(WebauthnConfig {
             rp_id: WEBAUTHN_RP_ID.into(),
             origins: WEBAUTHN_ORIGIN.into(),
@@ -1034,4 +1036,12 @@ pub async fn admin_token(server: &TestServer) -> String {
 /// Cursors helper for `/sync/pull`.
 pub fn cursors(pairs: &[(Uuid, i64)]) -> HashMap<Uuid, i64> {
     pairs.iter().copied().collect()
+}
+
+/// Where the syslog_tls test drops the self-signed CA the server trusts.
+pub fn syslog_ca_path() -> String {
+    std::env::temp_dir()
+        .join("termoso-test-syslog-ca.pem")
+        .to_string_lossy()
+        .into_owned()
 }

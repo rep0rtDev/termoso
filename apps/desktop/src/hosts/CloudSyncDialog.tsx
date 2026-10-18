@@ -101,7 +101,13 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
             run.mutate(g.groupId, {
               onSuccess: (r) => {
                 if (r.status.error) setError(r.status.error);
-                else snackbar.notify(`“${group.label}” synced: ${reportLine(r) ?? "done"}`);
+                else
+                  snackbar.notify(
+                    tr("“{name}” synced: {report}", {
+                      name: group.label,
+                      report: reportLine(r) ?? tr("done"),
+                    }),
+                  );
                 onClose();
               },
               onError: (e) => setError(errorMessage(e)),
@@ -211,7 +217,7 @@ function Body({ group, existing, readOnly, onClose }: Omit<Props, "open">) {
             disabled={busy}
             storedSecretHint={
               existing?.hasSecret && existing.config.provider === draft.provider
-                ? "Stored on this device — leave empty to keep"
+                ? tr("Stored on this device — leave empty to keep")
                 : undefined
             }
           />

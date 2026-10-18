@@ -40,12 +40,12 @@ export function certificateState(
 export function certificateName(c: CertificateCard): string {
   if (c.keyId.trim()) return c.keyId;
   if (c.principals.length > 0) return c.principals.join(", ");
-  return `signed by ${c.caFingerprint}`;
+  return tr("signed by {fingerprint}", { fingerprint: c.caFingerprint });
 }
 
 /** One-line human summary of a certificate for chips and hints. */
 export function certificateSummary(c: CertificateCard, now: Date = new Date()): string {
-  const who = c.principals.length > 0 ? c.principals.join(", ") : "any principal";
+  const who = c.principals.length > 0 ? c.principals.join(", ") : tr("any principal");
   const state = certificateState(c, false, now);
   const until = c.validBefore
     ? state === "expired"
@@ -54,9 +54,9 @@ export function certificateSummary(c: CertificateCard, now: Date = new Date()): 
     : tr("no expiry");
   const from =
     state === "not_yet" && c.validAfter
-      ? `from ${new Date(c.validAfter).toLocaleDateString()}`
+      ? tr("from {date}", { date: new Date(c.validAfter).toLocaleDateString() })
       : null;
-  return [c.kind === "host" ? "host certificate" : "user certificate", who, from ?? until]
+  return [c.kind === "host" ? tr("host certificate") : tr("user certificate"), who, from ?? until]
     .filter(Boolean)
     .join(" · ");
 }
@@ -112,7 +112,7 @@ export function identitySubtitle(i: IdentityCard): string {
         ? tr("Certificate · {sshKeyLabel}", { sshKeyLabel: i.sshKeyLabel })
         : tr("Key · {sshKeyLabel}", { sshKeyLabel: i.sshKeyLabel })
       : null,
-    i.hasPassword ? "Password" : null,
+    i.hasPassword ? tr("Password") : null,
   ].filter((s): s is string => s !== null);
   const via = auth.length > 0 ? auth.join(" + ") : tr("No auth method");
   return i.username ? `${i.username} · ${via}` : via;

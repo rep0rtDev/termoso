@@ -23,6 +23,9 @@ pub mod codes {
     pub const UNAUTHORIZED: &str = "unauthorized";
     /// Authenticated but not allowed.
     pub const FORBIDDEN: &str = "forbidden";
+    /// The caller lacks a specific team permission; `details.permission`
+    /// names it (e.g. `vaults.create`).
+    pub const PERMISSION_DENIED: &str = "permission_denied";
     /// Resource not found.
     pub const NOT_FOUND: &str = "not_found";
     /// Wrong email/password (client-side OPAQUE failure is reported as this too).
@@ -47,8 +50,14 @@ pub mod codes {
     pub const ACCOUNT_DISABLED: &str = "account_disabled";
     /// Email must be verified first.
     pub const EMAIL_UNVERIFIED: &str = "email_unverified";
-    /// The team requires two-factor authentication for vault access.
+    /// A team policy requires two-factor authentication before its vaults can
+    /// be read (`details.team_id`, `details.level` = `any` | `passkey`).
     pub const MFA_REQUIRED: &str = "mfa_required";
+    /// A team policy forbids password sign-in for this email; use the SSO
+    /// provider in `details.provider`.
+    pub const SSO_REQUIRED: &str = "sso_required";
+    /// The email domain is outside the team's SSO domain allow-list.
+    pub const DOMAIN_NOT_ALLOWED: &str = "domain_not_allowed";
     /// A team of the user switched multiplayer off.
     pub const MULTIPLAYER_DISABLED: &str = "multiplayer_disabled";
     /// The operation needs a fresh step-up (`POST /auth/reauth/start`) of the

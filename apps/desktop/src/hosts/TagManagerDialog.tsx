@@ -28,9 +28,9 @@ import { useSnackbar } from "@/components/Snackbar";
 import { useDeleteTag, useMergeTags, useTags, useUpdateTag } from "@/ipc/hooks";
 import { errorMessage, type TagInfo, type Uuid } from "@/ipc/types";
 import { TAG_COLORS, TagDot } from "./TagChip";
-import { tr } from "@/i18n";
+import { tr, trn } from "@/i18n";
 
-const hostsLabel = (n: number) => `${n} host${n === 1 ? "" : "s"}`;
+const hostsLabel = (n: number) => trn(n, "{count} host", "{count} hosts");
 
 type Pending =
   | { kind: "none" }
@@ -309,7 +309,7 @@ export function TagManagerDialog({
       >
         <MenuItem disabled dense>
           <ListItemText
-            primary={`Merge “${mergeFor?.tag.label ?? ""}” into…`}
+            primary={tr("Merge “{label}” into…", { label: mergeFor?.tag.label ?? "" })}
             slotProps={{ primary: { variant: "caption" } }}
           />
         </MenuItem>
@@ -365,7 +365,12 @@ export function TagManagerDialog({
         onConfirm={runPending}
       >
         {pending.kind === "merge" &&
-          `${hostsLabel(pending.source.hosts)} tagged “${pending.source.label}” ${pending.source.hosts === 1 ? "gets" : "get"} “${pending.target.label}” instead; the old tag is removed.`}
+          trn(
+            pending.source.hosts,
+            "{count} host tagged “{source}” gets “{target}” instead; the old tag is removed.",
+            "{count} hosts tagged “{source}” get “{target}” instead; the old tag is removed.",
+            { source: pending.source.label, target: pending.target.label },
+          )}
       </ConfirmDialog>
     </>
   );

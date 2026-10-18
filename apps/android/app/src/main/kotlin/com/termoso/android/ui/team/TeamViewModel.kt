@@ -10,7 +10,9 @@ import com.termoso.android.str
 import com.termoso.core.InviteCard
 import com.termoso.core.InviteSent
 import com.termoso.core.PendingKeyCard
+import com.termoso.android.data.can
 import com.termoso.core.TeamCard
+import com.termoso.core.MobileException
 import com.termoso.core.TeamMemberCard
 import com.termoso.core.TeamRole
 import com.termoso.core.VaultAccess
@@ -23,6 +25,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 val TeamRole.isAdmin: Boolean get() = this == TeamRole.ADMIN || this == TeamRole.OWNER
+
+/** Team policy `mfa` blocks the request until the account enrols a second factor. */
+fun Throwable.isMfaRequired(): Boolean = this is MobileException.Other && kind == "mfa_required"
+
+/** Can do at least one of invite / change role / remove — enough to show the admin blocks. */
+val TeamCard.canManageMembers: Boolean
+    get() = can("members.invite") || can("members.role") || can("members.remove")
 
 fun TeamRole.label(): String = when (this) {
     TeamRole.MEMBER -> str(R.string.member)
@@ -87,9 +96,11 @@ data class TeamUiState(
     val pendingKeys: List<PendingKeyCard> = emptyList(),
     val vaults: List<VaultInfo> = emptyList(),
     val error: String? = null,
+    /** The server refused team data until this account turns on two-factor authentication (team policy). */
+    val mfaRequired: Boolean = false,
 ) {
     val me: TeamMemberCard? get() = members.firstOrNull { it.me }
-    val isAdmin: Boolean get() = team?.myRole?.isAdmin == true
+    val isAdmin: Boolean get() = team?.canManageMembers == true
     val isOwner: Boolean get() = team?.myRole == TeamRole.OWNER
 }
 
@@ -118,14 +129,14 @@ class TeamViewModel(
         viewModelScope.launch {
             val team = runCatching { repo.read { teams().firstOrNull { it.id == teamId } } }
                 .getOrElse { e ->
-                    _state.update { it.copy(loading = false, error = e.userMessage()) }
+                    _state.update { it.copy(loading = false, mfaRequired = e.isMfaRequired(), error = e.userMessage().takeUnless { _ -> e.isMfaRequired() }) }
                     return@launch
                 }
             if (team == null) {
                 _state.update { it.copy(loading = false, team = null, error = str(R.string.you_are_no_longer_in_this_team)) }
                 return@launch
             }
-            val admin = team.myRole.isAdmin
+            val admin = team.canManageMembers
             runCatching {
                 repo.read {
                     Triple(
@@ -139,7 +150,7 @@ class TeamViewModel(
                     it.copy(loading = false, team = team, members = members, invites = invites, pendingKeys = pending, error = null)
                 }
             }.onFailure { e ->
-                _state.update { it.copy(loading = false, team = team, error = e.userMessage()) }
+                _state.update { it.copy(loading = false, team = team, mfaRequired = e.isMfaRequired(), error = e.userMessage().takeUnless { _ -> e.isMfaRequired() }) }
             }
         }
     }

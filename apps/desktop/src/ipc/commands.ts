@@ -10,6 +10,9 @@ import type {
   AiCommandResponse,
   AiStatus,
   AppInfo,
+  AuditFilter,
+  AuditPage,
+  BackupSummary,
   BookmarkCard,
   CertificateCard,
   CloudConfig,
@@ -21,8 +24,9 @@ import type {
   CloudSyncSecret,
   CommandHistory,
   Conflict,
-  DirEntry,
+  CsvExportReport,
   Device,
+  DirEntry,
   Direction,
   EditEvent,
   EditInfo,
@@ -39,26 +43,24 @@ import type {
   HistoryItem,
   HostCard,
   HostForm,
+  HostKeyPin,
   IdentityCard,
   IdentityForm,
+  ImportApplyReport,
   ImportKeyFileForm,
   ImportKeyForm,
-  ImportApplyReport,
-  CsvExportReport,
-  BackupSummary,
-  RestoreReport,
   ImportPreview,
   ImportReport,
   ImportSelection,
   ImportSource,
-  LocalDevice,
   Inherited,
+  InviteResult,
   KeyCard,
   KeyPreview,
-  HostKeyPin,
   KnownHostCard,
   Listing,
   LiveEvent,
+  LocalDevice,
   LocalVault,
   LogBody,
   LogCard,
@@ -68,6 +70,8 @@ import type {
   MfaCredential,
   OpenTarget,
   PackageNode,
+  PendingVaultKey,
+  PermissionInfo,
   PfRuleCard,
   PfRuleForm,
   PfRuntime,
@@ -77,48 +81,53 @@ import type {
   ReauthOutcome,
   RegisterForm,
   Registered,
+  RestoreReport,
+  RoleMapping,
   RunResult,
-  ServerInfo,
-  ShareInfo,
-  SessionEvent,
   SerialPortInfo,
+  ServerInfo,
+  SessionEvent,
   SessionInfo,
   Settings,
   SftpEvent,
   SftpInfo,
   SftpTarget,
+  ShareInfo,
   SnippetCard,
   SnippetForm,
+  SshIdFido2Form,
+  SshIdView,
   SsoOutcome,
   SsoStartForm,
   SyncNotice,
   SyncStatus,
   TagInfo,
+  Team,
+  TeamInvite,
+  TeamMember,
+  TeamPoliciesResponse,
+  TeamPresence,
+  TeamRole,
+  TeamRoleDef,
+  TeamRoleList,
+  ThemeImport,
   TransferEvent,
   TransferInfo,
   UpdateEvent,
   UpdateInfo,
+  UpdateTeamPolicies,
+  UserProfile,
+  Uuid,
+  VaultAccess,
   VaultConnection,
   VaultEvent,
-  VaultStatus,
-  Uuid,
-  InviteResult,
-  PendingVaultKey,
-  AuditFilter,
-  AuditPage,
-  Team,
-  TeamInvite,
-  TeamMember,
-  TeamPresence,
-  TeamRole,
-  UserProfile,
-  VaultAccess,
   VaultMember,
   VaultRole,
+  VaultStatus,
+  Webhook,
+  WebhookDelivery,
+  WebhookKind,
   WorkspacesState,
-  SshIdFido2Form,
-  SshIdView,
-  ThemeImport,
 } from "./types";
 
 export const appInfo = () => invoke<AppInfo>("app_info");
@@ -202,6 +211,8 @@ export const localShells = () => invoke<string[]>("local_shells");
 
 /** Register `termoso://` / `ssh://` / `telnet://` handlers for this user; returns the schemes now registered. */
 export const deepLinksRegister = () => invoke<string[]>("deep_links_register");
+/** Files passed on the command line at launch (file associations), reported once. */
+export const launchFiles = () => invoke<string[]>("launch_files");
 
 export const historyConnections = (limit = 50) =>
   invoke<VaultConnection[]>("history_connections", { limit });
@@ -640,6 +651,52 @@ export const teamSetSecurity = (
   patch: { multiplayerEnabled?: boolean; requireMfa?: boolean; presenceEnabled?: boolean },
 ) => invoke<Team>("team_set_security", { teamId, ...patch });
 /** Who is connected to the team's hosts right now (empty when presence is off). */
+export const teamPermissions = (teamId: Uuid) =>
+  invoke<{ permissions: PermissionInfo[] }>("team_permissions", { teamId });
+export const teamRoles = (teamId: Uuid) => invoke<TeamRoleList>("team_roles", { teamId });
+export const teamRoleCreate = (
+  teamId: Uuid,
+  req: { name: string; description?: string; permissions: string[]; copy_from?: Uuid },
+) => invoke<TeamRoleDef>("team_role_create", { teamId, req });
+export const teamRoleUpdate = (
+  teamId: Uuid,
+  roleId: Uuid,
+  req: { name?: string; description?: string; permissions?: string[]; position?: number },
+) => invoke<TeamRoleDef>("team_role_update", { teamId, roleId, req });
+export const teamRoleDelete = (teamId: Uuid, roleId: Uuid, reassignTo?: Uuid) =>
+  invoke<null>("team_role_delete", { teamId, roleId, reassignTo: reassignTo ?? null });
+export const teamSetDefaultRole = (teamId: Uuid, roleId: Uuid) =>
+  invoke<null>("team_set_default_role", { teamId, roleId });
+export const teamRoleMappings = (teamId: Uuid) =>
+  invoke<RoleMapping[]>("team_role_mappings", { teamId });
+export const teamSetRoleMappings = (teamId: Uuid, mappings: RoleMapping[]) =>
+  invoke<RoleMapping[]>("team_set_role_mappings", { teamId, mappings });
+export const teamPolicies = (teamId: Uuid) =>
+  invoke<TeamPoliciesResponse>("team_policies", { teamId });
+export const teamUpdatePolicies = (teamId: Uuid, patch: UpdateTeamPolicies) =>
+  invoke<TeamPoliciesResponse>("team_update_policies", { teamId, patch });
+export const teamWebhooks = (teamId: Uuid) => invoke<Webhook[]>("team_webhooks", { teamId });
+export const teamWebhookCreate = (
+  teamId: Uuid,
+  req: { url: string; secret: string; kind?: WebhookKind; actions?: string[] | null },
+) => invoke<Webhook>("team_webhook_create", { teamId, req });
+export const teamWebhookUpdate = (
+  teamId: Uuid,
+  hookId: Uuid,
+  req: {
+    url?: string;
+    secret?: string;
+    kind?: WebhookKind;
+    actions?: string[] | null;
+    enabled?: boolean;
+  },
+) => invoke<Webhook>("team_webhook_update", { teamId, hookId, req });
+export const teamWebhookDelete = (teamId: Uuid, hookId: Uuid) =>
+  invoke<null>("team_webhook_delete", { teamId, hookId });
+export const teamWebhookTest = (teamId: Uuid, hookId: Uuid) =>
+  invoke<WebhookDelivery[]>("team_webhook_test", { teamId, hookId });
+export const teamWebhookDeliveries = (teamId: Uuid, hookId: Uuid) =>
+  invoke<WebhookDelivery[]>("team_webhook_deliveries", { teamId, hookId });
 export const teamPresence = (teamId: Uuid) => invoke<TeamPresence>("team_presence", { teamId });
 export const accountProfile = () => invoke<UserProfile>("account_profile");
 /** `data:` URL of a user's picture (disk-cached by tag), or `null` when the server has none. */

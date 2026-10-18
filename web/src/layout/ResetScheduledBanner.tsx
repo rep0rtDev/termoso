@@ -1,4 +1,5 @@
 import { Alert, AlertTitle, Button } from "@mui/material";
+import { tr, trx } from "@/i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@/api/client";
 import { accountApi } from "@/api/endpoints";
@@ -15,7 +16,7 @@ export function ResetScheduledBanner() {
     mutationFn: accountApi.cancelStartOver,
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: queryKeys.account });
-      snack.notify("Account reset cancelled");
+      snack.notify(tr("Account reset cancelled"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -33,14 +34,21 @@ export function ResetScheduledBanner() {
           onClick={() => cancel.mutate()}
           disabled={cancel.isPending}
         >
-          Cancel reset
+          {tr("Cancel reset")}
         </Button>
       }
     >
-      <AlertTitle>An account reset is scheduled {formatRelative(at)}</AlertTitle>
-      Someone requested to start this account over from scratch using the email address. Once it
-      completes ({formatDateTime(at)}) the encrypted vault is deleted permanently and every device
-      is signed out. If this was not you, cancel it now and review Devices and Security.
+      {trx(
+        "{v1} Someone requested to start this account over from scratch using the email address. Once it completes ({v2}) the encrypted vault is deleted permanently and every device is signed out. If this was not you, cancel it now and review Devices and Security.",
+        {
+          v1: (
+            <AlertTitle>
+              {trx("An account reset is scheduled {v1}", { v1: formatRelative(at) })}
+            </AlertTitle>
+          ),
+          v2: formatDateTime(at),
+        },
+      )}
     </Alert>
   );
 }

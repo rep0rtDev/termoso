@@ -1,3 +1,5 @@
+import { useOpenFileRequests } from "@/app/navigation";
+import { isKeyFile } from "@/app/deepLinks";
 import { useMemo, useState, type MouseEvent, type ReactElement } from "react";
 import {
   Alert,
@@ -86,10 +88,11 @@ import {
   keyTypeLabel,
 } from "./model";
 import { tr, trn, trx } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 type Panel =
   | { kind: "none" }
-  | { kind: "newKey"; certificate: boolean }
+  | { kind: "newKey"; certificate: boolean; file?: string }
   | { kind: "generate" }
   | { kind: "editKey"; id: string }
   | { kind: "identity"; id: string | null }
@@ -122,7 +125,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
   const snackbar = useSnackbar();
   const qc = useQueryClient();
   const vaultId = vault.data?.id ?? null;
-  const vaultName = vault.data?.name ?? "Vault";
+  const vaultName = vault.data?.name ?? tr("Vault");
   const readOnly = vault.readOnly;
   const sshKeys = useSshKeys(vaultId);
   const identities = useIdentities(vaultId);
@@ -132,6 +135,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
   const saveSettings = useSaveSettings();
 
   const [panel, setPanel] = useState<Panel>({ kind: "none" });
+  useOpenFileRequests(isKeyFile, (file) => setPanel({ kind: "newKey", certificate: false, file }));
   const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
   const [ctx, setCtx] = useState<Ctx | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -191,6 +195,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       exportPassphrase: string | null;
     },
   ) => {
+    if (!requirePerm(card.vaultId, "keys.export")) return null;
     if (args.mode === "clipboard") {
       const text = await ipc.keyExport({
         id: card.id,
@@ -368,7 +373,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
     const cs = certificateState(k.certificate, k.certificateUnreadable);
     const certLabel =
       cs === "valid"
-        ? "Certificate"
+        ? tr("Certificate")
         : cs === "expired"
           ? tr("Certificate expired")
           : cs === "not_yet"
@@ -650,6 +655,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           vaultId={vaultId}
           vaultName={vaultName}
           focusCertificate={panel.certificate}
+          initialFile={panel.file ?? null}
           busy={panelOp.isPending}
           error={panelError}
           onClose={closePanel}
@@ -708,15 +714,16 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           busy={panelOp.isPending}
           error={panelError}
           onClose={closePanel}
-          onGenerate={(form) =>
-            runPanel(async () => {
+          onGenerate={(form) => {
+            if (!requirePerm(form.vaultId, "keys.generate")) return;
+            return runPanel(async () => {
               const k = await ipc.keyGenerate(form);
               return {
                 msg: tr("Generated {label}", { label: k.label }),
                 next: { kind: "editKey", id: k.id },
               };
-            })
-          }
+            });
+          }}
         />
       )}
       {panel.kind === "editKey" && editing && (
@@ -750,7 +757,10 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
               return { msg: tr("Certificate attached"), next: panel };
             })
           }
-          onExportToHost={() => setDialog({ kind: "exportToHost", card: editing })}
+          onExportToHost={() => {
+            if (!requirePerm(editing.vaultId, "keys.export")) return;
+            setDialog({ kind: "exportToHost", card: editing });
+          }}
           onExportPrivate={() => setDialog({ kind: "export", card: editing })}
           onChangePassphrase={() => setDialog({ kind: "passphrase", card: editing })}
         />

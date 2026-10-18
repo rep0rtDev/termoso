@@ -71,9 +71,10 @@ import { terminalStore, type Pane } from "@/terminal/store";
 import { startRun, summarize, useLastRun, watchRun, type SnippetRun } from "./run";
 import { RunTargets, TargetStateIcon } from "./RunStatus";
 import { TargetsDialog } from "./TargetsDialog";
-import { tr, trx } from "@/i18n";
+import { tr, trn, trx, msg } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
-const VAR_HINT = "Use {{name}} placeholders; you will be asked for values on run.";
+const VAR_HINT = msg("Use {{name}} placeholders; you will be asked for values on run.");
 
 function SnippetDialog({
   vaultId,
@@ -136,7 +137,7 @@ function SnippetDialog({
               multiline
               minRows={6}
               maxRows={16}
-              helperText={VAR_HINT}
+              helperText={tr(VAR_HINT)}
               slotProps={{ htmlInput: { spellCheck: false, style: { fontFamily: "monospace" } } }}
             />
           </Field>
@@ -1038,8 +1039,13 @@ export function SnippetsPage() {
                 return null;
               })
             }
-            onRun={() => runOnTargets(selected)}
-            onRunInTerminals={() => setDialog({ kind: "run", snippet: selected })}
+            onRun={() => {
+              if (requirePerm(selected.vaultId, "snippets.run")) runOnTargets(selected);
+            }}
+            onRunInTerminals={() => {
+              if (requirePerm(selected.vaultId, "snippets.run"))
+                setDialog({ kind: "run", snippet: selected });
+            }}
           />
         )}
       </Box>
@@ -1080,9 +1086,11 @@ export function SnippetsPage() {
       {dialog.kind === "vars" && (
         <VariablesDialog
           snippet={dialog.snippet}
-          description={`Runs on ${dialog.snippet.targetHostIds.length} configured ${
-            dialog.snippet.targetHostIds.length === 1 ? "target" : "targets"
-          }.`}
+          description={trn(
+            dialog.snippet.targetHostIds.length,
+            "Runs on {count} configured target.",
+            "Runs on {count} configured targets.",
+          )}
           onCancel={() => setDialog({ kind: "none" })}
           onConfirm={(vars) => launch(dialog.snippet, vars, [], dialog.snippet.targetHostIds)}
         />

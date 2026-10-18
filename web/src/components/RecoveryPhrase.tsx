@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "@/i18n";
 import { Box, Button, Stack, Typography } from "@mui/material";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
@@ -82,10 +83,10 @@ export function RecoveryPhraseGrid({ phrase, email }: Props) {
       </Box>
       <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", alignItems: "center" }}>
         <Button startIcon={<ContentCopyRoundedIcon />} onClick={copy} variant="outlined">
-          {copied ? "Copied" : "Copy"}
+          {copied ? tr("Copied") : tr("Copy")}
         </Button>
         <Button startIcon={<DownloadRoundedIcon />} onClick={download} variant="outlined">
-          Download .txt
+          {tr("Download .txt")}
         </Button>
         <Typography variant="caption" color="text.secondary" sx={{ ml: "auto" }}>
           {words.length} words

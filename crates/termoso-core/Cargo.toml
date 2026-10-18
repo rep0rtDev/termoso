@@ -45,7 +45,7 @@ rand_core = { workspace = true, optional = true }
 ed25519-dalek = { version = "2", optional = true }
 
 # server api
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "socks"] }
 # WebDAV: pinned self-signed certificates need our own verifier; Digest auth
 # still means MD5 on most servers.
 rustls = { version = "0.23.27", default-features = false, features = ["ring", "std", "tls12"] }

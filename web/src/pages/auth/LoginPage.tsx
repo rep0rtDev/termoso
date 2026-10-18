@@ -1,4 +1,5 @@
 import { useState, type SubmitEvent } from "react";
+import { tr, trx } from "@/i18n";
 import { Alert, Box, Button, Divider, Link, Stack, TextField, Typography } from "@mui/material";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router";
 import { ApiError, errorMessage } from "@/api/client";
@@ -59,7 +60,7 @@ export function LoginPage() {
     } catch (err) {
       if (err instanceof ApiError && err.code === "turnstile_required" && siteKey) {
         setNeedCaptcha(true);
-        setError("Please confirm you are human below, then sign in again.");
+        setError(tr("Please confirm you are human below, then sign in again."));
       } else {
         setError(errorMessage(err));
       }
@@ -75,23 +76,27 @@ export function LoginPage() {
   return (
     <form onSubmit={submit}>
       <AuthTitle
-        title={sso ? "Unlock your account" : "Sign in"}
+        title={sso ? tr("Unlock your account") : tr("Sign in")}
         subtitle={
           sso
-            ? `Signed in with SSO as ${sso.email}. Enter your Termoso password to unlock your encrypted data.`
-            : "Your password never leaves this device."
+            ? tr(
+                "Signed in with SSO as {email}. Enter your Termoso password to unlock your encrypted data.",
+                { email: sso.email },
+              )
+            : tr("Your password never leaves this device.")
         }
       />
       <Stack spacing={2}>
         {sessionEnded && !error && (
           <Alert severity="info">
-            Your session ended — you signed in on this device again or it was revoked. Sign in to
-            continue.
+            {tr(
+              "Your session ended — you signed in on this device again or it was revoked. Sign in to continue.",
+            )}
           </Alert>
         )}
         {error && <Alert severity="error">{error}</Alert>}
         <TextField
-          label="Email"
+          label={tr("Email")}
           type="email"
           autoComplete="username"
           autoFocus={!sso}
@@ -101,7 +106,7 @@ export function LoginPage() {
           disabled={busy || sso !== undefined}
         />
         <PasswordField
-          label="Password"
+          label={tr("Password")}
           autoComplete="current-password"
           autoFocus={sso !== undefined}
           required
@@ -111,7 +116,7 @@ export function LoginPage() {
         />
         <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
           <Link component={RouterLink} to="/forgot-password" variant="body2">
-            Forgot password?
+            {tr("Forgot password?")}
           </Link>
         </Box>
         {needCaptcha && siteKey && (
@@ -123,14 +128,14 @@ export function LoginPage() {
           size="large"
           disabled={busy || (needCaptcha && captcha === null)}
         >
-          {busy ? "Signing in…" : "Sign in"}
+          {busy ? tr("Signing in…") : tr("Sign in")}
         </Button>
 
         {!sso && providers.length > 0 && (
           <>
             <Divider>
               <Typography variant="caption" color="text.secondary">
-                or continue with
+                {tr("or continue with")}
               </Typography>
             </Divider>
             <Stack spacing={1}>
@@ -154,13 +159,16 @@ export function LoginPage() {
 
         {info.data?.registration_open !== false && !sso && (
           <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
-            New to Termoso?{" "}
-            <Link
-              component={RouterLink}
-              to={next === "/account" ? "/signup" : `/signup?next=${encodeURIComponent(next)}`}
-            >
-              Create an account
-            </Link>
+            {trx("New to Termoso?  {v1}", {
+              v1: (
+                <Link
+                  component={RouterLink}
+                  to={next === "/account" ? "/signup" : `/signup?next=${encodeURIComponent(next)}`}
+                >
+                  {tr("Create an account")}
+                </Link>
+              ),
+            })}
           </Typography>
         )}
       </Stack>

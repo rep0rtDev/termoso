@@ -5,36 +5,44 @@ import type {
   AdminTeam,
   AdminUpdateUserRequest,
   AdminUser,
+  AuditEventList,
   AuthResponse,
   Bridge,
   BridgeVaultKey,
   CreateBridgeResponse,
+  CreatedScimToken,
   Device,
   DeviceInfo,
   DigestCadence,
   DigestSubscription,
   Invite,
   InvitePreview,
-  LogListResponse,
   LoginStartResponse,
+  LogListResponse,
   MfaCredential,
   MfaStatus,
   Page,
   PasswordSetupFinishRequest,
   PendingVaultKey,
+  PermissionInfo,
   ReauthStartResponse,
   RecoveryRotate,
   RecoveryStartResponse,
   RegisterFinishRequest,
+  RoleMapping,
+  ScimGroupInfo,
+  ScimGroupVault,
+  ScimToken,
+  SealedKeyFor,
   SecurityEvent,
   SendDigestResponse,
   ServerInfo,
   ServerSettings,
   SessionLog,
   SettingsBlob,
+  SsoIdentity,
   SsoProvider,
   SsoResult,
-  SsoIdentity,
   SsoStartResponse,
   StartOverFinishRequest,
   StartOverRequestResponse,
@@ -42,15 +50,21 @@ import type {
   StartOverStatus,
   Team,
   TeamMember,
+  TeamPoliciesResponse,
   TeamRole,
+  TeamRoleDef,
+  TeamRoleList,
   TotpSetupResponse,
+  UpdateTeamPolicies,
   UserProfile,
   Vault,
   VaultMember,
   VaultMemberUpsert,
   VaultRole,
   WebauthnCredentialInfo,
-  SealedKeyFor,
+  Webhook,
+  WebhookDelivery,
+  WebhookKind,
 } from "./types";
 
 const anon = { anonymous: true } as const;
@@ -237,6 +251,80 @@ export const teamsApi = {
   deleteInvite: (id: string, inviteId: string) =>
     http.delete<undefined>(`/teams/${id}/invites/${inviteId}`),
   pendingKeys: (id: string) => http.get<{ items: PendingVaultKey[] }>(`/teams/${id}/pending-keys`),
+  // ── roles & permissions (0.9.0) ──
+  permissions: (id: string) =>
+    http.get<{ permissions: PermissionInfo[] }>(`/teams/${id}/permissions`),
+  roles: (id: string) => http.get<TeamRoleList>(`/teams/${id}/roles`),
+  createRole: (
+    id: string,
+    body: { name: string; description?: string; permissions: string[]; copy_from?: string },
+  ) => http.post<TeamRoleDef>(`/teams/${id}/roles`, body),
+  updateRole: (
+    id: string,
+    roleId: string,
+    body: { name?: string; description?: string; permissions?: string[]; position?: number },
+  ) => http.patch<TeamRoleDef>(`/teams/${id}/roles/${roleId}`, body),
+  deleteRole: (id: string, roleId: string, reassign_to?: string) =>
+    http.delete<undefined>(`/teams/${id}/roles/${roleId}`, undefined, {
+      query: reassign_to ? { reassign_to } : undefined,
+    }),
+  setDefaultRole: (id: string, role_id: string) =>
+    http.put<undefined>(`/teams/${id}/default-role`, { role_id }),
+  setMemberRole: (id: string, userId: string, role: TeamRole, role_id: string) =>
+    http.patch<TeamMember>(`/teams/${id}/members/${userId}`, { role, role_id }),
+  roleMappings: (id: string) => http.get<{ mappings: RoleMapping[] }>(`/teams/${id}/role-mappings`),
+  setRoleMappings: (id: string, mappings: RoleMapping[]) =>
+    http.put<{ mappings: RoleMapping[] }>(`/teams/${id}/role-mappings`, { mappings }),
+  // ── policies ──
+  policies: (id: string) => http.get<TeamPoliciesResponse>(`/teams/${id}/policies`),
+  updatePolicies: (id: string, patch: UpdateTeamPolicies) =>
+    http.put<TeamPoliciesResponse>(`/teams/${id}/policies`, patch),
+  // ── audit ──
+  audit: (
+    id: string,
+    q: { before?: number; limit?: number; action?: string; actor?: string; vault?: string },
+  ) => http.get<AuditEventList>(`/teams/${id}/audit`, { query: q }),
+  auditExport: (
+    id: string,
+    q: { format: "csv" | "jsonl"; from?: string; to?: string; action?: string; actor?: string },
+  ) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(q)) if (v) params.set(k, v);
+    return fetchBlob(`/teams/${id}/audit/export?${params.toString()}`);
+  },
+  // ── webhooks ──
+  webhooks: (id: string) => http.get<{ webhooks: Webhook[] }>(`/teams/${id}/webhooks`),
+  createWebhook: (
+    id: string,
+    body: { url: string; secret: string; kind: WebhookKind; actions?: string[] | null },
+  ) => http.post<Webhook>(`/teams/${id}/webhooks`, body),
+  updateWebhook: (
+    id: string,
+    wid: string,
+    body: {
+      url?: string;
+      secret?: string;
+      kind?: WebhookKind;
+      actions?: string[] | null;
+      enabled?: boolean;
+    },
+  ) => http.patch<Webhook>(`/teams/${id}/webhooks/${wid}`, body),
+  deleteWebhook: (id: string, wid: string) =>
+    http.delete<undefined>(`/teams/${id}/webhooks/${wid}`),
+  testWebhook: (id: string, wid: string) =>
+    http.post<{ deliveries: WebhookDelivery[] }>(`/teams/${id}/webhooks/${wid}/test`),
+  webhookDeliveries: (id: string, wid: string) =>
+    http.get<{ deliveries: WebhookDelivery[] }>(`/teams/${id}/webhooks/${wid}/deliveries`),
+  // ── SCIM ──
+  scimTokens: (id: string) =>
+    http.get<{ tokens: ScimToken[]; base_url: string }>(`/teams/${id}/scim/tokens`),
+  createScimToken: (id: string, body: { name: string; expires_in_days?: number }) =>
+    http.post<CreatedScimToken>(`/teams/${id}/scim/tokens`, body),
+  revokeScimToken: (id: string, tid: string) =>
+    http.delete<undefined>(`/teams/${id}/scim/tokens/${tid}`),
+  scimGroups: (id: string) => http.get<{ groups: ScimGroupInfo[] }>(`/teams/${id}/scim/groups`),
+  setScimGroupVaults: (id: string, gid: string, vaults: ScimGroupVault[]) =>
+    http.put<ScimGroupInfo>(`/teams/${id}/scim/groups/${gid}/vaults`, { vaults }),
   createVault: (id: string, name: string, members: VaultMemberUpsert[]) =>
     http.post<Vault>(`/teams/${id}/vaults`, { name, members }),
   invitePreview: (token: string) =>

@@ -1,4 +1,5 @@
 import { useEffect, useState, type SubmitEvent } from "react";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Box,
@@ -58,8 +59,8 @@ export function SecurityPage() {
   return (
     <>
       <PageHeader
-        title="Security"
-        subtitle="Two-factor authentication and recent account activity."
+        title={tr("Security")}
+        subtitle={tr("Two-factor authentication and recent account activity.")}
       />
       <TotpSection enabled={mfa.data.totp_enabled} />
       {info.data?.features.webauthn && (
@@ -75,10 +76,10 @@ export function SecurityPage() {
 function CodesDialog({ codes, onClose }: { codes: string[] | null; onClose: () => void }) {
   return (
     <Dialog open={codes !== null} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Backup codes</DialogTitle>
+      <DialogTitle>{tr("Backup codes")}</DialogTitle>
       <DialogContent sx={{ display: "grid", gap: 2 }}>
         <DialogContentText>
-          Each code works once. Store them like a password — they bypass your authenticator.
+          {tr("Each code works once. Store them like a password — they bypass your authenticator.")}
         </DialogContentText>
         <Box
           sx={{
@@ -102,12 +103,12 @@ function CodesDialog({ codes, onClose }: { codes: string[] | null; onClose: () =
           variant="outlined"
           onClick={() => void navigator.clipboard.writeText((codes ?? []).join("\n"))}
         >
-          Copy all
+          {tr("Copy all")}
         </Button>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button variant="contained" onClick={onClose}>
-          Done
+          {tr("Done")}
         </Button>
       </DialogActions>
     </Dialog>
@@ -145,7 +146,7 @@ function TotpSection({ enabled }: { enabled: boolean }) {
       setCode("");
       await qc.invalidateQueries({ queryKey: queryKeys.mfa });
       await qc.invalidateQueries({ queryKey: queryKeys.account });
-      snack.notify("Authenticator app disabled");
+      snack.notify(tr("Authenticator app disabled"));
     },
     onError: (e) => {
       if (!(e instanceof UnlockCancelled)) setError(errorMessage(e));
@@ -161,14 +162,14 @@ function TotpSection({ enabled }: { enabled: boolean }) {
 
   return (
     <Section
-      title="Authenticator app"
-      description="Time-based one-time codes (TOTP) from any authenticator app."
+      title={tr("Authenticator app")}
+      description={tr("Time-based one-time codes (TOTP) from any authenticator app.")}
       actions={
         <>
           <Chip
             size="small"
             color={enabled ? "success" : "default"}
-            label={enabled ? "Enabled" : "Not enabled"}
+            label={enabled ? tr("Enabled") : tr("Not enabled")}
             sx={{ alignSelf: "center" }}
           />
           {enabled ? (
@@ -181,11 +182,11 @@ function TotpSection({ enabled }: { enabled: boolean }) {
                 setDisableOpen(true);
               }}
             >
-              Disable
+              {tr("Disable")}
             </Button>
           ) : (
             <Button variant="contained" onClick={openSetup}>
-              Set up
+              {tr("Set up")}
             </Button>
           )}
         </>
@@ -203,14 +204,14 @@ function TotpSection({ enabled }: { enabled: boolean }) {
             confirm.mutate();
           }}
         >
-          <DialogTitle>Set up authenticator</DialogTitle>
+          <DialogTitle>{tr("Set up authenticator")}</DialogTitle>
           <DialogContent sx={{ display: "grid", gap: 2 }}>
             {error && <Alert severity="error">{error}</Alert>}
             {setup.isPending && <Loading minHeight={200} />}
             {setup.data && (
               <>
                 <DialogContentText>
-                  Scan the QR code or enter the secret manually, then type the current code.
+                  {tr("Scan the QR code or enter the secret manually, then type the current code.")}
                 </DialogContentText>
                 <Box
                   sx={{
@@ -223,10 +224,10 @@ function TotpSection({ enabled }: { enabled: boolean }) {
                 >
                   <QRCodeSVG value={setup.data.otpauth_url} size={180} />
                 </Box>
-                <CopyField label="Secret" value={setup.data.secret} />
+                <CopyField label={tr("Secret")} value={setup.data.secret} />
                 <TextField
                   autoFocus
-                  label="6-digit code"
+                  label={tr("6-digit code")}
                   required
                   inputMode="numeric"
                   autoComplete="one-time-code"
@@ -243,14 +244,14 @@ function TotpSection({ enabled }: { enabled: boolean }) {
               color="inherit"
               disabled={confirm.isPending}
             >
-              Cancel
+              {tr("Cancel")}
             </Button>
             <Button
               type="submit"
               variant="contained"
               disabled={!setup.data || confirm.isPending || code.trim() === ""}
             >
-              Enable
+              {tr("Enable")}
             </Button>
           </DialogActions>
         </form>
@@ -268,15 +269,15 @@ function TotpSection({ enabled }: { enabled: boolean }) {
             disable.mutate();
           }}
         >
-          <DialogTitle>Disable authenticator app</DialogTitle>
+          <DialogTitle>{tr("Disable authenticator app")}</DialogTitle>
           <DialogContent sx={{ display: "grid", gap: 2 }}>
             {error && <Alert severity="error">{error}</Alert>}
             <DialogContentText>
-              Enter a current code (or a backup code) to confirm.
+              {tr("Enter a current code (or a backup code) to confirm.")}
             </DialogContentText>
             <TextField
               autoFocus
-              label="Code"
+              label={tr("Code")}
               required
               autoComplete="one-time-code"
               value={code}
@@ -290,7 +291,7 @@ function TotpSection({ enabled }: { enabled: boolean }) {
               color="inherit"
               disabled={disable.isPending}
             >
-              Cancel
+              {tr("Cancel")}
             </Button>
             <Button
               type="submit"
@@ -298,7 +299,7 @@ function TotpSection({ enabled }: { enabled: boolean }) {
               color="error"
               disabled={disable.isPending || code.trim() === ""}
             >
-              Disable
+              {tr("Disable")}
             </Button>
           </DialogActions>
         </form>
@@ -327,11 +328,11 @@ function BackupCodesSection({ remaining }: { remaining: number }) {
   });
   return (
     <Section
-      title="Backup codes"
-      description="One-time codes for when you cannot reach your authenticator."
+      title={tr("Backup codes")}
+      description={tr("One-time codes for when you cannot reach your authenticator.")}
       actions={
         <Button variant="outlined" onClick={() => setConfirmOpen(true)}>
-          Regenerate
+          {tr("Regenerate")}
         </Button>
       }
     >
@@ -340,13 +341,13 @@ function BackupCodesSection({ remaining }: { remaining: number }) {
       </Typography>
       <ConfirmDialog
         open={confirmOpen}
-        title="Regenerate backup codes?"
-        confirmLabel="Regenerate"
+        title={tr("Regenerate backup codes?")}
+        confirmLabel={tr("Regenerate")}
         busy={regen.isPending}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={() => regen.mutate()}
       >
-        All existing backup codes stop working and a new set of ten is generated.
+        {tr("All existing backup codes stop working and a new set of ten is generated.")}
       </ConfirmDialog>
       <CodesDialog codes={codes} onClose={() => setCodes(null)} />
     </Section>
@@ -379,7 +380,7 @@ function WebauthnSection({ credentials }: { credentials: WebauthnCredentialInfo[
       setName("");
       await qc.invalidateQueries({ queryKey: queryKeys.mfa });
       await qc.invalidateQueries({ queryKey: queryKeys.account });
-      snack.notify("Security key added");
+      snack.notify(tr("Security key added"));
     },
     onError: (e) => setError(errorMessage(e)),
   });
@@ -389,7 +390,7 @@ function WebauthnSection({ credentials }: { credentials: WebauthnCredentialInfo[
       setRemoving(null);
       await qc.invalidateQueries({ queryKey: queryKeys.mfa });
       await qc.invalidateQueries({ queryKey: queryKeys.account });
-      snack.notify("Security key removed");
+      snack.notify(tr("Security key removed"));
     },
     onError: (e) => {
       if (!(e instanceof UnlockCancelled)) snack.error(errorMessage(e));
@@ -398,8 +399,8 @@ function WebauthnSection({ credentials }: { credentials: WebauthnCredentialInfo[
 
   return (
     <Section
-      title="Security keys & passkeys"
-      description="Hardware keys (YubiKey etc.) or platform passkeys via WebAuthn."
+      title={tr("Security keys & passkeys")}
+      description={tr("Hardware keys (YubiKey etc.) or platform passkeys via WebAuthn.")}
       actions={
         <Button
           variant="outlined"
@@ -409,15 +410,15 @@ function WebauthnSection({ credentials }: { credentials: WebauthnCredentialInfo[
             setAddOpen(true);
           }}
         >
-          Add key
+          {tr("Add key")}
         </Button>
       }
       disablePadding
     >
       {credentials.length === 0 ? (
         <EmptyState
-          title="No security keys"
-          description="Add a hardware key or passkey as a second factor."
+          title={tr("No security keys")}
+          description={tr("Add a hardware key or passkey as a second factor.")}
         />
       ) : (
         <List disablePadding>
@@ -426,8 +427,12 @@ function WebauthnSection({ credentials }: { credentials: WebauthnCredentialInfo[
               key={c.id}
               divider
               secondaryAction={
-                <Tooltip title="Remove">
-                  <IconButton edge="end" onClick={() => setRemoving(c)} aria-label="Remove key">
+                <Tooltip title={tr("Remove")}>
+                  <IconButton
+                    edge="end"
+                    onClick={() => setRemoving(c)}
+                    aria-label={tr("Remove key")}
+                  >
                     <DeleteOutlineRoundedIcon />
                   </IconButton>
                 </Tooltip>
@@ -435,7 +440,10 @@ function WebauthnSection({ credentials }: { credentials: WebauthnCredentialInfo[
             >
               <ListItemText
                 primary={c.name}
-                secondary={`Added ${formatDateTime(c.created_at)} · Last used ${formatRelative(c.last_used_at)}`}
+                secondary={tr("Added {v1} · Last used {v2}", {
+                  v1: formatDateTime(c.created_at),
+                  v2: formatRelative(c.last_used_at),
+                })}
               />
             </ListItem>
           ))}
@@ -454,17 +462,17 @@ function WebauthnSection({ credentials }: { credentials: WebauthnCredentialInfo[
             add.mutate();
           }}
         >
-          <DialogTitle>Add security key</DialogTitle>
+          <DialogTitle>{tr("Add security key")}</DialogTitle>
           <DialogContent sx={{ display: "grid", gap: 2 }}>
             {error && <Alert severity="error">{error}</Alert>}
             <DialogContentText>
-              Give the key a name, then follow your browser's prompt.
+              {tr("Give the key a name, then follow your browser's prompt.")}
             </DialogContentText>
             <TextField
               autoFocus
-              label="Name"
+              label={tr("Name")}
               required
-              placeholder="YubiKey 5C"
+              placeholder={tr("YubiKey 5C")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={add.isPending}
@@ -472,14 +480,14 @@ function WebauthnSection({ credentials }: { credentials: WebauthnCredentialInfo[
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={() => setAddOpen(false)} color="inherit" disabled={add.isPending}>
-              Cancel
+              {tr("Cancel")}
             </Button>
             <Button
               type="submit"
               variant="contained"
               disabled={add.isPending || name.trim() === ""}
             >
-              Continue
+              {tr("Continue")}
             </Button>
           </DialogActions>
         </form>
@@ -487,8 +495,8 @@ function WebauthnSection({ credentials }: { credentials: WebauthnCredentialInfo[
 
       <ConfirmDialog
         open={removing !== null}
-        title="Remove security key?"
-        confirmLabel="Remove"
+        title={tr("Remove security key?")}
+        confirmLabel={tr("Remove")}
         danger
         busy={remove.isPending}
         onCancel={() => setRemoving(null)}
@@ -496,7 +504,9 @@ function WebauthnSection({ credentials }: { credentials: WebauthnCredentialInfo[
           if (removing) remove.mutate(removing.id);
         }}
       >
-        “{removing?.name}” will no longer be accepted for two-factor sign-in.
+        {trx("“{name}” will no longer be accepted for two-factor sign-in.", {
+          name: removing?.name,
+        })}
       </ConfirmDialog>
     </Section>
   );
@@ -512,8 +522,8 @@ function SecurityEventsSection() {
   const rows = events.data?.pages.flatMap((p) => p.events) ?? [];
   return (
     <Section
-      title="Recent activity"
-      description="Sign-ins, device changes and security settings updates."
+      title={tr("Recent activity")}
+      description={tr("Sign-ins, device changes and security settings updates.")}
       disablePadding
     >
       {events.isPending ? (
@@ -523,16 +533,16 @@ function SecurityEventsSection() {
           <Alert severity="error">{errorMessage(events.error)}</Alert>
         </Box>
       ) : rows.length === 0 ? (
-        <EmptyState title="No activity yet" />
+        <EmptyState title={tr("No activity yet")} />
       ) : (
         <TableContainer>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Event</TableCell>
-                <TableCell>IP</TableCell>
-                <TableCell>Client</TableCell>
-                <TableCell align="right">When</TableCell>
+                <TableCell>{tr("Event")}</TableCell>
+                <TableCell>{tr("IP")}</TableCell>
+                <TableCell>{tr("Client")}</TableCell>
+                <TableCell align="right">{tr("When")}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -565,7 +575,7 @@ function SecurityEventsSection() {
             onClick={() => void events.fetchNextPage()}
             disabled={events.isFetchingNextPage}
           >
-            {events.isFetchingNextPage ? "Loading…" : "Show older"}
+            {events.isFetchingNextPage ? tr("Loading…") : tr("Show older")}
           </Button>
         </Box>
       )}
@@ -588,7 +598,12 @@ function ConnectedAccountsSection() {
     ?.ssoLinked;
   useEffect(() => {
     if (!linked) return;
-    snack.notify(`${linked.provider} account ${linked.email} connected`);
+    snack.notify(
+      tr("{provider} account {email} connected", {
+        provider: linked.provider,
+        email: linked.email,
+      }),
+    );
     window.history.replaceState({}, "");
   }, [linked, snack]);
   const unlink = useMutation({
@@ -597,7 +612,7 @@ function ConnectedAccountsSection() {
       setRemoving(null);
       void qc.invalidateQueries({ queryKey: queryKeys.ssoIdentities });
       void qc.invalidateQueries({ queryKey: queryKeys.securityEvents });
-      snack.notify("Account disconnected");
+      snack.notify(tr("Account disconnected"));
     },
     onError: (e) => {
       if (!(e instanceof UnlockCancelled)) snack.error(errorMessage(e));
@@ -608,8 +623,10 @@ function ConnectedAccountsSection() {
   const byProvider = new Map((identities.data ?? []).map((i) => [i.provider, i]));
   return (
     <Section
-      title="Connected accounts"
-      description="Sign in with these identity providers. Your password is still needed to unlock the vault; a connected account skips e-mail codes and new-device approval."
+      title={tr("Connected accounts")}
+      description={tr(
+        "Sign in with these identity providers. Your password is still needed to unlock the vault; a connected account skips e-mail codes and new-device approval.",
+      )}
       disablePadding
     >
       {identities.isPending ? (
@@ -635,13 +652,16 @@ function ConnectedAccountsSection() {
                   </Typography>
                   <Typography variant="caption" color="text.secondary" noWrap component="div">
                     {id
-                      ? `${id.email ?? "connected"} · since ${formatDateTime(id.linked_at)}`
-                      : "Not connected"}
+                      ? tr("{v1} · since {v2}", {
+                          v1: id.email ?? "connected",
+                          v2: formatDateTime(id.linked_at),
+                        })
+                      : tr("Not connected")}
                   </Typography>
                 </Box>
                 {id ? (
                   <Button size="small" color="inherit" onClick={() => setRemoving(id)}>
-                    Disconnect
+                    {tr("Disconnect")}
                   </Button>
                 ) : (
                   <Button
@@ -656,7 +676,7 @@ function ConnectedAccountsSection() {
                       });
                     }}
                   >
-                    {connecting === p.id ? "Redirecting…" : "Connect"}
+                    {connecting === p.id ? tr("Redirecting…") : tr("Connect")}
                   </Button>
                 )}
               </Stack>
@@ -666,14 +686,16 @@ function ConnectedAccountsSection() {
       )}
       <ConfirmDialog
         open={removing !== null}
-        title={`Disconnect ${removing?.name ?? ""}?`}
-        confirmLabel="Disconnect"
+        title={tr("Disconnect {v1}?", { v1: removing?.name ?? "" })}
+        confirmLabel={tr("Disconnect")}
         onCancel={() => setRemoving(null)}
         onConfirm={() => removing && unlink.mutate(removing.provider)}
         busy={unlink.isPending}
       >
-        Signing in with {removing?.name} will ask for your password and e-mail codes like a new
-        device again.
+        {trx(
+          "Signing in with {name} will ask for your password and e-mail codes like a new device again.",
+          { name: removing?.name },
+        )}
       </ConfirmDialog>
     </Section>
   );

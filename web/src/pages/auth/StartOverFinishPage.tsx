@@ -1,4 +1,5 @@
 import { useState, type SubmitEvent } from "react";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   AlertTitle,
@@ -40,14 +41,15 @@ export function StartOverFinishPage() {
   if (status.isError) {
     return (
       <Stack spacing={2}>
-        <AuthTitle title="This link is no longer valid" />
+        <AuthTitle title={tr("This link is no longer valid")} />
         <Alert severity="warning">{errorMessage(status.error)}</Alert>
         <Typography variant="body2" color="text.secondary">
-          The reset was cancelled, already completed, or the link expired. You can request a new one
-          from the sign-in page.
+          {tr(
+            "The reset was cancelled, already completed, or the link expired. You can request a new one from the sign-in page.",
+          )}
         </Typography>
         <Button variant="outlined" onClick={() => void navigate("/login")}>
-          Back to sign in
+          {tr("Back to sign in")}
         </Button>
       </Stack>
     );
@@ -58,17 +60,21 @@ export function StartOverFinishPage() {
     return (
       <Stack spacing={2}>
         <AuthTitle
-          title="Not yet"
-          subtitle={`The reset for ${st.email_hint} can be completed ${formatRelative(st.scheduled_for)} (${formatDateTime(st.scheduled_for)}).`}
+          title={tr("Not yet")}
+          subtitle={tr("The reset for {email_hint} can be completed {v1} ({v2}).", {
+            email_hint: st.email_hint,
+            v1: formatRelative(st.scheduled_for),
+            v2: formatDateTime(st.scheduled_for),
+          })}
         />
         <IrreversibleWarning />
         <Alert severity="info">
-          Come back to this link after that time. If you did not ask for this reset, use the cancel
-          link from the same email — or sign in on a device that is still signed in and cancel it
-          from there.
+          {tr(
+            "Come back to this link after that time. If you did not ask for this reset, use the cancel link from the same email — or sign in on a device that is still signed in and cancel it from there.",
+          )}
         </Alert>
         <Button variant="outlined" onClick={() => void status.refetch()}>
-          Check again
+          {tr("Check again")}
         </Button>
       </Stack>
     );
@@ -86,7 +92,7 @@ export function StartOverFinishPage() {
         state: {
           phrase: out.recoveryPhrase,
           email: out.session.user.email,
-          title: "Your new recovery key",
+          title: tr("Your new recovery key"),
           next: "/account",
         },
       });
@@ -99,19 +105,20 @@ export function StartOverFinishPage() {
 
   return (
     <form onSubmit={submit}>
-      <AuthTitle title="Start over" subtitle={`Set a new password for ${st.email_hint}.`} />
+      <AuthTitle
+        title={tr("Start over")}
+        subtitle={tr("Set a new password for {email_hint}.", { email_hint: st.email_hint })}
+      />
       <Stack spacing={2}>
         <Alert severity="error" variant="outlined">
-          <AlertTitle>Last warning — this cannot be undone</AlertTitle>
-          Confirming deletes your encrypted vault on the server: hosts, passwords, keys, snippets
-          and settings. Termoso cannot recover them for you — there is no decryption key on the
-          server. All devices and sessions are signed out and your SSH ID keys are removed. Team
-          vaults need to be shared with you again by a team admin. You start with an empty vault and
-          a new recovery key.
+          {trx(
+            "{v1} Confirming deletes your encrypted vault on the server: hosts, passwords, keys, snippets and settings. Termoso cannot recover them for you — there is no decryption key on the server. All devices and sessions are signed out and your SSH ID keys are removed. Team vaults need to be shared with you again by a team admin. You start with an empty vault and a new recovery key.",
+            { v1: <AlertTitle>{tr("Last warning — this cannot be undone")}</AlertTitle> },
+          )}
         </Alert>
         {error && <Alert severity="error">{error}</Alert>}
         <PasswordField
-          label="New password"
+          label={tr("New password")}
           autoComplete="new-password"
           required
           autoFocus
@@ -122,13 +129,13 @@ export function StartOverFinishPage() {
           disabled={busy}
         />
         <PasswordField
-          label="Confirm new password"
+          label={tr("Confirm new password")}
           autoComplete="new-password"
           required
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           error={mismatch}
-          helperText={mismatch ? "Passwords do not match" : undefined}
+          helperText={mismatch ? tr("Passwords do not match") : undefined}
           disabled={busy}
         />
         <FormControlLabel
@@ -139,7 +146,7 @@ export function StartOverFinishPage() {
               disabled={busy}
             />
           }
-          label="I understand that my old encrypted data is lost forever."
+          label={tr("I understand that my old encrypted data is lost forever.")}
         />
         <Button
           type="submit"
@@ -150,7 +157,7 @@ export function StartOverFinishPage() {
             busy || !acknowledged || password.length === 0 || pwProblem !== null || mismatch
           }
         >
-          {busy ? "Resetting…" : "Delete my data and start over"}
+          {busy ? tr("Resetting…") : tr("Delete my data and start over")}
         </Button>
       </Stack>
     </form>
@@ -179,13 +186,17 @@ export function StartOverCancelPage() {
   if (state === "done") {
     return (
       <Stack spacing={2}>
-        <AuthTitle title="Reset cancelled" subtitle="Nothing was changed on your account." />
+        <AuthTitle
+          title={tr("Reset cancelled")}
+          subtitle={tr("Nothing was changed on your account.")}
+        />
         <Alert severity="warning">
-          If you did not request this reset, someone else has access to your mailbox. Change your
-          email password, then sign in to Termoso and review Devices and Security.
+          {tr(
+            "If you did not request this reset, someone else has access to your mailbox. Change your email password, then sign in to Termoso and review Devices and Security.",
+          )}
         </Alert>
         <Button variant="contained" onClick={() => void navigate("/login")}>
-          Go to sign in
+          {tr("Go to sign in")}
         </Button>
       </Stack>
     );
@@ -194,8 +205,8 @@ export function StartOverCancelPage() {
   return (
     <Stack spacing={2}>
       <AuthTitle
-        title="Cancel the account reset?"
-        subtitle="This stops the scheduled start-over. Your encrypted data stays as it is."
+        title={tr("Cancel the account reset?")}
+        subtitle={tr("This stops the scheduled start-over. Your encrypted data stays as it is.")}
       />
       {error && <Alert severity="error">{error}</Alert>}
       <Button
@@ -204,7 +215,7 @@ export function StartOverCancelPage() {
         onClick={() => void cancel()}
         disabled={state === "busy"}
       >
-        {state === "busy" ? "Cancelling…" : "Cancel the reset"}
+        {state === "busy" ? tr("Cancelling…") : tr("Cancel the reset")}
       </Button>
     </Stack>
   );

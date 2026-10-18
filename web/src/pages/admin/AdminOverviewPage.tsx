@@ -1,4 +1,5 @@
 import { Alert, Box, Card, CardContent, Grid, Stack, Typography } from "@mui/material";
+import { tr } from "@/i18n";
 import DevicesOutlinedIcon from "@mui/icons-material/DevicesOutlined";
 import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
@@ -15,7 +16,7 @@ import { IconTile } from "@/components/IconTile";
 import { Loading } from "@/components/Loading";
 import { PageHeader } from "@/components/PageHeader";
 import { Section, SettingRow } from "@/components/Section";
-import { formatBytes } from "@/components/format";
+import { formatBytes, formatNumber } from "@/components/format";
 
 function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: string | number }) {
   return (
@@ -26,7 +27,7 @@ function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: s
             <IconTile>{icon}</IconTile>
             <Stack sx={{ minWidth: 0 }}>
               <Typography variant="h3" component="div" sx={{ lineHeight: 1.2 }}>
-                {typeof value === "number" ? value.toLocaleString() : value}
+                {typeof value === "number" ? formatNumber(value) : value}
               </Typography>
               <Typography variant="body2" color="text.secondary" noWrap>
                 {label}
@@ -53,42 +54,48 @@ export function AdminOverviewPage() {
   return (
     <>
       <PageHeader
-        title="Admin"
+        title={tr("Admin")}
         subtitle={
-          info.data ? `${info.data.name} · Termoso ${info.data.version}` : "Server overview"
+          info.data
+            ? tr("{name} · Termoso {version}", { name: info.data.name, version: info.data.version })
+            : tr("Server overview")
         }
       />
       <Grid container spacing={2} sx={{ mb: 2.5 }}>
-        <Stat icon={<PeopleAltOutlinedIcon />} label="Users" value={s.users} />
+        <Stat icon={<PeopleAltOutlinedIcon />} label={tr("Users")} value={s.users} />
         <Stat
           icon={<TrendingUpRoundedIcon />}
-          label="Active in the last 30 days"
+          label={tr("Active in the last 30 days")}
           value={s.active_users_30d}
         />
-        <Stat icon={<DevicesOutlinedIcon />} label="Active sessions" value={s.active_sessions} />
-        <Stat icon={<GroupsOutlinedIcon />} label="Teams" value={s.teams} />
-        <Stat icon={<LockOutlinedIcon />} label="Vaults" value={s.vaults} />
-        <Stat icon={<DataObjectRoundedIcon />} label="Encrypted records" value={s.entities} />
+        <Stat
+          icon={<DevicesOutlinedIcon />}
+          label={tr("Active sessions")}
+          value={s.active_sessions}
+        />
+        <Stat icon={<GroupsOutlinedIcon />} label={tr("Teams")} value={s.teams} />
+        <Stat icon={<LockOutlinedIcon />} label={tr("Vaults")} value={s.vaults} />
+        <Stat icon={<DataObjectRoundedIcon />} label={tr("Encrypted records")} value={s.entities} />
         <Stat
           icon={<StorageOutlinedIcon />}
-          label="Session log storage"
+          label={tr("Session log storage")}
           value={formatBytes(s.log_storage_bytes)}
         />
       </Grid>
       {f && (
         <Section
-          title="Enabled features"
-          description="Determined by the server configuration (environment variables)."
+          title={tr("Enabled features")}
+          description={tr("Determined by the server configuration (environment variables).")}
           disablePadding
         >
           <Box sx={{ px: 2.5 }}>
-            <Feature on={f.email} label="Outgoing email (SMTP)" />
-            <Feature on={f.session_logs} label="Session logs (S3)" />
-            <Feature on={f.webauthn} label="WebAuthn / passkeys" />
-            <Feature on={f.teams} label="Team creation" />
+            <Feature on={f.email} label={tr("Outgoing email (SMTP)")} />
+            <Feature on={f.session_logs} label={tr("Session logs (S3)")} />
+            <Feature on={f.webauthn} label={tr("WebAuthn / passkeys")} />
+            <Feature on={f.teams} label={tr("Team creation")} />
             <Feature
               on={(info.data?.sso_providers.length ?? 0) > 0}
-              label={`SSO (${info.data?.sso_providers.length ?? 0} providers)`}
+              label={tr("SSO ({v1} providers)", { v1: info.data?.sso_providers.length ?? 0 })}
             />
           </Box>
         </Section>
@@ -112,7 +119,7 @@ function Feature({ on, label }: { on: boolean; label: string }) {
             }}
           />
           <Typography variant="body2" color={on ? "text.primary" : "text.secondary"}>
-            {on ? "Enabled" : "Off"}
+            {on ? tr("Enabled") : tr("Off")}
           </Typography>
         </Stack>
       }

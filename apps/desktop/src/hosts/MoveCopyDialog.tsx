@@ -23,6 +23,7 @@ import { errorMessage, type HostCard, type Uuid } from "@/ipc/types";
 import { vaultHint, vaultIcon } from "@/app/vault";
 import { groupPathLabel } from "./GroupPanel";
 import { tr, trn } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 export type MoveCopyRequest =
   | { kind: "group"; hosts: HostCard[] }
@@ -108,6 +109,7 @@ function Body({
     if (request.kind === "group") {
       const groupId = target === "" ? null : target;
       const name = groupId ? groupPathLabel(groups.data ?? [], groupId) : tr("All hosts");
+      if (!requirePerm(vaultId, "entities.move")) return;
       moveHosts.mutate(
         { ids, groupId, vaultId },
         { onSuccess: () => done(tr("Moved {what} to {name}", { what, name })), onError: fail },
@@ -120,8 +122,8 @@ function Body({
         {
           onSuccess: () =>
             done(
-              `${move ? "Moved" : "Copied"} ${what} to ${name}${
-                withCredentials ? "" : " without credentials"
+              `${move ? tr("Moved {what} to {name}", { what, name }) : tr("Copied {what} to {name}", { what, name })}${
+                withCredentials ? "" : ` ${tr("without credentials")}`
               }`,
             ),
           onError: fail,

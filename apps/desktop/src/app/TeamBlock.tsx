@@ -39,7 +39,7 @@ import {
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useSnackbar } from "@/components/Snackbar";
 import { AVATAR as BLOCK, PersonAvatar, initialsOf } from "@/team/PersonAvatar";
-import { isTeamAdmin, teamRoleLabel } from "@/team/roles";
+import { teamRoleLabel, can } from "@/team/roles";
 import { goToSettings, goToSettingsWith } from "./navigation";
 import { tr, trn } from "@/i18n";
 
@@ -70,7 +70,7 @@ function syncLine(a: AccountStatus): string {
       return s.lastError ?? tr("Sync error");
     case "idle":
       return s.lastSyncAt
-        ? `Synced ${new Date(s.lastSyncAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}${s.realtime ? " · live" : ""}`
+        ? `${tr("Synced {time}", { time: new Date(s.lastSyncAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })}${s.realtime ? ` · ${tr("live")}` : ""}`
         : tr("Signed in");
   }
 }
@@ -211,7 +211,7 @@ function AccountAvatar() {
                   close();
                   op.mutate(async () => {
                     const r = await ipc.accountSyncNow();
-                    return r.state === "error" ? null : "Synced";
+                    return r.state === "error" ? null : tr("Synced");
                   });
                 }}
               >
@@ -303,7 +303,7 @@ function TeamButton() {
     teams.data?.[0] ??
     null;
   const members = useTeamMembers(team?.id ?? null);
-  const invites = useTeamInvites(team?.id ?? null, team !== null && isTeamAdmin(team.my_role));
+  const invites = useTeamInvites(team?.id ?? null, team !== null && can(team, "invites.view"));
   const close = () => setAnchor(null);
 
   const others: TeamMember[] = (members.data ?? []).filter((m) => m.user_id !== account?.userId);

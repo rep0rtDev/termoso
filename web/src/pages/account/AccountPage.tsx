@@ -1,4 +1,5 @@
 import { useRef, useState, type SubmitEvent } from "react";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Box,
@@ -40,7 +41,10 @@ export function AccountPage() {
   if (account.isError) return <Alert severity="error">{errorMessage(account.error)}</Alert>;
   return (
     <>
-      <PageHeader title="Account" subtitle="Your profile, sign-in email and password." />
+      <PageHeader
+        title={tr("Account")}
+        subtitle={tr("Your profile, sign-in email and password.")}
+      />
       <ProfileSection
         displayName={account.data.user.display_name ?? ""}
         createdAt={account.data.user.created_at}
@@ -62,12 +66,15 @@ function ProfileSection({ displayName, createdAt }: { displayName: string; creat
     onSuccess: async (user) => {
       authStore.updateUser(user);
       await qc.invalidateQueries({ queryKey: queryKeys.account });
-      snack.notify("Profile saved");
+      snack.notify(tr("Profile saved"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
   return (
-    <Section title="Profile" description={`Member since ${formatDate(createdAt)}`}>
+    <Section
+      title={tr("Profile")}
+      description={tr("Member since {v1}", { v1: formatDate(createdAt) })}
+    >
       <Box
         component="form"
         onSubmit={(e: SubmitEvent) => {
@@ -77,12 +84,12 @@ function ProfileSection({ displayName, createdAt }: { displayName: string; creat
         sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "flex-start" }}
       >
         <TextField
-          label="Display name"
+          label={tr("Display name")}
           value={name}
           onChange={(e) => setName(e.target.value)}
           fullWidth={false}
           sx={{ width: { xs: "100%", sm: 360 } }}
-          helperText="Shown to teammates instead of your email."
+          helperText={tr("Shown to teammates instead of your email.")}
         />
         <Button
           type="submit"
@@ -90,7 +97,7 @@ function ProfileSection({ displayName, createdAt }: { displayName: string; creat
           disabled={save.isPending || name.trim() === displayName.trim()}
           sx={{ mt: "22px", height: 36 }}
         >
-          Save
+          {tr("Save")}
         </Button>
       </Box>
     </Section>
@@ -119,8 +126,10 @@ function PictureSection({ user }: { user: UserProfile }) {
   const busy = put.isPending || remove.isPending;
   return (
     <Section
-      title="Picture"
-      description="Shown next to your name to teammates. Resized in your browser and stored as a small 192×192 image."
+      title={tr("Picture")}
+      description={tr(
+        "Shown next to your name to teammates. Resized in your browser and stored as a small 192×192 image.",
+      )}
     >
       <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: "center", flexWrap: "wrap" }}>
         <UserAvatar
@@ -142,11 +151,11 @@ function PictureSection({ user }: { user: UserProfile }) {
           }}
         />
         <Button variant="contained" disabled={busy} onClick={() => input.current?.click()}>
-          {user.avatar ? "Change" : "Upload"}
+          {user.avatar ? tr("Change") : tr("Upload")}
         </Button>
         {user.avatar && (
           <Button variant="text" color="inherit" disabled={busy} onClick={() => remove.mutate()}>
-            Remove
+            {tr("Remove")}
           </Button>
         )}
       </Stack>
@@ -167,7 +176,7 @@ function EmailSection({ email, verified }: { email: string; verified: boolean })
     mutationFn: () => accountApi.emailVerifySend(),
     onSuccess: () => {
       setSent(true);
-      snack.notify("Verification code sent");
+      snack.notify(tr("Verification code sent"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -176,7 +185,7 @@ function EmailSection({ email, verified }: { email: string; verified: boolean })
     onSuccess: async () => {
       setCode("");
       await qc.invalidateQueries({ queryKey: queryKeys.account });
-      snack.notify("Email verified");
+      snack.notify(tr("Email verified"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -184,11 +193,11 @@ function EmailSection({ email, verified }: { email: string; verified: boolean })
   return (
     <Section
       id="email"
-      title="Email"
-      description="Used for sign-in, device approvals and team invitations."
+      title={tr("Email")}
+      description={tr("Used for sign-in, device approvals and team invitations.")}
       actions={
         <Button variant="outlined" onClick={() => setChangeOpen(true)}>
-          Change email
+          {tr("Change email")}
         </Button>
       }
     >
@@ -196,9 +205,9 @@ function EmailSection({ email, verified }: { email: string; verified: boolean })
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
           <Typography sx={{ fontWeight: 500 }}>{email}</Typography>
           {verified ? (
-            <Chip size="small" color="success" label="Verified" />
+            <Chip size="small" color="success" label={tr("Verified")} />
           ) : (
-            <Chip size="small" color="warning" label="Not verified" />
+            <Chip size="small" color="warning" label={tr("Not verified")} />
           )}
         </Box>
         {!verified && emailEnabled && (
@@ -216,10 +225,10 @@ function EmailSection({ email, verified }: { email: string; verified: boolean })
               disabled={send.isPending}
               sx={{ height: 36 }}
             >
-              {sent ? "Resend code" : "Send verification code"}
+              {sent ? tr("Resend code") : tr("Send verification code")}
             </Button>
             <TextField
-              placeholder="Code from email"
+              placeholder={tr("Code from email")}
               value={code}
               onChange={(e) => setCode(e.target.value)}
               inputMode="numeric"
@@ -233,13 +242,13 @@ function EmailSection({ email, verified }: { email: string; verified: boolean })
               disabled={confirm.isPending || code.trim() === ""}
               sx={{ height: 36 }}
             >
-              Confirm
+              {tr("Confirm")}
             </Button>
           </Box>
         )}
         {!verified && !emailEnabled && (
           <Alert severity="info">
-            This server has no outgoing email configured, so addresses cannot be verified.
+            {tr("This server has no outgoing email configured, so addresses cannot be verified.")}
           </Alert>
         )}
       </Stack>
@@ -318,7 +327,7 @@ function ChangeEmailDialog({
       void run(async () => {
         await requireUnlocked();
         await withStepUp(() => changePassword(password, false));
-        snack.notify("Email changed");
+        snack.notify(tr("Email changed"));
         reset();
         onClose();
       });
@@ -333,19 +342,19 @@ function ChangeEmailDialog({
       fullWidth
     >
       <form onSubmit={submit}>
-        <DialogTitle>Change email</DialogTitle>
+        <DialogTitle>{tr("Change email")}</DialogTitle>
         <DialogContent sx={{ display: "grid", gap: 2 }}>
           {error && <Alert severity="error">{error}</Alert>}
           {step === "email" && (
             <>
               <DialogContentText>
                 {emailEnabled
-                  ? "We will send a confirmation code to the new address."
-                  : "The address is changed immediately; you will then re-enter your password."}
+                  ? tr("We will send a confirmation code to the new address.")
+                  : tr("The address is changed immediately; you will then re-enter your password.")}
               </DialogContentText>
               <TextField
                 autoFocus
-                label="New email"
+                label={tr("New email")}
                 type="email"
                 required
                 value={newEmail}
@@ -356,10 +365,12 @@ function ChangeEmailDialog({
           )}
           {step === "code" && (
             <>
-              <DialogContentText>Enter the code sent to {newEmail}.</DialogContentText>
+              <DialogContentText>
+                {trx("Enter the code sent to {newEmail}.", { newEmail: newEmail })}
+              </DialogContentText>
               <TextField
                 autoFocus
-                label="Confirmation code"
+                label={tr("Confirmation code")}
                 required
                 inputMode="numeric"
                 autoComplete="one-time-code"
@@ -372,12 +383,14 @@ function ChangeEmailDialog({
           {step === "password" && (
             <>
               <Alert severity="warning">
-                Your email is now {newEmail}. Re-enter your password to finish — until you do,
-                signing in with a password is not possible.
+                {trx(
+                  "Your email is now {newEmail}. Re-enter your password to finish — until you do, signing in with a password is not possible.",
+                  { newEmail: newEmail },
+                )}
               </Alert>
               <PasswordField
                 autoFocus
-                label="Current password"
+                label={tr("Current password")}
                 autoComplete="current-password"
                 required
                 value={password}
@@ -390,17 +403,17 @@ function ChangeEmailDialog({
         <DialogActions sx={{ px: 3, pb: 2 }}>
           {step !== "password" && (
             <Button onClick={onClose} color="inherit" disabled={busy}>
-              Cancel
+              {tr("Cancel")}
             </Button>
           )}
           <Button type="submit" variant="contained" disabled={busy}>
             {step === "email"
               ? emailEnabled
-                ? "Send code"
-                : "Change"
+                ? tr("Send code")
+                : tr("Change")
               : step === "code"
-                ? "Confirm"
-                : "Finish"}
+                ? tr("Confirm")
+                : tr("Finish")}
           </Button>
         </DialogActions>
       </form>
@@ -434,7 +447,7 @@ function PasswordSection() {
     try {
       await requireUnlocked();
       await withStepUp(() => changePassword(password, revoke));
-      snack.notify("Password changed");
+      snack.notify(tr("Password changed"));
       close();
     } catch (err) {
       if (!(err instanceof UnlockCancelled)) setError(errorMessage(err));
@@ -445,22 +458,24 @@ function PasswordSection() {
 
   return (
     <Section
-      title="Password"
-      description="Your password is never sent to the server; it unlocks your encryption keys locally (OPAQUE + Argon2id)."
+      title={tr("Password")}
+      description={tr(
+        "Your password is never sent to the server; it unlocks your encryption keys locally (OPAQUE + Argon2id).",
+      )}
       actions={
         <Button variant="outlined" onClick={() => setOpen(true)}>
-          Change password
+          {tr("Change password")}
         </Button>
       }
     >
       <Dialog open={open} onClose={busy ? undefined : close} maxWidth="xs" fullWidth>
         <form onSubmit={submit}>
-          <DialogTitle>Change password</DialogTitle>
+          <DialogTitle>{tr("Change password")}</DialogTitle>
           <DialogContent sx={{ display: "grid", gap: 2 }}>
             {error && <Alert severity="error">{error}</Alert>}
             <PasswordField
               autoFocus
-              label="New password"
+              label={tr("New password")}
               autoComplete="new-password"
               required
               value={password}
@@ -470,26 +485,26 @@ function PasswordSection() {
               disabled={busy}
             />
             <PasswordField
-              label="Confirm new password"
+              label={tr("Confirm new password")}
               autoComplete="new-password"
               required
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               error={mismatch}
-              helperText={mismatch ? "Passwords do not match" : undefined}
+              helperText={mismatch ? tr("Passwords do not match") : undefined}
               disabled={busy}
             />
             <FormControlLabel
               control={<Checkbox checked={revoke} onChange={(e) => setRevoke(e.target.checked)} />}
-              label="Sign out all other devices"
+              label={tr("Sign out all other devices")}
             />
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
             <Button onClick={close} color="inherit" disabled={busy}>
-              Cancel
+              {tr("Cancel")}
             </Button>
             <Button type="submit" variant="contained" disabled={busy}>
-              Change
+              {tr("Change")}
             </Button>
           </DialogActions>
         </form>
@@ -522,7 +537,7 @@ function RecoveryKeySection() {
         state: {
           phrase,
           email: session?.user.email,
-          title: "Your new recovery key",
+          title: tr("Your new recovery key"),
           next: "/account",
         },
       });
@@ -533,11 +548,13 @@ function RecoveryKeySection() {
   });
   return (
     <Section
-      title="Recovery key"
-      description="A 24-word key that can reset your password if you forget it. It is shown only once and cannot be reset: replacing it requires your password. If both are lost, the encrypted data is gone — Termoso holds no copy of your keys."
+      title={tr("Recovery key")}
+      description={tr(
+        "A 24-word key that can reset your password if you forget it. It is shown only once and cannot be reset: replacing it requires your password. If both are lost, the encrypted data is gone — Termoso holds no copy of your keys.",
+      )}
       actions={
         <Button variant="outlined" onClick={() => setConfirmOpen(true)}>
-          Generate new key
+          {tr("Generate new key")}
         </Button>
       }
     >
@@ -547,19 +564,20 @@ function RecoveryKeySection() {
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Generate a new recovery key?</DialogTitle>
+        <DialogTitle>{tr("Generate a new recovery key?")}</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            You will be asked for your password first. The current recovery key stops working
-            immediately; you will see the new key once — store it safely.
+            {tr(
+              "You will be asked for your password first. The current recovery key stops working immediately; you will see the new key once — store it safely.",
+            )}
           </DialogContentText>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setConfirmOpen(false)} color="inherit" disabled={rotate.isPending}>
-            Cancel
+            {tr("Cancel")}
           </Button>
           <Button variant="contained" onClick={() => rotate.mutate()} disabled={rotate.isPending}>
-            Generate
+            {tr("Generate")}
           </Button>
         </DialogActions>
       </Dialog>

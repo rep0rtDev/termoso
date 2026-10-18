@@ -1,0 +1,27 @@
+[Desktop Entry]
+Categories={{categories}}
+{{#if comment}}
+Comment={{comment}}
+{{/if}}
+Exec={{exec}} %U
+StartupWMClass={{exec}}
+Icon={{icon}}
+Name={{name}}
+Terminal=false
+Type=Application
+{{#if mime_type}}
+MimeType={{mime_type}}
+{{/if}}
+Actions=new-connection;local-terminal;sftp;
+
+[Desktop Action new-connection]
+Name=New connection
+Exec={{exec}} termoso://new
+
+[Desktop Action local-terminal]
+Name=Local terminal
+Exec={{exec}} termoso://local
+
+[Desktop Action sftp]
+Name=SFTP
+Exec={{exec}} termoso://sftp

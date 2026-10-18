@@ -116,6 +116,11 @@ export async function setControl(paneId: Uuid, userId: Uuid, enabled: boolean) {
       },
     };
   });
+  // Nobody else holds control any more: the grid is this window's again.
+  const left = multiplayerStore
+    .get()
+    .shares[paneId]?.participants.some((p) => p.canWrite && !p.isHost);
+  if (!enabled && !left) setPaneFixedSize(paneId, null);
 }
 
 export function dismissControlHint() {
@@ -153,11 +158,14 @@ function onLiveEvent(ev: LiveEvent) {
       if (share) put({ ...share, canWrite: ev.canWrite });
       if (share?.role === "viewer") {
         update((st) => ({ ...st, controlHint: ev.canWrite ? ev.id : null }));
-        if (!ev.canWrite) writeSystemLine(ev.id, tr("Multiplayer: remote control revoked"));
+        // With control the grid follows this window; without it, the host's.
+        if (ev.canWrite) setPaneFixedSize(ev.id, null);
+        else writeSystemLine(ev.id, tr("Multiplayer: remote control revoked"));
       }
       break;
     case "resize":
-      if (terminalStore.get().panes[ev.id]?.target.kind === "live") {
+      // Viewers follow the host; a host follows the viewer holding control.
+      if (terminalStore.get().panes[ev.id]?.target.kind === "live" || share?.role === "host") {
         setPaneFixedSize(ev.id, { cols: ev.cols, rows: ev.rows });
       }
       break;
@@ -175,7 +183,13 @@ function onLiveEvent(ev: LiveEvent) {
       if (role === "host") {
         const pane = terminalStore.get().panes[ev.id];
         if (ev.reason !== "stopped") {
-          toast(`Multiplayer for ${pane?.title ?? "terminal"} ended: ${ev.message}`, "warning");
+          toast(
+            tr("Multiplayer for {title} ended: {message}", {
+              title: pane?.title ?? tr("terminal"),
+              message: ev.message,
+            }),
+            "warning",
+          );
         }
       } else if (role === "viewer") {
         writeSystemLine(ev.id, tr("Multiplayer: {message}", { message: ev.message }));

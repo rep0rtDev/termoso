@@ -1,5 +1,8 @@
 package com.termoso.android.ui.snippets
 
+import com.termoso.android.data.userMessage
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import com.termoso.android.plural
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -83,6 +86,7 @@ fun SnippetsScreen(
 ) {
     val vm: SnippetsViewModel = viewModel { SnippetsViewModel(shell.repo, shell.selectedVaultId) }
     val state by vm.state.collectAsStateWithLifecycle()
+    val permScope = rememberCoroutineScope()
     val vaults by shell.vaults.collectAsStateWithLifecycle()
     var fabMenu by remember { mutableStateOf(false) }
     var packageDialog by remember { mutableStateOf<SnippetPackageItem?>(null) }
@@ -173,7 +177,13 @@ fun SnippetsScreen(
                                 SnippetRow(
                                     snippet = s,
                                     onEdit = { onEditSnippet(s.id) },
-                                    onRun = { run = s },
+                                    onRun = {
+                                        permScope.launch {
+                                            runCatching { shell.repo.perms.require(s.vaultId, "snippets.run") }
+                                                .onSuccess { run = s }
+                                                .onFailure { shell.notify(it.userMessage()) }
+                                        }
+                                    },
                                     onDuplicate = { vm.duplicate(s.id) },
                                     onTransfer = if (destinations.isEmpty()) null else { move -> transfer = VaultTransfer.Snippet(s, move) },
                                     onDelete = { confirmDelete = s },

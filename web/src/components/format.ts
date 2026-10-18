@@ -1,19 +1,23 @@
-const dateFmt = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-const dayFmt = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
+import { activeLocale, tr, trn } from "@/i18n";
+
+const dateFmt = () =>
+  new Intl.DateTimeFormat(activeLocale(), { dateStyle: "medium", timeStyle: "short" });
+const dayFmt = () => new Intl.DateTimeFormat(activeLocale(), { dateStyle: "medium" });
 
 export function formatDateTime(iso: string | undefined | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : dateFmt.format(d);
+  return Number.isNaN(d.getTime()) ? "—" : dateFmt().format(d);
 }
 
 export function formatDate(iso: string | undefined | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : dayFmt.format(d);
+  return Number.isNaN(d.getTime()) ? "—" : dayFmt().format(d);
+}
+
+export function formatNumber(n: number): string {
+  return new Intl.NumberFormat(activeLocale()).format(n);
 }
 
 export function formatRelative(iso: string | undefined | null): string {
@@ -23,14 +27,22 @@ export function formatRelative(iso: string | undefined | null): string {
   const diff = Date.now() - t;
   const future = diff < 0;
   const min = Math.round(Math.abs(diff) / 60_000);
-  if (min < 1) return future ? "in a moment" : "just now";
-  const unit = (n: number, u: string) => (future ? `in ${n} ${u}` : `${n} ${u} ago`);
-  if (min < 60) return unit(min, "min");
+  if (min < 1) return future ? tr("in a moment") : tr("just now");
+  if (min < 60)
+    return future
+      ? trn(min, "in {count} minute", "in {count} minutes")
+      : trn(min, "{count} minute ago", "{count} minutes ago");
   const h = Math.round(min / 60);
-  if (h < 24) return unit(h, "h");
+  if (h < 24)
+    return future
+      ? trn(h, "in {count} hour", "in {count} hours")
+      : trn(h, "{count} hour ago", "{count} hours ago");
   const d = Math.round(h / 24);
-  if (d < 30) return unit(d, "d");
-  return dayFmt.format(new Date(t));
+  if (d < 30)
+    return future
+      ? trn(d, "in {count} day", "in {count} days")
+      : trn(d, "{count} day ago", "{count} days ago");
+  return dayFmt().format(new Date(t));
 }
 
 export function formatBytes(n: number): string {

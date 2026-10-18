@@ -8,6 +8,7 @@
 //! relay stream. Kotlin only ever sees the opaque link the host hands out and
 //! presence/permission records.
 
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use termoso_core::live::{HostShare, LiveEvent, LiveLink, Publisher};
@@ -98,9 +99,21 @@ pub(crate) struct ShareState {
     pub(crate) publisher: Publisher,
     me: Uuid,
     participants: Mutex<Vec<LiveParticipant>>,
+    /// Viewers currently holding control: while any does, the grid is
+    /// theirs and the host's own window only scales it.
+    controllers: Mutex<HashSet<Uuid>>,
 }
 
 impl ShareState {
+    /// Somebody else's size is in charge of the grid.
+    pub(crate) fn pinned(&self) -> bool {
+        !self
+            .controllers
+            .lock()
+            .expect("controllers poisoned")
+            .is_empty()
+    }
+
     /// The host typed into the shared terminal.
     pub(crate) fn typing(&self) {
         if let Some(s) = self.share.lock().expect("share poisoned").as_ref() {
@@ -152,12 +165,14 @@ impl LiveShare {
         rx: mpsc::Receiver<LiveEvent>,
         listener: Arc<dyn LiveListener>,
         detach: Box<dyn Fn() + Send + Sync>,
+        resize: Box<dyn Fn(u16, u16) + Send + Sync>,
     ) -> (Arc<Self>, Arc<ShareState>) {
         let state = Arc::new(ShareState {
             publisher: share.publisher(),
             me: share.user_id(),
             participants: Mutex::new(Vec::new()),
             share: Mutex::new(None),
+            controllers: Mutex::new(HashSet::new()),
         });
         let this = Arc::new(Self {
             live_id: share.session_id(),
@@ -166,7 +181,7 @@ impl LiveShare {
             runtime: runtime.clone(),
         });
         *state.share.lock().expect("share poisoned") = Some(share);
-        runtime.spawn(forward_host(rx, state.clone(), listener, detach));
+        runtime.spawn(forward_host(rx, state.clone(), listener, detach, resize));
         (this, state)
     }
 }
@@ -176,6 +191,7 @@ async fn forward_host(
     state: Arc<ShareState>,
     listener: Arc<dyn LiveListener>,
     detach: Box<dyn Fn() + Send + Sync>,
+    resize: Box<dyn Fn(u16, u16) + Send + Sync>,
 ) {
     while let Some(ev) = rx.recv().await {
         match ev {
@@ -191,7 +207,9 @@ async fn forward_host(
                 return;
             }
             LiveEvent::Typing { user_id } => listener.on_typing(user_id.to_string()),
-            LiveEvent::Control { .. } | LiveEvent::Resize { .. } | LiveEvent::Title { .. } => {}
+            // A viewer holding control changed the grid: follow it locally.
+            LiveEvent::Resize { cols, rows } => resize(cols, rows),
+            LiveEvent::Control { .. } | LiveEvent::Title { .. } => {}
         }
     }
 }
@@ -229,6 +247,12 @@ impl LiveShare {
             .as_ref()
             .ok_or_else(|| MobileError::not_found("multiplayer session"))?;
         share.set_control(user_id, enabled)?;
+        let mut c = self.state.controllers.lock().expect("controllers poisoned");
+        if enabled {
+            c.insert(user_id);
+        } else {
+            c.remove(&user_id);
+        }
         Ok(())
     }
 

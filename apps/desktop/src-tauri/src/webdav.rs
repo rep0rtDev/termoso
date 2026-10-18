@@ -64,7 +64,11 @@ pub async fn connect<R: Runtime>(
     let url = base.url.clone();
     let display = display_of(&url);
     let identity = resolved.webdav_identity.as_ref().map(|i| &i.data);
-    let base = base.with_identity(identity)?;
+    let mut base = base.with_identity(identity)?;
+    base.proxy = match &resolved.proxy {
+        Some(p) => Some(crate::sessions::proxy_config(&state, &p.data)?),
+        None => None,
+    };
     let username = base.username.clone();
     let mut password = base.password.clone().map(Zeroizing::new);
     let mut tls = base.tls.clone();

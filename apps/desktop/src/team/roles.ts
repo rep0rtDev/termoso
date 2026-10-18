@@ -1,4 +1,4 @@
-import type { TeamRole, VaultRole } from "@/ipc/types";
+import type { Team, TeamRole, VaultRole } from "@/ipc/types";
 import { msg } from "@/i18n";
 
 export const vaultRoleLabel: Record<VaultRole, string> = {
@@ -28,6 +28,21 @@ export const teamRoleHint: Record<TeamRole, string> = {
 };
 
 export const isTeamAdmin = (r: TeamRole) => r === "admin" || r === "owner";
+
+/** Holds `permission` in `team`; owners carry `*`. 0.8 servers send no
+ *  `my_permissions`, so fall back to the coarse role. */
+export function can(team: Team, permission: string): boolean {
+  const p = team.my_permissions;
+  if (!p) return isTeamAdmin(team.my_role);
+  return p.includes("*") || p.includes(permission);
+}
+
+export const canManageMembers = (team: Team) =>
+  can(team, "members.invite") || can(team, "members.role") || can(team, "members.remove");
+
+/** Any team the user is in forbids device-local keys for its hosts. */
+export const localKeysDenied = (teams: Team[]) =>
+  teams.some((t) => t.policies?.local_keys === "deny");
 
 /** Splits a pasted list of addresses (commas, semicolons, spaces, new lines). */
 export function splitEmails(text: string): string[] {

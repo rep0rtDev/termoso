@@ -453,6 +453,7 @@ impl HostShare {
                 events,
                 seen: joined.participants.iter().map(|p| p.user_id).collect(),
                 me: joined.user_id,
+                controllers: HashSet::new(),
             },
             socket,
             cmd_rx,
@@ -555,6 +556,8 @@ struct HostLoop {
     events: mpsc::Sender<LiveEvent>,
     seen: HashSet<Uuid>,
     me: Uuid,
+    /// Viewers currently granted control; their grid size wins.
+    controllers: HashSet<Uuid>,
 }
 
 impl HostLoop {
@@ -628,6 +631,11 @@ async fn host_loop(mut h: HostLoop, mut socket: Socket, mut cmds: mpsc::Receiver
                     }
                 }
                 Some(HostCmd::Control { user_id, enabled }) => {
+                    if enabled {
+                        h.controllers.insert(user_id);
+                    } else {
+                        h.controllers.remove(&user_id);
+                    }
                     let _ = socket
                         .send_msg(&LiveClientMessage::Control { user_id, enabled })
                         .await;
@@ -657,6 +665,28 @@ async fn host_loop(mut h: HostLoop, mut socket: Socket, mut cmds: mpsc::Receiver
                                 if let Ok(f) = h.typing_frame(user_id) {
                                     let _ = socket.send_frame(f).await;
                                 }
+                            }
+                        }
+                        // The grid follows whoever holds control (like tmux's
+                        // `window-size latest`): a controller's size is applied
+                        // to the real terminal and announced to everyone.
+                        Ok((FrameKind::Resize, data)) if data.len() == 20 => {
+                            let user_id = Uuid::from_slice(&data[..16]).ok();
+                            let cols = u16::from_be_bytes([data[16], data[17]]).max(2);
+                            let rows = u16::from_be_bytes([data[18], data[19]]).max(1);
+                            if let Some(user_id) = user_id
+                                && h.controllers.contains(&user_id)
+                                && (h.size.cols != cols || h.size.rows != rows)
+                            {
+                                let size = TermSize { cols, rows };
+                                if let Err(e) = h.term.resize(size).await {
+                                    tracing::debug!("live: controller resize failed: {e}");
+                                }
+                                h.size = size;
+                                if let Ok(f) = h.meta() {
+                                    let _ = socket.send_frame(f).await;
+                                }
+                                let _ = h.events.send(LiveEvent::Resize { cols, rows }).await;
                             }
                         }
                         Ok(_) => {}
@@ -761,7 +791,24 @@ impl TerminalSession for ViewerTerminal {
         Ok(())
     }
 
-    async fn resize(&self, _size: TermSize) -> Result<()> {
+    /// A viewer holding control asks the host to follow its grid; the host
+    /// resizes the real terminal and tells everyone through metadata.
+    async fn resize(&self, size: TermSize) -> Result<()> {
+        if !self.can_write() {
+            return Ok(());
+        }
+        let mut payload = Vec::with_capacity(20);
+        payload.extend_from_slice(self.me.as_bytes());
+        payload.extend_from_slice(&size.cols.to_be_bytes());
+        payload.extend_from_slice(&size.rows.to_be_bytes());
+        let f = crypto::seal_frame(
+            &self.key,
+            &self.session_id,
+            Direction::FromViewer,
+            FrameKind::Resize,
+            &payload,
+        )?;
+        let _ = self.frames.try_send(f);
         Ok(())
     }
 

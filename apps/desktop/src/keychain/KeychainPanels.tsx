@@ -85,7 +85,7 @@ import {
   keyTypeLabel,
   labelFromPath,
 } from "./model";
-import { tr, trx } from "@/i18n";
+import { tr, trn, trx } from "@/i18n";
 
 /* ---------------------------------------------------------------- tiles */
 
@@ -322,6 +322,7 @@ export function NewKeyPanel({
   vaultId,
   vaultName,
   focusCertificate,
+  initialFile = null,
   busy,
   error,
   onImport,
@@ -331,6 +332,8 @@ export function NewKeyPanel({
   vaultId: Uuid;
   vaultName: string;
   focusCertificate?: boolean;
+  /** A key file the OS opened with the app: taken as the private key right away. */
+  initialFile?: string | null;
   busy: boolean;
   error: string | null;
   onImport: (form: ImportKeyForm) => void;
@@ -402,6 +405,13 @@ export function NewKeyPanel({
     }
   };
   useFileDrop(takePaths);
+  const takeRef = useRef(takePaths);
+  useEffect(() => {
+    takeRef.current = takePaths;
+  });
+  useEffect(() => {
+    if (initialFile) takeRef.current([initialFile]);
+  }, [initialFile]);
 
   const pickPrivate = async () => {
     const picked = await openFile({
@@ -459,20 +469,20 @@ export function NewKeyPanel({
 
   const privateHint = path
     ? preview
-      ? `${preview.putty ? "PuTTY .ppk" : "Private key file"} · ${keyTypeLabel({
+      ? `${preview.putty ? "PuTTY .ppk" : tr("Private key file")} · ${keyTypeLabel({
           keyType: preview.keyType,
           bits: preview.bits,
           unreadable: false,
-        })}${preview.encrypted ? " · passphrase-protected" : ""}`
+        })}${preview.encrypted ? ` · ${tr("passphrase-protected")}` : ""}`
       : tr("Read on save; the file contents never leave the app core.")
     : preview
-      ? `${preview.putty ? "PuTTY .ppk, converted to OpenSSH on save" : "OpenSSH / PEM"} · ${keyTypeLabel(
+      ? `${preview.putty ? tr("PuTTY .ppk, converted to OpenSSH on save") : "OpenSSH / PEM"} · ${keyTypeLabel(
           {
             keyType: preview.keyType,
             bits: preview.bits,
             unreadable: false,
           },
-        )}${preview.encrypted ? " · passphrase-protected" : ""}`
+        )}${preview.encrypted ? ` · ${tr("passphrase-protected")}` : ""}`
       : tr("OpenSSH, PEM / PKCS#8 or PuTTY .ppk (v2 / v3)");
 
   return (
@@ -794,7 +804,7 @@ export function AgentKeyPanel({
     : a?.available
       ? a.keys.length === 0
         ? tr("Agent reachable, no keys loaded (ssh-add or unlock your key manager).")
-        : `Agent reachable · ${a.keys.length} key${a.keys.length === 1 ? "" : "s"}`
+        : trn(a.keys.length, "Agent reachable · {count} key", "Agent reachable · {count} keys")
       : tr("No agent: {value}", { value: a?.error ?? errorMessage(agent.error) });
 
   return (
@@ -1173,16 +1183,16 @@ export function EditKeyPanel({
                     keyTypeLabel: keyTypeLabel(card),
                   })
                 : card.securityKey
-                  ? `${keyTypeLabel(card)} · private key stays on the security key${
-                      card.securityKey.flags?.resident ? " · resident" : ""
-                    }${card.securityKey.flags?.userPresence ? " · touch" : ""}${
+                  ? `${keyTypeLabel(card)} · ${tr("private key stays on the security key")}${
+                      card.securityKey.flags?.resident ? ` · ${tr("resident")}` : ""
+                    }${card.securityKey.flags?.userPresence ? ` · ${tr("touch")}` : ""}${
                       card.securityKey.flags?.userVerification ? " · PIN" : ""
-                    }${card.encrypted && !card.hasPassphrase ? " · asks for passphrase" : ""}`
-                  : `${keyTypeLabel(card)} · stored encrypted in the vault${
+                    }${card.encrypted && !card.hasPassphrase ? ` · ${tr("asks for passphrase")}` : ""}`
+                  : `${keyTypeLabel(card)} · ${tr("stored encrypted in the vault")}${
                       card.encrypted
                         ? card.hasPassphrase
-                          ? " · passphrase remembered"
-                          : " · asks for passphrase"
+                          ? ` · ${tr("passphrase remembered")}`
+                          : ` · ${tr("asks for passphrase")}`
                         : ""
                     }`}
           </Typography>

@@ -20,6 +20,7 @@ import type {
 import { SFTP_CAPABILITIES, errorMessage } from "@/ipc/types";
 import { createStore, omit, useStore } from "@/lib/store";
 import { tr } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 export type ConnStatus = "connecting" | "open" | "error" | "closed";
 
@@ -163,14 +164,18 @@ export function openSftp(target: SftpTarget, title: string, hostId: Uuid | null)
   return id;
 }
 
-export const openSftpForHost = (hostId: Uuid, title: string, vaultId: Uuid | null = null) =>
+export const openSftpForHost = (hostId: Uuid, title: string, vaultId: Uuid | null = null) => {
+  if (!requirePerm(vaultId, "connect.sftp")) return;
   openSftp({ kind: "host", host_id: hostId, vault_id: vaultId }, title, hostId);
+};
 
 export const openSftpForSession = (sessionId: Uuid, title: string, hostId: Uuid | null) =>
   openSftp({ kind: "session", session_id: sessionId }, title, hostId);
 
-export const openWebDavForHost = (hostId: Uuid, title: string, vaultId: Uuid | null = null) =>
+export const openWebDavForHost = (hostId: Uuid, title: string, vaultId: Uuid | null = null) => {
+  if (!requirePerm(vaultId, "connect.sftp")) return;
   openSftp({ kind: "webdav", host_id: hostId, vault_id: vaultId }, title, hostId);
+};
 
 /** Capabilities of a connection; full SFTP until Rust reports otherwise. */
 export const connCapabilities = (c: SftpConn | undefined): RemoteCapabilities =>

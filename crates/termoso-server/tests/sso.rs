@@ -21,6 +21,7 @@ fn identity(email: &str, nonce: &str) -> Identity {
         email_verified: true,
         name: Some("SSO Person".into()),
         nonce: nonce.into(),
+        groups: vec![],
     }
 }
 
@@ -726,4 +727,165 @@ async fn anonymous_token_lookups_are_rate_limited_per_ip() {
         .await
         .unwrap();
     assert_ne!(r.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
+async fn my_role(s: &TestServer, team_id: &str, tok: &str) -> (String, String) {
+    let v: serde_json::Value = s.json(Method::GET, "/teams", Some(tok), NOBODY).await;
+    let t = v["teams"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["id"] == team_id)
+        .unwrap()
+        .clone();
+    (
+        t["my_role_ref"]["slug"].as_str().unwrap().to_string(),
+        t["my_role"].as_str().unwrap().to_string(),
+    )
+}
+
+async fn sso_login(s: &TestServer, email: &str, pw: &str, groups: &[&str]) -> AuthResponse {
+    let who = Identity {
+        groups: groups.iter().map(|g| g.to_string()).collect(),
+        ..identity(email, "")
+    };
+    let SsoResult::LoginRequired { sso_session, .. } = sign_in(s, SSO_PROVIDER, &who).await else {
+        panic!("expected login_required")
+    };
+    login_raw(s, email, pw, device("bob laptop"), Some(sso_session))
+        .await
+        .expect("sso login")
+}
+
+/// Group → role mappings are applied on every IdP sign-in: a matching group
+/// wins (even over a manual assignment), losing every mapped group drops an
+/// idp-managed member to the team default, the owner is never touched.
+#[tokio::test]
+async fn idp_groups_map_to_team_roles() {
+    let Some(s) = server().await else { return };
+    let owner = register(s, &unique_email("owner"), "pw-owner-1234567").await;
+    let bob_email = unique_email("bob");
+    let bob_pw = "pw-bob-123456789";
+    let bob = register(s, &bob_email, bob_pw).await;
+    let team: serde_json::Value = s
+        .json(
+            Method::POST,
+            "/teams",
+            Some(owner.token()),
+            Some(&serde_json::json!({ "name": "Ops" })),
+        )
+        .await;
+    let team_id = team["id"].as_str().unwrap().to_string();
+    let roles: serde_json::Value = s
+        .json(
+            Method::GET,
+            &format!("/teams/{team_id}/roles"),
+            Some(owner.token()),
+            NOBODY,
+        )
+        .await;
+    let role_id = |slug: &str| {
+        roles["roles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["slug"] == slug)
+            .map(|r| r["id"].as_str().unwrap().to_string())
+            .unwrap()
+    };
+    let (admin, viewer) = (role_id("admin"), role_id("viewer"));
+    let _: serde_json::Value = s
+        .json(
+            Method::PUT,
+            &format!("/teams/{team_id}/role-mappings"),
+            Some(owner.token()),
+            Some(&serde_json::json!({ "mappings": [
+                { "group_name": "Ops-Admins", "role_id": admin, "priority": 10 },
+                { "group_name": "everyone", "role_id": viewer, "priority": 100 }
+            ] })),
+        )
+        .await;
+    // Bob joins as a plain member through an invite.
+    let invite: serde_json::Value = s
+        .json(
+            Method::POST,
+            &format!("/teams/{team_id}/invites"),
+            Some(owner.token()),
+            Some(&serde_json::json!({ "email": bob_email, "role": "member", "vault_ids": [] })),
+        )
+        .await;
+    let token = invite["url"]
+        .as_str()
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_string();
+    let _: serde_json::Value = s
+        .json(
+            Method::POST,
+            &format!("/invites/{token}/accept"),
+            Some(bob.token()),
+            NOBODY,
+        )
+        .await;
+
+    assert_eq!(
+        my_role(s, &team_id, bob.token()).await,
+        ("member".into(), "member".into())
+    );
+
+    // Two matching groups → the lowest priority (strongest) mapping wins.
+    sso_login(s, &bob_email, bob_pw, &["everyone", "ops-admins"]).await;
+    assert_eq!(
+        my_role(s, &team_id, bob.token()).await,
+        ("admin".into(), "admin".into())
+    );
+    // Only the weak group left → viewer.
+    sso_login(s, &bob_email, bob_pw, &["everyone"]).await;
+    assert_eq!(
+        my_role(s, &team_id, bob.token()).await,
+        ("viewer".into(), "member".into())
+    );
+    // No mapped group at all → an idp-managed member falls back to the default.
+    sso_login(s, &bob_email, bob_pw, &[]).await;
+    assert_eq!(
+        my_role(s, &team_id, bob.token()).await,
+        ("member".into(), "member".into())
+    );
+    // A manual assignment stays until a group matches again.
+    s.expect_status(
+        Method::PATCH,
+        &format!("/teams/{team_id}/members/{}", bob.id()),
+        Some(owner.token()),
+        Some(&serde_json::json!({ "role": "member", "role_id": viewer })),
+        StatusCode::NO_CONTENT,
+    )
+    .await;
+    sso_login(s, &bob_email, bob_pw, &[]).await;
+    assert_eq!(
+        my_role(s, &team_id, bob.token()).await,
+        ("viewer".into(), "member".into())
+    );
+    sso_login(s, &bob_email, bob_pw, &["ops-admins"]).await;
+    assert_eq!(
+        my_role(s, &team_id, bob.token()).await,
+        ("admin".into(), "admin".into())
+    );
+    // The owner's own groups never move the owner.
+    let members: serde_json::Value = s
+        .json(
+            Method::GET,
+            &format!("/teams/{team_id}/members"),
+            Some(owner.token()),
+            NOBODY,
+        )
+        .await;
+    let bobm = members["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["user_id"] == bob.id().to_string())
+        .unwrap();
+    assert_eq!(bobm["role_source"], "idp");
 }

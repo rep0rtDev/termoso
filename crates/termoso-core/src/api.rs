@@ -42,9 +42,12 @@ use termoso_proto::sync::{
     PullResponse, PushRequest, PushResponse,
 };
 use termoso_proto::team::{
-    AuditEventList, CreateInviteRequest, CreateTeamRequest, CreatedInvite, InviteList,
-    PendingVaultKeys, Team, TeamList, TeamMemberList, TeamPresence, UpdateTeamMemberRequest,
-    UpdateTeamRequest,
+    AuditEventList, CreateInviteRequest, CreateRoleRequest, CreateTeamRequest,
+    CreateWebhookRequest, CreatedInvite, InviteList, PendingVaultKeys, PermissionCatalog,
+    RoleMappingList, SetDefaultRoleRequest, Team, TeamList, TeamMemberList, TeamPoliciesResponse,
+    TeamPresence, TeamRoleDef, TeamRoleList, UpdateRoleRequest, UpdateTeamMemberRequest,
+    UpdateTeamPoliciesRequest, UpdateTeamRequest, UpdateWebhookRequest, Webhook,
+    WebhookDeliveryList, WebhookList,
 };
 use termoso_proto::vault::{
     CreateVaultRequest, ResealMyKeyRequest, RotateVaultKeyRequest, RotateVaultKeyResponse,
@@ -241,6 +244,18 @@ impl ApiClient {
 
     async fn put_empty<B: Serialize + ?Sized>(&self, path: &str, body: &B) -> Result<()> {
         Self::send_empty(self.request(Method::PUT, path).json(body)).await
+    }
+
+    async fn put<T: DeserializeOwned, B: Serialize + ?Sized>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T> {
+        Self::send(self.request(Method::PUT, path).json(body)).await
+    }
+
+    async fn delete_query<Q: Serialize + ?Sized>(&self, path: &str, q: &Q) -> Result<()> {
+        Self::send_empty(self.request(Method::DELETE, path).query(q)).await
     }
 
     async fn delete(&self, path: &str) -> Result<()> {
@@ -713,6 +728,143 @@ impl ApiClient {
     /// `GET /teams/{id}/audit` — team activity log, newest first.
     pub async fn team_audit(&self, team_id: Uuid, q: &AuditQuery) -> Result<AuditEventList> {
         self.get_query(&format!("teams/{team_id}/audit"), q).await
+    }
+
+    // ───────────────── roles, policies, webhooks (0.9.0) ─────────────────
+
+    /// `GET /teams/{id}/permissions` — the permission catalog.
+    pub async fn team_permissions(&self, team_id: Uuid) -> Result<PermissionCatalog> {
+        self.get(&format!("teams/{team_id}/permissions")).await
+    }
+
+    /// `GET /teams/{id}/roles`.
+    pub async fn team_roles(&self, team_id: Uuid) -> Result<TeamRoleList> {
+        self.get(&format!("teams/{team_id}/roles")).await
+    }
+
+    /// `POST /teams/{id}/roles`.
+    pub async fn team_role_create(
+        &self,
+        team_id: Uuid,
+        req: &CreateRoleRequest,
+    ) -> Result<TeamRoleDef> {
+        self.post(&format!("teams/{team_id}/roles"), req).await
+    }
+
+    /// `PATCH /teams/{id}/roles/{role}`.
+    pub async fn team_role_update(
+        &self,
+        team_id: Uuid,
+        role_id: Uuid,
+        req: &UpdateRoleRequest,
+    ) -> Result<TeamRoleDef> {
+        self.patch(&format!("teams/{team_id}/roles/{role_id}"), req)
+            .await
+    }
+
+    /// `DELETE /teams/{id}/roles/{role}?reassign_to=` — members move to `reassign_to`
+    /// (the default role when `None`).
+    pub async fn team_role_delete(
+        &self,
+        team_id: Uuid,
+        role_id: Uuid,
+        reassign_to: Option<Uuid>,
+    ) -> Result<()> {
+        let q: Vec<(&str, String)> = reassign_to
+            .into_iter()
+            .map(|r| ("reassign_to", r.to_string()))
+            .collect();
+        self.delete_query(&format!("teams/{team_id}/roles/{role_id}"), &q)
+            .await
+    }
+
+    /// `PUT /teams/{id}/default-role`.
+    pub async fn team_set_default_role(&self, team_id: Uuid, role_id: Uuid) -> Result<()> {
+        self.put_empty(
+            &format!("teams/{team_id}/default-role"),
+            &SetDefaultRoleRequest { role_id },
+        )
+        .await
+    }
+
+    /// `GET /teams/{id}/role-mappings` — IdP group → role.
+    pub async fn team_role_mappings(&self, team_id: Uuid) -> Result<RoleMappingList> {
+        self.get(&format!("teams/{team_id}/role-mappings")).await
+    }
+
+    /// `PUT /teams/{id}/role-mappings` — replaces the whole list.
+    pub async fn team_set_role_mappings(
+        &self,
+        team_id: Uuid,
+        req: &RoleMappingList,
+    ) -> Result<RoleMappingList> {
+        self.put(&format!("teams/{team_id}/role-mappings"), req)
+            .await
+    }
+
+    /// `GET /teams/{id}/policies`.
+    pub async fn team_policies(&self, team_id: Uuid) -> Result<TeamPoliciesResponse> {
+        self.get(&format!("teams/{team_id}/policies")).await
+    }
+
+    /// `PUT /teams/{id}/policies` — partial update.
+    pub async fn team_update_policies(
+        &self,
+        team_id: Uuid,
+        req: &UpdateTeamPoliciesRequest,
+    ) -> Result<TeamPoliciesResponse> {
+        self.put(&format!("teams/{team_id}/policies"), req).await
+    }
+
+    /// `GET /teams/{id}/webhooks`.
+    pub async fn team_webhooks(&self, team_id: Uuid) -> Result<WebhookList> {
+        self.get(&format!("teams/{team_id}/webhooks")).await
+    }
+
+    /// `POST /teams/{id}/webhooks`.
+    pub async fn team_webhook_create(
+        &self,
+        team_id: Uuid,
+        req: &CreateWebhookRequest,
+    ) -> Result<Webhook> {
+        self.post(&format!("teams/{team_id}/webhooks"), req).await
+    }
+
+    /// `PATCH /teams/{id}/webhooks/{hook}`.
+    pub async fn team_webhook_update(
+        &self,
+        team_id: Uuid,
+        hook_id: Uuid,
+        req: &UpdateWebhookRequest,
+    ) -> Result<Webhook> {
+        self.patch(&format!("teams/{team_id}/webhooks/{hook_id}"), req)
+            .await
+    }
+
+    /// `DELETE /teams/{id}/webhooks/{hook}`.
+    pub async fn team_webhook_delete(&self, team_id: Uuid, hook_id: Uuid) -> Result<()> {
+        self.delete(&format!("teams/{team_id}/webhooks/{hook_id}"))
+            .await
+    }
+
+    /// `POST /teams/{id}/webhooks/{hook}/test` — sends a test event, returns its deliveries.
+    pub async fn team_webhook_test(
+        &self,
+        team_id: Uuid,
+        hook_id: Uuid,
+    ) -> Result<WebhookDeliveryList> {
+        self.post(&format!("teams/{team_id}/webhooks/{hook_id}/test"), &())
+            .await
+    }
+
+    /// `GET /teams/{id}/webhooks/{hook}/deliveries` — last 100.
+    pub async fn team_webhook_deliveries(
+        &self,
+        team_id: Uuid,
+        hook_id: Uuid,
+    ) -> Result<WebhookDeliveryList> {
+        self.get(&format!("teams/{team_id}/webhooks/{hook_id}/deliveries"))
+            .await
     }
 
     // ───────────────────────────── sync ─────────────────────────────

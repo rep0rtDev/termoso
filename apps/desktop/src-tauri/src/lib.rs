@@ -21,6 +21,7 @@ mod mosh;
 mod multiplayer;
 mod presence;
 mod prompts;
+mod quick;
 mod security;
 mod sessions;
 mod sftp;
@@ -64,7 +65,8 @@ pub fn run() {
     tauri::Builder::default()
         // First, so a second launch (e.g. the OS opening an ssh:// link) hands
         // its arguments to the running instance instead of starting another.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            quick::forward_files(app, &args);
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
                 let _ = w.unminimize();
@@ -91,6 +93,13 @@ pub fn run() {
             let locked = state.is_locked();
             app.manage(state);
             app.manage(UpdateHub::default());
+            app.manage(quick::LaunchFiles::from_args(std::env::args().skip(1)));
+            #[cfg(target_os = "macos")]
+            if let Err(e) = quick::install_app_menu(app) {
+                tracing::debug!(error = %e, "app menu not installed");
+            }
+            #[cfg(windows)]
+            std::thread::spawn(quick::install_jump_list);
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(security::inactivity_watcher(handle.clone()));
             if !locked {
@@ -104,6 +113,7 @@ pub fn run() {
             commands::app_info,
             commands::app_quit,
             commands::deep_links_register,
+            commands::launch_files,
             commands::settings_get,
             commands::settings_set,
             security::vault_status,
@@ -327,6 +337,22 @@ pub fn run() {
             commands_tools::team_invite_revoke,
             commands_tools::team_pending_keys,
             commands_tools::team_audit,
+            commands_tools::team_permissions,
+            commands_tools::team_roles,
+            commands_tools::team_role_create,
+            commands_tools::team_role_update,
+            commands_tools::team_role_delete,
+            commands_tools::team_set_default_role,
+            commands_tools::team_role_mappings,
+            commands_tools::team_set_role_mappings,
+            commands_tools::team_policies,
+            commands_tools::team_update_policies,
+            commands_tools::team_webhooks,
+            commands_tools::team_webhook_create,
+            commands_tools::team_webhook_update,
+            commands_tools::team_webhook_delete,
+            commands_tools::team_webhook_test,
+            commands_tools::team_webhook_deliveries,
             commands_tools::team_presence,
             commands_tools::account_profile,
             commands_tools::user_avatar,
@@ -358,10 +384,11 @@ pub fn run() {
         ])
         .build(context)
         .expect("error while building Termoso")
-        .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
-                app.state::<AppState>().edits.close_all();
-            }
+        .run(|app, event| match event {
+            tauri::RunEvent::Exit => app.state::<AppState>().edits.close_all(),
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Opened { urls } => quick::forward_urls(app, &urls),
+            _ => {}
         });
 }
 

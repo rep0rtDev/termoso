@@ -31,6 +31,8 @@ import {
 } from "./multiplayer";
 import { closePane, useTerminal } from "./store";
 import { tr } from "@/i18n";
+import { can } from "@/team/roles";
+import { requireAnywhere } from "@/team/perms";
 
 /**
  * Multiplayer control on a terminal tab, like Termius: a small screen icon
@@ -105,6 +107,7 @@ export function MultiplayerPopover({
     }
     setBusy(true);
     try {
+      if (!requireAnywhere("live.start")) return;
       const info = await startShare(paneId);
       if (info.link) await copy(info.link);
     } catch (e) {
@@ -203,12 +206,11 @@ export function MultiplayerPopover({
         />
       ) : reason === "team" ? (
         <Hint
-          text={`Multiplayer is turned off for ${blockedByTeam?.name ?? "your team"}.`}
+          text={tr("Multiplayer is turned off for {team}.", {
+            team: blockedByTeam?.name ?? tr("your team"),
+          })}
           action={
-            blockedByTeam &&
-            (blockedByTeam.my_role === "owner" || blockedByTeam.my_role === "admin")
-              ? tr("Team settings")
-              : undefined
+            blockedByTeam && can(blockedByTeam, "team.settings") ? tr("Team settings") : undefined
           }
           onAction={() => {
             onClose();

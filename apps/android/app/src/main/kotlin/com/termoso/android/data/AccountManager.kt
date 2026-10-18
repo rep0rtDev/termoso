@@ -111,7 +111,10 @@ class AccountManager(
     val signedIn: Boolean get() = _status.value.account != null
 
     suspend fun refresh(): AccountStatus =
-        repo.read { accountStatus() }.also { _status.value = it }
+        repo.read { accountStatus() }.also {
+            _status.value = it
+            if (it.account != null) repo.perms.refresh() else repo.perms.clear()
+        }
 
     /**
      * OPAQUE login with the Termoso password. With [sso] the identity was just

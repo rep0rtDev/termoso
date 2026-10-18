@@ -4,7 +4,29 @@ import java.net.URI
 import java.net.URISyntaxException
 
 /** What an incoming `ACTION_VIEW` link asks the app to do. */
-enum class LinkKind { Invite, Join, Other }
+enum class LinkKind { Invite, Join, Host, Action, Other }
+
+/** Launcher / shortcut quick actions: `termoso://new`, `termoso://local`, `termoso://sftp`. */
+enum class QuickAction { NewConnection, LocalTerminal, Sftp }
+
+/** The quick action a `termoso://` link asks for, or null. */
+fun quickAction(link: String): QuickAction? {
+    val uri = runCatching { URI(link.trim()) }.getOrNull() ?: return null
+    if (uri.scheme?.lowercase() != "termoso" || !uri.rawPath.isNullOrEmpty() && uri.rawPath != "/") return null
+    return when (uri.host?.lowercase()) {
+        "new" -> QuickAction.NewConnection
+        "local" -> QuickAction.LocalTerminal
+        "sftp" -> QuickAction.Sftp
+        else -> null
+    }
+}
+
+/** Host id from a `termoso://host/<id>` link, or null. */
+fun hostLinkId(link: String): String? {
+    val uri = runCatching { URI(link.trim()) }.getOrNull() ?: return null
+    if (uri.scheme?.lowercase() != "termoso" || uri.host?.lowercase() != "host") return null
+    return uri.rawPath.orEmpty().split('/').filter { it.isNotEmpty() }.singleOrNull()
+}
 
 /**
  * Classifies deep links the manifest routes to [MainActivity]:
@@ -28,9 +50,11 @@ fun classifyLink(link: String): LinkKind {
     val segments = uri.rawPath.orEmpty().split('/').filter { it.isNotEmpty() }
     return when (uri.scheme?.lowercase()) {
         "termoso" -> when {
+            segments.isEmpty() && quickAction(link) != null -> LinkKind.Action
             segments.size != 1 -> LinkKind.Other
             uri.host == "invite" -> LinkKind.Invite
             uri.host == "join" -> LinkKind.Join
+            uri.host == "host" -> LinkKind.Host
             else -> LinkKind.Other
         }
         "https" -> when {

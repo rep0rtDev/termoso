@@ -47,6 +47,9 @@ pub struct Inner {
     /// Local fan-out of multiplayer relay frames (see `live::bus`).
     pub live: broadcast::Sender<crate::live::BusFrame>,
     pub started_at: chrono::DateTime<chrono::Utc>,
+    /// Set on SIGTERM: `/readyz` answers 503 so the balancer drains this
+    /// replica while in-flight requests finish.
+    pub draining: std::sync::atomic::AtomicBool,
 }
 
 impl Inner {
@@ -123,6 +126,7 @@ impl Inner {
             events: broadcast::channel(4096).0,
             live: broadcast::channel(4096).0,
             started_at: chrono::Utc::now(),
+            draining: std::sync::atomic::AtomicBool::new(false),
         }))
     }
 

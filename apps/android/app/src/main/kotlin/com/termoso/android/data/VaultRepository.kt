@@ -17,6 +17,9 @@ import kotlinx.coroutines.withContext
  * to reload after a mutation anywhere in the app.
  */
 class VaultRepository(val app: TermosoApp) {
+    /** Team permission snapshot used by client-enforced checks. */
+    val perms = TeamPerms(this)
+
     private val _revision = MutableStateFlow(0)
     val revision: StateFlow<Int> = _revision.asStateFlow()
 

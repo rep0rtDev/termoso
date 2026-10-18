@@ -185,7 +185,11 @@ function SignedIn({
       return on
         ? tr("Keys and identities are synced again")
         : st.localCredentials > 0
-          ? `${st.localCredentials} credential${st.localCredentials === 1 ? "" : "s"} now stay on this device only`
+          ? trn(
+              st.localCredentials,
+              "{count} credential now stays on this device only",
+              "{count} credentials now stay on this device only",
+            )
           : tr("Keys and identities now stay on this device");
     });
 
@@ -272,9 +276,15 @@ function SignedIn({
               ? tr(
                   "Identities, keys and certificates of your Personal vault are encrypted and synced like everything else.",
                 )
-              : `Identities, keys and certificates of your Personal vault stay on this device${
-                  status.localCredentials > 0 ? ` (${status.localCredentials} here)` : ""
-                }; hosts, snippets and settings still sync. They are removed when you sign out.`
+              : tr(
+                  "Identities, keys and certificates of your Personal vault stay on this device{here}; hosts, snippets and settings still sync. They are removed when you sign out.",
+                  {
+                    here:
+                      status.localCredentials > 0
+                        ? tr(" ({count} here)", { count: status.localCredentials })
+                        : "",
+                  },
+                )
           }
           last
           control={

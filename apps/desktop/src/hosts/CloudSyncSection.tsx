@@ -32,7 +32,13 @@ export function CloudSyncSection({ group, readOnly }: { group: GroupNode; readOn
     run.mutate(group.id, {
       onSuccess: (g) => {
         if (g.status.error) snackbar.error(g.status.error);
-        else snackbar.notify(`“${group.label}” synced: ${reportLine(g) ?? "done"}`);
+        else
+          snackbar.notify(
+            tr("“{name}” synced: {report}", {
+              name: group.label,
+              report: reportLine(g) ?? tr("done"),
+            }),
+          );
       },
       onError: (e) => snackbar.error(errorMessage(e)),
     });

@@ -12,6 +12,12 @@ pub struct Limit {
     pub window: Duration,
 }
 
+/// Audit exports per team.
+pub const AUDIT_EXPORT: Limit = Limit {
+    name: "audit_export",
+    max: 10,
+    window: Duration::from_secs(3600),
+};
 /// Login / registration attempts per IP.
 pub const AUTH_IP: Limit = Limit {
     name: "auth_ip",

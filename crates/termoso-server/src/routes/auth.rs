@@ -161,23 +161,27 @@ struct InviteRow {
     email: String,
     role: String,
     vault_ids: Vec<Uuid>,
+    role_id: Option<Uuid>,
 }
 
 async fn load_invite(state: &AppState, token: &str) -> ApiResult<Option<InviteRow>> {
-    let row: Option<(Uuid, Uuid, String, String, Vec<Uuid>)> = sqlx::query_as(
-        "SELECT id, team_id, email, role, vault_ids FROM team_invites
+    let row: Option<(Uuid, Uuid, String, String, Vec<Uuid>, Option<Uuid>)> = sqlx::query_as(
+        "SELECT id, team_id, email, role, vault_ids, role_id FROM team_invites
          WHERE token_hash = $1 AND accepted_at IS NULL AND expires_at > now()",
     )
     .bind(hash_token(token))
     .fetch_optional(&state.db)
     .await?;
-    Ok(row.map(|(id, team_id, email, role, vault_ids)| InviteRow {
-        id,
-        team_id,
-        email,
-        role,
-        vault_ids,
-    }))
+    Ok(
+        row.map(|(id, team_id, email, role, vault_ids, role_id)| InviteRow {
+            id,
+            team_id,
+            email,
+            role,
+            vault_ids,
+            role_id,
+        }),
+    )
 }
 
 /// Sign-up policy: the bootstrap admin and invited addresses always get in;
@@ -270,6 +274,20 @@ pub async fn register_finish(
 
     let record = opaque::Server::registration_finish(&req.opaque_upload)?;
     let user_id = Uuid::new_v4();
+    // A SCIM-provisioned account (no password yet) is completed in place when
+    // the IdP or an invitation vouches for the email, keeping its id.
+    let provisioned: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM users WHERE lower(email) = $1 AND opaque_record IS NULL
+           AND provisioned_at IS NOT NULL AND NOT disabled",
+    )
+    .bind(&email)
+    .fetch_optional(&state.db)
+    .await?;
+    let takeover = provisioned.is_some() && (sso_sess.is_some() || invite_matches);
+    let user_id = provisioned
+        .filter(|_| takeover)
+        .map(|p| p.0)
+        .unwrap_or(user_id);
     let is_admin = state.is_bootstrap_admin(&email);
 
     let mut tx = state.db.begin().await?;
@@ -277,13 +295,11 @@ pub async fn register_finish(
         .as_ref()
         .filter(|_| invite_matches)
         .map(|i| i.team_id);
-    let inserted = sqlx::query(
-        "INSERT INTO users (id, email, email_verified, display_name, opaque_record, public_key,
-            wrapped_private_key, recovery_wrapped_private_key, recovery_verifier_hash, is_admin,
-            managed_by_team_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-         ON CONFLICT DO NOTHING",
-    )
+    let inserted = sqlx::query(if takeover {
+        USERS_TAKEOVER_SQL
+    } else {
+        USERS_INSERT_SQL
+    })
     .bind(user_id)
     .bind(&email)
     .bind(email_verified)
@@ -309,6 +325,7 @@ pub async fn register_finish(
             inv.id,
             inv.team_id,
             &inv.role,
+            inv.role_id,
             &inv.vault_ids,
             user_id,
             None,
@@ -403,6 +420,16 @@ pub async fn login_start(
     };
     let sso_verified = sso_sess.is_some();
     let user = users::by_email(&state.db, &email).await?;
+    if let (Some(u), false) = (&user, sso_verified)
+        && let Some(provider) = crate::policy::sso_required(&state.db, u.id, &email).await?
+    {
+        return Err(Error::new(
+            axum::http::StatusCode::UNAUTHORIZED,
+            termoso_proto::error::codes::SSO_REQUIRED,
+            "Your team requires signing in through its identity provider",
+        )
+        .with_details(serde_json::json!({ "provider": provider })));
+    }
     let record = user.as_ref().and_then(|u| u.opaque_record.as_deref());
     let (opaque_response, server_state) =
         state
@@ -511,8 +538,9 @@ async fn continue_login(
             .fetch_one(&state.db)
             .await?;
     let settings = state.settings().await?;
+    let forced = crate::policy::mandatory_device_approval(&state.db, user.id).await?;
     let needs_approval = (is_new || !approved.0)
-        && settings.new_device_email_approval
+        && (settings.new_device_email_approval || forced)
         && state.mailer.is_some()
         && user.email_verified
         && !sso_verified;
@@ -1346,3 +1374,14 @@ const SSO_DONE_HTML: &str = r#"<!doctype html><html lang="en"><head><meta charse
 .card{background:#1A1E2B;border:1px solid #2D3345;border-radius:12px;padding:32px 40px;text-align:center;max-width:420px}
 h1{font-size:20px;margin:0 0 8px;color:#5FD0A4}p{margin:0;color:#8E93A8}</style></head>
 <body><div class="card"><h1>Signed in</h1><p>You can close this window and return to {name}.</p></div></body></html>"#;
+
+const USERS_INSERT_SQL: &str =
+    "INSERT INTO users (id, email, email_verified, display_name, opaque_record, public_key,
+            wrapped_private_key, recovery_wrapped_private_key, recovery_verifier_hash, is_admin,
+            managed_by_team_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT DO NOTHING";
+const USERS_TAKEOVER_SQL: &str = "UPDATE users SET email = $2, email_verified = $3, display_name = COALESCE($4, display_name),
+        opaque_record = $5, public_key = $6, wrapped_private_key = $7, recovery_wrapped_private_key = $8,
+        recovery_verifier_hash = $9, is_admin = $10, managed_by_team_id = COALESCE($11, managed_by_team_id)
+     WHERE id = $1 AND opaque_record IS NULL";

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { tr, trx, trn } from "@/i18n";
 import {
   Alert,
   Box,
@@ -53,7 +54,7 @@ export function AdminTeamsPage() {
       setDeleting(null);
       await qc.invalidateQueries({ queryKey: ["admin", "teams"] });
       await qc.invalidateQueries({ queryKey: queryKeys.adminStats });
-      snack.notify("Team deleted");
+      snack.notify(tr("Team deleted"));
     },
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -61,12 +62,14 @@ export function AdminTeamsPage() {
   return (
     <>
       <PageHeader
-        title="Teams"
-        subtitle="All teams on this server. Deleting a team removes its vaults and every record in them."
+        title={tr("Teams")}
+        subtitle={tr(
+          "All teams on this server. Deleting a team removes its vaults and every record in them.",
+        )}
         actions={
           <TextField
             size="small"
-            placeholder="Search by team or owner"
+            placeholder={tr("Search by team or owner")}
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -86,7 +89,7 @@ export function AdminTeamsPage() {
         }
       />
       <Section
-        title={teams.data ? `${teams.data.total.toLocaleString()} teams` : "Teams"}
+        title={teams.data ? trn(teams.data.total, "{count} team", "{count} teams") : tr("Teams")}
         disablePadding
       >
         {teams.isPending ? (
@@ -96,18 +99,18 @@ export function AdminTeamsPage() {
             <Alert severity="error">{errorMessage(teams.error)}</Alert>
           </Box>
         ) : teams.data.items.length === 0 ? (
-          <EmptyState title="No teams match" />
+          <EmptyState title={tr("No teams match")} />
         ) : (
           <>
             <TableContainer>
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Team</TableCell>
-                    <TableCell>Owner</TableCell>
-                    <TableCell align="right">Members</TableCell>
-                    <TableCell align="right">Vaults</TableCell>
-                    <TableCell>Created</TableCell>
+                    <TableCell>{tr("Team")}</TableCell>
+                    <TableCell>{tr("Owner")}</TableCell>
+                    <TableCell align="right">{tr("Members")}</TableCell>
+                    <TableCell align="right">{tr("Vaults")}</TableCell>
+                    <TableCell>{tr("Created")}</TableCell>
                     <TableCell align="right" />
                   </TableRow>
                 </TableHead>
@@ -120,11 +123,11 @@ export function AdminTeamsPage() {
                       <TableCell align="right">{t.vault_count}</TableCell>
                       <TableCell>{formatDateTime(t.created_at)}</TableCell>
                       <TableCell align="right">
-                        <Tooltip title="Delete team">
+                        <Tooltip title={tr("Delete team")}>
                           <IconButton
                             size="small"
                             onClick={() => setDeleting(t)}
-                            aria-label="Delete team"
+                            aria-label={tr("Delete team")}
                           >
                             <DeleteOutlineRoundedIcon fontSize="small" />
                           </IconButton>
@@ -152,8 +155,8 @@ export function AdminTeamsPage() {
       </Section>
       <ConfirmDialog
         open={deleting !== null}
-        title="Delete team?"
-        confirmLabel="Delete"
+        title={tr("Delete team?")}
+        confirmLabel={tr("Delete")}
         danger
         busy={del.isPending}
         onCancel={() => setDeleting(null)}
@@ -161,8 +164,15 @@ export function AdminTeamsPage() {
           if (deleting) del.mutate(deleting.id);
         }}
       >
-        “{deleting?.name}” (owner {deleting?.owner_email}) with {deleting?.vault_count} vaults and{" "}
-        {deleting?.member_count} members is deleted permanently.
+        {trx(
+          "“{name}” (owner {owner_email}) with {vault_count} vaults and  {member_count} members is deleted permanently.",
+          {
+            name: deleting?.name,
+            owner_email: deleting?.owner_email,
+            vault_count: deleting?.vault_count,
+            member_count: deleting?.member_count,
+          },
+        )}
       </ConfirmDialog>
     </>
   );

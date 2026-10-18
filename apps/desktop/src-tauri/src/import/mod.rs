@@ -1229,6 +1229,8 @@ fn ensure_proxy(
             host: p.host.trim().to_string(),
             port: p.port,
             identity_id,
+            username: None,
+            password: None,
         },
     )?;
     if !has_creds {

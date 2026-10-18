@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
@@ -319,15 +320,24 @@ fun TerminalView(
     ) {
         Canvas(Modifier.fillMaxSize()) {
             val g = grid ?: return@Canvas
-            renderer.draw(
-                canvas = drawContext.canvas.nativeCanvas,
-                grid = g,
-                metrics = metrics,
-                cursorVisible = blinkOn,
-                cursorOverride = override,
-                focused = focused,
+            // A grid pinned by somebody else (multiplayer: the host's or the
+            // controller's size) is scaled down to fit instead of being clipped.
+            val fit = minOf(
+                1f,
+                this.size.width / (g.cols * metrics.width),
+                this.size.height / (g.rows * metrics.height),
             )
-            selection?.let { drawSelection(it, g, metrics, selectionColor) }
+            withTransform({ if (fit < 0.999f) scale(fit, fit, Offset.Zero) }) {
+                renderer.draw(
+                    canvas = drawContext.canvas.nativeCanvas,
+                    grid = g,
+                    metrics = metrics,
+                    cursorVisible = blinkOn,
+                    cursorOverride = override,
+                    focused = focused,
+                )
+                selection?.let { drawSelection(it, g, metrics, selectionColor) }
+            }
         }
         val sel = selection
         val g = grid

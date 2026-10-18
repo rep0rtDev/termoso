@@ -11,6 +11,13 @@ async fn main() -> anyhow::Result<()> {
     if std::env::args().any(|a| a == "--healthcheck") {
         return healthcheck(&cfg).await;
     }
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if matches!(
+        args.first().map(String::as_str),
+        Some("backup" | "restore" | "backup-check")
+    ) {
+        return termoso_server::backup::run_cli(&cfg, &args).await;
+    }
     init_tracing(&cfg);
 
     let metrics_handle = if cfg.metrics.enabled {
@@ -33,6 +40,10 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(termoso_server::ws::run_fanout(state.clone()));
     tokio::spawn(termoso_server::live::run_fanout(state.clone()));
     tokio::spawn(termoso_server::digest::run(state.clone()));
+    tokio::spawn(termoso_server::audit::run_retention(state.clone()));
+    tokio::spawn(termoso_server::webhooks::run(state.clone()));
+    tokio::spawn(termoso_server::scim::run_retention(state.clone()));
+    termoso_server::audit::enable_sink(state.cfg.audit_sink);
 
     let listener = tokio::net::TcpListener::bind(cfg.bind)
         .await
@@ -51,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .with_graceful_shutdown(shutdown_signal())
+    .with_graceful_shutdown(shutdown_signal(state.clone()))
     .await?;
     Ok(())
 }
@@ -85,7 +96,7 @@ fn init_tracing(cfg: &Config) {
     }
 }
 
-async fn shutdown_signal() {
+async fn shutdown_signal(state: termoso_server::state::AppState) {
     let ctrl_c = async {
         tokio::signal::ctrl_c().await.ok();
     };
@@ -102,5 +113,17 @@ async fn shutdown_signal() {
         _ = ctrl_c => {},
         _ = terminate => {},
     }
-    tracing::info!("shutting down");
+    state
+        .draining
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+    tracing::info!("shutting down: draining (readyz=503), finishing in-flight requests");
+    // Give the balancer a couple of probe intervals to notice before the
+    // listener closes; connections already open keep being served.
+    tokio::time::sleep(std::time::Duration::from_secs(
+        std::env::var("TERMOSO_DRAIN_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(3),
+    ))
+    .await;
 }

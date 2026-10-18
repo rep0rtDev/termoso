@@ -86,7 +86,9 @@ import {
   requestForwardingRule,
   useCreateRequests,
   useEditRequests,
+  useOpenFileRequests,
 } from "@/app/navigation";
+import { isSshConfigFile } from "@/app/deepLinks";
 import { HostGrid, hostTarget } from "./HostGrid";
 import { HostList } from "./HostList";
 import { useVaultPresence } from "./PresenceViews";
@@ -199,6 +201,11 @@ export function HostsPage() {
   const [anchorId, setAnchorId] = useState<Uuid | null>(null);
   const [moveCopy, setMoveCopy] = useState<MoveCopyRequest | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<string | null>(null);
+  useOpenFileRequests(isSshConfigFile, (path) => {
+    setImportFile(path);
+    setImportOpen(true);
+  });
   const [cloudProvider, setCloudProvider] = useState<CloudProvider | null>(null);
   const [lanOpen, setLanOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -508,14 +515,14 @@ export function HostsPage() {
       .then(() => snackbar.notify(tr("{what} copied", { what })))
       .catch(() => snackbar.error(tr("Clipboard is not available")));
   const copyLinks = (list: HostCard[]) =>
-    copyText(list.map(hostLink).join("\n"), list.length === 1 ? "Link" : "Links");
+    copyText(list.map(hostLink).join("\n"), list.length === 1 ? tr("Link") : tr("Links"));
   const copyProtocolLinks = (list: HostCard[]) => {
     const links = list.flatMap((h) => {
       const l = protocolLink(h);
       return l ? [l] : [];
     });
     if (links.length === 0) return;
-    void copyText(links.join("\n"), links.length === 1 ? "Link" : "Links");
+    void copyText(links.join("\n"), links.length === 1 ? tr("Link") : tr("Links"));
   };
 
   const onHostContext = (h: HostCard, e: MouseEvent<HTMLElement>) => {
@@ -653,8 +660,8 @@ export function HostsPage() {
               },
               {
                 label: targets.every((t) => !hostProtocols(t).includes("ssh"))
-                  ? "telnet:// link"
-                  : "ssh:// link",
+                  ? tr("telnet:// link")
+                  : tr("ssh:// link"),
                 icon: <TerminalRoundedIcon fontSize="small" />,
                 onClick: () => copyProtocolLinks(targets),
               },
@@ -702,7 +709,10 @@ export function HostsPage() {
       setMoveCopy({ kind: "vault", hosts: targets, move: false, target: to });
       return;
     }
-    const what = targets.length === 1 ? `“${targets[0]?.label ?? ""}”` : `${targets.length} hosts`;
+    const what =
+      targets.length === 1
+        ? `“${targets[0]?.label ?? ""}”`
+        : trn(targets.length, "{count} host", "{count} hosts");
     copyToVault.mutate(
       { ids: targets.map((t) => t.id), vaultId: to, move: false, withCredentials: true },
       {
@@ -822,18 +832,22 @@ export function HostsPage() {
           />
           <Tooltip
             title={
-              quickTarget
-                ? tr("Connect to {quickLabel}", { quickLabel: quickLabel(quickTarget) })
-                : visibleHosts.length === 1 && search.trim() && visibleHosts[0]
-                  ? tr("Connect to {label}", { label: visibleHosts[0].label })
-                  : ""
+              liveLink
+                ? tr("Join this multiplayer session")
+                : quickTarget
+                  ? tr("Connect to {quickLabel}", { quickLabel: quickLabel(quickTarget) })
+                  : visibleHosts.length === 1 && search.trim() && visibleHosts[0]
+                    ? tr("Connect to {label}", { label: visibleHosts[0].label })
+                    : ""
             }
           >
             <span>
               <Button
                 variant="contained"
                 startIcon={<PlayArrowRoundedIcon />}
-                disabled={!quickTarget && !(visibleHosts.length === 1 && search.trim())}
+                disabled={
+                  !quickTarget && !liveLink && !(visibleHosts.length === 1 && search.trim())
+                }
                 onClick={onSearchEnter}
                 sx={{ flexShrink: 0, height: 36 }}
               >
@@ -1240,8 +1254,12 @@ export function HostsPage() {
       {vaultId && (
         <ImportDialog
           open={importOpen}
+          initialFile={importFile}
           vaultId={vaultId}
-          onClose={() => setImportOpen(false)}
+          onClose={() => {
+            setImportOpen(false);
+            setImportFile(null);
+          }}
           onImported={clearSelection}
         />
       )}

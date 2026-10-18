@@ -59,8 +59,8 @@ import { goToSettings, goToSettingsWith, useSettingsIntent } from "@/app/navigat
 import { vaultHint, vaultIcon } from "@/app/vault";
 import { PersonAvatar, initialsOf } from "./PersonAvatar";
 import { SecurityRow } from "./TeamPage";
-import { VAULT_ROLES, isTeamAdmin, vaultRoleHint, vaultRoleLabel } from "./roles";
-import { tr } from "@/i18n";
+import { VAULT_ROLES, vaultRoleHint, vaultRoleLabel, can } from "./roles";
+import { tr, trn } from "@/i18n";
 
 type Panel = { kind: "vault"; id: Uuid } | { kind: "new"; teamId: Uuid | null };
 
@@ -84,7 +84,7 @@ export function VaultsPage() {
 
   const list = vaults.data ?? [];
   const adminTeams = useMemo(
-    () => (teams.data ?? []).filter((t) => isTeamAdmin(t.my_role)),
+    () => (teams.data ?? []).filter((t) => can(t, "vaults.create")),
     [teams.data],
   );
   const open = panel?.kind === "vault" ? list.find((v) => v.id === panel.id) : undefined;
@@ -255,10 +255,10 @@ function VaultRow({
   const who =
     v.kind === "team"
       ? everyone
-        ? "Everyone"
+        ? tr("Everyone")
         : count !== undefined
-          ? `${count} ${count === 1 ? "person" : "people"}`
-          : (team?.name ?? "Team")
+          ? trn(count, "{count} person", "{count} people")
+          : (team?.name ?? tr("Team"))
       : v.kind === "personal"
         ? tr("Only you")
         : tr("This device");
@@ -271,11 +271,11 @@ function VaultRow({
       <ComputerOutlinedIcon sx={{ fontSize: 15 }} />
     );
   const note = !v.unlocked
-    ? "Locked"
+    ? tr("Locked")
     : v.role === "viewer"
-      ? "Read-only"
+      ? tr("Read-only")
       : v.is_default
-        ? "Default"
+        ? tr("Default")
         : null;
   return (
     <ListRow
@@ -601,7 +601,7 @@ function VaultDetails({
           op.mutate(() =>
             ipc.teamVaultDelete(v.id).then(() => {
               onClose();
-              return `${v.name} deleted`;
+              return tr("{name} deleted", { name: v.name });
             }),
           )
         }

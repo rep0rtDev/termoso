@@ -112,6 +112,7 @@ async fn join(s: &TestServer, team: &Team, owner: &User, who: &User, vault_ids: 
             Some(&CreateInviteRequest {
                 email: who.email.clone(),
                 role: TeamRole::Member,
+                role_id: None,
                 vault_ids,
             }),
         )

@@ -37,6 +37,12 @@ schema! {
         pub created_at: DateTime<Utc>,
         /// Requesting user's role.
         pub my_role: TeamRole,
+        /// Requesting user's fine-grained role (0.9.0+).
+        #[serde(default)]
+        pub my_role_ref: Option<RoleRef>,
+        /// Requesting user's effective permissions (`*` for the owner).
+        #[serde(default)]
+        pub my_permissions: Vec<String>,
         /// Number of members.
         pub member_count: i64,
         /// Members may share live terminal sessions with each other.
@@ -48,6 +54,9 @@ schema! {
         /// Members see who is connected to which team-vault host right now.
         #[serde(default)]
         pub presence_enabled: bool,
+        /// Team policies (0.9.0+; `None` from older servers).
+        #[serde(default)]
+        pub policies: Option<TeamPolicies>,
     }
 }
 
@@ -105,6 +114,12 @@ schema! {
         pub avatar: Option<String>,
         /// Role.
         pub role: TeamRole,
+        /// Fine-grained role (0.9.0+).
+        #[serde(default)]
+        pub role_ref: Option<RoleRef>,
+        /// `manual`, `idp` or `scim` — who assigned the role.
+        #[serde(default)]
+        pub role_source: Option<String>,
         /// X25519 public key (base64).
         pub public_key: String,
         /// Joined.
@@ -188,7 +203,10 @@ schema! {
     pub struct UpdateTeamMemberRequest {
         /// New role (`owner` transfers ownership; only the owner may do that).
         pub role: TeamRole,
-    }
+            /// Fine-grained role to assign (preferred over `role`).
+        #[serde(default)]
+        pub role_id: Option<Uuid>,
+}
 }
 
 schema! {
@@ -196,8 +214,11 @@ schema! {
     pub struct CreateInviteRequest {
         /// Invitee email.
         pub email: String,
-        /// Role on acceptance.
+        /// Role on acceptance (coarse level; `role_id` wins when set).
         pub role: TeamRole,
+        /// Fine-grained role on acceptance (0.9.0+).
+        #[serde(default)]
+        pub role_id: Option<Uuid>,
         /// Vaults to grant on acceptance (keys are sealed later by an admin
         /// once the invitee's public key is known).
         #[serde(default)]
@@ -220,6 +241,9 @@ schema! {
         pub created_at: DateTime<Utc>,
         /// Expires.
         pub expires_at: DateTime<Utc>,
+        /// Fine-grained role on acceptance (0.9.0+).
+        #[serde(default)]
+        pub role_ref: Option<RoleRef>,
     }
 }
 
@@ -413,5 +437,554 @@ schema! {
         pub events: u32,
         /// Whether an e-mail went out.
         pub sent: bool,
+    }
+}
+
+// ───────────────────────────── roles & permissions ─────────────────────────────
+
+/// Every team permission the server understands, as `domain.action`. The
+/// built-in `owner` role holds `*`; everything else is an explicit subset.
+pub const PERMISSIONS: &[&str] = &[
+    // team
+    "team.view",
+    "team.rename",
+    "team.settings",
+    "team.delete",
+    "team.transfer",
+    // members
+    "members.view",
+    "members.view_mfa",
+    "members.invite",
+    "members.remove",
+    "members.suspend",
+    "members.role",
+    // invites
+    "invites.view",
+    // roles
+    "roles.manage",
+    // vaults
+    "vaults.create",
+    "vaults.rename",
+    "vaults.archive",
+    "vaults.delete",
+    "vaults.transfer",
+    "vaults.members",
+    "vaults.rotate_key",
+    "vaults.history",
+    // entities
+    "entities.read",
+    "entities.write",
+    "entities.delete",
+    "entities.move",
+    "entities.share_link",
+    // secrets
+    "secrets.reveal",
+    "secrets.copy",
+    // keys
+    "keys.generate",
+    "keys.export",
+    // snippets
+    "snippets.run",
+    // connect
+    "connect.ssh",
+    "connect.sftp",
+    "connect.port_forward",
+    "connect.telnet",
+    "connect.serial",
+    "connect.mosh",
+    "connect.local_terminal",
+    "connect.record",
+    "connect.bridge",
+    // live
+    "live.start",
+    "live.join",
+    "live.control",
+    // logs
+    "logs.view_own",
+    "logs.view_team",
+    "logs.export",
+    "logs.delete",
+    // export
+    "export.vault",
+    // import
+    "import.vault",
+    // bridges
+    "bridges.manage",
+    "bridges.use",
+    // sshid
+    "sshid.manage",
+    // ai
+    "ai.use",
+    // mcp
+    "mcp.use",
+    // digest
+    "digest.manage",
+    // audit
+    "audit.view",
+    "audit.view_ips",
+    "audit.export",
+    // webhooks
+    "webhooks.manage",
+    // tokens
+    "tokens.manage",
+    // policies
+    "policies.manage",
+    // sso
+    "sso.manage",
+    // scim
+    "scim.manage",
+    "scim.tokens",
+];
+
+/// Permissions the server cannot enforce on its own: zero-knowledge clients
+/// hold the secrets, so these are honoured by Termoso clients and listed as
+/// such in the catalog (`enforced_by = "client"`).
+pub const CLIENT_ENFORCED_PERMISSIONS: &[&str] = &[
+    "secrets.reveal",
+    "secrets.copy",
+    "keys.export",
+    "snippets.run",
+    "connect.serial",
+    "connect.local_terminal",
+];
+
+/// Permissions only the owner may hold; they cannot be put on any role.
+pub const OWNER_ONLY_PERMISSIONS: &[&str] = &["team.delete", "team.transfer"];
+
+/// Whether `key` is a known permission.
+pub fn is_permission(key: &str) -> bool {
+    PERMISSIONS.contains(&key)
+}
+
+schema! {
+    /// A permission in the catalog (`GET /teams/{id}/permissions`).
+    pub struct PermissionInfo {
+        /// `domain.action`.
+        pub key: String,
+        /// Group for display (`team`, `members`, `vaults`, …).
+        pub group: String,
+        /// Short title.
+        pub title: String,
+        /// One-line description.
+        pub description: String,
+        /// Granting this widens access to secrets or administration.
+        pub dangerous: bool,
+        /// `server` (checked on every request) or `client` (honoured by Termoso
+        /// clients; the server cannot see the secret).
+        pub enforced_by: String,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/permissions`
+    pub struct PermissionCatalog {
+        /// All permissions.
+        pub permissions: Vec<PermissionInfo>,
+    }
+}
+
+schema! {
+    /// Short reference to a role, embedded in members and the team.
+    pub struct RoleRef {
+        /// Role id.
+        pub id: Uuid,
+        /// Stable slug (`owner`, `admin`, `member`, `viewer`, `auditor`, or custom).
+        pub slug: String,
+        /// Display name.
+        pub name: String,
+    }
+}
+
+schema! {
+    /// A team role (`GET /teams/{id}/roles`).
+    pub struct TeamRoleDef {
+        /// Id.
+        pub id: Uuid,
+        /// Slug.
+        pub slug: String,
+        /// Name.
+        pub name: String,
+        /// Description.
+        pub description: String,
+        /// Permissions (`*` for the owner role).
+        pub permissions: Vec<String>,
+        /// Seeded by the server; cannot be deleted.
+        pub builtin: bool,
+        /// Sort position (lower first).
+        pub position: i32,
+        /// Members holding this role.
+        pub member_count: i64,
+        /// Created.
+        pub created_at: DateTime<Utc>,
+        /// Updated.
+        pub updated_at: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/roles`
+    pub struct TeamRoleList {
+        /// Roles, by position.
+        pub roles: Vec<TeamRoleDef>,
+        /// Role new members get (invites, IdP users without a mapping).
+        pub default_role_id: Option<Uuid>,
+    }
+}
+
+schema! {
+    /// `POST /teams/{id}/roles`
+    pub struct CreateRoleRequest {
+        /// Name, 1..40 characters.
+        pub name: String,
+        /// Description, up to 200 characters.
+        #[serde(default)]
+        pub description: String,
+        /// Permissions; unknown or owner-only keys are rejected.
+        pub permissions: Vec<String>,
+        /// Copy permissions from this role when `permissions` is empty.
+        #[serde(default)]
+        pub copy_from: Option<Uuid>,
+    }
+}
+
+schema! {
+    /// `PATCH /teams/{id}/roles/{role_id}`
+    pub struct UpdateRoleRequest {
+        /// New name.
+        #[serde(default)]
+        pub name: Option<String>,
+        /// New description.
+        #[serde(default)]
+        pub description: Option<String>,
+        /// Replace the permission set (not allowed for `owner`).
+        #[serde(default)]
+        pub permissions: Option<Vec<String>>,
+        /// New position.
+        #[serde(default)]
+        pub position: Option<i32>,
+    }
+}
+
+schema! {
+    /// `PUT /teams/{id}/default-role`
+    pub struct SetDefaultRoleRequest {
+        /// Role new members get.
+        pub role_id: Uuid,
+    }
+}
+
+schema! {
+    /// Group (IdP claim / SCIM group) → role mapping.
+    pub struct RoleMapping {
+        /// Group name as the IdP sends it.
+        pub group_name: String,
+        /// Role granted.
+        pub role_id: Uuid,
+        /// Lower wins when several groups match.
+        pub priority: i32,
+    }
+}
+
+schema! {
+    /// `GET`/`PUT /teams/{id}/role-mappings`
+    pub struct RoleMappingList {
+        /// Mappings.
+        pub mappings: Vec<RoleMapping>,
+    }
+}
+
+// ───────────────────────────── policies ─────────────────────────────
+
+schema! {
+    /// Team policies (`GET/PUT /teams/{id}/policies`). Server-enforced unless
+    /// noted; the strictest value across a user's teams applies to them.
+    pub struct TeamPolicies {
+        /// `off` | `any` (TOTP, email or passkey) | `passkey` (WebAuthn only).
+        pub mfa: String,
+        /// `allow` | `deny` — forbid device-only SSH keys in this team's
+        /// vaults. Client-enforced: the server never sees keys.
+        pub local_keys: String,
+        /// Sessions of members expire after this many hours (1..=2160).
+        pub session_ttl_hours: Option<i32>,
+        /// Members with an email in `sso_domains` cannot sign in with a
+        /// password (owner excepted).
+        pub sso_only: bool,
+        /// Provider id members are sent to when `sso_only` applies.
+        pub sso_provider: Option<String>,
+        /// Allow-list of email domains for invitations and SSO-only.
+        pub sso_domains: Vec<String>,
+        /// New devices of members always need email approval.
+        pub device_approval: bool,
+        /// Audit log retention in days (30..=3650; the server may cap it).
+        #[serde(default = "default_audit_retention_days")]
+        pub audit_retention_days: i32,
+        /// Last change.
+        pub updated_at: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// `PUT /teams/{id}/policies` — only the given fields change.
+    pub struct UpdateTeamPoliciesRequest {
+        /// See [`TeamPolicies::mfa`].
+        #[serde(default)]
+        pub mfa: Option<String>,
+        /// See [`TeamPolicies::local_keys`].
+        #[serde(default)]
+        pub local_keys: Option<String>,
+        /// Hours (1..=2160); `0` clears the limit.
+        #[serde(default)]
+        pub session_ttl_hours: Option<i32>,
+        /// See [`TeamPolicies::sso_only`].
+        #[serde(default)]
+        pub sso_only: Option<bool>,
+        /// Provider id; an empty string clears it.
+        #[serde(default)]
+        pub sso_provider: Option<String>,
+        /// See [`TeamPolicies::sso_domains`].
+        #[serde(default)]
+        pub sso_domains: Option<Vec<String>>,
+        /// See [`TeamPolicies::device_approval`].
+        #[serde(default)]
+        pub device_approval: Option<bool>,
+        /// See [`TeamPolicies::audit_retention_days`].
+        #[serde(default)]
+        pub audit_retention_days: Option<i32>,
+    }
+}
+
+schema! {
+    /// What applies to the calling user across all their teams (strictest wins).
+    pub struct EffectivePolicies {
+        /// `off` | `any` | `passkey`.
+        pub mfa: String,
+        /// Team that requires it.
+        pub mfa_team_id: Option<Uuid>,
+        /// Whether the user currently satisfies `mfa`.
+        pub mfa_satisfied: bool,
+        /// Shortest session TTL in hours, if any team sets one.
+        pub session_ttl_hours: Option<i32>,
+        /// Teams forbidding device-only keys.
+        pub local_keys_denied_by: Vec<Uuid>,
+        /// Teams forcing device approval.
+        pub device_approval_by: Vec<Uuid>,
+        /// Provider the user must sign in through, if a team requires SSO for them.
+        pub sso_provider: Option<String>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/policies`
+    pub struct TeamPoliciesResponse {
+        /// The team's policies.
+        pub policies: TeamPolicies,
+        /// What applies to the caller across all their teams.
+        pub effective_for_me: EffectivePolicies,
+    }
+}
+
+fn default_audit_retention_days() -> i32 {
+    365
+}
+
+// ───────────────────────────── audit webhooks ─────────────────────────────
+
+/// Delivery formats for audit webhooks.
+pub const WEBHOOK_KINDS: &[&str] = &["generic", "splunk_hec", "elastic", "datadog", "syslog_tls"];
+
+schema! {
+    /// An audit webhook (`/teams/{id}/webhooks`). The secret is write-only.
+    pub struct Webhook {
+        /// Id.
+        pub id: Uuid,
+        /// Destination.
+        pub url: String,
+        /// `generic` (HMAC-signed JSON) | `splunk_hec` | `elastic` | `datadog`.
+        pub kind: String,
+        /// Actions to send (`vault.` = family); `None` = everything.
+        pub actions: Option<Vec<String>>,
+        /// Disabled hooks keep their history but receive nothing.
+        pub enabled: bool,
+        /// Created.
+        pub created_at: DateTime<Utc>,
+        /// HTTP status of the last attempt.
+        pub last_status: Option<i32>,
+        /// Error of the last failed attempt.
+        pub last_error: Option<String>,
+        /// Last successful delivery.
+        pub last_delivered_at: Option<DateTime<Utc>>,
+        /// Consecutive failures (50 disables the hook).
+        pub failures: i32,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/webhooks`
+    pub struct WebhookList {
+        /// Hooks.
+        pub webhooks: Vec<Webhook>,
+    }
+}
+
+schema! {
+    /// `POST /teams/{id}/webhooks`
+    pub struct CreateWebhookRequest {
+        /// `https://` URL (plain http / private addresses only when the server allows it).
+        pub url: String,
+        /// HMAC secret (`generic`) or the destination's token (`splunk_hec`, `elastic`, `datadog`).
+        pub secret: String,
+        /// See [`Webhook::kind`]; default `generic`.
+        #[serde(default)]
+        pub kind: Option<String>,
+        /// See [`Webhook::actions`].
+        #[serde(default)]
+        pub actions: Option<Vec<String>>,
+    }
+}
+
+schema! {
+    /// `PATCH /teams/{id}/webhooks/{wid}` — only given fields change.
+    pub struct UpdateWebhookRequest {
+        /// New URL.
+        #[serde(default)]
+        pub url: Option<String>,
+        /// New secret / token.
+        #[serde(default)]
+        pub secret: Option<String>,
+        /// New kind.
+        #[serde(default)]
+        pub kind: Option<String>,
+        /// New action filter (`Some(vec![])` = everything).
+        #[serde(default)]
+        pub actions: Option<Vec<String>>,
+        /// Enable / disable (re-enabling resets the failure counter).
+        #[serde(default)]
+        pub enabled: Option<bool>,
+    }
+}
+
+schema! {
+    /// One delivery attempt record.
+    pub struct WebhookDelivery {
+        /// Id.
+        pub id: i64,
+        /// Audit event.
+        pub event_id: i64,
+        /// Event action.
+        pub action: String,
+        /// Attempts made so far.
+        pub attempt: i32,
+        /// `pending` | `sending` | `ok` | `dead`.
+        pub status: String,
+        /// HTTP status of the last attempt.
+        pub response_status: Option<i32>,
+        /// First KiB of the last response body.
+        pub response_body: Option<String>,
+        /// Next attempt (for pending).
+        pub next_at: DateTime<Utc>,
+        /// When it succeeded.
+        pub delivered_at: Option<DateTime<Utc>>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/webhooks/{wid}/deliveries`
+    pub struct WebhookDeliveryList {
+        /// Newest first, at most 100.
+        pub deliveries: Vec<WebhookDelivery>,
+    }
+}
+
+// ───────────────────────────── SCIM ─────────────────────────────
+
+schema! {
+    /// A SCIM bearer token of a team (`/teams/{id}/scim/tokens`); the secret
+    /// is shown once at creation.
+    pub struct ScimToken {
+        /// Id.
+        pub id: Uuid,
+        /// Label (e.g. "Okta").
+        pub name: String,
+        /// Created.
+        pub created_at: DateTime<Utc>,
+        /// Expiry, if any.
+        pub expires_at: Option<DateTime<Utc>>,
+        /// Last request with this token.
+        pub last_used_at: Option<DateTime<Utc>>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/scim/tokens`
+    pub struct ScimTokenList {
+        /// Active tokens (at most 3).
+        pub tokens: Vec<ScimToken>,
+        /// SCIM base URL to paste into the IdP.
+        pub base_url: String,
+    }
+}
+
+schema! {
+    /// `POST /teams/{id}/scim/tokens`
+    pub struct CreateScimTokenRequest {
+        /// Label.
+        pub name: String,
+        /// Days until expiry (omit = never).
+        #[serde(default)]
+        pub expires_in_days: Option<u32>,
+    }
+}
+
+schema! {
+    /// Response of token creation.
+    pub struct CreatedScimToken {
+        /// The token record.
+        pub token: ScimToken,
+        /// Bearer secret — shown once.
+        pub secret: String,
+        /// SCIM base URL.
+        pub base_url: String,
+    }
+}
+
+schema! {
+    /// A SCIM group as seen by the team (`GET /teams/{id}/scim/groups`).
+    pub struct ScimGroupInfo {
+        /// Id.
+        pub id: Uuid,
+        /// IdP display name (matches `team_role_mappings.group_name`).
+        pub display_name: String,
+        /// IdP id.
+        pub external_id: Option<String>,
+        /// Members.
+        pub member_count: i64,
+        /// Vault grants.
+        pub vaults: Vec<ScimGroupVault>,
+    }
+}
+
+schema! {
+    /// Vault granted to every member of a SCIM group.
+    pub struct ScimGroupVault {
+        /// Vault.
+        pub vault_id: Uuid,
+        /// `viewer` | `editor` | `manager`.
+        pub role: String,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/scim/groups`
+    pub struct ScimGroupList {
+        /// Groups.
+        pub groups: Vec<ScimGroupInfo>,
+    }
+}
+
+schema! {
+    /// `PUT /teams/{id}/scim/groups/{gid}/vaults`
+    pub struct SetScimGroupVaultsRequest {
+        /// Full replacement list.
+        pub vaults: Vec<ScimGroupVault>,
     }
 }

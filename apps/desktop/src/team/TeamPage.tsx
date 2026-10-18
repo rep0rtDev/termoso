@@ -14,6 +14,8 @@ import {
   Radio,
   RadioGroup,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Tooltip,
   Typography,
@@ -35,6 +37,10 @@ import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
 import { MfaBadge } from "./MfaBadge";
+import { denyPerm } from "@/team/perms";
+import { RolesTab } from "./RolesTab";
+import { PoliciesTab } from "./PoliciesTab";
+import { WebhooksTab } from "./WebhooksTab";
 import { useMutation } from "@tanstack/react-query";
 import { isReauthCancelled, withReauth } from "@/account/reauth";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -71,13 +77,14 @@ import {
   type TeamMember,
   type TeamRole,
   type Uuid,
+  isDesktopError,
 } from "@/ipc/types";
 import { goToSettings, goToSettingsWith, useSettingsIntent } from "@/app/navigation";
 import { vaultIcon } from "@/app/vault";
 import { ActivityCard, ActivityLog } from "./ActivityLog";
 import { InviteDialog, InviteResultRow } from "./InviteDialog";
 import { PersonAvatar, initialsOf } from "./PersonAvatar";
-import { isTeamAdmin, teamRoleHint, teamRoleLabel, vaultRoleLabel } from "./roles";
+import { teamRoleHint, teamRoleLabel, vaultRoleLabel, can, canManageMembers } from "./roles";
 import { tr, trn } from "@/i18n";
 
 /**
@@ -103,7 +110,7 @@ export function TeamPage() {
   const myId = account.data?.account?.userId ?? null;
 
   useSettingsIntent(["invite"], () => {
-    if (team && isTeamAdmin(team.my_role)) setInviting(true);
+    if (team && can(team, "members.invite")) setInviting(true);
   });
 
   if (account.isPending || (signedIn && teams.isPending)) {
@@ -134,10 +141,26 @@ export function TeamPage() {
   }
 
   if (teams.error) {
+    const mfa = isDesktopError(teams.error) && teams.error.kind === "mfa_required";
     return (
       <Page>
         <PageBody>
-          <Alert severity="error">{errorMessage(teams.error)}</Alert>
+          {mfa ? (
+            <Alert
+              severity="info"
+              action={
+                <Button color="inherit" size="small" onClick={() => goToSettings("security")}>
+                  {tr("Set up two-factor")}
+                </Button>
+              }
+            >
+              {tr(
+                "A team you belong to requires two-factor authentication. Turn it on in Security to see team data.",
+              )}
+            </Alert>
+          ) : (
+            <Alert severity="error">{errorMessage(teams.error)}</Alert>
+          )}
         </PageBody>
       </Page>
     );
@@ -209,6 +232,8 @@ function NoTeam({ onCreate, onJoin }: { onCreate: () => void; onJoin: () => void
   );
 }
 
+type TeamTab = "members" | "roles" | "policies" | "webhooks";
+
 function TeamView({
   team,
   teams,
@@ -238,8 +263,19 @@ function TeamView({
 }) {
   const snackbar = useSnackbar();
   const invalidate = useInvalidateTeam();
-  const admin = isTeamAdmin(team.my_role);
+  const admin = canManageMembers(team);
   const owner = team.my_role === "owner";
+  const [tab, setTab] = useState<TeamTab>("members");
+  const teamTabs = useMemo(() => {
+    const all: { key: TeamTab; label: string; show: boolean }[] = [
+      { key: "members", label: tr("Members"), show: true },
+      { key: "roles", label: tr("Roles"), show: can(team, "roles.manage") },
+      { key: "policies", label: tr("Policies"), show: can(team, "policies.manage") },
+      { key: "webhooks", label: tr("Webhooks"), show: can(team, "webhooks.manage") },
+    ];
+    return all.filter((t) => t.show);
+  }, [team]);
+  const activeTab = teamTabs.some((t) => t.key === tab) ? tab : "members";
   const members = useTeamMembers(team.id);
   const invites = useTeamInvites(team.id, admin);
   const vaults = useVaults();
@@ -501,7 +537,11 @@ function TeamView({
             label={tr("Require 2FA for all team members")}
             hint={
               withoutMfa > 0
-                ? `Members without two-factor authentication cannot open team vaults. ${withoutMfa} member${withoutMfa === 1 ? " has" : "s have"} no 2FA yet.`
+                ? trn(
+                    withoutMfa,
+                    "Members without two-factor authentication cannot open team vaults. {count} member has no 2FA yet.",
+                    "Members without two-factor authentication cannot open team vaults. {count} members have no 2FA yet.",
+                  )
                 : tr("Members without two-factor authentication cannot open team vaults.")
             }
             enabled={team.require_mfa}
@@ -580,7 +620,9 @@ function TeamView({
             )}
             <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
               {trn(team.member_count, "{count} member", "{count} members")} ·{" "}
-              {tr("you are {role}", { role: tr(teamRoleLabel[team.my_role]).toLowerCase() })}
+              {tr("you are {role}", {
+                role: team.my_role_ref?.name ?? tr(teamRoleLabel[team.my_role]).toLowerCase(),
+              })}
               {teamVaults.length > 0 &&
                 ` · ${trn(teamVaults.length, "{count} vault", "{count} vaults")}`}
             </Typography>
@@ -614,180 +656,212 @@ function TeamView({
           </IconButton>
         </Box>
       </SectionCard>
+      {teamTabs.length > 1 && (
+        <Tabs
+          value={activeTab}
+          onChange={(_, v: TeamTab) => setTab(v)}
+          variant="scrollable"
+          allowScrollButtonsMobile
+          sx={{ minHeight: 36, "& .MuiTab-root": { minHeight: 36, py: 0.5 } }}
+        >
+          {teamTabs.map((t) => (
+            <Tab key={t.key} value={t.key} label={t.label} />
+          ))}
+        </Tabs>
+      )}
+      {activeTab === "roles" ? (
+        <RolesTab team={team} />
+      ) : activeTab === "policies" ? (
+        <PoliciesTab team={team} />
+      ) : activeTab === "webhooks" ? (
+        <WebhooksTab team={team} />
+      ) : (
+        <>
+          {pendingKeys}
 
-      {pendingKeys}
+          <SectionCard
+            title={tr("Members")}
+            description={
+              admin
+                ? tr(
+                    "Change a role from the dropdown; remove someone with the cross. Removing a member rotates the keys of vaults they could open.",
+                  )
+                : undefined
+            }
+          >
+            {members.isPending ? (
+              <Loading pt={2} />
+            ) : (
+              <Stack spacing={0.5}>
+                <Box
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 150px 130px 36px",
+                    px: 1.5,
+                    py: 0.5,
+                    color: "text.secondary",
+                    typography: "caption",
+                  }}
+                >
+                  <span>{tr("Member")}</span>
+                  <span>{tr("Role")}</span>
+                  <span>{tr("Status")}</span>
+                  <span />
+                </Box>
+                {memberList.map((m) => (
+                  <MemberRow
+                    key={m.user_id}
+                    team={team}
+                    m={m}
+                    me={m.user_id === myId}
+                    onRole={(role) =>
+                      op.mutate(() =>
+                        ipc
+                          .teamMemberSetRole(team.id, m.user_id, role)
+                          .then(() =>
+                            role === "owner"
+                              ? tr("{value} is now the owner", { value: m.display_name ?? m.email })
+                              : tr("Role updated"),
+                          ),
+                      )
+                    }
+                    onRemove={() =>
+                      op.mutate(() =>
+                        ipc.teamMemberRemove(team.id, m.user_id).then(() =>
+                          tr("{who} removed from {team}", {
+                            who: m.display_name ?? m.email,
+                            team: team.name,
+                          }),
+                        ),
+                      )
+                    }
+                    onDeleteAccount={() =>
+                      op.mutate(() =>
+                        withReauth(() => ipc.teamMemberDeleteAccount(team.id, m.user_id)).then(() =>
+                          tr("Account {email} deleted", { email: m.email }),
+                        ),
+                      )
+                    }
+                  />
+                ))}
+                {inviteList.map((inv) => (
+                  <InviteRow
+                    key={inv.id}
+                    inv={inv}
+                    onRevoke={() =>
+                      op.mutate(() =>
+                        ipc.teamInviteRevoke(team.id, inv.id).then(() => tr("Invitation revoked")),
+                      )
+                    }
+                    onResend={() => resend(inv)}
+                  />
+                ))}
+              </Stack>
+            )}
+          </SectionCard>
 
-      <SectionCard
-        title={tr("Members")}
-        description={
-          admin
-            ? tr(
-                "Change a role from the dropdown; remove someone with the cross. Removing a member rotates the keys of vaults they could open.",
+          <SectionCard
+            title={tr("Team vaults")}
+            description={tr(
+              "Each vault has its own key and its own list of people. Members connect with what is inside; managers decide who gets in.",
+            )}
+            action={
+              admin ? (
+                <Button
+                  variant="tonal"
+                  size="small"
+                  startIcon={<AddRoundedIcon />}
+                  onClick={() => goToSettingsWith({ kind: "newVault", teamId: team.id })}
+                >
+                  {tr("New vault")}
+                </Button>
+              ) : undefined
+            }
+          >
+            {vaults.isPending ? (
+              <Loading pt={2} />
+            ) : teamVaults.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                {admin
+                  ? tr("No vaults yet — create one to start sharing hosts and keys.")
+                  : tr("You have not been given access to any vault of this team yet.")}
+              </Typography>
+            ) : (
+              <Stack spacing={0.75}>
+                {teamVaults.map((v) => (
+                  <EntityCard
+                    key={v.id}
+                    dense
+                    tile={
+                      <IconTile tone={v.unlocked ? "accent" : "neutral"} size={32}>
+                        {vaultIcon(v)}
+                      </IconTile>
+                    }
+                    title={v.name}
+                    subtitle={
+                      v.unlocked
+                        ? tr("You {value}", { value: tr(vaultRoleLabel[v.role]) })
+                        : tr("Locked on this device — waiting for a manager to hand you the key")
+                    }
+                    trailing={
+                      <ChevronRightRoundedIcon fontSize="small" sx={{ color: "text.disabled" }} />
+                    }
+                    onClick={() => goToSettingsWith({ kind: "vault", id: v.id })}
+                  />
+                ))}
+              </Stack>
+            )}
+          </SectionCard>
+
+          <ActionMenu anchor={menu} onClose={() => setMenu(null)} items={menuItems} />
+          {dialogs}
+          <ConfirmDialog
+            open={confirm === "leave"}
+            title={tr("Leave {name}?", { name: team.name })}
+            confirmLabel={tr("Leave team")}
+            danger
+            busy={op.isPending}
+            onCancel={() => setConfirm(null)}
+            onConfirm={() =>
+              op.mutate(
+                () => ipc.teamLeave(team.id).then(() => tr("You left {name}", { name: team.name })),
+                {
+                  onSuccess: () => setConfirm(null),
+                },
               )
-            : undefined
-        }
-      >
-        {members.isPending ? (
-          <Loading pt={2} />
-        ) : (
-          <Stack spacing={0.5}>
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: "1fr 150px 130px 36px",
-                px: 1.5,
-                py: 0.5,
-                color: "text.secondary",
-                typography: "caption",
-              }}
-            >
-              <span>{tr("Member")}</span>
-              <span>{tr("Role")}</span>
-              <span>{tr("Status")}</span>
-              <span />
-            </Box>
-            {memberList.map((m) => (
-              <MemberRow
-                key={m.user_id}
-                team={team}
-                m={m}
-                me={m.user_id === myId}
-                onRole={(role) =>
-                  op.mutate(() =>
-                    ipc
-                      .teamMemberSetRole(team.id, m.user_id, role)
-                      .then(() =>
-                        role === "owner"
-                          ? tr("{value} is now the owner", { value: m.display_name ?? m.email })
-                          : tr("Role updated"),
-                      ),
-                  )
-                }
-                onRemove={() =>
-                  op.mutate(() =>
-                    ipc
-                      .teamMemberRemove(team.id, m.user_id)
-                      .then(() => `${m.display_name ?? m.email} removed from ${team.name}`),
-                  )
-                }
-                onDeleteAccount={() =>
-                  op.mutate(() =>
-                    withReauth(() => ipc.teamMemberDeleteAccount(team.id, m.user_id)).then(() =>
-                      tr("Account {email} deleted", { email: m.email }),
-                    ),
-                  )
-                }
-              />
-            ))}
-            {inviteList.map((inv) => (
-              <InviteRow
-                key={inv.id}
-                inv={inv}
-                onRevoke={() =>
-                  op.mutate(() =>
-                    ipc.teamInviteRevoke(team.id, inv.id).then(() => tr("Invitation revoked")),
-                  )
-                }
-                onResend={() => resend(inv)}
-              />
-            ))}
-          </Stack>
-        )}
-      </SectionCard>
-
-      <SectionCard
-        title={tr("Team vaults")}
-        description={tr(
-          "Each vault has its own key and its own list of people. Members connect with what is inside; managers decide who gets in.",
-        )}
-        action={
-          admin ? (
-            <Button
-              variant="tonal"
-              size="small"
-              startIcon={<AddRoundedIcon />}
-              onClick={() => goToSettingsWith({ kind: "newVault", teamId: team.id })}
-            >
-              {tr("New vault")}
-            </Button>
-          ) : undefined
-        }
-      >
-        {vaults.isPending ? (
-          <Loading pt={2} />
-        ) : teamVaults.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">
-            {admin
-              ? tr("No vaults yet — create one to start sharing hosts and keys.")
-              : tr("You have not been given access to any vault of this team yet.")}
-          </Typography>
-        ) : (
-          <Stack spacing={0.75}>
-            {teamVaults.map((v) => (
-              <EntityCard
-                key={v.id}
-                dense
-                tile={
-                  <IconTile tone={v.unlocked ? "accent" : "neutral"} size={32}>
-                    {vaultIcon(v)}
-                  </IconTile>
-                }
-                title={v.name}
-                subtitle={
-                  v.unlocked
-                    ? tr("You {value}", { value: tr(vaultRoleLabel[v.role]) })
-                    : tr("Locked on this device — waiting for a manager to hand you the key")
-                }
-                trailing={
-                  <ChevronRightRoundedIcon fontSize="small" sx={{ color: "text.disabled" }} />
-                }
-                onClick={() => goToSettingsWith({ kind: "vault", id: v.id })}
-              />
-            ))}
-          </Stack>
-        )}
-      </SectionCard>
-
-      <ActionMenu anchor={menu} onClose={() => setMenu(null)} items={menuItems} />
-      {dialogs}
-      <ConfirmDialog
-        open={confirm === "leave"}
-        title={tr("Leave {name}?", { name: team.name })}
-        confirmLabel={tr("Leave team")}
-        danger
-        busy={op.isPending}
-        onCancel={() => setConfirm(null)}
-        onConfirm={() =>
-          op.mutate(
-            () => ipc.teamLeave(team.id).then(() => tr("You left {name}", { name: team.name })),
-            {
-              onSuccess: () => setConfirm(null),
-            },
-          )
-        }
-      >
-        {tr(
-          "Its vaults disappear from this device and you lose access to everything inside. Managers of those vaults can rotate their keys afterwards.",
-        )}
-      </ConfirmDialog>
-      <ConfirmDialog
-        open={confirm === "delete"}
-        title={tr("Delete {name}?", { name: team.name })}
-        confirmLabel={tr("Delete team")}
-        danger
-        busy={op.isPending}
-        onCancel={() => setConfirm(null)}
-        onConfirm={() =>
-          op.mutate(() => ipc.teamDelete(team.id).then(() => `${team.name} deleted`), {
-            onSuccess: () => setConfirm(null),
-          })
-        }
-      >
-        {tr(
-          "Every team vault and everything inside is deleted for all {count} members. This cannot be undone.",
-          { count: team.member_count },
-        )}
-      </ConfirmDialog>
+            }
+          >
+            {tr(
+              "Its vaults disappear from this device and you lose access to everything inside. Managers of those vaults can rotate their keys afterwards.",
+            )}
+          </ConfirmDialog>
+          <ConfirmDialog
+            open={confirm === "delete"}
+            title={tr("Delete {name}?", { name: team.name })}
+            confirmLabel={tr("Delete team")}
+            danger
+            busy={op.isPending}
+            onCancel={() => setConfirm(null)}
+            onConfirm={() => {
+              if (!can(team, "team.delete")) {
+                denyPerm("team.delete");
+                return;
+              }
+              op.mutate(
+                () => ipc.teamDelete(team.id).then(() => tr("{name} deleted", { name: team.name })),
+                {
+                  onSuccess: () => setConfirm(null),
+                },
+              );
+            }}
+          >
+            {tr(
+              "Every team vault and everything inside is deleted for all {count} members. This cannot be undone.",
+              { count: team.member_count },
+            )}
+          </ConfirmDialog>
+        </>
+      )}
     </Stack>
   );
 }
@@ -864,7 +938,7 @@ export function SecurityRow({
   onChange: (on: boolean) => void;
 }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const text = enabled ? "Enabled" : "Disabled";
+  const text = enabled ? tr("Enabled") : tr("Disabled");
   return (
     <Box sx={{ display: "flex", alignItems: "center", gap: 2, minHeight: 44 }}>
       <Tooltip title={hint} placement="top-start" enterDelay={600}>
@@ -914,12 +988,12 @@ function MemberRow({
   onRemove: () => void;
   onDeleteAccount: () => void;
 }) {
-  const admin = isTeamAdmin(team.my_role);
+  const admin = canManageMembers(team);
   const owner = team.my_role === "owner";
   const [confirmOwner, setConfirmOwner] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const canChange = admin && !me && m.role !== "owner";
-  const canRemove = admin && !me && m.role !== "owner";
+  const canChange = can(team, "members.role") && !me && m.role !== "owner";
+  const canRemove = can(team, "members.remove") && !me && m.role !== "owner";
   const canDeleteAccount = canRemove && owner && m.managed;
   const name = m.display_name ?? m.email;
   return (
@@ -1271,7 +1345,7 @@ function PendingKeys({
                 />
               }
               title={m?.display_name ?? m?.email ?? tr("Unknown member")}
-              subtitle={`${v?.name ?? "Vault"} · ${tr(vaultRoleLabel[k.role])}`}
+              subtitle={`${v?.name ?? tr("Vault")} · ${tr(vaultRoleLabel[k.role])}`}
               trailing={
                 can ? (
                   <Button

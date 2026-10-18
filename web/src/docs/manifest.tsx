@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import RocketLaunchOutlinedIcon from "@mui/icons-material/RocketLaunchOutlined";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
+import LanOutlinedIcon from "@mui/icons-material/LanOutlined";
 import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
 import BuildOutlinedIcon from "@mui/icons-material/BuildOutlined";
 import PaletteOutlinedIcon from "@mui/icons-material/PaletteOutlined";
@@ -140,6 +141,7 @@ const layout: { title: string; pages: Entry[] }[] = [
       ["self-hosting/configuration", <TuneOutlinedIcon />],
       ["self-hosting/upgrading", <SystemUpdateAltOutlinedIcon />],
       ["self-hosting/backups", <SettingsBackupRestoreOutlinedIcon />],
+      ["self-hosting/ha", <LanOutlinedIcon />],
       ["self-hosting/api-bridge", <HubOutlinedIcon />],
     ],
   },

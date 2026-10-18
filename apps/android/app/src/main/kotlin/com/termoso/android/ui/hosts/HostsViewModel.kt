@@ -160,6 +160,7 @@ class HostsViewModel(
     }
 
     fun moveToVault(ids: List<String>, vaultId: String, withCredentials: Boolean) = mutate {
+        repo.perms.require(currentVault, "entities.move")
         repo.write { moveHostsToVault(ids, vaultId, withCredentials) }
     }
 

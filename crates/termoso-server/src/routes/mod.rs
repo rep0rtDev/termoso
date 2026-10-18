@@ -9,6 +9,9 @@ pub mod captcha;
 pub mod history;
 pub mod logs;
 pub mod mfa;
+pub mod policies;
+pub mod roles;
+pub mod scim_admin;
 pub mod server;
 pub mod sshid;
 pub mod start_over;
@@ -179,6 +182,51 @@ pub fn router(state: AppState) -> Router {
         .route("/teams/{id}/pending-keys", get(teams::pending_keys))
         .route("/teams/{id}/presence", get(teams::get_presence))
         .route("/teams/{id}/audit", get(crate::audit::list))
+        .route("/teams/{id}/audit/export", get(crate::audit::export))
+        .route(
+            "/teams/{id}/webhooks",
+            get(crate::webhooks::list).post(crate::webhooks::create),
+        )
+        .route(
+            "/teams/{id}/webhooks/{wid}",
+            patch(crate::webhooks::update).delete(crate::webhooks::delete),
+        )
+        .route(
+            "/teams/{id}/webhooks/{wid}/test",
+            post(crate::webhooks::test),
+        )
+        .route(
+            "/teams/{id}/webhooks/{wid}/deliveries",
+            get(crate::webhooks::deliveries),
+        )
+        .route(
+            "/teams/{id}/scim/tokens",
+            get(scim_admin::list_tokens).post(scim_admin::create_token),
+        )
+        .route(
+            "/teams/{id}/scim/tokens/{tid}",
+            delete(scim_admin::revoke_token),
+        )
+        .route("/teams/{id}/scim/groups", get(scim_admin::list_groups))
+        .route(
+            "/teams/{id}/scim/groups/{gid}/vaults",
+            put(scim_admin::set_group_vaults),
+        )
+        .route(
+            "/teams/{id}/policies",
+            get(policies::get).put(policies::put),
+        )
+        .route("/teams/{id}/permissions", get(roles::catalog))
+        .route("/teams/{id}/roles", get(roles::list).post(roles::create))
+        .route(
+            "/teams/{id}/roles/{role_id}",
+            patch(roles::update).delete(roles::delete),
+        )
+        .route("/teams/{id}/default-role", put(roles::set_default))
+        .route(
+            "/teams/{id}/role-mappings",
+            get(roles::mappings).put(roles::set_mappings),
+        )
         .route(
             "/teams/{id}/digest",
             get(crate::digest::get).put(crate::digest::put),
@@ -247,6 +295,7 @@ pub fn router(state: AppState) -> Router {
         .route("/readyz", get(server::readyz))
         .route("/.well-known/assetlinks.json", get(server::assetlinks))
         .route("/captcha", get(captcha::page))
+        .nest("/scim/v2", crate::scim::router())
         .route("/sshid/{handle}", get(sshid::public_default))
         .route("/sshid/{handle}/{type}", get(sshid::public_typed))
         .nest(

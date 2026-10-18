@@ -144,7 +144,7 @@ export function SerialPage() {
               value={path}
               onChange={(e) => setPath(e.target.value)}
               placeholder={
-                list.length > 0 ? tr("Pick a device or type a path") : "/dev/ttyUSB0 or COM3"
+                list.length > 0 ? tr("Pick a device or type a path") : tr("/dev/ttyUSB0 or COM3")
               }
               sx={{ flex: 1 }}
               slotProps={{

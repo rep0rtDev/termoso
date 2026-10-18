@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr, trx } from "@/i18n";
 import {
   Alert,
   Avatar,
@@ -71,7 +72,11 @@ export function DevicesPage() {
       setTarget(null);
       setRevokeOthers(false);
       await qc.invalidateQueries({ queryKey: queryKeys.devices });
-      snack.notify(ids.length === 1 ? "Device signed out" : `${ids.length} devices signed out`);
+      snack.notify(
+        ids.length === 1
+          ? tr("Device signed out")
+          : tr("{length} devices signed out", { length: ids.length }),
+      );
     },
     onError: (e) => {
       if (!(e instanceof UnlockCancelled)) snack.error(errorMessage(e));
@@ -87,8 +92,10 @@ export function DevicesPage() {
   return (
     <>
       <PageHeader
-        title="Devices"
-        subtitle="Every signed-in app and browser. Signing a device out revokes its session immediately."
+        title={tr("Devices")}
+        subtitle={tr(
+          "Every signed-in app and browser. Signing a device out revokes its session immediately.",
+        )}
         actions={
           others.length > 0 && (
             <Button
@@ -97,14 +104,14 @@ export function DevicesPage() {
               startIcon={<LogoutRoundedIcon />}
               onClick={() => setRevokeOthers(true)}
             >
-              Sign out all other devices
+              {tr("Sign out all other devices")}
             </Button>
           )
         }
       />
       <Section title={`${list.length} ${list.length === 1 ? "device" : "devices"}`} disablePadding>
         {list.length === 0 ? (
-          <EmptyState title="No devices" />
+          <EmptyState title={tr("No devices")} />
         ) : (
           <List disablePadding>
             {list.map((d) => (
@@ -113,11 +120,11 @@ export function DevicesPage() {
                 divider
                 secondaryAction={
                   !d.current && (
-                    <Tooltip title="Sign out this device">
+                    <Tooltip title={tr("Sign out this device")}>
                       <IconButton
                         edge="end"
                         onClick={() => setTarget(d)}
-                        aria-label="Sign out device"
+                        aria-label={tr("Sign out device")}
                       >
                         <LogoutRoundedIcon />
                       </IconButton>
@@ -144,10 +151,16 @@ export function DevicesPage() {
                   primary={
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
                       {d.name}
-                      {d.current && <Chip size="small" color="primary" label="This device" />}
+                      {d.current && <Chip size="small" color="primary" label={tr("This device")} />}
                     </Box>
                   }
-                  secondary={`${platformLabel[d.platform]} · v${d.app_version} · ${d.last_ip ?? "unknown IP"} · Active ${formatRelative(d.last_seen_at)} · Added ${formatDateTime(d.created_at)}`}
+                  secondary={tr("{v1} · v{app_version} · {v2} · Active {v3} · Added {v4}", {
+                    v1: platformLabel[d.platform],
+                    app_version: d.app_version,
+                    v2: d.last_ip ?? tr("unknown IP"),
+                    v3: formatRelative(d.last_seen_at),
+                    v4: formatDateTime(d.created_at),
+                  })}
                 />
               </ListItem>
             ))}
@@ -157,8 +170,8 @@ export function DevicesPage() {
 
       <ConfirmDialog
         open={target !== null}
-        title="Sign out device?"
-        confirmLabel="Sign out"
+        title={tr("Sign out device?")}
+        confirmLabel={tr("Sign out")}
         danger
         busy={revoke.isPending}
         onCancel={() => setTarget(null)}
@@ -166,19 +179,23 @@ export function DevicesPage() {
           if (target) revoke.mutate([target.id]);
         }}
       >
-        “{target?.name}” will need to sign in again and unlock with the password.
+        {trx("“{name}” will need to sign in again and unlock with the password.", {
+          name: target?.name,
+        })}
       </ConfirmDialog>
       <ConfirmDialog
         open={revokeOthers}
-        title="Sign out all other devices?"
-        confirmLabel="Sign out all"
+        title={tr("Sign out all other devices?")}
+        confirmLabel={tr("Sign out all")}
         danger
         busy={revoke.isPending}
         onCancel={() => setRevokeOthers(false)}
         onConfirm={() => revoke.mutate(others.map((d) => d.id))}
       >
-        {others.length} {others.length === 1 ? "device" : "devices"} will be signed out. This
-        browser stays signed in.
+        {trx("{length} {v1} will be signed out. This browser stays signed in.", {
+          length: others.length,
+          v1: others.length === 1 ? "device" : "devices",
+        })}
       </ConfirmDialog>
     </>
   );

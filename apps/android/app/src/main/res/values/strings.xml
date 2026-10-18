@@ -302,6 +302,18 @@
     <string name="configuring">Configuring</string>
     <string name="choose_a_distribution">Choose a distribution</string>
     <string name="replace_with">Replace with</string>
+    <string name="shortcut_new_connection">New connection</string>
+    <string name="shortcut_local_terminal">Local terminal</string>
+    <string name="shortcut_sftp">SFTP</string>
+    <string name="custom_rootfs">Your own image</string>
+    <string name="custom_rootfs_from_file">From file…</string>
+    <string name="custom_rootfs_from_file_hint">tar, tar.gz or tar.xz with /bin/sh built for this device (Debian, Fedora, Arch…)</string>
+    <string name="custom_rootfs_from_url">From URL…</string>
+    <string name="custom_rootfs_from_url_hint">Direct link to a rootfs archive, optionally verified by SHA-256</string>
+    <string name="rootfs_url">URL</string>
+    <string name="rootfs_sha256_optional">SHA-256 (optional)</string>
+    <string name="rootfs_name_optional">Name (optional)</string>
+    <string name="install_action">Install</string>
     <string name="android_shell">Android shell</string>
     <string name="files">Files</string>
     <string name="files_protocols_subtitle">SFTP / WebDAV</string>
@@ -382,6 +394,7 @@
     <string name="alias">Alias</string>
     <string name="hostname_or_ip_address">Hostname or IP address</string>
     <string name="group">Group</string>
+    <string name="proxy_credentials_hint">Used when the proxy asks for a login. SOCKS4 has no password.</string>
     <string name="none">None</string>
     <string name="tags">Tags</string>
     <string name="port">Port</string>
@@ -906,6 +919,8 @@
     <string name="you_have_not_been_given_access_to_any">You have not been given access to any vault of this team.</string>
     <string name="terminal_sharing">Terminal sharing</string>
     <string name="members_may_share_a_live_terminal_with_each">Members may share a live terminal with each other (end-to-end encrypted)</string>
+    <string name="team_requires_two_factor">This team requires two-factor authentication. Turn it on in your account to see team data.</string>
+    <string name="set_up_two_factor">Set up two-factor</string>
     <string name="require_two_factor_authentication">Require two-factor authentication</string>
     <string name="members_without_2fa_cannot_open_team_vaults">Members without 2FA cannot open team vaults</string>
     <string name="show_who_is_connected">Show who is connected</string>
@@ -1493,4 +1508,37 @@
     <string name="camera_permission_needed">Camera access is needed to scan a code.</string>
     <string name="confirm_you_are_human">Confirm you are human</string>
     <string name="captcha_sheet_hint">Pass the check below to continue. It is served by your server and Cloudflare.</string>
+    <!-- team roles & policies (read-only) -->
+    <string name="roles_and_policies">Roles &amp; policies</string>
+    <string name="roles">Roles</string>
+    <string name="team_policies">Team policies</string>
+    <string name="roles_edit_hint">Roles and policies are edited in the web cabinet or the desktop app.</string>
+    <string name="default_role">default</string>
+    <string name="all_permissions">All permissions</string>
+    <string name="hide_permissions">Hide permissions</string>
+    <string name="sensitive_flag">sensitive</string>
+    <string name="client_flag">client</string>
+    <string name="two_factor">Two-factor authentication</string>
+    <string name="mfa_any">Any second factor</string>
+    <string name="mfa_passkey_only">Passkey only</string>
+    <string name="not_required">Not required</string>
+    <string name="keys_only_in_team_vaults">Keys only in team vaults</string>
+    <string name="session_lifetime">Session lifetime</string>
+    <string name="hours_n">%1$d h</string>
+    <string name="server_default">server default</string>
+    <string name="sign_in_only_through_sso">Sign in only through SSO</string>
+    <string name="allowed_email_domains">Allowed e-mail domains</string>
+    <string name="any_domain">any</string>
+    <string name="approve_new_devices">Approve new devices</string>
+    <string name="audit_log_retention">Audit log retention</string>
+    <string name="days_n">%1$d days</string>
+    <string name="roles_and_policies_hint">Who may do what; MFA, keys, sessions</string>
+    <plurals name="members_count">
+        <item quantity="one">%1$d member</item>
+        <item quantity="other">%1$d members</item>
+    </plurals>
+    <plurals name="permissions_count">
+        <item quantity="one">%1$d permission</item>
+        <item quantity="other">%1$d permissions</item>
+    </plurals>
 </resources>

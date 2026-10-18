@@ -354,6 +354,7 @@ fn cfg(server: &Server, creds: Option<(&str, &str)>) -> WebDavConfig {
         client_identity: None,
         connect_timeout: Duration::from_secs(5),
         spool_dir: Some(std::env::temp_dir()),
+        proxy: None,
     }
 }
 

@@ -1,6 +1,8 @@
 package com.termoso.android.data
 
 import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.net.ConnectivityManager
 import android.os.Environment
 import com.termoso.core.LinuxDistro
@@ -10,6 +12,8 @@ import com.termoso.core.LinuxShell
 import com.termoso.core.LinuxStage
 import com.termoso.core.linuxDistros
 import com.termoso.core.linuxInstall
+import com.termoso.core.linuxInstallFile
+import com.termoso.core.linuxInstallUrl
 import com.termoso.core.linuxInstalled
 import com.termoso.core.linuxRemove
 import com.termoso.core.linuxShell
@@ -52,16 +56,54 @@ class LinuxManager(private val context: Context) {
 
     /** Download and unpack `distroId`; progress and the result arrive on the flows. */
     fun install(distroId: String) {
+        start(distroId) { linuxInstall(rootDir.absolutePath, distroId, dnsServers(), it) }
+    }
+
+    /**
+     * Copy a user-picked archive (SAF) into our cache and install it as a
+     * custom root filesystem. The copy is deleted by Rust after unpacking.
+     */
+    suspend fun installFromUri(uri: Uri) {
         if (_progress.value != null) return
         _error.value = null
-        _progress.value = LinuxInstallProgress(distroId, LinuxStage.DOWNLOADING, 0u, 0u)
-        linuxInstall(
-            rootDir.absolutePath,
-            distroId,
-            dnsServers(),
+        val resolver = context.contentResolver
+        val display = runCatching {
+            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            }
+        }.getOrNull() ?: uri.lastPathSegment ?: "rootfs"
+        val name = display.removeSuffix(".xz").removeSuffix(".gz").removeSuffix(".tar").removeSuffix(".tgz").removeSuffix(".txz")
+        val copy = File(context.cacheDir, "rootfs-import.img")
+        val copied = withContext(Dispatchers.IO) {
+            runCatching {
+                resolver.openInputStream(uri)!!.use { input -> copy.outputStream().use { input.copyTo(it) } }
+            }
+        }
+        if (copied.isFailure) {
+            copy.delete()
+            _error.value = copied.exceptionOrNull()?.message ?: "Could not read the file"
+            return
+        }
+        start(name) { linuxInstallFile(rootDir.absolutePath, copy.absolutePath, name, dnsServers(), it) }
+    }
+
+    /** Download an archive from `url` (optionally verified against `sha256`) and install it. */
+    fun installFromUrl(url: String, sha256: String?, name: String) {
+        val label = name.trim().ifEmpty { url.trim().substringAfterLast('/').ifEmpty { "Custom Linux" } }
+        start(label) {
+            linuxInstallUrl(rootDir.absolutePath, url.trim(), sha256?.trim()?.ifEmpty { null }, label, dnsServers(), it)
+        }
+    }
+
+    /** `label` is what the progress card shows: a distro id or a custom image's name. */
+    private fun start(label: String, run: (LinuxInstallListener) -> Unit) {
+        if (_progress.value != null) return
+        _error.value = null
+        _progress.value = LinuxInstallProgress(label, LinuxStage.DOWNLOADING, 0u, 0u)
+        run(
             object : LinuxInstallListener {
                 override fun onProgress(stage: LinuxStage, done: ULong, total: ULong) {
-                    _progress.value = LinuxInstallProgress(distroId, stage, done, total)
+                    _progress.value = LinuxInstallProgress(label, stage, done, total)
                 }
 
                 override fun onFinished(error: String?) {

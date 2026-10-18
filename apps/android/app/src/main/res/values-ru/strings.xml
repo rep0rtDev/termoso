@@ -308,6 +308,18 @@
     <string name="configuring">Настройка</string>
     <string name="choose_a_distribution">Выберите дистрибутив</string>
     <string name="replace_with">Заменить на</string>
+    <string name="shortcut_new_connection">Новое подключение</string>
+    <string name="shortcut_local_terminal">Локальный терминал</string>
+    <string name="shortcut_sftp">SFTP</string>
+    <string name="custom_rootfs">Свой образ</string>
+    <string name="custom_rootfs_from_file">Из файла…</string>
+    <string name="custom_rootfs_from_file_hint">tar, tar.gz или tar.xz с /bin/sh под этот аппарат (Debian, Fedora, Arch…)</string>
+    <string name="custom_rootfs_from_url">По ссылке…</string>
+    <string name="custom_rootfs_from_url_hint">Прямая ссылка на архив rootfs, при желании с проверкой SHA-256</string>
+    <string name="rootfs_url">URL</string>
+    <string name="rootfs_sha256_optional">SHA-256 (необязательно)</string>
+    <string name="rootfs_name_optional">Название (необязательно)</string>
+    <string name="install_action">Установить</string>
     <string name="android_shell">Оболочка Android</string>
     <string name="files">Файлы</string>
     <string name="files_protocols_subtitle">SFTP / WebDAV</string>
@@ -388,6 +400,7 @@
     <string name="alias">Псевдоним</string>
     <string name="hostname_or_ip_address">Имя хоста или IP-адрес</string>
     <string name="group">Группа</string>
+    <string name="proxy_credentials_hint">Используются, если прокси требует вход. У SOCKS4 пароля нет.</string>
     <string name="none">Нет</string>
     <string name="tags">Теги</string>
     <string name="port">Порт</string>
@@ -911,6 +924,8 @@
     <string name="you_have_not_been_given_access_to_any">Вам не выдан доступ ни к одному хранилищу этой команды.</string>
     <string name="terminal_sharing">Общий доступ к терминалу</string>
     <string name="members_may_share_a_live_terminal_with_each">Участники могут делиться друг с другом терминалом в реальном времени (сквозное шифрование)</string>
+    <string name="team_requires_two_factor">Эта команда требует двухфакторную аутентификацию. Включите её в аккаунте, чтобы видеть данные команды.</string>
+    <string name="set_up_two_factor">Настроить 2FA</string>
     <string name="require_two_factor_authentication">Требовать двухфакторную аутентификацию</string>
     <string name="members_without_2fa_cannot_open_team_vaults">Участники без 2FA не могут открывать командные хранилища</string>
     <string name="show_who_is_connected">Показывать, кто подключён</string>
@@ -1521,4 +1536,41 @@
     <string name="camera_permission_needed">Для сканирования нужен доступ к камере.</string>
     <string name="confirm_you_are_human">Подтвердите, что вы человек</string>
     <string name="captcha_sheet_hint">Пройдите проверку ниже, чтобы продолжить. Её показывает ваш сервер и Cloudflare.</string>
+    <!-- team roles & policies (read-only) -->
+    <string name="roles_and_policies">Роли и политики</string>
+    <string name="roles">Роли</string>
+    <string name="team_policies">Политики команды</string>
+    <string name="roles_edit_hint">Роли и политики редактируются в веб-кабинете или в десктопном приложении.</string>
+    <string name="default_role">по умолчанию</string>
+    <string name="all_permissions">Все права</string>
+    <string name="hide_permissions">Скрыть права</string>
+    <string name="sensitive_flag">чувствительное</string>
+    <string name="client_flag">клиент</string>
+    <string name="two_factor">Двухфакторная аутентификация</string>
+    <string name="mfa_any">Любой второй фактор</string>
+    <string name="mfa_passkey_only">Только passkey</string>
+    <string name="not_required">Не требуется</string>
+    <string name="keys_only_in_team_vaults">Ключи только в хранилищах команды</string>
+    <string name="session_lifetime">Срок сессии</string>
+    <string name="hours_n">%1$d ч</string>
+    <string name="server_default">по умолчанию сервера</string>
+    <string name="sign_in_only_through_sso">Вход только через SSO</string>
+    <string name="allowed_email_domains">Разрешённые домены e-mail</string>
+    <string name="any_domain">любые</string>
+    <string name="approve_new_devices">Подтверждать новые устройства</string>
+    <string name="audit_log_retention">Хранение журнала аудита</string>
+    <string name="days_n">%1$d дн.</string>
+    <string name="roles_and_policies_hint">Кто что может; MFA, ключи, сессии</string>
+    <plurals name="members_count">
+        <item quantity="one">%1$d участник</item>
+        <item quantity="few">%1$d участника</item>
+        <item quantity="many">%1$d участников</item>
+        <item quantity="other">%1$d участника</item>
+    </plurals>
+    <plurals name="permissions_count">
+        <item quantity="one">%1$d право</item>
+        <item quantity="few">%1$d права</item>
+        <item quantity="many">%1$d прав</item>
+        <item quantity="other">%1$d права</item>
+    </plurals>
 </resources>

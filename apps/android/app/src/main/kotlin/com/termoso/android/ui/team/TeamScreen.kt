@@ -4,6 +4,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,6 +34,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -51,6 +53,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.termoso.android.R
+import com.termoso.android.data.PermissionDenied
+import com.termoso.android.data.can
 import com.termoso.android.data.AccountManager
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
@@ -88,6 +92,8 @@ fun TeamScreen(
     onBack: () -> Unit,
     onOpenVault: (String) -> Unit,
     onActivity: () -> Unit,
+    onOpenAccount: () -> Unit = {},
+    onRoles: () -> Unit = {},
 ) {
     val vm: TeamViewModel = viewModel(key = "team-$teamId") { TeamViewModel(shell.repo, account, teamId) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -148,6 +154,15 @@ fun TeamScreen(
                 .padding(horizontal = 16.dp),
         ) {
             Spacer(Modifier.height(8.dp))
+            if (state.mfaRequired) {
+                SectionCard {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(stringResource(R.string.team_requires_two_factor), style = MaterialTheme.typography.bodyMedium)
+                        Button(onClick = onOpenAccount) { Text(stringResource(R.string.set_up_two_factor)) }
+                    }
+                }
+                if (team == null) return@SubScreen
+            }
             if (team == null) {
                 Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                     if (state.loading) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
@@ -158,7 +173,7 @@ fun TeamScreen(
             SectionCard {
                 ListRow(
                     title = team.name,
-                    subtitle = stringResource(R.string.you_are, team.myRole.label().lowercase(), members(team.memberCount)),
+                    subtitle = stringResource(R.string.you_are, team.myRoleName ?: team.myRole.label().lowercase(), members(team.memberCount)),
                     leading = { IconTile(Icons.Filled.Group) },
                     trailing = if (state.isAdmin) {
                         { IconButton(onClick = { renaming = true }) { Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.rename)) } }
@@ -283,6 +298,15 @@ fun TeamScreen(
                         leading = { IconTile(Icons.Filled.History) },
                         modifier = Modifier.clickable(onClick = onActivity),
                     )
+                    if (team.can("roles.manage") || team.can("policies.manage")) {
+                        RowDivider()
+                        ChevronRow(
+                            title = stringResource(R.string.roles_and_policies),
+                            subtitle = stringResource(R.string.roles_and_policies_hint),
+                            leading = { IconTile(Icons.Filled.Lock) },
+                            modifier = Modifier.clickable(onClick = onRoles),
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(24.dp))
@@ -379,7 +403,10 @@ fun TeamScreen(
             onConfirm = {
                 deleting = false
                 scope.launch {
-                    runCatching { vm.delete() }
+                    runCatching {
+                        if (!team.can("team.delete")) throw PermissionDenied("team.delete", team.name)
+                        vm.delete()
+                    }
                         .onSuccess { shell.notify(str(R.string.team_deleted)); onBack() }
                         .onFailure { shell.notify(it.userMessage()) }
                 }

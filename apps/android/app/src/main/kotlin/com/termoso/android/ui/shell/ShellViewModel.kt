@@ -173,6 +173,23 @@ class ShellViewModel(
             .map { !it.protocol.equals("webdav", true) }
             .getOrDefault(true)
 
+    /**
+     * SFTP for an open terminal: reuses its SSH login (no prompts); a terminal
+     * without one to reuse (Mosh, after a disconnect) falls back to a fresh
+     * connection to the same host.
+     */
+    suspend fun openSftpSession(session: TerminalSession): SftpConnection? {
+        val reused = runCatching { sftp.openSession(session) }.getOrNull()
+        if (reused != null) return reused
+        val hostId = session.hostId
+        val vaultId = session.vaultId
+        return when {
+            hostId != null && vaultId != null -> openSftpHost(hostId, vaultId)
+            session.quick != null -> openSftpQuick(session.quick)
+            else -> null
+        }
+    }
+
     suspend fun openSftpQuick(target: QuickTarget): SftpConnection? =
         runCatching { sftp.openQuick(target) }
             .onFailure { notify(it.userMessage()) }

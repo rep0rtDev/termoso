@@ -55,6 +55,7 @@ import { sizes } from "@/theme/theme";
 import { LogViewer, type ViewerHandle } from "./LogViewer";
 import { authorName, authorsOf, recordingState, visibleLogs } from "./team";
 import { tr, trn, trx } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 function duration(secs: number | null): string {
   if (secs === null) return "—";
@@ -246,6 +247,7 @@ function Viewer({
   });
 
   const exportLog = async () => {
+    if (!requirePerm(log.vaultId, "logs.export")) return null;
     const stamp = log.startedAt.replace(/[:.]/g, "-");
     const path = await saveFile({
       title: tr("Export recording"),
@@ -316,7 +318,9 @@ function Viewer({
                   : tr("Pin for the team")
             }
             disabled={!log.canAnnotate || op.isPending}
-            onClick={() => annotate({ pinned: !log.pinned }, log.pinned ? "Unpinned" : "Pinned")}
+            onClick={() =>
+              annotate({ pinned: !log.pinned }, log.pinned ? tr("Unpinned") : tr("Pinned"))
+            }
           >
             {log.pinned ? (
               <PushPinRoundedIcon fontSize="small" color="primary" />
@@ -466,6 +470,7 @@ function Viewer({
           onCancel={() => setDialog({ kind: "none" })}
           onConfirm={() =>
             op.mutate(async () => {
+              if (!requirePerm(log.vaultId, "logs.delete")) return null;
               await ipc.logDelete(log.id);
               onDeleted();
               return tr("Recording deleted");
@@ -782,7 +787,7 @@ export function LogsPage() {
                       </>
                     }
                     subtitle={`${
-                      l.author && l.team ? `${l.mine ? "You" : authorName(l.author)} · ` : ""
+                      l.author && l.team ? `${l.mine ? tr("You") : authorName(l.author)} · ` : ""
                     }${new Date(l.startedAt).toLocaleString()} · ${duration(
                       l.durationSecs,
                     )} · ${formatSize(l.sizeBytes)}`}

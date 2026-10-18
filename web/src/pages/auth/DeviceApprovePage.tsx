@@ -1,4 +1,5 @@
 import { useState, type SubmitEvent } from "react";
+import { tr } from "@/i18n";
 import { Alert, Button, Stack, TextField } from "@mui/material";
 import { Navigate, useLocation, useNavigate } from "react-router";
 import { errorMessage } from "@/api/client";
@@ -35,7 +36,7 @@ export function DeviceApprovePage() {
           replace: true,
           state: { mfaToken: outcome.mfaToken, methods: outcome.methods, next: state.next },
         });
-      else setError("Unexpected response from server");
+      else setError(tr("Unexpected response from server"));
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -59,14 +60,16 @@ export function DeviceApprovePage() {
   return (
     <form onSubmit={submit}>
       <AuthTitle
-        title="Approve this browser"
-        subtitle={`This is a new device. We sent a confirmation code to ${state.emailHint}.`}
+        title={tr("Approve this browser")}
+        subtitle={tr("This is a new device. We sent a confirmation code to {emailHint}.", {
+          emailHint: state.emailHint,
+        })}
       />
       <Stack spacing={2}>
         {error && <Alert severity="error">{error}</Alert>}
-        {resent && <Alert severity="success">A new code was sent.</Alert>}
+        {resent && <Alert severity="success">{tr("A new code was sent.")}</Alert>}
         <TextField
-          label="Confirmation code"
+          label={tr("Confirmation code")}
           autoFocus
           required
           autoComplete="one-time-code"
@@ -81,10 +84,10 @@ export function DeviceApprovePage() {
           size="large"
           disabled={busy || code.trim().length === 0}
         >
-          Approve
+          {tr("Approve")}
         </Button>
         <Button color="inherit" onClick={() => void resend()} disabled={busy}>
-          Resend code
+          {tr("Resend code")}
         </Button>
       </Stack>
     </form>
