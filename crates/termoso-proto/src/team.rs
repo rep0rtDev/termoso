@@ -54,6 +54,9 @@ schema! {
         /// Members see who is connected to which team-vault host right now.
         #[serde(default)]
         pub presence_enabled: bool,
+        /// Team policies (0.9.0+; `None` from older servers).
+        #[serde(default)]
+        pub policies: Option<TeamPolicies>,
     }
 }
 
@@ -687,5 +690,89 @@ schema! {
     pub struct RoleMappingList {
         /// Mappings.
         pub mappings: Vec<RoleMapping>,
+    }
+}
+
+// ───────────────────────────── policies ─────────────────────────────
+
+schema! {
+    /// Team policies (`GET/PUT /teams/{id}/policies`). Server-enforced unless
+    /// noted; the strictest value across a user's teams applies to them.
+    pub struct TeamPolicies {
+        /// `off` | `any` (TOTP, email or passkey) | `passkey` (WebAuthn only).
+        pub mfa: String,
+        /// `allow` | `deny` — forbid device-only SSH keys in this team's
+        /// vaults. Client-enforced: the server never sees keys.
+        pub local_keys: String,
+        /// Sessions of members expire after this many hours (1..=2160).
+        pub session_ttl_hours: Option<i32>,
+        /// Members with an email in `sso_domains` cannot sign in with a
+        /// password (owner excepted).
+        pub sso_only: bool,
+        /// Provider id members are sent to when `sso_only` applies.
+        pub sso_provider: Option<String>,
+        /// Allow-list of email domains for invitations and SSO-only.
+        pub sso_domains: Vec<String>,
+        /// New devices of members always need email approval.
+        pub device_approval: bool,
+        /// Last change.
+        pub updated_at: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// `PUT /teams/{id}/policies` — only the given fields change.
+    pub struct UpdateTeamPoliciesRequest {
+        /// See [`TeamPolicies::mfa`].
+        #[serde(default)]
+        pub mfa: Option<String>,
+        /// See [`TeamPolicies::local_keys`].
+        #[serde(default)]
+        pub local_keys: Option<String>,
+        /// Hours (1..=2160); `0` clears the limit.
+        #[serde(default)]
+        pub session_ttl_hours: Option<i32>,
+        /// See [`TeamPolicies::sso_only`].
+        #[serde(default)]
+        pub sso_only: Option<bool>,
+        /// Provider id; an empty string clears it.
+        #[serde(default)]
+        pub sso_provider: Option<String>,
+        /// See [`TeamPolicies::sso_domains`].
+        #[serde(default)]
+        pub sso_domains: Option<Vec<String>>,
+        /// See [`TeamPolicies::device_approval`].
+        #[serde(default)]
+        pub device_approval: Option<bool>,
+    }
+}
+
+schema! {
+    /// What applies to the calling user across all their teams (strictest wins).
+    pub struct EffectivePolicies {
+        /// `off` | `any` | `passkey`.
+        pub mfa: String,
+        /// Team that requires it.
+        pub mfa_team_id: Option<Uuid>,
+        /// Whether the user currently satisfies `mfa`.
+        pub mfa_satisfied: bool,
+        /// Shortest session TTL in hours, if any team sets one.
+        pub session_ttl_hours: Option<i32>,
+        /// Teams forbidding device-only keys.
+        pub local_keys_denied_by: Vec<Uuid>,
+        /// Teams forcing device approval.
+        pub device_approval_by: Vec<Uuid>,
+        /// Provider the user must sign in through, if a team requires SSO for them.
+        pub sso_provider: Option<String>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/policies`
+    pub struct TeamPoliciesResponse {
+        /// The team's policies.
+        pub policies: TeamPolicies,
+        /// What applies to the caller across all their teams.
+        pub effective_for_me: EffectivePolicies,
     }
 }

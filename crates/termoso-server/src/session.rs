@@ -131,7 +131,8 @@ pub async fn issue(
 ) -> ApiResult<(String, DateTime<Utc>)> {
     let settings = state.settings().await?;
     let token = random_token();
-    let expires_at = Utc::now() + chrono::Duration::days(settings.session_ttl_days.max(1) as i64);
+    let expires_at = Utc::now()
+        + crate::policy::session_ttl(&state.db, user_id, settings.session_ttl_days).await?;
     // A device holds one live session: signing in again replaces the previous
     // token instead of leaving it valid until it expires.
     sqlx::query(
@@ -262,7 +263,8 @@ pub async fn touch(state: &AppState, info: &SessionInfo, ip: Option<&str>) -> Ap
         info.expires_at
     } else {
         let settings = state.settings().await?;
-        Utc::now() + chrono::Duration::days(settings.session_ttl_days.max(1) as i64)
+        Utc::now()
+            + crate::policy::session_ttl(&state.db, info.user_id, settings.session_ttl_days).await?
     };
     sqlx::query("UPDATE sessions SET last_used_at = now(), expires_at = $2 WHERE id = $1")
         .bind(info.session_id)

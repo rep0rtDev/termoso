@@ -9,6 +9,7 @@ pub mod captcha;
 pub mod history;
 pub mod logs;
 pub mod mfa;
+pub mod policies;
 pub mod roles;
 pub mod server;
 pub mod sshid;
@@ -180,6 +181,10 @@ pub fn router(state: AppState) -> Router {
         .route("/teams/{id}/pending-keys", get(teams::pending_keys))
         .route("/teams/{id}/presence", get(teams::get_presence))
         .route("/teams/{id}/audit", get(crate::audit::list))
+        .route(
+            "/teams/{id}/policies",
+            get(policies::get).put(policies::put),
+        )
         .route("/teams/{id}/permissions", get(roles::catalog))
         .route("/teams/{id}/roles", get(roles::list).post(roles::create))
         .route(
