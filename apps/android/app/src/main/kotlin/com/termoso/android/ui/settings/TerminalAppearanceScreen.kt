@@ -65,6 +65,7 @@ import com.termoso.core.TerminalTheme
 import com.termoso.core.terminalTheme
 import com.termoso.core.terminalThemes
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.produceState
 
 private val cursorStyles = listOf("block" to R.string.block, "underline" to R.string.underline, "beam" to R.string.bar)
 
@@ -73,10 +74,16 @@ private val cursorStyles = listOf("block" to R.string.block, "underline" to R.st
 fun TerminalAppearanceScreen(shell: ShellViewModel, onBack: () -> Unit) {
     val settings by shell.repo.settings.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    val themes = remember { terminalThemes() }
+    // Built-in schemes plus the user's own from the vault (they sync like hosts).
+    val revision by shell.repo.revision.collectAsStateWithLifecycle()
+    val themes by produceState(initialValue = terminalThemes(), revision) {
+        value = runCatching { shell.repo.read { terminalThemesAll(null) } }.getOrDefault(terminalThemes())
+    }
     val darkThemes = remember(themes) { themes.filter { it.dark } }
     val lightThemes = remember(themes) { themes.filter { !it.dark } }
-    val current = remember(settings.terminalTheme) { terminalTheme(settings.terminalTheme) ?: themes.first() }
+    val current = remember(settings.terminalTheme, themes) {
+        themes.firstOrNull { it.id == settings.terminalTheme || it.name == settings.terminalTheme } ?: themes.first()
+    }
 
     fun set(transform: (MobileSettings) -> MobileSettings) {
         scope.launch { shell.repo.updateSettings(transform) }

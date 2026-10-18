@@ -71,6 +71,7 @@ import com.termoso.core.terminalThemes
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.produceState
 
 /**
  * The terminal's side panel as a bottom sheet (Termius keeps it at the right
@@ -338,8 +339,13 @@ private fun ThemesTab(shell: ShellViewModel, session: TerminalSession) {
     val scope = rememberCoroutineScope()
     val settings by shell.repo.settings.collectAsStateWithLifecycle()
     val override by session.themeOverride.collectAsStateWithLifecycle()
-    val themes = remember { terminalThemes() }
-    val global = remember(settings.terminalTheme) { terminalTheme(settings.terminalTheme) ?: themes.first() }
+    val revision by shell.repo.revision.collectAsStateWithLifecycle()
+    val themes by produceState(initialValue = terminalThemes(), revision) {
+        value = runCatching { shell.repo.read { terminalThemesAll(null) } }.getOrDefault(terminalThemes())
+    }
+    val global = remember(settings.terminalTheme, themes) {
+        themes.firstOrNull { it.id == settings.terminalTheme || it.name == settings.terminalTheme } ?: themes.first()
+    }
 
     fun pick(theme: TerminalTheme?) {
         scope.launch { shell.sessions.applySessionTheme(session, theme, global.palette) }

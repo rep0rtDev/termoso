@@ -47,6 +47,7 @@ payloads! {
     CloudImport => "cloud_import",
     Workspace => "workspace",
     LogBookmark => "log_bookmark",
+    ColorScheme => "color_scheme",
 }
 
 /// Decrypted entity as handed to the UI.

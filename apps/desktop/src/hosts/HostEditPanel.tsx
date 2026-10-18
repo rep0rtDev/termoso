@@ -65,7 +65,7 @@ import {
   type WebDavForm,
 } from "@/ipc/types";
 import { useActiveVault } from "@/app/vault";
-import { terminalThemes } from "@/terminal/themes";
+import { allTerminalThemes, useCustomThemes } from "@/terminal/themes";
 import { monoFontFamily, sizes } from "@/theme/theme";
 import { ChainDialog, ProxyDialog } from "./HostAdvancedDialogs";
 import { ConnectedNowCard, useVaultPresence } from "./PresenceViews";
@@ -1118,9 +1118,11 @@ function ThemeField({
   value: string | null;
   onChange: (v: string | null) => void;
 }) {
-  const dark = terminalThemes.filter((t) => t.dark);
-  const light = terminalThemes.filter((t) => !t.dark);
-  const current = terminalThemes.find((t) => t.id === value) ?? null;
+  const custom = useCustomThemes();
+  const all = allTerminalThemes();
+  const dark = all.filter((t) => t.dark && !custom.includes(t));
+  const light = all.filter((t) => !t.dark && !custom.includes(t));
+  const current = all.find((t) => t.id === value) ?? null;
   return (
     <TextField
       select
@@ -1158,6 +1160,13 @@ function ThemeField({
       ))}
       <ListSubheader disableSticky>{tr("Light")}</ListSubheader>
       {light.map((t) => (
+        <MenuItem key={t.id} value={t.id}>
+          <ThemeSwatch background={t.background} ansi={t.ansi} />
+          {t.name}
+        </MenuItem>
+      ))}
+      {custom.length > 0 && <ListSubheader disableSticky>{tr("My schemes")}</ListSubheader>}
+      {custom.map((t) => (
         <MenuItem key={t.id} value={t.id}>
           <ThemeSwatch background={t.background} ansi={t.ansi} />
           {t.name}

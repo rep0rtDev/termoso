@@ -1,10 +1,28 @@
 import { useState } from "react";
-import { Box, ButtonBase, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
+import {
+  Box,
+  Button,
+  ButtonBase,
+  IconButton,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  Typography,
+} from "@mui/material";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import { open as openFile } from "@tauri-apps/plugin-dialog";
+import { toast } from "@/components/Snackbar";
+import * as ipc from "@/ipc/commands";
+import { useColorSchemes, useDeleteColorScheme, useSaveColorScheme, useVaults } from "@/ipc/hooks";
+import { errorMessage, type ColorSchemeData, type Uuid } from "@/ipc/types";
+import { ThemeEditorDialog } from "./ThemeEditorDialog";
 import { useColorScheme } from "@mui/material";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import { SectionCard } from "@/components/ui";
 import {
   AUTO_THEME,
+  customTheme,
   resolveTerminalTheme,
   terminalThemes,
   type TerminalTheme,
@@ -71,7 +89,160 @@ export function ThemeGallery({
           />
         ))}
       </Box>
+      <CustomSchemes value={value} onChange={onChange} filter={filter} />
     </SectionCard>
+  );
+}
+
+/** The user's own schemes (vault `color_scheme` entities): import, create, edit, delete. */
+function CustomSchemes({
+  value,
+  onChange,
+  filter,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  filter: Filter;
+}) {
+  const schemes = useColorSchemes(null);
+  const vaults = useVaults();
+  const save = useSaveColorScheme();
+  const remove = useDeleteColorScheme();
+  const [editing, setEditing] = useState<
+    { id: Uuid; vaultId: Uuid; data: ColorSchemeData } | null | "new"
+  >(null);
+  const unlocked = (vaults.data ?? []).filter((v) => v.unlocked);
+  const targetVault = unlocked.find((v) => v.team_id === null)?.id ?? unlocked[0]?.id;
+
+  const importFile = async () => {
+    if (!targetVault) {
+      toast(tr("Unlock a vault to save colour schemes"), "warning");
+      return;
+    }
+    const picked = await openFile({
+      multiple: false,
+      directory: false,
+      title: tr("Import colour scheme"),
+      filters: [
+        {
+          name: tr("Colour scheme files"),
+          extensions: ["itermcolors", "json", "toml", "yml", "yaml", "conf"],
+        },
+        { name: tr("All files"), extensions: ["*"] },
+      ],
+    });
+    if (typeof picked !== "string") return;
+    try {
+      const out = await ipc.themeImportFile(picked);
+      for (const data of out.schemes) {
+        await save.mutateAsync({ vaultId: targetVault, id: null, data });
+      }
+      toast(tr("Imported {count} scheme(s)", { count: out.schemes.length }), "success");
+      for (const w of out.warnings) toast(w, "warning");
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
+  };
+
+  const list = (schemes.data ?? [])
+    .map((e) => ({ entity: e, theme: customTheme(e) }))
+    .filter(({ theme }) => filter === "all" || (filter === "dark") === theme.dark)
+    .sort((a, b) => a.theme.name.localeCompare(b.theme.name));
+
+  return (
+    <Box sx={{ mt: 2.5 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.25 }}>
+        <Typography variant="subtitle2" sx={{ flex: 1 }}>
+          {tr("My schemes")}
+        </Typography>
+        <Button size="small" onClick={() => void importFile()} disabled={save.isPending}>
+          {tr("Import…")}
+        </Button>
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={() => {
+            if (!targetVault) toast(tr("Unlock a vault to save colour schemes"), "warning");
+            else setEditing("new");
+          }}
+        >
+          {tr("New scheme")}
+        </Button>
+      </Box>
+      {list.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          {tr(
+            "Import a scheme from iTerm2, Windows Terminal, Alacritty, Kitty, Ghostty or Gogh, or build your own. Schemes are stored in the vault and sync to your other devices.",
+          )}
+        </Typography>
+      ) : (
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+            gap: 1.25,
+          }}
+        >
+          {list.map(({ entity, theme }) => (
+            <Box key={theme.id} sx={{ position: "relative" }}>
+              <ThemeCard
+                theme={theme}
+                label={theme.name}
+                selected={value === theme.id}
+                onClick={() => onChange(theme.id)}
+              />
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: 4,
+                  right: 4,
+                  display: "flex",
+                  gap: 0.25,
+                  bgcolor: "background.paper",
+                  borderRadius: 1,
+                  opacity: 0.9,
+                }}
+              >
+                <Tooltip title={tr("Edit")}>
+                  <IconButton
+                    size="small"
+                    onClick={() =>
+                      setEditing({ id: entity.id, vaultId: entity.vault_id, data: entity.data })
+                    }
+                  >
+                    <EditRoundedIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={tr("Delete")}>
+                  <IconButton
+                    size="small"
+                    disabled={remove.isPending}
+                    onClick={() =>
+                      remove.mutate(entity.id, {
+                        onSuccess: () => {
+                          if (value === entity.id) onChange(AUTO_THEME);
+                          toast(tr("Scheme deleted"), "success");
+                        },
+                        onError: (e) => toast(errorMessage(e), "error"),
+                      })
+                    }
+                  >
+                    <DeleteOutlineRoundedIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            </Box>
+          ))}
+        </Box>
+      )}
+      <ThemeEditorDialog
+        key={editing === null ? "closed" : editing === "new" ? "new" : editing.id}
+        open={editing !== null}
+        initial={editing === "new" || editing === null ? null : editing}
+        vaults={vaults.data ?? []}
+        onClose={() => setEditing(null)}
+      />
+    </Box>
   );
 }
 

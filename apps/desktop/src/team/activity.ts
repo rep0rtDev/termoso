@@ -53,6 +53,7 @@ const KIND_LABEL: Record<string, [string, string]> = {
   workspace: [msg("a workspace"), msg("{count} workspaces")],
   workspace_template: [msg("a workspace template"), msg("{count} workspace templates")],
   log_bookmark: [msg("a log bookmark"), msg("{count} log bookmarks")],
+  color_scheme: [msg("a colour scheme"), msg("{count} colour schemes")],
   cloud_import: [msg("a cloud import"), msg("{count} cloud imports")],
 };
 

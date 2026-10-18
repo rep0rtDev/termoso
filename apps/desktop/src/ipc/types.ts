@@ -585,6 +585,23 @@ export interface SerialPortInfo {
 }
 
 /** Raw `proxy` entity payload. */
+/** `color_scheme` entity payload: a user colour scheme synced through the vault. */
+export interface ColorSchemeData {
+  name: string;
+  background: string;
+  foreground: string;
+  cursor: string;
+  /** `#rrggbbaa`; derived from the foreground when absent. */
+  selection?: string | null;
+  /** 16 ANSI colours in xterm order. */
+  ansi: string[];
+}
+
+export interface ThemeImport {
+  schemes: ColorSchemeData[];
+  warnings: string[];
+}
+
 export interface ProxyData {
   kind: "socks4" | "socks5" | "http";
   host: string;

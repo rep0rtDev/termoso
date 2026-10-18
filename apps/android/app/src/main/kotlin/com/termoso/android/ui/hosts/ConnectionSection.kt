@@ -34,6 +34,7 @@ import com.termoso.core.HostChainDraft
 import com.termoso.core.HostDraft
 import com.termoso.core.ProxyDraft
 import com.termoso.core.terminalThemes
+import androidx.compose.runtime.produceState
 
 /** Picker sentinel: "create a new one" entry. */
 private const val NEW = "__new__"
@@ -56,7 +57,7 @@ private val PROXY_KINDS = listOf("socks5" to "SOCKS5", "socks4" to "SOCKS4", "ht
 fun ConnectionSection(state: HostEditorState, draft: HostDraft, vm: HostEditorViewModel) {
     var proxyEditor by remember { mutableStateOf<ProxyDraft?>(null) }
     var chainEditor by remember { mutableStateOf<HostChainDraft?>(null) }
-    val themes = remember { terminalThemes() }
+    val themes by produceState(initialValue = terminalThemes()) { value = vm.allThemes() }
 
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.connection), style = MaterialTheme.typography.labelLarge)

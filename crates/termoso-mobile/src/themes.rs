@@ -3,6 +3,10 @@
 //! between devices renders the same. Settings store a scheme by `id`; names
 //! are accepted too for profiles written before ids existed.
 
+use termoso_core::model::ColorScheme;
+use termoso_core::store::Store;
+use uuid::Uuid;
+
 use crate::terminal::TerminalPalette;
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -58,10 +62,69 @@ pub fn terminal_theme(key: String) -> Option<TerminalTheme> {
     all().into_iter().find(|t| t.id == key || t.name == key)
 }
 
-pub(crate) fn palette_for(key: &str) -> TerminalPalette {
-    terminal_theme(key.to_string())
+/// Palette for a settings key: built-in scheme by id/name, else a user
+/// scheme stored in the vault by entity id; unknown keys fall back to Termoso Dark.
+pub(crate) fn palette_for_in(store: &Store, key: &str) -> TerminalPalette {
+    resolve(store, key)
         .map(|t| t.palette)
         .unwrap_or_else(TerminalPalette::termoso_dark)
+}
+
+fn hex_u32(s: &str) -> Option<u32> {
+    let s = s.trim().strip_prefix('#')?;
+    if s.len() < 6 {
+        return None;
+    }
+    u32::from_str_radix(&s[..6], 16).ok()
+}
+
+/// The user's own schemes (`color_scheme` entities), sorted by name. Entities
+/// with malformed colours are skipped rather than rendering garbage.
+pub(crate) fn custom_themes(store: &Store, vault_id: Option<Uuid>) -> Vec<TerminalTheme> {
+    let mut out: Vec<TerminalTheme> = store
+        .list::<ColorScheme>(vault_id)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|e| {
+            let d = e.data;
+            let ansi: Vec<u32> = d.ansi.iter().filter_map(|c| hex_u32(c)).collect();
+            if ansi.len() != 16 {
+                return None;
+            }
+            let background = hex_u32(&d.background)?;
+            Some(TerminalTheme {
+                id: e.id.to_string(),
+                name: d.name,
+                dark: luminance(background) < 0.5,
+                palette: TerminalPalette {
+                    foreground: hex_u32(&d.foreground)?,
+                    background,
+                    cursor: hex_u32(&d.cursor)?,
+                    ansi,
+                },
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+/// Built-in scheme by id/name, else a user scheme by entity id.
+pub(crate) fn resolve(store: &Store, key: &str) -> Option<TerminalTheme> {
+    terminal_theme(key.to_string()).or_else(|| {
+        let id = Uuid::parse_str(key.trim()).ok()?;
+        store
+            .list::<ColorScheme>(None)
+            .ok()?
+            .into_iter()
+            .any(|e| e.id == id)
+            .then(|| {
+                custom_themes(store, None)
+                    .into_iter()
+                    .find(|t| t.id == key.trim())
+            })
+            .flatten()
+    })
 }
 
 #[rustfmt::skip]

@@ -440,6 +440,7 @@ fn kind_label(kind: Option<&str>, count: u64) -> String {
         Some("workspace") => ("a workspace", "workspaces"),
         Some("workspace_template") => ("a workspace template", "workspace templates"),
         Some("log_bookmark") => ("a log bookmark", "log bookmarks"),
+        Some("color_scheme") => ("a colour scheme", "colour schemes"),
         Some("cloud_import") => ("a cloud import", "cloud imports"),
         Some(k) => {
             return if count == 1 {
