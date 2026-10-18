@@ -442,16 +442,67 @@ schema! {
 /// Every team permission the server understands, as `domain.action`. The
 /// built-in `owner` role holds `*`; everything else is an explicit subset.
 pub const PERMISSIONS: &[&str] = &[
-    "team.view", "team.rename", "team.delete", "team.transfer",
-    "members.view", "members.invite", "members.remove", "members.role", "roles.manage",
-    "vaults.create", "vaults.delete", "vaults.rename", "vaults.members", "vaults.rotate_key",
-    "entities.read", "entities.write", "secrets.reveal",
-    "connect.ssh", "connect.sftp", "connect.port_forward",
+    // team
+    "team.view", "team.rename", "team.settings", "team.delete", "team.transfer",
+    // members
+    "members.view", "members.view_mfa", "members.invite", "members.remove", "members.suspend",
+    "members.role",
+    // invites
+    "invites.view",
+    // roles
+    "roles.manage",
+    // vaults
+    "vaults.create", "vaults.rename", "vaults.archive", "vaults.delete", "vaults.transfer",
+    "vaults.members", "vaults.rotate_key", "vaults.history",
+    // entities
+    "entities.read", "entities.write", "entities.delete", "entities.move", "entities.share_link",
+    // secrets
+    "secrets.reveal", "secrets.copy",
+    // keys
+    "keys.generate", "keys.export",
+    // snippets
+    "snippets.run",
+    // connect
+    "connect.ssh", "connect.sftp", "connect.port_forward", "connect.telnet", "connect.serial",
+    "connect.mosh", "connect.local_terminal", "connect.record", "connect.bridge",
+    // live
     "live.start", "live.join", "live.control",
-    "logs.view_own", "logs.view_team", "logs.export",
-    "export.vault", "import.vault",
-    "audit.view", "audit.export", "audit.webhooks",
-    "policies.manage", "sso.manage", "scim.manage",
+    // logs
+    "logs.view_own", "logs.view_team", "logs.export", "logs.delete",
+    // export
+    "export.vault",
+    // import
+    "import.vault",
+    // bridges
+    "bridges.manage", "bridges.use",
+    // sshid
+    "sshid.manage",
+    // ai
+    "ai.use",
+    // mcp
+    "mcp.use",
+    // digest
+    "digest.manage",
+    // audit
+    "audit.view", "audit.view_ips", "audit.export",
+    // webhooks
+    "webhooks.manage",
+    // tokens
+    "tokens.manage",
+    // policies
+    "policies.manage",
+    // sso
+    "sso.manage",
+    // scim
+    "scim.manage", "scim.tokens",
+];
+
+/// Permissions the server cannot enforce on its own: zero-knowledge clients
+/// hold the secrets, so these are honoured by Termoso clients and listed as
+/// such in the catalog (`enforced_by = "client"`).
+pub const CLIENT_ENFORCED_PERMISSIONS: &[&str] = &[
+    "secrets.reveal", "secrets.copy", "keys.export", "snippets.run", "connect.serial",
+    "connect.local_terminal",
 ];
 
 /// Permissions only the owner may hold; they cannot be put on any role.
@@ -475,6 +526,9 @@ schema! {
         pub description: String,
         /// Granting this widens access to secrets or administration.
         pub dangerous: bool,
+        /// `server` (checked on every request) or `client` (honoured by Termoso
+        /// clients; the server cannot see the secret).
+        pub enforced_by: String,
     }
 }
 
