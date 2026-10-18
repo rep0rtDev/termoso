@@ -100,11 +100,14 @@ fn validate_name(name: &str) -> ApiResult<String> {
 
 #[utoipa::path(get, path = "/api/v1/teams", tag = "teams", responses((status = 200, body = TeamList)))]
 pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<TeamList>> {
-    let rows: Vec<(Uuid, String, DateTime<Utc>, String, i64, bool, bool, bool)> = sqlx::query_as(
+    #[allow(clippy::type_complexity)]
+    let rows: Vec<(Uuid, String, DateTime<Utc>, String, i64, bool, bool, bool, Uuid, String, String, Vec<String>)> = sqlx::query_as(
         "SELECT t.id, t.name, t.created_at, m.role,
                 (SELECT count(*) FROM team_members x WHERE x.team_id = t.id),
-                t.multiplayer_enabled, t.require_mfa, t.presence_enabled
+                t.multiplayer_enabled, t.require_mfa, t.presence_enabled,
+                r.id, r.slug, r.name, r.permissions
          FROM teams t JOIN team_members m ON m.team_id = t.id
+         JOIN team_roles r ON r.id = m.role_id
          WHERE m.user_id = $1 ORDER BY t.created_at",
     )
     .bind(auth.user_id())
@@ -123,12 +126,21 @@ pub async fn list(State(state): State<AppState>, auth: Auth) -> ApiResult<Json<T
                     multiplayer_enabled,
                     require_mfa,
                     presence_enabled,
+                    role_id,
+                    role_slug,
+                    role_name,
+                    role_perms,
                 )| {
+                    let level = parse_team_role(&role);
+                    let (my_role_ref, my_permissions) =
+                        crate::authz::role_parts(level, role_id, role_slug, role_name, role_perms);
                     Team {
                         id,
                         name,
                         created_at,
                         my_role: parse_team_role(&role),
+                        my_role_ref: Some(my_role_ref),
+                        my_permissions,
                         member_count,
                         multiplayer_enabled,
                         require_mfa,
@@ -164,9 +176,11 @@ pub async fn create(
     .bind(auth.user_id())
     .fetch_one(&mut *tx)
     .await?;
-    sqlx::query("INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'owner')")
+    let owner_role_id = crate::authz::seed_builtin_roles(&mut tx, id).await?;
+    sqlx::query("INSERT INTO team_members (team_id, user_id, role, role_id) VALUES ($1, $2, 'owner', $3)")
         .bind(id)
         .bind(auth.user_id())
+        .bind(owner_role_id)
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
@@ -181,6 +195,8 @@ pub async fn create(
         name,
         created_at,
         my_role: TeamRole::Owner,
+        my_role_ref: Some(RoleRef { id: owner_role_id, slug: "owner".into(), name: "Owner".into() }),
+        my_permissions: vec!["*".to_string()],
         member_count: 1,
         multiplayer_enabled: true,
         require_mfa: false,
@@ -194,7 +210,8 @@ pub async fn get(
     auth: Auth,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<Team>> {
-    let role = my_role(&state.db, id, auth.user_id()).await?;
+    let membership = crate::authz::membership(&state.db, id, auth.user_id()).await?;
+    let role = membership.level;
     let (name, created_at, member_count, multiplayer_enabled, require_mfa, presence_enabled): (
         String,
         DateTime<Utc>,
@@ -215,6 +232,8 @@ pub async fn get(
         name,
         created_at,
         my_role: role,
+        my_role_ref: Some(membership.role.clone()),
+        my_permissions: membership.permission_list(),
         member_count,
         multiplayer_enabled,
         require_mfa,
@@ -230,7 +249,7 @@ pub async fn update(
     Path(id): Path<Uuid>,
     Body(req): Body<UpdateTeamRequest>,
 ) -> ApiResult<Json<Team>> {
-    require_admin(&state, id, auth.user_id()).await?;
+    crate::authz::require(&state, id, auth.user_id(), "team.rename").await?;
     if let Some(name) = &req.name {
         let name = validate_name(name)?;
         sqlx::query("UPDATE teams SET name = $2, updated_at = now() WHERE id = $1")
@@ -373,15 +392,21 @@ pub async fn members(
         String,
         String,
         DateTime<Utc>,
+        Uuid,
+        String,
+        String,
+        String,
         bool,
         bool,
     );
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT u.id, u.email, u.display_name, u.avatar_tag, m.role, u.public_key, m.joined_at,
+                r.id, r.slug, r.name, m.role_source,
                 u.totp_enabled
                 OR EXISTS (SELECT 1 FROM webauthn_credentials w WHERE w.user_id = u.id),
                 u.managed_by_team_id IS NOT DISTINCT FROM m.team_id
          FROM team_members m JOIN users u ON u.id = m.user_id
+         JOIN team_roles r ON r.id = m.role_id
          WHERE m.team_id = $1 ORDER BY m.joined_at",
     )
     .bind(id)
@@ -399,10 +424,16 @@ pub async fn members(
                     role,
                     public_key,
                     joined_at,
+                    role_id,
+                    role_slug,
+                    role_name,
+                    role_source,
                     mfa,
                     managed,
                 )| {
                     TeamMember {
+                        role_ref: Some(RoleRef { id: role_id, slug: role_slug, name: role_name }),
+                        role_source: Some(role_source),
                         user_id,
                         email,
                         display_name,
@@ -428,67 +459,115 @@ pub async fn update_member(
     Path((id, user_id)): Path<(Uuid, Uuid)>,
     Body(req): Body<UpdateTeamMemberRequest>,
 ) -> ApiResult<NoContent> {
-    let me = my_role(&state.db, id, auth.user_id()).await?;
-    let target = my_role(&state.db, id, user_id)
+    let me = crate::authz::membership(&state.db, id, auth.user_id()).await?;
+    let target = crate::authz::membership(&state.db, id, user_id)
         .await
         .map_err(|_| Error::not_found("Member"))?;
-    match req.role {
-        TeamRole::Owner => {
-            if me != TeamRole::Owner {
-                return Err(Error::forbidden("Only the owner can transfer ownership"));
-            }
-            let mut tx = state.db.begin().await?;
-            sqlx::query(
-                "UPDATE team_members SET role = 'admin' WHERE team_id = $1 AND user_id = $2",
-            )
-            .bind(id)
-            .bind(auth.user_id())
-            .execute(&mut *tx)
-            .await?;
-            sqlx::query(
-                "UPDATE team_members SET role = 'owner' WHERE team_id = $1 AND user_id = $2",
-            )
+    // Resolve the requested role: `role_id` (0.9.0 clients) wins over the
+    // coarse `role` level.
+    let (new_role_id, new_slug, new_level): (Uuid, String, TeamRole) = match req.role_id {
+        Some(rid) => {
+            let row: Option<(String,)> =
+                sqlx::query_as("SELECT slug FROM team_roles WHERE team_id = $1 AND id = $2")
+                    .bind(id)
+                    .bind(rid)
+                    .fetch_optional(&state.db)
+                    .await?;
+            let (slug,) = row.ok_or_else(|| Error::not_found("Role"))?;
+            let level = match slug.as_str() {
+                "owner" => TeamRole::Owner,
+                "admin" => TeamRole::Admin,
+                _ => TeamRole::Member,
+            };
+            (rid, slug, level)
+        }
+        None => {
+            let rid = crate::authz::role_id_for_level(&state.db, id, req.role).await?;
+            (rid, team_role_str(req.role).to_string(), req.role)
+        }
+    };
+    if new_level == TeamRole::Owner {
+        if me.level != TeamRole::Owner {
+            return Err(Error::forbidden("Only the owner can transfer ownership"));
+        }
+        if user_id == auth.user_id() {
+            return Err(Error::bad_request("You already own this team"));
+        }
+        let admin_role = crate::authz::builtin_role_id(&state.db, id, "admin").await?;
+        let mut tx = state.db.begin().await?;
+        sqlx::query(
+            "UPDATE team_members SET role = 'admin', role_id = $3, role_source = 'manual'
+             WHERE team_id = $1 AND user_id = $2",
+        )
+        .bind(id)
+        .bind(auth.user_id())
+        .bind(admin_role)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "UPDATE team_members SET role = 'owner', role_id = $3, role_source = 'manual'
+             WHERE team_id = $1 AND user_id = $2",
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(new_role_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("UPDATE teams SET owner_id = $2, updated_at = now() WHERE id = $1")
             .bind(id)
             .bind(user_id)
             .execute(&mut *tx)
             .await?;
-            sqlx::query("UPDATE teams SET owner_id = $2, updated_at = now() WHERE id = $1")
-                .bind(id)
-                .bind(user_id)
-                .execute(&mut *tx)
-                .await?;
-            // An owner answers to nobody: the account stops being managed.
-            sqlx::query(
-                "UPDATE users SET managed_by_team_id = NULL WHERE id = $1 AND managed_by_team_id = $2",
-            )
-            .bind(user_id)
-            .bind(id)
-            .execute(&mut *tx)
-            .await?;
-            tx.commit().await?;
+        // An owner answers to nobody: the account stops being managed.
+        sqlx::query(
+            "UPDATE users SET managed_by_team_id = NULL WHERE id = $1 AND managed_by_team_id = $2",
+        )
+        .bind(user_id)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+    } else {
+        if !me.has("members.role") {
+            return Err(me.denied("members.role"));
         }
-        TeamRole::Admin | TeamRole::Member => {
-            if !me.is_admin() {
-                return Err(Error::forbidden("Team admin role required"));
-            }
-            if target == TeamRole::Owner {
-                return Err(Error::forbidden("Transfer ownership first"));
-            }
-            sqlx::query("UPDATE team_members SET role = $3 WHERE team_id = $1 AND user_id = $2")
-                .bind(id)
-                .bind(user_id)
-                .bind(team_role_str(req.role))
-                .execute(&state.db)
-                .await?;
+        if target.level == TeamRole::Owner {
+            return Err(Error::forbidden("Transfer ownership first"));
         }
+        // Nobody hands out permissions they do not hold themselves.
+        if me.level != TeamRole::Owner {
+            let (perms,): (Vec<String>,) =
+                sqlx::query_as("SELECT permissions FROM team_roles WHERE id = $1")
+                    .bind(new_role_id)
+                    .fetch_one(&state.db)
+                    .await?;
+            if let Some(p) = perms.iter().find(|p| !me.has(p)) {
+                return Err(Error::forbidden(format!(
+                    "You cannot assign `{new_slug}`: it grants `{p}`, which you do not hold"
+                )));
+            }
+        }
+        sqlx::query(
+            "UPDATE team_members SET role = $3, role_id = $4, role_source = 'manual'
+             WHERE team_id = $1 AND user_id = $2",
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(team_role_str(new_level))
+        .bind(new_role_id)
+        .execute(&state.db)
+        .await?;
     }
     audit::record(
         &state.db,
         audit::Entry::new(id, &auth, "member.role")
             .user(user_id)
             .details(serde_json::json!({
-                "role": team_role_str(req.role),
-                "previous_role": team_role_str(target),
+                "role": new_slug,
+                "role_id": new_role_id,
+                "previous_role": target.role.slug,
+                "previous_role_id": target.role.id,
+                "source": "manual",
             })),
     )
     .await;
@@ -550,7 +629,7 @@ pub async fn remove_member(
     auth: Auth,
     Path((id, user_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<NoContent> {
-    require_admin(&state, id, auth.user_id()).await?;
+    crate::authz::require(&state, id, auth.user_id(), "members.remove").await?;
     let target = my_role(&state.db, id, user_id)
         .await
         .map_err(|_| Error::not_found("Member"))?;
@@ -714,7 +793,7 @@ pub async fn invites(
     auth: Auth,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<InviteList>> {
-    require_admin(&state, id, auth.user_id()).await?;
+    crate::authz::require(&state, id, auth.user_id(), "members.invite").await?;
     let rows: Vec<(Uuid, String, String, Uuid, DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
         "SELECT id, email, role, invited_by, created_at, expires_at FROM team_invites
          WHERE team_id = $1 AND accepted_at IS NULL AND expires_at > now() ORDER BY created_at",
@@ -747,7 +826,7 @@ pub async fn create_invite(
     Path(id): Path<Uuid>,
     Body(req): Body<CreateInviteRequest>,
 ) -> ApiResult<Json<CreatedInvite>> {
-    require_admin(&state, id, auth.user_id()).await?;
+    crate::authz::require(&state, id, auth.user_id(), "members.invite").await?;
     if req.role == TeamRole::Owner {
         return Err(Error::bad_request("Cannot invite as owner"));
     }
@@ -865,7 +944,7 @@ pub async fn delete_invite(
     auth: Auth,
     Path((id, invite_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<NoContent> {
-    require_admin(&state, id, auth.user_id()).await?;
+    crate::authz::require(&state, id, auth.user_id(), "members.invite").await?;
     let res: Option<(String,)> = sqlx::query_as(
         "DELETE FROM team_invites WHERE id = $1 AND team_id = $2 AND accepted_at IS NULL RETURNING email",
     )
@@ -927,7 +1006,10 @@ pub async fn apply_invite(
 ) -> ApiResult<NoContent> {
     let role = if role == "owner" { "member" } else { role };
     sqlx::query(
-        "INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)
+        "INSERT INTO team_members (team_id, user_id, role, role_id)
+         VALUES ($1, $2, $3, COALESCE(
+             (SELECT id FROM team_roles WHERE team_id = $1 AND slug = $3 AND builtin),
+             (SELECT default_role_id FROM teams WHERE id = $1)))
          ON CONFLICT (team_id, user_id) DO NOTHING",
     )
     .bind(team_id)

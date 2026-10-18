@@ -6,6 +6,7 @@ pub mod ai;
 pub mod auth;
 pub mod bridges;
 pub mod captcha;
+pub mod roles;
 pub mod history;
 pub mod logs;
 pub mod mfa;
@@ -179,6 +180,11 @@ pub fn router(state: AppState) -> Router {
         .route("/teams/{id}/pending-keys", get(teams::pending_keys))
         .route("/teams/{id}/presence", get(teams::get_presence))
         .route("/teams/{id}/audit", get(crate::audit::list))
+        .route("/teams/{id}/permissions", get(roles::catalog))
+        .route("/teams/{id}/roles", get(roles::list).post(roles::create))
+        .route("/teams/{id}/roles/{role_id}", patch(roles::update).delete(roles::delete))
+        .route("/teams/{id}/default-role", put(roles::set_default))
+        .route("/teams/{id}/role-mappings", get(roles::mappings).put(roles::set_mappings))
         .route(
             "/teams/{id}/digest",
             get(crate::digest::get).put(crate::digest::put),
