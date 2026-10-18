@@ -108,6 +108,12 @@ pub struct Config {
     /// Extra PEM bundle trusted by `syslog_tls` webhooks in addition to the
     /// OS trust store (private CAs). `TERMOSO_WEBHOOKS_SYSLOG_CA=/path.pem`.
     pub webhooks_syslog_ca: Option<String>,
+    /// Where this server keeps its data (e.g. `eu`, `us`); stamped on teams
+    /// at creation and shown to clients. Default: unset.
+    pub data_region: Option<String>,
+    /// Days between an owner scheduling team deletion and the purge
+    /// (0 = immediate). Default: 7.
+    pub team_deletion_grace_days: u32,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -377,6 +383,8 @@ impl Default for Config {
             audit_sink: false,
             webhooks_allow_private: false,
             webhooks_syslog_ca: None,
+            data_region: None,
+            team_deletion_grace_days: 7,
         }
     }
 }

@@ -8,6 +8,7 @@ pub mod ai;
 pub mod auth;
 pub mod bridges;
 pub mod captcha;
+pub mod gdpr;
 pub mod history;
 pub mod idp;
 pub mod logs;
@@ -295,6 +296,12 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/teams/{id}/access-requests/{rid}/revoke",
             post(access::revoke),
+        )
+        .route("/teams/{id}/data", get(gdpr::status))
+        .route("/teams/{id}/export", get(gdpr::export))
+        .route(
+            "/teams/{id}/deletion",
+            post(gdpr::schedule).delete(gdpr::cancel),
         )
         .route("/teams/{id}/rotation", get(rotation::overview))
         .route("/teams/{id}/rotation/jobs", post(rotation::create))

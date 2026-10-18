@@ -26,6 +26,7 @@ pub async fn info(
         sso_providers: state.sso.list(),
         team_idp: state.cfg.team_idp,
         sso_only: settings.sso_only,
+        region: state.cfg.data_region.clone(),
         home_team: crate::enterprise::home_team(&state, &settings).await?,
         features: ServerFeatures {
             session_logs: state.storage.is_some(),

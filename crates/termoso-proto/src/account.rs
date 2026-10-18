@@ -176,6 +176,9 @@ schema! {
         /// Corporate mode: only SSO sign-in is accepted.
         #[serde(default)]
         pub sso_only: bool,
+        /// Data-residency label of this server (`TERMOSO_DATA_REGION`).
+        #[serde(default)]
+        pub region: Option<String>,
         /// Corporate mode: the team every account joins automatically.
         #[serde(default)]
         pub home_team: Option<HomeTeam>,

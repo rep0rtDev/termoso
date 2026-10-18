@@ -173,11 +173,12 @@ pub async fn create(
     let id = Uuid::new_v4();
     let mut tx = state.db.begin().await?;
     let (created_at,): (DateTime<Utc>,) = sqlx::query_as(
-        "INSERT INTO teams (id, name, owner_id) VALUES ($1, $2, $3) RETURNING created_at",
+        "INSERT INTO teams (id, name, owner_id, region) VALUES ($1, $2, $3, $4) RETURNING created_at",
     )
     .bind(id)
     .bind(&name)
     .bind(auth.user_id())
+    .bind(&state.cfg.data_region)
     .fetch_one(&mut *tx)
     .await?;
     let owner_role_id = crate::authz::seed_builtin_roles(&mut tx, id).await?;
@@ -346,16 +347,9 @@ pub async fn update(
     get(State(state), auth, Path(id)).await
 }
 
-#[utoipa::path(delete, path = "/api/v1/teams/{id}", tag = "teams", params(("id" = Uuid, Path)), responses((status = 204)))]
-pub async fn delete(
-    State(state): State<AppState>,
-    auth: Auth,
-    Path(id): Path<Uuid>,
-) -> ApiResult<NoContent> {
-    let role = my_role(&state.db, id, auth.user_id()).await?;
-    if role != TeamRole::Owner && !auth.session.is_admin {
-        return Err(Error::forbidden("Only the owner can delete a team"));
-    }
+/// Hard-delete a team: rows cascade, log objects are removed from storage,
+/// members are told to refresh. Returns the former member ids.
+pub async fn purge(state: &AppState, id: Uuid) -> ApiResult<Vec<Uuid>> {
     let members = member_ids(&state.db, id).await?;
     let log_keys: Vec<(String,)> =
         sqlx::query_as("SELECT l.object_key FROM session_logs l JOIN vaults v ON v.id = l.vault_id WHERE v.team_id = $1")
@@ -374,13 +368,33 @@ pub async fn delete(
         }
     }
     events::publish(
-        &state,
+        state,
         Event::TeamsUpdated {
             user_ids: members.clone(),
         },
     )
     .await?;
-    events::publish(&state, Event::VaultsUpdated { user_ids: members }).await?;
+    events::publish(
+        state,
+        Event::VaultsUpdated {
+            user_ids: members.clone(),
+        },
+    )
+    .await?;
+    Ok(members)
+}
+
+#[utoipa::path(delete, path = "/api/v1/teams/{id}", tag = "teams", params(("id" = Uuid, Path)), responses((status = 204)))]
+pub async fn delete(
+    State(state): State<AppState>,
+    auth: Auth,
+    Path(id): Path<Uuid>,
+) -> ApiResult<NoContent> {
+    let role = my_role(&state.db, id, auth.user_id()).await?;
+    if role != TeamRole::Owner && !auth.session.is_admin {
+        return Err(Error::forbidden("Only the owner can delete a team"));
+    }
+    purge(&state, id).await?;
     users::security_event(
         &state,
         auth.user_id(),

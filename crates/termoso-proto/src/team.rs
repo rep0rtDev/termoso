@@ -474,6 +474,7 @@ pub const PERMISSIONS: &[&str] = &[
     "acl.manage",
     "rotation.manage",
     "access.approve",
+    "team.export",
     "vaults.history",
     // entities
     "entities.read",
@@ -956,6 +957,32 @@ schema! {
         /// Note for the requester.
         #[serde(default)]
         pub note: Option<String>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/data`: residency and pending deletion.
+    pub struct TeamDataStatus {
+        /// Region the team's data was created in (server-defined label).
+        pub region: Option<String>,
+        /// Region label of the server answering.
+        pub server_region: Option<String>,
+        /// Team creation time.
+        pub created_at: DateTime<Utc>,
+        /// When the team will be purged, if deletion is scheduled.
+        pub deletion_scheduled_at: Option<DateTime<Utc>>,
+        /// Owner who scheduled it.
+        pub deletion_requested_by: Option<Uuid>,
+        /// Grace period of this server in days (0 = immediate).
+        pub deletion_grace_days: i32,
+    }
+}
+
+schema! {
+    /// Schedule team deletion; the name must match to confirm.
+    pub struct ScheduleTeamDeletionRequest {
+        /// Exact team name.
+        pub confirm_name: String,
     }
 }
 
