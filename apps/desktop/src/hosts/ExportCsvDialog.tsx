@@ -16,6 +16,7 @@ import { Mono, SettingRow } from "@/components/ui";
 import * as ipc from "@/ipc/commands";
 import { errorMessage, type LocalVault } from "@/ipc/types";
 import { tr, trn, trx, msg } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 const COLUMNS: [string, string][] = [
   ["Groups", msg("group path, joined with /")],
@@ -59,6 +60,8 @@ export function ExportCsvDialog({
     if (!path) return;
     setBusy(true);
     try {
+      if (!requirePerm(vault.id, "export.vault")) return;
+      if (passwords && !requirePerm(vault.id, "secrets.reveal")) return;
       const r = await ipc.hostsExportCsv(vault.id, passwords, path);
       snackbar.notify(
         `Exported ${r.hosts} host${r.hosts === 1 ? "" : "s"}${r.passwordsIncluded ? " with passwords" : ""}`,

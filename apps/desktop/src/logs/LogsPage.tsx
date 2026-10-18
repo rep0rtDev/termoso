@@ -55,6 +55,7 @@ import { sizes } from "@/theme/theme";
 import { LogViewer, type ViewerHandle } from "./LogViewer";
 import { authorName, authorsOf, recordingState, visibleLogs } from "./team";
 import { tr, trn, trx } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 function duration(secs: number | null): string {
   if (secs === null) return "—";
@@ -246,6 +247,7 @@ function Viewer({
   });
 
   const exportLog = async () => {
+    if (!requirePerm(log.vaultId, "logs.export")) return;
     const stamp = log.startedAt.replace(/[:.]/g, "-");
     const path = await saveFile({
       title: tr("Export recording"),
@@ -466,6 +468,7 @@ function Viewer({
           onCancel={() => setDialog({ kind: "none" })}
           onConfirm={() =>
             op.mutate(async () => {
+              if (!requirePerm(log.vaultId, "logs.delete")) return;
               await ipc.logDelete(log.id);
               onDeleted();
               return tr("Recording deleted");

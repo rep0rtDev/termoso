@@ -72,6 +72,7 @@ import { startRun, summarize, useLastRun, watchRun, type SnippetRun } from "./ru
 import { RunTargets, TargetStateIcon } from "./RunStatus";
 import { TargetsDialog } from "./TargetsDialog";
 import { tr, trx } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 const VAR_HINT = "Use {{name}} placeholders; you will be asked for values on run.";
 
@@ -1038,8 +1039,13 @@ export function SnippetsPage() {
                 return null;
               })
             }
-            onRun={() => runOnTargets(selected)}
-            onRunInTerminals={() => setDialog({ kind: "run", snippet: selected })}
+            onRun={() => {
+              if (requirePerm(selected.vaultId, "snippets.run")) runOnTargets(selected);
+            }}
+            onRunInTerminals={() => {
+              if (requirePerm(selected.vaultId, "snippets.run"))
+                setDialog({ kind: "run", snippet: selected });
+            }}
           />
         )}
       </Box>

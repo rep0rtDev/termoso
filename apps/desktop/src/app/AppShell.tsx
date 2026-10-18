@@ -45,6 +45,7 @@ import { startDeepLinks } from "./deepLinks";
 import { startNotifications } from "./notifications";
 import { startTray } from "./tray";
 import { tr } from "@/i18n";
+import { usePermsSync } from "@/team/perms";
 
 /** Report user input to Rust for the inactivity timer, at most once per interval. */
 const ACTIVITY_INTERVAL_MS = 15_000;
@@ -73,6 +74,7 @@ function useActivityReporter(enabled: boolean) {
  * starts from a clean slate.
  */
 export function AppShell() {
+  usePermsSync();
   const status = useVaultStatus();
   useVaultEvents();
   // Outside the lock gate: a hidden window must stay reachable while locked.

@@ -2119,6 +2119,10 @@ export const ru: Readonly<Record<string, string>> = {
   "You've got remote control. Start typing.": "У вас удалённое управление. Начните печатать.",
   "Your Personal vault is encrypted with a key only your devices hold. Nobody else can be given access — copy items to a team vault to share them.":
     "Ваше личное хранилище зашифровано ключом, который есть только у ваших устройств. Дать доступ никому нельзя — чтобы поделиться, скопируйте элементы в командное хранилище.",
+  "Your role in {team} does not include “{permission}”.":
+    "Ваша роль в {team} не включает «{permission}».",
+  "Your team role does not include “{permission}”.":
+    "Ваша роль в команде не включает «{permission}».",
   "Your Termoso password unlocks the encrypted vaults; it is separate from the identity provider.":
     "Пароль Termoso разблокирует зашифрованные хранилища; он не связан с провайдером идентификации.",
   "Your master password": "Ваш мастер-пароль",

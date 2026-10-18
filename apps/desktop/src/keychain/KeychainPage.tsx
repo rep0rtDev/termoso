@@ -86,6 +86,7 @@ import {
   keyTypeLabel,
 } from "./model";
 import { tr, trn, trx } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 type Panel =
   | { kind: "none" }
@@ -191,6 +192,7 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
       exportPassphrase: string | null;
     },
   ) => {
+    if (!requirePerm(card.vaultId, "keys.export")) return;
     if (args.mode === "clipboard") {
       const text = await ipc.keyExport({
         id: card.id,
@@ -750,7 +752,10 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
               return { msg: tr("Certificate attached"), next: panel };
             })
           }
-          onExportToHost={() => setDialog({ kind: "exportToHost", card: editing })}
+          onExportToHost={() => {
+            if (!requirePerm(editing.vaultId, "keys.export")) return;
+            setDialog({ kind: "exportToHost", card: editing });
+          }}
           onExportPrivate={() => setDialog({ kind: "export", card: editing })}
           onChangePassphrase={() => setDialog({ kind: "passphrase", card: editing })}
         />

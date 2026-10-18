@@ -32,6 +32,7 @@ import {
 import { closePane, useTerminal } from "./store";
 import { tr } from "@/i18n";
 import { can } from "@/team/roles";
+import { requireAnywhere } from "@/team/perms";
 
 /**
  * Multiplayer control on a terminal tab, like Termius: a small screen icon
@@ -106,6 +107,7 @@ export function MultiplayerPopover({
     }
     setBusy(true);
     try {
+      if (!requireAnywhere("live.start")) return;
       const info = await startShare(paneId);
       if (info.link) await copy(info.link);
     } catch (e) {

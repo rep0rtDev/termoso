@@ -70,6 +70,7 @@ import { monoFontFamily, sizes } from "@/theme/theme";
 import { ChainDialog, ProxyDialog } from "./HostAdvancedDialogs";
 import { ConnectedNowCard, useVaultPresence } from "./PresenceViews";
 import { tr, trn, msg } from "@/i18n";
+import { requirePerm } from "@/team/perms";
 
 const IP_VERSIONS: { value: IpVersion; label: string }[] = [
   { value: "auto", label: msg("Auto") },
@@ -345,6 +346,7 @@ function HostEditor({
 
   const onDelete = () => {
     if (!id) return;
+    if (!requirePerm(vaultId, "entities.delete")) return;
     del.mutate(
       { id, vaultId },
       {

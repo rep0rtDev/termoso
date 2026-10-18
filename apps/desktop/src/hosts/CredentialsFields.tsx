@@ -25,6 +25,7 @@ import WorkspacePremiumOutlinedIcon from "@mui/icons-material/WorkspacePremiumOu
 import { SettingRow } from "@/components/ui";
 import { goToSection } from "@/app/navigation";
 import { useIdentities, useSshKeys, useTeams, useVaults } from "@/ipc/hooks";
+import { requirePerm } from "@/team/perms";
 import { certificateName, certificateSummary, isHardwareKey } from "@/keychain/model";
 import {
   SSH_ID_DEFAULT_TYPE,
@@ -365,7 +366,10 @@ export function CredentialsFields({
                     )}
                     <IconButton
                       size="small"
-                      onClick={() => setShowPassword((v) => !v)}
+                      onClick={() => {
+                        if (!showPassword && !requirePerm(vaultId, "secrets.reveal")) return;
+                        setShowPassword((v) => !v);
+                      }}
                       aria-label={tr("Toggle password visibility")}
                     >
                       {showPassword ? (
