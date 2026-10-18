@@ -49,6 +49,8 @@ impl From<CoreError> for ClientError {
                     "mfa_required"
                 } else if code == codes::REAUTH_REQUIRED {
                     "reauth_required"
+                } else if code == codes::TURNSTILE_REQUIRED {
+                    "turnstile_required"
                 } else if code == codes::FORBIDDEN {
                     "forbidden"
                 } else if code == codes::NOT_FOUND {

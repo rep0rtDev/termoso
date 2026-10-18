@@ -34,6 +34,7 @@
         "font-src": "'self' data:",
         "img-src": "'self' data: blob:",
         "connect-src": "ipc: http://ipc.localhost",
+        "frame-src": "https: http:",
         "worker-src": "'self' blob:"
       }
     }

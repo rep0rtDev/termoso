@@ -1560,6 +1560,8 @@ export interface LoginForm {
   password: string;
   /** Bind the identity verified by the SSO round trip started with `accountSsoStart`. */
   sso?: boolean;
+  /** Turnstile token from the server's `/captcha` page after a `turnstile_required` error. */
+  captcha?: string | null;
 }
 
 export interface RegisterForm {
@@ -1570,6 +1572,8 @@ export interface RegisterForm {
   inviteToken: string | null;
   /** Bind the identity verified by the SSO round trip started with `accountSsoStart`. */
   sso?: boolean;
+  /** Turnstile token from the server's `/captcha` page after a `turnstile_required` error. */
+  captcha?: string | null;
 }
 
 export interface SsoStartForm {

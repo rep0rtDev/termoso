@@ -45,6 +45,15 @@ macro_rules! server {
 }
 
 #[tokio::test]
+async fn captcha_page_needs_turnstile_keys() {
+    let s = server!();
+    let r = reqwest::get(format!("http://{}/captcha?theme=dark", s.addr))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 404, "no Turnstile keys configured → no page");
+}
+
+#[tokio::test]
 async fn health_and_server_info() {
     let s = server!();
     let r = s

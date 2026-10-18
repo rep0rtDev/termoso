@@ -303,7 +303,8 @@ npm run dev       # http://localhost:5173, proxies /api to the server on :8080
 
 Re-run `npm run wasm` after changing `termoso-crypto` or `termoso-wasm`. The
 cabinet talks to `/api/v1` on its own origin only — there are no third-party
-scripts, fonts or analytics.
+scripts, fonts or analytics (the one exception is the optional Cloudflare
+Turnstile captcha on sign-up, loaded only when the operator configured keys).
 
 ### Desktop
 

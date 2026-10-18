@@ -118,8 +118,9 @@ class AccountManager(
      * verified by a provider ([ssoStart] … [ssoPoll]): Rust attaches the one-time
      * SSO session it kept and the server skips the email-based device approval.
      */
-    suspend fun login(server: String, email: String, password: String, sso: Boolean = false): LoginOutcome =
-        repo.read { accountLogin(LoginForm(serverUrl = server, email = email, password = password, sso = sso)) }.also { done(it) }
+    suspend fun login(server: String, email: String, password: String, sso: Boolean = false, captcha: String? = null): LoginOutcome =
+        repo.read { accountLogin(LoginForm(serverUrl = server, email = email, password = password, sso = sso, captcha = captcha)) }
+            .also { done(it) }
 
     suspend fun register(
         server: String,
@@ -128,6 +129,7 @@ class AccountManager(
         displayName: String?,
         invite: String?,
         sso: Boolean = false,
+        captcha: String? = null,
     ): Registered =
         repo.read {
             accountRegister(
@@ -138,6 +140,7 @@ class AccountManager(
                     displayName = displayName,
                     inviteToken = invite,
                     sso = sso,
+                    captcha = captcha,
                 ),
             )
         }.also { afterSignIn() }

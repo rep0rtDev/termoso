@@ -105,6 +105,13 @@ class SignInViewModel(
     /** Set when the sign-in screen should open [SsoState.Waiting.url]; cleared by [browserOpened]. */
     var openBrowser by mutableStateOf<String?>(null)
 
+    /**
+     * The server answered `turnstile_required`: the screen shows its `/captcha`
+     * page in a sheet and [solveCaptcha] repeats the attempt with the token.
+     */
+    var captchaUrl by mutableStateOf<String?>(null)
+    private var captchaRetry: ((String) -> Unit)? = null
+
     private var probeJob: Job? = null
     private var ssoJob: Job? = null
 
@@ -182,9 +189,10 @@ class SignInViewModel(
             return !card.registrationOpen && !(verified?.newAccount == true && card.ssoRegistration)
         }
 
-    fun submit(onDone: () -> Unit) {
+    fun submit(onDone: () -> Unit, captcha: String? = null) {
         if (busy) return
         val url = effectiveUrl
+        captchaRetry = { token -> submit(onDone, token) }
         val mail = email.trim()
         val viaSso = sso is SsoState.Verified
         error = when {
@@ -199,7 +207,7 @@ class SignInViewModel(
         run {
             try {
                 when (mode) {
-                    AuthMode.SignIn -> handle(account.login(url, mail, password, sso = viaSso), onDone)
+                    AuthMode.SignIn -> handle(account.login(url, mail, password, sso = viaSso, captcha = captcha), onDone)
                     AuthMode.Register -> {
                         val reg = account.register(
                             url,
@@ -208,15 +216,21 @@ class SignInViewModel(
                             displayName.trim().ifEmpty { null },
                             invite.trim().ifEmpty { null },
                             sso = viaSso,
+                            captcha = captcha,
                         )
                         password = ""
                         confirm = ""
                         step = AuthStep.Recovery(reg.recoveryPhrase)
                     }
                 }
+            } catch (e: MobileException.Other) {
+                if (e.kind != CAPTCHA_REQUIRED) throw e
+                captchaUrl = url
+                return@run
             } finally {
-                // Rust hands the SSO session over exactly once, whatever the outcome.
-                if (viaSso) sso = SsoState.Idle
+                // Rust hands the SSO session over exactly once, whatever the outcome —
+                // except for the captcha retry, which repeats this very request.
+                if (viaSso && captchaUrl == null) sso = SsoState.Idle
             }
         }
     }
@@ -446,6 +460,19 @@ class SignInViewModel(
         cancelSso()
     }
 
+    /** Token from the captcha sheet: repeat the attempt it interrupted. */
+    fun solveCaptcha(token: String) {
+        captchaUrl = null
+        val retry = captchaRetry ?: return
+        captchaRetry = null
+        retry(token)
+    }
+
+    fun dismissCaptcha() {
+        captchaUrl = null
+        captchaRetry = null
+    }
+
     private fun run(block: suspend () -> Unit) {
         if (busy) return
         busy = true
@@ -463,3 +490,6 @@ class SignInViewModel(
         }
     }
 }
+
+/** `MobileException.Other.kind` for the server's `turnstile_required`. */
+private const val CAPTCHA_REQUIRED = "turnstile_required"

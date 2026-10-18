@@ -385,6 +385,10 @@ pub struct LoginForm {
     /// approval).
     #[uniffi(default = false)]
     pub sso: bool,
+    /// Cloudflare Turnstile token from the server's `/captcha` page, sent when
+    /// the previous attempt failed with `turnstile_required`.
+    #[uniffi(default = None)]
+    pub captcha: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -398,6 +402,10 @@ pub struct RegisterForm {
     /// [`AccountRuntime::sso_start`].
     #[uniffi(default = false)]
     pub sso: bool,
+    /// Cloudflare Turnstile token from the server's `/captcha` page, sent when
+    /// the previous attempt failed with `turnstile_required`.
+    #[uniffi(default = None)]
+    pub captcha: Option<String>,
 }
 
 const MIN_PASSWORD_CHARS: usize = 12;
@@ -426,9 +434,11 @@ fn take_sso_session(
     server_url: &str,
     email: &str,
 ) -> Result<(Arc<ApiClient>, Option<Zeroizing<String>>)> {
+    // Borrowed, not taken: the caller drops the flow once the attempt is
+    // over, unless the server first wants a captcha and the retry needs it.
     let flow = inner
         .sso
-        .take()
+        .as_ref()
         .ok_or_else(|| MobileError::invalid("no single sign-on in progress"))?;
     if flow.server_url != server_url {
         return Err(MobileError::invalid(
@@ -449,8 +459,9 @@ fn take_sso_session(
     }
     let session = flow
         .session
+        .clone()
         .ok_or_else(|| MobileError::invalid("single sign-on session is missing"))?;
-    Ok((flow.api, Some(session)))
+    Ok((flow.api.clone(), Some(session)))
 }
 
 struct Engine {
@@ -656,15 +667,24 @@ impl AccountRuntime {
         } else {
             (Arc::new(ApiClient::new(&server_url)?), None)
         };
-        let (flow, step) = LoginFlow::start(
+        let started = LoginFlow::start(
             api.clone(),
             self.store.clone(),
             form.email.trim(),
             &form.password,
             device,
             sso_session.map(|s| s.to_string()),
+            form.captcha,
         )
-        .await?;
+        .await;
+        // The SSO session is single-use on the server; keep it only for the
+        // captcha retry, which repeats this very request.
+        if form.sso
+            && !matches!(&started, Err(e) if e.is_api_code(termoso_proto::error::codes::TURNSTILE_REQUIRED))
+        {
+            inner.sso = None;
+        }
+        let (flow, step) = started?;
         inner.api = Some(api);
         self.finish_step(&mut inner, flow, step)
     }
@@ -1117,7 +1137,7 @@ impl AccountRuntime {
         } else {
             (Arc::new(ApiClient::new(&server_url)?), None)
         };
-        let registered = core::register(
+        let attempt = core::register(
             api.clone(),
             self.store.clone(),
             RegisterInput {
@@ -1133,9 +1153,18 @@ impl AccountRuntime {
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty()),
                 sso_session: sso_session.map(|s| s.to_string()),
+                turnstile_token: form.captcha,
             },
         )
-        .await?;
+        .await;
+        // The SSO session is single-use on the server; keep it only for the
+        // captcha retry, which repeats this very request.
+        if form.sso
+            && !matches!(&attempt, Err(e) if e.is_api_code(termoso_proto::error::codes::TURNSTILE_REQUIRED))
+        {
+            inner.sso = None;
+        }
+        let registered = attempt?;
         inner.api = Some(api);
         inner.flow = None;
         inner.pending = None;

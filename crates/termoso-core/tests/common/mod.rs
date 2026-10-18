@@ -388,6 +388,7 @@ pub async fn register(server: &TestServer, email: &str, password: &str) -> (Devi
             device: device("first device", &store),
             invite_token: None,
             sso_session: None,
+            turnstile_token: None,
         },
     )
     .await
@@ -413,6 +414,7 @@ pub async fn login(server: &TestServer, email: &str, password: &str) -> Device {
         email,
         password,
         device("another device", &store),
+        None,
         None,
     )
     .await

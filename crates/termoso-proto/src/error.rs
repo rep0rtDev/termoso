@@ -54,6 +54,9 @@ pub mod codes {
     /// The operation needs a fresh step-up (`POST /auth/reauth/start`) of the
     /// current session.
     pub const REAUTH_REQUIRED: &str = "reauth_required";
+    /// The request must carry a Cloudflare Turnstile token (`turnstile_token`);
+    /// native clients obtain one from the server's `/captcha` page.
+    pub const TURNSTILE_REQUIRED: &str = "turnstile_required";
     /// The account has not opted in to AI command suggestions.
     pub const AI_NOT_ENABLED: &str = "ai_not_enabled";
     /// Today's AI suggestion quota is spent (`details.retry_after` seconds).
