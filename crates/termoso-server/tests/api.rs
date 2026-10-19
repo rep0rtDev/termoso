@@ -229,8 +229,8 @@ async fn landing_origin_serves_only_the_landing() {
     assert!(info.landing_only);
     assert_eq!(info.web_url, format!("http://{}", s.addr));
 
-    // Every cabinet route and API call is sent to the cabinet origin, path
-    // and query intact, so invite / join / SSO links keep working.
+    // Every cabinet route is sent to the cabinet origin, path and query
+    // intact, so invite / join / SSO links keep working.
     for (path, expect) in [
         ("/login", "/login"),
         ("/signup?plan=team", "/signup?plan=team"),
@@ -240,7 +240,6 @@ async fn landing_origin_serves_only_the_landing() {
             "/join/00000000-0000-0000-0000-000000000000",
         ),
         ("/account", "/account"),
-        ("/api/v1/auth/session", "/api/v1/auth/session"),
         ("/sshid/alice", "/sshid/alice"),
     ] {
         let r = get(path).await.unwrap();
@@ -258,7 +257,8 @@ async fn landing_origin_serves_only_the_landing() {
         .send()
         .await
         .unwrap();
-    assert_eq!(r.status(), StatusCode::TEMPORARY_REDIRECT);
+    // The API itself is not on the landing origin (see api_is_not_served_on_the_landing_origin).
+    assert_eq!(r.status(), StatusCode::NOT_FOUND);
 
     // Unknown files are plain 404s, not redirects; the public site allows crawlers.
     let r = get("/humans.txt").await.unwrap();
@@ -267,10 +267,10 @@ async fn landing_origin_serves_only_the_landing() {
     assert_eq!(r.status(), StatusCode::OK);
     assert!(r.text().await.unwrap().contains("Allow: /"));
 
-    // Unknown routes are the cabinet's business too (it answers with its
-    // own 404 page / JSON error); the landing origin never guesses.
+    // Unknown cabinet routes are the cabinet's business too (it answers with
+    // its own 404 page); unknown API paths are simply absent here.
     let r = get("/api/v1/no-such-route").await.unwrap();
-    assert_eq!(r.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(r.status(), StatusCode::NOT_FOUND);
     let r = get("/no-such-page").await.unwrap();
     assert_eq!(r.status(), StatusCode::TEMPORARY_REDIRECT);
     assert_eq!(
@@ -1995,4 +1995,43 @@ async fn custom_roles_are_enforced() {
         .await;
     assert_eq!(after["teams"][0]["my_role_ref"]["slug"], "admin");
     assert_eq!(after["teams"][0]["my_role"], "admin");
+}
+
+#[tokio::test]
+async fn api_is_not_served_on_the_landing_origin() {
+    let s = server!();
+    let on_landing = |path: &str| {
+        s.http_no_redirect()
+            .get(format!("http://{}{path}", s.addr))
+            .header("host", "landing.test")
+            .send()
+    };
+
+    // The landing needs `/server/info` (downloads, version) and the probes.
+    let r = on_landing("/api/v1/server/info").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let info: termoso_proto::account::ServerInfo = r.json().await.unwrap();
+    assert!(info.landing_only);
+    let r = on_landing("/healthz").await.unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+
+    // Everything else in the API is absent there instead of being redirected
+    // (a 307 keeps the method and body, so clients would just follow it).
+    for path in [
+        "/api/v1/vaults",
+        "/api/v1/auth/login/start",
+        "/api/v1/ws",
+        "/api/openapi.json",
+    ] {
+        let r = on_landing(path).await.unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+
+    // Cabinet routes still bounce to the cabinet origin.
+    let r = on_landing("/account").await.unwrap();
+    assert_eq!(r.status(), StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(
+        r.headers()["location"],
+        format!("http://{}/account", s.addr)
+    );
 }
