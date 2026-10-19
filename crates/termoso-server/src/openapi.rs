@@ -173,6 +173,7 @@ impl Modify for BearerAuth {
         crate::live::stop,
         crate::live::ws,
         crate::routes::admin::stats,
+        crate::routes::admin::config,
         crate::routes::admin::users,
         crate::routes::admin::user,
         crate::routes::admin::update_user,

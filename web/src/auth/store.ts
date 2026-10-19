@@ -5,7 +5,10 @@ const SESSION_KEY = "termoso.session";
 const DEVICE_KEY = "termoso.device";
 const PRIVATE_KEY_KEY = "termoso.unlocked";
 
-export const APP_VERSION = "0.1.0";
+declare const __APP_VERSION__: string;
+/** Cabinet version from package.json, injected at build time (see vite.config.ts). */
+export const APP_VERSION: string =
+  typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "0.0.0-dev";
 
 export interface AuthState {
   session: Session | null;

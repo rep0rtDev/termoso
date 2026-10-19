@@ -1429,6 +1429,43 @@ export function LandingPage() {
           </Section>
 
           {/* FAQ */}
+          <Section id="sponsor" sx={{ pt: 0, pb: { xs: 5, md: 7 } }}>
+            <Card
+              sx={{
+                maxWidth: 900,
+                mx: "auto",
+                display: "flex",
+                flexDirection: { xs: "column", md: "row" },
+                alignItems: { md: "center" },
+                gap: 3,
+              }}
+            >
+              <Box sx={{ flex: 1 }}>
+                <Typography
+                  variant="overline"
+                  sx={{ color: "primary.main", fontWeight: 600, letterSpacing: 1 }}
+                >
+                  Sponsorship
+                </Typography>
+                <Typography variant="h5" sx={{ mt: 0.5 }}>
+                  Free software, funded by the people who rely on it
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  No paid tier, no vendor. You can sponsor development, and organisations running
+                  Termoso can get deployment help, SLA-backed support and integrations on a
+                  schedule.
+                </Typography>
+              </Box>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ flexShrink: 0 }}>
+                <Button component={RouterLink} to="/sponsor" variant="contained" size="large">
+                  Become a sponsor
+                </Button>
+                <Button href="mailto:hello@termoso.dev" variant="outlined" size="large">
+                  hello@termoso.dev
+                </Button>
+              </Stack>
+            </Card>
+          </Section>
           <Section id="faq" sx={{ pt: 0 }}>
             <SectionTitle center title="Frequently asked questions" />
             <Box sx={{ maxWidth: 760, mx: "auto" }}>
@@ -1502,6 +1539,7 @@ export function LandingPage() {
                   links: [
                     ["GitHub", REPO],
                     ["Issues", `${REPO}/issues`],
+                    ["Sponsor", "/sponsor"],
                     ["License (AGPL-3.0)", `${REPO}/blob/main/LICENSE`],
                   ],
                 },

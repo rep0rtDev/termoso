@@ -28,6 +28,8 @@ At sign-up you get a 24-word recovery key. It is the only way back in if you for
 
 The hosted cloud offers **Sign in with GitHub**; self-hosted servers can add any OpenID Connect or SAML 2.0 provider. SSO proves who owns the e-mail address; your vault password and recovery key remain the only ways to unwrap key material, so the identity provider cannot read vaults.
 
+**Corporate domains.** A team whose policy says *Sign in only through SSO* and lists e-mail domains owns those domains on the server: nobody can create a password account on them or sign in with a password — not even someone who is not (yet) a member — the server answers `sso_required` and the apps offer the team's provider instead. The team's owners and the server's bootstrap administrators are exempt so a misconfigured IdP can never lock everyone out.
+
 ### Connected accounts
 
 **Security → Connected accounts** lists the providers linked to your account. *Connect* starts the provider's sign-in and links the identity it returns; *Disconnect* asks you to re-enter your password first. If you sign in with a provider whose e-mail already belongs to your account, you are asked for your password and the identity is linked once it checks out — no second account is created. An identity that is already linked to another account cannot be connected to yours.

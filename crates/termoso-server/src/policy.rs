@@ -361,6 +361,51 @@ pub fn normalize_domains(input: &[String]) -> Result<Vec<String>, String> {
 }
 
 /// `team` in `sso_provider` stands for the team's own IdP (`team-<uuid>`).
+/// A team that has claimed the e-mail's domain for single sign-on
+/// (`sso_only` + the domain in `sso_domains`): `(team_id, team_name, provider)`.
+/// Such addresses may neither register with a password nor sign in with one,
+/// member or not — otherwise anyone could sidestep the IdP by creating a
+/// personal account on the corporate domain.
+pub async fn domain_claim<'e, E: PgExecutor<'e>>(
+    db: E,
+    email: &str,
+) -> ApiResult<Option<(Uuid, String, Option<String>)>> {
+    let domain = domain_of(email).to_ascii_lowercase();
+    if domain.is_empty() {
+        return Ok(None);
+    }
+    let row: Option<(Uuid, String, Option<String>)> = sqlx::query_as(
+        "SELECT t.id, t.name, p.sso_provider
+         FROM team_policies p JOIN teams t ON t.id = p.team_id
+         WHERE p.sso_only AND $1 = ANY(p.sso_domains)
+           AND (p.sso_provider IS DISTINCT FROM 'team'
+                OR EXISTS (SELECT 1 FROM team_idp i WHERE i.team_id = t.id AND i.enabled))
+         ORDER BY p.updated_at LIMIT 1",
+    )
+    .bind(&domain)
+    .fetch_optional(db)
+    .await?;
+    Ok(row)
+}
+
+/// Whether `email` belongs to an owner of `team_id` (owners keep password
+/// sign-in so a broken IdP can never lock the team out).
+pub async fn is_team_owner_email<'e, E: PgExecutor<'e>>(
+    db: E,
+    team_id: Uuid,
+    email: &str,
+) -> ApiResult<bool> {
+    let (yes,): (bool,) = sqlx::query_as(
+        "SELECT EXISTS (SELECT 1 FROM team_members m JOIN users u ON u.id = m.user_id
+                        WHERE m.team_id = $1 AND m.role = 'owner' AND lower(u.email) = lower($2))",
+    )
+    .bind(team_id)
+    .bind(email)
+    .fetch_one(db)
+    .await?;
+    Ok(yes)
+}
+
 pub fn resolve_provider(team_id: Uuid, provider: Option<String>) -> String {
     match provider.as_deref() {
         Some("team") => crate::sso::team_provider_id(team_id),

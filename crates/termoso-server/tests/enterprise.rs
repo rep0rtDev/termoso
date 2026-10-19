@@ -139,3 +139,77 @@ async fn home_team_and_sso_only() {
         .json(Method::PUT, "/admin/settings", Some(&admin), Some(&base))
         .await;
 }
+
+/// A team that claims a domain for SSO (`sso_only` + `sso_domains`) blocks
+/// password registration *and* password sign-in for that domain, member or not.
+#[tokio::test]
+async fn claimed_domain_refuses_password_flows() {
+    let Some(s) = server().await else { return };
+    let owner = register(s, &unique_email("claim-owner"), "pw-owner-1234567").await;
+    let domain = format!("{}.claimed.test", Uuid::new_v4().simple());
+    // Someone from the corporate domain who signed up before the claim.
+    let early_email = format!("early@{domain}");
+    let _early = register(s, &early_email, "pw-early-1234567").await;
+
+    let team: serde_json::Value = s
+        .json(
+            Method::POST,
+            "/teams",
+            Some(owner.token()),
+            Some(&serde_json::json!({ "name": "Claim Corp" })),
+        )
+        .await;
+    let team_id = team["id"].as_str().unwrap();
+    let _: serde_json::Value = s
+        .json(
+            Method::PUT,
+            &format!("/teams/{team_id}/policies"),
+            Some(owner.token()),
+            Some(&serde_json::json!({
+                "sso_only": true, "sso_provider": SSO_PROVIDER, "sso_domains": [domain]
+            })),
+        )
+        .await;
+
+    // Password registration on the claimed domain is refused with sso_required.
+    let resp = s
+        .call(
+            Method::POST,
+            "/auth/register/start",
+            None,
+            Some(&serde_json::json!({ "email": format!("new@{domain}"), "opaque_request": "AA" })),
+        )
+        .await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["code"], "sso_required");
+    assert_eq!(body["details"]["provider"], SSO_PROVIDER);
+    assert_eq!(body["details"]["team_name"], "Claim Corp");
+
+    // The pre-existing non-member cannot use a password either…
+    s.expect_status(
+        Method::POST,
+        "/auth/login/start",
+        None,
+        Some(&LoginStartRequest {
+            email: early_email.clone(),
+            opaque_request: "AA".into(),
+            device: device("claimed laptop"),
+            sso_session: None,
+            turnstile_token: None,
+        }),
+        StatusCode::UNAUTHORIZED,
+    )
+    .await;
+    // …while other domains are untouched.
+    let other = unique_email("claim-other");
+    let resp = s
+        .call(
+            Method::POST,
+            "/auth/register/start",
+            None,
+            Some(&serde_json::json!({ "email": other, "opaque_request": "AA" })),
+        )
+        .await;
+    assert_ne!(resp.status(), StatusCode::UNAUTHORIZED);
+}

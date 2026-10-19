@@ -1,5 +1,6 @@
 import { fetchBlob, http, requestWithStatus, upload } from "./client";
 import type {
+  AdminConfig,
   AccountResponse,
   AdminStats,
   AdminTeam,
@@ -445,6 +446,7 @@ export interface ListParams {
 
 export const adminApi = {
   stats: () => http.get<AdminStats>("/admin/stats"),
+  config: () => http.get<AdminConfig>("/admin/config"),
   users: async (p: ListParams): Promise<Page<AdminUser>> => {
     const r = await http.get<{ users: AdminUser[]; total: number }>("/admin/users", { query: p });
     return { items: r.users, total: r.total };

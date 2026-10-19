@@ -2,9 +2,10 @@ import { useState, type SubmitEvent } from "react";
 import { tr, trx } from "@/i18n";
 import { Alert, Button, Link, Stack, TextField, Typography } from "@mui/material";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router";
-import { errorMessage } from "@/api/client";
+import { ApiError, errorMessage } from "@/api/client";
 import { useServerInfo } from "@/api/hooks";
 import { register } from "@/auth/flows";
+import { startSso } from "@/auth/sso";
 import { AuthTitle, PasswordField, passwordProblem, useNextPath } from "./common";
 import { Turnstile } from "@/components/Turnstile";
 
@@ -26,6 +27,10 @@ export function SignupPage() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // The domain is claimed by a team for single sign-on: offer that instead.
+  const [ssoRequired, setSsoRequired] = useState<{ provider: string; team: string | null } | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const siteKey = info.data?.turnstile_site_key ?? null;
   const [captcha, setCaptcha] = useState<string | null>(null);
@@ -54,6 +59,13 @@ export function SignupPage() {
         state: { phrase: out.recoveryPhrase, email: out.session.user.email, next },
       });
     } catch (err) {
+      if (err instanceof ApiError && err.code === "sso_required") {
+        const d = err.details as { provider?: string; team_name?: string } | null;
+        if (d?.provider) {
+          setSsoRequired({ provider: d.provider, team: d.team_name ?? null });
+          return;
+        }
+      }
       setError(errorMessage(err));
       // Tokens are single-use: get a fresh one for the next attempt.
       setCaptcha(null);
@@ -87,13 +99,45 @@ export function SignupPage() {
       />
       <Stack spacing={2}>
         {error && <Alert severity="error">{error}</Alert>}
+        {ssoRequired && (
+          <Alert
+            severity="info"
+            action={
+              <Button
+                size="small"
+                variant="contained"
+                disabled={busy}
+                onClick={() => {
+                  setError(null);
+                  startSso(ssoRequired.provider, next).catch((e: unknown) =>
+                    setError(errorMessage(e)),
+                  );
+                }}
+              >
+                {tr("Continue with SSO")}
+              </Button>
+            }
+          >
+            {ssoRequired.team
+              ? tr(
+                  "{v1} manages this e-mail domain through single sign-on. Password accounts cannot be created for it — sign in with your organisation's provider and your account is created automatically.",
+                  { v1: ssoRequired.team },
+                )
+              : tr(
+                  "This e-mail domain is managed through single sign-on. Sign in with your organisation's provider and your account is created automatically.",
+                )}
+          </Alert>
+        )}
         <TextField
           label={tr("Email")}
           type="email"
           autoComplete="username"
           required
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            setSsoRequired(null);
+          }}
           disabled={busy || lockEmail}
         />
         <TextField

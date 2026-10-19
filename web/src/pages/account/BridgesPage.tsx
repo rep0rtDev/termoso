@@ -522,8 +522,13 @@ export function BridgesPage() {
                         <Typography variant="body2" color="text.secondary">
                           {trx("{v1} {v2}Created {v3}", {
                             v1: b.last_used_at
-                              ? `Last used ${formatRelative(b.last_used_at)}${b.last_ip ? ` from ${b.last_ip}` : ""}`
-                              : "Never used",
+                              ? b.last_ip
+                                ? tr("Last used {v1} from {v2}", {
+                                    v1: formatRelative(b.last_used_at),
+                                    v2: b.last_ip,
+                                  })
+                                : tr("Last used {v1}", { v1: formatRelative(b.last_used_at) })
+                              : tr("Never used"),
                             v2: " · ",
                             v3: formatDateTime(b.created_at),
                           })}

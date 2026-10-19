@@ -29,11 +29,13 @@ import { AdminTeamPage } from "@/pages/admin/AdminTeamPage";
 import { AdminSettingsPage } from "./pages/admin/AdminSettingsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { RootPage } from "./pages/RootPage";
+import { SponsorPage } from "./pages/SponsorPage";
 import { DocsLayout } from "./docs/DocsLayout";
 import { DocsPage } from "./docs/DocsPage";
 
 export const router = createBrowserRouter([
   { path: "/", element: <RootPage /> },
+  { path: "/sponsor", element: <SponsorPage /> },
   {
     path: "/docs",
     element: <DocsLayout />,

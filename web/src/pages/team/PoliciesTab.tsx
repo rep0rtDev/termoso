@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { tr } from "@/i18n";
+import { tr, trn } from "@/i18n";
 import { formatDateTime } from "@/components/format";
 import {
   Alert,
@@ -18,7 +18,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@/api/client";
 import { teamsApi } from "@/api/endpoints";
 import { queryKeys, useServerInfo } from "@/api/hooks";
-import type { Team, TeamPolicies, UpdateTeamPolicies } from "@/api/types";
+import type { EffectivePolicies, Team, TeamPolicies, UpdateTeamPolicies } from "@/api/types";
 import { Loading } from "@/components/Loading";
 import { Section, SettingRow } from "@/components/Section";
 import { useSnackbar } from "@/components/Snackbar";
@@ -36,6 +36,7 @@ export function PoliciesTab({ team }: { team: Team }) {
       key={q.data.policies.updated_at}
       team={team}
       saved={q.data.policies}
+      effective={q.data.effective_for_me}
       manage={can(team, "policies.manage")}
     />
   );
@@ -44,10 +45,12 @@ export function PoliciesTab({ team }: { team: Team }) {
 function PoliciesForm({
   team,
   saved,
+  effective,
   manage,
 }: {
   team: Team;
   saved: TeamPolicies;
+  effective: EffectivePolicies;
   manage: boolean;
 }) {
   const qc = useQueryClient();
@@ -109,6 +112,7 @@ function PoliciesForm({
         )
       }
     >
+      <EffectiveSummary team={team} e={effective} />
       <SettingRow
         label={tr("Two-factor authentication")}
         description={tr(
@@ -165,6 +169,13 @@ function PoliciesForm({
               })
             }
             slotProps={{ htmlInput: { min: 1, max: 2160 } }}
+            helperText={
+              p.session_ttl_hours
+                ? p.session_ttl_hours >= 24
+                  ? tr("≈ {v1} days", { v1: Math.round((p.session_ttl_hours / 24) * 10) / 10 })
+                  : tr("{v1} h", { v1: p.session_ttl_hours })
+                : tr("server default")
+            }
             sx={{ width: 150 }}
           />
         }
@@ -377,4 +388,97 @@ function parseDomains(s: string): string[] {
     .split(/[,\s]+/)
     .map((d) => d.trim().toLowerCase())
     .filter(Boolean);
+}
+
+/** What actually applies to the signed-in member right now, across all their teams. */
+function EffectiveSummary({ team, e }: { team: Team; e: EffectivePolicies }) {
+  const items: { label: string; value: string; note?: string }[] = [];
+  const mfaLabel =
+    e.mfa === "off"
+      ? tr("Not required")
+      : e.mfa === "any"
+        ? tr("Any second factor")
+        : tr("Passkey only");
+  items.push({
+    label: tr("Two-factor authentication"),
+    value: mfaLabel,
+    note:
+      e.mfa !== "off"
+        ? e.mfa_team_id === team.id
+          ? tr("set by this team")
+          : e.mfa_team_id
+            ? tr("set by another team")
+            : undefined
+        : undefined,
+  });
+  items.push({
+    label: tr("Session lifetime"),
+    value:
+      e.session_ttl_hours !== null
+        ? e.session_ttl_hours >= 24
+          ? tr("{v1} h (≈ {v2} days)", {
+              v1: e.session_ttl_hours,
+              v2: Math.round((e.session_ttl_hours / 24) * 10) / 10,
+            })
+          : tr("{v1} h", { v1: e.session_ttl_hours })
+        : tr("server default"),
+  });
+  items.push({
+    label: tr("Local keys"),
+    value: e.local_keys_denied_by.length ? tr("denied") : tr("allowed"),
+    note: e.local_keys_denied_by.length
+      ? trn(e.local_keys_denied_by.length, "by {count} team", "by {count} teams")
+      : undefined,
+  });
+  items.push({
+    label: tr("Approve new devices"),
+    value: e.device_approval_by.length ? tr("on") : tr("off"),
+    note: e.device_approval_by.length
+      ? trn(e.device_approval_by.length, "by {count} team", "by {count} teams")
+      : undefined,
+  });
+  items.push({
+    label: tr("Session recording"),
+    value: e.recording_required_by?.length ? tr("Required") : tr("Optional"),
+    note: e.recording_required_by?.length
+      ? trn(e.recording_required_by.length, "by {count} team", "by {count} teams")
+      : undefined,
+  });
+  if (e.sso_provider) items.push({ label: tr("SSO provider"), value: e.sso_provider });
+  return (
+    <Box
+      sx={{
+        mb: 2,
+        p: 1.5,
+        borderRadius: 1.5,
+        bgcolor: "surface.low",
+        display: "grid",
+        gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(3, 1fr)", md: "repeat(6, 1fr)" },
+        gap: 1.5,
+      }}
+    >
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ gridColumn: "1 / -1", textTransform: "uppercase", letterSpacing: 0.5 }}
+      >
+        {tr("In effect for you now (strictest across your teams)")}
+      </Typography>
+      {items.map((it) => (
+        <Box key={it.label} sx={{ minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary" noWrap component="div">
+            {it.label}
+          </Typography>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {it.value}
+          </Typography>
+          {it.note && (
+            <Typography variant="caption" color="text.secondary" component="div">
+              {it.note}
+            </Typography>
+          )}
+        </Box>
+      ))}
+    </Box>
+  );
 }

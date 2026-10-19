@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
-import { LANDING_SEO } from "./src/seo";
+import { LANDING_SEO, SPONSOR_SEO } from "./src/seo";
 
 /**
  * Emits `dist/seo.json`: the `<title>` / description of every public page
@@ -23,6 +23,7 @@ function seoManifest(): Plugin {
     generateBundle() {
       const pages: Record<string, { title: string; description: string }> = {
         "/": LANDING_SEO,
+        "/sponsor": SPONSOR_SEO,
       };
       for (const file of walk(root).sort()) {
         const src = readFileSync(file, "utf8");
@@ -47,7 +48,15 @@ function seoManifest(): Plugin {
 
 // The API is same-origin in production (axum serves this bundle). In dev the
 // server runs on :8080 and Vite proxies /api and /healthz to it.
+const PKG_VERSION = (
+  JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as {
+    version: string;
+  }
+).version;
+
 export default defineConfig({
+  // The cabinet reports this as its app_version; it must track the server release.
+  define: { __APP_VERSION__: JSON.stringify(PKG_VERSION) },
   plugins: [react(), seoManifest()],
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   build: {

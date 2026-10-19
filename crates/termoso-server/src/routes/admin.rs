@@ -717,7 +717,7 @@ pub async fn put_settings(
         .map(|d| d.trim().trim_start_matches('@').to_lowercase())
         .filter(|d| !d.is_empty())
         .collect();
-    state.save_settings(&s).await?;
+    state.save_settings(&s, Some(auth.user_id())).await?;
     users::security_event(
         &state,
         auth.user_id(),
@@ -754,4 +754,199 @@ pub async fn test_email(
         .await
         .map_err(|e| Error::bad_request(format!("Sending failed: {e}")))
         .map(NoContent::from)
+}
+
+// ───────────────────────────── effective configuration ────
+
+/// `scheme://host:port/path` with user info and query removed.
+fn masked_url(raw: &str) -> String {
+    match url::Url::parse(raw) {
+        Ok(u) => {
+            let mut out = format!("{}://{}", u.scheme(), u.host_str().unwrap_or(""));
+            if let Some(p) = u.port() {
+                out.push_str(&format!(":{p}"));
+            }
+            if u.path() != "/" {
+                out.push_str(u.path());
+            }
+            out
+        }
+        Err(_) => "<unparseable>".into(),
+    }
+}
+
+async fn probe<F, T>(f: F) -> (String, Option<u64>, Option<String>)
+where
+    F: std::future::Future<Output = anyhow::Result<T>>,
+{
+    let t0 = std::time::Instant::now();
+    match tokio::time::timeout(std::time::Duration::from_secs(3), f).await {
+        Ok(Ok(_)) => ("ok".into(), Some(t0.elapsed().as_millis() as u64), None),
+        Ok(Err(e)) => (
+            "error".into(),
+            Some(t0.elapsed().as_millis() as u64),
+            Some(e.to_string()),
+        ),
+        Err(_) => ("error".into(), None, Some("timed out after 3 s".into())),
+    }
+}
+
+fn split_list(s: &str) -> Vec<String> {
+    s.split([',', ' '])
+        .map(str::trim)
+        .filter(|x| !x.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+#[utoipa::path(get, path = "/api/v1/admin/config", tag = "admin", responses((status = 200, body = AdminConfig)))]
+pub async fn config(State(state): State<AppState>, _admin: Admin) -> ApiResult<Json<AdminConfig>> {
+    let cfg = &state.cfg;
+
+    let (db_status, db_latency, db_error) = probe(async {
+        sqlx::query("SELECT 1").execute(&state.db).await?;
+        anyhow::Ok(())
+    })
+    .await;
+    let (redis_status, redis_latency, redis_error) = probe(state.cache.ping()).await;
+
+    let storage = match (&cfg.s3, &state.storage) {
+        (Some(s3), Some(st)) => {
+            let (status, latency_ms, error) = probe(st.ping()).await;
+            Some(AdminConfigStorage {
+                bucket: s3.bucket.clone(),
+                region: s3.region.clone(),
+                endpoint: s3.endpoint.clone(),
+                public_endpoint: s3.public_endpoint.clone(),
+                force_path_style: s3.force_path_style,
+                presign_secs: s3.presign_secs,
+                status,
+                latency_ms,
+                error,
+            })
+        }
+        _ => None,
+    };
+
+    let smtp = cfg.smtp.as_ref().map(|m| AdminConfigSmtp {
+        host: m.host.clone(),
+        port: m.port,
+        security: match m.security {
+            crate::config::SmtpSecurity::Starttls => "starttls",
+            crate::config::SmtpSecurity::Tls => "tls",
+            crate::config::SmtpSecurity::None => "none",
+        }
+        .into(),
+        from: m.from.clone(),
+        auth: m.username.is_some(),
+    });
+
+    let sso = cfg
+        .sso
+        .iter()
+        .map(|(id, p)| AdminConfigSso {
+            id: id.clone(),
+            name: p.name.clone().unwrap_or_else(|| id.clone()),
+            kind: match p.kind {
+                crate::config::SsoKindConfig::Oidc => "oidc",
+                crate::config::SsoKindConfig::Saml => "saml",
+            }
+            .into(),
+            issuer: p.issuer.clone().or_else(|| p.saml_idp_entity_id.clone()),
+            allowed_domains: p
+                .allowed_domains
+                .as_deref()
+                .map(split_list)
+                .unwrap_or_default(),
+        })
+        .collect();
+
+    let webauthn = cfg.webauthn.as_ref().map(|w| AdminConfigWebauthn {
+        rp_id: w.rp_id.clone(),
+        rp_name: w.rp_name.clone(),
+        origins: split_list(&w.origins),
+    });
+
+    let ai = cfg.ai.as_ref().map(|a| AdminConfigAi {
+        provider: a.provider.clone(),
+        model: a.model.clone(),
+        endpoint: masked_url(&a.url),
+        confidential: a.confidential,
+        daily_quota: a.daily_quota,
+        max_prompt_chars: a.max_prompt_chars as u64,
+        timeout_secs: a.timeout_secs,
+    });
+
+    let meta = state.settings_meta().await?;
+    let min_client = crate::routes::auth::min_client_version(cfg).to_owned();
+
+    Ok(Json(AdminConfig {
+        server: AdminConfigServer {
+            version: crate::state::VERSION.into(),
+            started_at: state.started_at,
+            uptime_secs: (Utc::now() - state.started_at).num_seconds().max(0) as u64,
+            name: cfg.server_name.clone(),
+            public_url: cfg.public_url.clone(),
+            web_url: cfg.web_url().to_owned(),
+            bind: cfg.bind.to_string(),
+            trust_proxy: cfg.trust_proxy,
+            cors_origins: cfg.cors_origins(),
+            log: cfg.log.clone(),
+            log_format: match cfg.log_format {
+                crate::config::LogFormat::Text => "text",
+                crate::config::LogFormat::Json => "json",
+            }
+            .into(),
+            data_region: cfg.data_region.clone(),
+            min_client_version_overridden: min_client != crate::state::VERSION,
+            min_client_version: min_client,
+            start_over_delay_secs: cfg.start_over_delay_secs,
+            team_deletion_grace_days: cfg.team_deletion_grace_days,
+            team_audit_retention_days_max: cfg.audit_retention_days_max,
+            audit_sink: cfg.audit_sink,
+            swagger_ui: cfg.swagger_ui,
+            bridges: cfg.bridges,
+            team_idp: cfg.team_idp,
+            landing: cfg.landing,
+            docs: cfg.docs,
+            metrics_bind: cfg.metrics.enabled.then(|| cfg.metrics.bind.to_string()),
+            webhooks_allow_private: cfg.webhooks_allow_private,
+            webhooks_syslog_ca: cfg.webhooks_syslog_ca.is_some(),
+            turnstile: cfg.turnstile.is_some(),
+            admin_emails: cfg.admin_emails(),
+            owner_email: Some(cfg.owner_email.trim().to_lowercase()).filter(|e| !e.is_empty()),
+        },
+        database: AdminConfigService {
+            endpoint: masked_url(&cfg.database_url),
+            detail: Some(format!("pool max {}", cfg.database_max_connections)),
+            status: db_status,
+            latency_ms: db_latency,
+            error: db_error,
+        },
+        redis: AdminConfigService {
+            endpoint: masked_url(&cfg.redis_url),
+            detail: Some(format!("prefix {}", cfg.redis_prefix)),
+            status: redis_status,
+            latency_ms: redis_latency,
+            error: redis_error,
+        },
+        storage,
+        smtp,
+        sso,
+        webauthn,
+        ai,
+        settings: AdminSettingsMeta {
+            defaults: ServerSettings::default(),
+            limits: AdminSettingsLimits {
+                session_ttl_days_min: 1,
+                session_ttl_days_max: 3650,
+                max_entity_bytes_min: 1024,
+                max_entity_bytes_max: 4 * 1024 * 1024,
+                max_log_bytes_min: 1024,
+                audit_retention_days_max: 3650,
+            },
+            updated_at: meta.as_ref().map(|(t, _)| *t),
+            updated_by: meta.and_then(|(_, e)| e),
+        },
+    }))
 }

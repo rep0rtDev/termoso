@@ -379,6 +379,11 @@ impl SsoRegistry {
         })
     }
 
+    /// Whether a server-wide provider with this id is configured.
+    pub fn has(&self, id: &str) -> bool {
+        self.providers.contains_key(id)
+    }
+
     pub fn list(&self) -> Vec<SsoProvider> {
         self.providers.values().map(|p| p.public()).collect()
     }

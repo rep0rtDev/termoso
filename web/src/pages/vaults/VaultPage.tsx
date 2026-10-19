@@ -78,7 +78,7 @@ function VaultDetail({ vault }: { vault: Vault }) {
               {trx("{v1}  · key version {key_version} · created {v2}", {
                 v1:
                   vault.kind === "personal"
-                    ? "Personal vault"
+                    ? tr("Personal vault")
                     : team.data
                       ? trx("Team {name}", {
                           name: (
@@ -87,7 +87,7 @@ function VaultDetail({ vault }: { vault: Vault }) {
                             </Link>
                           ),
                         })
-                      : "Team vault",
+                      : tr("Team vault"),
                 key_version: vault.key_version,
                 v2: formatDate(vault.created_at),
               })}

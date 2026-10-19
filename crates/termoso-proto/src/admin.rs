@@ -300,3 +300,229 @@ schema! {
         pub total: i64,
     }
 }
+
+schema! {
+    /// `GET /admin/config` — the configuration this server is actually running
+    /// with (environment + defaults), secrets masked, plus a live health probe
+    /// of every backing service.
+    pub struct AdminConfig {
+        /// Process, URLs and feature switches.
+        pub server: AdminConfigServer,
+        /// PostgreSQL.
+        pub database: AdminConfigService,
+        /// Redis.
+        pub redis: AdminConfigService,
+        /// S3-compatible storage for session logs (`None` = not configured).
+        pub storage: Option<AdminConfigStorage>,
+        /// Outgoing e-mail (`None` = not configured).
+        pub smtp: Option<AdminConfigSmtp>,
+        /// Server-wide SSO providers.
+        pub sso: Vec<AdminConfigSso>,
+        /// WebAuthn / passkeys (`None` = off).
+        pub webauthn: Option<AdminConfigWebauthn>,
+        /// AI assistant backend (`None` = off).
+        pub ai: Option<AdminConfigAi>,
+        /// Defaults, bounds and provenance of the editable settings.
+        pub settings: AdminSettingsMeta,
+    }
+}
+
+schema! {
+    /// Process-level configuration.
+    pub struct AdminConfigServer {
+        /// Server version.
+        pub version: String,
+        /// Process start time.
+        pub started_at: DateTime<Utc>,
+        /// Seconds since start.
+        pub uptime_secs: u64,
+        /// Display name (`TERMOSO_SERVER_NAME`).
+        pub name: String,
+        /// API base URL as seen by clients (`TERMOSO_PUBLIC_URL`).
+        pub public_url: String,
+        /// Cabinet URL (`TERMOSO_WEB_URL`).
+        pub web_url: String,
+        /// Listen address (`TERMOSO_BIND`).
+        pub bind: String,
+        /// Client IPs taken from `X-Forwarded-For` (`TERMOSO_TRUST_PROXY`).
+        pub trust_proxy: bool,
+        /// Extra CORS origins.
+        pub cors_origins: Vec<String>,
+        /// Log filter (`TERMOSO_LOG`).
+        pub log: String,
+        /// `text` | `json`.
+        pub log_format: String,
+        /// Advertised data region.
+        pub data_region: Option<String>,
+        /// Oldest client allowed to sign in.
+        pub min_client_version: String,
+        /// `true` when `TERMOSO_MIN_CLIENT_VERSION` overrides the default (= server version).
+        pub min_client_version_overridden: bool,
+        /// Delay before a start-over (account reset) completes.
+        pub start_over_delay_secs: u64,
+        /// Days a deleted team can still be restored.
+        pub team_deletion_grace_days: u32,
+        /// Upper bound teams may set for their audit-log retention.
+        pub team_audit_retention_days_max: u32,
+        /// Audit events are also written to the process log.
+        pub audit_sink: bool,
+        /// Swagger UI served at `/api/docs`.
+        pub swagger_ui: bool,
+        /// API bridges may be created.
+        pub bridges: bool,
+        /// Teams may configure their own IdP.
+        pub team_idp: bool,
+        /// Landing page served by this process.
+        pub landing: bool,
+        /// Docs served by this process.
+        pub docs: bool,
+        /// Prometheus listen address when metrics are on.
+        pub metrics_bind: Option<String>,
+        /// Webhooks may target private/internal addresses.
+        pub webhooks_allow_private: bool,
+        /// A custom CA is configured for syslog-TLS webhooks.
+        pub webhooks_syslog_ca: bool,
+        /// Cloudflare Turnstile protects sign-up.
+        pub turnstile: bool,
+        /// Bootstrap administrators (`TERMOSO_ADMIN_EMAILS`).
+        pub admin_emails: Vec<String>,
+        /// Fixed owner (`TERMOSO_OWNER_EMAIL`); `None` = first registered account.
+        pub owner_email: Option<String>,
+    }
+}
+
+schema! {
+    /// A backing service and the result of a live probe.
+    pub struct AdminConfigService {
+        /// Endpoint with credentials removed.
+        pub endpoint: String,
+        /// Extra detail (pool size, key prefix…).
+        pub detail: Option<String>,
+        /// `ok` | `error`.
+        pub status: String,
+        /// Probe round-trip in milliseconds.
+        pub latency_ms: Option<u64>,
+        /// Probe error.
+        pub error: Option<String>,
+    }
+}
+
+schema! {
+    /// S3-compatible storage.
+    pub struct AdminConfigStorage {
+        /// Bucket.
+        pub bucket: String,
+        /// Region.
+        pub region: Option<String>,
+        /// Custom endpoint.
+        pub endpoint: Option<String>,
+        /// Endpoint clients use for presigned URLs.
+        pub public_endpoint: Option<String>,
+        /// Path-style addressing.
+        pub force_path_style: bool,
+        /// Presigned URL lifetime.
+        pub presign_secs: u64,
+        /// `ok` | `error`.
+        pub status: String,
+        /// Probe round-trip in milliseconds.
+        pub latency_ms: Option<u64>,
+        /// Probe error.
+        pub error: Option<String>,
+    }
+}
+
+schema! {
+    /// Outgoing e-mail.
+    pub struct AdminConfigSmtp {
+        /// Host.
+        pub host: String,
+        /// Port.
+        pub port: u16,
+        /// `starttls` | `tls` | `none`.
+        pub security: String,
+        /// From address.
+        pub from: String,
+        /// Authenticates with a username/password.
+        pub auth: bool,
+    }
+}
+
+schema! {
+    /// Server-wide SSO provider.
+    pub struct AdminConfigSso {
+        /// Slug.
+        pub id: String,
+        /// Display name.
+        pub name: String,
+        /// `oidc` | `saml`.
+        pub kind: String,
+        /// OIDC issuer / SAML IdP entity id.
+        pub issuer: Option<String>,
+        /// E-mail domains accepted from this provider (empty = any).
+        pub allowed_domains: Vec<String>,
+    }
+}
+
+schema! {
+    /// WebAuthn relying party.
+    pub struct AdminConfigWebauthn {
+        /// RP id.
+        pub rp_id: String,
+        /// RP display name.
+        pub rp_name: String,
+        /// Allowed origins.
+        pub origins: Vec<String>,
+    }
+}
+
+schema! {
+    /// AI assistant backend.
+    pub struct AdminConfigAi {
+        /// Provider.
+        pub provider: String,
+        /// Model.
+        pub model: String,
+        /// Endpoint host.
+        pub endpoint: String,
+        /// Prompts are not retained by the provider.
+        pub confidential: bool,
+        /// Requests per user per day.
+        pub daily_quota: u32,
+        /// Prompt size limit.
+        pub max_prompt_chars: u64,
+        /// Request timeout.
+        pub timeout_secs: u64,
+    }
+}
+
+schema! {
+    /// Defaults, bounds and provenance of `ServerSettings`.
+    pub struct AdminSettingsMeta {
+        /// Values a fresh server starts with.
+        pub defaults: ServerSettings,
+        /// Accepted ranges.
+        pub limits: AdminSettingsLimits,
+        /// Last change.
+        pub updated_at: Option<DateTime<Utc>>,
+        /// E-mail of the admin who made the last change.
+        pub updated_by: Option<String>,
+    }
+}
+
+schema! {
+    /// Accepted ranges for `ServerSettings`.
+    pub struct AdminSettingsLimits {
+        /// Minimum session lifetime (days).
+        pub session_ttl_days_min: u32,
+        /// Maximum session lifetime (days).
+        pub session_ttl_days_max: u32,
+        /// Minimum record size (bytes).
+        pub max_entity_bytes_min: u32,
+        /// Maximum record size (bytes).
+        pub max_entity_bytes_max: u32,
+        /// Minimum session-log size (bytes).
+        pub max_log_bytes_min: u64,
+        /// Maximum audit retention (days); 0 = forever.
+        pub audit_retention_days_max: u32,
+    }
+}

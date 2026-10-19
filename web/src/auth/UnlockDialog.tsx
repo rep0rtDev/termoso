@@ -174,7 +174,7 @@ function Body() {
         )}
         {stage.kind === "email" && (
           <DialogContentText>
-            {trx("Enter the code we sent to {v1}.", { v1: stage.emailHint || "your email" })}
+            {trx("Enter the code we sent to {v1}.", { v1: stage.emailHint || tr("your email") })}
           </DialogContentText>
         )}
         {stage.kind === "mfa" && stage.methods.length > 1 && (

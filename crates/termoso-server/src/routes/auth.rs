@@ -109,6 +109,12 @@ fn semver_tuple(v: &str) -> Option<(u64, u64, u64)> {
 /// newer server breaks in confusing ways, so it is told to update instead.
 /// Clients whose version string is not semver (dev builds, tests) pass.
 pub(crate) fn check_client_version(cfg: &crate::config::Config, d: &DeviceInfo) -> ApiResult<()> {
+    // The web cabinet ships inside the server image, so it can never be
+    // "older" in a way an update would fix; gating it would only lock
+    // operators out of their own console.
+    if d.platform == Platform::Web {
+        return Ok(());
+    }
     let required = min_client_version(cfg);
     let (Some(client), Some(min)) = (semver_tuple(&d.app_version), semver_tuple(required)) else {
         return Ok(());
@@ -253,6 +259,7 @@ async fn registration_allowed(
     if settings.sso_only && !sso_verified {
         return Err(crate::enterprise::sso_required(state, email).await);
     }
+    crate::enterprise::require_team_sso(state, sso_verified, email).await?;
     if !(settings.registration_open || (sso_verified && settings.sso_registration) || team_jit) {
         return Err(Error::registration_closed());
     }
@@ -282,7 +289,9 @@ pub async fn register_start(
     turnstile::require(&state, req.turnstile_token.as_deref(), client.ip.as_deref()).await?;
     let email = normalize_email(&req.email).ok_or_else(|| Error::bad_request("Invalid email"))?;
     // Closed registration is enforced at `register_finish`, where the invite
-    // token (which may still allow sign-up) is available.
+    // token (which may still allow sign-up) is available. A domain claimed by
+    // a team for SSO is refused right away: no invite overrides that.
+    crate::enterprise::require_team_sso(&state, false, &email).await?;
     if users::by_email(&state.db, &email).await?.is_some() {
         return Err(Error::email_taken());
     }
@@ -481,6 +490,7 @@ pub async fn login_start(
     };
     let sso_verified = sso_sess.is_some();
     crate::enterprise::require_sso(&state, sso_verified, &email).await?;
+    crate::enterprise::require_team_sso(&state, sso_verified, &email).await?;
     let user = users::by_email(&state.db, &email).await?;
     if let (Some(u), false) = (&user, sso_verified)
         && let Some(provider) = crate::policy::sso_required(&state.db, u.id, &email).await?
@@ -1462,6 +1472,21 @@ mod client_version_tests {
             app_version: v.into(),
             client_device_id: None,
         }
+    }
+
+    #[test]
+    fn web_cabinet_is_never_gated() {
+        let cfg = crate::config::Config {
+            min_client_version: Some("9.9.9".into()),
+            ..Default::default()
+        };
+        let d = DeviceInfo {
+            name: "browser".into(),
+            platform: Platform::Web,
+            app_version: "0.1.0".into(),
+            client_device_id: None,
+        };
+        assert!(check_client_version(&cfg, &d).is_ok());
     }
 
     #[test]
