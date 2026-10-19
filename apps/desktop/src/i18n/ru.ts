@@ -8,6 +8,17 @@ export const ru: Readonly<Record<string, string>> = {
     ".ppk, id_ed25519, *.pem — лежащий рядом *-cert.pub подхватится как сертификат",
   ".reg export…": "Экспорт .reg…",
   "1 hour": "1 час",
+  "Key rotated; new key installed on {v1}": "Ключ заменён; новый ключ установлен на {v1}",
+  "Key rotated (no host in this vault used it)":
+    "Ключ заменён (ни один хост этого хранилища его не использовал)",
+  "Rotation stopped, old key kept: {v1}": "Ротация остановлена, старый ключ сохранён: {v1}",
+  "Generates a new key of the same type on this device, installs it on every host of the vault that uses the key, removes the old one there and replaces the key in the vault.":
+    "Создаёт на этом устройстве новый ключ того же типа, устанавливает его на все хосты хранилища, использующие ключ, удаляет там старый и заменяет ключ в хранилище.",
+  "Rotating…": "Ротация…",
+  "Rotate now": "Заменить сейчас",
+  "Passwords, certificates and hardware keys are replaced by hand (host editor / your CA). Mark the job done afterwards so the age counter resets.":
+    "Пароли, сертификаты и аппаратные ключи заменяются вручную (редактор хоста / ваш CA). После этого отметьте задание выполненным, чтобы счётчик возраста сбросился.",
+  "Mark done": "Отметить выполненным",
   Author: "Автор",
   Duration: "Длительность",
   "Export NDJSON": "Экспорт NDJSON",

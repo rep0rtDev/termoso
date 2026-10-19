@@ -870,6 +870,19 @@ const AUTHORIZED_KEYS_SCRIPT: &str = authorized_keys_script!();
 /// Command sent over `exec`: forces POSIX sh regardless of the login shell.
 pub const EXPORT_COMMAND: &str = concat!("exec sh -c '", authorized_keys_script!(), "'");
 
+/// Remote side of key rotation: drop one public key (type+blob on stdin)
+/// from `~/.ssh/authorized_keys`, leaving every other line untouched.
+/// Prints `REMOVED` or `MISSING` (file or line absent). Same constraints as
+/// [`EXPORT_COMMAND`]: POSIX sh, no single quotes, key never in argv.
+pub const REMOVE_COMMAND: &str = concat!(
+    "exec sh -c '",
+    "f=\"${HOME:?}/.ssh/authorized_keys\"; [ -f \"$f\" ] || { echo MISSING; exit 0; }; ",
+    "k=$(head -n 1); set -f; set -- $k; [ -n \"$2\" ] || exit 3; blob=\"$1 $2\"; ",
+    "if grep -qF -- \"$blob\" \"$f\"; then t=\"$f.rotate.$$\"; umask 077; ",
+    "grep -vF -- \"$blob\" \"$f\" > \"$t\"; chmod 600 \"$t\" && mv \"$t\" \"$f\" && echo REMOVED; ",
+    "else echo MISSING; fi'"
+);
+
 /// What `EXPORT_COMMAND` reported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]

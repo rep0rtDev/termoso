@@ -22,6 +22,7 @@ mod multiplayer;
 mod presence;
 mod prompts;
 mod quick;
+mod rotation;
 mod security;
 mod sessions;
 mod sftp;
@@ -364,6 +365,8 @@ pub fn run() {
             commands_tools::rotation_jobs,
             commands_tools::rotation_update_job,
             commands_tools::rotation_cancel_job,
+            commands_tools::rotation_run_job,
+            commands_tools::rotation_mark_done,
             commands_tools::team_access_requests,
             commands_tools::team_create_access_request,
             commands_tools::team_cancel_access_request,

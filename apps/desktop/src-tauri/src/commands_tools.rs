@@ -1570,6 +1570,22 @@ pub async fn rotation_update_job<R: Runtime>(
 }
 
 #[tauri::command]
+pub async fn rotation_run_job<R: Runtime>(
+    app: AppHandle<R>,
+    job_id: Uuid,
+) -> Result<crate::rotation::RotationRunResult> {
+    crate::rotation::run_job(&app, job_id).await
+}
+
+#[tauri::command]
+pub async fn rotation_mark_done<R: Runtime>(
+    app: AppHandle<R>,
+    job_id: Uuid,
+) -> Result<termoso_proto::team::RotationJob> {
+    crate::rotation::mark_done(&app, job_id).await
+}
+
+#[tauri::command]
 pub async fn rotation_cancel_job<R: Runtime>(app: AppHandle<R>, job_id: Uuid) -> Result<()> {
     team::rotation_cancel_job(&app, job_id).await
 }

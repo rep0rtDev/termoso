@@ -15,6 +15,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -95,6 +96,32 @@ export function RotationTab({ team }: { team: Team }) {
   });
   const cancel = useMutation({
     mutationFn: (j: RotationJob) => ipc.rotationCancelJob(j.id),
+    onSuccess: refresh,
+    onError: (e) => snack.error(errorMessage(e)),
+  });
+  const run = useMutation({
+    mutationFn: (j: RotationJob) => ipc.rotationRunJob(j.id),
+    onSuccess: async (r) => {
+      await refresh();
+      await qc.invalidateQueries({ queryKey: ["sshKeys"] });
+      if (r.status === "done") {
+        snack.notify(
+          r.hostsUpdated.length > 0
+            ? tr("Key rotated; new key installed on {v1}", { v1: r.hostsUpdated.join(", ") })
+            : tr("Key rotated (no host in this vault used it)"),
+        );
+      } else {
+        snack.error(
+          tr("Rotation stopped, old key kept: {v1}", {
+            v1: r.hostsFailed.map(([h, e]) => `${h}: ${e}`).join("; "),
+          }),
+        );
+      }
+    },
+    onError: (e) => snack.error(errorMessage(e)),
+  });
+  const markDone = useMutation({
+    mutationFn: (j: RotationJob) => ipc.rotationMarkDone(j.id),
     onSuccess: refresh,
     onError: (e) => snack.error(errorMessage(e)),
   });
@@ -246,14 +273,53 @@ export function RotationTab({ team }: { team: Team }) {
                       </TableCell>
                       <TableCell align="right">
                         {(j.status === "pending" || j.status === "running") && (
-                          <Button
-                            size="small"
-                            color="error"
-                            disabled={cancel.isPending}
-                            onClick={() => cancel.mutate(j)}
-                          >
-                            {tr("Cancel")}
-                          </Button>
+                          <Stack direction="row" spacing={1} sx={{ justifyContent: "flex-end" }}>
+                            {j.entity_kind === "key" ? (
+                              <Tooltip
+                                title={tr(
+                                  "Generates a new key of the same type on this device, installs it on every host of the vault that uses the key, removes the old one there and replaces the key in the vault.",
+                                )}
+                              >
+                                <span>
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    disabled={run.isPending}
+                                    onClick={() => run.mutate(j)}
+                                  >
+                                    {run.isPending && run.variables.id === j.id
+                                      ? tr("Rotating…")
+                                      : tr("Rotate now")}
+                                  </Button>
+                                </span>
+                              </Tooltip>
+                            ) : (
+                              <Tooltip
+                                title={tr(
+                                  "Passwords, certificates and hardware keys are replaced by hand (host editor / your CA). Mark the job done afterwards so the age counter resets.",
+                                )}
+                              >
+                                <span>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    disabled={markDone.isPending}
+                                    onClick={() => markDone.mutate(j)}
+                                  >
+                                    {tr("Mark done")}
+                                  </Button>
+                                </span>
+                              </Tooltip>
+                            )}
+                            <Button
+                              size="small"
+                              color="error"
+                              disabled={cancel.isPending}
+                              onClick={() => cancel.mutate(j)}
+                            >
+                              {tr("Cancel")}
+                            </Button>
+                          </Stack>
                         )}
                       </TableCell>
                     </TableRow>

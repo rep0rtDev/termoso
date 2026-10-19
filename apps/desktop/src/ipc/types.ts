@@ -2298,3 +2298,10 @@ export interface TeamLogList {
   since: number;
   has_more: boolean;
 }
+
+export interface RotationRunResult {
+  jobId: Uuid;
+  status: "done" | "failed";
+  hostsUpdated: string[];
+  hostsFailed: [string, string][];
+}

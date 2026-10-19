@@ -137,6 +137,7 @@ import type {
   MyAclRule,
   RotationJob,
   RotationOverview,
+  RotationRunResult,
   SsoDiscoverResponse,
   TeamDataStatus,
   TeamDeviceList,
@@ -824,3 +825,7 @@ export const teamRejectDevice = (teamId: Uuid, deviceId: Uuid) =>
   invoke<null>("team_reject_device", { teamId, deviceId });
 export const saveTextFile = (path: string, contents: string) =>
   invoke<null>("save_text_file", { path, contents });
+export const rotationRunJob = (jobId: Uuid) =>
+  invoke<RotationRunResult>("rotation_run_job", { jobId });
+export const rotationMarkDone = (jobId: Uuid) =>
+  invoke<RotationJob>("rotation_mark_done", { jobId });
