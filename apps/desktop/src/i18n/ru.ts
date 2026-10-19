@@ -2975,4 +2975,6 @@ export const ru: Readonly<Record<string, string>> = {
   "Toggle focus mode": "Переключить режим фокуса",
   Recent: "Недавние",
   Workspaces: "Рабочие пространства",
+  "Update Termoso to sign in.": "Чтобы войти, обновите Termoso.",
+  "Download": "Скачать",
 };

@@ -94,6 +94,8 @@ class SignInViewModel(
     var invite by mutableStateOf("")
     var busy by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
+    /** Server refused this build as too old (`client_update_required`): the server's own explanation. */
+    var updateRequired by mutableStateOf<String?>(null)
     var step by mutableStateOf<AuthStep>(AuthStep.Form)
 
     var mfaMethod by mutableStateOf<MfaMethod?>(null)
@@ -247,6 +249,7 @@ class SignInViewModel(
             else -> null
         }
         if (error != null) return
+        updateRequired = null
         run {
             try {
                 when (mode) {
@@ -267,6 +270,10 @@ class SignInViewModel(
                     }
                 }
             } catch (e: MobileException.Other) {
+                if (e.kind == "client_update_required") {
+                    updateRequired = e.detail
+                    return@run
+                }
                 if (e.kind != CAPTCHA_REQUIRED) throw e
                 captchaUrl = url
                 return@run

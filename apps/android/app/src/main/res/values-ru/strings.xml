@@ -1636,4 +1636,5 @@
     <string name="acl_connect">Только подключение</string>
     <string name="acl_read">Чтение</string>
     <string name="acl_edit">Правка</string>
+    <string name="update_termoso_to_sign_in">Чтобы войти, обновите Termoso.</string>
 </resources>

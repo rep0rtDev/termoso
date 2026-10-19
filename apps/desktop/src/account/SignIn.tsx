@@ -1,5 +1,6 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { copyToClipboard } from "@/lib/clipboard";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Alert,
   Box,
@@ -141,9 +142,14 @@ export function SignInForm({
   const [captchaFor, setCaptchaFor] = useState<{ mode: Mode; url: string | null } | null>(null);
   const captcha = captchaFor !== null && captchaFor.mode === mode && captchaFor.url === url;
   const setCaptcha = (on: boolean) => setCaptchaFor(on ? { mode, url } : null);
+  const [updateRequired, setUpdateRequired] = useState<string | null>(null);
   const onAuthError = (e: unknown) => {
     if (isDesktopError(e) && e.kind === "turnstile_required") {
       setCaptcha(true);
+      return;
+    }
+    if (isDesktopError(e) && e.kind === "client_update_required") {
+      setUpdateRequired(e.message);
       return;
     }
     if (verified) clearSso();
@@ -351,6 +357,22 @@ export function SignInForm({
                 onKeyDown={onEnter}
               />
             </Field>
+          )}
+          {updateRequired && (
+            <Alert
+              severity="warning"
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={() => void openUrl("https://termoso.dev/#download")}
+                >
+                  {tr("Download")}
+                </Button>
+              }
+            >
+              <strong>{tr("Update Termoso to sign in.")}</strong> {updateRequired}
+            </Alert>
           )}
           {idp && (
             <Alert severity="info">

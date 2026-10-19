@@ -3,6 +3,7 @@ package com.termoso.android.ui.account
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.net.Uri
+import android.content.Intent
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -130,6 +131,7 @@ fun SignInScreen(container: AppContainer, account: AccountManager, mode: AuthMod
                 is AuthStep.Recovery -> RecoveryPhrase(vm, step, onDone)
             }
             vm.error?.let { ErrorLine(it) }
+            vm.updateRequired?.let { UpdateRequiredCard(it) }
             Spacer(Modifier.height(16.dp))
         }
     }
@@ -544,6 +546,20 @@ private fun BusyButton(text: String, busy: Boolean, onClick: () -> Unit, enabled
             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
         } else {
             Text(text)
+        }
+    }
+}
+
+@Composable
+private fun UpdateRequiredCard(detail: String) {
+    val ctx = LocalContext.current
+    Column(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(stringResource(R.string.update_termoso_to_sign_in), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(4.dp))
+        Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(8.dp))
+        Button(onClick = { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://termoso.dev/#download"))) }) {
+            Text(stringResource(R.string.download))
         }
     }
 }

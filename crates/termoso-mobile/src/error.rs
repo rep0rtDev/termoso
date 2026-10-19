@@ -197,6 +197,7 @@ fn stable_api_kind(code: &str) -> Option<&'static str> {
         codes::TURNSTILE_REQUIRED => Some(codes::TURNSTILE_REQUIRED),
         codes::MFA_REQUIRED => Some(codes::MFA_REQUIRED),
         codes::SSO_REQUIRED => Some(codes::SSO_REQUIRED),
+        codes::CLIENT_UPDATE_REQUIRED => Some(codes::CLIENT_UPDATE_REQUIRED),
         codes::UNAUTHORIZED | codes::TOKEN_EXPIRED => Some("unauthorized"),
         _ => None,
     }

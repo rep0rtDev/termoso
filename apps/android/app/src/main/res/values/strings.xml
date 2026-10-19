@@ -1604,4 +1604,5 @@
     <string name="acl_connect">Connect only</string>
     <string name="acl_read">Read</string>
     <string name="acl_edit">Edit</string>
+    <string name="update_termoso_to_sign_in">Update Termoso to sign in.</string>
 </resources>
