@@ -1637,4 +1637,15 @@
     <string name="acl_read">Чтение</string>
     <string name="acl_edit">Правка</string>
     <string name="update_termoso_to_sign_in">Чтобы войти, обновите Termoso.</string>
+    <string name="copy_to_another_server">Копировать на другой сервер…</string>
+    <string name="destination_folder">Папка назначения</string>
+    <string name="folders_are_not_copied_between_servers">Папки между серверами не копируются — выберите файлы.</string>
+    <string name="copying_to">Копируем файлов: %1$d → %2$s</string>
+    <string name="copy_action">Копировать</string>
+    <plurals name="n_files_will_be_copied_through_this_device">
+        <item quantity="one">%d файл пройдёт через это устройство, на нём ничего не сохраняется.</item>
+        <item quantity="few">%d файла пройдут через это устройство, на нём ничего не сохраняется.</item>
+        <item quantity="many">%d файлов пройдут через это устройство, на нём ничего не сохраняется.</item>
+        <item quantity="other">%d файла пройдут через это устройство, на нём ничего не сохраняется.</item>
+    </plurals>
 </resources>

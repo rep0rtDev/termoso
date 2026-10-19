@@ -3,6 +3,7 @@ import { Box, Button, LinearProgress, Stack, Typography } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import UploadRoundedIcon from "@mui/icons-material/UploadRounded";
 import DownloadRoundedIcon from "@mui/icons-material/DownloadRounded";
+import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import BlockRoundedIcon from "@mui/icons-material/BlockRounded";
@@ -201,7 +202,12 @@ function detail(t: Transfer): string {
 }
 
 function TransferRow({ t }: { t: Transfer }) {
-  const Icon = t.direction === "upload" ? UploadRoundedIcon : DownloadRoundedIcon;
+  const Icon =
+    t.direction === "upload"
+      ? UploadRoundedIcon
+      : t.direction === "relay"
+        ? SwapHorizRoundedIcon
+        : DownloadRoundedIcon;
   const src = t.direction === "upload" ? t.local : t.remote;
   const dst = t.direction === "upload" ? t.remote : t.local;
   const pct = t.total ? Math.min(100, (t.done / t.total) * 100) : undefined;

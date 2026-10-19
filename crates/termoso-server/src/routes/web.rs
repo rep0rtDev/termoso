@@ -279,8 +279,9 @@ pub fn router<S: Clone + Send + Sync + 'static>(
 /// are served (tagged with [`LandingHost`] so `/` stays the landing and
 /// `/server/info` reports it); `/docs/*` is served too unless the docs have
 /// their own origin. Docs origin: `/docs/*`, the static files and the probes
-/// are served, `/` goes to `/docs`. Anything else goes to the cabinet at
-/// `web_url`.
+/// are served, `/` goes to `/docs`. Any other cabinet route redirects to the
+/// same path under `web_url`; the rest of the API answers 404 on these
+/// origins so clients cannot be pointed at the marketing domain.
 pub async fn landing_host_layer(
     State(state): State<AppState>,
     mut req: Request,
@@ -299,12 +300,16 @@ pub async fn landing_host_layer(
     let passthrough = matches!(
         path.as_str(),
         "/healthz" | "/readyz" | "/api/v1/server/info"
-    ) || !is_route(&path);
+    ) || (!is_route(&path) && !is_api(&path));
+    let api_not_here = || crate::error::Error::not_found("route").into_response();
     if state.docs_host.as_deref() == Some(host.as_str()) {
         if path == "/" {
             return Redirect::temporary("/docs").into_response();
         }
         if !(passthrough || is_docs(&path)) {
+            if is_api(&path) {
+                return api_not_here();
+            }
             return redirect(&web_url, &req);
         }
         req.extensions_mut().insert(DocsHost);
@@ -316,6 +321,9 @@ pub async fn landing_host_layer(
         {
             return redirect(docs_url, &req);
         } else if !(is_landing(&path) || passthrough || is_docs(&path)) {
+            if is_api(&path) {
+                return api_not_here();
+            }
             return redirect(&web_url, &req);
         }
         req.extensions_mut().insert(LandingHost);
@@ -409,6 +417,10 @@ fn is_landing(path: &str) -> bool {
 
 fn is_docs(path: &str) -> bool {
     path == "/docs" || path.starts_with("/docs/")
+}
+
+fn is_api(path: &str) -> bool {
+    path == "/api" || path.starts_with("/api/")
 }
 
 fn is_route(path: &str) -> bool {
@@ -676,6 +688,16 @@ mod tests {
         assert!(is_docs("/docs/self-hosting/overview"));
         assert!(!is_docs("/docsy"));
         assert!(!is_docs("/account"));
+    }
+
+    #[test]
+    fn api_paths_are_recognised_except_the_landing_passthroughs() {
+        assert!(is_api("/api/v1/vaults"));
+        assert!(is_api("/api/v1/auth/login/start"));
+        assert!(is_api("/api"));
+        assert!(!is_api("/apiary"));
+        assert!(!is_api("/sponsor"));
+        assert!(!is_api("/docs/api"));
     }
 
     #[test]

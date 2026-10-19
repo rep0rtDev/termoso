@@ -13,7 +13,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use termoso_core::error::CoreError;
-use termoso_core::remote::{RemoteCapabilities, RemoteFs, RemoteProtocol};
+use termoso_core::remote::{RemoteCapabilities, RemoteFs, RemoteProtocol, relay_file};
 use termoso_core::sftp::{EntryKind, Progress, RemoteEntry, Sftp, TransferOptions};
 use termoso_core::ssh::SshClient;
 use tokio::sync::Semaphore;
@@ -85,6 +85,9 @@ pub struct Listing {
 pub enum Direction {
     Upload,
     Download,
+    /// Remote to remote through this client (`sftp_id` → `to_sftp_id`);
+    /// `remote` is the source path and `local` the destination path.
+    Relay,
 }
 
 /// What to do when a file already exists at the destination.
@@ -107,6 +110,8 @@ pub enum Conflict {
 pub struct TransferInfo {
     pub id: Uuid,
     pub sftp_id: Uuid,
+    /// Destination connection of a relay; `None` for uploads and downloads.
+    pub to_sftp_id: Option<Uuid>,
     pub direction: Direction,
     pub local: String,
     pub remote: String,
@@ -836,6 +841,61 @@ async fn plan_download(sftp: &dyn RemoteFs, remote: String, local: PathBuf) -> R
     })
 }
 
+/// Destination connection a relay was started with.
+fn relay_target(to: Option<Uuid>) -> Result<Uuid> {
+    to.ok_or_else(|| DesktopError::invalid("relay needs a destination connection"))
+}
+
+fn relay_fs(to: &Option<Arc<dyn RemoteFs>>) -> Result<&Arc<dyn RemoteFs>> {
+    to.as_ref()
+        .ok_or_else(|| DesktopError::invalid("relay needs a destination connection"))
+}
+
+/// Like `plan_download`, but the destination is a path on another remote.
+async fn plan_relay(from: &dyn RemoteFs, src: String, dest: String) -> Result<Plan> {
+    let root = from.stat(&src).await?;
+    if root.kind != EntryKind::Dir {
+        return Ok(Plan {
+            dirs: Vec::new(),
+            files: vec![Item {
+                local: PathBuf::from(dest),
+                remote: src,
+                size: root.size,
+            }],
+            total: root.size,
+        });
+    }
+    let mut dirs = vec![dest.clone()];
+    let mut files = Vec::new();
+    let mut total = 0u64;
+    let mut stack = vec![(src, dest)];
+    while let Some((sdir, ddir)) = stack.pop() {
+        for e in from.list(&sdir).await? {
+            let dpath = remote_join(&ddir, &e.name);
+            match e.kind {
+                EntryKind::Dir => {
+                    dirs.push(dpath.clone());
+                    stack.push((e.path, dpath));
+                }
+                EntryKind::File => {
+                    total += e.size.unwrap_or(0);
+                    files.push(Item {
+                        local: PathBuf::from(dpath),
+                        remote: e.path,
+                        size: e.size,
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(Plan {
+        dirs,
+        files,
+        total: Some(total),
+    })
+}
+
 /// Throttled progress emitter shared by every file of one transfer.
 struct Reporter<R: Runtime> {
     app: AppHandle<R>,
@@ -878,6 +938,7 @@ impl<R: Runtime> Reporter<R> {
 pub async fn transfer_probe(
     state: &AppState,
     sftp_id: Uuid,
+    to_sftp_id: Option<Uuid>,
     direction: Direction,
     local: String,
     remote: String,
@@ -885,12 +946,20 @@ pub async fn transfer_probe(
     match direction {
         Direction::Upload => Ok(state.sftp.sftp(sftp_id)?.stat(&remote).await.ok()),
         Direction::Download => Ok(local_stat(local).await.ok()),
+        Direction::Relay => Ok(state
+            .sftp
+            .sftp(relay_target(to_sftp_id)?)?
+            .stat(&local)
+            .await
+            .ok()),
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn transfer_start<R: Runtime>(
     app: AppHandle<R>,
     sftp_id: Uuid,
+    to_sftp_id: Option<Uuid>,
     direction: Direction,
     local: String,
     remote: String,
@@ -899,6 +968,14 @@ pub fn transfer_start<R: Runtime>(
 ) -> Result<TransferInfo> {
     let state = app.state::<AppState>();
     state.sftp.sftp(sftp_id)?;
+    let to_sftp_id = match direction {
+        Direction::Relay => {
+            let to = relay_target(to_sftp_id)?;
+            state.sftp.sftp(to)?;
+            Some(to)
+        }
+        _ => None,
+    };
     let local_path = PathBuf::from(&local);
     if temp && !local_path.starts_with(drop_root()) {
         return Err(DesktopError::invalid(
@@ -910,6 +987,7 @@ pub fn transfer_start<R: Runtime>(
     let info = TransferInfo {
         id,
         sftp_id,
+        to_sftp_id,
         direction,
         local: local.clone(),
         remote: remote.clone(),
@@ -954,6 +1032,9 @@ pub fn transfer_resume<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
             return Err(DesktopError::invalid("transfer is already active"));
         }
         state.sftp.sftp(job.info.sftp_id)?;
+        if let Some(to) = job.info.to_sftp_id {
+            state.sftp.sftp(to)?;
+        }
         job.cancel = Some(cancel.clone());
         job.pausing = false;
     }
@@ -1032,13 +1113,14 @@ async fn run_job<R: Runtime>(
     cancel: CancellationToken,
 ) -> Result<(u64, usize)> {
     let state = app.state::<AppState>();
-    let (sftp_id, direction, mut local, mut remote, conflict, progress) = {
+    let (sftp_id, to_sftp_id, direction, mut local, mut remote, conflict, progress) = {
         let jobs = state.sftp.transfers.lock().expect("sftp poisoned");
         let job = jobs
             .get(&id)
             .ok_or_else(|| DesktopError::not_found(format!("transfer {id}")))?;
         (
             job.info.sftp_id,
+            job.info.to_sftp_id,
             job.info.direction,
             job.local.clone(),
             job.remote.clone(),
@@ -1047,6 +1129,10 @@ async fn run_job<R: Runtime>(
         )
     };
     let sftp = state.sftp.sftp(sftp_id)?;
+    let to = match to_sftp_id {
+        Some(t) => Some(state.sftp.sftp(t)?),
+        None => None,
+    };
     let conflict = if conflict == Conflict::Rename {
         match direction {
             Direction::Upload if sftp.exists(&remote).await? => {
@@ -1054,6 +1140,13 @@ async fn run_job<R: Runtime>(
             }
             Direction::Download if tokio::fs::symlink_metadata(&local).await.is_ok() => {
                 local = unique_local(&local).await?;
+            }
+            Direction::Relay => {
+                let t = relay_fs(&to)?;
+                let dest = local.to_string_lossy().into_owned();
+                if t.exists(&dest).await? {
+                    local = PathBuf::from(unique_remote(t.as_ref(), &dest).await?);
+                }
             }
             _ => {}
         }
@@ -1069,7 +1162,7 @@ async fn run_job<R: Runtime>(
     };
     let tracker = ProgressTracker { state: &state, id };
     run_transfer(
-        app, id, sftp, direction, local, remote, conflict, progress, &tracker, cancel,
+        app, id, sftp, to, direction, local, remote, conflict, progress, &tracker, cancel,
     )
     .await
 }
@@ -1100,16 +1193,26 @@ impl ProgressTracker<'_> {
     }
 }
 
+/// `("site", ".tar.gz")`, `("a", ".txt")`, `(".env", "")`: the extension a
+/// rename suffix must stay in front of, keeping `.tar.*` whole.
+fn split_ext(name: &str) -> (&str, &str) {
+    let Some(i) = name.rfind('.').filter(|&i| i > 0) else {
+        return (name, "");
+    };
+    let (stem, ext) = (&name[..i], &name[i..]);
+    match stem.rfind('.') {
+        Some(j) if j > 0 && stem[j..].eq_ignore_ascii_case(".tar") => (&name[..j], &name[j..]),
+        _ => (stem, ext),
+    }
+}
+
 /// `name (1).ext`, `name (2).ext`, … for the first `n` that keeps `taken` false.
 async fn unique_name<F, Fut>(name: &str, taken: F) -> Result<String>
 where
     F: Fn(String) -> Fut,
     Fut: std::future::Future<Output = bool>,
 {
-    let (stem, ext) = match name.rfind('.') {
-        Some(i) if i > 0 => (&name[..i], &name[i..]),
-        _ => (name, ""),
-    };
+    let (stem, ext) = split_ext(name);
     for n in 1..1000 {
         let candidate = format!("{stem} ({n}){ext}");
         if !taken(candidate.clone()).await {
@@ -1159,6 +1262,7 @@ async fn run_transfer<R: Runtime>(
     app: &AppHandle<R>,
     id: Uuid,
     sftp: Arc<dyn RemoteFs>,
+    to: Option<Arc<dyn RemoteFs>>,
     direction: Direction,
     local: PathBuf,
     remote: String,
@@ -1175,6 +1279,14 @@ async fn run_transfer<R: Runtime>(
                 .map_err(|e| DesktopError::new("io", e.to_string()))??
         }
         Direction::Download => plan_download(sftp.as_ref(), remote.clone(), local.clone()).await?,
+        Direction::Relay => {
+            plan_relay(
+                sftp.as_ref(),
+                remote.clone(),
+                local.to_string_lossy().into_owned(),
+            )
+            .await?
+        }
     };
     let reporter = Arc::new(Reporter {
         app: app.clone(),
@@ -1188,6 +1300,7 @@ async fn run_transfer<R: Runtime>(
         match direction {
             Direction::Upload => sftp.mkdir_all(d).await?,
             Direction::Download => tokio::fs::create_dir_all(d).await?,
+            Direction::Relay => relay_fs(&to)?.mkdir_all(d).await?,
         }
     }
 
@@ -1197,7 +1310,7 @@ async fn run_transfer<R: Runtime>(
     for (i, item) in plan.files.iter().enumerate() {
         let current = match direction {
             Direction::Upload => item.remote.clone(),
-            Direction::Download => item.local.to_string_lossy().into_owned(),
+            Direction::Download | Direction::Relay => item.local.to_string_lossy().into_owned(),
         };
         reporter.report(base, i, skipped, &current, true);
         let resume = match item_action(conflict, &earlier, &current) {
@@ -1209,6 +1322,7 @@ async fn run_transfer<R: Runtime>(
                 let exists = match direction {
                     Direction::Upload => sftp.exists(&item.remote).await?,
                     Direction::Download => tokio::fs::symlink_metadata(&item.local).await.is_ok(),
+                    Direction::Relay => relay_fs(&to)?.exists(&current).await?,
                 };
                 if exists {
                     skipped += 1;
@@ -1233,6 +1347,16 @@ async fn run_transfer<R: Runtime>(
         moved += match direction {
             Direction::Upload => sftp.upload(&item.local, &item.remote, &opts).await?,
             Direction::Download => sftp.download(&item.remote, &item.local, &opts).await?,
+            Direction::Relay => {
+                relay_file(
+                    sftp.as_ref(),
+                    relay_fs(&to)?.as_ref(),
+                    &item.remote,
+                    &current,
+                    &opts,
+                )
+                .await?
+            }
         };
         tracker.complete(&current);
         base += item.size.unwrap_or(0);
@@ -1388,6 +1512,10 @@ mod tests {
         assert_eq!(unique_name("a.txt", taken).await.unwrap(), "a (3).txt");
         let free = |_c: String| async move { false };
         assert_eq!(unique_name("Makefile", free).await.unwrap(), "Makefile (1)");
+        assert_eq!(
+            unique_name("site.tar.gz", free).await.unwrap(),
+            "site (1).tar.gz"
+        );
         assert_eq!(unique_name(".env", free).await.unwrap(), ".env (1)");
     }
 

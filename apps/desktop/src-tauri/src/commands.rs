@@ -661,20 +661,23 @@ pub fn local_open(path: String, with: Option<String>) -> Result<()> {
 pub async fn transfer_probe(
     state: State<'_, AppState>,
     sftp_id: Uuid,
+    to_sftp_id: Option<Uuid>,
     direction: Direction,
     local: String,
     remote: String,
 ) -> Result<Option<RemoteEntry>> {
-    sftp::transfer_probe(&state, sftp_id, direction, local, remote).await
+    sftp::transfer_probe(&state, sftp_id, to_sftp_id, direction, local, remote).await
 }
 
 /// Start an upload or download (files or whole directories); progress and
 /// completion arrive as `transfer` events. `temp` marks uploads from the
 /// drop staging area, which is cleaned up afterwards.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn transfer_start<R: Runtime>(
     app: AppHandle<R>,
     sftp_id: Uuid,
+    to_sftp_id: Option<Uuid>,
     direction: Direction,
     local: String,
     remote: String,
@@ -684,6 +687,7 @@ pub fn transfer_start<R: Runtime>(
     sftp::transfer_start(
         app,
         sftp_id,
+        to_sftp_id,
         direction,
         local,
         remote,

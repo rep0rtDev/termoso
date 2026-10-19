@@ -10,8 +10,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use crate::error::Result;
-use crate::sftp::{OpenMode, RemoteEntry, TransferOptions};
+use crate::error::{CoreError, Result};
+use crate::sftp::{EntryKind, OpenMode, Progress, RemoteEntry, TransferOptions};
 
 /// Which wire protocol a [`RemoteFs`] speaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -131,6 +131,67 @@ pub fn parent(path: &str) -> Option<String> {
         Some(i) => Some(trimmed[..i].to_string()),
         None => None,
     }
+}
+
+/// Bytes per hop of a relay: one SFTP read, one write.
+pub const RELAY_CHUNK: usize = 256 * 1024;
+
+/// Streams one file from one remote to another through this client; nothing
+/// is written to the local disk. With `resume`, a shorter copy already at the
+/// destination is continued from its end.
+pub async fn relay_file(
+    from: &dyn RemoteFs,
+    to: &dyn RemoteFs,
+    src: &str,
+    dest: &str,
+    opts: &TransferOptions,
+) -> Result<u64> {
+    let reader = from.open_file(src, OpenMode::Read).await?;
+    let total = reader.size().await?;
+    let mut offset = 0u64;
+    let mut writer = None;
+    let existing = if opts.resume {
+        to.stat(dest).await.ok()
+    } else {
+        None
+    };
+    if let Some(e) = existing {
+        let have = e.size.unwrap_or(0);
+        if e.kind == EntryKind::File && have > 0 && have <= total {
+            offset = have;
+            writer = Some(to.open_file(dest, OpenMode::ReadWrite).await?);
+        }
+    }
+    let writer = match writer {
+        Some(w) => w,
+        None => to.open_file(dest, OpenMode::Write).await?,
+    };
+    let mut moved = 0u64;
+    while offset < total {
+        if opts.cancel.is_cancelled() {
+            return Err(CoreError::Cancelled);
+        }
+        let want = usize::try_from(total - offset)
+            .unwrap_or(RELAY_CHUNK)
+            .min(RELAY_CHUNK);
+        let buf = reader.read_at(offset, want).await?;
+        if buf.is_empty() {
+            break;
+        }
+        writer.write_at(offset, &buf).await?;
+        offset += buf.len() as u64;
+        moved += buf.len() as u64;
+        if let Some(p) = &opts.progress {
+            p(Progress {
+                done: offset,
+                total: Some(total),
+            });
+        }
+    }
+    let _ = writer.sync().await;
+    writer.close().await?;
+    reader.close().await?;
+    Ok(moved)
 }
 
 /// Join `name` onto directory `dir`.

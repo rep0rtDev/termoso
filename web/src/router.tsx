@@ -29,6 +29,7 @@ import { AdminTeamPage } from "@/pages/admin/AdminTeamPage";
 import { AdminSettingsPage } from "./pages/admin/AdminSettingsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { RootPage } from "./pages/RootPage";
+import { SiteNotFoundPage } from "./pages/SiteNotFoundPage";
 import { SponsorPage } from "./pages/SponsorPage";
 import { DocsLayout } from "./docs/DocsLayout";
 import { DocsPage } from "./docs/DocsPage";
@@ -92,9 +93,16 @@ export const router = createBrowserRouter([
               { path: "/admin/settings", element: <AdminSettingsPage /> },
             ],
           },
-          { path: "*", element: <NotFoundPage /> },
+          { path: "/account/*", element: <NotFoundPage /> },
+          { path: "/security/*", element: <NotFoundPage /> },
+          { path: "/devices/*", element: <NotFoundPage /> },
+          { path: "/bridges/*", element: <NotFoundPage /> },
+          { path: "/team/*", element: <NotFoundPage /> },
+          { path: "/vaults/*", element: <NotFoundPage /> },
+          { path: "/admin/*", element: <NotFoundPage /> },
         ],
       },
     ],
   },
+  { path: "*", element: <SiteNotFoundPage /> },
 ]);

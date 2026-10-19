@@ -11,12 +11,12 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 use termoso_core::localfs::LocalFs;
 use termoso_core::model::ResolvedHost;
-use termoso_core::remote::{RemoteFile, RemoteFs};
+use termoso_core::remote::{RemoteFile, RemoteFs, relay_file};
 use termoso_core::sftp::{
     self, OpenMode, Progress, ProgressFn, RemoteEntry, Sftp, TransferOptions,
 };
@@ -219,6 +219,10 @@ impl Drop for SftpFile {
 pub enum TransferDirection {
     Upload,
     Download,
+    /// Remote to remote through this device (`relay`): `remote_path` is
+    /// the source on this session, `local_path` the destination on the
+    /// peer session named by `to_session`.
+    Relay,
 }
 
 /// `Queued` → `Running` once a slot is free. `Paused` and `Failed` keep the
@@ -255,6 +259,8 @@ pub struct TransferCard {
     pub name: String,
     pub remote_path: String,
     pub local_path: String,
+    /// `SftpSession::id` of the destination of a relay.
+    pub to_session: Option<String>,
     pub done: u64,
     pub total: Option<u64>,
     pub bytes_per_sec: u64,
@@ -366,6 +372,9 @@ impl Backend {
 
 struct Transfer {
     card: TransferCard,
+    /// Destination session of a relay; weak so a session relaying to
+    /// itself does not keep itself alive.
+    peer: Option<Weak<Inner>>,
     /// Replaced for every run; cancelled to pause as well as to discard.
     cancel: CancellationToken,
     /// The pending cancellation means pause, not discard.
@@ -385,6 +394,7 @@ struct Transfer {
 struct Launch {
     id: u64,
     direction: TransferDirection,
+    peer: Option<Weak<Inner>>,
     remote: String,
     local: String,
     resume: bool,
@@ -409,11 +419,22 @@ impl TransferQueue {
         }
     }
 
+    #[cfg(test)]
     fn enqueue(
         &mut self,
         direction: TransferDirection,
         remote: String,
         local: String,
+    ) -> TransferCard {
+        self.enqueue_with(direction, remote, local, None)
+    }
+
+    fn enqueue_with(
+        &mut self,
+        direction: TransferDirection,
+        remote: String,
+        local: String,
+        peer: Option<(String, Weak<Inner>)>,
     ) -> TransferCard {
         let id = self.next_id;
         self.next_id += 1;
@@ -424,6 +445,7 @@ impl TransferQueue {
             name,
             remote_path: remote,
             local_path: local,
+            to_session: peer.as_ref().map(|(id, _)| id.clone()),
             done: 0,
             total: None,
             bytes_per_sec: 0,
@@ -434,6 +456,7 @@ impl TransferQueue {
             id,
             Transfer {
                 card: card.clone(),
+                peer: peer.map(|(_, p)| p),
                 cancel: self.closed.child_token(),
                 pausing: false,
                 resume: false,
@@ -481,6 +504,7 @@ impl TransferQueue {
                 Launch {
                     id,
                     direction: t.card.direction,
+                    peer: t.peer.clone(),
                     remote: t.card.remote_path.clone(),
                     local: t.card.local_path.clone(),
                     resume: t.resume,
@@ -546,12 +570,16 @@ impl TransferQueue {
 
     /// Remote path of the partial file a cancelled upload left behind, if
     /// it ever ran.
-    fn remote_leftover(&self, id: u64) -> Option<String> {
+    fn remote_leftover(&self, id: u64) -> Option<(String, Option<Weak<Inner>>)> {
         let t = self.transfers.get(&id)?;
-        (t.card.status == TransferStatus::Cancelled
-            && t.card.direction == TransferDirection::Upload
-            && t.resume)
-            .then(|| t.card.remote_path.clone())
+        if t.card.status != TransferStatus::Cancelled || !t.resume {
+            return None;
+        }
+        match t.card.direction {
+            TransferDirection::Upload => Some((t.card.remote_path.clone(), None)),
+            TransferDirection::Relay => Some((t.card.local_path.clone(), t.peer.clone())),
+            TransferDirection::Download => None,
+        }
     }
 
     /// Forget a finished transfer; active ones are left alone.
@@ -717,12 +745,22 @@ impl SftpSession {
     }
 
     fn queue(&self, direction: TransferDirection, remote: String, local: String) -> u64 {
+        self.queue_with(direction, remote, local, None)
+    }
+
+    fn queue_with(
+        &self,
+        direction: TransferDirection,
+        remote: String,
+        local: String,
+        peer: Option<(String, Weak<Inner>)>,
+    ) -> u64 {
         let card = self
             .inner
             .queue
             .lock()
             .expect("queue poisoned")
-            .enqueue(direction, remote, local);
+            .enqueue_with(direction, remote, local, peer);
         let id = card.id;
         self.inner.listener.on_transfer(card);
         self.inner.pump();
@@ -899,6 +937,15 @@ impl SftpSession {
         self.queue(TransferDirection::Upload, remote, local_path)
     }
 
+    /// Queue a copy of `remote` on this session to `dest` on `to` (a path
+    /// including the file name), streamed through this device without
+    /// touching its storage; `dest` is replaced if it exists. Progress
+    /// arrives on this session's listener.
+    pub fn relay(&self, remote: String, to: Arc<SftpSession>, dest: String) -> u64 {
+        let peer = (to.id(), Arc::downgrade(&to.inner));
+        self.queue_with(TransferDirection::Relay, remote, dest, Some(peer))
+    }
+
     pub fn transfers(&self) -> Vec<TransferCard> {
         self.inner.queue.lock().expect("queue poisoned").cards()
     }
@@ -1010,8 +1057,28 @@ impl Inner {
                     .upload(Path::new(&launch.local), &launch.remote, &opts)
                     .await?;
             }
+            TransferDirection::Relay => {
+                let to = Self::peer_live(launch.peer.as_ref())?;
+                relay_file(
+                    live.fs.as_ref(),
+                    to.fs.as_ref(),
+                    &launch.remote,
+                    &launch.local,
+                    &opts,
+                )
+                .await?;
+            }
         }
         Ok(())
+    }
+
+    /// The destination of a relay, which must still be connected.
+    fn peer_live(peer: Option<&Weak<Inner>>) -> Result<Arc<Live>> {
+        let peer = peer
+            .and_then(Weak::upgrade)
+            .ok_or_else(|| MobileError::invalid("destination connection is closed"))?;
+        let live = peer.live.lock().expect("live poisoned").clone();
+        live.ok_or_else(|| MobileError::invalid("destination connection is closed"))
     }
 
     fn progress(&self, id: u64, p: Progress) {
@@ -1041,12 +1108,15 @@ impl Inner {
             .lock()
             .expect("queue poisoned")
             .remote_leftover(card.id);
-        let live = self.live.lock().expect("live poisoned").clone();
+        let live = match &leftover {
+            Some((_, Some(peer))) => Self::peer_live(Some(peer)).ok(),
+            _ => self.live.lock().expect("live poisoned").clone(),
+        };
         match (leftover, live) {
-            (Some(remote), Some(live)) => {
+            (Some((path, _)), Some(live)) => {
                 let inner = self.clone();
                 self.runtime.spawn(async move {
-                    let _ = live.fs.remove_file(&remote).await;
+                    let _ = live.fs.remove_file(&path).await;
                     inner.listener.on_transfer(card);
                 });
             }
@@ -1472,14 +1542,20 @@ mod tests {
         // Running upload cancelled outright.
         q.cancel(ids[0]);
         q.finish(ids[0], Err(MobileError::Cancelled));
-        assert_eq!(q.remote_leftover(ids[0]).as_deref(), Some("/srv/up0"));
+        assert_eq!(
+            q.remote_leftover(ids[0]).map(|(p, _)| p).as_deref(),
+            Some("/srv/up0")
+        );
 
         // Paused after a partial run, then cancelled.
         q.pause(ids[1]);
         q.finish(ids[1], Err(MobileError::Cancelled));
         assert!(q.remote_leftover(ids[1]).is_none(), "paused keeps it");
         q.cancel(ids[1]);
-        assert_eq!(q.remote_leftover(ids[1]).as_deref(), Some("/srv/up1"));
+        assert_eq!(
+            q.remote_leftover(ids[1]).map(|(p, _)| p).as_deref(),
+            Some("/srv/up1")
+        );
 
         // Finished uploads and downloads have nothing to remove remotely.
         q.finish(ids[2], Ok(()));

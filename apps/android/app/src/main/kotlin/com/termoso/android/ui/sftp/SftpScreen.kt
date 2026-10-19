@@ -7,6 +7,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Visibility
@@ -61,6 +63,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -220,6 +223,8 @@ fun SftpScreen(
                     onSelectAll = vm::selectAll,
                     onDownload = { vm.download(state.selectedEntries) },
                     onCopyTo = { state.selectedEntries.singleOrNull()?.let { dialog = SftpDialog.CopyTo(it) } },
+                    onRelay = { dialog = SftpDialog.RelayTo(state.selectedEntries) },
+                    canRelay = connections.any { it.id != conn.id && it.state.value is SessionState.Connected },
                     onRename = { dialog = SftpDialog.Rename(state.selectedEntries.first()) },
                     onEdit = { onEdit(conn, state.selectedEntries.first().path); vm.clearSelection() },
                     onOpenWith = { vm.openWith(state.selectedEntries.first()) },
@@ -387,6 +392,12 @@ fun SftpScreen(
             onConfirm = { vm.copyTo(d.entry, it); vm.clearSelection(); dialog = null },
             onDismiss = { dialog = null },
         )
+        is SftpDialog.RelayTo -> RelayDialog(
+            targets = connections.filter { it.id != conn.id && it.state.value is SessionState.Connected },
+            count = d.entries.count { !it.isDir },
+            onConfirm = { target, dir -> vm.relayTo(d.entries, target, dir); dialog = null },
+            onDismiss = { dialog = null },
+        )
         is SftpDialog.Remove -> ConfirmDialog(
             title = if (d.entries.size == 1) stringResource(R.string.remove, d.entries.first().name) else stringResource(R.string.remove_items, d.entries.size),
             text = if (d.entries.any { it.isDir }) {
@@ -410,8 +421,55 @@ private sealed interface SftpDialog {
     data object NewFolder : SftpDialog
     data class Rename(val entry: SftpEntry) : SftpDialog
     data class CopyTo(val entry: SftpEntry) : SftpDialog
+    data class RelayTo(val entries: List<SftpEntry>) : SftpDialog
     data class Remove(val entries: List<SftpEntry>) : SftpDialog
     data class Permissions(val entry: SftpEntry) : SftpDialog
+}
+
+/** Pick an open connection and a folder on it for a phone-relayed copy. */
+@Composable
+private fun RelayDialog(
+    targets: List<SftpConnection>,
+    count: Int,
+    onConfirm: (SftpConnection, String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var target by remember { mutableStateOf(targets.firstOrNull()) }
+    var dir by remember(target) { mutableStateOf(target?.rust?.home()?.ifBlank { "/" } ?: "/") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.copy_to_another_server)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(pluralStringResource(R.plurals.n_files_will_be_copied_through_this_device, count, count), style = MaterialTheme.typography.bodySmall)
+                targets.forEach { t ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { target = t }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = t.id == target?.id, onClick = { target = t })
+                        Column(Modifier.padding(start = 4.dp)) {
+                            Text(t.label, style = MaterialTheme.typography.bodyLarge)
+                            Text(t.target, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = dir,
+                    onValueChange = { dir = it },
+                    label = { Text(stringResource(R.string.destination_folder)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { target?.let { onConfirm(it, dir) } }, enabled = target != null && dir.isNotBlank()) {
+                Text(stringResource(R.string.copy_action))
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }
 
 @Composable
@@ -540,6 +598,8 @@ private fun SelectionBar(
     onDownload: () -> Unit,
     onRename: () -> Unit,
     onCopyTo: () -> Unit,
+    onRelay: () -> Unit,
+    canRelay: Boolean,
     onEdit: () -> Unit,
     onOpenWith: () -> Unit,
     onPermissions: () -> Unit,
@@ -575,6 +635,15 @@ private fun SelectionBar(
                             leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
                             onClick = { menu = false; onCopyTo() },
                         )
+                    }
+                    if (canRelay && state.selectedEntries.any { !it.isDir }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.copy_to_another_server)) },
+                            leadingIcon = { Icon(Icons.Filled.SwapHoriz, null) },
+                            onClick = { menu = false; onRelay() },
+                        )
+                    }
+                    if (one) {
                         if (single != null && !single.isDir) {
                             if (canEditInTerminal) {
                                 DropdownMenuItem(

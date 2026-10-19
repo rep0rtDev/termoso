@@ -1957,7 +1957,7 @@ export interface SftpInfo {
 
 export type SftpEvent = { type: "opened"; id: Uuid; info: SftpInfo } | { type: "closed"; id: Uuid };
 
-export type Direction = "upload" | "download";
+export type Direction = "upload" | "download" | "relay";
 
 /** What to do with files that already exist at the destination. */
 export type Conflict = "replace" | "skip" | "rename" | "resume";
@@ -1965,6 +1965,8 @@ export type Conflict = "replace" | "skip" | "rename" | "resume";
 export interface TransferInfo {
   id: Uuid;
   sftpId: Uuid;
+  /** Destination connection of a relay; `null` for uploads and downloads. */
+  toSftpId: Uuid | null;
   direction: Direction;
   local: string;
   remote: string;

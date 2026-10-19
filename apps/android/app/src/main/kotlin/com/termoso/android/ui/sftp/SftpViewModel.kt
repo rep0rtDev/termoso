@@ -277,6 +277,20 @@ class SftpViewModel(private val appContext: Context, val conn: SftpConnection) :
     // ───────────────────────────── downloads ─────────────────────────────
 
     /** Download into the chosen folder; asks for one first if none is set. */
+    /**
+     * Copy [entries] (files only) to [dir] on [target], streamed through the
+     * phone without touching its storage; folders are skipped with a notice.
+     */
+    fun relayTo(entries: List<SftpEntry>, target: SftpConnection, dir: String) {
+        val files = entries.filter { !it.isDir }
+        if (files.size < entries.size) notice(str(R.string.folders_are_not_copied_between_servers))
+        viewModelScope.launch(Dispatchers.IO) {
+            for (e in files) conn.rust.relay(e.path, target.rust, join(dir.trim().ifBlank { "/" }, e.name))
+            if (files.isNotEmpty()) notice(str(R.string.copying_to, files.size, target.label))
+        }
+        clearSelection()
+    }
+
     fun download(entries: List<SftpEntry>) {
         val files = entries.filter { !it.isDir }
         if (files.size < entries.size) notice(str(R.string.folders_are_skipped_download_files_inside_them))
