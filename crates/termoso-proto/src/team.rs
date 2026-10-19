@@ -470,6 +470,12 @@ pub const PERMISSIONS: &[&str] = &[
     "vaults.transfer",
     "vaults.members",
     "vaults.rotate_key",
+    // acl
+    "acl.manage",
+    "rotation.manage",
+    "access.approve",
+    "team.export",
+    "devices.approve",
     "vaults.history",
     // entities
     "entities.read",
@@ -718,9 +724,33 @@ schema! {
         /// Audit log retention in days (30..=3650; the server may cap it).
         #[serde(default = "default_audit_retention_days")]
         pub audit_retention_days: i32,
+        /// `optional` (vault managers decide per vault) or `required`
+        /// (every team vault records, authors cannot delete recordings).
+        #[serde(default = "default_session_recording")]
+        pub session_recording: String,
+        /// Days to keep unpinned team recordings; 0 = forever.
+        #[serde(default)]
+        pub log_retention_days: i32,
+        /// Rotate SSH keys/certificates older than this many days; 0 = off.
+        #[serde(default)]
+        pub key_max_age_days: i32,
+        /// Rotate identity/host passwords older than this many days; 0 = off.
+        #[serde(default)]
+        pub password_max_age_days: i32,
+        /// Networks members may sign in from (CIDRs); empty = anywhere.
+        #[serde(default)]
+        pub ip_allowlist: Vec<String>,
+        /// New devices of members must be approved by a team admin
+        /// (`devices.approve`) before they can sign in.
+        #[serde(default)]
+        pub device_admin_approval: bool,
         /// Last change.
         pub updated_at: DateTime<Utc>,
     }
+}
+
+fn default_session_recording() -> String {
+    "optional".into()
 }
 
 schema! {
@@ -750,6 +780,274 @@ schema! {
         /// See [`TeamPolicies::audit_retention_days`].
         #[serde(default)]
         pub audit_retention_days: Option<i32>,
+        /// See [`TeamPolicies::session_recording`].
+        #[serde(default)]
+        pub session_recording: Option<String>,
+        /// See [`TeamPolicies::log_retention_days`].
+        #[serde(default)]
+        pub log_retention_days: Option<i32>,
+        /// See [`TeamPolicies::key_max_age_days`].
+        #[serde(default)]
+        pub key_max_age_days: Option<i32>,
+        /// See [`TeamPolicies::password_max_age_days`].
+        #[serde(default)]
+        pub password_max_age_days: Option<i32>,
+        /// See [`TeamPolicies::ip_allowlist`].
+        #[serde(default)]
+        pub ip_allowlist: Option<Vec<String>>,
+        /// See [`TeamPolicies::device_admin_approval`].
+        #[serde(default)]
+        pub device_admin_approval: Option<bool>,
+    }
+}
+
+schema! {
+    /// A member's device as seen by team admins.
+    pub struct TeamDevice {
+        /// Device id.
+        pub device_id: Uuid,
+        /// Owner.
+        pub user_id: Uuid,
+        /// Owner's e-mail.
+        pub user_email: String,
+        /// Device name chosen by the client.
+        pub name: String,
+        /// Platform.
+        pub platform: String,
+        /// App version at last sign-in.
+        pub app_version: Option<String>,
+        /// Last activity.
+        pub last_seen_at: DateTime<Utc>,
+        /// Last client address.
+        pub last_ip: Option<String>,
+        /// `pending`, `approved` or `rejected`.
+        pub status: String,
+        /// Admin who decided.
+        pub decided_by: Option<Uuid>,
+        /// When.
+        pub decided_at: Option<DateTime<Utc>>,
+        /// First sign-in attempt from this device.
+        pub requested_at: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/devices`.
+    pub struct TeamDeviceList {
+        /// Whether the policy currently requires admin approval.
+        pub admin_approval: bool,
+        /// Devices, pending first.
+        pub devices: Vec<TeamDevice>,
+    }
+}
+
+schema! {
+    /// A secret past the team's max age.
+    pub struct RotationDue {
+        /// Entity the secret lives in.
+        pub entity_id: Uuid,
+        /// Team vault holding the entity.
+        pub vault_id: Uuid,
+        /// Entity kind (`ssh_key`, `ssh_certificate`, `identity`, `host`).
+        pub kind: String,
+        /// Last rotation the owning client reported; `None` = never.
+        pub secret_rotated_at: Option<DateTime<Utc>>,
+        /// Days since the last rotation (or since creation).
+        pub age_days: i32,
+        /// Open rotation job for this entity, if any.
+        pub job_id: Option<Uuid>,
+    }
+}
+
+schema! {
+    /// A queued rotation; executed by a client with write access to the vault.
+    pub struct RotationJob {
+        /// Job id.
+        pub id: Uuid,
+        /// Owning team.
+        pub team_id: Uuid,
+        /// Team vault holding the entity.
+        pub vault_id: Uuid,
+        /// Entity the secret lives in.
+        pub entity_id: Uuid,
+        /// Entity kind (`ssh_key`, `ssh_certificate`, `identity`, `host`).
+        pub entity_kind: String,
+        /// `pending`, `running`, `done`, `failed` or `cancelled`.
+        pub status: String,
+        /// Free-form note from the requester.
+        pub note: String,
+        /// Failure reason reported by the executing client.
+        pub error: Option<String>,
+        /// Who queued the job.
+        pub requested_by: Uuid,
+        /// E-mail of the requester.
+        pub requested_by_email: String,
+        /// Member whose client is executing (or executed) the job.
+        pub claimed_by: Option<Uuid>,
+        /// Queued at.
+        pub created_at: DateTime<Utc>,
+        /// Last status change.
+        pub updated_at: DateTime<Utc>,
+        /// When the job reached a final state.
+        pub finished_at: Option<DateTime<Utc>>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/rotation`: policy, overdue secrets and recent jobs.
+    pub struct RotationOverview {
+        /// Current key max-age policy (0 = off).
+        pub key_max_age_days: i32,
+        /// Current password max-age policy (0 = off).
+        pub password_max_age_days: i32,
+        /// Secrets past their max age.
+        pub due: Vec<RotationDue>,
+        /// Jobs, newest first.
+        pub jobs: Vec<RotationJob>,
+    }
+}
+
+schema! {
+    /// A list of rotation jobs.
+    pub struct RotationJobList {
+        /// Jobs, newest first.
+        pub jobs: Vec<RotationJob>,
+    }
+}
+
+schema! {
+    /// Queue rotation jobs for entities of one team vault.
+    pub struct CreateRotationJobsRequest {
+        /// Team vault holding the entity.
+        pub vault_id: Uuid,
+        /// Entities of `vault_id` to rotate (1..=1000).
+        pub entity_ids: Vec<Uuid>,
+        /// Free-form note shown to whoever executes the jobs.
+        #[serde(default)]
+        pub note: String,
+    }
+}
+
+schema! {
+    /// A just-in-time request for temporary access to a team vault.
+    pub struct AccessRequest {
+        /// Request id.
+        pub id: Uuid,
+        /// Owning team.
+        pub team_id: Uuid,
+        /// Vault the access is for.
+        pub vault_id: Uuid,
+        /// Vault name at the time of reading.
+        pub vault_name: String,
+        /// Requester.
+        pub user_id: Uuid,
+        /// Requester's e-mail.
+        pub user_email: String,
+        /// `viewer` or `editor`.
+        pub role: String,
+        /// Requested (or granted) window in hours.
+        pub hours: i32,
+        /// Why access is needed.
+        pub reason: String,
+        /// `pending`, `approved`, `denied`, `cancelled`, `revoked` or `expired`.
+        pub status: String,
+        /// Approver / denier.
+        pub decided_by: Option<Uuid>,
+        /// When the decision was made.
+        pub decided_at: Option<DateTime<Utc>>,
+        /// Approver's note.
+        pub decision_note: Option<String>,
+        /// When the granted access ends.
+        pub expires_at: Option<DateTime<Utc>>,
+        /// Requested at.
+        pub created_at: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/access-requests`.
+    pub struct AccessRequestList {
+        /// Whether the caller may approve/deny/revoke.
+        pub can_approve: bool,
+        /// Requests, pending first.
+        pub requests: Vec<AccessRequest>,
+    }
+}
+
+schema! {
+    /// Ask for temporary access.
+    pub struct CreateAccessRequest {
+        /// Team vault.
+        pub vault_id: Uuid,
+        /// `viewer` (default) or `editor`.
+        #[serde(default = "default_viewer")]
+        pub role: String,
+        /// Window in hours (1..=720, default 8).
+        #[serde(default = "default_hours")]
+        pub hours: i32,
+        /// Why access is needed.
+        #[serde(default)]
+        pub reason: String,
+    }
+}
+
+fn default_viewer() -> String {
+    "viewer".into()
+}
+
+fn default_hours() -> i32 {
+    8
+}
+
+schema! {
+    /// Approve (optionally trimming the grant) or deny a request.
+    pub struct DecideAccessRequest {
+        /// Override the granted hours.
+        #[serde(default)]
+        pub hours: Option<i32>,
+        /// Override the granted role.
+        #[serde(default)]
+        pub role: Option<String>,
+        /// Note for the requester.
+        #[serde(default)]
+        pub note: Option<String>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/data`: residency and pending deletion.
+    pub struct TeamDataStatus {
+        /// Region the team's data was created in (server-defined label).
+        pub region: Option<String>,
+        /// Region label of the server answering.
+        pub server_region: Option<String>,
+        /// Team creation time.
+        pub created_at: DateTime<Utc>,
+        /// When the team will be purged, if deletion is scheduled.
+        pub deletion_scheduled_at: Option<DateTime<Utc>>,
+        /// Owner who scheduled it.
+        pub deletion_requested_by: Option<Uuid>,
+        /// Grace period of this server in days (0 = immediate).
+        pub deletion_grace_days: i32,
+    }
+}
+
+schema! {
+    /// Schedule team deletion; the name must match to confirm.
+    pub struct ScheduleTeamDeletionRequest {
+        /// Exact team name.
+        pub confirm_name: String,
+    }
+}
+
+schema! {
+    /// Advance a rotation job.
+    pub struct UpdateRotationJobRequest {
+        /// `running`, `done`, `failed` or `cancelled`.
+        pub status: String,
+        /// Failure reason (for `failed`).
+        #[serde(default)]
+        pub error: Option<String>,
     }
 }
 
@@ -770,6 +1068,10 @@ schema! {
         pub device_approval_by: Vec<Uuid>,
         /// Provider the user must sign in through, if a team requires SSO for them.
         pub sso_provider: Option<String>,
+        /// Teams whose policy makes session recording mandatory: clients
+        /// record every session on hosts of those teams' vaults.
+        #[serde(default)]
+        pub recording_required_by: Vec<Uuid>,
     }
 }
 
@@ -986,5 +1288,183 @@ schema! {
     pub struct SetScimGroupVaultsRequest {
         /// Full replacement list.
         pub vaults: Vec<ScimGroupVault>,
+    }
+}
+
+schema! {
+    /// A team's own identity provider (`GET /teams/{id}/idp`). The client
+    /// secret is never returned.
+    pub struct TeamIdp {
+        /// `oidc` | `saml`.
+        pub kind: String,
+        /// Button label shown at sign-in.
+        pub name: String,
+        /// OIDC issuer URL (discovery).
+        #[serde(default)]
+        pub issuer: Option<String>,
+        /// OIDC client id.
+        #[serde(default)]
+        pub client_id: Option<String>,
+        /// Whether a client secret is stored.
+        pub has_client_secret: bool,
+        /// Extra OIDC scopes (space separated).
+        #[serde(default)]
+        pub scopes: Option<String>,
+        /// SAML IdP metadata: `https://` URL or inline XML.
+        #[serde(default)]
+        pub saml_metadata: Option<String>,
+        /// IdP `entityID` inside aggregate metadata.
+        #[serde(default)]
+        pub saml_idp_entity_id: Option<String>,
+        /// Email domains routed to this IdP at sign-in.
+        pub domains: Vec<String>,
+        /// Whether sign-in through this IdP is on.
+        pub enabled: bool,
+        /// A verified sign-in may create the account and join the team.
+        pub jit_join: bool,
+        /// Provider id to use with `/auth/sso/{provider}/start`.
+        pub provider_id: String,
+        /// SP metadata URL (SAML) / redirect URI (OIDC) to register at the IdP.
+        pub callback_url: String,
+        /// Updated at.
+        pub updated_at: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// `PUT /teams/{id}/idp`. Absent fields keep their value; a new
+    /// `client_secret` replaces the stored one.
+    pub struct UpdateTeamIdpRequest {
+        /// `oidc` | `saml`.
+        #[serde(default)]
+        pub kind: Option<String>,
+        /// Button label.
+        #[serde(default)]
+        pub name: Option<String>,
+        /// OIDC issuer URL.
+        #[serde(default)]
+        pub issuer: Option<String>,
+        /// OIDC client id.
+        #[serde(default)]
+        pub client_id: Option<String>,
+        /// OIDC client secret (write-only).
+        #[serde(default)]
+        pub client_secret: Option<String>,
+        /// Extra OIDC scopes.
+        #[serde(default)]
+        pub scopes: Option<String>,
+        /// SAML IdP metadata (URL or XML).
+        #[serde(default)]
+        pub saml_metadata: Option<String>,
+        /// IdP `entityID` inside aggregate metadata.
+        #[serde(default)]
+        pub saml_idp_entity_id: Option<String>,
+        /// Email domains routed to this IdP.
+        #[serde(default)]
+        pub domains: Option<Vec<String>>,
+        /// Whether sign-in through this IdP is on.
+        #[serde(default)]
+        pub enabled: Option<bool>,
+        /// Verified sign-ins may join the team.
+        #[serde(default)]
+        pub jit_join: Option<bool>,
+    }
+}
+
+schema! {
+    /// `GET`/`PUT /teams/{id}/idp`.
+    pub struct TeamIdpResponse {
+        /// `None` when the team has no IdP configured.
+        #[serde(default)]
+        pub idp: Option<TeamIdp>,
+        /// Whether this server allows per-team IdPs (`TERMOSO_TEAM_IDP`).
+        pub available: bool,
+    }
+}
+
+schema! {
+    /// One access rule on a group or host of a team vault.
+    pub struct EntityAclRule {
+        /// Rule id.
+        pub id: Uuid,
+        /// Team vault the entity lives in.
+        pub vault_id: Uuid,
+        /// Group or host entity id (client-encrypted entity).
+        pub entity_id: Uuid,
+        /// `group` | `host`.
+        pub entity_kind: String,
+        /// `role` | `member` | `group` (IdP/SCIM group name).
+        pub principal_kind: String,
+        /// Team role (principal_kind = role).
+        #[serde(default)]
+        pub role_id: Option<Uuid>,
+        /// Team member (principal_kind = member).
+        #[serde(default)]
+        pub user_id: Option<Uuid>,
+        /// IdP/SCIM group display name (principal_kind = group).
+        #[serde(default)]
+        pub group_name: Option<String>,
+        /// Human-readable principal (role name / member e-mail / group).
+        pub principal_name: String,
+        /// `none` (hidden) | `connect` (no secrets) | `read` | `edit`.
+        pub mode: String,
+        /// Last change.
+        pub updated_at: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// `PUT /teams/{id}/vaults/{vault_id}/acl` — create or replace a rule for
+    /// (entity, principal).
+    pub struct UpsertEntityAclRequest {
+        /// Group or host entity id.
+        pub entity_id: Uuid,
+        /// `group` | `host`.
+        pub entity_kind: String,
+        /// `role` | `member` | `group`.
+        pub principal_kind: String,
+        /// Team role id.
+        #[serde(default)]
+        pub role_id: Option<Uuid>,
+        /// Team member id.
+        #[serde(default)]
+        pub user_id: Option<Uuid>,
+        /// IdP/SCIM group name.
+        #[serde(default)]
+        pub group_name: Option<String>,
+        /// `none` | `connect` | `read` | `edit`.
+        pub mode: String,
+    }
+}
+
+schema! {
+    /// Rules of one team vault.
+    pub struct EntityAclResponse {
+        /// All rules, most recent last.
+        pub rules: Vec<EntityAclRule>,
+    }
+}
+
+schema! {
+    /// A rule resolved for the caller (`GET /acl/me`). Clients apply group →
+    /// host inheritance; a host rule beats the nearest group rule. Entities
+    /// without a rule keep vault-level access.
+    pub struct MyAclRule {
+        /// Team vault.
+        pub vault_id: Uuid,
+        /// Group or host entity id.
+        pub entity_id: Uuid,
+        /// `group` | `host`.
+        pub entity_kind: String,
+        /// `none` | `connect` | `read` | `edit`.
+        pub mode: String,
+    }
+}
+
+schema! {
+    /// `GET /acl/me`.
+    pub struct MyAclResponse {
+        /// Rules that apply to the caller across all team vaults.
+        pub rules: Vec<MyAclRule>,
     }
 }

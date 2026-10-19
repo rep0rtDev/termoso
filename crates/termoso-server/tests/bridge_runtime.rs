@@ -446,6 +446,7 @@ async fn bridge_survives_concurrent_owner_edits() {
     };
     let push = termoso_proto::sync::PushRequest {
         changes: vec![termoso_proto::sync::EntityChange {
+            secret_rotated_at: None,
             id: host_id,
             kind: "host".into(),
             vault_id: r.vault_id,
@@ -748,6 +749,7 @@ async fn rotation_pauses_writes_until_reseal() {
             )
             .unwrap();
             termoso_proto::sync::EntityChange {
+                secret_rotated_at: None,
                 id: e.id,
                 kind: e.kind.clone(),
                 vault_id: r.vault_id,

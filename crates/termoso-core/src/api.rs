@@ -996,6 +996,249 @@ impl ApiClient {
         }
         Ok(resp.bytes().await?.to_vec())
     }
+
+    /// Authenticated GET returning the raw body (exports).
+    async fn get_bytes(&self, path: &str) -> Result<Vec<u8>> {
+        let resp = self.request(Method::GET, path).send().await?;
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            let parsed: std::result::Result<ApiError, _> = serde_json::from_str(&body);
+            return Err(match parsed {
+                Ok(e) => CoreError::Api {
+                    status,
+                    code: e.code,
+                    message: e.message,
+                },
+                Err(_) => CoreError::Api {
+                    status,
+                    code: "http_error".into(),
+                    message: body,
+                },
+            });
+        }
+        Ok(resp.bytes().await?.to_vec())
+    }
+
+    // ───────────────────────── 0.9.1 enterprise ─────────────────────────
+
+    /// `GET /auth/sso/discover?email=` — home-realm discovery (no auth needed).
+    pub async fn sso_discover(
+        &self,
+        email: &str,
+    ) -> Result<termoso_proto::auth::SsoDiscoverResponse> {
+        self.get_query("auth/sso/discover", &[("email", email)])
+            .await
+    }
+
+    /// Enterprise API: team idp.
+    pub async fn team_idp(&self, team_id: Uuid) -> Result<termoso_proto::team::TeamIdpResponse> {
+        self.get(&format!("teams/{team_id}/idp")).await
+    }
+
+    /// Enterprise API: team update idp.
+    pub async fn team_update_idp(
+        &self,
+        team_id: Uuid,
+        req: &termoso_proto::team::UpdateTeamIdpRequest,
+    ) -> Result<termoso_proto::team::TeamIdpResponse> {
+        self.put(&format!("teams/{team_id}/idp"), req).await
+    }
+
+    /// Enterprise API: team test idp.
+    pub async fn team_test_idp(
+        &self,
+        team_id: Uuid,
+        req: &termoso_proto::team::UpdateTeamIdpRequest,
+    ) -> Result<termoso_proto::team::TeamIdpResponse> {
+        self.post(&format!("teams/{team_id}/idp/test"), req).await
+    }
+
+    /// Enterprise API: team delete idp.
+    pub async fn team_delete_idp(&self, team_id: Uuid) -> Result<()> {
+        self.delete(&format!("teams/{team_id}/idp")).await
+    }
+
+    /// Enterprise API: team acl.
+    pub async fn team_acl(
+        &self,
+        team_id: Uuid,
+        vault_id: Uuid,
+    ) -> Result<termoso_proto::team::EntityAclResponse> {
+        self.get(&format!("teams/{team_id}/vaults/{vault_id}/acl"))
+            .await
+    }
+
+    /// Enterprise API: team upsert acl.
+    pub async fn team_upsert_acl(
+        &self,
+        team_id: Uuid,
+        vault_id: Uuid,
+        req: &termoso_proto::team::UpsertEntityAclRequest,
+    ) -> Result<termoso_proto::team::EntityAclResponse> {
+        self.put(&format!("teams/{team_id}/vaults/{vault_id}/acl"), req)
+            .await
+    }
+
+    /// Enterprise API: team delete acl.
+    pub async fn team_delete_acl(
+        &self,
+        team_id: Uuid,
+        vault_id: Uuid,
+        rule_id: Uuid,
+    ) -> Result<()> {
+        self.delete(&format!("teams/{team_id}/vaults/{vault_id}/acl/{rule_id}"))
+            .await
+    }
+
+    /// `GET /acl/me` — rules that apply to the caller across all team vaults.
+    pub async fn acl_me(&self) -> Result<termoso_proto::team::MyAclResponse> {
+        self.get("acl/me").await
+    }
+
+    /// `GET /teams/{id}/logs` — recordings of every member (`logs.view_team`).
+    pub async fn team_logs(
+        &self,
+        team_id: Uuid,
+        vault_id: Option<Uuid>,
+    ) -> Result<LogListResponse> {
+        match vault_id {
+            Some(v) => {
+                self.get_query(
+                    &format!("teams/{team_id}/logs"),
+                    &[("vault_id", v.to_string())],
+                )
+                .await
+            }
+            None => self.get(&format!("teams/{team_id}/logs")).await,
+        }
+    }
+
+    /// `GET /teams/{id}/logs/export` — NDJSON with signed download links.
+    pub async fn team_logs_export(&self, team_id: Uuid) -> Result<Vec<u8>> {
+        self.get_bytes(&format!("teams/{team_id}/logs/export"))
+            .await
+    }
+
+    /// Enterprise API: team rotation.
+    pub async fn team_rotation(
+        &self,
+        team_id: Uuid,
+    ) -> Result<termoso_proto::team::RotationOverview> {
+        self.get(&format!("teams/{team_id}/rotation")).await
+    }
+
+    /// Enterprise API: team create rotation jobs.
+    pub async fn team_create_rotation_jobs(
+        &self,
+        team_id: Uuid,
+        req: &termoso_proto::team::CreateRotationJobsRequest,
+    ) -> Result<termoso_proto::team::RotationJobList> {
+        self.post(&format!("teams/{team_id}/rotation/jobs"), req)
+            .await
+    }
+
+    /// `GET /rotation/jobs` — jobs the caller's client may execute.
+    pub async fn rotation_jobs(&self) -> Result<termoso_proto::team::RotationJobList> {
+        self.get("rotation/jobs").await
+    }
+
+    /// Enterprise API: rotation update job.
+    pub async fn rotation_update_job(
+        &self,
+        job_id: Uuid,
+        req: &termoso_proto::team::UpdateRotationJobRequest,
+    ) -> Result<termoso_proto::team::RotationJob> {
+        self.patch(&format!("rotation/jobs/{job_id}"), req).await
+    }
+
+    /// Enterprise API: rotation cancel job.
+    pub async fn rotation_cancel_job(&self, job_id: Uuid) -> Result<()> {
+        self.delete(&format!("rotation/jobs/{job_id}")).await
+    }
+
+    /// Enterprise API: team access requests.
+    pub async fn team_access_requests(
+        &self,
+        team_id: Uuid,
+    ) -> Result<termoso_proto::team::AccessRequestList> {
+        self.get(&format!("teams/{team_id}/access-requests")).await
+    }
+
+    /// Enterprise API: team create access request.
+    pub async fn team_create_access_request(
+        &self,
+        team_id: Uuid,
+        req: &termoso_proto::team::CreateAccessRequest,
+    ) -> Result<termoso_proto::team::AccessRequest> {
+        self.post(&format!("teams/{team_id}/access-requests"), req)
+            .await
+    }
+
+    /// Enterprise API: team cancel access request.
+    pub async fn team_cancel_access_request(&self, team_id: Uuid, rid: Uuid) -> Result<()> {
+        self.delete(&format!("teams/{team_id}/access-requests/{rid}"))
+            .await
+    }
+
+    /// `action` is `approve`, `deny` or `revoke`.
+    pub async fn team_decide_access_request(
+        &self,
+        team_id: Uuid,
+        rid: Uuid,
+        action: &str,
+        req: &termoso_proto::team::DecideAccessRequest,
+    ) -> Result<termoso_proto::team::AccessRequest> {
+        self.post(
+            &format!("teams/{team_id}/access-requests/{rid}/{action}"),
+            req,
+        )
+        .await
+    }
+
+    /// Enterprise API: team data.
+    pub async fn team_data(&self, team_id: Uuid) -> Result<termoso_proto::team::TeamDataStatus> {
+        self.get(&format!("teams/{team_id}/data")).await
+    }
+
+    /// `GET /teams/{id}/export` — full GDPR export (JSON bytes).
+    pub async fn team_export(&self, team_id: Uuid) -> Result<Vec<u8>> {
+        self.get_bytes(&format!("teams/{team_id}/export")).await
+    }
+
+    /// Enterprise API: team schedule deletion.
+    pub async fn team_schedule_deletion(
+        &self,
+        team_id: Uuid,
+        req: &termoso_proto::team::ScheduleTeamDeletionRequest,
+    ) -> Result<termoso_proto::team::TeamDataStatus> {
+        self.post(&format!("teams/{team_id}/deletion"), req).await
+    }
+
+    /// Enterprise API: team cancel deletion.
+    pub async fn team_cancel_deletion(
+        &self,
+        team_id: Uuid,
+    ) -> Result<termoso_proto::team::TeamDataStatus> {
+        Self::send(self.request(Method::DELETE, &format!("teams/{team_id}/deletion"))).await
+    }
+
+    /// Enterprise API: team devices.
+    pub async fn team_devices(&self, team_id: Uuid) -> Result<termoso_proto::team::TeamDeviceList> {
+        self.get(&format!("teams/{team_id}/devices")).await
+    }
+
+    /// Enterprise API: team approve device.
+    pub async fn team_approve_device(&self, team_id: Uuid, device_id: Uuid) -> Result<()> {
+        self.post_empty(&format!("teams/{team_id}/devices/{device_id}/approve"), &())
+            .await
+    }
+
+    /// Enterprise API: team reject device.
+    pub async fn team_reject_device(&self, team_id: Uuid, device_id: Uuid) -> Result<()> {
+        self.post_empty(&format!("teams/{team_id}/devices/{device_id}/reject"), &())
+            .await
+    }
 }
 
 pub(crate) fn default_user_agent() -> String {

@@ -350,6 +350,11 @@ pub async fn update(
         let Some(team_id) = a.team_id else {
             return Err(Error::forbidden("Session logging is a team vault setting"));
         };
+        if !on && crate::policy::recording_required(&state.db, team_id).await? {
+            return Err(Error::forbidden(
+                "Team policy makes session recording mandatory",
+            ));
+        }
         let r = sqlx::query(
             "UPDATE vaults SET session_logging = $2, updated_at = now() WHERE id = $1 AND session_logging <> $2",
         )

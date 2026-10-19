@@ -81,6 +81,9 @@ pub struct Config {
     pub webauthn: Option<WebauthnConfig>,
     pub metrics: MetricsConfig,
     pub sso: BTreeMap<String, SsoProviderConfig>,
+    /// Let teams configure their own identity provider (`PUT /teams/{id}/idp`).
+    /// `TERMOSO_TEAM_IDP=false` hides the feature on single-tenant servers.
+    pub team_idp: bool,
     /// AI command suggestions (`POST /ai/command`). Absent = feature off.
     pub ai: Option<AiConfig>,
     /// Serve the Swagger UI at `/api/docs`.
@@ -105,6 +108,15 @@ pub struct Config {
     /// Extra PEM bundle trusted by `syslog_tls` webhooks in addition to the
     /// OS trust store (private CAs). `TERMOSO_WEBHOOKS_SYSLOG_CA=/path.pem`.
     pub webhooks_syslog_ca: Option<String>,
+    /// Where this server keeps its data (e.g. `eu`, `us`); stamped on teams
+    /// at creation and shown to clients. Default: unset.
+    pub data_region: Option<String>,
+    /// Oldest client version allowed to sign in (semver). Default: this
+    /// server's own version — clients must be at least as new as the server.
+    pub min_client_version: Option<String>,
+    /// Days between an owner scheduling team deletion and the purge
+    /// (0 = immediate). Default: 7.
+    pub team_deletion_grace_days: u32,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
@@ -365,6 +377,7 @@ impl Default for Config {
             webauthn: None,
             metrics: MetricsConfig::default(),
             sso: BTreeMap::new(),
+            team_idp: true,
             ai: None,
             swagger_ui: true,
             bridges: true,
@@ -373,6 +386,9 @@ impl Default for Config {
             audit_sink: false,
             webhooks_allow_private: false,
             webhooks_syslog_ca: None,
+            data_region: None,
+            min_client_version: None,
+            team_deletion_grace_days: 7,
         }
     }
 }

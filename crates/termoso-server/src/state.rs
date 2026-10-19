@@ -109,7 +109,7 @@ impl Inner {
         let docs_host = cfg.docs_host();
         let ai = cfg.ai.as_ref().map(crate::ai::Ai::new).transpose()?;
 
-        Ok(Arc::new(Inner {
+        let state = Arc::new(Inner {
             sshid_host,
             landing_host,
             docs_host,
@@ -127,7 +127,9 @@ impl Inner {
             live: broadcast::channel(4096).0,
             started_at: chrono::Utc::now(),
             draining: std::sync::atomic::AtomicBool::new(false),
-        }))
+        });
+        state.sso.load_all_teams(&state).await;
+        Ok(state)
     }
 
     pub fn encrypt_secret(&self, purpose: &str, plaintext: &[u8]) -> ApiResult<Vec<u8>> {

@@ -584,3 +584,15 @@ export function useDeleteGroup() {
     onSuccess: (_r, v) => invalidate(v.vaultId),
   });
 }
+
+/** `/server/info` of the signed-in account's server (capabilities such as corporate mode). */
+export const useServerInfo = () => {
+  const account = useAccount();
+  const url = account.data?.account?.serverUrl ?? null;
+  return useQuery({
+    queryKey: ["serverInfo", url],
+    queryFn: () => ipc.accountServerInfo(url ?? ""),
+    enabled: url !== null,
+    staleTime: 60_000,
+  });
+};

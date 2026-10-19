@@ -45,9 +45,9 @@ import { Section } from "@/components/Section";
 import { useSnackbar } from "@/components/Snackbar";
 import { UserCell } from "@/components/UserCell";
 import { formatBytes, formatDateTime } from "@/components/format";
-import { decryptLabeled, loadCrypto } from "@/crypto";
+import { loadCrypto } from "@/crypto";
 import { openMyVaultKey } from "@/vaults/keys";
-import { authorsOf, durationOf, sortLogs } from "./logs";
+import { authorsOf, decryptMeta, durationOf, sortLogs } from "./logs";
 
 const MAX_NOTE_CHARS = 2000;
 
@@ -403,26 +403,6 @@ export function SessionLogsSection({ vault, manager }: { vault: Vault; manager: 
         )}
       </ConfirmDialog>
     </Section>
-  );
-}
-
-function decryptMeta(vaultKey: string, log: SessionLog): LogMeta | null {
-  try {
-    const json: unknown = JSON.parse(decryptLabeled(vaultKey, ["log", log.id], log.meta));
-    return isLogMeta(json) ? json : null;
-  } catch {
-    return null;
-  }
-}
-
-function isLogMeta(v: unknown): v is LogMeta {
-  if (typeof v !== "object" || v === null) return false;
-  const o = v as Record<string, unknown>;
-  return (
-    typeof o.label === "string" &&
-    typeof o.target === "string" &&
-    typeof o.protocol === "string" &&
-    typeof o.started_at === "string"
   );
 }
 

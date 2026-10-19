@@ -71,6 +71,9 @@ impl payload::SshKey {
 schema! {
     /// Entity as stored and returned by the server.
     pub struct SyncEntity {
+        /// See `EntityChange::secret_rotated_at`.
+        #[serde(default)]
+        pub secret_rotated_at: Option<DateTime<Utc>>,
         /// Client-generated UUID (v4).
         pub id: Uuid,
         /// Kind (see [`KINDS`]).

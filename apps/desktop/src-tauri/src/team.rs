@@ -731,6 +731,216 @@ async fn rotate_with(api: &ApiClient, state: &AppState, vault_id: Uuid) -> Resul
     Ok(())
 }
 
+// ───────────────────────── 0.9.1 enterprise ─────────────────────────
+
+pub async fn idp<R: Runtime>(app: &AppHandle<R>, team_id: Uuid) -> Result<proto::TeamIdpResponse> {
+    Ok(api(app).await?.team_idp(team_id).await?)
+}
+
+pub async fn update_idp<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    req: proto::UpdateTeamIdpRequest,
+) -> Result<proto::TeamIdpResponse> {
+    Ok(api(app).await?.team_update_idp(team_id, &req).await?)
+}
+
+pub async fn test_idp<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    req: proto::UpdateTeamIdpRequest,
+) -> Result<proto::TeamIdpResponse> {
+    Ok(api(app).await?.team_test_idp(team_id, &req).await?)
+}
+
+pub async fn delete_idp<R: Runtime>(app: &AppHandle<R>, team_id: Uuid) -> Result<()> {
+    Ok(api(app).await?.team_delete_idp(team_id).await?)
+}
+
+pub async fn acl<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    vault_id: Uuid,
+) -> Result<Vec<proto::EntityAclRule>> {
+    Ok(api(app).await?.team_acl(team_id, vault_id).await?.rules)
+}
+
+pub async fn upsert_acl<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    vault_id: Uuid,
+    req: proto::UpsertEntityAclRequest,
+) -> Result<Vec<proto::EntityAclRule>> {
+    Ok(api(app)
+        .await?
+        .team_upsert_acl(team_id, vault_id, &req)
+        .await?
+        .rules)
+}
+
+pub async fn delete_acl<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    vault_id: Uuid,
+    rule_id: Uuid,
+) -> Result<()> {
+    Ok(api(app)
+        .await?
+        .team_delete_acl(team_id, vault_id, rule_id)
+        .await?)
+}
+
+pub async fn acl_me<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<proto::MyAclRule>> {
+    Ok(api(app).await?.acl_me().await?.rules)
+}
+
+pub async fn logs<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    vault_id: Option<Uuid>,
+) -> Result<termoso_proto::logs::LogListResponse> {
+    Ok(api(app).await?.team_logs(team_id, vault_id).await?)
+}
+
+pub async fn logs_export<R: Runtime>(app: &AppHandle<R>, team_id: Uuid) -> Result<String> {
+    let bytes = api(app).await?.team_logs_export(team_id).await?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+pub async fn rotation<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::RotationOverview> {
+    Ok(api(app).await?.team_rotation(team_id).await?)
+}
+
+pub async fn create_rotation_jobs<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    req: proto::CreateRotationJobsRequest,
+) -> Result<Vec<proto::RotationJob>> {
+    Ok(api(app)
+        .await?
+        .team_create_rotation_jobs(team_id, &req)
+        .await?
+        .jobs)
+}
+
+pub async fn rotation_jobs<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<proto::RotationJob>> {
+    Ok(api(app).await?.rotation_jobs().await?.jobs)
+}
+
+pub async fn rotation_update_job<R: Runtime>(
+    app: &AppHandle<R>,
+    job_id: Uuid,
+    req: proto::UpdateRotationJobRequest,
+) -> Result<proto::RotationJob> {
+    Ok(api(app).await?.rotation_update_job(job_id, &req).await?)
+}
+
+pub async fn rotation_cancel_job<R: Runtime>(app: &AppHandle<R>, job_id: Uuid) -> Result<()> {
+    Ok(api(app).await?.rotation_cancel_job(job_id).await?)
+}
+
+pub async fn access_requests<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::AccessRequestList> {
+    Ok(api(app).await?.team_access_requests(team_id).await?)
+}
+
+pub async fn create_access_request<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    req: proto::CreateAccessRequest,
+) -> Result<proto::AccessRequest> {
+    Ok(api(app)
+        .await?
+        .team_create_access_request(team_id, &req)
+        .await?)
+}
+
+pub async fn cancel_access_request<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    rid: Uuid,
+) -> Result<()> {
+    Ok(api(app)
+        .await?
+        .team_cancel_access_request(team_id, rid)
+        .await?)
+}
+
+pub async fn decide_access_request<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    rid: Uuid,
+    action: String,
+    req: proto::DecideAccessRequest,
+) -> Result<proto::AccessRequest> {
+    Ok(api(app)
+        .await?
+        .team_decide_access_request(team_id, rid, &action, &req)
+        .await?)
+}
+
+pub async fn data<R: Runtime>(app: &AppHandle<R>, team_id: Uuid) -> Result<proto::TeamDataStatus> {
+    Ok(api(app).await?.team_data(team_id).await?)
+}
+
+pub async fn export<R: Runtime>(app: &AppHandle<R>, team_id: Uuid) -> Result<String> {
+    let bytes = api(app).await?.team_export(team_id).await?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+pub async fn schedule_deletion<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    confirm_name: String,
+) -> Result<proto::TeamDataStatus> {
+    let req = proto::ScheduleTeamDeletionRequest { confirm_name };
+    Ok(api(app)
+        .await?
+        .team_schedule_deletion(team_id, &req)
+        .await?)
+}
+
+pub async fn cancel_deletion<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::TeamDataStatus> {
+    Ok(api(app).await?.team_cancel_deletion(team_id).await?)
+}
+
+pub async fn devices<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::TeamDeviceList> {
+    Ok(api(app).await?.team_devices(team_id).await?)
+}
+
+pub async fn approve_device<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    device_id: Uuid,
+) -> Result<()> {
+    Ok(api(app)
+        .await?
+        .team_approve_device(team_id, device_id)
+        .await?)
+}
+
+pub async fn reject_device<R: Runtime>(
+    app: &AppHandle<R>,
+    team_id: Uuid,
+    device_id: Uuid,
+) -> Result<()> {
+    Ok(api(app)
+        .await?
+        .team_reject_device(team_id, device_id)
+        .await?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

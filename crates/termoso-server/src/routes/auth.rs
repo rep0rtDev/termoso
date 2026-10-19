@@ -84,6 +84,53 @@ pub(crate) fn validate_keys(k: &AccountKeysUpload) -> ApiResult<()> {
     Ok(())
 }
 
+/// Oldest client allowed in: the operator's `TERMOSO_MIN_CLIENT_VERSION`,
+/// else this server's own version.
+pub(crate) fn min_client_version(cfg: &crate::config::Config) -> &str {
+    cfg.min_client_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or(crate::state::VERSION)
+}
+
+/// `1.2.3[-pre][+build]` → (1, 2, 3); anything else is `None`. `0.0.0-*` is
+/// the conventional "unreleased" version of dev and test builds and is also
+/// `None`, so such clients are never gated.
+fn semver_tuple(v: &str) -> Option<(u64, u64, u64)> {
+    let core = v.trim().trim_start_matches('v');
+    let core = core.split(['-', '+']).next()?;
+    let mut it = core.split('.').map(|p| p.parse::<u64>().ok());
+    let (a, b, c) = (it.next()??, it.next()??, it.next()??);
+    Some((a, b, c)).filter(|t| *t != (0, 0, 0))
+}
+
+/// Refuse clients older than [`min_client_version`]: an old client against a
+/// newer server breaks in confusing ways, so it is told to update instead.
+/// Clients whose version string is not semver (dev builds, tests) pass.
+pub(crate) fn check_client_version(cfg: &crate::config::Config, d: &DeviceInfo) -> ApiResult<()> {
+    let required = min_client_version(cfg);
+    let (Some(client), Some(min)) = (semver_tuple(&d.app_version), semver_tuple(required)) else {
+        return Ok(());
+    };
+    if client < min {
+        return Err(Error::new(
+            axum::http::StatusCode::UPGRADE_REQUIRED,
+            termoso_proto::error::codes::CLIENT_UPDATE_REQUIRED,
+            format!(
+                "This server requires Termoso {required} or newer; you are on {}. Please update the app.",
+                d.app_version
+            ),
+        )
+        .with_details(serde_json::json!({
+            "required_version": required,
+            "client_version": d.app_version,
+            "server_version": crate::state::VERSION,
+        })));
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_device(d: &DeviceInfo) -> ApiResult<()> {
     if d.name.trim().is_empty() || d.name.chars().count() > 120 {
         return Err(Error::bad_request("Invalid device name"));
@@ -192,6 +239,7 @@ async fn registration_allowed(
     email: &str,
     invite: Option<&InviteRow>,
     sso_verified: bool,
+    team_jit: bool,
 ) -> ApiResult<()> {
     if state.is_bootstrap_admin(email) {
         return Ok(());
@@ -202,7 +250,10 @@ async fn registration_allowed(
         return Ok(());
     }
     let settings = state.settings().await?;
-    if !(settings.registration_open || (sso_verified && settings.sso_registration)) {
+    if settings.sso_only && !sso_verified {
+        return Err(crate::enterprise::sso_required(state, email).await);
+    }
+    if !(settings.registration_open || (sso_verified && settings.sso_registration) || team_jit) {
         return Err(Error::registration_closed());
     }
     if !settings.allowed_domains.is_empty() {
@@ -252,6 +303,7 @@ pub async fn register_finish(
     let email = normalize_email(&req.email).ok_or_else(|| Error::bad_request("Invalid email"))?;
     validate_keys(&req.keys)?;
     validate_device(&req.device)?;
+    check_client_version(&state.cfg, &req.device)?;
     let display_name = valid_display_name(&req.display_name)?;
 
     let invite = match &req.invite_token {
@@ -266,7 +318,14 @@ pub async fn register_finish(
         Some(t) => Some(sso::consume_session(&state, t, &email).await?),
         None => None,
     };
-    registration_allowed(&state, &email, invite.as_ref(), sso_sess.is_some()).await?;
+    registration_allowed(
+        &state,
+        &email,
+        invite.as_ref(),
+        sso_sess.is_some(),
+        sso_sess.as_ref().is_some_and(|s| s.team_id.is_some()),
+    )
+    .await?;
     let invite_matches = invite
         .as_ref()
         .is_some_and(|i| i.email.eq_ignore_ascii_case(&email));
@@ -333,6 +392,7 @@ pub async fn register_finish(
         .await?;
     }
     tx.commit().await?;
+    crate::enterprise::ensure_home_team(&state, user_id).await?;
 
     let user = users::by_id(&state.db, user_id).await?;
     if let Some(s) = &sso_sess {
@@ -414,11 +474,13 @@ pub async fn login_start(
     let email = normalize_email(&req.email).ok_or_else(|| Error::bad_request("Invalid email"))?;
     ratelimit::check(&state, ratelimit::AUTH_ACCOUNT, &email).await?;
     validate_device(&req.device)?;
+    check_client_version(&state.cfg, &req.device)?;
     let sso_sess = match &req.sso_session {
         Some(t) => Some(sso::consume_session(&state, t, &email).await?),
         None => None,
     };
     let sso_verified = sso_sess.is_some();
+    crate::enterprise::require_sso(&state, sso_verified, &email).await?;
     let user = users::by_email(&state.db, &email).await?;
     if let (Some(u), false) = (&user, sso_verified)
         && let Some(provider) = crate::policy::sso_required(&state.db, u.id, &email).await?
@@ -513,6 +575,7 @@ async fn continue_login(
     sso_verified: bool,
     mfa_done: bool,
 ) -> ApiResult<AuthResponse> {
+    crate::enterprise::ensure_home_team(state, user.id).await?;
     if !mfa_done && users::mfa_enabled(state, user).await? {
         let methods = available_mfa_methods(state, user).await?;
         let mfa_token = codes::put_flow(
@@ -532,6 +595,7 @@ async fn continue_login(
 
     let (device_id, is_new) =
         session::upsert_device(&state.db, user.id, &device, client.ip.as_deref()).await?;
+    crate::trust::gate(state, user.id, device_id, &device, client.ip.as_deref()).await?;
     let approved: (bool,) =
         sqlx::query_as("SELECT approved_at IS NOT NULL FROM devices WHERE id = $1")
             .bind(device_id)
@@ -1185,6 +1249,7 @@ pub async fn password_finish(
                 .as_ref()
                 .ok_or_else(|| Error::bad_request("device is required"))?;
             validate_device(info)?;
+            check_client_version(&state.cfg, info)?;
             session::upsert_device(&state.db, user.id, info, client.ip.as_deref())
                 .await?
                 .0
@@ -1385,3 +1450,41 @@ const USERS_TAKEOVER_SQL: &str = "UPDATE users SET email = $2, email_verified = 
         opaque_record = $5, public_key = $6, wrapped_private_key = $7, recovery_wrapped_private_key = $8,
         recovery_verifier_hash = $9, is_admin = $10, managed_by_team_id = COALESCE($11, managed_by_team_id)
      WHERE id = $1 AND opaque_record IS NULL";
+
+#[cfg(test)]
+mod client_version_tests {
+    use super::*;
+
+    fn dev(v: &str) -> DeviceInfo {
+        DeviceInfo {
+            name: "t".into(),
+            platform: termoso_proto::auth::Platform::Windows,
+            app_version: v.into(),
+            client_device_id: None,
+        }
+    }
+
+    #[test]
+    fn older_client_is_refused_newer_or_equal_passes() {
+        let cfg = crate::config::Config {
+            min_client_version: Some("0.9.1".into()),
+            ..Default::default()
+        };
+        assert!(check_client_version(&cfg, &dev("0.9.0")).is_err());
+        assert!(check_client_version(&cfg, &dev("0.9.1")).is_ok());
+        assert!(check_client_version(&cfg, &dev("0.10.0")).is_ok());
+        assert!(check_client_version(&cfg, &dev("1.0.0-beta.1")).is_ok());
+        // Non-semver builds (dev, tests) are not blocked.
+        assert!(check_client_version(&cfg, &dev("dev")).is_ok());
+        assert!(check_client_version(&cfg, &dev("0.0.0-test")).is_ok());
+        assert!(check_client_version(&cfg, &dev("")).is_ok());
+    }
+
+    #[test]
+    fn default_minimum_is_the_server_version() {
+        let cfg = crate::config::Config::default();
+        assert_eq!(min_client_version(&cfg), crate::state::VERSION);
+        assert!(check_client_version(&cfg, &dev(crate::state::VERSION)).is_ok());
+        assert!(check_client_version(&cfg, &dev("0.0.1")).is_err());
+    }
+}

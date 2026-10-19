@@ -33,6 +33,52 @@ Out of scope: vulnerabilities in third-party services you self-host next to
 Termoso (PostgreSQL, Redis, MinIO, your reverse proxy), social engineering,
 and denial of service that needs more traffic than a single machine produces.
 
+## Verifying a release
+
+Every tag published by `release.yml` carries four independent proofs. Use
+whichever your policy requires; they do not depend on each other.
+
+1. **Checksums + keyless signature.** `SHA256SUMS.txt` lists every asset;
+   `SHA256SUMS.txt.sigstore.json` is a Sigstore bundle produced by
+   `cosign sign-blob` with the workflow's OIDC identity (no long-lived key
+   to leak). Verify the file, then the asset:
+
+   ```sh
+   cosign verify-blob SHA256SUMS.txt \
+     --bundle SHA256SUMS.txt.sigstore.json \
+     --certificate-identity-regexp '^https://github.com/termoso/termoso/\.github/workflows/release\.yml@refs/tags/v' \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com
+   sha256sum -c --ignore-missing SHA256SUMS.txt
+   ```
+
+2. **Build provenance (SLSA).** Each binary asset — installers, AppImages,
+   `.deb`/`.rpm`, APKs, `.ipa`, SBOMs — has a GitHub build-provenance
+   attestation naming the workflow, commit and runner that produced it:
+
+   ```sh
+   gh attestation verify Termoso_0.9.1_amd64.AppImage -R termoso/termoso
+   ```
+
+3. **Updater signatures.** Desktop updates (`latest.json`, `*.sig`) are
+   signed with the Tauri updater key embedded in the app; the client refuses
+   an update that does not verify. Android APKs are signed with the release
+   keystore (the fingerprint is pinned by the store and by `apps/android`).
+
+4. **Package channels.** The apt/dnf repositories, the Homebrew tap and the
+   winget manifest are generated from the same release assets by the
+   `distribute` job; their own signatures (repository GPG key, Homebrew
+   formula sha256, winget manifest hashes) chain back to `SHA256SUMS.txt`.
+
+## Software bill of materials
+
+Each release ships an SBOM of the exact source tree it was built from, in
+SPDX (`termoso-<version>.spdx.json`) and CycloneDX
+(`termoso-<version>.cdx.json`), covering Cargo, npm and Gradle dependencies.
+Feed it to your scanner of choice (`grype sbom:termoso-<version>.cdx.json`,
+Dependency-Track, Snyk). In CI, `cargo deny` and `npm audit` gate every
+change on advisories, licences and sources (see "Dependencies" above); the
+controls map for auditors lives in [docs/COMPLIANCE.md](docs/COMPLIANCE.md).
+
 ## Threat model
 
 What the design protects against, and — just as important — what it does
@@ -50,6 +96,13 @@ accepted only in a self-authenticated envelope that requires your private
 key to produce, and a client never swaps a personal key it already holds for
 a same-version envelope. Entity ciphertext is bound to its kind and id, so
 records cannot be swapped between hosts or vaults.
+
+**ACL is not a vault.** Team ACL rules (group/host → `connect`/`read`/`edit`)
+are enforced by clients and, for directly named entities, by the server's
+write path. They do not change who can *decrypt*: anyone holding the vault
+key can read the whole vault with a modified client. Use separate team vaults
+for data that must stay invisible to some members; ACL is for discipline
+inside a vault, not isolation between adversaries.
 
 **Trusted by design — the server.** It is trusted for *freshness and
 ordering*: `version`, `seq` and `key_version` are server-controlled and not

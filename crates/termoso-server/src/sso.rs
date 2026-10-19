@@ -6,7 +6,10 @@
 //! (SP-initiated, HTTP-Redirect/POST out, HTTP-POST ACS in; see [`crate::saml`]).
 
 use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
+use uuid::Uuid;
 
 use anyhow::Context;
 use openidconnect::core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata};
@@ -53,6 +56,8 @@ enum Backend {
 pub struct Provider {
     pub id: String,
     pub name: String,
+    /// Set for a team's own IdP (`team-<uuid>`).
+    pub team: Option<Uuid>,
     allowed_domains: Vec<String>,
     extra_scopes: Vec<String>,
     backend: Backend,
@@ -60,8 +65,102 @@ pub struct Provider {
 
 #[derive(Default)]
 pub struct SsoRegistry {
-    providers: BTreeMap<String, Provider>,
+    providers: BTreeMap<String, Arc<Provider>>,
+    /// Per-team IdPs (`team_idp`), keyed by provider id; reloaded on save.
+    teams: std::sync::RwLock<HashMap<String, Arc<Provider>>>,
     http: Option<reqwest::Client>,
+}
+
+pub const TEAM_PREFIX: &str = "team-";
+
+pub fn team_provider_id(team_id: Uuid) -> String {
+    format!("{TEAM_PREFIX}{team_id}")
+}
+
+pub fn team_of_provider(id: &str) -> Option<Uuid> {
+    id.strip_prefix(TEAM_PREFIX).and_then(|s| s.parse().ok())
+}
+
+/// Decrypted `team_idp` row.
+#[derive(Clone)]
+pub struct TeamIdpRow {
+    pub team_id: Uuid,
+    pub kind: String,
+    pub name: String,
+    pub issuer: Option<String>,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
+    pub scopes: Option<String>,
+    pub saml_metadata: Option<String>,
+    pub saml_idp_entity_id: Option<String>,
+    pub domains: Vec<String>,
+    pub enabled: bool,
+    pub jit_join: bool,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+pub async fn team_row(state: &AppState, team_id: Uuid) -> ApiResult<Option<TeamIdpRow>> {
+    type Row = (
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<Vec<u8>>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Vec<String>,
+        bool,
+        bool,
+        chrono::DateTime<chrono::Utc>,
+    );
+    let row: Option<Row> = sqlx::query_as(
+        "SELECT kind, name, issuer, client_id, client_secret_enc, scopes, saml_metadata,
+                saml_idp_entity_id, domains, enabled, jit_join, updated_at
+         FROM team_idp WHERE team_id = $1",
+    )
+    .bind(team_id)
+    .fetch_optional(&state.db)
+    .await?;
+    let Some((
+        kind,
+        name,
+        issuer,
+        client_id,
+        enc,
+        scopes,
+        saml_metadata,
+        saml_idp_entity_id,
+        domains,
+        enabled,
+        jit_join,
+        updated_at,
+    )) = row
+    else {
+        return Ok(None);
+    };
+    let client_secret = match enc {
+        Some(e) => Some(
+            String::from_utf8(state.decrypt_secret("team_idp", &e)?)
+                .map_err(|_| Error::Internal(anyhow::anyhow!("team_idp secret is not UTF-8")))?,
+        ),
+        None => None,
+    };
+    Ok(Some(TeamIdpRow {
+        team_id,
+        kind,
+        name,
+        issuer,
+        client_id,
+        client_secret,
+        scopes,
+        saml_metadata,
+        saml_idp_entity_id,
+        domains,
+        enabled,
+        jit_join,
+        updated_at,
+    }))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -100,6 +199,9 @@ pub struct SsoSession {
     /// drive team role mappings.
     #[serde(default)]
     pub groups: Vec<String>,
+    /// Set when the identity came from a team's own IdP (JIT join).
+    #[serde(default)]
+    pub team_id: Option<Uuid>,
 }
 
 /// `groups` claim of an already verified ID token. openidconnect's core
@@ -147,9 +249,6 @@ fn http_client() -> anyhow::Result<reqwest::Client> {
 
 impl SsoRegistry {
     pub async fn from_config(cfg: &Config) -> anyhow::Result<Self> {
-        if cfg.sso.is_empty() {
-            return Ok(Self::default());
-        }
         let http = http_client()?;
         let redirect = RedirectUrl::new(format!(
             "{}/api/v1/auth/sso/callback",
@@ -161,28 +260,145 @@ impl SsoRegistry {
             let provider = build_provider(&slug, p, &redirect, &http)
                 .await
                 .with_context(|| format!("SSO provider `{slug}`"))?;
-            providers.insert(slug, provider);
+            providers.insert(slug, Arc::new(provider));
         }
         Ok(Self {
             providers,
+            teams: Default::default(),
             http: Some(http),
         })
     }
 
-    pub fn list(&self) -> Vec<SsoProvider> {
-        self.providers
-            .values()
-            .map(|p| SsoProvider {
-                id: p.id.clone(),
-                name: p.name.clone(),
-                kind: match p.backend {
-                    Backend::Saml(_) => SsoKind::Saml,
-                    Backend::Oidc(_) | Backend::GitHub(_) => SsoKind::Oidc,
-                },
-            })
-            .collect()
+    /// Build (and validate: OIDC discovery / SAML metadata) a team provider.
+    pub async fn build_team(
+        &self,
+        cfg: &Config,
+        row: &TeamIdpRow,
+    ) -> anyhow::Result<Arc<Provider>> {
+        let http = self
+            .http
+            .as_ref()
+            .context("SSO http client not initialised")?;
+        let redirect = RedirectUrl::new(format!(
+            "{}/api/v1/auth/sso/callback",
+            cfg.public_url.trim_end_matches('/')
+        ))?;
+        let mut p: SsoProviderConfig =
+            serde_json::from_value(serde_json::json!({})).context("default SSO config")?;
+        p.name = Some(row.name.clone());
+        p.kind = if row.kind == "saml" {
+            SsoKindConfig::Saml
+        } else {
+            SsoKindConfig::Oidc
+        };
+        p.issuer = row.issuer.clone();
+        p.client_id = row.client_id.clone();
+        p.client_secret = row.client_secret.clone();
+        p.scopes = row.scopes.clone();
+        p.saml_metadata = row.saml_metadata.clone();
+        p.saml_idp_entity_id = row.saml_idp_entity_id.clone();
+        p.allowed_domains = Some(row.domains.join(","));
+        let slug = team_provider_id(row.team_id);
+        let mut provider = build_provider(&slug, &p, &redirect, http).await?;
+        provider.team = Some(row.team_id);
+        Ok(Arc::new(provider))
     }
 
+    /// Register (or drop, with `None`) the provider of a team.
+    pub fn install_team(&self, team_id: Uuid, provider: Option<Arc<Provider>>) {
+        if let Ok(mut t) = self.teams.write() {
+            let id = team_provider_id(team_id);
+            match provider {
+                Some(p) => {
+                    t.insert(id, p);
+                }
+                None => {
+                    t.remove(&id);
+                }
+            }
+        }
+    }
+
+    /// (Re)load one team's IdP from the database. `Ok(false)` = none/disabled.
+    pub async fn load_team(&self, state: &AppState, team_id: Uuid) -> anyhow::Result<bool> {
+        let row = team_row(state, team_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        match row {
+            Some(r) if r.enabled && state.cfg.team_idp => {
+                let p = self.build_team(&state.cfg, &r).await?;
+                self.install_team(team_id, Some(p));
+                Ok(true)
+            }
+            _ => {
+                self.install_team(team_id, None);
+                Ok(false)
+            }
+        }
+    }
+
+    /// Startup: load every enabled team IdP; a broken one is logged, not fatal.
+    pub async fn load_all_teams(&self, state: &AppState) {
+        if !state.cfg.team_idp {
+            return;
+        }
+        let ids: Vec<(Uuid,)> = match sqlx::query_as("SELECT team_id FROM team_idp WHERE enabled")
+            .fetch_all(&state.db)
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, "cannot list team IdPs");
+                return;
+            }
+        };
+        for (team_id,) in ids {
+            if let Err(e) = self.load_team(state, team_id).await {
+                tracing::warn!(error = %e, %team_id, "team IdP not loaded");
+            }
+        }
+    }
+
+    pub fn team_provider(&self, team_id: Uuid) -> Option<Arc<Provider>> {
+        self.teams
+            .read()
+            .ok()
+            .and_then(|t| t.get(&team_provider_id(team_id)).cloned())
+    }
+
+    /// Home-realm discovery: the team IdP that claims the email's domain.
+    pub fn discover(&self, email: &str) -> Option<Arc<Provider>> {
+        let domain = email.rsplit('@').next()?.to_lowercase();
+        if domain.is_empty() {
+            return None;
+        }
+        self.teams.read().ok().and_then(|t| {
+            t.values()
+                .find(|p| p.allowed_domains.contains(&domain))
+                .cloned()
+        })
+    }
+
+    pub fn list(&self) -> Vec<SsoProvider> {
+        self.providers.values().map(|p| p.public()).collect()
+    }
+}
+
+impl Provider {
+    pub fn public(&self) -> SsoProvider {
+        let p = self;
+        SsoProvider {
+            id: p.id.clone(),
+            name: p.name.clone(),
+            kind: match p.backend {
+                Backend::Saml(_) => SsoKind::Saml,
+                Backend::Oidc(_) | Backend::GitHub(_) => SsoKind::Oidc,
+            },
+        }
+    }
+}
+
+impl SsoRegistry {
     /// SP metadata XML for a SAML provider.
     pub fn saml_metadata(&self, id: &str) -> ApiResult<String> {
         match &self.get(id)?.backend {
@@ -195,9 +411,14 @@ impl SsoRegistry {
         self.providers.is_empty()
     }
 
-    fn get(&self, id: &str) -> ApiResult<&Provider> {
-        self.providers
-            .get(id)
+    fn get(&self, id: &str) -> ApiResult<Arc<Provider>> {
+        if let Some(p) = self.providers.get(id) {
+            return Ok(p.clone());
+        }
+        self.teams
+            .read()
+            .ok()
+            .and_then(|t| t.get(id).cloned())
             .ok_or_else(|| Error::not_found("SSO provider"))
     }
 }
@@ -220,6 +441,7 @@ async fn build_provider(
         let sp = build_saml(slug, p, redirect, http).await?;
         return Ok(Provider {
             id: slug.to_string(),
+            team: None,
             name: p.name.clone().unwrap_or_else(|| slug.to_string()),
             allowed_domains,
             extra_scopes: Vec::new(),
@@ -278,6 +500,7 @@ async fn build_provider(
     };
     Ok(Provider {
         id: slug.to_string(),
+        team: None,
         name: p.name.clone().unwrap_or(name),
         allowed_domains,
         extra_scopes,
@@ -612,13 +835,14 @@ fn consume_saml(
         .context("flow has no AuthnRequest id")?;
     let identity = sp.consume_response(saml_response, request_id, chrono::Utc::now())?;
     apply_domain_policy(
-        provider,
+        &provider,
         SsoSession {
             provider: provider.id.clone(),
             subject: identity.subject,
             email: identity.email,
             display_name: identity.name,
             groups: identity.groups,
+            team_id: None,
         },
     )
 }
@@ -632,7 +856,11 @@ fn apply_domain_policy(provider: &Provider, sess: SsoSession) -> anyhow::Result<
             "email domain not allowed for this provider"
         );
     }
-    Ok(SsoSession { email, ..sess })
+    Ok(SsoSession {
+        email,
+        team_id: provider.team,
+        ..sess
+    })
 }
 
 async fn exchange(state: &AppState, flow: &FlowState, code: &str) -> anyhow::Result<SsoSession> {
@@ -669,6 +897,7 @@ async fn exchange(state: &AppState, flow: &FlowState, code: &str) -> anyhow::Res
                 email,
                 display_name,
                 groups,
+                team_id: None,
             }
         }
         Backend::GitHub(client) => {
@@ -720,11 +949,12 @@ async fn exchange(state: &AppState, flow: &FlowState, code: &str) -> anyhow::Res
                 email,
                 display_name: user.name.or(Some(user.login)),
                 groups: Vec::new(),
+                team_id: None,
             }
         }
         Backend::Saml(_) => anyhow::bail!("SAML flows complete on the ACS, not the OAuth callback"),
     };
-    apply_domain_policy(provider, sess)
+    apply_domain_policy(&provider, sess)
 }
 
 async fn finish(state: &AppState, sess: SsoSession) -> ApiResult<SsoResult> {
@@ -870,6 +1100,56 @@ pub async fn link_identity(
     .execute(&state.db)
     .await?;
     crate::authz::apply_group_mappings(&state.db, user_id, &sess.groups).await?;
+    if let Some(team_id) = sess.team_id {
+        jit_join(state, team_id, user_id, &sess.groups).await?;
+    }
+    Ok(())
+}
+
+/// Team IdP sign-in: join the team with the default role (`role_source =
+/// idp`) when `jit_join` is on, then apply IdP group → role mappings.
+async fn jit_join(
+    state: &AppState,
+    team_id: Uuid,
+    user_id: Uuid,
+    groups: &[String],
+) -> ApiResult<()> {
+    let jit: Option<(bool,)> =
+        sqlx::query_as("SELECT jit_join FROM team_idp WHERE team_id = $1 AND enabled")
+            .bind(team_id)
+            .fetch_optional(&state.db)
+            .await?;
+    if !matches!(jit, Some((true,))) {
+        return Ok(());
+    }
+    let default_role = crate::authz::default_role_id(&state.db, team_id).await?;
+    let joined = sqlx::query(
+        "INSERT INTO team_members (team_id, user_id, role, role_id, role_source)
+         VALUES ($1, $2, CASE WHEN (SELECT slug FROM team_roles WHERE id = $3) = 'admin' THEN 'admin' ELSE 'member' END, $3, 'idp')
+         ON CONFLICT (team_id, user_id) DO NOTHING",
+    )
+    .bind(team_id)
+    .bind(user_id)
+    .bind(default_role)
+    .execute(&state.db)
+    .await?
+    .rows_affected();
+    if joined > 0 {
+        crate::audit::record(
+            &state.db,
+            crate::audit::Entry::by(team_id, user_id, None, "member.joined_idp").user(user_id),
+        )
+        .await;
+        let _ = crate::events::publish(
+            state,
+            crate::events::Event::TeamsUpdated {
+                user_ids: vec![user_id],
+            },
+        )
+        .await;
+    }
+    crate::authz::apply_group_mappings_scoped(&state.db, user_id, groups, Some(team_id), "idp")
+        .await?;
     Ok(())
 }
 

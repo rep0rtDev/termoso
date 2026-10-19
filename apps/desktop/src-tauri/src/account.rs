@@ -437,6 +437,16 @@ pub async fn login<R: Runtime>(app: &AppHandle<R>, form: LoginForm) -> Result<Lo
 /// Ask the server for the IdP authorization URL and open it in the system
 /// browser; the browser is sent back to [`SSO_CALLBACK`] and the result is
 /// collected with [`sso_poll`]. Replaces any earlier unfinished SSO attempt.
+/// Home-realm discovery before sign-in: which provider (if any) owns the e-mail domain.
+pub async fn sso_discover(
+    server_url: &str,
+    email: &str,
+) -> Result<termoso_proto::auth::SsoDiscoverResponse> {
+    let server_url = normalize_url(server_url)?;
+    let api = ApiClient::new(&server_url)?;
+    Ok(api.sso_discover(email.trim()).await?)
+}
+
 pub async fn sso_start<R: Runtime>(app: &AppHandle<R>, form: SsoStartForm) -> Result<String> {
     let state = app.state::<AppState>();
     if state.store()?.account()?.is_some() {

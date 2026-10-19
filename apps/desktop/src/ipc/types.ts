@@ -217,6 +217,14 @@ export interface TeamPolicies {
   sso_domains: string[];
   device_approval: boolean;
   audit_retention_days: number;
+  /** `required` forces recording in every team vault. */
+  session_recording: "optional" | "required";
+  /** Days recordings are kept; 0 = forever. */
+  log_retention_days: number;
+  key_max_age_days: number;
+  password_max_age_days: number;
+  ip_allowlist: string[];
+  device_admin_approval: boolean;
   updated_at: string;
 }
 
@@ -1630,6 +1638,12 @@ export interface SsoProvider {
 }
 
 export interface ServerInfo {
+  /** Teams may configure their own IdP. */
+  team_idp?: boolean;
+  /** Corporate mode: password sign-in and sign-up are refused. */
+  sso_only?: boolean;
+  region?: string | null;
+  home_team?: { id: Uuid; name: string } | null;
   name: string;
   version: string;
   registration_open: boolean;
@@ -1637,6 +1651,7 @@ export interface ServerInfo {
   sso_registration: boolean;
   sso_providers: SsoProvider[];
   features: {
+    personal_vaults?: boolean;
     session_logs: boolean;
     email: boolean;
     webauthn: boolean;
@@ -2050,7 +2065,8 @@ export interface EffectivePolicies {
   session_ttl_hours: number | null;
   local_keys_denied_by: string[];
   device_approval_by: string[];
-  sso_provider: string | null;
+  sso_provider: string | null; /** Teams whose policy forces session recording. */
+  recording_required_by?: Uuid[];
 }
 
 export interface TeamPoliciesResponse {
@@ -2083,4 +2099,209 @@ export interface WebhookDelivery {
   response_body: string | null;
   next_at: string;
   delivered_at: string | null;
+}
+
+// ── 0.9.1 enterprise ──
+
+export interface SsoDiscoverResponse {
+  provider?: SsoProvider | null;
+  team_name?: string | null;
+  required: boolean;
+}
+
+export type TeamIdpKind = "oidc" | "saml";
+
+export interface TeamIdp {
+  kind: TeamIdpKind;
+  name: string;
+  issuer?: string | null;
+  client_id?: string | null;
+  has_client_secret: boolean;
+  scopes?: string | null;
+  saml_metadata?: string | null;
+  saml_idp_entity_id?: string | null;
+  domains: string[];
+  enabled: boolean;
+  jit_join: boolean;
+  provider_id: string;
+  callback_url: string;
+  updated_at: string;
+}
+
+export interface UpdateTeamIdp {
+  kind?: TeamIdpKind;
+  name?: string;
+  issuer?: string;
+  client_id?: string;
+  client_secret?: string;
+  scopes?: string;
+  saml_metadata?: string;
+  saml_idp_entity_id?: string;
+  domains?: string[];
+  enabled?: boolean;
+  jit_join?: boolean;
+}
+
+export interface TeamIdpResponse {
+  idp: TeamIdp | null;
+  available: boolean;
+}
+
+export type AclMode = "none" | "connect" | "read" | "edit";
+export type AclPrincipalKind = "role" | "member" | "group";
+export type AclEntityKind = "host" | "group";
+
+export interface EntityAclRule {
+  id: Uuid;
+  vault_id: Uuid;
+  entity_id: Uuid;
+  entity_kind: AclEntityKind;
+  principal_kind: AclPrincipalKind;
+  role_id?: Uuid | null;
+  user_id?: Uuid | null;
+  group_name?: string | null;
+  principal_name: string;
+  mode: AclMode;
+  updated_at: string;
+}
+
+export interface UpsertEntityAcl {
+  entity_id: Uuid;
+  entity_kind: AclEntityKind;
+  principal_kind: AclPrincipalKind;
+  role_id?: Uuid;
+  user_id?: Uuid;
+  group_name?: string;
+  mode: AclMode;
+}
+
+export interface MyAclRule {
+  vault_id: Uuid;
+  entity_id: Uuid;
+  entity_kind: AclEntityKind;
+  mode: AclMode;
+}
+
+export type TeamDeviceStatus = "pending" | "approved" | "rejected";
+
+export interface TeamDevice {
+  device_id: Uuid;
+  user_id: Uuid;
+  user_email: string;
+  name: string;
+  platform: string;
+  app_version?: string | null;
+  last_seen_at: string;
+  last_ip?: string | null;
+  status: TeamDeviceStatus;
+  decided_by?: Uuid | null;
+  decided_at?: string | null;
+  requested_at: string;
+}
+
+export interface TeamDeviceList {
+  admin_approval: boolean;
+  devices: TeamDevice[];
+}
+
+export interface RotationDue {
+  entity_id: Uuid;
+  vault_id: Uuid;
+  kind: string;
+  secret_rotated_at?: string | null;
+  age_days: number;
+  job_id?: Uuid | null;
+}
+
+export type RotationJobStatus = "pending" | "running" | "done" | "failed" | "cancelled";
+
+export interface RotationJob {
+  id: Uuid;
+  team_id: Uuid;
+  vault_id: Uuid;
+  entity_id: Uuid;
+  entity_kind: string;
+  status: RotationJobStatus;
+  note: string;
+  error?: string | null;
+  requested_by: Uuid;
+  requested_by_email: string;
+  claimed_by?: Uuid | null;
+  created_at: string;
+  updated_at: string;
+  finished_at?: string | null;
+}
+
+export interface RotationOverview {
+  key_max_age_days: number;
+  password_max_age_days: number;
+  due: RotationDue[];
+  jobs: RotationJob[];
+}
+
+export type AccessRole = "viewer" | "editor";
+export type AccessRequestStatus =
+  "pending" | "approved" | "denied" | "revoked" | "expired" | "cancelled";
+
+export interface AccessRequest {
+  id: Uuid;
+  team_id: Uuid;
+  vault_id: Uuid;
+  vault_name: string;
+  user_id: Uuid;
+  user_email: string;
+  role: AccessRole;
+  hours: number;
+  reason: string;
+  status: AccessRequestStatus;
+  decided_by?: Uuid | null;
+  decided_at?: string | null;
+  decision_note?: string | null;
+  expires_at?: string | null;
+  created_at: string;
+}
+
+export interface AccessRequestList {
+  can_approve: boolean;
+  requests: AccessRequest[];
+}
+
+export interface TeamDataStatus {
+  region?: string | null;
+  server_region?: string | null;
+  created_at: string;
+  deletion_scheduled_at?: string | null;
+  deletion_requested_by?: Uuid | null;
+  deletion_grace_days: number;
+}
+
+/** One server-side session recording row as stored (meta is ciphertext). */
+export interface TeamSessionLog {
+  id: Uuid;
+  vault_id: Uuid;
+  user_id: Uuid;
+  author?: LogAuthor | null;
+  meta: string;
+  key_version: number;
+  size_bytes: number;
+  completed: boolean;
+  created_at: string;
+  seq: number;
+  deleted: boolean;
+  pinned: boolean;
+  note: string;
+  note_by?: Uuid | null;
+}
+
+export interface TeamLogList {
+  logs: TeamSessionLog[];
+  since: number;
+  has_more: boolean;
+}
+
+export interface RotationRunResult {
+  jobId: Uuid;
+  status: "done" | "failed";
+  hostsUpdated: string[];
+  hostsFailed: [string, string][];
 }

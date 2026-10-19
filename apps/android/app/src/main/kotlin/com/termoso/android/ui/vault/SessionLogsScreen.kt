@@ -57,7 +57,7 @@ import kotlinx.coroutines.launch
 
 /** Terminal recordings of the selected vault, newest first. */
 @Composable
-fun SessionLogsScreen(shell: ShellViewModel, onBack: () -> Unit, onOpen: (String) -> Unit) {
+fun SessionLogsScreen(shell: ShellViewModel, onBack: () -> Unit, onOpen: (String) -> Unit, teamId: String? = null) {
     val revision by shell.repo.revision.collectAsStateWithLifecycle()
     val vaults by shell.vaults.collectAsStateWithLifecycle()
     val selectedId by shell.selectedVaultId.collectAsStateWithLifecycle()
@@ -65,14 +65,19 @@ fun SessionLogsScreen(shell: ShellViewModel, onBack: () -> Unit, onOpen: (String
     val scope = rememberCoroutineScope()
     var items by remember { mutableStateOf<List<SessionLogCard>>(emptyList()) }
     var confirm by remember { mutableStateOf<SessionLogCard?>(null) }
-    LaunchedEffect(revision, vault) {
-        val v = vault ?: return@LaunchedEffect
+    val teamVaultIds = if (teamId != null) vaults.filter { it.teamId == teamId }.map { it.id }.toSet() else null
+    LaunchedEffect(revision, vault, teamVaultIds) {
+        val keep: (SessionLogCard) -> Boolean = when {
+            teamVaultIds != null -> { l -> l.vaultId in teamVaultIds }
+            vault != null -> { l -> l.vaultId == vault.id }
+            else -> return@LaunchedEffect
+        }
         runCatching { shell.repo.read { sessionLogs() } }
-            .onSuccess { items = it.filter { l -> l.vaultId == v.id } }
+            .onSuccess { items = it.filter(keep) }
             .onFailure { shell.notify(it.userMessage()) }
     }
 
-    SubScreen(if (vault != null) stringResource(R.string.recordings, vault.name) else stringResource(R.string.recordings_2), onBack) { padding ->
+    SubScreen(if (teamId != null) stringResource(R.string.team_recordings) else if (vault != null) stringResource(R.string.recordings, vault.name) else stringResource(R.string.recordings_2), onBack) { padding ->
         if (items.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 EmptyState(

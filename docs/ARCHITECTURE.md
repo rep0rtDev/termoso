@@ -312,6 +312,25 @@ stream.
 * **Audit log and digest** — team-relevant events (membership, vault access,
   multiplayer, entity changes) are written server-side with retention; admins
   can opt into a daily/weekly e-mail digest.
+* **Roles, policies, ACL** — team roles carry a permission catalogue
+  (`authz.rs`); policies (`policy.rs`) tighten what the server allows (MFA,
+  SSO-only, device approval, IP allow-list, mandatory recording, retention,
+  rotation ages). Entity ACL (`acl.rs`) maps a role, member or IdP group to a
+  group or host inside a team vault with `none/connect/read/edit`. Because
+  entities are ciphertext to the server, it cannot tell which hosts a group
+  contains: clients resolve inheritance and hide/limit what the rules say,
+  while the server hard-refuses writes and deletes below `edit` for entities a
+  rule names directly. **ACL is not a substitute for a separate vault**: a
+  member who holds the vault key can decrypt everything in that vault, so data
+  that must stay invisible to someone belongs in a vault they are not a member
+  of. The vault is the cryptographic boundary; ACL is order and convenience
+  inside it (same model as collections in Bitwarden/1Password).
+* **Enterprise plumbing** — per-team IdP (OIDC/SAML, secret under the master
+  key, home-realm discovery by e-mail domain), SCIM 2.0, server-side session
+  recordings with team-wide export, rotation jobs executed by clients, JIT
+  access requests that create expiring vault memberships, GDPR team export and
+  scheduled deletion, admin-approved devices, and a corporate mode (home team,
+  SSO-only, no personal vaults) switched from server settings.
 
 ## Cross-cutting rules
 

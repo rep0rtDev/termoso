@@ -129,6 +129,23 @@ import type {
   WebhookKind,
   WorkspacesState,
 } from "./types";
+import type {
+  AccessRequest,
+  AccessRequestList,
+  AccessRole,
+  EntityAclRule,
+  MyAclRule,
+  RotationJob,
+  RotationOverview,
+  RotationRunResult,
+  SsoDiscoverResponse,
+  TeamDataStatus,
+  TeamDeviceList,
+  TeamIdpResponse,
+  TeamLogList,
+  UpdateTeamIdp,
+  UpsertEntityAcl,
+} from "./types";
 
 export const appInfo = () => invoke<AppInfo>("app_info");
 export const appQuit = () => invoke<null>("app_quit");
@@ -752,3 +769,63 @@ export const updateInstall = () => invoke<UpdateInfo>("update_install");
 export const updateRestart = () => invoke<null>("update_restart");
 export const onUpdateEvent = (cb: (e: UpdateEvent) => void): Promise<UnlistenFn> =>
   listen<UpdateEvent>("update", (ev) => cb(ev.payload));
+
+// ── 0.9.1 enterprise ──
+export const ssoDiscover = (serverUrl: string, email: string) =>
+  invoke<SsoDiscoverResponse>("account_sso_discover", { serverUrl, email });
+export const teamIdp = (teamId: Uuid) => invoke<TeamIdpResponse>("team_idp", { teamId });
+export const teamUpdateIdp = (teamId: Uuid, patch: UpdateTeamIdp) =>
+  invoke<TeamIdpResponse>("team_update_idp", { teamId, patch });
+export const teamTestIdp = (teamId: Uuid, patch: UpdateTeamIdp) =>
+  invoke<TeamIdpResponse>("team_test_idp", { teamId, patch });
+export const teamDeleteIdp = (teamId: Uuid) => invoke<null>("team_delete_idp", { teamId });
+export const teamAcl = (teamId: Uuid, vaultId: Uuid) =>
+  invoke<EntityAclRule[]>("team_acl", { teamId, vaultId });
+export const teamUpsertAcl = (teamId: Uuid, vaultId: Uuid, rule: UpsertEntityAcl) =>
+  invoke<EntityAclRule[]>("team_upsert_acl", { teamId, vaultId, rule });
+export const teamDeleteAcl = (teamId: Uuid, vaultId: Uuid, ruleId: Uuid) =>
+  invoke<null>("team_delete_acl", { teamId, vaultId, ruleId });
+export const aclMe = () => invoke<MyAclRule[]>("acl_me");
+export const teamLogs = (teamId: Uuid, vaultId?: Uuid) =>
+  invoke<TeamLogList>("team_logs", { teamId, vaultId: vaultId ?? null });
+export const teamLogsExport = (teamId: Uuid) => invoke<string>("team_logs_export", { teamId });
+export const teamRotation = (teamId: Uuid) => invoke<RotationOverview>("team_rotation", { teamId });
+export const teamCreateRotationJobs = (
+  teamId: Uuid,
+  req: { vault_id: Uuid; entity_ids: Uuid[]; note: string },
+) => invoke<RotationJob[]>("team_create_rotation_jobs", { teamId, req });
+export const rotationJobs = () => invoke<RotationJob[]>("rotation_jobs");
+export const rotationUpdateJob = (jobId: Uuid, req: { status: string; error?: string | null }) =>
+  invoke<RotationJob>("rotation_update_job", { jobId, req });
+export const rotationCancelJob = (jobId: Uuid) => invoke<null>("rotation_cancel_job", { jobId });
+export const teamAccessRequests = (teamId: Uuid) =>
+  invoke<AccessRequestList>("team_access_requests", { teamId });
+export const teamCreateAccessRequest = (
+  teamId: Uuid,
+  req: { vault_id: Uuid; role: AccessRole; hours: number; reason: string },
+) => invoke<AccessRequest>("team_create_access_request", { teamId, req });
+export const teamCancelAccessRequest = (teamId: Uuid, rid: Uuid) =>
+  invoke<null>("team_cancel_access_request", { teamId, rid });
+export const teamDecideAccessRequest = (
+  teamId: Uuid,
+  rid: Uuid,
+  action: "approve" | "deny" | "revoke",
+  req: { hours?: number; role?: AccessRole; note?: string },
+) => invoke<AccessRequest>("team_decide_access_request", { teamId, rid, action, req });
+export const teamData = (teamId: Uuid) => invoke<TeamDataStatus>("team_data", { teamId });
+export const teamExport = (teamId: Uuid) => invoke<string>("team_export", { teamId });
+export const teamScheduleDeletion = (teamId: Uuid, confirmName: string) =>
+  invoke<TeamDataStatus>("team_schedule_deletion", { teamId, confirmName });
+export const teamCancelDeletion = (teamId: Uuid) =>
+  invoke<TeamDataStatus>("team_cancel_deletion", { teamId });
+export const teamDevices = (teamId: Uuid) => invoke<TeamDeviceList>("team_devices", { teamId });
+export const teamApproveDevice = (teamId: Uuid, deviceId: Uuid) =>
+  invoke<null>("team_approve_device", { teamId, deviceId });
+export const teamRejectDevice = (teamId: Uuid, deviceId: Uuid) =>
+  invoke<null>("team_reject_device", { teamId, deviceId });
+export const saveTextFile = (path: string, contents: string) =>
+  invoke<null>("save_text_file", { path, contents });
+export const rotationRunJob = (jobId: Uuid) =>
+  invoke<RotationRunResult>("rotation_run_job", { jobId });
+export const rotationMarkDone = (jobId: Uuid) =>
+  invoke<RotationJob>("rotation_mark_done", { jobId });

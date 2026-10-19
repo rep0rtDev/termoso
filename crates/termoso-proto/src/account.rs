@@ -170,6 +170,24 @@ schema! {
         pub sso_registration: bool,
         /// Configured SSO providers.
         pub sso_providers: Vec<crate::auth::SsoProvider>,
+        /// Teams may bring their own identity provider (`TERMOSO_TEAM_IDP`).
+        #[serde(default)]
+        pub team_idp: bool,
+        /// Corporate mode: only SSO sign-in is accepted.
+        #[serde(default)]
+        pub sso_only: bool,
+        /// Data-residency label of this server (`TERMOSO_DATA_REGION`).
+        #[serde(default)]
+        pub region: Option<String>,
+        /// Ceiling for per-team audit retention (days).
+        #[serde(default)]
+        pub audit_retention_days_max: u32,
+        /// Oldest client version this server lets sign in.
+        #[serde(default)]
+        pub min_client_version: String,
+        /// Corporate mode: the team every account joins automatically.
+        #[serde(default)]
+        pub home_team: Option<HomeTeam>,
         /// Feature flags.
         pub features: ServerFeatures,
         /// Maximum entity payload size in bytes.
@@ -223,6 +241,9 @@ schema! {
         pub webauthn: bool,
         /// Teams can be created by regular users.
         pub teams: bool,
+        /// Personal vaults are shown (`false` = team vaults only).
+        #[serde(default = "default_true")]
+        pub personal_vaults: bool,
         /// An AI model for command suggestions is configured (opt-in per
         /// account, see `GET /account/ai`).
         #[serde(default)]
@@ -231,5 +252,15 @@ schema! {
         /// servers, which always offered them.
         #[serde(default)]
         pub bridges: bool,
+    }
+}
+
+schema! {
+    /// The server's home team (corporate mode).
+    pub struct HomeTeam {
+        /// Team id.
+        pub id: Uuid,
+        /// Team name.
+        pub name: String,
     }
 }

@@ -35,6 +35,7 @@ type Row = (
     String,
     DateTime<Utc>,
     Option<Uuid>,
+    Option<DateTime<Utc>>,
 );
 
 fn to_entity(r: Row) -> SyncEntity {
@@ -49,8 +50,10 @@ fn to_entity(r: Row) -> SyncEntity {
         data,
         updated_at,
         updated_by_device,
+        secret_rotated_at,
     ) = r;
     SyncEntity {
+        secret_rotated_at,
         id,
         kind,
         vault_id,
@@ -64,7 +67,7 @@ fn to_entity(r: Row) -> SyncEntity {
     }
 }
 
-const SELECT: &str = "SELECT id, kind, vault_id, version, seq, deleted, key_version, data, updated_at, updated_by_device FROM entities";
+const SELECT: &str = "SELECT id, kind, vault_id, version, seq, deleted, key_version, data, updated_at, updated_by_device, secret_rotated_at FROM entities";
 
 async fn fetch_entity(
     tx: &mut Transaction<'_, Postgres>,
@@ -173,6 +176,16 @@ pub async fn push(
         };
         access.insert(vid, a);
     }
+    // Entity-level rules (team vaults only): below `edit` → no writes.
+    let mut acl: HashMap<Uuid, HashMap<Uuid, String>> = HashMap::new();
+    for (vid, a) in &access {
+        if a.as_ref().is_some_and(|a| a.team_id.is_some()) {
+            acl.insert(
+                *vid,
+                crate::acl::direct_modes(&state.db, *vid, auth.user_id()).await?,
+            );
+        }
+    }
 
     let device_id = auth.device_id();
     let mut results = Vec::with_capacity(req.changes.len() + req.deletes.len());
@@ -198,6 +211,14 @@ pub async fn push(
             results.push(err(c.id, "stale_key_version"));
             continue;
         }
+        if acl
+            .get(&c.vault_id)
+            .and_then(|m| m.get(&c.id))
+            .is_some_and(|m| crate::acl::blocks_write(m))
+        {
+            results.push(err(c.id, "forbidden"));
+            continue;
+        }
         let existing = fetch_entity(&mut tx, c.id).await?;
         match (&existing, c.base_version) {
             (Some(e), _) if e.vault_id != c.vault_id => {
@@ -209,7 +230,8 @@ pub async fn push(
                 let version = base + 1;
                 sqlx::query(
                     "UPDATE entities SET kind = $2, version = $3, seq = $4, deleted = false, key_version = $5, data = $6,
-                            updated_at = LEAST($8, now()), updated_by_device = $7 WHERE id = $1",
+                            updated_at = LEAST($8, now()), updated_by_device = $7,
+                            secret_rotated_at = COALESCE(LEAST($9, now()), secret_rotated_at) WHERE id = $1",
                 )
                 .bind(c.id)
                 .bind(&c.kind)
@@ -219,6 +241,7 @@ pub async fn push(
                 .bind(&c.data)
                 .bind(device_id)
                 .bind(c.updated_at)
+                .bind(c.secret_rotated_at)
                 .execute(&mut *tx)
                 .await?;
                 touched.insert(c.vault_id, seq);
@@ -238,8 +261,8 @@ pub async fn push(
             (None, None) => {
                 let seq = next_seq(&mut tx, c.vault_id).await?;
                 sqlx::query(
-                    "INSERT INTO entities (id, vault_id, kind, version, seq, deleted, key_version, data, updated_by_device, updated_at)
-                     VALUES ($1, $2, $3, 1, $4, false, $5, $6, $7, LEAST($8, now()))",
+                    "INSERT INTO entities (id, vault_id, kind, version, seq, deleted, key_version, data, updated_by_device, updated_at, secret_rotated_at)
+                     VALUES ($1, $2, $3, 1, $4, false, $5, $6, $7, LEAST($8, now()), LEAST($9, now()))",
                 )
                 .bind(c.id)
                 .bind(c.vault_id)
@@ -249,6 +272,7 @@ pub async fn push(
                 .bind(&c.data)
                 .bind(device_id)
                 .bind(c.updated_at)
+                .bind(c.secret_rotated_at)
                 .execute(&mut *tx)
                 .await?;
                 touched.insert(c.vault_id, seq);
@@ -286,6 +310,18 @@ pub async fn push(
             results.push(err(d.id, "forbidden"));
             continue;
         };
+        if a.team_id.is_some() && !acl.contains_key(&e.vault_id) {
+            let m = crate::acl::direct_modes(&state.db, e.vault_id, auth.user_id()).await?;
+            acl.insert(e.vault_id, m);
+        }
+        if acl
+            .get(&e.vault_id)
+            .and_then(|m| m.get(&d.id))
+            .is_some_and(|m| crate::acl::blocks_write(m))
+        {
+            results.push(err(d.id, "forbidden"));
+            continue;
+        }
         if e.deleted {
             results.push(PushResult::Ok {
                 id: d.id,

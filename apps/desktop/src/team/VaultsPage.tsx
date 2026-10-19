@@ -44,6 +44,7 @@ import {
   useTeams,
   useVaultMembers,
   useVaults,
+  useServerInfo,
 } from "@/ipc/hooks";
 import {
   errorMessage,
@@ -58,6 +59,7 @@ import {
 import { goToSettings, goToSettingsWith, useSettingsIntent } from "@/app/navigation";
 import { vaultHint, vaultIcon } from "@/app/vault";
 import { PersonAvatar, initialsOf } from "./PersonAvatar";
+import { AclSection } from "./AclSection";
 import { SecurityRow } from "./TeamPage";
 import { VAULT_ROLES, vaultRoleHint, vaultRoleLabel, can } from "./roles";
 import { tr, trn } from "@/i18n";
@@ -82,7 +84,9 @@ export function VaultsPage() {
     else if (intent.kind === "newVault") setPanel({ kind: "new", teamId: intent.teamId ?? null });
   });
 
-  const list = vaults.data ?? [];
+  const serverInfo = useServerInfo();
+  const personalHidden = serverInfo.data?.features.personal_vaults === false;
+  const list = (vaults.data ?? []).filter((v) => !(personalHidden && v.kind === "personal"));
   const adminTeams = useMemo(
     () => (teams.data ?? []).filter((t) => can(t, "vaults.create")),
     [teams.data],
@@ -327,6 +331,8 @@ function VaultDetails({
   const snackbar = useSnackbar();
   const invalidate = useInvalidateTeam();
   const isTeam = v.kind === "team";
+  const teamsForAcl = useTeams(isTeam);
+  const aclTeam = isTeam ? (teamsForAcl.data?.find((t) => t.id === v.team_id) ?? null) : null;
   const manager = isTeam && v.unlocked && v.role === "manager";
   const members = useVaultMembers(isTeam ? v.id : null);
   const teamMembers = useTeamMembers(isTeam ? v.team_id : null);
@@ -554,6 +560,7 @@ function VaultDetails({
         </SectionCard>
       )}
 
+      {isTeam && aclTeam && <AclSection vault={v} team={aclTeam} />}
       {isTeam && (
         <SectionCard title={tr("Encryption")}>
           <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>

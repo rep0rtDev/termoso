@@ -355,18 +355,19 @@ jobs:
           path: apps/ios/out/*.ipa
 
   publish:
-    name: checksums + publish
+    name: checksums, SBOM, attestations + publish
     if: github.ref_type == 'tag'
     needs: [version, bundle, android, ios]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: apps/ios/altstore
           path: src
       - name: Locate the draft release
         id: rel
@@ -474,6 +475,34 @@ jobs:
           gh api --method POST -H 'Content-Type: application/json' \
             "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/${{ steps.rel.outputs.id }}/assets?name=latest.json" \
             --input latest.json > /dev/null
+      # Supply chain: an SBOM of the source tree (every Cargo, npm and Gradle
+      # dependency the release was built from) in SPDX and CycloneDX, GitHub
+      # build-provenance attestations for every asset, and a keyless cosign
+      # signature over SHA256SUMS.txt. SECURITY.md explains how to verify.
+      - name: SBOM (SPDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: src
+          format: spdx-json
+          output-file: assets/termoso-${{ needs.version.outputs.version }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: src
+          format: cyclonedx-json
+          output-file: assets/termoso-${{ needs.version.outputs.version }}.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Upload SBOMs
+        run: |
+          cd assets
+          for f in *.spdx.json *.cdx.json; do
+            gh api --method POST -H 'Content-Type: application/json' \
+              "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/${{ steps.rel.outputs.id }}/assets?name=$f" \
+              --input "$f" > /dev/null
+          done
       - name: Write SHA256SUMS
         run: |
           cd assets
@@ -482,6 +511,23 @@ jobs:
           gh api --method POST -H 'Content-Type: text/plain' \
             "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/${{ steps.rel.outputs.id }}/assets?name=SHA256SUMS.txt" \
             --input SHA256SUMS.txt > /dev/null
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign SHA256SUMS (cosign keyless)
+        run: |
+          cd assets
+          cosign sign-blob --yes --bundle SHA256SUMS.txt.sigstore.json SHA256SUMS.txt
+          gh api --method POST -H 'Content-Type: application/json' \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/${{ steps.rel.outputs.id }}/assets?name=SHA256SUMS.txt.sigstore.json" \
+            --input SHA256SUMS.txt.sigstore.json > /dev/null
+      - name: Build provenance attestations
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            assets/*
+            !assets/*.sig
+            !assets/*.sigstore.json
+            !assets/latest.json
+            !assets/termoso-altstore.json
       - name: Publish
         run: |
           case "$GITHUB_REF_NAME" in *-*) latest=false ;; *) latest=true ;; esac

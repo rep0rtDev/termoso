@@ -416,6 +416,7 @@ async fn sync_push_pull_conflicts_and_tombstones() {
 
     let host_id = Uuid::new_v4();
     let change = |base: Option<i64>, label: &str| EntityChange {
+        secret_rotated_at: None,
         id: host_id,
         kind: "host".into(),
         vault_id,
@@ -521,10 +522,12 @@ async fn sync_push_pull_conflicts_and_tombstones() {
             Some(&PushRequest {
                 changes: vec![
                     EntityChange {
+                        secret_rotated_at: None,
                         kind: "spaceship".into(),
                         ..change(None, "x")
                     },
                     EntityChange {
+                        secret_rotated_at: None,
                         id: Uuid::new_v4(),
                         vault_id: Uuid::new_v4(),
                         ..change(None, "x")
@@ -612,6 +615,7 @@ async fn sync_push_pull_conflicts_and_tombstones() {
                 changes: ids
                     .iter()
                     .map(|id| EntityChange {
+                        secret_rotated_at: None,
                         id: *id,
                         kind: "snippet".into(),
                         vault_id,
@@ -703,6 +707,7 @@ async fn teams_vaults_invites_and_sharing() {
             Some(bob.token()),
             Some(&PushRequest {
                 changes: vec![EntityChange {
+                    secret_rotated_at: None,
                     id: host_id,
                     kind: "host".into(),
                     vault_id: vault.id,
@@ -815,6 +820,7 @@ async fn teams_vaults_invites_and_sharing() {
             Some(bob.token()),
             Some(&PushRequest {
                 changes: vec![EntityChange {
+                    secret_rotated_at: None,
                     id: host_id,
                     kind: "host".into(),
                     vault_id: vault.id,
@@ -1130,6 +1136,7 @@ async fn websocket_notifies_on_push_and_revocation() {
             Some(u.token()),
             Some(&PushRequest {
                 changes: vec![EntityChange {
+                    secret_rotated_at: None,
                     id,
                     kind: "group".into(),
                     vault_id,

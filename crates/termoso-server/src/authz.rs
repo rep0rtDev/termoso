@@ -160,6 +160,16 @@ fn describe(key: &str) -> (&'static str, &'static str, bool) {
             false,
         ),
         "team.delete" => ("Delete team", "Owner only.", true),
+        "devices.approve" => (
+            "Approve devices",
+            "Vet members' new devices when the team requires admin approval; reject ends their sessions.",
+            true,
+        ),
+        "team.export" => (
+            "Export team data",
+            "Download everything the server stores for the team (GDPR export).",
+            true,
+        ),
         "team.transfer" => ("Transfer ownership", "Owner only.", true),
         "members.view" => ("View members", "See who is in the team.", false),
         "members.view_mfa" => (
@@ -209,6 +219,21 @@ fn describe(key: &str) -> (&'static str, &'static str, bool) {
         "vaults.members" => (
             "Manage vault access",
             "Grant and revoke vault membership.",
+            true,
+        ),
+        "acl.manage" => (
+            "Manage group and host access",
+            "Set per-group/per-host access rules (hidden, connect only, read, edit) for roles, members and IdP groups inside team vaults.",
+            true,
+        ),
+        "rotation.manage" => (
+            "Manage credential rotation",
+            "See overdue keys and passwords, queue and cancel rotation jobs.",
+            true,
+        ),
+        "access.approve" => (
+            "Approve access requests",
+            "Grant, deny and revoke temporary (just-in-time) access to team vaults.",
             true,
         ),
         "vaults.rotate_key" => (
@@ -391,6 +416,11 @@ pub const BUILTIN_ROLES: &[(&str, &str, &str, &[&str], i32)] = &[
             "vaults.delete",
             "vaults.transfer",
             "vaults.members",
+            "acl.manage",
+            "rotation.manage",
+            "access.approve",
+            "team.export",
+            "devices.approve",
             "vaults.rotate_key",
             "vaults.history",
             "entities.read",

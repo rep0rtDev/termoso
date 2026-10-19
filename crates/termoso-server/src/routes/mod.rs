@@ -1,22 +1,28 @@
 //! HTTP routing.
 
+pub mod access;
 pub mod account;
+pub mod acl;
 pub mod admin;
 pub mod ai;
 pub mod auth;
 pub mod bridges;
 pub mod captcha;
+pub mod gdpr;
 pub mod history;
+pub mod idp;
 pub mod logs;
 pub mod mfa;
 pub mod policies;
 pub mod roles;
+pub mod rotation;
 pub mod scim_admin;
 pub mod server;
 pub mod sshid;
 pub mod start_over;
 pub mod sync;
 pub mod teams;
+pub mod trust;
 pub mod vaults;
 pub mod web;
 
@@ -77,6 +83,7 @@ pub fn router(state: AppState) -> Router {
             post(start_over::cancel_authenticated),
         )
         .route("/auth/sso/providers", get(auth::sso_providers))
+        .route("/auth/sso/discover", get(idp::discover))
         .route("/auth/sso/callback", get(auth::sso_callback))
         .route("/auth/sso/flow/{flow_id}", get(auth::sso_poll))
         .route("/auth/sso/{provider}/start", get(auth::sso_start))
@@ -216,6 +223,20 @@ pub fn router(state: AppState) -> Router {
             "/teams/{id}/policies",
             get(policies::get).put(policies::put),
         )
+        .route(
+            "/teams/{id}/idp",
+            get(idp::get).put(idp::put).delete(idp::delete),
+        )
+        .route("/teams/{id}/idp/test", post(idp::test))
+        .route(
+            "/teams/{id}/vaults/{vault_id}/acl",
+            get(acl::list).put(acl::upsert),
+        )
+        .route(
+            "/teams/{id}/vaults/{vault_id}/acl/{rule_id}",
+            delete(acl::delete),
+        )
+        .route("/acl/me", get(acl::me))
         .route("/teams/{id}/permissions", get(roles::catalog))
         .route("/teams/{id}/roles", get(roles::list).post(roles::create))
         .route(
@@ -261,6 +282,44 @@ pub fn router(state: AppState) -> Router {
         .route("/logs/{id}", patch(logs::update).delete(logs::delete))
         .route("/logs/{id}/download", get(logs::download))
         .route("/vaults/{id}/logs", get(logs::list_vault))
+        .route("/teams/{id}/logs", get(logs::team_list))
+        .route("/teams/{id}/logs/export", get(logs::team_export))
+        .route(
+            "/teams/{id}/access-requests",
+            get(access::list).post(access::create),
+        )
+        .route("/teams/{id}/access-requests/{rid}", delete(access::cancel))
+        .route(
+            "/teams/{id}/access-requests/{rid}/approve",
+            post(access::approve),
+        )
+        .route("/teams/{id}/access-requests/{rid}/deny", post(access::deny))
+        .route(
+            "/teams/{id}/access-requests/{rid}/revoke",
+            post(access::revoke),
+        )
+        .route("/teams/{id}/devices", get(trust::list))
+        .route(
+            "/teams/{id}/devices/{device_id}/approve",
+            post(trust::approve),
+        )
+        .route(
+            "/teams/{id}/devices/{device_id}/reject",
+            post(trust::reject),
+        )
+        .route("/teams/{id}/data", get(gdpr::status))
+        .route("/teams/{id}/export", get(gdpr::export))
+        .route(
+            "/teams/{id}/deletion",
+            post(gdpr::schedule).delete(gdpr::cancel),
+        )
+        .route("/teams/{id}/rotation", get(rotation::overview))
+        .route("/teams/{id}/rotation/jobs", post(rotation::create))
+        .route("/rotation/jobs", get(rotation::mine))
+        .route(
+            "/rotation/jobs/{id}",
+            patch(rotation::update).delete(rotation::delete),
+        )
         // realtime
         .route("/ws", get(crate::ws::handler))
         // multiplayer
@@ -282,7 +341,16 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/admin/users/{id}/reset-mfa", post(admin::reset_mfa))
         .route("/admin/teams", get(admin::teams))
-        .route("/admin/teams/{id}", delete(admin::delete_team))
+        .route(
+            "/admin/teams/{id}",
+            get(admin::team_detail).delete(admin::delete_team),
+        )
+        .route("/admin/teams/{id}/members", post(admin::add_member))
+        .route(
+            "/admin/teams/{id}/members/{user_id}",
+            delete(admin::remove_member),
+        )
+        .route("/admin/jobs", get(admin::jobs))
         .route(
             "/admin/settings",
             get(admin::get_settings).put(admin::put_settings),

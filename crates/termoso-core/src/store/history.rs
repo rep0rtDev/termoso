@@ -512,6 +512,7 @@ mod tests {
         .unwrap();
         let host_id = Uuid::new_v4();
         s.apply_remote(&SyncEntity {
+            secret_rotated_at: None,
             id: host_id,
             kind: Host::KIND.into(),
             vault_id: team,

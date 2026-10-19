@@ -17,6 +17,7 @@ import com.termoso.core.MfaMethod
 import com.termoso.core.MobileException
 import com.termoso.core.ServerCard
 import com.termoso.core.SsoOutcome
+import com.termoso.core.SsoDiscoverCard
 import com.termoso.core.SsoProviderCard
 import com.termoso.core.serverInfo
 import kotlinx.coroutines.CancellationException
@@ -83,11 +84,18 @@ class SignInViewModel(
     var probe by mutableStateOf<ServerProbe>(ServerProbe.Idle)
     var email by mutableStateOf("")
     var password by mutableStateOf("")
+    /** Result of e-mail domain discovery for the current e-mail (null while unknown). */
+    var discovered by mutableStateOf<Pair<String, SsoDiscoverCard>?>(null)
+        private set
+    /** The user chose the password form although the domain has an IdP. */
+    var passwordAnyway by mutableStateOf(false)
     var confirm by mutableStateOf("")
     var displayName by mutableStateOf("")
     var invite by mutableStateOf("")
     var busy by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
+    /** Server refused this build as too old (`client_update_required`): the server's own explanation. */
+    var updateRequired by mutableStateOf<String?>(null)
     var step by mutableStateOf<AuthStep>(AuthStep.Form)
 
     var mfaMethod by mutableStateOf<MfaMethod?>(null)
@@ -187,6 +195,37 @@ class SignInViewModel(
     /** Providers the probed server advertises; empty while unknown. */
     val ssoProviders: List<SsoProviderCard> get() = serverCard?.ssoProviders.orEmpty()
 
+    /** Corporate mode: the server refuses password sign-in and sign-up. */
+    val ssoOnly: Boolean get() = serverCard?.ssoOnly == true
+
+    /** IdP that owns the typed e-mail domain, if discovery found one for this exact address. */
+    val domainIdp: SsoProviderCard?
+        get() {
+            val d = discovered?.takeIf { it.first == email.trim().lowercase() }?.second ?: return null
+            val id = d.providerId ?: return null
+            return ssoProviders.firstOrNull { it.id == id } ?: SsoProviderCard(id = id, name = d.providerName ?: id, saml = false)
+        }
+
+    val domainTeamName: String? get() = discovered?.takeIf { it.first == email.trim().lowercase() }?.second?.teamName
+    val domainSsoRequired: Boolean get() = discovered?.takeIf { it.first == email.trim().lowercase() }?.second?.required == true
+
+    /** Password field and button are replaced by “Continue with <IdP>”. */
+    val passwordHidden: Boolean
+        get() = sso !is SsoState.Verified && (ssoOnly || (mode == AuthMode.SignIn && domainIdp != null && !passwordAnyway))
+
+    /** Ask the server which IdP owns the e-mail domain (called when the e-mail field loses focus). */
+    fun discover() {
+        val addr = email.trim().lowercase()
+        if (!addr.contains('@') || discovered?.first == addr || sso is SsoState.Verified) return
+        val url = effectiveUrl
+        viewModelScope.launch {
+            val card = runCatching { account.ssoDiscover(url, addr) }
+                .getOrElse { SsoDiscoverCard(providerId = null, providerName = null, teamName = null, required = false) }
+            discovered = addr to card
+            passwordAnyway = false
+        }
+    }
+
     /** Sign-up needs an invitation: registration is closed and this is not an SSO identity the server lets in. */
     val needsInvite: Boolean
         get() {
@@ -210,6 +249,7 @@ class SignInViewModel(
             else -> null
         }
         if (error != null) return
+        updateRequired = null
         run {
             try {
                 when (mode) {
@@ -230,6 +270,10 @@ class SignInViewModel(
                     }
                 }
             } catch (e: MobileException.Other) {
+                if (e.kind == "client_update_required") {
+                    updateRequired = e.detail
+                    return@run
+                }
                 if (e.kind != CAPTCHA_REQUIRED) throw e
                 captchaUrl = url
                 return@run

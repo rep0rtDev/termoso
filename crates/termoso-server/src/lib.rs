@@ -5,6 +5,7 @@
 // dozens of one-off named types.
 #![allow(clippy::type_complexity)]
 
+pub mod acl;
 pub mod ai;
 pub mod audit;
 pub mod authz;
@@ -14,6 +15,7 @@ pub mod cache;
 pub mod codes;
 pub mod config;
 pub mod digest;
+pub mod enterprise;
 pub mod error;
 pub mod events;
 pub mod extract;
@@ -32,6 +34,7 @@ pub mod session;
 pub mod sso;
 pub mod state;
 pub mod storage;
+pub mod trust;
 pub mod turnstile;
 pub mod users;
 pub mod util;

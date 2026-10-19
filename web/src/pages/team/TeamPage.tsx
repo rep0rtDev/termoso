@@ -48,6 +48,12 @@ import { AuditTab } from "./AuditTab";
 import { PoliciesTab } from "./PoliciesTab";
 import { RolesTab } from "./RolesTab";
 import { ScimTab } from "./ScimTab";
+import { AccessTab } from "./AccessTab";
+import { DataTab } from "./DataTab";
+import { DevicesTab } from "./DevicesTab";
+import { RecordingsTab } from "./RecordingsTab";
+import { RotationTab } from "./RotationTab";
+import { SsoTab } from "./SsoTab";
 import { can } from "./perm";
 import { errorMessage } from "@/api/client";
 import { teamsApi, vaultsApi } from "@/api/endpoints";
@@ -110,10 +116,22 @@ function TeamDetail({ team }: { team: Team }) {
   );
 }
 
-type TabKey = "members" | "roles" | "policies" | "audit" | "scim";
+type TabKey =
+  | "members"
+  | "roles"
+  | "policies"
+  | "audit"
+  | "scim"
+  | "sso"
+  | "access"
+  | "devices"
+  | "rotation"
+  | "logs"
+  | "data";
 
 function TeamTabs({ team, admin }: { team: Team; admin: boolean }) {
   const [params, setParams] = useSearchParams();
+  const info = useServerInfo();
   const all: { key: TabKey; label: string; show: boolean }[] = [
     { key: "members", label: tr("Members"), show: true },
     { key: "roles", label: tr("Roles"), show: can(team, "roles.manage") },
@@ -124,6 +142,16 @@ function TeamTabs({ team, admin }: { team: Team; admin: boolean }) {
       show: can(team, "audit.view") || can(team, "webhooks.manage"),
     },
     { key: "scim", label: tr("SCIM"), show: can(team, "scim.manage") || can(team, "scim.tokens") },
+    {
+      key: "sso",
+      label: tr("SSO"),
+      show: can(team, "policies.manage") && info.data?.team_idp !== false,
+    },
+    { key: "access", label: tr("Access"), show: true },
+    { key: "rotation", label: tr("Rotation"), show: can(team, "rotation.manage") },
+    { key: "devices", label: tr("Devices"), show: can(team, "devices.approve") },
+    { key: "logs", label: tr("Recordings"), show: can(team, "logs.view_team") },
+    { key: "data", label: tr("Data"), show: true },
   ];
   const tabs = all.filter((t) => t.show);
   const requested = params.get("tab");
@@ -139,6 +167,9 @@ function TeamTabs({ team, admin }: { team: Team; admin: boolean }) {
             else next.set("tab", v);
             setParams(next, { replace: true });
           }}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
           sx={{ mb: 2, borderBottom: 1, borderColor: "divider" }}
         >
           {tabs.map((t) => (
@@ -159,6 +190,12 @@ function TeamTabs({ team, admin }: { team: Team; admin: boolean }) {
       {tab === "policies" && <PoliciesTab team={team} />}
       {tab === "audit" && <AuditTab team={team} />}
       {tab === "scim" && <ScimTab team={team} />}
+      {tab === "sso" && <SsoTab team={team} />}
+      {tab === "access" && <AccessTab team={team} />}
+      {tab === "rotation" && <RotationTab team={team} />}
+      {tab === "devices" && <DevicesTab team={team} />}
+      {tab === "logs" && <RecordingsTab team={team} />}
+      {tab === "data" && <DataTab team={team} />}
     </>
   );
 }

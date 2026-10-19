@@ -527,6 +527,7 @@ async fn start_over_is_delayed_cancellable_and_destroys_the_old_vault() {
             Some(u.token()),
             Some(&PushRequest {
                 changes: vec![EntityChange {
+                    secret_rotated_at: None,
                     id: host_id,
                     kind: "host".into(),
                     vault_id: old_vault,

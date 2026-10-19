@@ -96,8 +96,9 @@ export function SettingRow({
     <Box
       sx={{
         display: "flex",
-        alignItems: "center",
-        gap: 2,
+        flexDirection: { xs: "column", sm: "row" },
+        alignItems: { xs: "stretch", sm: "center" },
+        gap: { xs: 1, sm: 2 },
         py: 1.25,
         ...(divider && { borderBottom: 1, borderColor: "border.light" }),
         "&:last-of-type": { borderBottom: 0 },
@@ -111,7 +112,18 @@ export function SettingRow({
           </Typography>
         )}
       </Box>
-      <Box sx={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 1 }}>{control}</Box>
+      <Box
+        sx={{
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+          width: { xs: "100%", sm: "auto" },
+          "& .MuiTextField-root, & .MuiFormControl-root": { maxWidth: { xs: "100%", sm: "none" } },
+        }}
+      >
+        {control}
+      </Box>
     </Box>
   );
 }

@@ -1062,6 +1062,23 @@ pub async fn account_cancel_login<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     account::cancel_login(&app).await
 }
 
+/// Write UTF-8 text to a path the user picked in a save dialog (exports).
+#[tauri::command]
+pub async fn save_text_file(path: String, contents: String) -> Result<()> {
+    tokio::fs::write(&path, contents.as_bytes())
+        .await
+        .map_err(|e| DesktopError::invalid(format!("cannot write {path}: {e}")))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn account_sso_discover(
+    server_url: String,
+    email: String,
+) -> Result<termoso_proto::auth::SsoDiscoverResponse> {
+    account::sso_discover(&server_url, &email).await
+}
+
 #[tauri::command]
 pub async fn account_sso_start<R: Runtime>(
     app: AppHandle<R>,
@@ -1440,6 +1457,230 @@ pub async fn team_update_policies<R: Runtime>(
     patch: proto::UpdateTeamPoliciesRequest,
 ) -> Result<proto::TeamPoliciesResponse> {
     team::update_policies(&app, team_id, patch).await
+}
+
+#[tauri::command]
+pub async fn team_idp<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::TeamIdpResponse> {
+    team::idp(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_update_idp<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    patch: proto::UpdateTeamIdpRequest,
+) -> Result<proto::TeamIdpResponse> {
+    team::update_idp(&app, team_id, patch).await
+}
+
+#[tauri::command]
+pub async fn team_test_idp<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    patch: proto::UpdateTeamIdpRequest,
+) -> Result<proto::TeamIdpResponse> {
+    team::test_idp(&app, team_id, patch).await
+}
+
+#[tauri::command]
+pub async fn team_delete_idp<R: Runtime>(app: AppHandle<R>, team_id: Uuid) -> Result<()> {
+    team::delete_idp(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_acl<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    vault_id: Uuid,
+) -> Result<Vec<proto::EntityAclRule>> {
+    team::acl(&app, team_id, vault_id).await
+}
+
+#[tauri::command]
+pub async fn team_upsert_acl<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    vault_id: Uuid,
+    rule: proto::UpsertEntityAclRequest,
+) -> Result<Vec<proto::EntityAclRule>> {
+    team::upsert_acl(&app, team_id, vault_id, rule).await
+}
+
+#[tauri::command]
+pub async fn team_delete_acl<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    vault_id: Uuid,
+    rule_id: Uuid,
+) -> Result<()> {
+    team::delete_acl(&app, team_id, vault_id, rule_id).await
+}
+
+#[tauri::command]
+pub async fn acl_me<R: Runtime>(app: AppHandle<R>) -> Result<Vec<proto::MyAclRule>> {
+    team::acl_me(&app).await
+}
+
+#[tauri::command]
+pub async fn team_logs<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    vault_id: Option<Uuid>,
+) -> Result<termoso_proto::logs::LogListResponse> {
+    team::logs(&app, team_id, vault_id).await
+}
+
+#[tauri::command]
+pub async fn team_logs_export<R: Runtime>(app: AppHandle<R>, team_id: Uuid) -> Result<String> {
+    team::logs_export(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_rotation<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::RotationOverview> {
+    team::rotation(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_create_rotation_jobs<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    req: proto::CreateRotationJobsRequest,
+) -> Result<Vec<proto::RotationJob>> {
+    team::create_rotation_jobs(&app, team_id, req).await
+}
+
+#[tauri::command]
+pub async fn rotation_jobs<R: Runtime>(app: AppHandle<R>) -> Result<Vec<proto::RotationJob>> {
+    team::rotation_jobs(&app).await
+}
+
+#[tauri::command]
+pub async fn rotation_update_job<R: Runtime>(
+    app: AppHandle<R>,
+    job_id: Uuid,
+    req: proto::UpdateRotationJobRequest,
+) -> Result<proto::RotationJob> {
+    team::rotation_update_job(&app, job_id, req).await
+}
+
+#[tauri::command]
+pub async fn rotation_run_job<R: Runtime>(
+    app: AppHandle<R>,
+    job_id: Uuid,
+) -> Result<crate::rotation::RotationRunResult> {
+    crate::rotation::run_job(&app, job_id).await
+}
+
+#[tauri::command]
+pub async fn rotation_mark_done<R: Runtime>(
+    app: AppHandle<R>,
+    job_id: Uuid,
+) -> Result<termoso_proto::team::RotationJob> {
+    crate::rotation::mark_done(&app, job_id).await
+}
+
+#[tauri::command]
+pub async fn rotation_cancel_job<R: Runtime>(app: AppHandle<R>, job_id: Uuid) -> Result<()> {
+    team::rotation_cancel_job(&app, job_id).await
+}
+
+#[tauri::command]
+pub async fn team_access_requests<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::AccessRequestList> {
+    team::access_requests(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_create_access_request<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    req: proto::CreateAccessRequest,
+) -> Result<proto::AccessRequest> {
+    team::create_access_request(&app, team_id, req).await
+}
+
+#[tauri::command]
+pub async fn team_cancel_access_request<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    rid: Uuid,
+) -> Result<()> {
+    team::cancel_access_request(&app, team_id, rid).await
+}
+
+#[tauri::command]
+pub async fn team_decide_access_request<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    rid: Uuid,
+    action: String,
+    req: proto::DecideAccessRequest,
+) -> Result<proto::AccessRequest> {
+    team::decide_access_request(&app, team_id, rid, action, req).await
+}
+
+#[tauri::command]
+pub async fn team_data<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::TeamDataStatus> {
+    team::data(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_export<R: Runtime>(app: AppHandle<R>, team_id: Uuid) -> Result<String> {
+    team::export(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_schedule_deletion<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    confirm_name: String,
+) -> Result<proto::TeamDataStatus> {
+    team::schedule_deletion(&app, team_id, confirm_name).await
+}
+
+#[tauri::command]
+pub async fn team_cancel_deletion<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::TeamDataStatus> {
+    team::cancel_deletion(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_devices<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+) -> Result<proto::TeamDeviceList> {
+    team::devices(&app, team_id).await
+}
+
+#[tauri::command]
+pub async fn team_approve_device<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    device_id: Uuid,
+) -> Result<()> {
+    team::approve_device(&app, team_id, device_id).await
+}
+
+#[tauri::command]
+pub async fn team_reject_device<R: Runtime>(
+    app: AppHandle<R>,
+    team_id: Uuid,
+    device_id: Uuid,
+) -> Result<()> {
+    team::reject_device(&app, team_id, device_id).await
 }
 
 #[tauri::command]

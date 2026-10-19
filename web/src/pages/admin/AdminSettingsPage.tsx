@@ -1,6 +1,16 @@
 import { useState, type SubmitEvent } from "react";
 import { tr } from "@/i18n";
-import { Alert, Box, Button, Grid, Stack, Switch, TextField, Typography } from "@mui/material";
+import {
+  Alert,
+  MenuItem,
+  Box,
+  Button,
+  Grid,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+} from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@/api/client";
 import { adminApi } from "@/api/endpoints";
@@ -38,6 +48,10 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
   const snack = useSnackbar();
   const [s, setS] = useState<ServerSettings>(initial);
   const [domains, setDomains] = useState(initial.allowed_domains.join(", "));
+  const teams = useQuery({
+    queryKey: ["admin", "teams", "all"],
+    queryFn: () => adminApi.teams({ offset: 0, limit: 200 }),
+  });
 
   const save = useMutation({
     mutationFn: () =>
@@ -143,6 +157,58 @@ function SettingsForm({ initial }: { initial: ServerSettings }) {
             }
           />
         </Box>
+      </Section>
+      <Section
+        title={tr("Corporate mode")}
+        description={tr(
+          "For a server that belongs to one company. Pick a home team and every account — new and existing, on their next sign-in — becomes its member with the default role. SSO-only refuses password sign-in and e-mail sign-up (the bootstrap admin keeps a password so you cannot lock yourself out). Clients hide team creation, sign-up and personal vaults accordingly.",
+        )}
+      >
+        <SettingRow
+          label={tr("Home team")}
+          description={tr("All accounts automatically join this team.")}
+          control={
+            <TextField
+              select
+              size="small"
+              value={s.home_team_id ?? ""}
+              onChange={(e) => set("home_team_id", e.target.value === "" ? null : e.target.value)}
+              sx={{ width: { xs: 180, sm: 280 } }}
+            >
+              <MenuItem value="">{tr("None")}</MenuItem>
+              {(teams.data?.items ?? []).map((t) => (
+                <MenuItem key={t.id} value={t.id}>
+                  {t.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          }
+        />
+        <SettingRow
+          label={tr("SSO only")}
+          description={tr(
+            "Only single sign-on (server providers or the home team's IdP). Password sign-in and e-mail sign-up return sso_required.",
+          )}
+          control={
+            <Switch
+              checked={s.sso_only ?? false}
+              onChange={(e) => set("sso_only", e.target.checked)}
+            />
+          }
+        />
+        <SettingRow
+          label={tr("Personal vaults")}
+          description={tr(
+            "Off hides the personal vault in every client; everything lives in team vaults.",
+          )}
+          divider={false}
+          control={
+            <Switch
+              checked={s.personal_vaults ?? true}
+              onChange={(e) => set("personal_vaults", e.target.checked)}
+            />
+          }
+        />
       </Section>
       <Section title={tr("Sessions & limits")}>
         <Grid container spacing={2}>

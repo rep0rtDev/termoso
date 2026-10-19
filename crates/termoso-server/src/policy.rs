@@ -17,6 +17,9 @@ pub const MAX_SESSION_TTL_HOURS: i32 = 2160;
 pub const MAX_DOMAINS: usize = 50;
 pub const MIN_AUDIT_RETENTION_DAYS: i32 = 30;
 pub const MAX_AUDIT_RETENTION_DAYS: i32 = 3650;
+pub const SESSION_RECORDING: &[&str] = &["optional", "required"];
+pub const MAX_LOG_RETENTION_DAYS: i32 = 3650;
+pub const MAX_SECRET_AGE_DAYS: i32 = 3650;
 
 type Row = (
     String,
@@ -27,6 +30,12 @@ type Row = (
     Vec<String>,
     bool,
     i32,
+    String,
+    i32,
+    i32,
+    i32,
+    Vec<String>,
+    bool,
     DateTime<Utc>,
 );
 
@@ -34,7 +43,7 @@ macro_rules! policy_select {
     ($head:literal, $tail:literal) => {
         concat!(
             $head,
-            "mfa, local_keys, session_ttl_hours, sso_only, sso_provider, sso_domains, device_approval, audit_retention_days, updated_at",
+            "mfa, local_keys, session_ttl_hours, sso_only, sso_provider, sso_domains, device_approval, audit_retention_days, session_recording, log_retention_days, key_max_age_days, password_max_age_days, ip_allowlist, device_admin_approval, updated_at",
             $tail
         )
     };
@@ -50,7 +59,13 @@ fn from_row(r: Row) -> TeamPolicies {
         sso_domains: r.5,
         device_approval: r.6,
         audit_retention_days: r.7,
-        updated_at: r.8,
+        session_recording: r.8,
+        log_retention_days: r.9,
+        key_max_age_days: r.10,
+        password_max_age_days: r.11,
+        ip_allowlist: r.12,
+        device_admin_approval: r.13,
+        updated_at: r.14,
     }
 }
 
@@ -64,6 +79,12 @@ pub fn defaults() -> TeamPolicies {
         sso_domains: Vec::new(),
         device_approval: false,
         audit_retention_days: 365,
+        session_recording: "optional".into(),
+        log_retention_days: 0,
+        key_max_age_days: 0,
+        password_max_age_days: 0,
+        ip_allowlist: Vec::new(),
+        device_admin_approval: false,
         updated_at: Utc::now(),
     }
 }
@@ -103,7 +124,7 @@ pub async fn attach(db: &PgPool, teams: &mut [Team]) -> ApiResult<()> {
     .await?
     .into_iter()
     .map(
-        |(id, a, b, c, d, e, f, g, h, i): (
+        |(id, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o): (
             Uuid,
             String,
             String,
@@ -113,8 +134,14 @@ pub async fn attach(db: &PgPool, teams: &mut [Team]) -> ApiResult<()> {
             Vec<String>,
             bool,
             i32,
+            String,
+            i32,
+            i32,
+            i32,
+            Vec<String>,
+            bool,
             DateTime<Utc>,
-        )| { (id, (a, b, c, d, e, f, g, h, i)) },
+        )| { (id, (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o)) },
     )
     .collect();
     let mut map: HashMap<Uuid, TeamPolicies> =
@@ -149,13 +176,14 @@ type MemberRow = (
     Option<String>,
     Vec<String>,
     bool,
+    String,
 );
 
 /// Policy rows of every team the user belongs to, with the coarse role.
 async fn rows_for<'e, E: PgExecutor<'e>>(db: E, user_id: Uuid) -> ApiResult<Vec<MemberRow>> {
     Ok(sqlx::query_as(
         "SELECT m.team_id, m.role, p.mfa, p.local_keys, p.session_ttl_hours, p.sso_only,
-                p.sso_provider, p.sso_domains, p.device_approval
+                p.sso_provider, p.sso_domains, p.device_approval, p.session_recording
          FROM team_members m JOIN team_policies p ON p.team_id = m.team_id
          WHERE m.user_id = $1",
     )
@@ -199,8 +227,14 @@ pub async fn effective_for(
         local_keys_denied_by: Vec::new(),
         device_approval_by: Vec::new(),
         sso_provider: None,
+        recording_required_by: Vec::new(),
     };
-    for (team_id, role, mfa, local_keys, ttl, sso_only, provider, domains, device) in rows {
+    for (team_id, role, mfa, local_keys, ttl, sso_only, provider, domains, device, recording) in
+        rows
+    {
+        if recording == "required" {
+            eff.recording_required_by.push(team_id);
+        }
         if mfa_rank(&mfa) > mfa_rank(&eff.mfa) {
             eff.mfa = mfa;
             eff.mfa_team_id = Some(team_id);
@@ -215,11 +249,22 @@ pub async fn effective_for(
             eff.device_approval_by.push(team_id);
         }
         if sso_only && role != "owner" && domain_allowed(&domains, email) && !domains.is_empty() {
-            eff.sso_provider.get_or_insert(provider.unwrap_or_default());
+            eff.sso_provider
+                .get_or_insert(resolve_provider(team_id, provider));
         }
     }
     eff.mfa_satisfied = satisfies(&eff.mfa, totp, passkey);
     Ok(eff)
+}
+
+/// Whether `team_id` makes session recording mandatory.
+pub async fn recording_required<'e, E: PgExecutor<'e>>(db: E, team_id: Uuid) -> ApiResult<bool> {
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT session_recording FROM team_policies WHERE team_id = $1")
+            .bind(team_id)
+            .fetch_optional(db)
+            .await?;
+    Ok(row.is_some_and(|(v,)| v == "required"))
 }
 
 /// Session lifetime for a user: the server default capped by the shortest
@@ -251,12 +296,12 @@ pub async fn sso_required<'e, E: PgExecutor<'e>>(
     email: &str,
 ) -> ApiResult<Option<String>> {
     let rows = rows_for(db, user_id).await?;
-    Ok(rows
-        .into_iter()
-        .find_map(|(_, role, _, _, _, sso_only, provider, domains, _)| {
+    Ok(rows.into_iter().find_map(
+        |(team_id, role, _, _, _, sso_only, provider, domains, _, _)| {
             (sso_only && role != "owner" && !domains.is_empty() && domain_allowed(&domains, email))
-                .then(|| provider.unwrap_or_default())
-        }))
+                .then(|| resolve_provider(team_id, provider))
+        },
+    ))
 }
 
 /// Whether any of the user's teams forces email approval of new devices.
@@ -313,6 +358,15 @@ pub fn normalize_domains(input: &[String]) -> Result<Vec<String>, String> {
         return Err(format!("At most {MAX_DOMAINS} domains"));
     }
     Ok(out)
+}
+
+/// `team` in `sso_provider` stands for the team's own IdP (`team-<uuid>`).
+pub fn resolve_provider(team_id: Uuid, provider: Option<String>) -> String {
+    match provider.as_deref() {
+        Some("team") => crate::sso::team_provider_id(team_id),
+        Some(p) => p.to_string(),
+        None => String::new(),
+    }
 }
 
 #[cfg(test)]

@@ -17,6 +17,7 @@ import com.termoso.core.Registered
 import com.termoso.core.SecurityKeyCredential
 import com.termoso.core.SecurityKeyRequest
 import com.termoso.core.SsoOutcome
+import com.termoso.core.SsoDiscoverCard
 import com.termoso.core.SsoStarted
 import com.termoso.core.SyncChange
 import com.termoso.core.SyncListener
@@ -30,6 +31,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import com.termoso.core.serverInfo
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -114,7 +116,24 @@ class AccountManager(
         repo.read { accountStatus() }.also {
             _status.value = it
             if (it.account != null) repo.perms.refresh() else repo.perms.clear()
+            refreshServerCapabilities(it.account?.serverUrl)
         }
+
+    private val _personalVaultsHidden = MutableStateFlow(false)
+
+    /** Corporate mode of the signed-in server: `personal_vaults=false` hides the personal vault. */
+    val personalVaultsHidden: StateFlow<Boolean> = _personalVaultsHidden.asStateFlow()
+
+    private fun refreshServerCapabilities(serverUrl: String?) {
+        if (serverUrl == null) {
+            _personalVaultsHidden.value = false
+            return
+        }
+        scope.launch {
+            runCatching { serverInfo(serverUrl) }
+                .onSuccess { _personalVaultsHidden.value = !it.personalVaults }
+        }
+    }
 
     /**
      * OPAQUE login with the Termoso password. With [sso] the identity was just
@@ -153,6 +172,9 @@ class AccountManager(
      * open come back; the provider's tokens and the resulting SSO session stay
      * on the server / in Rust and never reach Kotlin.
      */
+    /** Home-realm discovery for the sign-in form: which IdP owns the e-mail domain. */
+    suspend fun ssoDiscover(url: String, email: String): SsoDiscoverCard = repo.read { accountSsoDiscover(url, email) }
+
     suspend fun ssoStart(server: String, provider: String): SsoStarted = repo.read { accountSsoStart(server, provider) }
 
     suspend fun ssoPoll(): SsoOutcome = repo.read { accountSsoPoll() }

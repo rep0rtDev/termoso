@@ -25,6 +25,7 @@ import { VaultPage } from "./pages/vaults/VaultPage";
 import { AdminOverviewPage } from "./pages/admin/AdminOverviewPage";
 import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
 import { AdminTeamsPage } from "./pages/admin/AdminTeamsPage";
+import { AdminTeamPage } from "@/pages/admin/AdminTeamPage";
 import { AdminSettingsPage } from "./pages/admin/AdminSettingsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { RootPage } from "./pages/RootPage";
@@ -85,6 +86,7 @@ export const router = createBrowserRouter([
               { path: "/admin", element: <AdminOverviewPage /> },
               { path: "/admin/users", element: <AdminUsersPage /> },
               { path: "/admin/teams", element: <AdminTeamsPage /> },
+              { path: "/admin/teams/:id", element: <AdminTeamPage /> },
               { path: "/admin/settings", element: <AdminSettingsPage /> },
             ],
           },

@@ -19,7 +19,7 @@ use zeroize::Zeroizing;
 use crate::account::{
     AccountCard, AccountRuntime, AccountStatus, DeviceCard, LoginForm, LoginOutcome, MfaCard,
     MfaMethod, ReauthOutcome, RegisterForm, Registered, SecurityKeyCredential, SecurityKeyRequest,
-    ServerCard, SsoOutcome, SsoStarted, SyncListener, SyncStatus,
+    ServerCard, SsoDiscoverCard, SsoOutcome, SsoStarted, SyncListener, SyncStatus,
 };
 use crate::ai::{AiStatusCard, AiSuggestionCard, AiTarget};
 use crate::connect::SecretCache;
@@ -38,8 +38,9 @@ use crate::sftp::{Backend as FileBackend, SftpLaunch, SftpListener, SftpSession}
 use crate::snippets::{self, SnippetDraft, SnippetItem, SnippetPackageItem, SnippetRun};
 use crate::sshid::SshIdView;
 use crate::team::{
-    AuditPage, InviteCard, InviteSent, PendingKeyCard, PermissionCard, TeamCard, TeamMemberCard,
-    TeamPoliciesCard, TeamRole, TeamRoleCard, VaultAccessDraft, VaultMemberCard,
+    AccessRequestCard, AccessRequestsCard, AclRuleCard, AuditPage, InviteCard, InviteSent,
+    PendingKeyCard, PermissionCard, RotationCard, TeamCard, TeamDataCard, TeamDevicesCard,
+    TeamMemberCard, TeamPoliciesCard, TeamRole, TeamRoleCard, VaultAccessDraft, VaultMemberCard,
 };
 use crate::themes::TerminalTheme;
 
@@ -1036,6 +1037,14 @@ impl TermosoApp {
         RUNTIME.block_on(self.account.sso_start(&server_url, &provider))
     }
 
+    pub fn account_sso_discover(
+        &self,
+        server_url: String,
+        email: String,
+    ) -> Result<SsoDiscoverCard> {
+        RUNTIME.block_on(self.account.sso_discover(&server_url, &email))
+    }
+
     pub fn account_sso_poll(&self) -> Result<SsoOutcome> {
         RUNTIME.block_on(self.account.sso_poll())
     }
@@ -1360,6 +1369,66 @@ impl TermosoApp {
 
     pub fn team_policies(&self, team_id: String) -> Result<TeamPoliciesCard> {
         RUNTIME.block_on(self.account.team_policies(team_id))
+    }
+
+    pub fn team_devices(&self, team_id: String) -> Result<TeamDevicesCard> {
+        RUNTIME.block_on(self.account.team_devices(team_id))
+    }
+
+    pub fn team_approve_device(&self, team_id: String, device_id: String) -> Result<()> {
+        RUNTIME.block_on(self.account.team_approve_device(team_id, device_id))
+    }
+
+    pub fn team_reject_device(&self, team_id: String, device_id: String) -> Result<()> {
+        RUNTIME.block_on(self.account.team_reject_device(team_id, device_id))
+    }
+
+    pub fn team_access_requests(&self, team_id: String) -> Result<AccessRequestsCard> {
+        RUNTIME.block_on(self.account.team_access_requests(team_id))
+    }
+
+    pub fn team_request_access(
+        &self,
+        team_id: String,
+        vault_id: String,
+        role: String,
+        hours: i32,
+        reason: String,
+    ) -> Result<AccessRequestCard> {
+        RUNTIME.block_on(
+            self.account
+                .team_request_access(team_id, vault_id, role, hours, reason),
+        )
+    }
+
+    pub fn team_cancel_access_request(&self, team_id: String, request_id: String) -> Result<()> {
+        RUNTIME.block_on(self.account.team_cancel_access_request(team_id, request_id))
+    }
+
+    pub fn team_decide_access_request(
+        &self,
+        team_id: String,
+        request_id: String,
+        action: String,
+        hours: Option<i32>,
+        note: Option<String>,
+    ) -> Result<AccessRequestCard> {
+        RUNTIME.block_on(
+            self.account
+                .team_decide_access_request(team_id, request_id, action, hours, note),
+        )
+    }
+
+    pub fn team_acl(&self, team_id: String, vault_id: String) -> Result<Vec<AclRuleCard>> {
+        RUNTIME.block_on(self.account.team_acl(team_id, vault_id))
+    }
+
+    pub fn team_rotation(&self, team_id: String) -> Result<RotationCard> {
+        RUNTIME.block_on(self.account.team_rotation(team_id))
+    }
+
+    pub fn team_data(&self, team_id: String) -> Result<TeamDataCard> {
+        RUNTIME.block_on(self.account.team_data(team_id))
     }
 
     pub fn team_pending_keys(&self, team_id: String) -> Result<Vec<PendingKeyCard>> {

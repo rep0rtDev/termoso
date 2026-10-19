@@ -602,3 +602,174 @@ async fn teammates_share_recordings_by_role() {
     assert_eq!(toggle.details["enabled"], true);
     assert_eq!(toggle.vault_id, Some(vault.id));
 }
+
+#[tokio::test]
+async fn mandatory_recording_policy_and_team_export() {
+    let s = server_with_storage!();
+    let owner = register(s, &unique_email("rp-owner"), "pw-owner-1234567").await;
+    let editor = register(s, &unique_email("rp-editor"), "pw-editor-123456").await;
+    let outsider = register(s, &unique_email("rp-out"), "pw-outsider-1234").await;
+    let team: Team = s
+        .json(
+            Method::POST,
+            "/teams",
+            Some(owner.token()),
+            Some(&CreateTeamRequest {
+                name: "Compliance".into(),
+            }),
+        )
+        .await;
+    join(s, &team, &owner, &editor, vec![]).await;
+    let (vault, _key) = team_vault(s, &team, &owner, &[(&editor, VaultRole::Editor)]).await;
+    assert!(!vault.session_logging);
+    let policies = format!("/teams/{}/policies", team.id);
+
+    // Validation.
+    for bad in [
+        serde_json::json!({ "session_recording": "never" }),
+        serde_json::json!({ "log_retention_days": -1 }),
+        serde_json::json!({ "log_retention_days": 4000 }),
+    ] {
+        s.expect_status(
+            Method::PUT,
+            &policies,
+            Some(owner.token()),
+            Some(&bad),
+            StatusCode::BAD_REQUEST,
+        )
+        .await;
+    }
+
+    // Mandatory recording switches every team vault on and locks the toggle.
+    let p: serde_json::Value = s
+        .json(
+            Method::PUT,
+            &policies,
+            Some(owner.token()),
+            Some(&serde_json::json!({ "session_recording": "required", "log_retention_days": 90 })),
+        )
+        .await;
+    assert_eq!(p["policies"]["session_recording"], "required");
+    assert_eq!(p["policies"]["log_retention_days"], 90);
+    assert!(
+        p["effective_for_me"]["recording_required_by"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t == &serde_json::json!(team.id)),
+        "{p}"
+    );
+    let v: Vault = s
+        .json(
+            Method::GET,
+            &format!("/vaults/{}", vault.id),
+            Some(owner.token()),
+            NOBODY,
+        )
+        .await;
+    assert!(v.session_logging, "policy turns recording on");
+    s.expect_status(
+        Method::PATCH,
+        &format!("/vaults/{}", vault.id),
+        Some(owner.token()),
+        Some(&UpdateVaultRequest {
+            name: None,
+            session_logging: Some(false),
+        }),
+        StatusCode::FORBIDDEN,
+    )
+    .await;
+
+    // Authors cannot delete their own recordings while recording is mandatory;
+    // the owner (logs.delete) still can.
+    let a = record(s, &editor, vault.id, "deploy", b"first").await;
+    let b = record(s, &editor, vault.id, "hotfix", b"second").await;
+    s.expect_status(
+        Method::DELETE,
+        &format!("/logs/{a}"),
+        Some(editor.token()),
+        NOBODY,
+        StatusCode::FORBIDDEN,
+    )
+    .await;
+
+    // Team-wide listing and export.
+    let listed: Vec<SessionLog> = s
+        .json(
+            Method::GET,
+            &format!("/teams/{}/logs", team.id),
+            Some(owner.token()),
+            NOBODY,
+        )
+        .await;
+    let ids: Vec<Uuid> = listed.iter().map(|l| l.id).collect();
+    assert!(ids.contains(&a) && ids.contains(&b), "{ids:?}");
+    s.expect_status(
+        Method::GET,
+        &format!("/teams/{}/logs", team.id),
+        Some(outsider.token()),
+        NOBODY,
+        StatusCode::NOT_FOUND,
+    )
+    .await;
+    let resp = s
+        .http()
+        .get(s.url(&format!("/teams/{}/logs/export", team.id)))
+        .bearer_auth(owner.token())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers()["content-type"]
+            .to_str()
+            .unwrap()
+            .starts_with("application/x-ndjson")
+    );
+    let body = resp.text().await.unwrap();
+    let lines: Vec<serde_json::Value> = body
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 2, "{body}");
+    assert!(
+        lines.iter().all(|l| l["download_url"].is_string()),
+        "{body}"
+    );
+    let events: AuditEventList = s
+        .json(
+            Method::GET,
+            &format!("/teams/{}/audit?limit=50", team.id),
+            Some(owner.token()),
+            NOBODY,
+        )
+        .await;
+    assert!(events.events.iter().any(|e| e.action == "logs.exported"));
+
+    s.expect_status(
+        Method::DELETE,
+        &format!("/logs/{a}"),
+        Some(owner.token()),
+        NOBODY,
+        StatusCode::NO_CONTENT,
+    )
+    .await;
+
+    // Back to optional: authors delete their own again.
+    let _: serde_json::Value = s
+        .json(
+            Method::PUT,
+            &policies,
+            Some(owner.token()),
+            Some(&serde_json::json!({ "session_recording": "optional" })),
+        )
+        .await;
+    s.expect_status(
+        Method::DELETE,
+        &format!("/logs/{b}"),
+        Some(editor.token()),
+        NOBODY,
+        StatusCode::NO_CONTENT,
+    )
+    .await;
+}

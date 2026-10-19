@@ -146,6 +146,7 @@ fun TeamVaultScreen(
                 )
             }
 
+            vault?.teamId?.let { tid -> AclSection(shell = shell, teamId = tid, vaultId = vaultId) }
             SectionLabel(stringResource(R.string.access))
             SectionCard {
                 val list = members

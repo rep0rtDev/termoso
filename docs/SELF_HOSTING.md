@@ -81,7 +81,20 @@ TERMOSO_ADMIN_EMAILS=you@example.com
 TERMOSO_OWNER_EMAIL=you@example.com   # optional; default = first registered account
 TERMOSO_SMTP__HOST=… PORT=… USERNAME=… PASSWORD=… SECURITY=starttls FROM=…
 TERMOSO_TURNSTILE__SITE_KEY=… TERMOSO_TURNSTILE__SECRET_KEY=…   # optional Cloudflare Turnstile captcha
+TERMOSO_DATA_REGION=eu-central            # optional label shown in /server/info and stamped on new teams
+TERMOSO_TEAM_DELETION_GRACE_DAYS=7        # days before a requested team deletion is purged (0 = immediately)
+- `TERMOSO_MIN_CLIENT_VERSION` — oldest client version allowed to sign in (semver). Default: the server's own version; older clients get `client_update_required` and are asked to update.
+TERMOSO_AUDIT_RETENTION_DAYS_MAX=3650     # ceiling for per-team audit retention
+TERMOSO_TEAM_IDP=true                     # allow teams to configure their own OIDC/SAML IdP
 ```
+
+Corporate mode (one company per server) is switched on from the admin
+settings rather than the environment: pick a *home team* (every account
+joins it automatically), enable *SSO only* (password sign-in and e-mail
+sign-up are refused; the bootstrap admin keeps password access so you cannot
+lock yourself out) and, if wanted, hide personal vaults. Clients read all of
+it from `/api/v1/server/info`. The compliance controls these settings map to
+are listed in [COMPLIANCE.md](COMPLIANCE.md).
 
 With Turnstile keys the server demands a captcha token for sign-up, account
 recovery and repeated failed logins from one address. The web cabinet renders

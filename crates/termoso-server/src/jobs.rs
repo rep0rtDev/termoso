@@ -70,11 +70,31 @@ where
         match try_lock(&state.db, name).await {
             Ok(Some(lock)) => {
                 let started = std::time::Instant::now();
-                match pass(state.clone()).await {
+                let _ = sqlx::query(
+                    "INSERT INTO job_runs (name, last_started_at) VALUES ($1, now())
+                     ON CONFLICT (name) DO UPDATE SET last_started_at = now(), last_finished_at = NULL",
+                )
+                .bind(name)
+                .execute(&state.db)
+                .await;
+                let result = pass(state.clone()).await;
+                match &result {
                     Ok(0) => {}
                     Ok(n) => tracing::info!(job = name, count = n, "job pass"),
                     Err(e) => tracing::warn!(job = name, error = %e, "job pass failed"),
                 }
+                let (count, error) = match &result {
+                    Ok(n) => (Some(*n as i64), None),
+                    Err(e) => (None, Some(e.to_string())),
+                };
+                let _ = sqlx::query(
+                    "UPDATE job_runs SET last_finished_at = now(), last_result = $2, last_error = $3 WHERE name = $1",
+                )
+                .bind(name)
+                .bind(count)
+                .bind(error)
+                .execute(&state.db)
+                .await;
                 metrics::counter!("termoso_job_runs_total", "job" => name).increment(1);
                 metrics::histogram!("termoso_job_seconds", "job" => name)
                     .record(started.elapsed().as_secs_f64());

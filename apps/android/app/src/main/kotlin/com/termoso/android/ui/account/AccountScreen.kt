@@ -36,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -303,7 +304,8 @@ fun AccountScreen(
 
             SectionLabel(stringResource(R.string.vaults_on_this_device))
             SectionCard {
-                status.vaults.forEachIndexed { i, v ->
+                val hidePersonal by account.personalVaultsHidden.collectAsState()
+                status.vaults.filter { !hidePersonal || it.kind != VaultKind.PERSONAL }.forEachIndexed { i, v ->
                     if (i > 0) RowDivider()
                     ListRow(
                         title = v.name,

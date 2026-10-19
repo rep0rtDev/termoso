@@ -215,7 +215,7 @@ function NoteBar({
   );
 }
 
-function Viewer({
+export function Viewer({
   log,
   onClose,
   onDeleted,
