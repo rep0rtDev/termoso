@@ -46,6 +46,7 @@ import { AccessTab } from "./AccessTab";
 import { RotationTab } from "./RotationTab";
 import { DevicesTab } from "./DevicesTab";
 import { DataTab } from "./DataTab";
+import { RecordingsTab } from "./RecordingsTab";
 import { useMutation } from "@tanstack/react-query";
 import { isReauthCancelled, withReauth } from "@/account/reauth";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -246,6 +247,7 @@ type TeamTab =
   | "access"
   | "rotation"
   | "devices"
+  | "logs"
   | "data";
 
 function TeamView({
@@ -290,6 +292,7 @@ function TeamView({
       { key: "access", label: tr("Access"), show: true },
       { key: "rotation", label: tr("Rotation"), show: can(team, "rotation.manage") },
       { key: "devices", label: tr("Devices"), show: can(team, "devices.approve") },
+      { key: "logs", label: tr("Recordings"), show: true },
       { key: "data", label: tr("Data"), show: true },
     ];
     return all.filter((t) => t.show);
@@ -702,6 +705,8 @@ function TeamView({
         <RotationTab team={team} />
       ) : activeTab === "devices" ? (
         <DevicesTab team={team} />
+      ) : activeTab === "logs" ? (
+        <RecordingsTab team={team} />
       ) : activeTab === "data" ? (
         <DataTab team={team} />
       ) : (

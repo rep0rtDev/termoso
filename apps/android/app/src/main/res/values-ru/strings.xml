@@ -1618,4 +1618,6 @@
     <string name="data_region">Регион данных</string>
     <string name="deletion_scheduled_for">Удаление запланировано на %1$s.</string>
     <string name="not_specified">Не указан</string>
+    <string name="team_recordings">Записи команды</string>
+    <string name="team_recordings_hint">Записи всех командных хранилищ, ключи которых есть на этом устройстве.</string>
 </resources>

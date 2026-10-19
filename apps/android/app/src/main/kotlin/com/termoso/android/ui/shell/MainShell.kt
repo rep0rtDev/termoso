@@ -136,6 +136,7 @@ object Routes {
     const val TEAM_ROLES = "team/{id}/roles"
     const val TEAM_DEVICES = "team/{id}/devices"
     const val TEAM_ACCESS = "team/{id}/access"
+    const val TEAM_LOGS = "team/{id}/logs"
     const val TEAM_VAULT = "teamVault/{id}"
     const val SIGN_IN = "signIn/{mode}"
     const val SFTP = "sftp/{id}"
@@ -163,6 +164,7 @@ object Routes {
     fun teamRoles(id: String) = "team/$id/roles"
     fun teamDevices(id: String) = "team/$id/devices"
     fun teamAccess(id: String) = "team/$id/access"
+    fun teamLogs(id: String) = "team/$id/logs"
     fun teamVault(id: String) = "teamVault/$id"
     fun sftp(id: String) = "sftp/$id"
     fun pfNew(kind: PfKind, vault: String?, host: String?) =
@@ -525,6 +527,7 @@ fun MainShell(
                     onRoles = { nav.navigate(Routes.teamRoles(id)) },
                     onDevices = { nav.navigate(Routes.teamDevices(id)) },
                     onAccess = { nav.navigate(Routes.teamAccess(id)) },
+                    onRecordings = { nav.navigate(Routes.teamLogs(id)) },
                     onOpenAccount = { nav.navigate(Routes.ACCOUNT) },
                 )
             }
@@ -539,6 +542,10 @@ fun MainShell(
             composable(Routes.TEAM_DEVICES, arguments = listOf(idArg)) { entry ->
                 val id = entry.arguments?.getString("id") ?: return@composable
                 TeamDevicesScreen(shell = shell, teamId = id, onBack = { nav.popBackStack() })
+            }
+            composable(Routes.TEAM_LOGS, arguments = listOf(idArg)) { entry ->
+                val id = entry.arguments?.getString("id") ?: return@composable
+                SessionLogsScreen(shell = shell, onBack = { nav.popBackStack() }, onOpen = { nav.navigate(Routes.log(it)) }, teamId = id)
             }
             composable(Routes.TEAM_ACCESS, arguments = listOf(idArg)) { entry ->
                 val id = entry.arguments?.getString("id") ?: return@composable

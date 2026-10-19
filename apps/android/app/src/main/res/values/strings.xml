@@ -1586,4 +1586,6 @@
     <string name="data_region">Data region</string>
     <string name="deletion_scheduled_for">Deletion is scheduled for %1$s.</string>
     <string name="not_specified">Not specified</string>
+    <string name="team_recordings">Team recordings</string>
+    <string name="team_recordings_hint">Recordings of every team vault this device holds a key for.</string>
 </resources>

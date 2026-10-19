@@ -8,6 +8,17 @@ export const ru: Readonly<Record<string, string>> = {
     ".ppk, id_ed25519, *.pem — лежащий рядом *-cert.pub подхватится как сертификат",
   ".reg export…": "Экспорт .reg…",
   "1 hour": "1 час",
+  Author: "Автор",
+  Duration: "Длительность",
+  "Export NDJSON": "Экспорт NDJSON",
+  Live: "Идёт",
+  "Recordings appear after a member connects with session recording on, and after the next sync.":
+    "Записи появятся после подключения участника с включённой записью сессий и следующей синхронизации.",
+  "Recordings of every team vault this device holds a key for, decrypted locally. Vaults you are not a member of stay invisible — the server cannot read them either.":
+    "Записи всех командных хранилищ, ключи которых есть на этом устройстве, расшифрованные локально. Хранилища, в которых вы не состоите, не видны — сервер их тоже прочитать не может.",
+  "Team recordings": "Записи команды",
+  "You are not a member of any vault of this team, so there is nothing to decrypt here.":
+    "Вы не состоите ни в одном хранилище этой команды, поэтому расшифровывать здесь нечего.",
   "ACL does not replace a separate vault.": "ACL не заменяет отдельное хранилище.",
   "Add access rule": "Новое правило доступа",
   "Add rule": "Добавить правило",
