@@ -160,7 +160,7 @@ async fn admin_sees_teams_and_manages_members() {
 async fn admin_sees_effective_config() {
     use termoso_proto::admin::{AdminConfig, ServerSettings};
     let Some(s) = server().await else { return };
-    let admin = register(s, "admin@test.local", "pw-admin-1234567").await;
+    let admin_tok = admin_token(s).await;
     let user = register(s, &unique_email("cfg-user"), "pw-user-12345678").await;
 
     s.expect_status(
@@ -173,7 +173,12 @@ async fn admin_sees_effective_config() {
     .await;
 
     let cfg: AdminConfig = s
-        .json(Method::GET, "/admin/config", Some(admin.token()), NOBODY)
+        .json(
+            Method::GET,
+            "/admin/config",
+            Some(admin_tok.as_str()),
+            NOBODY,
+        )
         .await;
     assert_eq!(cfg.server.version, env!("CARGO_PKG_VERSION"));
     assert_eq!(cfg.database.status, "ok");
@@ -188,19 +193,29 @@ async fn admin_sees_effective_config() {
     assert_eq!(cfg.settings.defaults.session_ttl_days, 90);
 
     let mut settings: ServerSettings = s
-        .json(Method::GET, "/admin/settings", Some(admin.token()), NOBODY)
+        .json(
+            Method::GET,
+            "/admin/settings",
+            Some(admin_tok.as_str()),
+            NOBODY,
+        )
         .await;
     settings.session_ttl_days = 45;
     let _: ServerSettings = s
         .json(
             Method::PUT,
             "/admin/settings",
-            Some(admin.token()),
+            Some(admin_tok.as_str()),
             Some(&serde_json::to_value(&settings).unwrap()),
         )
         .await;
     let cfg: AdminConfig = s
-        .json(Method::GET, "/admin/config", Some(admin.token()), NOBODY)
+        .json(
+            Method::GET,
+            "/admin/config",
+            Some(admin_tok.as_str()),
+            NOBODY,
+        )
         .await;
     assert!(cfg.settings.updated_at.is_some());
     assert_eq!(cfg.settings.updated_by.as_deref(), Some("admin@test.local"));
