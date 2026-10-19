@@ -321,6 +321,7 @@ export const localRemove = (path: string, recursive: boolean) =>
 
 export const transferStart = (args: {
   sftpId: Uuid;
+  toSftpId?: Uuid | null;
   direction: Direction;
   local: string;
   remote: string;
@@ -329,6 +330,7 @@ export const transferStart = (args: {
 }) => invoke<TransferInfo>("transfer_start", args);
 export const transferProbe = (args: {
   sftpId: Uuid;
+  toSftpId?: Uuid | null;
   direction: Direction;
   local: string;
   remote: string;

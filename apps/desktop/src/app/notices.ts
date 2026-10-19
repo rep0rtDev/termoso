@@ -80,7 +80,7 @@ function baseName(path: string): string {
 }
 
 export function transferNotice(t: {
-  direction: "upload" | "download";
+  direction: "upload" | "download" | "relay";
   status: string;
   local: string;
   remote: string;
@@ -88,7 +88,12 @@ export function transferNotice(t: {
   const name = baseName(t.direction === "upload" ? t.local : t.remote);
   if (t.status === "failed") return { title: tr("Transfer failed"), body: name };
   return {
-    title: t.direction === "upload" ? tr("Upload finished") : tr("Download finished"),
+    title:
+      t.direction === "upload"
+        ? tr("Upload finished")
+        : t.direction === "relay"
+          ? tr("Copy finished")
+          : tr("Download finished"),
     body: name,
   };
 }

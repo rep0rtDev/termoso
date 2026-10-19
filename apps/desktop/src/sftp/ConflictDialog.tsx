@@ -48,7 +48,7 @@ export function ConflictDialog({ prompt }: { prompt: ConflictPrompt | null }) {
   const folder = incoming.kind === "dir";
   const canResume =
     !folder &&
-    (prompt.direction === "download" || prompt.resumeUpload) &&
+    (prompt.direction !== "upload" || prompt.resumeUpload) &&
     incoming.size !== null &&
     existing.size !== null &&
     existing.size > 0 &&
@@ -65,7 +65,7 @@ export function ConflictDialog({ prompt }: { prompt: ConflictPrompt | null }) {
   return (
     <Dialog open onClose={cancel} maxWidth="sm" fullWidth>
       <DialogTitle>
-        {prompt.direction === "upload"
+        {prompt.direction !== "download"
           ? folder
             ? tr("Folder already exists on the server")
             : tr("File already exists on the server")
