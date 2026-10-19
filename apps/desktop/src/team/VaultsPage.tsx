@@ -44,6 +44,7 @@ import {
   useTeams,
   useVaultMembers,
   useVaults,
+  useServerInfo,
 } from "@/ipc/hooks";
 import {
   errorMessage,
@@ -83,7 +84,9 @@ export function VaultsPage() {
     else if (intent.kind === "newVault") setPanel({ kind: "new", teamId: intent.teamId ?? null });
   });
 
-  const list = vaults.data ?? [];
+  const serverInfo = useServerInfo();
+  const personalHidden = serverInfo.data?.features.personal_vaults === false;
+  const list = (vaults.data ?? []).filter((v) => !(personalHidden && v.kind === "personal"));
   const adminTeams = useMemo(
     () => (teams.data ?? []).filter((t) => can(t, "vaults.create")),
     [teams.data],
