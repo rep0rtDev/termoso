@@ -9,7 +9,7 @@ use uuid::Uuid;
 #[tokio::test]
 async fn admin_sees_teams_and_manages_members() {
     let Some(s) = server().await else { return };
-    let admin = register(s, "admin@test.local", "pw-admin-1234567").await;
+    let admin_tok = admin_token(s).await;
     let owner = register(s, &unique_email("ac-owner"), "pw-owner-1234567").await;
     let bob = register(s, &unique_email("ac-bob"), "pw-bob-123456789").await;
     let team: serde_json::Value = s
@@ -35,7 +35,7 @@ async fn admin_sees_teams_and_manages_members() {
         .json(
             Method::GET,
             &format!("/admin/users?team={team_id}&sort=email"),
-            Some(admin.token()),
+            Some(admin_tok.as_str()),
             NOBODY,
         )
         .await;
@@ -49,7 +49,7 @@ async fn admin_sees_teams_and_manages_members() {
         .json(
             Method::GET,
             "/admin/teams?q=console",
-            Some(admin.token()),
+            Some(admin_tok.as_str()),
             NOBODY,
         )
         .await;
@@ -64,7 +64,7 @@ async fn admin_sees_teams_and_manages_members() {
         .json(
             Method::GET,
             &format!("/admin/teams/{team_id}"),
-            Some(admin.token()),
+            Some(admin_tok.as_str()),
             NOBODY,
         )
         .await;
@@ -77,7 +77,7 @@ async fn admin_sees_teams_and_manages_members() {
         .json(
             Method::POST,
             &format!("/admin/teams/{team_id}/members"),
-            Some(admin.token()),
+            Some(admin_tok.as_str()),
             Some(&serde_json::json!({ "user_id": bob.id() })),
         )
         .await;
@@ -94,7 +94,7 @@ async fn admin_sees_teams_and_manages_members() {
     s.expect_status(
         Method::POST,
         &format!("/admin/teams/{team_id}/members"),
-        Some(admin.token()),
+        Some(admin_tok.as_str()),
         Some(&serde_json::json!({ "user_id": bob.id() })),
         StatusCode::CONFLICT,
     )
@@ -102,7 +102,7 @@ async fn admin_sees_teams_and_manages_members() {
     s.expect_status(
         Method::POST,
         &format!("/admin/teams/{team_id}/members"),
-        Some(admin.token()),
+        Some(admin_tok.as_str()),
         Some(&serde_json::json!({ "user_id": Uuid::new_v4() })),
         StatusCode::NOT_FOUND,
     )
@@ -111,7 +111,7 @@ async fn admin_sees_teams_and_manages_members() {
         .json(
             Method::GET,
             &format!("/admin/users?team={team_id}"),
-            Some(admin.token()),
+            Some(admin_tok.as_str()),
             NOBODY,
         )
         .await;
@@ -120,7 +120,7 @@ async fn admin_sees_teams_and_manages_members() {
     s.expect_status(
         Method::DELETE,
         &format!("/admin/teams/{team_id}/members/{}", owner.id()),
-        Some(admin.token()),
+        Some(admin_tok.as_str()),
         NOBODY,
         StatusCode::CONFLICT,
     )
@@ -128,7 +128,7 @@ async fn admin_sees_teams_and_manages_members() {
     s.expect_status(
         Method::DELETE,
         &format!("/admin/teams/{team_id}/members/{}", bob.id()),
-        Some(admin.token()),
+        Some(admin_tok.as_str()),
         NOBODY,
         StatusCode::NO_CONTENT,
     )
@@ -137,7 +137,7 @@ async fn admin_sees_teams_and_manages_members() {
         .json(
             Method::GET,
             &format!("/admin/teams/{team_id}"),
-            Some(admin.token()),
+            Some(admin_tok.as_str()),
             NOBODY,
         )
         .await;
@@ -152,7 +152,7 @@ async fn admin_sees_teams_and_manages_members() {
     );
 
     let _: AdminJobList = s
-        .json(Method::GET, "/admin/jobs", Some(admin.token()), NOBODY)
+        .json(Method::GET, "/admin/jobs", Some(admin_tok.as_str()), NOBODY)
         .await;
 }
 
