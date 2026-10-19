@@ -144,6 +144,7 @@ Every image lives in [`docs/screenshots/`](screenshots/) and is also used by the
     <td align="center" width="33%"><a href="screenshots/android-settings.png"><img src="screenshots/android-settings.png" alt="Settings" width="100%"></a><br><sub>Settings</sub></td>
   </tr>
 </table>
+
 ## Web cabinet — account
 
 <table>
