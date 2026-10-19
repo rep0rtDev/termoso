@@ -271,6 +271,71 @@ pub struct TeamPoliciesCard {
     pub sso_domains: Vec<String>,
     pub device_approval: bool,
     pub audit_retention_days: i32,
+    /// `optional` | `required`.
+    pub session_recording: String,
+    /// Days recordings are kept; 0 = forever.
+    pub log_retention_days: i32,
+    pub key_max_age_days: i32,
+    pub password_max_age_days: i32,
+    pub ip_allowlist: Vec<String>,
+    pub device_admin_approval: bool,
+}
+
+/// A member device awaiting (or past) admin review.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TeamDeviceCard {
+    pub device_id: String,
+    pub user_id: String,
+    pub user_email: String,
+    pub name: String,
+    pub platform: String,
+    pub app_version: Option<String>,
+    pub last_seen_at: String,
+    pub last_ip: Option<String>,
+    /// `pending` | `approved` | `rejected`.
+    pub status: String,
+    pub requested_at: String,
+}
+
+/// Device review queue of a team.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TeamDevicesCard {
+    pub admin_approval: bool,
+    pub devices: Vec<TeamDeviceCard>,
+}
+
+/// One just-in-time access request.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AccessRequestCard {
+    pub id: String,
+    pub vault_id: String,
+    pub vault_name: String,
+    pub user_id: String,
+    pub user_email: String,
+    /// `viewer` | `editor`.
+    pub role: String,
+    pub hours: i32,
+    pub reason: String,
+    /// `pending` | `approved` | `denied` | `revoked` | `expired` | `cancelled`.
+    pub status: String,
+    pub expires_at: Option<String>,
+    pub created_at: String,
+}
+
+/// Access requests of a team plus whether the caller may decide them.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AccessRequestsCard {
+    pub can_approve: bool,
+    pub requests: Vec<AccessRequestCard>,
+}
+
+/// Where the team's data lives and whether deletion is scheduled.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TeamDataCard {
+    pub region: Option<String>,
+    pub created_at: String,
+    pub deletion_scheduled_at: Option<String>,
+    pub deletion_grace_days: i32,
 }
 
 fn clean_name(name: &str) -> Result<String> {
@@ -711,6 +776,154 @@ impl AccountRuntime {
             sso_domains: p.sso_domains,
             device_approval: p.device_approval,
             audit_retention_days: p.audit_retention_days,
+            session_recording: p.session_recording,
+            log_retention_days: p.log_retention_days,
+            key_max_age_days: p.key_max_age_days,
+            password_max_age_days: p.password_max_age_days,
+            ip_allowlist: p.ip_allowlist,
+            device_admin_approval: p.device_admin_approval,
+        })
+    }
+
+    // ---- 0.9.1 enterprise ----
+
+    /// `GET /teams/{id}/devices` — device review queue (`devices.approve`).
+    pub async fn team_devices(self: &Arc<Self>, team_id: String) -> Result<TeamDevicesCard> {
+        let list = self.api().await?.team_devices(parse_id(&team_id)?).await?;
+        Ok(TeamDevicesCard {
+            admin_approval: list.admin_approval,
+            devices: list
+                .devices
+                .into_iter()
+                .map(|d| TeamDeviceCard {
+                    device_id: d.device_id.to_string(),
+                    user_id: d.user_id.to_string(),
+                    user_email: d.user_email,
+                    name: d.name,
+                    platform: d.platform,
+                    app_version: d.app_version,
+                    last_seen_at: d.last_seen_at.to_rfc3339(),
+                    last_ip: d.last_ip,
+                    status: d.status,
+                    requested_at: d.requested_at.to_rfc3339(),
+                })
+                .collect(),
+        })
+    }
+
+    /// Approve a pending member device.
+    pub async fn team_approve_device(
+        self: &Arc<Self>,
+        team_id: String,
+        device_id: String,
+    ) -> Result<()> {
+        self.api()
+            .await?
+            .team_approve_device(parse_id(&team_id)?, parse_id(&device_id)?)
+            .await?;
+        Ok(())
+    }
+
+    /// Reject a member device; its sessions end.
+    pub async fn team_reject_device(
+        self: &Arc<Self>,
+        team_id: String,
+        device_id: String,
+    ) -> Result<()> {
+        self.api()
+            .await?
+            .team_reject_device(parse_id(&team_id)?, parse_id(&device_id)?)
+            .await?;
+        Ok(())
+    }
+
+    /// `GET /teams/{id}/access-requests`.
+    pub async fn team_access_requests(
+        self: &Arc<Self>,
+        team_id: String,
+    ) -> Result<AccessRequestsCard> {
+        let list = self
+            .api()
+            .await?
+            .team_access_requests(parse_id(&team_id)?)
+            .await?;
+        Ok(AccessRequestsCard {
+            can_approve: list.can_approve,
+            requests: list.requests.into_iter().map(access_card).collect(),
+        })
+    }
+
+    /// Ask for temporary viewer/editor access to a team vault.
+    pub async fn team_request_access(
+        self: &Arc<Self>,
+        team_id: String,
+        vault_id: String,
+        role: String,
+        hours: i32,
+        reason: String,
+    ) -> Result<AccessRequestCard> {
+        let req = termoso_proto::team::CreateAccessRequest {
+            vault_id: parse_id(&vault_id)?,
+            role,
+            hours,
+            reason,
+        };
+        Ok(access_card(
+            self.api()
+                .await?
+                .team_create_access_request(parse_id(&team_id)?, &req)
+                .await?,
+        ))
+    }
+
+    /// Withdraw one's own pending request.
+    pub async fn team_cancel_access_request(
+        self: &Arc<Self>,
+        team_id: String,
+        request_id: String,
+    ) -> Result<()> {
+        self.api()
+            .await?
+            .team_cancel_access_request(parse_id(&team_id)?, parse_id(&request_id)?)
+            .await?;
+        Ok(())
+    }
+
+    /// `action` is `approve`, `deny` or `revoke` (`access.approve`).
+    pub async fn team_decide_access_request(
+        self: &Arc<Self>,
+        team_id: String,
+        request_id: String,
+        action: String,
+        hours: Option<i32>,
+        note: Option<String>,
+    ) -> Result<AccessRequestCard> {
+        let req = termoso_proto::team::DecideAccessRequest {
+            hours,
+            role: None,
+            note,
+        };
+        Ok(access_card(
+            self.api()
+                .await?
+                .team_decide_access_request(
+                    parse_id(&team_id)?,
+                    parse_id(&request_id)?,
+                    &action,
+                    &req,
+                )
+                .await?,
+        ))
+    }
+
+    /// `GET /teams/{id}/data` — region and deletion schedule.
+    pub async fn team_data(self: &Arc<Self>, team_id: String) -> Result<TeamDataCard> {
+        let d = self.api().await?.team_data(parse_id(&team_id)?).await?;
+        Ok(TeamDataCard {
+            region: d.region.or(d.server_region),
+            created_at: d.created_at.to_rfc3339(),
+            deletion_scheduled_at: d.deletion_scheduled_at.map(|t| t.to_rfc3339()),
+            deletion_grace_days: d.deletion_grace_days,
         })
     }
 
@@ -929,5 +1142,21 @@ mod tests {
             c.details,
             vec!["n: 2".to_string(), "role: admin".to_string()]
         );
+    }
+}
+
+fn access_card(r: termoso_proto::team::AccessRequest) -> AccessRequestCard {
+    AccessRequestCard {
+        id: r.id.to_string(),
+        vault_id: r.vault_id.to_string(),
+        vault_name: r.vault_name,
+        user_id: r.user_id.to_string(),
+        user_email: r.user_email,
+        role: r.role,
+        hours: r.hours,
+        reason: r.reason,
+        status: r.status,
+        expires_at: r.expires_at.map(|t| t.to_rfc3339()),
+        created_at: r.created_at.to_rfc3339(),
     }
 }

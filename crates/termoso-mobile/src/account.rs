@@ -77,6 +77,14 @@ pub struct ServerCard {
     pub sso_registration: bool,
     /// Single sign-on providers to offer on the sign-in screen.
     pub sso_providers: Vec<SsoProviderCard>,
+    /// Corporate mode: only single sign-on is accepted.
+    pub sso_only: bool,
+    /// Teams may configure their own IdP on this server.
+    pub team_idp: bool,
+    /// Corporate mode: the team every account joins.
+    pub home_team_name: Option<String>,
+    /// `false` hides the personal vault.
+    pub personal_vaults: bool,
 }
 
 impl ServerCard {
@@ -97,6 +105,10 @@ impl ServerCard {
                     saml: p.kind == SsoKind::Saml,
                 })
                 .collect(),
+            sso_only: info.sso_only,
+            team_idp: info.team_idp,
+            home_team_name: info.home_team.as_ref().map(|t| t.name.clone()),
+            personal_vaults: info.features.personal_vaults,
         }
     }
 }
@@ -115,6 +127,16 @@ pub const SSO_CALLBACK: &str = "termoso://sso";
 
 /// What [`AccountRuntime::sso_start`] hands the UI: the page to open in a
 /// Custom Tab and the flow the callback must name.
+/// Result of e-mail domain discovery before sign-in.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SsoDiscoverCard {
+    pub provider_id: Option<String>,
+    pub provider_name: Option<String>,
+    pub team_name: Option<String>,
+    /// Password sign-in is refused for this domain.
+    pub required: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SsoStarted {
     pub flow_id: String,
@@ -696,6 +718,20 @@ impl AccountRuntime {
     }
 
     // ---- single sign-on -----------------------------------------------
+
+    /// Home-realm discovery: which provider (if any) owns the e-mail domain,
+    /// and whether the matching team policy forbids password sign-in.
+    pub async fn sso_discover(&self, server_url: &str, email: &str) -> Result<SsoDiscoverCard> {
+        let server_url = normalize_server_url(server_url)?;
+        let api = ApiClient::new(&server_url)?;
+        let r = api.sso_discover(email.trim()).await?;
+        Ok(SsoDiscoverCard {
+            provider_id: r.provider.as_ref().map(|p| p.id.clone()),
+            provider_name: r.provider.as_ref().map(|p| p.name.clone()),
+            team_name: r.team_name,
+            required: r.required,
+        })
+    }
 
     /// Ask the server for the IdP authorization URL. The UI opens it in a
     /// Custom Tab; the browser is sent back to [`SSO_CALLBACK`] and the
