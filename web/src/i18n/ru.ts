@@ -647,6 +647,22 @@ export const ru: Readonly<Record<string, string>> = {
   Discard: "Отменить изменения",
   "Disconnect {v1}?": "Отключить {v1}?",
   "Download {file}": "Скачать {file}",
+  "This account must sign in through single sign-on (SSO).":
+    "Этот аккаунт должен входить через единый вход (SSO).",
+  "Sign-in from this network is not allowed by your team's IP allow-list.":
+    "Вход из этой сети запрещён списком разрешённых IP вашей команды.",
+  "This device is waiting for approval by a team admin. You will be able to sign in once it is approved.":
+    "Это устройство ждёт одобрения администратором команды. Войти можно будет после одобрения.",
+  "This device was rejected by a team admin. Ask them to approve it again.":
+    "Это устройство отклонено администратором команды. Попросите одобрить его заново.",
+  "Your organization {v1} uses single sign-on.": "Ваша организация «{v1}» использует единый вход.",
+  "Your organization uses single sign-on.": "Ваша организация использует единый вход.",
+  "This server accepts single sign-on only. Continue with your organization's provider below.":
+    "Этот сервер принимает только единый вход. Продолжите через провайдера вашей организации ниже.",
+  "Continue with {v1}": "Продолжить с {v1}",
+  "Sign in with a password instead": "Войти с паролем",
+  "Enter your work e-mail to find your organization's provider.":
+    "Введите рабочую почту, чтобы найти провайдера вашей организации.",
   Hidden: "Скрыто",
   "Not shown at all": "Не показывается вовсе",
   "Connect only": "Только подключение",

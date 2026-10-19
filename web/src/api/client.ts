@@ -28,6 +28,12 @@ const CODE_MESSAGES: Record<string, string> = {
   not_found: msg("Not found."),
   conflict: msg("This already exists."),
   network: msg("Cannot reach the server. Check your connection."),
+  sso_required: msg("This account must sign in through single sign-on (SSO)."),
+  ip_not_allowed: msg("Sign-in from this network is not allowed by your team's IP allow-list."),
+  device_pending_approval: msg(
+    "This device is waiting for approval by a team admin. You will be able to sign in once it is approved.",
+  ),
+  device_rejected: msg("This device was rejected by a team admin. Ask them to approve it again."),
 };
 
 export function errorMessage(err: unknown): string {

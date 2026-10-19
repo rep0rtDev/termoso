@@ -24,7 +24,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import { errorMessage } from "@/api/client";
 import { teamsApi, vaultsApi } from "@/api/endpoints";
-import { queryKeys } from "@/api/hooks";
+import { queryKeys, useServerInfo } from "@/api/hooks";
 import type { Vault } from "@/api/types";
 import { EmptyState } from "@/components/EmptyState";
 import { IconTile } from "@/components/IconTile";
@@ -36,6 +36,7 @@ import { tr, trx } from "@/i18n";
 
 export function VaultsPage() {
   const navigate = useNavigate();
+  const info = useServerInfo();
   const [page, setPage] = useState(0);
   const [limit, setLimit] = useState(10);
   const [filter, setFilter] = useState("");
@@ -45,7 +46,10 @@ export function VaultsPage() {
   if (vaults.isError) return <Alert severity="error">{errorMessage(vaults.error)}</Alert>;
 
   const teamName = (id?: string) => teams.data?.teams.find((t) => t.id === id)?.name;
-  const personal = vaults.data.vaults.filter((v) => v.kind === "personal");
+  const personal =
+    info.data?.features.personal_vaults === false
+      ? []
+      : vaults.data.vaults.filter((v) => v.kind === "personal");
   const team = vaults.data.vaults.filter((v) => v.kind === "team");
   const needle = filter.trim().toLowerCase();
   const filtered = needle

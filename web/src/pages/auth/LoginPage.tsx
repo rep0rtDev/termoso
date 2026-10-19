@@ -3,6 +3,8 @@ import { tr, trx } from "@/i18n";
 import { Alert, Box, Button, Divider, Link, Stack, TextField, Typography } from "@mui/material";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router";
 import { ApiError, errorMessage } from "@/api/client";
+import { authApi } from "@/api/endpoints";
+import type { SsoDiscoverResponse } from "@/api/types";
 import { useServerInfo } from "@/api/hooks";
 import { login } from "@/auth/flows";
 import { startSso } from "@/auth/sso";
@@ -35,6 +37,23 @@ export function LoginPage() {
   const [needCaptcha, setNeedCaptcha] = useState(false);
   const [captcha, setCaptcha] = useState<string | null>(null);
   const [captchaRound, setCaptchaRound] = useState(0);
+  // Home-realm discovery: a corporate domain routes the form to the team's IdP.
+  const [disc, setDisc] = useState<{ email: string; r: SsoDiscoverResponse } | null>(null);
+  const [passwordAnyway, setPasswordAnyway] = useState(false);
+  const ssoOnly = info.data?.sso_only === true;
+  const discover = (value: string) => {
+    const addr = value.trim().toLowerCase();
+    if (sso || !addr.includes("@") || disc?.email === addr) return;
+    authApi
+      .ssoDiscover(addr)
+      .then((r) => setDisc({ email: addr, r }))
+      .catch(() =>
+        setDisc({ email: addr, r: { provider: null, team_name: null, required: false } }),
+      );
+  };
+  const found = disc?.email === email.trim().toLowerCase() ? disc.r : null;
+  const idp = found?.provider ?? null;
+  const passwordHidden = ssoOnly || (idp !== null && !passwordAnyway);
 
   const submit = async (e: SubmitEvent) => {
     e.preventDefault();
@@ -102,62 +121,121 @@ export function LoginPage() {
           autoFocus={!sso}
           required
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            setPasswordAnyway(false);
+          }}
+          onBlur={(e) => discover(e.target.value)}
           disabled={busy || sso !== undefined}
         />
-        <PasswordField
-          label={tr("Password")}
-          autoComplete="current-password"
-          autoFocus={sso !== undefined}
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={busy}
-        />
-        <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
-          <Link component={RouterLink} to="/forgot-password" variant="body2">
-            {tr("Forgot password?")}
-          </Link>
-        </Box>
+        {idp && (
+          <Alert severity="info">
+            {found?.team_name
+              ? tr("Your organization {v1} uses single sign-on.", { v1: found.team_name })
+              : tr("Your organization uses single sign-on.")}
+          </Alert>
+        )}
+        {ssoOnly && !sso && (
+          <Alert severity="info">
+            {tr(
+              "This server accepts single sign-on only. Continue with your organization's provider below.",
+            )}
+          </Alert>
+        )}
+        {!passwordHidden && (
+          <>
+            <PasswordField
+              label={tr("Password")}
+              autoComplete="current-password"
+              autoFocus={sso !== undefined}
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={busy}
+            />
+            <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+              <Link component={RouterLink} to="/forgot-password" variant="body2">
+                {tr("Forgot password?")}
+              </Link>
+            </Box>
+          </>
+        )}
         {needCaptcha && siteKey && (
           <Turnstile key={captchaRound} siteKey={siteKey} onToken={setCaptcha} />
         )}
-        <Button
-          type="submit"
-          variant="contained"
-          size="large"
-          disabled={busy || (needCaptcha && captcha === null)}
-        >
-          {busy ? tr("Signing in…") : tr("Sign in")}
-        </Button>
+        {idp && passwordHidden ? (
+          <>
+            <Button
+              variant="contained"
+              size="large"
+              disabled={busy}
+              onClick={() => {
+                setError(null);
+                startSso(idp.id, next).catch((err: unknown) => setError(errorMessage(err)));
+              }}
+            >
+              {tr("Continue with {v1}", { v1: idp.name })}
+            </Button>
+            {!found?.required && !ssoOnly && (
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
+                <Link
+                  component="button"
+                  type="button"
+                  variant="body2"
+                  onClick={() => setPasswordAnyway(true)}
+                >
+                  {tr("Sign in with a password instead")}
+                </Link>
+              </Typography>
+            )}
+          </>
+        ) : passwordHidden ? null : (
+          <Button
+            type="submit"
+            variant="contained"
+            size="large"
+            disabled={busy || (needCaptcha && captcha === null)}
+          >
+            {busy ? tr("Signing in…") : tr("Sign in")}
+          </Button>
+        )}
 
         {!sso && providers.length > 0 && (
           <>
-            <Divider>
-              <Typography variant="caption" color="text.secondary">
-                {tr("or continue with")}
-              </Typography>
-            </Divider>
+            {!passwordHidden && (
+              <Divider>
+                <Typography variant="caption" color="text.secondary">
+                  {tr("or continue with")}
+                </Typography>
+              </Divider>
+            )}
             <Stack spacing={1}>
-              {providers.map((p) => (
-                <Button
-                  key={p.id}
-                  variant="outlined"
-                  color="inherit"
-                  disabled={busy}
-                  onClick={() => {
-                    setError(null);
-                    startSso(p.id, next).catch((err: unknown) => setError(errorMessage(err)));
-                  }}
-                >
-                  {p.name}
-                </Button>
-              ))}
+              {providers
+                .filter((p) => p.id !== idp?.id)
+                .map((p) => (
+                  <Button
+                    key={p.id}
+                    variant="outlined"
+                    color="inherit"
+                    disabled={busy}
+                    onClick={() => {
+                      setError(null);
+                      startSso(p.id, next).catch((err: unknown) => setError(errorMessage(err)));
+                    }}
+                  >
+                    {p.name}
+                  </Button>
+                ))}
             </Stack>
           </>
         )}
 
-        {info.data?.registration_open !== false && !sso && (
+        {ssoOnly && !sso && providers.length === 0 && !idp && (
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
+            {tr("Enter your work e-mail to find your organization's provider.")}
+          </Typography>
+        )}
+        {info.data?.registration_open !== false && !ssoOnly && !sso && (
           <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
             {trx("New to Termoso?  {v1}", {
               v1: (
