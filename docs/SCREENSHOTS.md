@@ -1,6 +1,6 @@
 # Screenshots
 
-Every image lives in [`docs/screenshots/`](screenshots/) and is also used by the online documentation at [termoso.dev/docs](https://termoso.dev/docs). Click a thumbnail to open it at full size. Web cabinet (teams, policies, audit, admin console) screenshots will be added as the next batch.
+Every image lives in [`docs/screenshots/`](screenshots/) and is also used by the online documentation at [termoso.dev/docs](https://termoso.dev/docs). Click a thumbnail to open it at full size.
 
 ## Contents
 
@@ -10,6 +10,9 @@ Every image lives in [`docs/screenshots/`](screenshots/) and is also used by the
 - [Desktop — keychain and import](#desktop--keychain-and-import)
 - [Desktop — account and settings](#desktop--account-and-settings)
 - [Android](#android)
+- [Web cabinet — account](#web-cabinet--account)
+- [Web cabinet — vaults and teams](#web-cabinet--vaults-and-teams)
+- [Web cabinet — administration](#web-cabinet--administration)
 
 ## Desktop — hosts and connections
 
@@ -141,3 +144,72 @@ Every image lives in [`docs/screenshots/`](screenshots/) and is also used by the
     <td align="center" width="33%"><a href="screenshots/android-settings.png"><img src="screenshots/android-settings.png" alt="Settings" width="100%"></a><br><sub>Settings</sub></td>
   </tr>
 </table>
+## Web cabinet — account
+
+<table>
+  <tr>
+    <td align="center" width="33%"><a href="screenshots/web-login.png"><img src="screenshots/web-login.png" alt="Sign-in" width="100%"></a><br><sub>Sign-in</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-signup.png"><img src="screenshots/web-signup.png" alt="Creating an account" width="100%"></a><br><sub>Creating an account</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-recovery-key.png"><img src="screenshots/web-recovery-key.png" alt="Recovery key, shown once after sign-up" width="100%"></a><br><sub>Recovery key, shown once after sign-up</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%"><a href="screenshots/web-forgot-password.png"><img src="screenshots/web-forgot-password.png" alt="Password reset" width="100%"></a><br><sub>Password reset</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-account.png"><img src="screenshots/web-account.png" alt="Account: profile, e-mail, password, recovery key" width="100%"></a><br><sub>Account: profile, e-mail, password, recovery key</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-security.png"><img src="screenshots/web-security.png" alt="Security: two-factor and recent activity" width="100%"></a><br><sub>Security: two-factor and recent activity</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%"><a href="screenshots/web-devices.png"><img src="screenshots/web-devices.png" alt="Devices" width="100%"></a><br><sub>Devices</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-api-bridge.png"><img src="screenshots/web-api-bridge.png" alt="API Bridge" width="100%"></a><br><sub>API Bridge</sub></td>
+  </tr>
+</table>
+
+## Web cabinet — vaults and teams
+
+<table>
+  <tr>
+    <td align="center" width="33%"><a href="screenshots/web-vaults.png"><img src="screenshots/web-vaults.png" alt="Vaults: personal and team" width="100%"></a><br><sub>Vaults: personal and team</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-vault.png"><img src="screenshots/web-vault.png" alt="A team vault: members, session logs, group and host access" width="100%"></a><br><sub>A team vault: members, session logs, group and host access</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-vault-acl-rule.png"><img src="screenshots/web-vault-acl-rule.png" alt="Adding an access rule" width="100%"></a><br><sub>Adding an access rule</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%"><a href="screenshots/web-teams.png"><img src="screenshots/web-teams.png" alt="Teams" width="100%"></a><br><sub>Teams</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-team-create.png"><img src="screenshots/web-team-create.png" alt="New team" width="100%"></a><br><sub>New team</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-team-members.png"><img src="screenshots/web-team-members.png" alt="Members, invitations and team vaults" width="100%"></a><br><sub>Members, invitations and team vaults</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%"><a href="screenshots/web-team-invite.png"><img src="screenshots/web-team-invite.png" alt="Inviting a member" width="100%"></a><br><sub>Inviting a member</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-team-roles.png"><img src="screenshots/web-team-roles.png" alt="Roles and permissions" width="100%"></a><br><sub>Roles and permissions</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-team-new-role.png"><img src="screenshots/web-team-new-role.png" alt="New role" width="100%"></a><br><sub>New role</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%"><a href="screenshots/web-team-policies.png"><img src="screenshots/web-team-policies.png" alt="Team policies" width="100%"></a><br><sub>Team policies</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-team-audit.png"><img src="screenshots/web-team-audit.png" alt="Audit log" width="100%"></a><br><sub>Audit log</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-team-scim.png"><img src="screenshots/web-team-scim.png" alt="SCIM provisioning" width="100%"></a><br><sub>SCIM provisioning</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%"><a href="screenshots/web-team-sso.png"><img src="screenshots/web-team-sso.png" alt="Team identity provider (SSO)" width="100%"></a><br><sub>Team identity provider (SSO)</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-team-access.png"><img src="screenshots/web-team-access.png" alt="Just-in-time access requests" width="100%"></a><br><sub>Just-in-time access requests</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-team-rotation.png"><img src="screenshots/web-team-rotation.png" alt="Key and password rotation" width="100%"></a><br><sub>Key and password rotation</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%"><a href="screenshots/web-team-devices.png"><img src="screenshots/web-team-devices.png" alt="Device approval" width="100%"></a><br><sub>Device approval</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-team-recordings.png"><img src="screenshots/web-team-recordings.png" alt="Team session recordings" width="100%"></a><br><sub>Team session recordings</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-team-data.png"><img src="screenshots/web-team-data.png" alt="Data: region, export, deletion" width="100%"></a><br><sub>Data: region, export, deletion</sub></td>
+  </tr>
+</table>
+
+## Web cabinet — administration
+
+<table>
+  <tr>
+    <td align="center" width="33%"><a href="screenshots/web-admin-overview.png"><img src="screenshots/web-admin-overview.png" alt="Admin: server overview" width="100%"></a><br><sub>Admin: server overview</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-admin-users.png"><img src="screenshots/web-admin-users.png" alt="Admin: users" width="100%"></a><br><sub>Admin: users</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-admin-teams.png"><img src="screenshots/web-admin-teams.png" alt="Admin: teams" width="100%"></a><br><sub>Admin: teams</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%"><a href="screenshots/web-admin-team.png"><img src="screenshots/web-admin-team.png" alt="Admin: team card" width="100%"></a><br><sub>Admin: team card</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-admin-settings.png"><img src="screenshots/web-admin-settings.png" alt="Admin: server settings" width="100%"></a><br><sub>Admin: server settings</sub></td>
+    <td align="center" width="33%"><a href="screenshots/web-sponsor.png"><img src="screenshots/web-sponsor.png" alt="Sponsor page" width="100%"></a><br><sub>Sponsor page</sub></td>
+  </tr>
+</table>
+
