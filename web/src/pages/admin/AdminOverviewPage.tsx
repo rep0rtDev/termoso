@@ -1,4 +1,18 @@
-import { Alert, Box, Card, CardContent, Grid, Stack, Typography } from "@mui/material";
+import {
+  Alert,
+  Box,
+  Card,
+  CardContent,
+  Grid,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Typography,
+} from "@mui/material";
 import { tr } from "@/i18n";
 import DevicesOutlinedIcon from "@mui/icons-material/DevicesOutlined";
 import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
@@ -16,7 +30,7 @@ import { IconTile } from "@/components/IconTile";
 import { Loading } from "@/components/Loading";
 import { PageHeader } from "@/components/PageHeader";
 import { Section, SettingRow } from "@/components/Section";
-import { formatBytes, formatNumber } from "@/components/format";
+import { formatBytes, formatNumber, formatRelative } from "@/components/format";
 
 function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: string | number }) {
   return (
@@ -100,7 +114,58 @@ export function AdminOverviewPage() {
           </Box>
         </Section>
       )}
+      <JobsSection />
     </>
+  );
+}
+
+function JobsSection() {
+  const jobs = useQuery({ queryKey: queryKeys.adminJobs, queryFn: adminApi.jobs });
+  if (!jobs.data || jobs.data.jobs.length === 0) return null;
+  return (
+    <Section
+      title={tr("Background jobs")}
+      description={tr(
+        "Last run of each maintenance job: audit/recording retention, rotation reminders, access expiry, team deletion, webhook delivery.",
+      )}
+      disablePadding
+    >
+      <TableContainer>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>{tr("Job")}</TableCell>
+              <TableCell>{tr("Last run")}</TableCell>
+              <TableCell align="right">{tr("Result")}</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {jobs.data.jobs.map((j) => (
+              <TableRow key={j.name} hover>
+                <TableCell sx={{ fontFamily: "monospace" }}>{j.name}</TableCell>
+                <TableCell>
+                  <Typography variant="body2">{formatRelative(j.last_started_at)}</Typography>
+                  {!j.last_finished_at && (
+                    <Typography variant="caption" color="text.secondary">
+                      {tr("running")}
+                    </Typography>
+                  )}
+                </TableCell>
+                <TableCell align="right">
+                  {j.last_error ? (
+                    <Typography variant="body2" color="error" noWrap title={j.last_error}>
+                      {j.last_error}
+                    </Typography>
+                  ) : (
+                    <Typography variant="body2">{j.last_result ?? "—"}</Typography>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Section>
   );
 }
 

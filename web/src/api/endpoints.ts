@@ -68,6 +68,8 @@ import type {
 } from "./types";
 import type {
   AccessRequest,
+  AdminJob,
+  AdminTeamDetail,
   AccessRequestList,
   AccessRole,
   EntityAclRule,
@@ -437,6 +439,8 @@ export interface ListParams {
   q?: string;
   offset?: number;
   limit?: number;
+  team?: string;
+  sort?: string;
 }
 
 export const adminApi = {
@@ -456,6 +460,12 @@ export const adminApi = {
     return { items: r.teams, total: r.total };
   },
   deleteTeam: (id: string) => http.delete<undefined>(`/admin/teams/${id}`),
+  teamDetail: (id: string) => http.get<AdminTeamDetail>(`/admin/teams/${id}`),
+  addTeamMember: (id: string, userId: string, role?: string) =>
+    http.post<undefined>(`/admin/teams/${id}/members`, { user_id: userId, role }),
+  removeTeamMember: (id: string, userId: string) =>
+    http.delete<undefined>(`/admin/teams/${id}/members/${userId}`),
+  jobs: () => http.get<{ jobs: AdminJob[] }>("/admin/jobs"),
   settings: () => http.get<ServerSettings>("/admin/settings"),
   putSettings: (s: ServerSettings) => http.put<ServerSettings>("/admin/settings", s),
   testEmail: (to: string) => http.post<undefined>("/admin/email/test", { to }),

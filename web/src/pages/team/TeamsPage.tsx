@@ -2,6 +2,7 @@ import { useState, type SubmitEvent } from "react";
 import { tr, trx } from "@/i18n";
 import {
   Alert,
+  Chip,
   Button,
   Card,
   CardActionArea,
@@ -133,7 +134,16 @@ export function TeamsPage() {
                         <Typography variant="h6" noWrap>
                           {t.name}
                         </Typography>
-                        <RoleChip role={t.my_role} />
+                        <Stack
+                          direction="row"
+                          spacing={0.5}
+                          sx={{ alignItems: "center", flexShrink: 0 }}
+                        >
+                          {info.data?.home_team?.id === t.id && (
+                            <Chip size="small" variant="outlined" label={tr("Home team")} />
+                          )}
+                          <RoleChip role={t.my_role} />
+                        </Stack>
                       </Stack>
                       <Typography variant="body2" color="text.secondary">
                         {trx("{member_count} {v1} · created  {v2}", {

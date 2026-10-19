@@ -1,19 +1,22 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { tr, trx, trn } from "@/i18n";
 import {
   Alert,
   Box,
+  Chip,
   IconButton,
   InputAdornment,
+  Stack,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TablePagination,
   TableRow,
   TextField,
   Tooltip,
-  TableContainer,
 } from "@mui/material";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
@@ -31,6 +34,7 @@ import { useSnackbar } from "@/components/Snackbar";
 import { formatDateTime } from "@/components/format";
 
 export function AdminTeamsPage() {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const snack = useSnackbar();
   const [search, setSearch] = useState("");
@@ -116,8 +120,33 @@ export function AdminTeamsPage() {
                 </TableHead>
                 <TableBody>
                   {teams.data.items.map((t) => (
-                    <TableRow key={t.id} hover>
-                      <TableCell sx={{ fontWeight: 600 }}>{t.name}</TableCell>
+                    <TableRow
+                      key={t.id}
+                      hover
+                      sx={{ cursor: "pointer" }}
+                      onClick={() => void navigate(`/admin/teams/${t.id}`)}
+                    >
+                      <TableCell sx={{ fontWeight: 600 }}>
+                        <Stack
+                          direction="row"
+                          spacing={0.5}
+                          useFlexGap
+                          sx={{ alignItems: "center", flexWrap: "wrap" }}
+                        >
+                          <span>{t.name}</span>
+                          {t.is_home && <Chip size="small" color="primary" label={tr("Home")} />}
+                          {t.idp && <Chip size="small" variant="outlined" label="IdP" />}
+                          {t.scim && <Chip size="small" variant="outlined" label="SCIM" />}
+                          {t.deletion_scheduled_at && (
+                            <Chip
+                              size="small"
+                              color="error"
+                              variant="outlined"
+                              label={tr("Deleting")}
+                            />
+                          )}
+                        </Stack>
+                      </TableCell>
                       <TableCell>{t.owner_email}</TableCell>
                       <TableCell align="right">{t.member_count}</TableCell>
                       <TableCell align="right">{t.vault_count}</TableCell>
@@ -126,7 +155,10 @@ export function AdminTeamsPage() {
                         <Tooltip title={tr("Delete team")}>
                           <IconButton
                             size="small"
-                            onClick={() => setDeleting(t)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleting(t);
+                            }}
                             aria-label={tr("Delete team")}
                           >
                             <DeleteOutlineRoundedIcon fontSize="small" />

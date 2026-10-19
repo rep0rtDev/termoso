@@ -616,7 +616,16 @@ export interface AdminUser {
   mfa_enabled: boolean;
   created_at: string;
   last_seen_at?: string;
-  devices: number;
+  devices: number; /** Teams the user belongs to, with the team-role slug. */
+  teams?: AdminUserTeam[];
+  /** `password` | `sso` | `scim`. */
+  source?: string;
+}
+
+export interface AdminUserTeam {
+  id: string;
+  name: string;
+  role: string;
 }
 
 export interface AdminUpdateUserRequest {
@@ -651,6 +660,38 @@ export interface AdminTeam {
   member_count: number;
   vault_count: number;
   created_at: string;
+  region?: string | null;
+  deletion_scheduled_at?: string | null;
+  log_bytes?: number;
+  is_home?: boolean;
+  idp?: boolean;
+  scim?: boolean;
+  webhooks?: number;
+}
+
+export interface AdminTeamMember {
+  user_id: string;
+  email: string;
+  level: string;
+  role: string;
+  role_source: string;
+  joined_at: string;
+  last_seen_at?: string | null;
+}
+
+export interface AdminTeamDetail {
+  team: AdminTeam;
+  members: AdminTeamMember[];
+  policies: TeamPolicies;
+  audit: AuditEvent[];
+}
+
+export interface AdminJob {
+  name: string;
+  last_started_at: string;
+  last_finished_at?: string | null;
+  last_result?: number | null;
+  last_error?: string | null;
 }
 
 export interface Page<T> {

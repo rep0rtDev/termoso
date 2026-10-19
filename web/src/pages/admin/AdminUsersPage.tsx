@@ -10,18 +10,19 @@ import {
   FormControlLabel,
   IconButton,
   InputAdornment,
+  MenuItem,
   Stack,
   Switch,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TablePagination,
   TableRow,
   TextField,
   Tooltip,
   Typography,
-  TableContainer,
 } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
@@ -55,10 +56,16 @@ export function AdminUsersPage() {
   const [page, setPage] = useState(0);
   const [limit, setLimit] = useState(25);
   const [selected, setSelected] = useState<string | null>(null);
+  const [team, setTeam] = useState("");
+  const [sort, setSort] = useState("created");
+  const teamList = useQuery({
+    queryKey: ["admin", "teams", "all"],
+    queryFn: () => adminApi.teams({ offset: 0, limit: 200 }),
+  });
   const offset = page * limit;
   const users = useQuery({
-    queryKey: queryKeys.adminUsers(q, offset, limit),
-    queryFn: () => adminApi.users({ q, offset, limit }),
+    queryKey: [...queryKeys.adminUsers(q, offset, limit), team, sort],
+    queryFn: () => adminApi.users({ q, offset, limit, team: team || undefined, sort }),
     placeholderData: keepPreviousData,
   });
 
@@ -91,6 +98,42 @@ export function AdminUsersPage() {
           />
         }
       />
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mb: 2 }}>
+        <TextField
+          select
+          size="small"
+          label={tr("Team")}
+          value={team}
+          onChange={(e) => {
+            setTeam(e.target.value);
+            setPage(0);
+          }}
+          sx={{ minWidth: 200 }}
+        >
+          <MenuItem value="">{tr("All teams")}</MenuItem>
+          {(teamList.data?.items ?? []).map((t) => (
+            <MenuItem key={t.id} value={t.id}>
+              {t.name}
+            </MenuItem>
+          ))}
+        </TextField>
+        <TextField
+          select
+          size="small"
+          label={tr("Sort by")}
+          value={sort}
+          onChange={(e) => {
+            setSort(e.target.value);
+            setPage(0);
+          }}
+          sx={{ minWidth: 180 }}
+        >
+          <MenuItem value="created">{tr("Newest first")}</MenuItem>
+          <MenuItem value="last_seen">{tr("Last seen")}</MenuItem>
+          <MenuItem value="email">{tr("E-mail")}</MenuItem>
+          <MenuItem value="devices">{tr("Devices")}</MenuItem>
+        </TextField>
+      </Stack>
       <Section
         title={users.data ? trn(users.data.total, "{count} user", "{count} users") : tr("Users")}
         disablePadding
@@ -111,6 +154,9 @@ export function AdminUsersPage() {
                   <TableRow>
                     <TableCell>{tr("User")}</TableCell>
                     <TableCell>{tr("Status")}</TableCell>
+                    <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                      {tr("Teams")}
+                    </TableCell>
                     <TableCell align="right">{tr("Devices")}</TableCell>
                     <TableCell>{tr("Last seen")}</TableCell>
                     <TableCell>{tr("Joined")}</TableCell>
@@ -159,6 +205,26 @@ export function AdminUsersPage() {
                           )}
                           {u.mfa_enabled && (
                             <Chip size="small" variant="outlined" label={tr("MFA")} />
+                          )}
+                        </Stack>
+                      </TableCell>
+                      <TableCell sx={{ display: { xs: "none", md: "table-cell" } }}>
+                        <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: "wrap" }}>
+                          {(u.teams ?? []).map((t) => (
+                            <Chip
+                              key={t.id}
+                              size="small"
+                              variant="outlined"
+                              label={`${t.name} · ${tr(t.role)}`}
+                            />
+                          ))}
+                          {u.source && u.source !== "password" && (
+                            <Chip
+                              size="small"
+                              color="info"
+                              variant="outlined"
+                              label={u.source.toUpperCase()}
+                            />
                           )}
                         </Stack>
                       </TableCell>

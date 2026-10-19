@@ -647,6 +647,55 @@ export const ru: Readonly<Record<string, string>> = {
   Discard: "Отменить изменения",
   "Disconnect {v1}?": "Отключить {v1}?",
   "Download {file}": "Скачать {file}",
+  "Corporate mode": "Корпоративный режим",
+  "For a server that belongs to one company. Pick a home team and every account — new and existing, on their next sign-in — becomes its member with the default role. SSO-only refuses password sign-in and e-mail sign-up (the bootstrap admin keeps a password so you cannot lock yourself out). Clients hide team creation, sign-up and personal vaults accordingly.":
+    "Для сервера одной компании. Выберите домашнюю команду — и каждый аккаунт (новые сразу, существующие при следующем входе) станет её участником с ролью по умолчанию. «Только SSO» запрещает вход по паролю и регистрацию по почте (bootstrap-админ сохраняет пароль, чтобы не запереться). Клиенты соответственно прячут создание команд, регистрацию и личные хранилища.",
+  "All accounts automatically join this team.":
+    "Все аккаунты автоматически вступают в эту команду.",
+  None: "Нет",
+  "SSO only": "Только SSO",
+  "Only single sign-on (server providers or the home team's IdP). Password sign-in and e-mail sign-up return sso_required.":
+    "Только единый вход (серверные провайдеры или IdP домашней команды). Пароль и регистрация по почте вернут sso_required.",
+  "Personal vaults": "Личные хранилища",
+  "Off hides the personal vault in every client; everything lives in team vaults.":
+    "Выключено — личное хранилище скрыто во всех клиентах, всё живёт в командных.",
+  "All teams": "Все команды",
+  "Sort by": "Сортировка",
+  "Newest first": "Сначала новые",
+  "E-mail": "E-mail",
+  "Background jobs": "Фоновые задачи",
+  "Last run of each maintenance job: audit/recording retention, rotation reminders, access expiry, team deletion, webhook delivery.":
+    "Последний прогон каждой служебной задачи: ретеншен аудита/записей, напоминания о ротации, истечение JIT-доступа, удаление команд, доставка вебхуков.",
+  Job: "Задача",
+  "Last run": "Последний запуск",
+  Result: "Результат",
+  running: "выполняется",
+  Home: "Домашняя",
+  Deleting: "Удаляется",
+  "Owner {v1} · created {v2}": "Владелец {v1} · создана {v2}",
+  "The owner scheduled deletion for {v1}.": "Владелец запланировал удаление на {v1}.",
+  Summary: "Сводка",
+  Yes: "Да",
+  No: "Нет",
+  Webhooks: "Вебхуки",
+  "Add account": "Добавить аккаунт",
+  Source: "Источник",
+  "Remove from team?": "Убрать из команды?",
+  "Read-only; the team's owner and admins change them in the team settings.":
+    "Только чтение; владелец и админы команды меняют их в настройках команды.",
+  "Two-factor": "Двухфакторная аутентификация",
+  Everywhere: "Отовсюду",
+  "Audit retention": "Хранение аудита",
+  "{v1} loses access to the team and its vaults. Vault keys should be rotated by a manager.":
+    "{v1} теряет доступ к команде и её хранилищам. Менеджеру стоит ротировать ключи хранилищ.",
+  "Account added with the default role": "Аккаунт добавлен с ролью по умолчанию",
+  "Add account to team": "Добавить аккаунт в команду",
+  "Type at least two characters": "Введите хотя бы два символа",
+  "No accounts match": "Аккаунты не найдены",
+  "Account e-mail": "E-mail аккаунта",
+  "The account joins with the team's default role; the vault keys are sealed to it by a vault manager afterwards.":
+    "Аккаунт вступает с ролью по умолчанию; ключи хранилищ ему потом запечатывает менеджер хранилища.",
+  "Home team": "Домашняя команда",
   "This account must sign in through single sign-on (SSO).":
     "Этот аккаунт должен входить через единый вход (SSO).",
   "Sign-in from this network is not allowed by your team's IP allow-list.":

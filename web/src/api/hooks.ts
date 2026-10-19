@@ -21,6 +21,8 @@ export const queryKeys = {
   teamRoles: (id: string) => ["teams", id, "roles"] as const,
   teamRoleMappings: (id: string) => ["teams", id, "role-mappings"] as const,
   teamPolicies: (id: string) => ["teams", id, "policies"] as const,
+  adminJobs: ["admin", "jobs"] as const,
+  adminTeam: (id: string) => ["admin", "teams", id] as const,
   teamDevices: (id: string) => ["teams", id, "devices"] as const,
   teamAccess: (id: string) => ["teams", id, "access-requests"] as const,
   teamData: (id: string) => ["teams", id, "data"] as const,
