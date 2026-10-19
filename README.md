@@ -1,3 +1,5 @@
+<p align="center"><img src=".github/banner.svg" alt="Termoso" width="100%"></p>
+
 # Termoso
 
 A free, open-source, self-hostable SSH / SFTP / WebDAV / Mosh / Telnet / Serial

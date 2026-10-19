@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-label="Termoso — software reports to you, not on you">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#10141C"/>
+      <stop offset="1" stop-color="#0A0D13"/>
+    </linearGradient>
+    <radialGradient id="glowG" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#2BB884" stop-opacity="0.28"/>
+      <stop offset="0.55" stop-color="#2BB884" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#2BB884" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#5AA9E6" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#5AA9E6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1A1F2B"/>
+      <stop offset="1" stop-color="#12161F"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="320" fill="url(#bg)"/>
+  <ellipse cx="413" cy="156" rx="330" ry="210" fill="url(#glowG)"/>
+  <ellipse cx="880" cy="200" rx="360" ry="200" fill="url(#glowB)"/>
+  <g transform="translate(349 92) scale(2)">
+    <rect width="64" height="64" rx="14" fill="url(#mark)" stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="0.75"/>
+    <path d="M16 20h32v8H36v20h-8V28H16z" fill="#2BB884"/>
+    <rect x="42" y="40" width="8" height="8" rx="2" fill="#5AA9E6"/>
+  </g>
+  <g font-family="Inter, 'Inter Variable', 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif">
+    <text x="509" y="156" font-size="64" font-weight="700" letter-spacing="-2" fill="#F3F5F7">Termoso</text>
+    <text x="511" y="200" font-size="22" font-weight="400" fill="#98A0AE">Software reports to you, not on you.</text>
+  </g>
+</svg>
