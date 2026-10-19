@@ -709,7 +709,7 @@ async fn mandatory_recording_policy_and_team_export() {
         &format!("/teams/{}/logs", team.id),
         Some(outsider.token()),
         NOBODY,
-        StatusCode::FORBIDDEN,
+        StatusCode::NOT_FOUND,
     )
     .await;
     let resp = s
