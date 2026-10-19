@@ -2046,3 +2046,79 @@ async fn api_is_not_served_on_the_landing_origin() {
         format!("http://{}/account", s.addr)
     );
 }
+
+#[tokio::test]
+async fn accepting_an_invite_verifies_the_mailbox() {
+    let s = server!();
+    if s.mailpit.is_none() {
+        return;
+    }
+    let owner = register(s, &unique_email("owner"), "pw-owner-1234567").await;
+    let team: Team = s
+        .json(
+            Method::POST,
+            "/teams",
+            Some(owner.token()),
+            Some(&CreateTeamRequest { name: "Ops".into() }),
+        )
+        .await;
+    let bob_email = unique_email("bob");
+    let bob = register_unverified(s, &bob_email, "pw-bob-123456789", None).await;
+    assert!(!bob.session.user.email_verified);
+    // Unverified: no team of their own yet.
+    s.expect_status(
+        Method::POST,
+        "/teams",
+        Some(bob.token()),
+        Some(&CreateTeamRequest {
+            name: "Mine".into(),
+        }),
+        StatusCode::FORBIDDEN,
+    )
+    .await;
+
+    let invite: serde_json::Value = s
+        .json(
+            Method::POST,
+            &format!("/teams/{}/invites", team.id),
+            Some(owner.token()),
+            Some(&CreateInviteRequest {
+                email: bob_email.clone(),
+                role: TeamRole::Member,
+                role_id: None,
+                vault_ids: vec![],
+            }),
+        )
+        .await;
+    let token = invite["url"]
+        .as_str()
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_string();
+    // The token was mailed to that address: accepting proves the mailbox.
+    let joined: Team = s
+        .json(
+            Method::POST,
+            &format!("/invites/{token}/accept"),
+            Some(bob.token()),
+            NOBODY,
+        )
+        .await;
+    assert_eq!(joined.my_role, TeamRole::Member);
+    let sess: serde_json::Value = s
+        .json(Method::GET, "/account", Some(bob.token()), NOBODY)
+        .await;
+    assert_eq!(sess["user"]["email_verified"], true, "{sess}");
+    let _: Team = s
+        .json(
+            Method::POST,
+            "/teams",
+            Some(bob.token()),
+            Some(&CreateTeamRequest {
+                name: "Mine".into(),
+            }),
+        )
+        .await;
+}

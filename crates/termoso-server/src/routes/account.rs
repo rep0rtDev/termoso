@@ -224,6 +224,7 @@ pub async fn email_verify_confirm(
         return Err(Error::invalid_code());
     }
     session::invalidate_user_cache(&state, auth.user_id()).await?;
+    crate::enterprise::ensure_home_team(&state, auth.user_id()).await?;
     users::security_event(
         &state,
         auth.user_id(),
