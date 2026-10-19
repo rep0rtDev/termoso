@@ -1620,4 +1620,20 @@
     <string name="not_specified">Не указан</string>
     <string name="team_recordings">Записи команды</string>
     <string name="team_recordings_hint">Записи всех командных хранилищ, ключи которых есть на этом устройстве.</string>
+    <string name="created">Создана</string>
+    <string name="team_data_hint">Экспорт, удаление и задания ротации — в веб-кабинете или десктопном приложении.</string>
+    <string name="team_data_tile_hint">Регион, запланированное удаление, секреты к ротации.</string>
+    <string name="due_for_rotation">К ротации</string>
+    <string name="rotation_not_configured">Сроки ротации в политиках команды не заданы.</string>
+    <string name="nothing_is_due">Просроченных секретов нет</string>
+    <string name="host_password">Пароль хоста</string>
+    <string name="job_queued">задание в очереди</string>
+    <string name="rotation_jobs_pending">Заданий ротации в очереди или в работе: %1$d.</string>
+    <string name="group_and_host_access">Доступ к группам и хостам</string>
+    <string name="acl_hint">Правила сужают, что видит роль, участник или группа IdP в этом хранилище. ACL не заменяет отдельное хранилище: ключ есть у каждого участника.</string>
+    <string name="no_acl_rules">Правил нет</string>
+    <string name="acl_hidden">Скрыто</string>
+    <string name="acl_connect">Только подключение</string>
+    <string name="acl_read">Чтение</string>
+    <string name="acl_edit">Правка</string>
 </resources>

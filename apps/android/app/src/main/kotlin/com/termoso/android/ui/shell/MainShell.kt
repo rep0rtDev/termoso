@@ -20,6 +20,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.remember
@@ -87,7 +88,9 @@ import com.termoso.android.ui.snippets.SnippetsScreen
 import com.termoso.android.ui.team.TeamActivityScreen
 import com.termoso.android.ui.team.TeamRolesScreen
 import com.termoso.android.ui.team.TeamDevicesScreen
+import com.termoso.android.data.can
 import com.termoso.android.ui.team.TeamAccessScreen
+import com.termoso.android.ui.team.TeamDataScreen
 import com.termoso.android.ui.team.TeamScreen
 import com.termoso.android.ui.team.TeamVaultScreen
 import com.termoso.android.ui.team.TeamsScreen
@@ -137,6 +140,7 @@ object Routes {
     const val TEAM_DEVICES = "team/{id}/devices"
     const val TEAM_ACCESS = "team/{id}/access"
     const val TEAM_LOGS = "team/{id}/logs"
+    const val TEAM_DATA = "team/{id}/data"
     const val TEAM_VAULT = "teamVault/{id}"
     const val SIGN_IN = "signIn/{mode}"
     const val SFTP = "sftp/{id}"
@@ -165,6 +169,7 @@ object Routes {
     fun teamDevices(id: String) = "team/$id/devices"
     fun teamAccess(id: String) = "team/$id/access"
     fun teamLogs(id: String) = "team/$id/logs"
+    fun teamData(id: String) = "team/$id/data"
     fun teamVault(id: String) = "teamVault/$id"
     fun sftp(id: String) = "sftp/$id"
     fun pfNew(kind: PfKind, vault: String?, host: String?) =
@@ -528,6 +533,7 @@ fun MainShell(
                     onDevices = { nav.navigate(Routes.teamDevices(id)) },
                     onAccess = { nav.navigate(Routes.teamAccess(id)) },
                     onRecordings = { nav.navigate(Routes.teamLogs(id)) },
+                    onData = { nav.navigate(Routes.teamData(id)) },
                     onOpenAccount = { nav.navigate(Routes.ACCOUNT) },
                 )
             }
@@ -542,6 +548,11 @@ fun MainShell(
             composable(Routes.TEAM_DEVICES, arguments = listOf(idArg)) { entry ->
                 val id = entry.arguments?.getString("id") ?: return@composable
                 TeamDevicesScreen(shell = shell, teamId = id, onBack = { nav.popBackStack() })
+            }
+            composable(Routes.TEAM_DATA, arguments = listOf(idArg)) { entry ->
+                val id = entry.arguments?.getString("id") ?: return@composable
+                val t = shell.repo.perms.teams.collectAsState().value.firstOrNull { it.id == id }
+                TeamDataScreen(shell = shell, teamId = id, canRotation = t?.can("rotation.manage") == true, onBack = { nav.popBackStack() })
             }
             composable(Routes.TEAM_LOGS, arguments = listOf(idArg)) { entry ->
                 val id = entry.arguments?.getString("id") ?: return@composable

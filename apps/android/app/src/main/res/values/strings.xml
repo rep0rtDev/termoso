@@ -1588,4 +1588,20 @@
     <string name="not_specified">Not specified</string>
     <string name="team_recordings">Team recordings</string>
     <string name="team_recordings_hint">Recordings of every team vault this device holds a key for.</string>
+    <string name="created">Created</string>
+    <string name="team_data_hint">Export, deletion and rotation jobs are managed in the web cabinet or the desktop app.</string>
+    <string name="team_data_tile_hint">Region, deletion schedule, secrets due for rotation.</string>
+    <string name="due_for_rotation">Due for rotation</string>
+    <string name="rotation_not_configured">Rotation ages are not set in the team policies.</string>
+    <string name="nothing_is_due">Nothing is due</string>
+    <string name="host_password">Host password</string>
+    <string name="job_queued">job queued</string>
+    <string name="rotation_jobs_pending">%1$d rotation jobs are queued or running.</string>
+    <string name="group_and_host_access">Group and host access</string>
+    <string name="acl_hint">Rules narrow what a role, a member or an IdP group sees in this vault. ACL does not replace a separate vault: every member holds its key.</string>
+    <string name="no_acl_rules">No rules</string>
+    <string name="acl_hidden">Hidden</string>
+    <string name="acl_connect">Connect only</string>
+    <string name="acl_read">Read</string>
+    <string name="acl_edit">Edit</string>
 </resources>

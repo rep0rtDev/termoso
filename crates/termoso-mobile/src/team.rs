@@ -329,6 +329,40 @@ pub struct AccessRequestsCard {
     pub requests: Vec<AccessRequestCard>,
 }
 
+/// One group/host access rule of a team vault (read-only on mobile).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AclRuleCard {
+    pub id: String,
+    pub entity_id: String,
+    /// `host` | `group`.
+    pub entity_kind: String,
+    /// `role` | `member` | `group`.
+    pub principal_kind: String,
+    pub principal_name: String,
+    /// `none` | `connect` | `read` | `edit`.
+    pub mode: String,
+}
+
+/// A secret older than the team's rotation policy allows.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct RotationDueCard {
+    pub entity_id: String,
+    pub vault_id: String,
+    pub kind: String,
+    pub age_days: i32,
+    pub last_rotated_at: Option<String>,
+    pub job_queued: bool,
+}
+
+/// Rotation overview of a team (`rotation.manage`).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct RotationCard {
+    pub key_max_age_days: i32,
+    pub password_max_age_days: i32,
+    pub due: Vec<RotationDueCard>,
+    pub pending_jobs: i32,
+}
+
 /// Where the team's data lives and whether deletion is scheduled.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct TeamDataCard {
@@ -914,6 +948,57 @@ impl AccountRuntime {
                 )
                 .await?,
         ))
+    }
+
+    /// `GET /teams/{id}/vaults/{vault}/acl` — rules of one team vault.
+    pub async fn team_acl(
+        self: &Arc<Self>,
+        team_id: String,
+        vault_id: String,
+    ) -> Result<Vec<AclRuleCard>> {
+        let resp = self
+            .api()
+            .await?
+            .team_acl(parse_id(&team_id)?, parse_id(&vault_id)?)
+            .await?;
+        Ok(resp
+            .rules
+            .into_iter()
+            .map(|r| AclRuleCard {
+                id: r.id.to_string(),
+                entity_id: r.entity_id.to_string(),
+                entity_kind: r.entity_kind,
+                principal_kind: r.principal_kind,
+                principal_name: r.principal_name,
+                mode: r.mode,
+            })
+            .collect())
+    }
+
+    /// `GET /teams/{id}/rotation` — overdue secrets and queued jobs.
+    pub async fn team_rotation(self: &Arc<Self>, team_id: String) -> Result<RotationCard> {
+        let o = self.api().await?.team_rotation(parse_id(&team_id)?).await?;
+        Ok(RotationCard {
+            key_max_age_days: o.key_max_age_days,
+            password_max_age_days: o.password_max_age_days,
+            due: o
+                .due
+                .into_iter()
+                .map(|d| RotationDueCard {
+                    entity_id: d.entity_id.to_string(),
+                    vault_id: d.vault_id.to_string(),
+                    kind: d.kind,
+                    age_days: d.age_days,
+                    last_rotated_at: d.secret_rotated_at.map(|t| t.to_rfc3339()),
+                    job_queued: d.job_id.is_some(),
+                })
+                .collect(),
+            pending_jobs: o
+                .jobs
+                .iter()
+                .filter(|j| j.status == "pending" || j.status == "running")
+                .count() as i32,
+        })
     }
 
     /// `GET /teams/{id}/data` — region and deletion schedule.
