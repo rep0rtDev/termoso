@@ -97,6 +97,13 @@ key to produce, and a client never swaps a personal key it already holds for
 a same-version envelope. Entity ciphertext is bound to its kind and id, so
 records cannot be swapped between hosts or vaults.
 
+**ACL is not a vault.** Team ACL rules (group/host → `connect`/`read`/`edit`)
+are enforced by clients and, for directly named entities, by the server's
+write path. They do not change who can *decrypt*: anyone holding the vault
+key can read the whole vault with a modified client. Use separate team vaults
+for data that must stay invisible to some members; ACL is for discipline
+inside a vault, not isolation between adversaries.
+
 **Trusted by design — the server.** It is trusted for *freshness and
 ordering*: `version`, `seq` and `key_version` are server-controlled and not
 covered by the entity AAD, so a malicious server can withhold changes,
