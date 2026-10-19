@@ -38,9 +38,12 @@ the server's only metrics are opt-in Prometheus counters on a private listener.
 9. [Releases](#releases)
 10. [API overview](#api-overview)
 11. [Sponsoring](#sponsoring)
-12. [Contributing](#contributing)
+12. [Open source](#open-source)
+13. [Contributing](#contributing)
 
 ## What works today
+
+A picture gallery of every screen below is in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
 
 Version 0.9.x. Each row is shipped and covered by CI; the last column lists what
 is knowingly missing.
@@ -459,6 +462,24 @@ organisations running their own server (deployment, SLA-backed support,
 SSO / SCIM / SIEM integration work). Details and wallets are on
 [termoso.dev/sponsor](https://termoso.dev/sponsor); write to
 [hello@termoso.dev](mailto:hello@termoso.dev).
+
+## Open source
+
+Termoso stands on other people's work. The parts a user actually touches:
+
+| Area | Projects |
+| --- | --- |
+| Terminal | [alacritty_terminal](https://github.com/alacritty/alacritty) (grid and VT parser on Android), [xterm.js](https://xtermjs.org) with its fit / search / unicode11 / web-links / WebGL addons (desktop and cabinet), [portable-pty](https://github.com/wez/wezterm) (local shells) |
+| SSH, SFTP, serial | [russh](https://github.com/Eugeny/russh) and russh-sftp, [ssh-key](https://github.com/RustCrypto/SSH), [serialport](https://gitlab.com/susurrus/serialport-rs), [ctap-hid-fido2](https://github.com/gebogebogebo/ctap-hid-fido2) (FIDO2 keys), [dav-server](https://github.com/messense/dav-server-rs) (WebDAV) |
+| Cryptography | [opaque-ke](https://github.com/facebook/opaque-ke) (OPAQUE sign-in), [aws-lc-rs](https://github.com/aws/aws-lc-rs), [rustls](https://github.com/rustls/rustls), [RustCrypto](https://github.com/RustCrypto) (argon2, chacha20poly1305, hkdf, sha2, ed25519-dalek, p256, aes), [blake3](https://github.com/BLAKE3-team/BLAKE3), [webauthn-rs](https://github.com/kanidm/webauthn-rs), [totp-rs](https://github.com/constantoine/totp-rs), [bip39](https://github.com/rust-bitcoin/rust-bip39) |
+| Server | [tokio](https://tokio.rs), [axum](https://github.com/tokio-rs/axum), [tower](https://github.com/tower-rs/tower), [sqlx](https://github.com/launchbadge/sqlx), [redis-rs](https://github.com/redis-rs/redis-rs), [aws-sdk-s3](https://github.com/awslabs/aws-sdk-rust), [openidconnect](https://github.com/ramosbugs/openidconnect-rs) and oauth2, [lettre](https://lettre.rs), [utoipa](https://github.com/juhaku/utoipa), [metrics](https://github.com/metrics-rs/metrics), [figment](https://github.com/SergioBenitez/Figment), [tracing](https://github.com/tokio-rs/tracing) |
+| Desktop | [Tauri 2](https://tauri.app) and its plugins, [React](https://react.dev), [MUI](https://mui.com), [TanStack Query](https://tanstack.com/query), [Emotion](https://emotion.sh), [Vite](https://vitejs.dev), [Vitest](https://vitest.dev) |
+| Android | [Jetpack Compose](https://developer.android.com/compose) and AndroidX, [Kotlin coroutines](https://github.com/Kotlin/kotlinx.coroutines), [UniFFI](https://mozilla.github.io/uniffi-rs/) (Rust ↔ Kotlin), [JNA](https://github.com/java-native-access/jna), [CameraX](https://developer.android.com/training/camerax); the local Linux uses [proot](https://proot-me.github.io) in the [Termux](https://github.com/termux/proot) build with [talloc](https://talloc.samba.org) and [libandroid-shmem](https://github.com/termux/libandroid-shmem), and the official [Alpine Linux](https://alpinelinux.org) mini root filesystem or [Ubuntu Base](https://cdimage.ubuntu.com/ubuntu-base/) |
+| Web cabinet | React, MUI, TanStack Query, [React Router](https://reactrouter.com), [SimpleWebAuthn](https://simplewebauthn.dev), [marked](https://marked.js.org), [qrcode.react](https://github.com/zpao/qrcode.react) |
+| Fonts | [JetBrains Mono](https://www.jetbrains.com/lp/mono/), [Fira Code](https://github.com/tonsky/FiraCode), [Source Code Pro](https://github.com/adobe-fonts/source-code-pro), [Inter](https://rsms.me/inter/), [Cascadia Code](https://github.com/microsoft/cascadia-code), [Geist Mono](https://vercel.com/font), [Monaspace](https://monaspace.githubnext.com), [Intel One Mono](https://github.com/intel/intel-one-mono), [Commit Mono](https://commitmono.com), [Victor Mono](https://rubjo.github.io/victor-mono/), IBM Plex Mono, Red Hat Mono, Roboto Mono, Noto Sans Mono, Inconsolata, Anonymous Pro, Cousine, DejaVu Sans Mono, Fira Mono, PT Mono, Space Mono (all SIL OFL via [Fontsource](https://fontsource.org)), [Ubuntu Mono](https://design.ubuntu.com/font) (Ubuntu Font Licence), [Symbols Nerd Font Mono](https://www.nerdfonts.com) (MIT) |
+| Infrastructure | [PostgreSQL](https://www.postgresql.org), [Redis](https://redis.io), [RustFS](https://rustfs.com) (S3 storage in the reference deployment), [Mailpit](https://mailpit.axllent.org) (mail in CI), [Coolify](https://coolify.io) (reference hosting), [GitHub Actions](https://github.com/features/actions), [Sigstore](https://www.sigstore.dev) and [CycloneDX](https://cyclonedx.org) / [SPDX](https://spdx.dev) for release attestations and SBOMs |
+
+Licences of the Rust and npm dependencies are permissive (MIT, Apache-2.0, BSD, ISC, MPL-2.0, Zlib, CC0); proot is GPL-2.0 and talloc LGPL-3.0, both shipped as separate binaries and invoked as processes. The one piece that is not open source is Google ML Kit, used only to read QR codes in the Android Quick Import camera; everything else works without it. `cargo deny` and `npm audit` run in CI on every push, and every release carries a CycloneDX and SPDX SBOM. Thank you to everyone who maintains these projects.
 
 ## Contributing
 
