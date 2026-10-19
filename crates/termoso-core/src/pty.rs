@@ -91,13 +91,37 @@ pub fn default_shell_name() -> Option<String> {
     (!name.is_empty()).then(|| name.to_string())
 }
 
+/// Diagnostic trace for the local PTY (personal debug build): appends to
+/// `%TEMP%\termoso-pty.log` / `$TMPDIR/termoso-pty.log`.
+pub fn diag(msg: &str) {
+    use std::io::Write;
+    let path = std::env::temp_dir().join("termoso-pty.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let _ = writeln!(f, "{ts} {msg}");
+    }
+}
+
 impl LocalTerminal {
     /// Spawn the shell.
     pub fn spawn(opts: LocalShellOptions) -> Result<(Arc<LocalTerminal>, TermEvents)> {
+        diag(&format!(
+            "spawn: argv={:?} cwd={:?} size={}x{} env={:?}",
+            opts.argv, opts.cwd, opts.size.cols, opts.size.rows, opts.env
+        ));
         let pty = native_pty_system();
-        let pair = pty
-            .openpty(size(opts.size))
-            .map_err(|e| CoreError::Terminal(e.to_string()))?;
+        let pair = pty.openpty(size(opts.size)).map_err(|e| {
+            diag(&format!("openpty failed: {e}"));
+            CoreError::Terminal(e.to_string())
+        })?;
+        diag("openpty ok");
 
         let mut cmd = if opts.argv.is_empty() {
             default_shell_command()
@@ -119,13 +143,14 @@ impl LocalTerminal {
             cmd.env(k, v);
         }
 
-        let mut child = pair
-            .slave
-            .spawn_command(cmd)
-            .map_err(|e| CoreError::Terminal(e.to_string()))?;
+        let mut child = pair.slave.spawn_command(cmd).map_err(|e| {
+            diag(&format!("spawn_command failed: {e}"));
+            CoreError::Terminal(e.to_string())
+        })?;
         drop(pair.slave);
 
         let pid = child.process_id();
+        diag(&format!("spawned pid={pid:?}"));
         let killer = child.clone_killer();
         let mut reader = pair
             .master
@@ -151,12 +176,25 @@ impl LocalTerminal {
             .name("termoso-pty-reader".into())
             .spawn(move || {
                 let mut buf = [0u8; 16 * 1024];
+                diag("reader: started");
                 loop {
                     match reader.read(&mut buf) {
-                        Ok(0) | Err(_) => break,
+                        Ok(0) => {
+                            diag("reader: EOF");
+                            break;
+                        }
+                        Err(e) => {
+                            diag(&format!("reader: error {e} (os {:?})", e.raw_os_error()));
+                            break;
+                        }
                         Ok(n) => {
+                            diag(&format!(
+                                "reader: {n} bytes: {:?}",
+                                String::from_utf8_lossy(&buf[..n.min(80)])
+                            ));
                             let chunk = bytes::Bytes::copy_from_slice(&buf[..n]);
                             if tx.blocking_send(TermEvent::Output(chunk)).is_err() {
+                                diag("reader: channel closed");
                                 break;
                             }
                         }
@@ -164,6 +202,7 @@ impl LocalTerminal {
                 }
                 t2.closed.store(true, Ordering::SeqCst);
                 let status = child.wait().ok();
+                diag(&format!("child exited: {status:?}"));
                 let event = match status {
                     Some(s) => TermEvent::Exit {
                         code: Some(s.exit_code()),
@@ -191,8 +230,13 @@ impl TerminalSession for LocalTerminal {
             return Err(CoreError::Closed);
         }
         let mut w = self.writer.lock().unwrap_or_else(|p| p.into_inner());
-        w.write_all(data)?;
-        w.flush()?;
+        let r = w.write_all(data).and_then(|_| w.flush());
+        diag(&format!(
+            "write {} bytes -> {:?}",
+            data.len(),
+            r.as_ref().err()
+        ));
+        r?;
         Ok(())
     }
 
@@ -200,11 +244,14 @@ impl TerminalSession for LocalTerminal {
         if self.closed.load(Ordering::SeqCst) {
             return Ok(());
         }
-        self.master
-            .lock()
-            .await
-            .resize(size(s))
-            .map_err(|e| CoreError::Terminal(e.to_string()))
+        let r = self.master.lock().await.resize(size(s));
+        diag(&format!(
+            "resize {}x{} -> {:?}",
+            s.cols,
+            s.rows,
+            r.as_ref().err().map(|e| e.to_string())
+        ));
+        r.map_err(|e| CoreError::Terminal(e.to_string()))
     }
 
     async fn close(&self) -> Result<()> {
