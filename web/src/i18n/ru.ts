@@ -646,6 +646,10 @@ export const ru: Readonly<Record<string, string>> = {
   "Device signed out": "Устройство вышло",
   Discard: "Отменить изменения",
   "Disconnect {v1}?": "Отключить {v1}?",
+  "Download {file}": "Скачать {file}",
+  "Team vaults · {v1}": "Командные хранилища · {v1}",
+  "Filter by vault or team": "Поиск по хранилищу или команде",
+  "No vaults match": "Ничего не найдено",
   "Download {file} again": "Скачать {file} ещё раз",
   "Edit comment": "Изменить комментарий",
   Enabled: "Включено",
@@ -687,6 +691,7 @@ export const ru: Readonly<Record<string, string>> = {
     "Держите порт на localhost или задайте {v1}; клиенты передают его как {v2}. Полный справочник REST — в  {v3} .",
   "Kept forever": "Хранится всегда",
   "Key version {key_version} · created {v1}": "Версия ключа {key_version} · создано {v1}",
+  "Max. {v1} days on this server": "Макс. {v1} дн. на этом сервере",
   "Last changed {v1}": "Изменено {v1}",
   "Loading…": "Загрузка…",
   "Lost the recovery key too?  {v1}  — the old encrypted data cannot be recovered.":

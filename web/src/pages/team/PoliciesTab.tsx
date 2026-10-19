@@ -17,7 +17,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@/api/client";
 import { teamsApi } from "@/api/endpoints";
-import { queryKeys } from "@/api/hooks";
+import { queryKeys, useServerInfo } from "@/api/hooks";
 import type { Team, TeamPolicies, UpdateTeamPolicies } from "@/api/types";
 import { Loading } from "@/components/Loading";
 import { Section, SettingRow } from "@/components/Section";
@@ -78,6 +78,8 @@ function PoliciesForm({
     onError: (e) => snack.error(errorMessage(e)),
   });
   const ro = !manage;
+  const serverInfo = useServerInfo();
+  const retentionCap = serverInfo.data?.audit_retention_days_max ?? 3650;
   return (
     <Section
       title={tr("Team policies")}
@@ -224,7 +226,8 @@ function PoliciesForm({
             value={p.audit_retention_days}
             disabled={ro}
             onChange={(e) => setP({ ...p, audit_retention_days: Number(e.target.value) })}
-            slotProps={{ htmlInput: { min: 30, max: 3650 } }}
+            slotProps={{ htmlInput: { min: 30, max: retentionCap } }}
+            helperText={tr("Max. {v1} days on this server", { v1: retentionCap })}
             sx={{ width: 150 }}
           />
         }

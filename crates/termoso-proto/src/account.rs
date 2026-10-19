@@ -179,6 +179,9 @@ schema! {
         /// Data-residency label of this server (`TERMOSO_DATA_REGION`).
         #[serde(default)]
         pub region: Option<String>,
+        /// Ceiling for per-team audit retention (days).
+        #[serde(default)]
+        pub audit_retention_days_max: u32,
         /// Corporate mode: the team every account joins automatically.
         #[serde(default)]
         pub home_team: Option<HomeTeam>,

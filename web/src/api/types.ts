@@ -35,6 +35,7 @@ export interface SsoProvider {
 }
 
 export interface ServerInfo {
+  audit_retention_days_max: number;
   name: string;
   version: string;
   registration_open: boolean;

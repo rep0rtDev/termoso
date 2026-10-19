@@ -272,8 +272,14 @@ function CredentialsDialog({
               downloadJson(file, creds);
               setDownloaded(true);
             }}
+            sx={{
+              alignSelf: "flex-start",
+              maxWidth: "100%",
+              textAlign: "left",
+              wordBreak: "break-all",
+            }}
           >
-            {downloaded ? tr("Download {file} again", { file }) : `Download ${file}`}
+            {downloaded ? tr("Download {file} again", { file }) : tr("Download {file}", { file })}
           </Button>
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>

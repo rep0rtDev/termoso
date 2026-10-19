@@ -139,6 +139,9 @@ function TeamTabs({ team, admin }: { team: Team; admin: boolean }) {
             else next.set("tab", v);
             setParams(next, { replace: true });
           }}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
           sx={{ mb: 2, borderBottom: 1, borderColor: "divider" }}
         >
           {tabs.map((t) => (
