@@ -155,3 +155,53 @@ async fn admin_sees_teams_and_manages_members() {
         .json(Method::GET, "/admin/jobs", Some(admin.token()), NOBODY)
         .await;
 }
+
+#[tokio::test]
+async fn admin_sees_effective_config() {
+    use termoso_proto::admin::{AdminConfig, ServerSettings};
+    let Some(s) = server().await else { return };
+    let admin = register(s, "admin@test.local", "pw-admin-1234567").await;
+    let user = register(s, &unique_email("cfg-user"), "pw-user-12345678").await;
+
+    s.expect_status(
+        Method::GET,
+        "/admin/config",
+        Some(user.token()),
+        NOBODY,
+        StatusCode::FORBIDDEN,
+    )
+    .await;
+
+    let cfg: AdminConfig = s
+        .json(Method::GET, "/admin/config", Some(admin.token()), NOBODY)
+        .await;
+    assert_eq!(cfg.server.version, env!("CARGO_PKG_VERSION"));
+    assert_eq!(cfg.database.status, "ok");
+    assert_eq!(cfg.redis.status, "ok");
+    assert!(
+        !cfg.database.endpoint.contains('@'),
+        "credentials leaked: {}",
+        cfg.database.endpoint
+    );
+    assert!(!cfg.redis.endpoint.contains('@'));
+    assert_eq!(cfg.settings.limits.max_entity_bytes_max, 4 * 1024 * 1024);
+    assert_eq!(cfg.settings.defaults.session_ttl_days, 90);
+
+    let mut settings: ServerSettings = s
+        .json(Method::GET, "/admin/settings", Some(admin.token()), NOBODY)
+        .await;
+    settings.session_ttl_days = 45;
+    let _: ServerSettings = s
+        .json(
+            Method::PUT,
+            "/admin/settings",
+            Some(admin.token()),
+            Some(&serde_json::to_value(&settings).unwrap()),
+        )
+        .await;
+    let cfg: AdminConfig = s
+        .json(Method::GET, "/admin/config", Some(admin.token()), NOBODY)
+        .await;
+    assert!(cfg.settings.updated_at.is_some());
+    assert_eq!(cfg.settings.updated_by.as_deref(), Some("admin@test.local"));
+}

@@ -164,16 +164,35 @@ impl Inner {
         Ok(settings)
     }
 
-    pub async fn save_settings(&self, settings: &ServerSettings) -> ApiResult<()> {
+    pub async fn save_settings(
+        &self,
+        settings: &ServerSettings,
+        updated_by: Option<uuid::Uuid>,
+    ) -> ApiResult<()> {
         sqlx::query(
-            "INSERT INTO server_settings (id, data, updated_at) VALUES (1, $1, now())
-             ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()",
+            "INSERT INTO server_settings (id, data, updated_at, updated_by) VALUES (1, $1, now(), $2)
+             ON CONFLICT (id) DO UPDATE
+                SET data = EXCLUDED.data, updated_at = now(), updated_by = EXCLUDED.updated_by",
         )
         .bind(serde_json::to_value(settings)?)
+        .bind(updated_by)
         .execute(&self.db)
         .await?;
         self.cache.del(SETTINGS_KEY).await?;
         Ok(())
+    }
+
+    /// When and by whom the settings were last saved (`None` = still defaults).
+    pub async fn settings_meta(
+        &self,
+    ) -> ApiResult<Option<(chrono::DateTime<chrono::Utc>, Option<String>)>> {
+        let row: Option<(chrono::DateTime<chrono::Utc>, Option<String>)> = sqlx::query_as(
+            "SELECT s.updated_at, u.email FROM server_settings s
+             LEFT JOIN users u ON u.id = s.updated_by WHERE s.id = 1",
+        )
+        .fetch_optional(&self.db)
+        .await?;
+        Ok(row)
     }
 
     pub fn is_bootstrap_admin(&self, email: &str) -> bool {

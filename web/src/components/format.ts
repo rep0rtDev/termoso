@@ -46,8 +46,8 @@ export function formatRelative(iso: string | undefined | null): string {
 }
 
 export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  const units = ["KB", "MB", "GB", "TB"];
+  if (n < 1024) return `${n} ${tr("B")}`;
+  const units = [tr("KB"), tr("MB"), tr("GB"), tr("TB")];
   let v = n / 1024;
   let i = 0;
   while (v >= 1024 && i < units.length - 1) {

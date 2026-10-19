@@ -328,6 +328,7 @@ pub fn router(state: AppState) -> Router {
         .route("/live/{id}/ws", get(crate::live::ws))
         // admin
         .route("/admin/stats", get(admin::stats))
+        .route("/admin/config", get(admin::config))
         .route("/admin/users", get(admin::users))
         .route(
             "/admin/users/{id}",

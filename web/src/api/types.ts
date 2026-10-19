@@ -653,6 +653,119 @@ export interface ServerSettings {
   personal_vaults?: boolean;
 }
 
+/** `GET /admin/config` — effective runtime configuration (secrets masked) plus live probes. */
+export interface AdminConfig {
+  server: AdminConfigServer;
+  database: AdminConfigService;
+  redis: AdminConfigService;
+  storage: AdminConfigStorage | null;
+  smtp: AdminConfigSmtp | null;
+  sso: AdminConfigSso[];
+  webauthn: AdminConfigWebauthn | null;
+  ai: AdminConfigAi | null;
+  settings: AdminSettingsMeta;
+}
+
+export interface AdminConfigServer {
+  version: string;
+  started_at: string;
+  uptime_secs: number;
+  name: string;
+  public_url: string;
+  web_url: string;
+  bind: string;
+  trust_proxy: boolean;
+  cors_origins: string[];
+  log: string;
+  log_format: string;
+  data_region: string | null;
+  min_client_version: string;
+  min_client_version_overridden: boolean;
+  start_over_delay_secs: number;
+  team_deletion_grace_days: number;
+  team_audit_retention_days_max: number;
+  audit_sink: boolean;
+  swagger_ui: boolean;
+  bridges: boolean;
+  team_idp: boolean;
+  landing: boolean;
+  docs: boolean;
+  metrics_bind: string | null;
+  webhooks_allow_private: boolean;
+  webhooks_syslog_ca: boolean;
+  turnstile: boolean;
+  admin_emails: string[];
+  owner_email: string | null;
+}
+
+export interface AdminConfigService {
+  endpoint: string;
+  detail: string | null;
+  status: "ok" | "error";
+  latency_ms: number | null;
+  error: string | null;
+}
+
+export interface AdminConfigStorage {
+  bucket: string;
+  region: string | null;
+  endpoint: string | null;
+  public_endpoint: string | null;
+  force_path_style: boolean;
+  presign_secs: number;
+  status: "ok" | "error";
+  latency_ms: number | null;
+  error: string | null;
+}
+
+export interface AdminConfigSmtp {
+  host: string;
+  port: number;
+  security: "starttls" | "tls" | "none";
+  from: string;
+  auth: boolean;
+}
+
+export interface AdminConfigSso {
+  id: string;
+  name: string;
+  kind: "oidc" | "saml";
+  issuer: string | null;
+  allowed_domains: string[];
+}
+
+export interface AdminConfigWebauthn {
+  rp_id: string;
+  rp_name: string;
+  origins: string[];
+}
+
+export interface AdminConfigAi {
+  provider: string;
+  model: string;
+  endpoint: string;
+  confidential: boolean;
+  daily_quota: number;
+  max_prompt_chars: number;
+  timeout_secs: number;
+}
+
+export interface AdminSettingsMeta {
+  defaults: ServerSettings;
+  limits: AdminSettingsLimits;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+export interface AdminSettingsLimits {
+  session_ttl_days_min: number;
+  session_ttl_days_max: number;
+  max_entity_bytes_min: number;
+  max_entity_bytes_max: number;
+  max_log_bytes_min: number;
+  audit_retention_days_max: number;
+}
+
 export interface AdminTeam {
   id: string;
   name: string;

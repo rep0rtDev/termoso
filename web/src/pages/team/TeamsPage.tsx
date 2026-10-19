@@ -1,28 +1,34 @@
-import { useState, type SubmitEvent } from "react";
-import { tr, trx } from "@/i18n";
+import { useMemo, useState, type SubmitEvent } from "react";
+import { tr, trn } from "@/i18n";
 import {
   Alert,
   Chip,
   Button,
-  Card,
-  CardActionArea,
-  CardContent,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
-  Grid,
+  InputAdornment,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TablePagination,
+  TableRow,
   TextField,
   Typography,
 } from "@mui/material";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import { errorMessage } from "@/api/client";
 import { teamsApi } from "@/api/endpoints";
+import type { Team } from "@/api/types";
 import { queryKeys, useServerInfo } from "@/api/hooks";
 import { useAuthState } from "@/auth/store";
 import { EmptyState } from "@/components/EmptyState";
@@ -116,49 +122,11 @@ export function TeamsPage() {
           }
         />
       ) : (
-        <Grid container spacing={2}>
-          {teams.data.teams.map((t) => (
-            <Grid key={t.id} size={{ xs: 12, sm: 6, md: 4 }}>
-              <Card sx={{ height: "100%" }}>
-                <CardActionArea
-                  onClick={() => void navigate(`/team/${t.id}`)}
-                  sx={{ height: "100%" }}
-                >
-                  <CardContent>
-                    <Stack spacing={1.5}>
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        sx={{ alignItems: "center", justifyContent: "space-between" }}
-                      >
-                        <Typography variant="h6" noWrap>
-                          {t.name}
-                        </Typography>
-                        <Stack
-                          direction="row"
-                          spacing={0.5}
-                          sx={{ alignItems: "center", flexShrink: 0 }}
-                        >
-                          {info.data?.home_team?.id === t.id && (
-                            <Chip size="small" variant="outlined" label={tr("Home team")} />
-                          )}
-                          <RoleChip role={t.my_role} />
-                        </Stack>
-                      </Stack>
-                      <Typography variant="body2" color="text.secondary">
-                        {trx("{member_count} {v1} · created  {v2}", {
-                          member_count: t.member_count,
-                          v1: t.member_count === 1 ? "member" : "members",
-                          v2: formatDate(t.created_at),
-                        })}
-                      </Typography>
-                    </Stack>
-                  </CardContent>
-                </CardActionArea>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
+        <TeamsTable
+          teams={teams.data.teams}
+          homeTeamId={info.data?.home_team?.id}
+          onOpen={(id) => void navigate(`/team/${id}`)}
+        />
       )}
 
       <Dialog
@@ -203,5 +171,153 @@ export function TeamsPage() {
         </form>
       </Dialog>
     </>
+  );
+}
+
+/** Compact flags of the policies a team enforces, for the list. */
+function PolicyChips({ t }: { t: Team }) {
+  const p = t.policies;
+  const chips: string[] = [];
+  if ((p && p.mfa !== "off") || t.require_mfa) chips.push(tr("MFA"));
+  if (p?.sso_only) chips.push(tr("SSO"));
+  if (p?.device_approval || p?.device_admin_approval) chips.push(tr("Devices"));
+  if (p?.ip_allowlist.length) chips.push(tr("IP"));
+  if (p?.session_recording === "required") chips.push(tr("Recording"));
+  if (chips.length === 0)
+    return (
+      <Typography variant="body2" color="text.secondary">
+        —
+      </Typography>
+    );
+  return (
+    <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: "wrap" }}>
+      {chips.map((c) => (
+        <Chip key={c} size="small" variant="outlined" label={c} sx={{ height: 20 }} />
+      ))}
+    </Stack>
+  );
+}
+
+function TeamsTable({
+  teams,
+  homeTeamId,
+  onOpen,
+}: {
+  teams: Team[];
+  homeTeamId: string | undefined;
+  onOpen: (id: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [page, setPage] = useState(0);
+  const [limit, setLimit] = useState(25);
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const list = needle ? teams.filter((t) => t.name.toLowerCase().includes(needle)) : teams;
+    return [...list].sort((a, b) =>
+      a.id === homeTeamId ? -1 : b.id === homeTeamId ? 1 : a.name.localeCompare(b.name),
+    );
+  }, [teams, q, homeTeamId]);
+  const pageItems = filtered.slice(page * limit, page * limit + limit);
+  return (
+    <Stack spacing={1.5}>
+      {teams.length > 8 && (
+        <TextField
+          size="small"
+          placeholder={tr("Search teams")}
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setPage(0);
+          }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchRoundedIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            },
+          }}
+          sx={{ maxWidth: 360 }}
+        />
+      )}
+      <TableContainer sx={{ bgcolor: "surface.high", borderRadius: 2 }}>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>{tr("Team")}</TableCell>
+              <TableCell>{tr("Your role")}</TableCell>
+              <TableCell align="right">{tr("Members")}</TableCell>
+              <TableCell>{tr("Policies")}</TableCell>
+              <TableCell>{tr("Created")}</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {pageItems.map((t) => (
+              <TableRow
+                key={t.id}
+                hover
+                onClick={() => onOpen(t.id)}
+                sx={{ cursor: "pointer" }}
+                role="link"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onOpen(t.id);
+                }}
+              >
+                <TableCell>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {t.name}
+                    </Typography>
+                    {homeTeamId === t.id && (
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={tr("Home team")}
+                        sx={{ height: 20 }}
+                      />
+                    )}
+                  </Stack>
+                </TableCell>
+                <TableCell>
+                  <RoleChip role={t.my_role} />
+                </TableCell>
+                <TableCell align="right">
+                  {trn(t.member_count, "{count} member", "{count} members")}
+                </TableCell>
+                <TableCell>
+                  <PolicyChips t={t} />
+                </TableCell>
+                <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDate(t.created_at)}</TableCell>
+              </TableRow>
+            ))}
+            {pageItems.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5}>
+                  <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                    {tr("No teams match.")}
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+        {filtered.length > 10 && (
+          <TablePagination
+            component="div"
+            count={filtered.length}
+            page={page}
+            onPageChange={(_, p) => setPage(p)}
+            rowsPerPage={limit}
+            onRowsPerPageChange={(e) => {
+              setLimit(Number(e.target.value));
+              setPage(0);
+            }}
+            rowsPerPageOptions={[10, 25, 50]}
+          />
+        )}
+      </TableContainer>
+    </Stack>
   );
 }
