@@ -217,36 +217,32 @@ export function SftpPage() {
 
   return (
     <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <Toolbar
-        trailing={
-          order.length > 0 && (
-            <Stack direction="row" spacing={0.75} sx={{ overflowX: "auto", py: 0.5 }}>
-              {order.map((id) => {
-                const c = conns[id];
-                if (!c) return null;
-                return (
-                  <Chip
-                    key={id}
-                    label={c.title}
-                    size="small"
-                    variant={id === activeId ? "filled" : "outlined"}
-                    color={c.status === "error" ? "error" : id === activeId ? "primary" : "default"}
-                    icon={
-                      c.status === "connecting" ? (
-                        <CircularProgress size={12} sx={{ ml: 0.75 }} />
-                      ) : undefined
-                    }
-                    onClick={() => setActiveSftp(id)}
-                    onDelete={() => void closeSftp(id)}
-                  />
-                );
-              })}
-            </Stack>
-          )
-        }
-      >
-        {null}
-      </Toolbar>
+      {order.length > 0 && (
+        <Toolbar>
+          <Stack direction="row" spacing={0.75} sx={{ overflowX: "auto", py: 0.5 }}>
+            {order.map((id) => {
+              const c = conns[id];
+              if (!c) return null;
+              return (
+                <Chip
+                  key={id}
+                  label={c.title}
+                  size="small"
+                  variant={id === activeId ? "filled" : "outlined"}
+                  color={c.status === "error" ? "error" : id === activeId ? "primary" : "default"}
+                  icon={
+                    c.status === "connecting" ? (
+                      <CircularProgress size={12} sx={{ ml: 0.75 }} />
+                    ) : undefined
+                  }
+                  onClick={() => setActiveSftp(id)}
+                  onDelete={() => void closeSftp(id)}
+                />
+              );
+            })}
+          </Stack>
+        </Toolbar>
+      )}
 
       <Stack direction="row" sx={{ flex: 1, minHeight: 0 }}>
         <PaneFrame>
