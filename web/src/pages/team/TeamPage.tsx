@@ -48,6 +48,9 @@ import { AuditTab } from "./AuditTab";
 import { PoliciesTab } from "./PoliciesTab";
 import { RolesTab } from "./RolesTab";
 import { ScimTab } from "./ScimTab";
+import { AccessTab } from "./AccessTab";
+import { DataTab } from "./DataTab";
+import { DevicesTab } from "./DevicesTab";
 import { can } from "./perm";
 import { errorMessage } from "@/api/client";
 import { teamsApi, vaultsApi } from "@/api/endpoints";
@@ -110,7 +113,18 @@ function TeamDetail({ team }: { team: Team }) {
   );
 }
 
-type TabKey = "members" | "roles" | "policies" | "audit" | "scim";
+type TabKey =
+  | "members"
+  | "roles"
+  | "policies"
+  | "audit"
+  | "scim"
+  | "sso"
+  | "access"
+  | "devices"
+  | "rotation"
+  | "logs"
+  | "data";
 
 function TeamTabs({ team, admin }: { team: Team; admin: boolean }) {
   const [params, setParams] = useSearchParams();
@@ -124,6 +138,9 @@ function TeamTabs({ team, admin }: { team: Team; admin: boolean }) {
       show: can(team, "audit.view") || can(team, "webhooks.manage"),
     },
     { key: "scim", label: tr("SCIM"), show: can(team, "scim.manage") || can(team, "scim.tokens") },
+    { key: "access", label: tr("Access"), show: true },
+    { key: "devices", label: tr("Devices"), show: can(team, "devices.approve") },
+    { key: "data", label: tr("Data"), show: true },
   ];
   const tabs = all.filter((t) => t.show);
   const requested = params.get("tab");
@@ -162,6 +179,9 @@ function TeamTabs({ team, admin }: { team: Team; admin: boolean }) {
       {tab === "policies" && <PoliciesTab team={team} />}
       {tab === "audit" && <AuditTab team={team} />}
       {tab === "scim" && <ScimTab team={team} />}
+      {tab === "access" && <AccessTab team={team} />}
+      {tab === "devices" && <DevicesTab team={team} />}
+      {tab === "data" && <DataTab team={team} />}
     </>
   );
 }

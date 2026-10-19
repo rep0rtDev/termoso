@@ -296,7 +296,8 @@ export const teamsApi = {
   updateIdp: (id: string, patch: UpdateTeamIdp) =>
     http.put<TeamIdpResponse>(`/teams/${id}/idp`, patch),
   deleteIdp: (id: string) => http.delete<undefined>(`/teams/${id}/idp`),
-  testIdp: (id: string, patch: UpdateTeamIdp) => http.post<TeamIdpResponse>(`/teams/${id}/idp/test`, patch),
+  testIdp: (id: string, patch: UpdateTeamIdp) =>
+    http.post<TeamIdpResponse>(`/teams/${id}/idp/test`, patch),
   acl: (id: string, vaultId: string) =>
     http.get<{ rules: EntityAclRule[] }>(`/teams/${id}/vaults/${vaultId}/acl`),
   upsertAcl: (id: string, vaultId: string, rule: UpsertEntityAcl) =>
@@ -305,7 +306,7 @@ export const teamsApi = {
     http.delete<undefined>(`/teams/${id}/vaults/${vaultId}/acl/${ruleId}`),
   logs: (id: string, q: { vault_id?: string; from?: string; to?: string } = {}) =>
     http.get<{ logs: SessionLog[] }>(`/teams/${id}/logs`, { query: q }),
-  logsExportPath: (id: string) => `/teams/${id}/logs/export`,
+  logsExport: (id: string) => fetchBlob(`/teams/${id}/logs/export`),
   rotation: (id: string) => http.get<RotationOverview>(`/teams/${id}/rotation`),
   createRotationJobs: (
     id: string,
@@ -329,7 +330,7 @@ export const teamsApi = {
   revokeAccessRequest: (id: string, rid: string, note?: string) =>
     http.post<AccessRequest>(`/teams/${id}/access-requests/${rid}/revoke`, { note }),
   data: (id: string) => http.get<TeamDataStatus>(`/teams/${id}/data`),
-  exportPath: (id: string) => `/teams/${id}/export`,
+  exportData: (id: string) => fetchBlob(`/teams/${id}/export`),
   scheduleDeletion: (id: string, confirmName: string) =>
     http.post<TeamDataStatus>(`/teams/${id}/deletion`, { confirm_name: confirmName }),
   cancelDeletion: (id: string) => http.delete<TeamDataStatus>(`/teams/${id}/deletion`),
