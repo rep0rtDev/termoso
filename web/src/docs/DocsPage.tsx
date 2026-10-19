@@ -269,7 +269,7 @@ export function DocsPage() {
     window.scrollTo(0, 0);
   }, [location.pathname, location.hash, rendered]);
 
-  if (!page || !rendered) return <NotFoundPage />;
+  if (!page || !rendered) return <NotFoundPage to="/docs" label="Open the docs" />;
   const i = pages.indexOf(page);
   const prev = i > 0 ? pages[i - 1] : null;
   const next = i < pages.length - 1 ? pages[i + 1] : null;
