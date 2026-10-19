@@ -76,7 +76,12 @@ export interface Edit {
 export interface SftpState {
   conns: Record<Uuid, SftpConn>;
   order: Uuid[];
+  /** Connection shown in the right pane. */
   activeId: Uuid | null;
+  /** Connection shown in the left pane; `null` = the local file system. */
+  leftId: Uuid | null;
+  /** Left pane is showing the host picker instead of a file list. */
+  leftPicking: boolean;
   transfers: Record<Uuid, Transfer>;
   transferOrder: Uuid[];
   edits: Record<Uuid, Edit>;
@@ -89,6 +94,8 @@ export const sftpStore = createStore<SftpState>({
   conns: {},
   order: [],
   activeId: null,
+  leftId: null,
+  leftPicking: false,
   transfers: {},
   transferOrder: [],
   edits: {},
@@ -129,7 +136,14 @@ function connect(id: Uuid, target: SftpTarget) {
     });
 }
 
-export function openSftp(target: SftpTarget, title: string, hostId: Uuid | null): Uuid {
+export type PaneSide = "left" | "right";
+
+export function openSftp(
+  target: SftpTarget,
+  title: string,
+  hostId: Uuid | null,
+  side: PaneSide = "right",
+): Uuid {
   const s = sftpStore.get();
   if (target.kind === "session") {
     const existing = Object.values(s.conns).find(
@@ -140,7 +154,8 @@ export function openSftp(target: SftpTarget, title: string, hostId: Uuid | null)
         c.status !== "error",
     );
     if (existing) {
-      setActiveSftp(existing.id);
+      if (side === "left") setLeftSource(existing.id);
+      else setActiveSftp(existing.id);
       return existing.id;
     }
   }
@@ -158,23 +173,37 @@ export function openSftp(target: SftpTarget, title: string, hostId: Uuid | null)
     ...st,
     conns: { ...st.conns, [id]: conn },
     order: [...st.order, id],
-    activeId: id,
+    ...(side === "left" ? { leftId: id, leftPicking: false } : { activeId: id }),
   }));
   connect(id, target);
   return id;
 }
 
-export const openSftpForHost = (hostId: Uuid, title: string, vaultId: Uuid | null = null) => {
+export const openSftpForHost = (
+  hostId: Uuid,
+  title: string,
+  vaultId: Uuid | null = null,
+  side: PaneSide = "right",
+) => {
   if (!requirePerm(vaultId, "connect.sftp")) return;
-  openSftp({ kind: "host", host_id: hostId, vault_id: vaultId }, title, hostId);
+  openSftp({ kind: "host", host_id: hostId, vault_id: vaultId }, title, hostId, side);
 };
 
-export const openSftpForSession = (sessionId: Uuid, title: string, hostId: Uuid | null) =>
-  openSftp({ kind: "session", session_id: sessionId }, title, hostId);
+export const openSftpForSession = (
+  sessionId: Uuid,
+  title: string,
+  hostId: Uuid | null,
+  side: PaneSide = "right",
+) => openSftp({ kind: "session", session_id: sessionId }, title, hostId, side);
 
-export const openWebDavForHost = (hostId: Uuid, title: string, vaultId: Uuid | null = null) => {
+export const openWebDavForHost = (
+  hostId: Uuid,
+  title: string,
+  vaultId: Uuid | null = null,
+  side: PaneSide = "right",
+) => {
   if (!requirePerm(vaultId, "connect.sftp")) return;
-  openSftp({ kind: "webdav", host_id: hostId, vault_id: vaultId }, title, hostId);
+  openSftp({ kind: "webdav", host_id: hostId, vault_id: vaultId }, title, hostId, side);
 };
 
 /** Capabilities of a connection; full SFTP until Rust reports otherwise. */
@@ -192,12 +221,23 @@ export function setActiveSftp(id: Uuid | null) {
   update((s) => (s.activeId === id ? s : { ...s, activeId: id }));
 }
 
+/** Left pane source: a connection, or `null` for the local file system. */
+export function setLeftSource(id: Uuid | null) {
+  update((s) => ({ ...s, leftId: id, leftPicking: false }));
+}
+
+/** Show the host picker in the left pane. */
+export function startLeftPick() {
+  update((s) => ({ ...s, leftPicking: true }));
+}
+
 export async function closeSftp(id: Uuid) {
   update((s) => {
     const conns = omit(s.conns, id);
     const order = s.order.filter((x) => x !== id);
     const activeId = s.activeId === id ? (order[order.length - 1] ?? null) : s.activeId;
-    return { ...s, conns, order, activeId };
+    const leftId = s.leftId === id ? null : s.leftId;
+    return { ...s, conns, order, activeId, leftId };
   });
   await ipc.sftpClose(id).catch(() => undefined);
 }
@@ -242,6 +282,7 @@ function addTransfer(info: TransferInfo) {
 
 export async function startTransfer(args: {
   sftpId: Uuid;
+  toSftpId?: Uuid | null;
   direction: Direction;
   local: string;
   remote: string;

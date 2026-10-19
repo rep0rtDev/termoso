@@ -5,15 +5,20 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Divider,
+  IconButton,
   InputAdornment,
   List,
   ListItemButton,
   ListItemText,
   ListSubheader,
+  Menu,
+  MenuItem,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
+import ArrowDropDownRoundedIcon from "@mui/icons-material/ArrowDropDownRounded";
 import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
@@ -27,7 +32,7 @@ import { IconTile, Toolbar } from "@/components/ui";
 import { HostAvatar } from "@/hosts/HostAvatar";
 import { useTerminal } from "@/terminal/store";
 import { ConflictDialog, type ConflictDecision, type ConflictPrompt } from "./ConflictDialog";
-import { FilePane, type Side } from "./FilePane";
+import { FilePane, type PaneKey } from "./FilePane";
 import { OpenWithDialog, extensionOf } from "./OpenWithDialog";
 import { TransfersPanel } from "./TransfersPanel";
 import { dropTargetAt, stageDrop, statPaths } from "./drop";
@@ -42,7 +47,10 @@ import {
   openWebDavForHost,
   reconnectSftp,
   setActiveSftp,
+  setLeftSource,
   sftpStore,
+  startLeftPick,
+  type SftpConn,
   startTransfer,
   useSftp,
 } from "./store";
@@ -55,27 +63,54 @@ interface Planned {
   existing: FsEntry | null;
 }
 
+type Source = { kind: "local" } | { kind: "none" } | { kind: "conn"; conn: SftpConn };
+
+interface Batch {
+  sftpId: Uuid;
+  toSftpId: Uuid | null;
+  direction: Direction;
+  entries: FsEntry[];
+  dest: string;
+  temp: boolean;
+}
+
+const otherPane = (p: PaneKey): PaneKey => (p === "left" ? "right" : "left");
+
 export function SftpPage() {
   const order = useSftp((s) => s.order);
   const conns = useSftp((s) => s.conns);
   const activeId = useSftp((s) => s.activeId);
+  const leftId = useSftp((s) => s.leftId);
+  const leftPicking = useSftp((s) => s.leftPicking);
   const active = activeId ? conns[activeId] : undefined;
-  const [localPath, setLocalPath] = useState<string | null>(null);
-  const [remotePath, setRemotePath] = useState<string | null>(null);
+  const left = leftId ? conns[leftId] : undefined;
+  const [leftPath, setLeftPath] = useState<string | null>(null);
+  const [rightPath, setRightPath] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<ConflictPrompt | null>(null);
-  const [openWith, setOpenWith] = useState<{ side: Side; entry: FsEntry } | null>(null);
+  const [openWith, setOpenWith] = useState<{ pane: PaneKey; entry: FsEntry } | null>(null);
   const snack = useSnackbar();
   const settings = useSettings();
   const edits = useSftp((s) => s.edits);
-  const editing = useMemo(
-    () => (activeId ? editingPaths(Object.values(edits), activeId) : undefined),
-    [edits, activeId],
-  );
+  const editList = useMemo(() => Object.values(edits), [edits]);
   /** Batches wait for each other so only one conflict dialog is up at a time. */
   const queue = useRef(Promise.resolve());
 
-  const onLocalPath = useCallback((p: string) => setLocalPath(p), []);
-  const onRemotePath = useCallback((p: string) => setRemotePath(p), []);
+  const onLeftPath = useCallback((p: string) => setLeftPath(p), []);
+  const onRightPath = useCallback((p: string) => setRightPath(p), []);
+
+  const connOf = (pane: PaneKey): SftpConn | undefined => (pane === "left" ? left : active);
+  const sourceOf = (pane: PaneKey): Source => {
+    const c = connOf(pane);
+    if (c) return { kind: "conn", conn: c };
+    return pane === "left" && !leftPicking ? { kind: "local" } : { kind: "none" };
+  };
+  const ready = (s: Source) =>
+    s.kind === "local" || (s.kind === "conn" && s.conn.status === "open");
+  const pathOf = (pane: PaneKey) => (pane === "left" ? leftPath : rightPath);
+  const oppositePath = (pane: PaneKey) => {
+    const o = otherPane(pane);
+    return ready(sourceOf(o)) ? pathOf(o) : null;
+  };
 
   const ask = (p: Omit<ConflictPrompt, "resolve">) =>
     new Promise<ConflictDecision | null>((resolve) => {
@@ -88,19 +123,21 @@ export function SftpPage() {
       });
     });
 
-  const runBatch = async (
-    sftpId: Uuid,
-    direction: Direction,
-    entries: FsEntry[],
-    dest: string,
-    temp: boolean,
-  ) => {
+  const runBatch = async (b: Batch) => {
     const items: Planned[] = await Promise.all(
-      entries.map(async (entry) => {
-        const local = direction === "upload" ? entry.path : joinPath(dest, entry.name);
-        const remote = direction === "upload" ? joinPath(dest, entry.name) : entry.path;
+      b.entries.map(async (entry) => {
+        // Upload: local source → remote destination. Download and relay: the
+        // source is `remote`, the destination `local` (a path on the other remote for relays).
+        const local = b.direction === "upload" ? entry.path : joinPath(b.dest, entry.name);
+        const remote = b.direction === "upload" ? joinPath(b.dest, entry.name) : entry.path;
         const existing = await ipc
-          .transferProbe({ sftpId, direction, local, remote })
+          .transferProbe({
+            sftpId: b.sftpId,
+            toSftpId: b.toSftpId,
+            direction: b.direction,
+            local,
+            remote,
+          })
           .catch(() => null);
         return { entry, local, remote, existing };
       }),
@@ -110,17 +147,18 @@ export function SftpPage() {
     );
     const decisions = new Map<string, Conflict>();
     let forAll: Conflict | null = null;
+    const destConn = sftpStore.get().conns[b.toSftpId ?? b.sftpId];
     for (const [i, c] of conflicts.entries()) {
       if (forAll) {
         decisions.set(c.entry.path, forAll);
         continue;
       }
       const d = await ask({
-        direction,
+        direction: b.direction,
         incoming: c.entry,
         existing: c.existing,
-        dest,
-        resumeUpload: connCapabilities(sftpStore.get().conns[sftpId]).resumeUpload,
+        dest: b.dest,
+        resumeUpload: connCapabilities(destConn).resumeUpload,
         remaining: conflicts.length - i - 1,
       });
       if (!d) return false;
@@ -129,26 +167,21 @@ export function SftpPage() {
     }
     for (const it of items) {
       await startTransfer({
-        sftpId,
-        direction,
+        sftpId: b.sftpId,
+        toSftpId: b.toSftpId,
+        direction: b.direction,
         local: it.local,
         remote: it.remote,
         conflict: decisions.get(it.entry.path) ?? "replace",
-        temp,
+        temp: b.temp,
       });
     }
     return true;
   };
 
-  const transfer = (direction: Direction, entries: FsEntry[], dest?: string, staging?: string) => {
-    const target = dest ?? (direction === "upload" ? remotePath : localPath);
-    if (active?.status !== "open" || !target || entries.length === 0) {
-      if (staging) void ipc.dropAbort(staging).catch(() => undefined);
-      return;
-    }
-    const sftpId = active.id;
+  const enqueue = (batch: Batch, staging?: string) => {
     queue.current = queue.current
-      .then(() => runBatch(sftpId, direction, entries, target, staging !== undefined))
+      .then(() => runBatch(batch))
       .then(async (started) => {
         if (!started && staging) await ipc.dropAbort(staging);
       })
@@ -158,19 +191,63 @@ export function SftpPage() {
       });
   };
 
-  const receiveFiles = (dt: DataTransfer, dest: string) => {
+  /** Copy `entries` shown in `from` into the other pane (into `dest` there, or its current directory). */
+  const transfer = (from: PaneKey, entries: FsEntry[], dest?: string, staging?: string) => {
+    const to = otherPane(from);
+    const src = sourceOf(from);
+    const dst = sourceOf(to);
+    const target = dest ?? pathOf(to);
+    const abort = () => {
+      if (staging) void ipc.dropAbort(staging).catch(() => undefined);
+    };
+    if (!ready(src) || !ready(dst) || !target || entries.length === 0) return abort();
+    let head: Pick<Batch, "sftpId" | "toSftpId" | "direction">;
+    if (src.kind === "local" && dst.kind === "conn")
+      head = { sftpId: dst.conn.id, toSftpId: null, direction: "upload" };
+    else if (src.kind === "conn" && dst.kind === "local")
+      head = { sftpId: src.conn.id, toSftpId: null, direction: "download" };
+    else if (src.kind === "conn" && dst.kind === "conn")
+      head = { sftpId: src.conn.id, toSftpId: dst.conn.id, direction: "relay" };
+    else {
+      snack.error(tr("Pick a server on one side first."));
+      return abort();
+    }
+    enqueue({ ...head, entries, dest: target, temp: staging !== undefined }, staging);
+  };
+
+  /** Files from the OS dropped into a remote pane: upload them there. */
+  const uploadInto = (pane: PaneKey, entries: FsEntry[], dest: string, staging?: string) => {
+    const c = connOf(pane);
+    if (c?.status !== "open" || entries.length === 0) {
+      if (staging) void ipc.dropAbort(staging).catch(() => undefined);
+      return;
+    }
+    enqueue(
+      {
+        sftpId: c.id,
+        toSftpId: null,
+        direction: "upload",
+        entries,
+        dest,
+        temp: staging !== undefined,
+      },
+      staging,
+    );
+  };
+
+  const receiveFiles = (pane: PaneKey, dt: DataTransfer, dest: string) => {
     stageDrop(dt)
       .then((staged) => {
-        if (staged) transfer("upload", staged.entries, dest, staged.dir ?? undefined);
+        if (staged) uploadInto(pane, staged.entries, dest, staged.dir ?? undefined);
       })
       .catch((err: unknown) => snack.error(errorMessage(err)));
   };
 
   // Native drops (Tauri drag-drop handler) carry real paths and land wherever
   // the cursor is; the pane marks its drop zones with data attributes.
-  const onPaths = (paths: string[], dest: string) => {
+  const onPaths = (pane: PaneKey, paths: string[], dest: string) => {
     statPaths(paths)
-      .then((entries) => transfer("upload", entries, dest))
+      .then((entries) => uploadInto(pane, entries, dest))
       .catch((err: unknown) => snack.error(errorMessage(err)));
   };
   const receivePaths = useRef(onPaths);
@@ -185,7 +262,8 @@ export function SftpPage() {
         if (e.payload.type !== "drop" || e.payload.paths.length === 0) return;
         const { x, y } = e.payload.position.toLogical(window.devicePixelRatio);
         const target = dropTargetAt(x, y);
-        if (target?.side === "remote") receivePaths.current(e.payload.paths, target.dest);
+        if (target?.side === "left" || target?.side === "right")
+          receivePaths.current(target.side, e.payload.paths, target.dest);
       })
       .then((off) => {
         if (alive) unlisten = off;
@@ -199,21 +277,81 @@ export function SftpPage() {
   }, []);
 
   const assoc = useMemo(() => settings.data?.sftpOpenWith ?? {}, [settings.data]);
-  const openEntry = (side: Side, entry: FsEntry, app: string | null) => {
-    const run =
-      side === "local"
-        ? ipc.localOpen(entry.path, app)
-        : active?.status === "open"
-          ? openEdit(active.id, entry.path, app)
-          : Promise.resolve();
+  const openEntry = (pane: PaneKey, entry: FsEntry, app: string | null) => {
+    const c = connOf(pane);
+    const run = !c
+      ? ipc.localOpen(entry.path, app)
+      : c.status === "open"
+        ? openEdit(c.id, entry.path, app)
+        : Promise.resolve();
     run.catch((err: unknown) => snack.error(errorMessage(err)));
   };
-  const onOpen = (side: Side) => (entry: FsEntry, mode: "default" | "with") => {
-    if (mode === "with") setOpenWith({ side, entry });
-    else openEntry(side, entry, assoc[extensionOf(entry.name)] ?? null);
+  const onOpen = (pane: PaneKey) => (entry: FsEntry, mode: "default" | "with") => {
+    if (mode === "with") setOpenWith({ pane, entry });
+    else openEntry(pane, entry, assoc[extensionOf(entry.name)] ?? null);
   };
 
-  const remoteReady = active?.status === "open";
+  const renderPane = (pane: PaneKey) => {
+    const conn = connOf(pane);
+    const picking = pane === "left" ? leftPicking && !conn : !conn;
+    const src = sourceOf(pane);
+    const menu = <SourceMenu pane={pane} current={conn ?? null} />;
+    if (src.kind === "local") {
+      return (
+        <PaneFrame>
+          <FilePane
+            key="local"
+            paneKey={pane}
+            side="local"
+            title={tr("Local")}
+            headerExtra={menu}
+            sftpId={null}
+            initialPath={null}
+            oppositePath={oppositePath(pane)}
+            onPathChange={pane === "left" ? onLeftPath : onRightPath}
+            onTransfer={(entries) => transfer(pane, entries)}
+            onReceive={(entries, dest) => transfer(otherPane(pane), entries, dest)}
+            onOpen={onOpen(pane)}
+          />
+        </PaneFrame>
+      );
+    }
+    if (conn?.status === "open" && !picking) {
+      return (
+        <PaneFrame>
+          <FilePane
+            key={conn.id}
+            paneKey={pane}
+            side="remote"
+            title={conn.title}
+            headerExtra={menu}
+            sftpId={conn.id}
+            capabilities={connCapabilities(conn)}
+            initialPath={conn.info?.home ?? null}
+            oppositePath={oppositePath(pane)}
+            onPathChange={pane === "left" ? onLeftPath : onRightPath}
+            onTransfer={(entries) => transfer(pane, entries)}
+            onReceive={(entries, dest) => transfer(otherPane(pane), entries, dest)}
+            onReceiveFiles={(dt, dest) => receiveFiles(pane, dt, dest)}
+            onOpen={onOpen(pane)}
+            editing={editingPaths(editList, conn.id)}
+            onClose={() => void closeSftp(conn.id)}
+          />
+        </PaneFrame>
+      );
+    }
+    return (
+      <PaneFrame title={picking ? tr("Remote") : conn?.title} menu={menu}>
+        <RemotePlaceholder
+          side={pane}
+          status={picking ? null : (conn?.status ?? null)}
+          webdav={conn?.target.kind === "webdav"}
+          message={picking ? null : (conn?.message ?? null)}
+          onRetry={conn && !picking ? () => reconnectSftp(conn.id) : undefined}
+        />
+      </PaneFrame>
+    );
+  };
 
   return (
     <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
@@ -228,8 +366,14 @@ export function SftpPage() {
                   key={id}
                   label={c.title}
                   size="small"
-                  variant={id === activeId ? "filled" : "outlined"}
-                  color={c.status === "error" ? "error" : id === activeId ? "primary" : "default"}
+                  variant={id === activeId || id === leftId ? "filled" : "outlined"}
+                  color={
+                    c.status === "error"
+                      ? "error"
+                      : id === activeId || id === leftId
+                        ? "primary"
+                        : "default"
+                  }
                   icon={
                     c.status === "connecting" ? (
                       <CircularProgress size={12} sx={{ ml: 0.75 }} />
@@ -245,57 +389,19 @@ export function SftpPage() {
       )}
 
       <Stack direction="row" sx={{ flex: 1, minHeight: 0 }}>
-        <PaneFrame>
-          <FilePane
-            side="local"
-            title={tr("Local")}
-            sftpId={null}
-            initialPath={null}
-            oppositePath={remoteReady ? remotePath : null}
-            onPathChange={onLocalPath}
-            onTransfer={(entries) => transfer("upload", entries)}
-            onReceive={(entries, dest) => transfer("download", entries, dest)}
-            onOpen={onOpen("local")}
-          />
-        </PaneFrame>
+        {renderPane("left")}
         <Box sx={{ width: "1px", bgcolor: "border.light", flexShrink: 0 }} />
-        <PaneFrame title={active && remoteReady ? undefined : (active?.title ?? tr("Remote"))}>
-          {active && remoteReady ? (
-            <FilePane
-              key={active.id}
-              side="remote"
-              title={active.title}
-              sftpId={active.id}
-              capabilities={connCapabilities(active)}
-              initialPath={active.info?.home ?? null}
-              oppositePath={localPath}
-              onPathChange={onRemotePath}
-              onTransfer={(entries) => transfer("download", entries)}
-              onReceive={(entries, dest) => transfer("upload", entries, dest)}
-              onReceiveFiles={receiveFiles}
-              onOpen={onOpen("remote")}
-              editing={editing}
-              onClose={() => void closeSftp(active.id)}
-            />
-          ) : (
-            <RemotePlaceholder
-              status={active?.status ?? null}
-              webdav={active?.target.kind === "webdav"}
-              message={active?.message ?? null}
-              onRetry={active ? () => reconnectSftp(active.id) : undefined}
-            />
-          )}
-        </PaneFrame>
+        {renderPane("right")}
       </Stack>
 
       <TransfersPanel />
       <ConflictDialog prompt={prompt} />
       <OpenWithDialog
-        key={openWith ? `${openWith.side}:${openWith.entry.path}` : ""}
+        key={openWith ? `${openWith.pane}:${openWith.entry.path}` : ""}
         entry={openWith?.entry ?? null}
         onCancel={() => setOpenWith(null)}
         onConfirm={(app) => {
-          if (openWith) openEntry(openWith.side, openWith.entry, app);
+          if (openWith) openEntry(openWith.pane, openWith.entry, app);
           setOpenWith(null);
         }}
       />
@@ -303,18 +409,69 @@ export function SftpPage() {
   );
 }
 
-function PaneFrame({ title, children }: { title?: string; children: React.ReactNode }) {
+/** Switches what a pane shows: the local disk (left pane), an open connection, or the host picker. */
+function SourceMenu({ pane, current }: { pane: PaneKey; current: SftpConn | null }) {
+  const order = useSftp((s) => s.order);
+  const conns = useSftp((s) => s.conns);
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const close = () => setAnchor(null);
+  const choose = (id: Uuid | null) => {
+    if (pane === "left") setLeftSource(id);
+    else setActiveSftp(id);
+    close();
+  };
+  const pick = () => {
+    if (pane === "left") startLeftPick();
+    else setActiveSftp(null);
+    close();
+  };
+  const open = order.map((id) => conns[id]).filter((c): c is SftpConn => c !== undefined);
+  return (
+    <>
+      <IconButton
+        size="small"
+        aria-label={tr("Choose source")}
+        onClick={(e) => setAnchor(e.currentTarget)}
+        sx={{ ml: 0.25 }}
+      >
+        <ArrowDropDownRoundedIcon fontSize="small" />
+      </IconButton>
+      <Menu anchorEl={anchor} open={anchor !== null} onClose={close}>
+        {pane === "left" && (
+          <MenuItem selected={current === null} onClick={() => choose(null)}>
+            {tr("Local")}
+          </MenuItem>
+        )}
+        {open.map((c) => (
+          <MenuItem key={c.id} selected={current?.id === c.id} onClick={() => choose(c.id)}>
+            {c.title}
+          </MenuItem>
+        ))}
+        {(pane === "left" || open.length > 0) && <Divider />}
+        <MenuItem onClick={pick}>{tr("Choose a server…")}</MenuItem>
+      </Menu>
+    </>
+  );
+}
+
+function PaneFrame({
+  title,
+  menu,
+  children,
+}: {
+  title?: string;
+  menu?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
       {title && (
-        <Typography
-          variant="subtitle2"
-          color="text.secondary"
-          sx={{ px: 1.5, height: 36, display: "flex", alignItems: "center", flexShrink: 0 }}
-          noWrap
-        >
-          {title}
-        </Typography>
+        <Box sx={{ px: 1.5, height: 36, display: "flex", alignItems: "center", flexShrink: 0 }}>
+          <Typography variant="subtitle2" color="text.secondary" noWrap>
+            {title}
+          </Typography>
+          {menu}
+        </Box>
       )}
       <Box sx={{ flex: 1, minHeight: 0 }}>{children}</Box>
     </Box>
@@ -322,11 +479,13 @@ function PaneFrame({ title, children }: { title?: string; children: React.ReactN
 }
 
 function RemotePlaceholder({
+  side,
   status,
   webdav,
   message,
   onRetry,
 }: {
+  side: PaneKey;
   status: "connecting" | "open" | "error" | "closed" | null;
   webdav?: boolean;
   message: string | null;
@@ -362,8 +521,13 @@ function RemotePlaceholder({
               {tr("Retry")}
             </Button>
           )}
+          {side === "left" && (
+            <Button size="small" onClick={() => setLeftSource(null)}>
+              {tr("Use local files")}
+            </Button>
+          )}
           <Box sx={{ width: "100%", maxWidth: 420, minHeight: 0, display: "flex" }}>
-            <HostPickerList />
+            <HostPickerList side={side} />
           </Box>
         </>
       )}
@@ -372,7 +536,7 @@ function RemotePlaceholder({
 }
 
 /** Termius-style "Select host" list rendered inside the empty remote pane. */
-function HostPickerList() {
+function HostPickerList({ side }: { side: PaneKey }) {
   const vault = useActiveVault();
   const hosts = useHosts(vault.data?.id ?? null);
   const panes = useTerminal((s) => s.panes);
@@ -390,11 +554,11 @@ function HostPickerList() {
     (p) => p.protocol === "ssh" && p.status === "connected",
   );
   const pickHost = (h: HostCard, kind: "host" | "webdav") => {
-    if (kind === "host") openSftpForHost(h.id, h.label, h.vaultId);
-    else openWebDavForHost(h.id, h.label, h.vaultId);
+    if (kind === "host") openSftpForHost(h.id, h.label, h.vaultId, side);
+    else openWebDavForHost(h.id, h.label, h.vaultId, side);
   };
   const pickSession = (id: Uuid, title: string, hostId: Uuid | null) => {
-    openSftpForSession(id, title, hostId);
+    openSftpForSession(id, title, hostId, side);
   };
   return (
     <Stack

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   useCallback,
   useEffect,
@@ -85,12 +86,18 @@ interface DragPayload {
   entries: FsEntry[];
 }
 
-const mimeFor = (side: Side) => `${PANE_MIME}-${side}`;
+export type PaneKey = "left" | "right";
+const otherKey = (k: PaneKey): PaneKey => (k === "left" ? "right" : "left");
+const mimeFor = (key: PaneKey) => `${PANE_MIME}-${key}`;
 
 interface Props {
   side: Side;
+  /** Which pane this is; drags are accepted only from the other one. */
+  paneKey: PaneKey;
   /** Pane heading: `Local` or the host's title. */
   title: string;
+  /** Rendered right after the heading (source switcher). */
+  headerExtra?: ReactNode;
   /** Remote connection; `null` for the local side. */
   sftpId: Uuid | null;
   /** What the remote side supports; unsupported actions are not offered. */
@@ -185,6 +192,8 @@ function crumbsOf(path: string): { label: string; path: string }[] {
 export function FilePane(props: Props) {
   const {
     side,
+    paneKey,
+    headerExtra,
     title,
     sftpId,
     capabilities = SFTP_CAPABILITIES,
@@ -333,12 +342,12 @@ export function FilePane(props: Props) {
   const canReceive = !disabled && oppositePath !== null;
   const accepts = (dt: DataTransfer) =>
     canReceive &&
-    (Array.from(dt.types).includes(mimeFor(side === "local" ? "remote" : "local")) ||
+    (Array.from(dt.types).includes(mimeFor(otherKey(paneKey))) ||
       (onReceiveFiles !== undefined && hasOsFiles(dt)));
 
   const osZone = canReceive && onReceiveFiles !== undefined;
   const dropZoneAttrs = (dest: string) => ({
-    [DROP_SIDE_ATTR]: side,
+    [DROP_SIDE_ATTR]: paneKey,
     [DROP_DEST_ATTR]: dest,
   });
 
@@ -346,7 +355,7 @@ export function FilePane(props: Props) {
     const targets = selected.has(entry.path) ? selectedEntries : [entry];
     if (!selected.has(entry.path)) setSelected(new Set([entry.path]));
     const payload: DragPayload = { side, entries: targets };
-    e.dataTransfer.setData(mimeFor(side), JSON.stringify(payload));
+    e.dataTransfer.setData(mimeFor(paneKey), JSON.stringify(payload));
     e.dataTransfer.effectAllowed = "copy";
   };
 
@@ -375,7 +384,7 @@ export function FilePane(props: Props) {
     if (!accepts(e.dataTransfer) || dest === null) return;
     e.preventDefault();
     e.stopPropagation();
-    const raw = e.dataTransfer.getData(mimeFor(side === "local" ? "remote" : "local"));
+    const raw = e.dataTransfer.getData(mimeFor(otherKey(paneKey)));
     if (raw) {
       try {
         const payload = JSON.parse(raw) as DragPayload;
@@ -439,6 +448,7 @@ export function FilePane(props: Props) {
         >
           {title}
         </Typography>
+        {headerExtra}
         {filter !== null ? (
           <InputBase
             autoFocus
