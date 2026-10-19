@@ -31,7 +31,8 @@ the server's only metrics are opt-in Prometheus counters on a private listener.
 8. [Tests and checks](#tests-and-checks)
 9. [Releases](#releases)
 10. [API overview](#api-overview)
-11. [Contributing](#contributing)
+11. [Sponsoring](#sponsoring)
+12. [Contributing](#contributing)
 
 ## What works today
 
@@ -443,6 +444,15 @@ All routes live under `/api/v1`; authenticated routes take
 | ai | `POST ai/command` → one suggested command, never executed |
 | admin | users (disable, reset MFA, revoke sessions), teams, server settings, stats, e-mail test |
 | public | `/healthz`, `/readyz`, `/.well-known/assetlinks.json`, `/sshid/<handle>[/<type>]`, `/bridge/me` |
+
+## Sponsoring
+
+Termoso has no paid tier. Development is funded by the people and companies
+who rely on it: one-off or monthly sponsorship, and support agreements for
+organisations running their own server (deployment, SLA-backed support,
+SSO / SCIM / SIEM integration work). Details and wallets are on
+[termoso.dev/sponsor](https://termoso.dev/sponsor); write to
+[hello@termoso.dev](mailto:hello@termoso.dev).
 
 ## Contributing
 
