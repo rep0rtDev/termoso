@@ -1429,6 +1429,53 @@ export function LandingPage() {
           </Section>
 
           {/* FAQ */}
+          <Section id="sponsor" sx={{ pt: 0, pb: { xs: 5, md: 7 } }}>
+            <SectionTitle
+              eyebrow="Sponsorship"
+              title="Support Termoso"
+              text="Termoso is free software with no paid tier and no vendor. Development is funded by the people and companies who rely on it. If it saves your team time, consider sponsoring — or get in touch about partnership, priority support or features your organisation needs."
+            />
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", md: "repeat(2, 1fr)" },
+                gap: 2,
+                maxWidth: 900,
+                mx: "auto",
+              }}
+            >
+              <Card>
+                <Typography variant="subtitle1">Sponsor the project</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                  One-off or recurring, any amount. Sponsors are listed in the README and release
+                  notes (or stay anonymous) and get a say in the roadmap.
+                </Typography>
+                <Button
+                  href="mailto:sponsors@termoso.dev?subject=Sponsoring%20Termoso"
+                  variant="contained"
+                  size="large"
+                  sx={{ mt: 2.5 }}
+                >
+                  sponsors@termoso.dev
+                </Button>
+              </Card>
+              <Card>
+                <Typography variant="subtitle1">Partnership &amp; enterprise support</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+                  Deployment help, SLA-backed support for self-hosted servers, SSO/SCIM integration,
+                  security reviews or features on a schedule — write and describe your setup.
+                </Typography>
+                <Button
+                  href="mailto:sponsors@termoso.dev?subject=Termoso%20partnership"
+                  variant="outlined"
+                  size="large"
+                  sx={{ mt: 2.5 }}
+                >
+                  Write to us
+                </Button>
+              </Card>
+            </Box>
+          </Section>
           <Section id="faq" sx={{ pt: 0 }}>
             <SectionTitle center title="Frequently asked questions" />
             <Box sx={{ maxWidth: 760, mx: "auto" }}>
@@ -1502,6 +1549,7 @@ export function LandingPage() {
                   links: [
                     ["GitHub", REPO],
                     ["Issues", `${REPO}/issues`],
+                    ["Sponsor", "#sponsor"],
                     ["License (AGPL-3.0)", `${REPO}/blob/main/LICENSE`],
                   ],
                 },

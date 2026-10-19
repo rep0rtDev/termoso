@@ -1524,4 +1524,14 @@ export const ru: Readonly<Record<string, string>> = {
   "Search teams": "Поиск команд",
   "No teams match.": "Ничего не найдено.",
   Recording: "Запись",
+  "≈ {v1} days": "≈ {v1} дн.",
+  "set by this team": "задано этой командой",
+  "set by another team": "задано другой командой",
+  "{v1} h (≈ {v2} days)": "{v1} ч (≈ {v2} дн.)",
+  "Local keys": "Локальные ключи",
+  denied: "запрещены",
+  allowed: "разрешены",
+  "by {count} teams": "{count} командой|{count} командами|{count} командами",
+  "In effect for you now (strictest across your teams)":
+    "Действует для вас сейчас (самое строгое по всем вашим командам)",
 };

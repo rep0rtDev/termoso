@@ -5,6 +5,8 @@ description: The environment variables that matter, the reverse proxy, domains, 
 
 The server reads `TERMOSO_*` environment variables; nested sections use a double underscore (`TERMOSO_S3__ENDPOINT`). The complete annotated list is [`deploy/.env.example`](https://github.com/termoso/termoso/blob/main/deploy/.env.example). The server validates its configuration on start and refuses to run with an invalid one.
 
+To check what a running server actually picked up, open **Server settings → Environment** in the cabinet (administrators only) or call `GET /api/v1/admin/config`: it lists every effective value with the variable it came from, secrets removed, together with live PostgreSQL / Redis / S3 probes, uptime and the minimum client version in force.
+
 ## Minimum
 
 ```dotenv
