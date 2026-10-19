@@ -94,6 +94,8 @@ fun TeamScreen(
     onActivity: () -> Unit,
     onOpenAccount: () -> Unit = {},
     onRoles: () -> Unit = {},
+    onDevices: () -> Unit = {},
+    onAccess: () -> Unit = {},
 ) {
     val vm: TeamViewModel = viewModel(key = "team-$teamId") { TeamViewModel(shell.repo, account, teamId) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -305,6 +307,22 @@ fun TeamScreen(
                             subtitle = stringResource(R.string.roles_and_policies_hint),
                             leading = { IconTile(Icons.Filled.Lock) },
                             modifier = Modifier.clickable(onClick = onRoles),
+                        )
+                    }
+                    RowDivider()
+                    ChevronRow(
+                        title = stringResource(R.string.access_requests),
+                        subtitle = stringResource(R.string.access_requests_hint),
+                        leading = { IconTile(Icons.Filled.Lock) },
+                        modifier = Modifier.clickable(onClick = onAccess),
+                    )
+                    if (team.can("devices.approve")) {
+                        RowDivider()
+                        ChevronRow(
+                            title = stringResource(R.string.devices_awaiting_approval),
+                            subtitle = stringResource(R.string.devices_hint),
+                            leading = { IconTile(Icons.Filled.Lock) },
+                            modifier = Modifier.clickable(onClick = onDevices),
                         )
                     }
                 }

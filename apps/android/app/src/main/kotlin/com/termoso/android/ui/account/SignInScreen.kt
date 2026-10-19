@@ -158,6 +158,7 @@ private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
     // The server and mode are fixed by the verified identity; only the local password is left to enter.
     if (verified == null) {
         val modes = listOf(AuthMode.SignIn to stringResource(R.string.sign_in), AuthMode.Register to stringResource(R.string.create_account))
+            .filter { !vm.ssoOnly || it.first == AuthMode.SignIn }
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             modes.forEachIndexed { i, (m, label) ->
                 SegmentedButton(
@@ -206,17 +207,35 @@ private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
         SsoVerifiedBanner(verified, onChange = { vm.cancelSso() })
     } else {
         FormField(value = vm.email, onChange = { vm.email = it }, label = stringResource(R.string.email), keyboard = KeyboardType.Email, enabled = !vm.busy)
+        LaunchedEffect(vm.email) {
+            kotlinx.coroutines.delay(600)
+            vm.discover()
+        }
+        vm.domainIdp?.let { idp ->
+            if (vm.mode == AuthMode.SignIn) {
+                Text(
+                    vm.domainTeamName?.let { stringResource(R.string.org_uses_sso, it) } ?: stringResource(R.string.org_uses_sso_generic),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        if (vm.ssoOnly) {
+            Text(stringResource(R.string.server_sso_only), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+        }
     }
-    SecretField(
-        value = vm.password,
-        onChange = { vm.password = it },
-        label = when {
-            verified != null -> stringResource(R.string.termoso_password)
-            vm.mode == AuthMode.Register -> stringResource(R.string.master_password)
-            else -> stringResource(R.string.password)
-        },
-        enabled = !vm.busy,
-    )
+    if (!vm.passwordHidden) {
+        SecretField(
+            value = vm.password,
+            onChange = { vm.password = it },
+            label = when {
+                verified != null -> stringResource(R.string.termoso_password)
+                vm.mode == AuthMode.Register -> stringResource(R.string.master_password)
+                else -> stringResource(R.string.password)
+            },
+            enabled = !vm.busy,
+        )
+    }
     if (vm.mode == AuthMode.Register) {
         SecretField(value = vm.confirm, onChange = { vm.confirm = it }, label = stringResource(R.string.confirm_password), enabled = !vm.busy)
         OutlinedTextField(
@@ -243,11 +262,25 @@ private fun CredentialsForm(vm: SignInViewModel, onDone: () -> Unit) {
     }
 
     Spacer(Modifier.height(4.dp))
-    BusyButton(
-        text = if (vm.mode == AuthMode.SignIn) stringResource(R.string.sign_in) else stringResource(R.string.create_account),
-        busy = vm.busy,
-        onClick = { vm.submit(onDone) },
-    )
+    val domainIdp = vm.domainIdp
+    if (vm.passwordHidden && domainIdp != null) {
+        BusyButton(
+            text = stringResource(R.string.continue_with, domainIdp.name),
+            busy = vm.busy,
+            onClick = { vm.startSso(domainIdp) },
+        )
+        if (!vm.domainSsoRequired && !vm.ssoOnly) {
+            TextButton(onClick = { vm.passwordAnyway = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.sign_in_with_password_instead))
+            }
+        }
+    } else if (!vm.passwordHidden) {
+        BusyButton(
+            text = if (vm.mode == AuthMode.SignIn) stringResource(R.string.sign_in) else stringResource(R.string.create_account),
+            busy = vm.busy,
+            onClick = { vm.submit(onDone) },
+        )
+    }
 
     val providers = vm.ssoProviders
     if (verified == null && providers.isNotEmpty()) {

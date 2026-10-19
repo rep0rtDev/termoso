@@ -17,6 +17,7 @@ import com.termoso.core.Registered
 import com.termoso.core.SecurityKeyCredential
 import com.termoso.core.SecurityKeyRequest
 import com.termoso.core.SsoOutcome
+import com.termoso.core.SsoDiscoverCard
 import com.termoso.core.SsoStarted
 import com.termoso.core.SyncChange
 import com.termoso.core.SyncListener
@@ -153,6 +154,9 @@ class AccountManager(
      * open come back; the provider's tokens and the resulting SSO session stay
      * on the server / in Rust and never reach Kotlin.
      */
+    /** Home-realm discovery for the sign-in form: which IdP owns the e-mail domain. */
+    suspend fun ssoDiscover(url: String, email: String): SsoDiscoverCard = repo.read { accountSsoDiscover(url, email) }
+
     suspend fun ssoStart(server: String, provider: String): SsoStarted = repo.read { accountSsoStart(server, provider) }
 
     suspend fun ssoPoll(): SsoOutcome = repo.read { accountSsoPoll() }

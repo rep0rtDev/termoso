@@ -86,6 +86,8 @@ import com.termoso.android.ui.snippets.SnippetEditorScreen
 import com.termoso.android.ui.snippets.SnippetsScreen
 import com.termoso.android.ui.team.TeamActivityScreen
 import com.termoso.android.ui.team.TeamRolesScreen
+import com.termoso.android.ui.team.TeamDevicesScreen
+import com.termoso.android.ui.team.TeamAccessScreen
 import com.termoso.android.ui.team.TeamScreen
 import com.termoso.android.ui.team.TeamVaultScreen
 import com.termoso.android.ui.team.TeamsScreen
@@ -132,6 +134,8 @@ object Routes {
     const val TEAM = "team/{id}"
     const val TEAM_ACTIVITY = "team/{id}/activity"
     const val TEAM_ROLES = "team/{id}/roles"
+    const val TEAM_DEVICES = "team/{id}/devices"
+    const val TEAM_ACCESS = "team/{id}/access"
     const val TEAM_VAULT = "teamVault/{id}"
     const val SIGN_IN = "signIn/{mode}"
     const val SFTP = "sftp/{id}"
@@ -157,6 +161,8 @@ object Routes {
     fun team(id: String) = "team/$id"
     fun teamActivity(id: String) = "team/$id/activity"
     fun teamRoles(id: String) = "team/$id/roles"
+    fun teamDevices(id: String) = "team/$id/devices"
+    fun teamAccess(id: String) = "team/$id/access"
     fun teamVault(id: String) = "teamVault/$id"
     fun sftp(id: String) = "sftp/$id"
     fun pfNew(kind: PfKind, vault: String?, host: String?) =
@@ -516,6 +522,8 @@ fun MainShell(
                     onOpenVault = { nav.navigate(Routes.teamVault(it)) },
                     onActivity = { nav.navigate(Routes.teamActivity(id)) },
                     onRoles = { nav.navigate(Routes.teamRoles(id)) },
+                    onDevices = { nav.navigate(Routes.teamDevices(id)) },
+                    onAccess = { nav.navigate(Routes.teamAccess(id)) },
                     onOpenAccount = { nav.navigate(Routes.ACCOUNT) },
                 )
             }
@@ -526,6 +534,14 @@ fun MainShell(
             composable(Routes.TEAM_ROLES, arguments = listOf(idArg)) { entry ->
                 val id = entry.arguments?.getString("id") ?: return@composable
                 TeamRolesScreen(shell = shell, teamId = id, onBack = { nav.popBackStack() })
+            }
+            composable(Routes.TEAM_DEVICES, arguments = listOf(idArg)) { entry ->
+                val id = entry.arguments?.getString("id") ?: return@composable
+                TeamDevicesScreen(shell = shell, teamId = id, onBack = { nav.popBackStack() })
+            }
+            composable(Routes.TEAM_ACCESS, arguments = listOf(idArg)) { entry ->
+                val id = entry.arguments?.getString("id") ?: return@composable
+                TeamAccessScreen(shell = shell, account = account, teamId = id, onBack = { nav.popBackStack() })
             }
             composable(Routes.TEAM_VAULT, arguments = listOf(idArg)) { entry ->
                 val id = entry.arguments?.getString("id") ?: return@composable

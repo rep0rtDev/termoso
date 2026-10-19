@@ -166,6 +166,20 @@ private fun PolicyRows(p: TeamPoliciesCard) {
         stringResource(R.string.allowed_email_domains) to (p.ssoDomains.joinToString(", ").ifEmpty { stringResource(R.string.any_domain) }),
         stringResource(R.string.approve_new_devices) to onOff(p.deviceApproval),
         stringResource(R.string.audit_log_retention) to stringResource(R.string.days_n, p.auditRetentionDays),
+        stringResource(R.string.session_recording) to stringResource(
+            if (p.sessionRecording == "required") R.string.required else R.string.optional,
+        ),
+        stringResource(R.string.recording_retention) to (
+            if (p.logRetentionDays == 0) stringResource(R.string.forever) else stringResource(R.string.days_n, p.logRetentionDays)
+            ),
+        stringResource(R.string.key_rotation_age) to (
+            if (p.keyMaxAgeDays == 0) stringResource(R.string.off) else stringResource(R.string.days_n, p.keyMaxAgeDays)
+            ),
+        stringResource(R.string.password_rotation_age) to (
+            if (p.passwordMaxAgeDays == 0) stringResource(R.string.off) else stringResource(R.string.days_n, p.passwordMaxAgeDays)
+            ),
+        stringResource(R.string.ip_allow_list) to (p.ipAllowlist.joinToString(", ").ifEmpty { stringResource(R.string.everywhere) }),
+        stringResource(R.string.admin_approval_new_devices) to onOff(p.deviceAdminApproval),
     )
     Column(Modifier.fillMaxWidth()) {
         rows.forEach { (k, v) ->
