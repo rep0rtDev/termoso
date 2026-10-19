@@ -486,7 +486,7 @@ function onTransferEvent(ev: TransferEvent, queryClient: QueryClient) {
       samples.delete(ev.id);
       patchTransfer(ev.id, { status: "paused", speed: null, cancelling: false });
       void queryClient.invalidateQueries({
-        queryKey: ["fs", t?.direction === "upload" ? "remote" : "local"],
+        queryKey: ["fs", t?.direction === "download" ? "local" : "remote"],
       });
       break;
     }
@@ -518,7 +518,7 @@ function onTransferEvent(ev: TransferEvent, queryClient: QueryClient) {
         finishedAt: Date.now(),
         cancelling: false,
       });
-      const side = t?.direction === "upload" ? "remote" : "local";
+      const side = t?.direction === "download" ? "local" : "remote";
       void queryClient.invalidateQueries({ queryKey: ["fs", side] });
       const done = sftpStore.get().transfers[ev.id];
       if (done && ev.type !== "cancelled") {
