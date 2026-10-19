@@ -109,6 +109,12 @@ fn semver_tuple(v: &str) -> Option<(u64, u64, u64)> {
 /// newer server breaks in confusing ways, so it is told to update instead.
 /// Clients whose version string is not semver (dev builds, tests) pass.
 pub(crate) fn check_client_version(cfg: &crate::config::Config, d: &DeviceInfo) -> ApiResult<()> {
+    // The web cabinet ships inside the server image, so it can never be
+    // "older" in a way an update would fix; gating it would only lock
+    // operators out of their own console.
+    if d.platform == Platform::Web {
+        return Ok(());
+    }
     let required = min_client_version(cfg);
     let (Some(client), Some(min)) = (semver_tuple(&d.app_version), semver_tuple(required)) else {
         return Ok(());
@@ -1466,6 +1472,21 @@ mod client_version_tests {
             app_version: v.into(),
             client_device_id: None,
         }
+    }
+
+    #[test]
+    fn web_cabinet_is_never_gated() {
+        let cfg = crate::config::Config {
+            min_client_version: Some("9.9.9".into()),
+            ..Default::default()
+        };
+        let d = DeviceInfo {
+            name: "browser".into(),
+            platform: Platform::Web,
+            app_version: "0.1.0".into(),
+            client_device_id: None,
+        };
+        assert!(check_client_version(&cfg, &d).is_ok());
     }
 
     #[test]
