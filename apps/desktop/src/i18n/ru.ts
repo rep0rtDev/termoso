@@ -8,6 +8,164 @@ export const ru: Readonly<Record<string, string>> = {
     ".ppk, id_ed25519, *.pem — лежащий рядом *-cert.pub подхватится как сертификат",
   ".reg export…": "Экспорт .reg…",
   "1 hour": "1 час",
+  "A member's new device waits in Devices until an owner, admin or devices.approve holder approves it; rejection signs it out.":
+    "Новое устройство участника ждёт во вкладке «Устройства», пока владелец, админ или обладатель права devices.approve его не одобрит; отклонение завершает его сессии.",
+  Access: "Доступ",
+  "Access granted — open the vault to seal its key for the member (Pending vault keys).":
+    "Доступ выдан — откройте хранилище и запечатайте ключ для участника («Ожидают ключ»).",
+  "Access requests": "Заявки на доступ",
+  "Add this redirect / ACS URL to the application in your identity provider.":
+    "Добавьте этот redirect / ACS URL в приложение в вашем провайдере.",
+  "Admin approval for new devices": "Одобрение новых устройств админом",
+  "Admin approval for new devices is off in this team's policies; new devices sign in without a review.":
+    "Одобрение новых устройств админом выключено в политиках команды — новые устройства входят без проверки.",
+  Age: "Возраст",
+  Approve: "Подтвердить",
+  "Approve access": "Одобрить доступ",
+  Approved: "Одобрено",
+  "Cancel deletion": "Отменить удаление",
+  "Client ID": "Client ID",
+  "Client secret": "Client secret",
+  "Comma-separated. A domain can belong to one team only; sign-in with these domains is routed to this provider.":
+    "Через запятую. Домен может принадлежать только одной команде; вход с такой почтой направляется в этот провайдер.",
+  Created: "Создан",
+  Data: "Данные",
+  "Data region": "Регион данных",
+  "Days before unpinned session recordings are deleted; 0 keeps them forever.":
+    "Через сколько дней удаляются незакреплённые записи сессий; 0 — хранить вечно.",
+  "Delete team and all its data": "Удалить команду и все её данные",
+  "Delete team?": "Удалить команду?",
+  "Deletion cancelled": "Удаление отменено",
+  "Deletion is scheduled for {v1}. Until then the team keeps working; the owner can cancel.":
+    "Удаление запланировано на {v1}. До этого команда работает как обычно; владелец может отменить.",
+  "Deletion scheduled; every member has been notified":
+    "Удаление запланировано; все участники уведомлены",
+  Denied: "Отклонена",
+  Deny: "Отклонить",
+  Device: "Устройство",
+  "Device approved": "Устройство одобрено",
+  "Device rejected and signed out": "Устройство отклонено, сессии завершены",
+  "Devices awaiting approval": "Устройства, ожидающие одобрения",
+  "Discovery is read from <issuer>/.well-known/openid-configuration.":
+    "Discovery читается из <issuer>/.well-known/openid-configuration.",
+  "Download export": "Скачать экспорт",
+  "Due for rotation": "Пора ротировать",
+  "E-mail domains": "Домены почты",
+  Editor: "Редактор",
+  Entity: "Сущность",
+  "Everything the server stores for this team is removed after {v1} days; members are notified and the owner can cancel in the meantime.":
+    "Всё, что сервер хранит о команде, будет удалено через {v1} дн.; участники получат уведомление, владелец может отменить до срока.",
+  "Everything the server stores for this team is removed immediately and cannot be recovered.":
+    "Всё, что сервер хранит о команде, удаляется сразу и безвозвратно.",
+  "Export downloaded": "Экспорт скачан",
+  "Export everything": "Экспортировать всё",
+  "Host password": "Пароль хоста",
+  "Host passwords older than this are due for rotation; 0 disables the check.":
+    "Пароли хостов старше этого срока считаются просроченными; 0 отключает проверку.",
+  Hours: "Часов",
+  "IP allow-list": "Разрешённые IP",
+  "IdP entity ID": "Entity ID провайдера",
+  "IdP metadata XML": "Метаданные IdP (XML)",
+  "Identity provider removed": "Провайдер удалён",
+  "Identity provider saved": "Провайдер сохранён",
+  "Issuer URL": "Issuer URL",
+  "Job queued": "Задание в очереди",
+  "Join this team on first sign-in": "Вступать в команду при первом входе",
+  "Key rotation age": "Срок ротации ключей",
+  "Last IP": "Последний IP",
+  "Last rotated": "Последняя ротация",
+  "Last seen": "Был в сети",
+  "Members may sign in only from these networks (CIDR, one per line, up to 100). Empty allows everywhere. Owners and admins are included — keep your own network in the list.":
+    "Участники смогут входить только из этих сетей (CIDR, по одной в строке, до 100). Пусто — отовсюду. Владельцы и админы тоже под правилом — не забудьте свою сеть.",
+  "Members whose e-mail domain is listed below sign in through your company's IdP: the login form detects the domain and offers “Continue with <provider>”. New employees get an account and join this team on first sign-in (JIT) with the default role, or a role mapped from their IdP groups. To make SSO mandatory, set the policy “Sign in only through SSO” with provider “team”.":
+    "Участники с почтой в указанных доменах входят через IdP вашей компании: форма входа распознаёт домен и предлагает «Продолжить с <провайдер>». Новые сотрудники получают аккаунт и вступают в команду при первом входе (JIT) с ролью по умолчанию или ролью по группам IdP. Чтобы SSO стал обязательным, включите политику «Вход только через SSO» с провайдером «team».",
+  "Members will no longer be able to sign in through it. Accounts and team memberships stay; if the policy requires SSO through the team provider, members will be locked out until you change it.":
+    "Участники больше не смогут входить через него. Аккаунты и членство останутся; если политика требует SSO через командный провайдер, участники не смогут войти, пока вы её не измените.",
+  "New accounts created through the IdP become members with the default role (or a mapped one).":
+    "Аккаунты, созданные через IdP, становятся участниками с ролью по умолчанию (или сопоставленной).",
+  "New devices of members sign in only after approval. Rejecting ends the device's sessions; it can sign in again later and will wait here once more.":
+    "Новые устройства участников входят только после одобрения. Отклонение завершает сессии устройства; при следующем входе оно снова окажется здесь.",
+  "No jobs yet": "Заданий пока нет",
+  "No open requests": "Открытых заявок нет",
+  "No pending devices": "Ожидающих устройств нет",
+  "Not specified": "Не указан",
+  "Note (optional)": "Комментарий (необязательно)",
+  "Nothing is due": "Просроченных нет",
+  "One JSON with members, roles, policies, vaults, encrypted entities, recording metadata, audit, webhooks, ACL, access requests, rotation and IdP settings. Entity contents stay encrypted — the server cannot read them.":
+    "Один JSON: участники, роли, политики, хранилища, зашифрованные сущности, метаданные записей, аудит, вебхуки, ACL, заявки, ротация и настройки IdP. Содержимое сущностей остаётся зашифрованным — сервер его не читает.",
+  "Optional, space-separated. Default: openid email profile groups.":
+    "Необязательно, через пробел. По умолчанию: openid email profile groups.",
+  "Optional; taken from the metadata when empty.":
+    "Необязательно; берётся из метаданных, если пусто.",
+  Overdue: "Просрочен",
+  "Password rotation age": "Срок ротации паролей",
+  "Paste the SAML metadata document exported from your IdP.":
+    "Вставьте документ метаданных SAML, выгруженный из IdP.",
+  "Per-team identity providers are disabled on this server (TERMOSO_TEAM_IDP=false). Server-wide SSO providers still work.":
+    "Командные провайдеры отключены на этом сервере (TERMOSO_TEAM_IDP=false). Серверные SSO-провайдеры работают.",
+  "Provider reachable: discovery and metadata look valid":
+    "Провайдер доступен: discovery и метаданные корректны",
+  Queue: "В очередь",
+  "Queue rotation": "Поставить ротацию",
+  "Queue rotation ({v1})": "Поставить ротацию ({v1})",
+  Queued: "В очереди",
+  Reason: "Причина",
+  "Recording retention": "Хранение записей",
+  "Register in your IdP": "Регистрация в IdP",
+  "Reject device?": "Отклонить устройство?",
+  Rejected: "Отклонено",
+  "Remove identity provider?": "Удалить провайдер?",
+  "Remove provider": "Удалить провайдер",
+  "Request access": "Запросить доступ",
+  "Request deletion": "Запросить удаление",
+  "Request sent to the approvers": "Заявка отправлена одобряющим",
+  Requested: "Запросил",
+  Required: "Обязательно",
+  "Required turns recording on in every team vault; members cannot switch it off and only logs.delete may remove recordings.":
+    "«Обязательно» включает запись во всех командных хранилищах; участники не могут её выключить, удалять записи может только право logs.delete.",
+  "Reviewed devices": "Рассмотренные устройства",
+  Revoked: "Отозван",
+  Rotation: "Ротация",
+  "Rotation ages are not set in the team policies, so nothing is reported as due. Set “Key rotation age” or “Password rotation age” to start tracking.":
+    "Сроки ротации не заданы в политиках команды, поэтому просроченных нет. Задайте «Срок ротации ключей» или «Срок ротации паролей», чтобы начать отслеживание.",
+  "Rotation jobs": "Задания ротации",
+  "Rotation jobs queued; a client with write access to the vault will perform them":
+    "Задания поставлены; их выполнит клиент с правом записи в хранилище",
+  Running: "Выполняется",
+  "SSH keys, certificates and identities older than this are listed as due in Rotation; 0 disables the check.":
+    "SSH-ключи, сертификаты и идентичности старше этого срока попадают в «Ротацию» как просроченные; 0 отключает проверку.",
+  "Schedule deletion": "Запланировать удаление",
+  Scopes: "Scopes",
+  "Secrets older than the policy allows. The server only sees when a secret was last rotated — never the secret itself. Queue a job and a client with write access to the vault generates the new key, deploys it to the host and replaces it in the vault.":
+    "Секреты старше, чем разрешает политика. Сервер видит только дату последней ротации — не сам секрет. Поставьте задание: клиент с правом записи в хранилище создаст новый ключ, развернёт его на хосте и заменит в хранилище.",
+  Send: "Отправить",
+  "Shown on the login button, e.g. “Okta (Acme)”.":
+    "Отображается на кнопке входа, например «Okta (Acme)».",
+  "Shown to the approvers and kept in the audit log.": "Видна одобряющим и сохраняется в аудите.",
+  "Stored encrypted under the server master key.": "Хранится зашифрованным мастер-ключом сервера.",
+  "Stored encrypted under the server master key. Leave empty to keep the current one.":
+    "Хранится зашифрованным мастер-ключом сервера. Оставьте пустым, чтобы не менять.",
+  "Team data": "Данные команды",
+  "Team identity provider": "Провайдер команды (IdP)",
+  "Temporary (just-in-time) access to a team vault: a member asks for viewer or editor rights for a number of hours, an approver grants them, and the server removes the membership when the time is up. Approval needs a manager's client to seal the vault key for the member.":
+    "Временный (JIT) доступ к командному хранилищу: участник просит права читателя или редактора на несколько часов, одобряющий выдаёт их, по истечении срока сервер сам убирает членство. После одобрения клиент менеджера должен запечатать ключ хранилища для участника.",
+  "Type the team name {v1} to confirm.": "Введите имя команды {v1} для подтверждения.",
+  Viewer: "Наблюдатель",
+  "Where this server keeps the team's data. Set by the operator (TERMOSO_DATA_REGION).":
+    "Где этот сервер хранит данные команды. Задаёт оператор (TERMOSO_DATA_REGION).",
+  Withdraw: "Отозвать заявку",
+  "You can shorten the request, not extend it.": "Срок можно сократить, но не продлить.",
+  editor: "редактора",
+  "until {v1}": "до {v1}",
+  viewer: "читателя",
+  "{v1} asks for {v2} access to {v3} for {v4} h: {v5}":
+    "{v1} просит доступ {v2} к «{v3}» на {v4} ч: {v5}",
+  "{v1} days": "{v1} дн.",
+  "{v1} h": "{v1} ч",
+  "{v1} on {v2} will be signed out and blocked until approved again.":
+    "{v1} на устройстве «{v2}» будет разлогинен и заблокирован до повторного одобрения.",
+  "{v1} secrets will be rotated by the next client with write access to their vaults. Members are not interrupted; old keys stop working once the new ones are deployed.":
+    "{v1} секр. ротирует ближайший клиент с правом записи в их хранилища. Участников это не прерывает; старые ключи перестают работать после развёртывания новых.",
   "1 machine": "1 машина",
   "1 minute": "1 минута",
   "15 minutes": "15 минут",

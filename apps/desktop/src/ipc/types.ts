@@ -1638,6 +1638,12 @@ export interface SsoProvider {
 }
 
 export interface ServerInfo {
+  /** Teams may configure their own IdP. */
+  team_idp?: boolean;
+  /** Corporate mode: password sign-in and sign-up are refused. */
+  sso_only?: boolean;
+  region?: string | null;
+  home_team?: { id: Uuid; name: string } | null;
   name: string;
   version: string;
   registration_open: boolean;
@@ -1645,6 +1651,7 @@ export interface ServerInfo {
   sso_registration: boolean;
   sso_providers: SsoProvider[];
   features: {
+    personal_vaults?: boolean;
     session_logs: boolean;
     email: boolean;
     webauthn: boolean;

@@ -1062,6 +1062,15 @@ pub async fn account_cancel_login<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     account::cancel_login(&app).await
 }
 
+/// Write UTF-8 text to a path the user picked in a save dialog (exports).
+#[tauri::command]
+pub async fn save_text_file(path: String, contents: String) -> Result<()> {
+    tokio::fs::write(&path, contents.as_bytes())
+        .await
+        .map_err(|e| DesktopError::invalid(format!("cannot write {path}: {e}")))?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn account_sso_discover(
     server_url: String,

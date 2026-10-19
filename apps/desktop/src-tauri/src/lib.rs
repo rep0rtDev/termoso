@@ -312,6 +312,7 @@ pub fn run() {
             commands_tools::account_cancel_login,
             commands_tools::account_sso_start,
             commands_tools::account_sso_discover,
+            commands_tools::save_text_file,
             commands_tools::account_sso_poll,
             commands_tools::account_sso_callback,
             commands_tools::account_sso_cancel,

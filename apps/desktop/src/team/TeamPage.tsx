@@ -41,6 +41,11 @@ import { denyPerm } from "@/team/perms";
 import { RolesTab } from "./RolesTab";
 import { PoliciesTab } from "./PoliciesTab";
 import { WebhooksTab } from "./WebhooksTab";
+import { SsoTab } from "./SsoTab";
+import { AccessTab } from "./AccessTab";
+import { RotationTab } from "./RotationTab";
+import { DevicesTab } from "./DevicesTab";
+import { DataTab } from "./DataTab";
 import { useMutation } from "@tanstack/react-query";
 import { isReauthCancelled, withReauth } from "@/account/reauth";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -232,7 +237,16 @@ function NoTeam({ onCreate, onJoin }: { onCreate: () => void; onJoin: () => void
   );
 }
 
-type TeamTab = "members" | "roles" | "policies" | "webhooks";
+type TeamTab =
+  | "members"
+  | "roles"
+  | "policies"
+  | "webhooks"
+  | "sso"
+  | "access"
+  | "rotation"
+  | "devices"
+  | "data";
 
 function TeamView({
   team,
@@ -272,6 +286,11 @@ function TeamView({
       { key: "roles", label: tr("Roles"), show: can(team, "roles.manage") },
       { key: "policies", label: tr("Policies"), show: can(team, "policies.manage") },
       { key: "webhooks", label: tr("Webhooks"), show: can(team, "webhooks.manage") },
+      { key: "sso", label: tr("SSO"), show: can(team, "policies.manage") },
+      { key: "access", label: tr("Access"), show: true },
+      { key: "rotation", label: tr("Rotation"), show: can(team, "rotation.manage") },
+      { key: "devices", label: tr("Devices"), show: can(team, "devices.approve") },
+      { key: "data", label: tr("Data"), show: true },
     ];
     return all.filter((t) => t.show);
   }, [team]);
@@ -675,6 +694,16 @@ function TeamView({
         <PoliciesTab team={team} />
       ) : activeTab === "webhooks" ? (
         <WebhooksTab team={team} />
+      ) : activeTab === "sso" ? (
+        <SsoTab team={team} />
+      ) : activeTab === "access" ? (
+        <AccessTab team={team} myId={myId} />
+      ) : activeTab === "rotation" ? (
+        <RotationTab team={team} />
+      ) : activeTab === "devices" ? (
+        <DevicesTab team={team} />
+      ) : activeTab === "data" ? (
+        <DataTab team={team} />
       ) : (
         <>
           {pendingKeys}

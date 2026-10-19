@@ -777,13 +777,13 @@ export const teamUpdateIdp = (teamId: Uuid, patch: UpdateTeamIdp) =>
   invoke<TeamIdpResponse>("team_update_idp", { teamId, patch });
 export const teamTestIdp = (teamId: Uuid, patch: UpdateTeamIdp) =>
   invoke<TeamIdpResponse>("team_test_idp", { teamId, patch });
-export const teamDeleteIdp = (teamId: Uuid) => invoke<void>("team_delete_idp", { teamId });
+export const teamDeleteIdp = (teamId: Uuid) => invoke<null>("team_delete_idp", { teamId });
 export const teamAcl = (teamId: Uuid, vaultId: Uuid) =>
   invoke<EntityAclRule[]>("team_acl", { teamId, vaultId });
 export const teamUpsertAcl = (teamId: Uuid, vaultId: Uuid, rule: UpsertEntityAcl) =>
   invoke<EntityAclRule[]>("team_upsert_acl", { teamId, vaultId, rule });
 export const teamDeleteAcl = (teamId: Uuid, vaultId: Uuid, ruleId: Uuid) =>
-  invoke<void>("team_delete_acl", { teamId, vaultId, ruleId });
+  invoke<null>("team_delete_acl", { teamId, vaultId, ruleId });
 export const aclMe = () => invoke<MyAclRule[]>("acl_me");
 export const teamLogs = (teamId: Uuid, vaultId?: Uuid) =>
   invoke<TeamLogList>("team_logs", { teamId, vaultId: vaultId ?? null });
@@ -796,7 +796,7 @@ export const teamCreateRotationJobs = (
 export const rotationJobs = () => invoke<RotationJob[]>("rotation_jobs");
 export const rotationUpdateJob = (jobId: Uuid, req: { status: string; error?: string | null }) =>
   invoke<RotationJob>("rotation_update_job", { jobId, req });
-export const rotationCancelJob = (jobId: Uuid) => invoke<void>("rotation_cancel_job", { jobId });
+export const rotationCancelJob = (jobId: Uuid) => invoke<null>("rotation_cancel_job", { jobId });
 export const teamAccessRequests = (teamId: Uuid) =>
   invoke<AccessRequestList>("team_access_requests", { teamId });
 export const teamCreateAccessRequest = (
@@ -804,7 +804,7 @@ export const teamCreateAccessRequest = (
   req: { vault_id: Uuid; role: AccessRole; hours: number; reason: string },
 ) => invoke<AccessRequest>("team_create_access_request", { teamId, req });
 export const teamCancelAccessRequest = (teamId: Uuid, rid: Uuid) =>
-  invoke<void>("team_cancel_access_request", { teamId, rid });
+  invoke<null>("team_cancel_access_request", { teamId, rid });
 export const teamDecideAccessRequest = (
   teamId: Uuid,
   rid: Uuid,
@@ -819,6 +819,8 @@ export const teamCancelDeletion = (teamId: Uuid) =>
   invoke<TeamDataStatus>("team_cancel_deletion", { teamId });
 export const teamDevices = (teamId: Uuid) => invoke<TeamDeviceList>("team_devices", { teamId });
 export const teamApproveDevice = (teamId: Uuid, deviceId: Uuid) =>
-  invoke<void>("team_approve_device", { teamId, deviceId });
+  invoke<null>("team_approve_device", { teamId, deviceId });
 export const teamRejectDevice = (teamId: Uuid, deviceId: Uuid) =>
-  invoke<void>("team_reject_device", { teamId, deviceId });
+  invoke<null>("team_reject_device", { teamId, deviceId });
+export const saveTextFile = (path: string, contents: string) =>
+  invoke<null>("save_text_file", { path, contents });
