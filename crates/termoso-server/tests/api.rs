@@ -260,6 +260,21 @@ async fn landing_origin_serves_only_the_landing() {
     // The API itself is not on the landing origin (see api_is_not_served_on_the_landing_origin).
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
 
+    // A path that is no route at all is a 404 of the public site on this
+    // origin (the SPA shell renders it), not a bounce into the cabinet.
+    for path in ["/signin", "/pricing", "/account-x"] {
+        let r = get(path).await.unwrap();
+        assert_eq!(r.status(), StatusCode::OK, "{path}");
+        assert!(
+            r.headers()["content-type"]
+                .to_str()
+                .unwrap()
+                .starts_with("text/html"),
+            "{path}"
+        );
+        assert!(r.text().await.unwrap().contains("<div id=root>"), "{path}");
+    }
+
     // Unknown files are plain 404s, not redirects; the public site allows crawlers.
     let r = get("/humans.txt").await.unwrap();
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
@@ -267,16 +282,12 @@ async fn landing_origin_serves_only_the_landing() {
     assert_eq!(r.status(), StatusCode::OK);
     assert!(r.text().await.unwrap().contains("Allow: /"));
 
-    // Unknown cabinet routes are the cabinet's business too (it answers with
-    // its own 404 page); unknown API paths are simply absent here.
+    // Unknown API paths are simply absent here; an unknown page stays on
+    // this origin as the public site's 404 (see above).
     let r = get("/api/v1/no-such-route").await.unwrap();
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
     let r = get("/no-such-page").await.unwrap();
-    assert_eq!(r.status(), StatusCode::TEMPORARY_REDIRECT);
-    assert_eq!(
-        r.headers()["location"],
-        format!("http://{}/no-such-page", s.addr).as_str()
-    );
+    assert_eq!(r.status(), StatusCode::OK);
 }
 
 #[tokio::test]
