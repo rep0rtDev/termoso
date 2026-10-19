@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -154,12 +155,18 @@ private fun TransferRow(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconTile(if (t.direction == TransferDirection.DOWNLOAD) Icons.Filled.Download else Icons.Filled.Upload)
+        IconTile(
+            when (t.direction) {
+                TransferDirection.DOWNLOAD -> Icons.Filled.Download
+                TransferDirection.UPLOAD -> Icons.Filled.Upload
+                TransferDirection.RELAY -> Icons.Filled.SwapHoriz
+            },
+        )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(t.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
             Text(
-                t.remotePath,
+                if (t.direction == TransferDirection.RELAY) "${t.remotePath} → ${t.localPath}" else t.remotePath,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

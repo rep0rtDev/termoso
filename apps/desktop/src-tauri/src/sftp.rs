@@ -13,8 +13,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 use termoso_core::error::CoreError;
-use termoso_core::remote::{RemoteCapabilities, RemoteFs, RemoteProtocol};
-use termoso_core::sftp::{EntryKind, OpenMode, Progress, RemoteEntry, Sftp, TransferOptions};
+use termoso_core::remote::{RemoteCapabilities, RemoteFs, RemoteProtocol, relay_file};
+use termoso_core::sftp::{EntryKind, Progress, RemoteEntry, Sftp, TransferOptions};
 use termoso_core::ssh::SshClient;
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
@@ -896,66 +896,6 @@ async fn plan_relay(from: &dyn RemoteFs, src: String, dest: String) -> Result<Pl
     })
 }
 
-const RELAY_CHUNK: usize = 256 * 1024;
-
-/// Streams one file from one remote to another through this client; nothing
-/// is written to the local disk. With `resume`, a shorter copy already at the
-/// destination is continued from its end.
-async fn relay_file(
-    from: &dyn RemoteFs,
-    to: &dyn RemoteFs,
-    src: &str,
-    dest: &str,
-    opts: &TransferOptions,
-) -> Result<u64> {
-    let reader = from.open_file(src, OpenMode::Read).await?;
-    let total = reader.size().await?;
-    let mut offset = 0u64;
-    let mut writer = None;
-    let existing = if opts.resume {
-        to.stat(dest).await.ok()
-    } else {
-        None
-    };
-    if let Some(e) = existing {
-        let have = e.size.unwrap_or(0);
-        if e.kind == EntryKind::File && have > 0 && have <= total {
-            offset = have;
-            writer = Some(to.open_file(dest, OpenMode::ReadWrite).await?);
-        }
-    }
-    let writer = match writer {
-        Some(w) => w,
-        None => to.open_file(dest, OpenMode::Write).await?,
-    };
-    let mut moved = 0u64;
-    while offset < total {
-        if opts.cancel.is_cancelled() {
-            return Err(CoreError::Cancelled.into());
-        }
-        let want = usize::try_from(total - offset)
-            .unwrap_or(RELAY_CHUNK)
-            .min(RELAY_CHUNK);
-        let buf = reader.read_at(offset, want).await?;
-        if buf.is_empty() {
-            break;
-        }
-        writer.write_at(offset, &buf).await?;
-        offset += buf.len() as u64;
-        moved += buf.len() as u64;
-        if let Some(p) = &opts.progress {
-            p(Progress {
-                done: offset,
-                total: Some(total),
-            });
-        }
-    }
-    let _ = writer.sync().await;
-    writer.close().await?;
-    reader.close().await?;
-    Ok(moved)
-}
-
 /// Throttled progress emitter shared by every file of one transfer.
 struct Reporter<R: Runtime> {
     app: AppHandle<R>,
@@ -1253,16 +1193,26 @@ impl ProgressTracker<'_> {
     }
 }
 
+/// `("site", ".tar.gz")`, `("a", ".txt")`, `(".env", "")`: the extension a
+/// rename suffix must stay in front of, keeping `.tar.*` whole.
+fn split_ext(name: &str) -> (&str, &str) {
+    let Some(i) = name.rfind('.').filter(|&i| i > 0) else {
+        return (name, "");
+    };
+    let (stem, ext) = (&name[..i], &name[i..]);
+    match stem.rfind('.') {
+        Some(j) if j > 0 && stem[j..].eq_ignore_ascii_case(".tar") => (&name[..j], &name[j..]),
+        _ => (stem, ext),
+    }
+}
+
 /// `name (1).ext`, `name (2).ext`, … for the first `n` that keeps `taken` false.
 async fn unique_name<F, Fut>(name: &str, taken: F) -> Result<String>
 where
     F: Fn(String) -> Fut,
     Fut: std::future::Future<Output = bool>,
 {
-    let (stem, ext) = match name.rfind('.') {
-        Some(i) if i > 0 => (&name[..i], &name[i..]),
-        _ => (name, ""),
-    };
+    let (stem, ext) = split_ext(name);
     for n in 1..1000 {
         let candidate = format!("{stem} ({n}){ext}");
         if !taken(candidate.clone()).await {
@@ -1562,6 +1512,10 @@ mod tests {
         assert_eq!(unique_name("a.txt", taken).await.unwrap(), "a (3).txt");
         let free = |_c: String| async move { false };
         assert_eq!(unique_name("Makefile", free).await.unwrap(), "Makefile (1)");
+        assert_eq!(
+            unique_name("site.tar.gz", free).await.unwrap(),
+            "site (1).tar.gz"
+        );
         assert_eq!(unique_name(".env", free).await.unwrap(), ".env (1)");
     }
 

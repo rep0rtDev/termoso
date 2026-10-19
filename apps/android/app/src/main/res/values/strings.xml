@@ -1605,4 +1605,13 @@
     <string name="acl_read">Read</string>
     <string name="acl_edit">Edit</string>
     <string name="update_termoso_to_sign_in">Update Termoso to sign in.</string>
+    <string name="copy_to_another_server">Copy to another server…</string>
+    <string name="destination_folder">Destination folder</string>
+    <string name="folders_are_not_copied_between_servers">Folders are not copied between servers; pick files.</string>
+    <string name="copying_to">Copying %1$d file(s) to %2$s</string>
+    <string name="copy_action">Copy</string>
+    <plurals name="n_files_will_be_copied_through_this_device">
+        <item quantity="one">%d file will be streamed through this device, nothing is saved on it.</item>
+        <item quantity="other">%d files will be streamed through this device, nothing is saved on it.</item>
+    </plurals>
 </resources>
