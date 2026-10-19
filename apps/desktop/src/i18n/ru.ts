@@ -8,6 +8,7 @@ export const ru: Readonly<Record<string, string>> = {
     ".ppk, id_ed25519, *.pem — лежащий рядом *-cert.pub подхватится как сертификат",
   ".reg export…": "Экспорт .reg…",
   "1 hour": "1 час",
+  "Client secret": "Секрет клиента",
   "Key rotated; new key installed on {v1}": "Ключ заменён; новый ключ установлен на {v1}",
   "Key rotated (no host in this vault used it)":
     "Ключ заменён (ни один хост этого хранилища его не использовал)",
@@ -81,8 +82,8 @@ export const ru: Readonly<Record<string, string>> = {
   "Approve access": "Одобрить доступ",
   Approved: "Одобрено",
   "Cancel deletion": "Отменить удаление",
-  "Client ID": "Client ID",
-  "Client secret": "Client secret",
+  "Client ID": "ID клиента",
+
   "Comma-separated. A domain can belong to one team only; sign-in with these domains is routed to this provider.":
     "Через запятую. Домен может принадлежать только одной команде; вход с такой почтой направляется в этот провайдер.",
   Created: "Создан",
@@ -125,7 +126,7 @@ export const ru: Readonly<Record<string, string>> = {
   "IdP metadata XML": "Метаданные IdP (XML)",
   "Identity provider removed": "Провайдер удалён",
   "Identity provider saved": "Провайдер сохранён",
-  "Issuer URL": "Issuer URL",
+  "Issuer URL": "URL издателя",
   "Job queued": "Задание в очереди",
   "Join this team on first sign-in": "Вступать в команду при первом входе",
   "Key rotation age": "Срок ротации ключей",
@@ -192,7 +193,7 @@ export const ru: Readonly<Record<string, string>> = {
   "SSH keys, certificates and identities older than this are listed as due in Rotation; 0 disables the check.":
     "SSH-ключи, сертификаты и идентичности старше этого срока попадают в «Ротацию» как просроченные; 0 отключает проверку.",
   "Schedule deletion": "Запланировать удаление",
-  Scopes: "Scopes",
+  Scopes: "Области (scopes)",
   "Secrets older than the policy allows. The server only sees when a secret was last rotated — never the secret itself. Queue a job and a client with write access to the vault generates the new key, deploys it to the host and replaces it in the vault.":
     "Секреты старше, чем разрешает политика. Сервер видит только дату последней ротации — не сам секрет. Поставьте задание: клиент с правом записи в хранилище создаст новый ключ, развернёт его на хосте и заменит в хранилище.",
   Send: "Отправить",
