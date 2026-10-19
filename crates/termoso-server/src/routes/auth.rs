@@ -253,6 +253,7 @@ async fn registration_allowed(
     if settings.sso_only && !sso_verified {
         return Err(crate::enterprise::sso_required(state, email).await);
     }
+    crate::enterprise::require_team_sso(state, sso_verified, email).await?;
     if !(settings.registration_open || (sso_verified && settings.sso_registration) || team_jit) {
         return Err(Error::registration_closed());
     }
@@ -282,7 +283,9 @@ pub async fn register_start(
     turnstile::require(&state, req.turnstile_token.as_deref(), client.ip.as_deref()).await?;
     let email = normalize_email(&req.email).ok_or_else(|| Error::bad_request("Invalid email"))?;
     // Closed registration is enforced at `register_finish`, where the invite
-    // token (which may still allow sign-up) is available.
+    // token (which may still allow sign-up) is available. A domain claimed by
+    // a team for SSO is refused right away: no invite overrides that.
+    crate::enterprise::require_team_sso(&state, false, &email).await?;
     if users::by_email(&state.db, &email).await?.is_some() {
         return Err(Error::email_taken());
     }
@@ -481,6 +484,7 @@ pub async fn login_start(
     };
     let sso_verified = sso_sess.is_some();
     crate::enterprise::require_sso(&state, sso_verified, &email).await?;
+    crate::enterprise::require_team_sso(&state, sso_verified, &email).await?;
     let user = users::by_email(&state.db, &email).await?;
     if let (Some(u), false) = (&user, sso_verified)
         && let Some(provider) = crate::policy::sso_required(&state.db, u.id, &email).await?

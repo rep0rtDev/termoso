@@ -1534,4 +1534,9 @@ export const ru: Readonly<Record<string, string>> = {
   "by {count} teams": "{count} командой|{count} командами|{count} командами",
   "In effect for you now (strictest across your teams)":
     "Действует для вас сейчас (самое строгое по всем вашим командам)",
+  "Continue with SSO": "Войти через SSO",
+  "{v1} manages this e-mail domain through single sign-on. Password accounts cannot be created for it — sign in with your organisation's provider and your account is created automatically.":
+    "{v1} управляет этим почтовым доменом через единый вход. Аккаунт с паролем для него создать нельзя — войдите через провайдера вашей организации, и аккаунт создастся автоматически.",
+  "This e-mail domain is managed through single sign-on. Sign in with your organisation's provider and your account is created automatically.":
+    "Этот почтовый домен управляется через единый вход. Войдите через провайдера вашей организации, и аккаунт создастся автоматически.",
 };

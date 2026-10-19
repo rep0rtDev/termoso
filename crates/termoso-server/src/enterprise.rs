@@ -78,6 +78,37 @@ pub async fn sso_required(state: &AppState, email: &str) -> Error {
     .with_details(serde_json::json!({ "provider": provider }))
 }
 
+/// Refuses a password flow for an address whose domain a team has claimed
+/// for SSO (see `policy::domain_claim`). Bootstrap admins are exempt.
+pub async fn require_team_sso(state: &AppState, sso_verified: bool, email: &str) -> ApiResult<()> {
+    if sso_verified || state.is_bootstrap_admin(email) {
+        return Ok(());
+    }
+    let Some((team_id, team_name, provider)) =
+        crate::policy::domain_claim(&state.db, email).await?
+    else {
+        return Ok(());
+    };
+    // A claim through a provider that is not configured is not enforceable.
+    let configured = match provider.as_deref() {
+        Some("team") => true,
+        Some(p) => state.sso.has(p),
+        None => false,
+    };
+    if !configured || crate::policy::is_team_owner_email(&state.db, team_id, email).await? {
+        return Ok(());
+    }
+    let provider = crate::policy::resolve_provider(team_id, provider);
+    Err(Error::new(
+        axum::http::StatusCode::UNAUTHORIZED,
+        termoso_proto::error::codes::SSO_REQUIRED,
+        format!(
+            "{team_name} requires signing in through its identity provider for this e-mail domain"
+        ),
+    )
+    .with_details(serde_json::json!({ "provider": provider, "team_name": team_name })))
+}
+
 /// Password sign-in is refused on SSO-only servers (bootstrap admins excepted
 /// so the operator can never lock themselves out).
 pub async fn require_sso(state: &AppState, sso_verified: bool, email: &str) -> ApiResult<()> {
