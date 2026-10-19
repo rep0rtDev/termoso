@@ -25,6 +25,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import com.termoso.core.VaultKind
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -46,7 +50,12 @@ class ShellViewModel(
     val ai: AiManager,
 ) : ViewModel() {
     private val _vaults = MutableStateFlow<List<VaultInfo>>(emptyList())
-    val vaults: StateFlow<List<VaultInfo>> = _vaults.asStateFlow()
+    /** Corporate mode (`/server/info` personal_vaults=false): the personal vault is not offered. */
+    val hidePersonalVaults = MutableStateFlow(false)
+    val vaults: StateFlow<List<VaultInfo>> =
+        combine(_vaults, hidePersonalVaults) { list, hide ->
+            if (hide) list.filter { it.kind != VaultKind.PERSONAL } else list
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _selectedVaultId = MutableStateFlow(repo.settings.value.selectedVaultId)
     val selectedVaultId: StateFlow<String?> = _selectedVaultId.asStateFlow()

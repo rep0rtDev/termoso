@@ -31,6 +31,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import com.termoso.core.serverInfo
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -115,7 +116,24 @@ class AccountManager(
         repo.read { accountStatus() }.also {
             _status.value = it
             if (it.account != null) repo.perms.refresh() else repo.perms.clear()
+            refreshServerCapabilities(it.account?.serverUrl)
         }
+
+    private val _personalVaultsHidden = MutableStateFlow(false)
+
+    /** Corporate mode of the signed-in server: `personal_vaults=false` hides the personal vault. */
+    val personalVaultsHidden: StateFlow<Boolean> = _personalVaultsHidden.asStateFlow()
+
+    private fun refreshServerCapabilities(serverUrl: String?) {
+        if (serverUrl == null) {
+            _personalVaultsHidden.value = false
+            return
+        }
+        scope.launch {
+            runCatching { serverInfo(serverUrl) }
+                .onSuccess { _personalVaultsHidden.value = !it.personalVaults }
+        }
+    }
 
     /**
      * OPAQUE login with the Termoso password. With [sso] the identity was just
