@@ -2976,5 +2976,5 @@ export const ru: Readonly<Record<string, string>> = {
   Recent: "Недавние",
   Workspaces: "Рабочие пространства",
   "Update Termoso to sign in.": "Чтобы войти, обновите Termoso.",
-  "Download": "Скачать",
+  Download: "Скачать",
 };
