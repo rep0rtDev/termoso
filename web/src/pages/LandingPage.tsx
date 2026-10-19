@@ -5,7 +5,6 @@ import {
   AccordionSummary,
   Box,
   Button,
-  type ButtonProps,
   Container,
   Link,
   Stack,
@@ -25,23 +24,24 @@ import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
 import HistoryOutlinedIcon from "@mui/icons-material/HistoryOutlined";
 import DevicesOutlinedIcon from "@mui/icons-material/DevicesOutlined";
-import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
-import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
-import { Drawer, IconButton, List, ListItemButton, ListItemText, Divider } from "@mui/material";
 import { Link as RouterLink } from "react-router";
-import { Logo } from "@/components/Logo";
-import { ThemeToggle } from "@/layout/ThemeToggle";
 import { useAuthState } from "@/auth/store";
 import { useServerInfo } from "@/api/hooks";
 import { emerald, monoFontFamily } from "@/theme/theme";
 
-const REPO = "https://github.com/termoso/termoso";
-const RELEASES = `${REPO}/releases/latest`;
-const README = `${REPO}#readme`;
-const SELF_HOSTING = `${REPO}/blob/main/docs/SELF_HOSTING.md`;
-const IOS_SIDELOAD = `${REPO}/blob/main/docs/IOS_SIDELOAD.md`;
+import {
+  CabinetButton,
+  Card,
+  Section,
+  SectionTitle,
+  IOS_SIDELOAD,
+  LandingFooter,
+  LandingHeader,
+  RELEASES,
+  SELF_HOSTING,
+} from "./landing/Shell";
 
-const HEADER = 60;
+const EMAIL = "hello@termoso.dev";
 
 const PLATFORMS = ["Linux", "Windows", "macOS", "Android", "iOS"];
 
@@ -184,89 +184,6 @@ const faq = [
 ];
 
 // ───────────────────────────── pieces ─────────────────────────────
-
-function SectionTitle({
-  eyebrow,
-  title,
-  text,
-  center,
-}: {
-  eyebrow?: string;
-  title: string;
-  text?: string;
-  center?: boolean;
-}) {
-  return (
-    <Box
-      sx={{
-        maxWidth: 620,
-        mb: { xs: 4, md: 6 },
-        mx: center ? "auto" : 0,
-        textAlign: center ? "center" : "left",
-      }}
-    >
-      {eyebrow && (
-        <Typography
-          variant="overline"
-          component="div"
-          color="primary.main"
-          sx={{ mb: 1.25, letterSpacing: "0.1em" }}
-        >
-          {eyebrow}
-        </Typography>
-      )}
-      <Typography
-        variant="h2"
-        component="h2"
-        sx={{ fontSize: { xs: "1.75rem", md: "2.25rem" }, letterSpacing: "-0.02em" }}
-      >
-        {title}
-      </Typography>
-      {text && (
-        <Typography
-          variant="body1"
-          color="text.secondary"
-          sx={{ mt: 1.75, fontSize: "1.0625rem", lineHeight: 1.6 }}
-        >
-          {text}
-        </Typography>
-      )}
-    </Box>
-  );
-}
-
-function Section({
-  id,
-  children,
-  sx,
-}: {
-  id?: string;
-  children: ReactNode;
-  sx?: Record<string, unknown>;
-}) {
-  return (
-    <Box id={id} component="section" sx={{ py: { xs: 8, md: 12 }, scrollMarginTop: HEADER, ...sx }}>
-      {children}
-    </Box>
-  );
-}
-
-function Card({ children, sx }: { children: ReactNode; sx?: Record<string, unknown> }) {
-  return (
-    <Box
-      sx={{
-        bgcolor: "surface.base",
-        borderRadius: 3,
-        p: { xs: 3, md: 3.5 },
-        border: 1,
-        borderColor: "border.light",
-        ...sx,
-      }}
-    >
-      {children}
-    </Box>
-  );
-}
 
 function IconBox({ children }: { children: ReactNode }) {
   return (
@@ -815,23 +732,12 @@ function Stat({ value, label }: { value: string; label: string }) {
  * landing has its own origin (`landing_only`) the cabinet lives at `web_url`,
  * so the button becomes a plain cross-origin link.
  */
-function CabinetButton({
-  to,
-  ...props
-}: Pick<ButtonProps, "variant" | "size" | "sx" | "endIcon" | "children"> & { to: string }) {
-  const info = useServerInfo().data;
-  if (info?.landing_only && info.web_url) {
-    return <Button {...props} href={`${info.web_url.replace(/\/+$/, "")}${to}`} />;
-  }
-  return <Button {...props} component={RouterLink} to={to} />;
-}
 
 export function LandingPage() {
   const { session } = useAuthState();
   const info = useServerInfo();
   const registrationOpen = info.data?.registration_open !== false;
   const [open, setOpen] = useState<number | null>(0);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const primaryCta = session ? (
     <CabinetButton
@@ -864,164 +770,7 @@ export function LandingPage() {
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "surface.lowest", overflowX: "hidden" }}>
-      <Box
-        component="header"
-        sx={{
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-          bgcolor: "color-mix(in srgb, var(--mui-palette-surface-lowest) 82%, transparent)",
-          backdropFilter: "blur(12px)",
-          borderBottom: 1,
-          borderColor: "border.light",
-        }}
-      >
-        <Container
-          maxWidth="lg"
-          sx={{ height: HEADER, display: "flex", alignItems: "center", gap: 1 }}
-        >
-          <Logo size={26} />
-          <Stack direction="row" spacing={0.5} sx={{ ml: 5, display: { xs: "none", md: "flex" } }}>
-            {[
-              ["Product", "#product"],
-              ["Security", "#security"],
-              ["Self-hosting", "#self-hosting"],
-              ["Download", "#download"],
-              ["FAQ", "#faq"],
-            ].map(([label, href]) => (
-              <Button key={href} href={href} variant="text" sx={{ color: "text.secondary" }}>
-                {label}
-              </Button>
-            ))}
-            {info.data?.docs !== false &&
-              (info.data?.docs_url ? (
-                <Button href={info.data.docs_url} variant="text" sx={{ color: "text.secondary" }}>
-                  Docs
-                </Button>
-              ) : (
-                <Button
-                  component={RouterLink}
-                  to="/docs"
-                  variant="text"
-                  sx={{ color: "text.secondary" }}
-                >
-                  Docs
-                </Button>
-              ))}
-            <Button
-              href={REPO}
-              target="_blank"
-              rel="noreferrer"
-              variant="text"
-              sx={{ color: "text.secondary" }}
-            >
-              GitHub
-            </Button>
-          </Stack>
-          <Box sx={{ flex: 1 }} />
-          <ThemeToggle />
-          <IconButton
-            aria-label="Open menu"
-            onClick={() => setMenuOpen(true)}
-            sx={{ ml: 0.5, display: { xs: "inline-flex", md: "none" } }}
-          >
-            <MenuRoundedIcon />
-          </IconButton>
-          {session ? (
-            <CabinetButton to="/account" variant="contained" sx={{ ml: 1 }}>
-              Open cabinet
-            </CabinetButton>
-          ) : (
-            <>
-              <CabinetButton to="/login" variant="text" sx={{ ml: 1 }}>
-                Log in
-              </CabinetButton>
-              {registrationOpen && (
-                <CabinetButton
-                  to="/signup"
-                  variant="contained"
-                  sx={{ display: { xs: "none", sm: "inline-flex" } }}
-                >
-                  Sign up
-                </CabinetButton>
-              )}
-            </>
-          )}
-        </Container>
-      </Box>
-
-      <Drawer anchor="right" open={menuOpen} onClose={() => setMenuOpen(false)}>
-        <Box sx={{ width: 280, pt: 1 }} role="navigation">
-          <Box sx={{ display: "flex", alignItems: "center", px: 2, py: 1 }}>
-            <Logo size={24} />
-            <Box sx={{ flex: 1 }} />
-            <IconButton aria-label="Close menu" onClick={() => setMenuOpen(false)}>
-              <CloseRoundedIcon />
-            </IconButton>
-          </Box>
-          <List>
-            {[
-              ["Product", "#product"],
-              ["Security", "#security"],
-              ["Self-hosting", "#self-hosting"],
-              ["Download", "#download"],
-              ["FAQ", "#faq"],
-            ].map(([label, href]) => (
-              <ListItemButton
-                key={href}
-                component="a"
-                href={href}
-                onClick={() => setMenuOpen(false)}
-              >
-                <ListItemText primary={label} />
-              </ListItemButton>
-            ))}
-            {info.data?.docs !== false && (
-              <ListItemButton
-                component={info.data?.docs_url ? "a" : RouterLink}
-                {...(info.data?.docs_url ? { href: info.data.docs_url } : { to: "/docs" })}
-                onClick={() => setMenuOpen(false)}
-              >
-                <ListItemText primary="Docs" />
-              </ListItemButton>
-            )}
-            <ListItemButton component="a" href={REPO} target="_blank" rel="noreferrer">
-              <ListItemText primary="GitHub" />
-            </ListItemButton>
-          </List>
-          <Divider />
-          <List>
-            {session ? (
-              <ListItemButton
-                component={RouterLink}
-                to="/account"
-                onClick={() => setMenuOpen(false)}
-              >
-                <ListItemText primary="Open cabinet" />
-              </ListItemButton>
-            ) : (
-              <>
-                <ListItemButton
-                  component={RouterLink}
-                  to="/login"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  <ListItemText primary="Log in" />
-                </ListItemButton>
-                {registrationOpen && (
-                  <ListItemButton
-                    component={RouterLink}
-                    to="/signup"
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    <ListItemText primary="Sign up" />
-                  </ListItemButton>
-                )}
-              </>
-            )}
-          </List>
-        </Box>
-      </Drawer>
+      <LandingHeader />
 
       <Box component="main">
         {/* Hero */}
@@ -1354,6 +1103,59 @@ export function LandingPage() {
           </Section>
 
           {/* Download / CTA */}
+          <Section
+            id="sponsor"
+            sx={{
+              pt: 0,
+              pb: { xs: 8, md: 12 },
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1.4fr) auto" },
+              alignItems: "center",
+              gap: { xs: 3, md: 8 },
+            }}
+          >
+            <Box>
+              <Typography
+                variant="overline"
+                component="div"
+                color="primary.main"
+                sx={{ mb: 1.25, letterSpacing: "0.1em" }}
+              >
+                Sponsorship
+              </Typography>
+              <Typography
+                variant="h2"
+                component="h2"
+                sx={{ fontSize: { xs: "1.5rem", md: "1.875rem" }, letterSpacing: "-0.02em" }}
+              >
+                Free software, funded by the people who rely on it
+              </Typography>
+              <Typography
+                variant="body1"
+                color="text.secondary"
+                sx={{ mt: 1.5, fontSize: "1.0625rem", lineHeight: 1.6, maxWidth: 620 }}
+              >
+                No paid tier, no vendor. Individuals and companies sponsor development directly, and
+                organisations running their own server can get deployment help, SLA-backed support
+                and integration work.
+              </Typography>
+            </Box>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} useFlexGap>
+              <Button
+                component={RouterLink}
+                to="/sponsor"
+                variant="outlined"
+                size="large"
+                endIcon={<ArrowForwardRoundedIcon />}
+              >
+                Become a sponsor
+              </Button>
+              <Button href={`mailto:${EMAIL}`} variant="text" size="large">
+                {EMAIL}
+              </Button>
+            </Stack>
+          </Section>
+
           <Section id="download" sx={{ pt: 0 }}>
             <Box
               sx={{
@@ -1429,43 +1231,6 @@ export function LandingPage() {
           </Section>
 
           {/* FAQ */}
-          <Section id="sponsor" sx={{ pt: 0, pb: { xs: 5, md: 7 } }}>
-            <Card
-              sx={{
-                maxWidth: 900,
-                mx: "auto",
-                display: "flex",
-                flexDirection: { xs: "column", md: "row" },
-                alignItems: { md: "center" },
-                gap: 3,
-              }}
-            >
-              <Box sx={{ flex: 1 }}>
-                <Typography
-                  variant="overline"
-                  sx={{ color: "primary.main", fontWeight: 600, letterSpacing: 1 }}
-                >
-                  Sponsorship
-                </Typography>
-                <Typography variant="h5" sx={{ mt: 0.5 }}>
-                  Free software, funded by the people who rely on it
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  No paid tier, no vendor. You can sponsor development, and organisations running
-                  Termoso can get deployment help, SLA-backed support and integrations on a
-                  schedule.
-                </Typography>
-              </Box>
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ flexShrink: 0 }}>
-                <Button component={RouterLink} to="/sponsor" variant="contained" size="large">
-                  Become a sponsor
-                </Button>
-                <Button href="mailto:hello@termoso.dev" variant="outlined" size="large">
-                  hello@termoso.dev
-                </Button>
-              </Stack>
-            </Card>
-          </Section>
           <Section id="faq" sx={{ pt: 0 }}>
             <SectionTitle center title="Frequently asked questions" />
             <Box sx={{ maxWidth: 760, mx: "auto" }}>
@@ -1501,86 +1266,7 @@ export function LandingPage() {
         </Container>
       </Box>
 
-      <Box component="footer" sx={{ borderTop: 1, borderColor: "border.light", py: 6 }}>
-        <Container maxWidth="lg">
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr 1fr", md: "2fr 1fr 1fr 1fr" },
-              gap: 4,
-            }}
-          >
-            <Box sx={{ gridColumn: { xs: "1 / -1", md: "auto" } }}>
-              <Logo size={24} />
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, maxWidth: 300 }}>
-                Software should report to you, not on you. Free, open source, self-hosted.
-              </Typography>
-            </Box>
-            {(
-              [
-                {
-                  title: "Product",
-                  links: [
-                    ["Download", RELEASES],
-                    ["Releases", `${REPO}/releases`],
-                    ["Security", "#security"],
-                  ],
-                },
-                {
-                  title: "Self-hosting",
-                  links: [
-                    ["Quick start", README],
-                    ["Docker Compose", `${REPO}/blob/main/deploy/docker-compose.yml`],
-                    ["Self-hosting guide", SELF_HOSTING],
-                  ],
-                },
-                {
-                  title: "Project",
-                  links: [
-                    ["GitHub", REPO],
-                    ["Issues", `${REPO}/issues`],
-                    ["Sponsor", "/sponsor"],
-                    ["License (AGPL-3.0)", `${REPO}/blob/main/LICENSE`],
-                  ],
-                },
-              ] as { title: string; links: [string, string][] }[]
-            ).map((col) => (
-              <Box key={col.title}>
-                <Typography variant="subtitle2" sx={{ mb: 1.5 }}>
-                  {col.title}
-                </Typography>
-                <Stack spacing={1}>
-                  {col.links.map(([label, href]) => (
-                    <Link
-                      key={label}
-                      href={href}
-                      target={href.startsWith("#") ? undefined : "_blank"}
-                      rel="noreferrer"
-                      variant="body2"
-                      color="text.secondary"
-                      underline="hover"
-                    >
-                      {label}
-                    </Link>
-                  ))}
-                </Stack>
-              </Box>
-            ))}
-          </Box>
-          <Typography
-            variant="caption"
-            color="text.disabled"
-            sx={{ display: "block", mt: 5, pt: 3, borderTop: 1, borderColor: "border.light" }}
-          >
-            {info.data ? `${info.data.name} · server v${info.data.version}` : "Termoso"} · AGPL-3.0
-            · No cookies, no trackers.
-          </Typography>
-          <Typography variant="caption" color="text.disabled" sx={{ display: "block", mt: 1 }}>
-            Termius is a trademark of Termius Corporation. Termoso is an independent project, not
-            affiliated with or endorsed by Termius.
-          </Typography>
-        </Container>
-      </Box>
+      <LandingFooter />
     </Box>
   );
 }
