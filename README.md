@@ -1,5 +1,11 @@
 <p align="center"><img src=".github/banner.svg" alt="Termoso" width="100%"></p>
 
+<p align="center"><img src=".github/screens/terminal.png" alt="Termoso desktop: terminal with tabs and splits" width="100%"></p>
+<p align="center">
+  <img src=".github/screens/hosts.png" alt="Hosts, groups and identities" width="49.5%">
+  <img src=".github/screens/sftp.png" alt="SFTP: two panes, local or remote on either side" width="49.5%">
+</p>
+
 # Termoso
 
 A free, open-source, self-hostable SSH / SFTP / WebDAV / Mosh / Telnet / Serial
@@ -36,7 +42,7 @@ the server's only metrics are opt-in Prometheus counters on a private listener.
 
 ## What works today
 
-Version 0.2.x. Each row is shipped and covered by CI; the last column lists what
+Version 0.9.x. Each row is shipped and covered by CI; the last column lists what
 is knowingly missing.
 
 | Component | Platforms | Shipped | Not yet |
