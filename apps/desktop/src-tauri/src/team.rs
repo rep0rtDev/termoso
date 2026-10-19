@@ -731,19 +731,6 @@ async fn rotate_with(api: &ApiClient, state: &AppState, vault_id: Uuid) -> Resul
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn invite_token_is_last_path_segment() {
-        assert_eq!(invite_token("https://x.io/invite/abc_-9?x=1"), "abc_-9");
-        assert_eq!(invite_token("abc"), "abc");
-        assert_eq!(invite_token(" https://x.io/invite/abc/ "), "abc");
-        assert_eq!(invite_token(""), "");
-    }
-}
-
 // ───────────────────────── 0.9.1 enterprise ─────────────────────────
 
 pub async fn idp<R: Runtime>(app: &AppHandle<R>, team_id: Uuid) -> Result<proto::TeamIdpResponse> {
@@ -952,4 +939,17 @@ pub async fn reject_device<R: Runtime>(
         .await?
         .team_reject_device(team_id, device_id)
         .await?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invite_token_is_last_path_segment() {
+        assert_eq!(invite_token("https://x.io/invite/abc_-9?x=1"), "abc_-9");
+        assert_eq!(invite_token("abc"), "abc");
+        assert_eq!(invite_token(" https://x.io/invite/abc/ "), "abc");
+        assert_eq!(invite_token(""), "");
+    }
 }

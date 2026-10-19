@@ -1192,6 +1192,22 @@ impl AccountRuntime {
     }
 }
 
+fn access_card(r: termoso_proto::team::AccessRequest) -> AccessRequestCard {
+    AccessRequestCard {
+        id: r.id.to_string(),
+        vault_id: r.vault_id.to_string(),
+        vault_name: r.vault_name,
+        user_id: r.user_id.to_string(),
+        user_email: r.user_email,
+        role: r.role,
+        hours: r.hours,
+        reason: r.reason,
+        status: r.status,
+        expires_at: r.expires_at.map(|t| t.to_rfc3339()),
+        created_at: r.created_at.to_rfc3339(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1227,21 +1243,5 @@ mod tests {
             c.details,
             vec!["n: 2".to_string(), "role: admin".to_string()]
         );
-    }
-}
-
-fn access_card(r: termoso_proto::team::AccessRequest) -> AccessRequestCard {
-    AccessRequestCard {
-        id: r.id.to_string(),
-        vault_id: r.vault_id.to_string(),
-        vault_name: r.vault_name,
-        user_id: r.user_id.to_string(),
-        user_email: r.user_email,
-        role: r.role,
-        hours: r.hours,
-        reason: r.reason,
-        status: r.status,
-        expires_at: r.expires_at.map(|t| t.to_rfc3339()),
-        created_at: r.created_at.to_rfc3339(),
     }
 }

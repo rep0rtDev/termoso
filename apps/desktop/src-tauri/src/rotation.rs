@@ -32,7 +32,7 @@ fn algorithm_of(key_type: &str, bits: usize) -> Result<KeyAlgorithm> {
     Ok(match key_type {
         "ssh-ed25519" => KeyAlgorithm::Ed25519,
         "ssh-rsa" => KeyAlgorithm::Rsa {
-            bits: if (2048..=8192).contains(&bits) && bits % 8 == 0 {
+            bits: if (2048..=8192).contains(&bits) && bits.is_multiple_of(8) {
                 bits
             } else {
                 3072
