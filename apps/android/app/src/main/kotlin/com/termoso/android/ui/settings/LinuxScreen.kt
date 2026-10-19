@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Link
@@ -159,11 +160,13 @@ fun LinuxScreen(shell: ShellViewModel, onBack: () -> Unit, onOpenTerminal: () ->
             SectionCard {
                 linux.distros.forEachIndexed { i, d ->
                     if (i > 0) RowDivider()
+                    // The installed image again is a no-op (same archive), so say so instead of offering it.
+                    val current = installed?.distroId == d.id
                     ChevronRow(
                         title = "${d.name} ${d.version}",
-                        subtitle = "${d.note} · ${d.downloadBytes.toLong() / 1_000_000} MB",
-                        leading = { IconTile(Icons.Filled.Download) },
-                        modifier = Modifier.clickable(enabled = progress == null) { linux.install(d.id) },
+                        subtitle = if (current) "${stringResource(R.string.installed)} · ${d.note}" else "${d.note} · ${d.downloadBytes.toLong() / 1_000_000} MB",
+                        leading = { IconTile(if (current) Icons.Filled.Check else Icons.Filled.Download) },
+                        modifier = Modifier.clickable(enabled = progress == null && !current) { linux.install(d.id) },
                     )
                 }
             }

@@ -50,6 +50,12 @@ class LinuxManager(private val context: Context) {
 
     val isInstalled: Boolean get() = _installed.value != null
 
+    /** The installed system's root directory, what its shells see as `/`; null when none is installed. */
+    val filesRoot: File? get() = if (isInstalled) File(rootDir, ROOTFS) else null
+
+    /** `Ubuntu 24.04 LTS` and the like, for labels. */
+    val title: String? get() = _installed.value?.let { "${it.name} ${it.version}" }
+
     fun refresh() {
         _installed.value = linuxInstalled(rootDir.absolutePath)
     }
@@ -135,5 +141,10 @@ class LinuxManager(private val context: Context) {
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return emptyList()
         val props = cm.activeNetwork?.let(cm::getLinkProperties) ?: return emptyList()
         return props.dnsServers.mapNotNull { it.hostAddress }
+    }
+
+    private companion object {
+        /** Mirrors `ROOTFS` in `termoso-mobile/src/linux.rs`. */
+        const val ROOTFS = "rootfs"
     }
 }

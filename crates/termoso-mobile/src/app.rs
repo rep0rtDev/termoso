@@ -1813,17 +1813,20 @@ impl TermosoApp {
         ))
     }
 
-    /// Browse `home`, the local shell's home directory, as a file session.
-    /// Paths are relative to it and never leave it (symlinks pointing out
-    /// are dangling), so the rest of the app's private data stays private.
+    /// Browse `root` — what the local shell sees as `/` (an installed Linux
+    /// system's tree, or the Android shell's home) — as a file session that
+    /// starts in `start`, a path inside it. Paths are relative to the root
+    /// and never leave it (symlinks pointing out are dangling), so the rest
+    /// of the app's private data stays private.
     pub fn local_files(
         &self,
-        home: String,
+        root: String,
+        start: String,
         listener: Arc<dyn SftpListener>,
     ) -> Result<Arc<SftpSession>> {
-        let home = home.trim();
+        let home = root.trim();
         if home.is_empty() {
-            return Err(MobileError::invalid("local home is empty"));
+            return Err(MobileError::invalid("local root is empty"));
         }
         Ok(SftpSession::launch(
             RUNTIME.handle().clone(),
@@ -1832,6 +1835,7 @@ impl TermosoApp {
                 secrets: self.secrets.clone(),
                 backend: FileBackend::Local {
                     root: PathBuf::from(home),
+                    home: start,
                 },
                 settings: MobileSettings::load(&self.store)?,
                 listener,

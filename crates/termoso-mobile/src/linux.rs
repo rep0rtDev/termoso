@@ -271,6 +271,8 @@ pub fn linux_shell(
     fs::create_dir_all(&tmp)?;
     // DNS can change between sessions; the file is ours to overwrite.
     write_resolv(&rootfs, &dns)?;
+    // The app's supplementary groups change with (re)installs; keep them named.
+    name_host_groups(&rootfs, &host_groups())?;
     let lib = Path::new(&lib_dir);
     let proot = lib.join("libproot.so");
     if !proot.is_file() {
@@ -731,11 +733,91 @@ fn configure(rootfs: &Path, dns: &[String]) -> Result<()> {
     fs::create_dir_all(rootfs.join("root"))?;
     fs::create_dir_all(rootfs.join("tmp"))?;
     let _ = fs::create_dir_all(rootfs.join("mnt/sdcard"));
+    name_host_groups(rootfs, &host_groups())?;
     // Ubuntu base ships no /etc/hostname; proot fakes uname, a name keeps tools quiet.
     let hostname = etc.join("hostname");
     if !hostname.exists() {
         fs::write(&hostname, "termoso\n")?;
     }
+    Ok(())
+}
+
+/// The process keeps its Android supplementary groups under proot (`-0` only
+/// fakes uid/gid 0), and a distro's `/etc/group` knows none of them, so every
+/// login shell prints `groups: cannot find name for group ID 3003` and
+/// friends. Give them the names Android uses.
+fn host_groups() -> Vec<u32> {
+    let mut gids: Vec<u32> = fs::read_to_string("/proc/self/status")
+        .unwrap_or_default()
+        .lines()
+        .find_map(|l| l.strip_prefix("Groups:"))
+        .map(|l| {
+            l.split_whitespace()
+                .filter_map(|g| g.parse().ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    gids.sort_unstable();
+    gids.dedup();
+    gids
+}
+
+fn android_group_name(gid: u32) -> String {
+    match gid {
+        1015 => "sdcard_rw".into(),
+        1023 => "media_rw".into(),
+        1077 => "external_storage".into(),
+        1078 => "ext_data_rw".into(),
+        1079 => "ext_obb_rw".into(),
+        3001 => "net_bt_admin".into(),
+        3002 => "net_bt".into(),
+        3003 => "inet".into(),
+        3004 => "net_raw".into(),
+        3005 => "net_admin".into(),
+        9997 => "everybody".into(),
+        10000..=19999 => format!("u0_a{}", gid - 10000),
+        20000..=29999 => format!("cache_a{}", gid - 20000),
+        30000..=39999 => format!("ext_a{}", gid - 30000),
+        40000..=49999 => format!("ext_cache_a{}", gid - 40000),
+        50000..=59999 => format!("all_a{}", gid - 50000),
+        _ => format!("aid_{gid}"),
+    }
+}
+
+/// Append the host's groups that `/etc/group` lacks (by id); existing lines
+/// are left alone, including a distro's own use of a colliding id.
+fn name_host_groups(rootfs: &Path, gids: &[u32]) -> Result<()> {
+    if gids.is_empty() {
+        return Ok(());
+    }
+    let path = rootfs.join("etc/group");
+    let mut text = fs::read_to_string(&path).unwrap_or_default();
+    let known: Vec<u32> = text
+        .lines()
+        .filter_map(|l| l.split(':').nth(2))
+        .filter_map(|g| g.parse().ok())
+        .collect();
+    let names: Vec<&str> = text.lines().filter_map(|l| l.split(':').next()).collect();
+    let mut added = String::new();
+    for &gid in gids {
+        if known.contains(&gid) {
+            continue;
+        }
+        let mut name = android_group_name(gid);
+        if names.contains(&name.as_str()) {
+            name = format!("aid_{gid}");
+        }
+        added.push_str(&format!("{name}:x:{gid}:\n"));
+    }
+    if added.is_empty() {
+        return Ok(());
+    }
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text.push_str(&added);
+    fs::create_dir_all(path.parent().unwrap_or(rootfs))?;
+    fs::write(&path, text)?;
     Ok(())
 }
 
@@ -872,5 +954,33 @@ mod tests {
         );
         linux_remove(dir.path().to_string_lossy().into_owned()).unwrap();
         assert!(!rootfs.exists());
+    }
+
+    #[test]
+    fn host_groups_get_android_names_without_touching_existing_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let rootfs = dir.path();
+        fs::create_dir_all(rootfs.join("etc")).unwrap();
+        fs::write(
+            rootfs.join("etc/group"),
+            "root:x:0:\nusers:x:100:\nmine:x:9997:someone",
+        )
+        .unwrap();
+        name_host_groups(rootfs, &[3003, 9997, 20091, 50091, 100, 7]).unwrap();
+        let text = fs::read_to_string(rootfs.join("etc/group")).unwrap();
+        assert_eq!(
+            text,
+            "root:x:0:\nusers:x:100:\nmine:x:9997:someone\ninet:x:3003:\ncache_a91:x:20091:\nall_a91:x:50091:\naid_7:x:7:\n"
+        );
+        // Idempotent.
+        name_host_groups(rootfs, &[3003, 20091]).unwrap();
+        assert_eq!(fs::read_to_string(rootfs.join("etc/group")).unwrap(), text);
+        // A missing file is created.
+        let bare = tempfile::tempdir().unwrap();
+        name_host_groups(bare.path(), &[3003]).unwrap();
+        assert_eq!(
+            fs::read_to_string(bare.path().join("etc/group")).unwrap(),
+            "inet:x:3003:\n"
+        );
     }
 }

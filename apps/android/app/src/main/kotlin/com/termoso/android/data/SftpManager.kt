@@ -120,8 +120,9 @@ class SftpConnection(
 class SftpManager(
     private val context: Context,
     private val repo: VaultRepository,
-    /** `HOME` of local shells, the directory [openLocal] browses. */
+    /** `HOME` of the Android shell, what [openLocal] browses when no Linux system is installed. */
     private val localHome: File,
+    private val linux: LinuxManager,
 ) {
     private val _connections = MutableStateFlow<List<SftpConnection>>(emptyList())
     val connections: StateFlow<List<SftpConnection>> = _connections.asStateFlow()
@@ -211,19 +212,22 @@ class SftpManager(
     }
 
     /**
-     * Browse the local shell's home directory (the same one local terminals
-     * start in). Paths stay inside it; nothing else under the app's private
-     * storage is reachable.
+     * Browse what local terminals see: the installed Linux system's whole
+     * tree (starting in `/root`, its home) or, without one, the Android
+     * shell's home directory. Paths stay inside that root; nothing else
+     * under the app's private storage is reachable.
      */
     suspend fun openLocal(background: Boolean = false): SftpConnection {
         val bridge = SftpBridge()
-        withContext(Dispatchers.IO) { localHome.mkdirs() }
-        val rust = repo.read { localFiles(localHome.absolutePath, bridge) }
+        val linuxRoot = linux.filesRoot
+        val root = linuxRoot ?: localHome
+        withContext(Dispatchers.IO) { root.mkdirs() }
+        val rust = repo.read { localFiles(root.absolutePath, if (linuxRoot != null) "/root" else "/", bridge) }
         return register(
             SftpConnection(
                 id = rust.id(),
                 label = context.getString(R.string.local_shell_files),
-                target = context.getString(R.string.files_local_root_summary),
+                target = linux.title ?: context.getString(R.string.files_local_root_summary),
                 hostId = null,
                 vaultId = null,
                 quick = null,

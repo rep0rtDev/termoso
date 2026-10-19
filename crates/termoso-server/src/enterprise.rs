@@ -16,6 +16,16 @@ pub async fn ensure_home_team(state: &AppState, user_id: Uuid) -> ApiResult<()> 
     let Some(team_id) = settings.home_team_id else {
         return Ok(());
     };
+    // Team policies that need a reachable mailbox (device approval, email
+    // step-up) are no-ops for an unverified address, so the home team waits
+    // until the address is confirmed (re-run from the confirm endpoint).
+    if state.mailer.is_some()
+        && !crate::users::by_id(&state.db, user_id)
+            .await?
+            .email_verified
+    {
+        return Ok(());
+    }
     let Ok(default_role) = crate::authz::default_role_id(&state.db, team_id).await else {
         tracing::warn!(%team_id, "home team has no default role; skipping auto-join");
         return Ok(());

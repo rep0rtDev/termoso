@@ -1137,6 +1137,16 @@ pub async fn accept_invite(
         ));
     }
     let mut tx = state.db.begin().await?;
+    // The token reached this mailbox, so accepting proves it is theirs —
+    // the same proof sign-up with a matching invite relies on. Team
+    // policies that need a reachable mailbox (device approval, email
+    // step-up) must not stay silently off for an unverified member.
+    if !me.email_verified {
+        sqlx::query("UPDATE users SET email_verified = true, updated_at = now() WHERE id = $1")
+            .bind(me.id)
+            .execute(&mut *tx)
+            .await?;
+    }
     apply_invite(
         &mut tx,
         invite_id,
@@ -1149,6 +1159,20 @@ pub async fn accept_invite(
     )
     .await?;
     tx.commit().await?;
+    if !me.email_verified {
+        crate::session::invalidate_user_cache(&state, me.id).await?;
+        crate::enterprise::ensure_home_team(&state, me.id).await?;
+        users::security_event(
+            &state,
+            me.id,
+            "email_verified",
+            Some(auth.device_id()),
+            None,
+            None,
+            Some(serde_json::json!({ "via": "invite", "team_id": team_id })),
+        )
+        .await?;
+    }
     let mut ids = member_ids(&state.db, team_id).await?;
     ids.push(me.id);
     events::publish(

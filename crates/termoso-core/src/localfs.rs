@@ -25,17 +25,30 @@ const MAX_IN_MEMORY: u64 = 64 * 1024 * 1024;
 #[derive(Debug, Clone)]
 pub struct LocalFs {
     root: Arc<PathBuf>,
+    /// Where a browser starts, as a path inside `root` (`/` by default).
+    home: Arc<str>,
 }
 
 impl LocalFs {
     /// Serve `root`, creating it if needed. The root is canonicalised once
     /// so the confinement check below compares real paths.
     pub async fn open(root: impl AsRef<Path>) -> Result<Self> {
+        Self::open_at(root, "/").await
+    }
+
+    /// Serve `root` with browsers starting in `home`, a path inside it
+    /// (created if missing; `/` when empty).
+    pub async fn open_at(root: impl AsRef<Path>, home: &str) -> Result<Self> {
         let root = root.as_ref();
         tokio::fs::create_dir_all(root).await?;
         let root = tokio::fs::canonicalize(root).await?;
+        let home = normalize_path(home)?;
+        if home != "/" {
+            tokio::fs::create_dir_all(root.join(home.trim_start_matches('/'))).await?;
+        }
         Ok(Self {
             root: Arc::new(root),
+            home: home.into(),
         })
     }
 
@@ -245,7 +258,7 @@ impl RemoteFs for LocalFs {
     }
 
     fn home(&self) -> &str {
-        "/"
+        &self.home
     }
 
     async fn canonicalize(&self, path: &str) -> Result<String> {

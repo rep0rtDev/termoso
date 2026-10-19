@@ -1396,6 +1396,27 @@ export function runCommand(paneId: Uuid, command: string) {
  */
 const outbox = new Map<Uuid, { buf: string; busy: boolean }>();
 
+/**
+ * Input produced while the pane is still connecting, sent as soon as it is.
+ * xterm.js answers terminal queries on its own (ConPTY opens with `ESC[6n`,
+ * a cursor-position request, and renders nothing until it gets the reply),
+ * and the first output often lands before the open call has resolved —
+ * dropping that reply left Windows local terminals blank forever.
+ */
+const pendingInput = new Map<Uuid, string>();
+const PENDING_INPUT_MAX = 64 * 1024;
+
+function queuePendingInput(paneId: Uuid, data: string) {
+  const buf = (pendingInput.get(paneId) ?? "") + data;
+  pendingInput.set(paneId, buf.length > PENDING_INPUT_MAX ? buf.slice(-PENDING_INPUT_MAX) : buf);
+}
+
+function flushPendingInput(paneId: Uuid) {
+  const queued = pendingInput.get(paneId);
+  pendingInput.delete(paneId);
+  if (queued) void writeOrdered(paneId, queued);
+}
+
 function writeOrdered(paneId: Uuid, data: string): Promise<void> {
   let box = outbox.get(paneId);
   if (!box) {
@@ -1429,6 +1450,10 @@ async function sendInput(paneId: Uuid, data: string) {
     return;
   }
   if (s.suggest?.paneId === paneId && s.suggest.items[0]?.kind === "identity") hideSuggest(paneId);
+  if (s.panes[paneId]?.status === "connecting") {
+    queuePendingInput(paneId, data);
+    return;
+  }
   const rt = runtimes.get(paneId);
   if (rt) noteTyped(paneId, rt, data);
   const tab = tabOf(s, paneId);
@@ -1461,6 +1486,7 @@ function describe(target: OpenTarget): { title: string; subtitle: string } {
 }
 
 function startSession(paneId: Uuid, target: OpenTarget) {
+  pendingInput.delete(paneId);
   const rt = runtimes.get(paneId);
   const cols = rt?.term.cols ?? 80;
   const rows = rt?.term.rows ?? 24;
@@ -1487,6 +1513,7 @@ function startSession(paneId: Uuid, target: OpenTarget) {
         shell: info.shell,
         reconnecting: false,
       });
+      flushPendingInput(paneId);
       retries.delete(paneId);
       appendLog(paneId, tr("Session opened"));
       applyPaneLook(paneId);
@@ -1512,8 +1539,10 @@ function startSession(paneId: Uuid, target: OpenTarget) {
       if (!pane || pane.status === "closed" || pane.status === "error") return;
       const message = errorMessage(e);
       if (message.startsWith("cancelled") || /cancel/i.test(message)) {
+        pendingInput.delete(paneId);
         patchPane(paneId, { status: "closed", message: tr("Cancelled") });
       } else {
+        pendingInput.delete(paneId);
         patchPane(paneId, { status: "error", message });
         appendLog(paneId, message, "error");
         writeSystemLine(paneId, message, "31");

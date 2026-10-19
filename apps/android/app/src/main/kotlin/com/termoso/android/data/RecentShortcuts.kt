@@ -16,10 +16,12 @@ import com.termoso.android.R
  */
 object RecentShortcuts {
     private const val STATIC_COUNT = 3
+    private class Action(val id: String, val label: Int, val icon: Int, val link: String)
+
     private val BASE = listOf(
-        Triple("action:new", R.string.shortcut_new_connection, "termoso://new"),
-        Triple("action:local", R.string.shortcut_local_terminal, "termoso://local"),
-        Triple("action:sftp", R.string.shortcut_sftp, "termoso://sftp"),
+        Action("action:new", R.string.shortcut_new_connection, R.drawable.ic_shortcut_new, "termoso://new"),
+        Action("action:local", R.string.shortcut_local_terminal, R.drawable.ic_shortcut_terminal, "termoso://local"),
+        Action("action:sftp", R.string.shortcut_sftp, R.drawable.ic_shortcut_sftp, "termoso://sftp"),
     )
 
     /**
@@ -27,19 +29,21 @@ object RecentShortcuts {
      * `shortcuts.xml` cannot follow the `.debug` application id). Idempotent.
      */
     fun ensureBase(context: Context) {
-        val base = BASE.mapIndexed { rank, (id, label, link) ->
-            ShortcutInfoCompat.Builder(context, id)
-                .setShortLabel(context.getString(label))
-                .setLongLabel(context.getString(label))
+        val base = BASE.mapIndexed { rank, a ->
+            ShortcutInfoCompat.Builder(context, a.id)
+                .setShortLabel(context.getString(a.label))
+                .setLongLabel(context.getString(a.label))
                 .setRank(rank)
-                .setIcon(IconCompat.createWithResource(context, R.mipmap.ic_launcher))
-                .setIntent(Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(context.packageName))
+                .setIcon(IconCompat.createWithResource(context, a.icon))
+                .setIntent(Intent(Intent.ACTION_VIEW, Uri.parse(a.link)).setPackage(context.packageName))
                 .build()
         }
         runCatching {
             val present = ShortcutManagerCompat.getDynamicShortcuts(context).map { it.id }.toSet()
-            val missing = base.filter { it.id !in present }
+            val (existing, missing) = base.partition { it.id in present }
             if (missing.isNotEmpty()) ShortcutManagerCompat.addDynamicShortcuts(context, missing)
+            // Icons and labels of the published ones follow the app (older builds used the launcher icon).
+            if (existing.isNotEmpty()) ShortcutManagerCompat.updateShortcuts(context, existing)
         }
     }
 
@@ -48,7 +52,7 @@ object RecentShortcuts {
         val shortcut = ShortcutInfoCompat.Builder(context, "host:$hostId")
             .setShortLabel(host.label.ifBlank { host.address })
             .setLongLabel(host.label.ifBlank { host.address })
-            .setIcon(IconCompat.createWithResource(context, R.mipmap.ic_launcher))
+            .setIcon(IconCompat.createWithResource(context, R.drawable.ic_shortcut_host))
             .setIntent(Intent(Intent.ACTION_VIEW, Uri.parse("termoso://host/$hostId")).setPackage(context.packageName))
             .build()
         runCatching {

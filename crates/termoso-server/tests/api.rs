@@ -260,6 +260,21 @@ async fn landing_origin_serves_only_the_landing() {
     // The API itself is not on the landing origin (see api_is_not_served_on_the_landing_origin).
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
 
+    // A path that is no route at all is a 404 of the public site on this
+    // origin (the SPA shell renders it), not a bounce into the cabinet.
+    for path in ["/signin", "/pricing", "/account-x"] {
+        let r = get(path).await.unwrap();
+        assert_eq!(r.status(), StatusCode::OK, "{path}");
+        assert!(
+            r.headers()["content-type"]
+                .to_str()
+                .unwrap()
+                .starts_with("text/html"),
+            "{path}"
+        );
+        assert!(r.text().await.unwrap().contains("<div id=root>"), "{path}");
+    }
+
     // Unknown files are plain 404s, not redirects; the public site allows crawlers.
     let r = get("/humans.txt").await.unwrap();
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
@@ -267,16 +282,12 @@ async fn landing_origin_serves_only_the_landing() {
     assert_eq!(r.status(), StatusCode::OK);
     assert!(r.text().await.unwrap().contains("Allow: /"));
 
-    // Unknown cabinet routes are the cabinet's business too (it answers with
-    // its own 404 page); unknown API paths are simply absent here.
+    // Unknown API paths are simply absent here; an unknown page stays on
+    // this origin as the public site's 404 (see above).
     let r = get("/api/v1/no-such-route").await.unwrap();
     assert_eq!(r.status(), StatusCode::NOT_FOUND);
     let r = get("/no-such-page").await.unwrap();
-    assert_eq!(r.status(), StatusCode::TEMPORARY_REDIRECT);
-    assert_eq!(
-        r.headers()["location"],
-        format!("http://{}/no-such-page", s.addr).as_str()
-    );
+    assert_eq!(r.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -2034,4 +2045,80 @@ async fn api_is_not_served_on_the_landing_origin() {
         r.headers()["location"],
         format!("http://{}/account", s.addr)
     );
+}
+
+#[tokio::test]
+async fn accepting_an_invite_verifies_the_mailbox() {
+    let s = server!();
+    if s.mailpit.is_none() {
+        return;
+    }
+    let owner = register(s, &unique_email("owner"), "pw-owner-1234567").await;
+    let team: Team = s
+        .json(
+            Method::POST,
+            "/teams",
+            Some(owner.token()),
+            Some(&CreateTeamRequest { name: "Ops".into() }),
+        )
+        .await;
+    let bob_email = unique_email("bob");
+    let bob = register_unverified(s, &bob_email, "pw-bob-123456789", None).await;
+    assert!(!bob.session.user.email_verified);
+    // Unverified: no team of their own yet.
+    s.expect_status(
+        Method::POST,
+        "/teams",
+        Some(bob.token()),
+        Some(&CreateTeamRequest {
+            name: "Mine".into(),
+        }),
+        StatusCode::FORBIDDEN,
+    )
+    .await;
+
+    let invite: serde_json::Value = s
+        .json(
+            Method::POST,
+            &format!("/teams/{}/invites", team.id),
+            Some(owner.token()),
+            Some(&CreateInviteRequest {
+                email: bob_email.clone(),
+                role: TeamRole::Member,
+                role_id: None,
+                vault_ids: vec![],
+            }),
+        )
+        .await;
+    let token = invite["url"]
+        .as_str()
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_string();
+    // The token was mailed to that address: accepting proves the mailbox.
+    let joined: Team = s
+        .json(
+            Method::POST,
+            &format!("/invites/{token}/accept"),
+            Some(bob.token()),
+            NOBODY,
+        )
+        .await;
+    assert_eq!(joined.my_role, TeamRole::Member);
+    let sess: serde_json::Value = s
+        .json(Method::GET, "/account", Some(bob.token()), NOBODY)
+        .await;
+    assert_eq!(sess["user"]["email_verified"], true, "{sess}");
+    let _: Team = s
+        .json(
+            Method::POST,
+            "/teams",
+            Some(bob.token()),
+            Some(&CreateTeamRequest {
+                name: "Mine".into(),
+            }),
+        )
+        .await;
 }

@@ -69,6 +69,35 @@ async fn home_team_and_sso_only() {
         .filter_map(|t| t["name"].as_str())
         .collect();
     assert_eq!(names, vec!["Corp"]);
+    // An unverified address joins only once it is confirmed: the team's
+    // mailbox-based policies would be silently off for it otherwise.
+    if s.mailpit.is_some() {
+        let mut dave =
+            register_unverified(s, &unique_email("dave"), "pw-dave-12345678", None).await;
+        let teams: serde_json::Value = s
+            .json(Method::GET, "/teams", Some(dave.token()), NOBODY)
+            .await;
+        assert!(
+            teams
+                .as_array()
+                .or_else(|| teams["teams"].as_array())
+                .unwrap()
+                .is_empty(),
+            "{teams}"
+        );
+        verify_email(s, &mut dave).await;
+        let teams: serde_json::Value = s
+            .json(Method::GET, "/teams", Some(dave.token()), NOBODY)
+            .await;
+        let names: Vec<&str> = teams
+            .as_array()
+            .or_else(|| teams["teams"].as_array())
+            .unwrap()
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
+        assert_eq!(names, vec!["Corp"]);
+    }
     let teams: serde_json::Value = s
         .json(Method::GET, "/teams", Some(carol.token()), NOBODY)
         .await;
@@ -107,7 +136,11 @@ async fn home_team_and_sso_only() {
         .or_else(|| members["members"].as_array())
         .unwrap()
         .len();
-    assert_eq!(n, 3, "owner + bob + carol");
+    assert_eq!(
+        n,
+        if s.mailpit.is_some() { 4 } else { 3 },
+        "owner + bob + carol (+ dave once verified)"
+    );
 
     // SSO-only: password sign-in is refused and points at a provider.
     let mut sso = corp.clone();

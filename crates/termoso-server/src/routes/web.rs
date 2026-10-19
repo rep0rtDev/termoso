@@ -310,7 +310,9 @@ pub async fn landing_host_layer(
             if is_api(&path) {
                 return api_not_here();
             }
-            return redirect(&web_url, &req);
+            if is_cabinet(&path) {
+                return redirect(&web_url, &req);
+            }
         }
         req.extensions_mut().insert(DocsHost);
         return next.run(req).await;
@@ -324,7 +326,9 @@ pub async fn landing_host_layer(
             if is_api(&path) {
                 return api_not_here();
             }
-            return redirect(&web_url, &req);
+            if is_cabinet(&path) {
+                return redirect(&web_url, &req);
+            }
         }
         req.extensions_mut().insert(LandingHost);
         return next.run(req).await;
@@ -417,6 +421,34 @@ fn is_landing(path: &str) -> bool {
 
 fn is_docs(path: &str) -> bool {
     path == "/docs" || path.starts_with("/docs/")
+}
+
+/// Cabinet routes (`web/src/router.tsx`) that the public origins send to the
+/// cabinet origin, so links in mail and invites keep working on any host.
+/// Anything else that is not a public page is a 404 of the public site and
+/// stays on the origin it was requested from.
+fn is_cabinet(path: &str) -> bool {
+    const ROOTS: &[&str] = &[
+        "login",
+        "signup",
+        "forgot-password",
+        "start-over",
+        "invite",
+        "join",
+        "sso",
+        "account",
+        "confirm",
+        "security",
+        "devices",
+        "bridges",
+        "delete-account",
+        "team",
+        "vaults",
+        "admin",
+        "sshid",
+    ];
+    let root = path.trim_start_matches('/').split('/').next().unwrap_or("");
+    ROOTS.contains(&root)
 }
 
 fn is_api(path: &str) -> bool {
@@ -706,5 +738,11 @@ mod tests {
         assert!(is_route("/team/1"));
         assert!(!is_route("/favicon.svg"));
         assert!(!is_route("/assets/x"));
+        assert!(is_cabinet("/login"));
+        assert!(is_cabinet("/invite/abc?x=1"));
+        assert!(is_cabinet("/admin/teams/1"));
+        assert!(!is_cabinet("/signin"));
+        assert!(!is_cabinet("/sponsor"));
+        assert!(!is_cabinet("/docs/x"));
     }
 }

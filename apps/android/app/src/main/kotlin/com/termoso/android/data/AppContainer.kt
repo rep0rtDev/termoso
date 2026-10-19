@@ -271,7 +271,7 @@ class AppContainer(context: Context) {
             VaultRepository(app)
         }.also {
             val sessions = SessionManager(appContext, it, localHome, linux)
-            val sftp = SftpManager(appContext, it, localHome)
+            val sftp = SftpManager(appContext, it, localHome, linux)
             val forwards = ForwardManager(it)
             val account = AccountManager(it, onSignOut = sessions::endLive)
             _vault.value = VaultState.Open(
