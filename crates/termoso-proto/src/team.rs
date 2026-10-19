@@ -475,6 +475,7 @@ pub const PERMISSIONS: &[&str] = &[
     "rotation.manage",
     "access.approve",
     "team.export",
+    "devices.approve",
     "vaults.history",
     // entities
     "entities.read",
@@ -736,6 +737,13 @@ schema! {
         /// Rotate identity/host passwords older than this many days; 0 = off.
         #[serde(default)]
         pub password_max_age_days: i32,
+        /// Networks members may sign in from (CIDRs); empty = anywhere.
+        #[serde(default)]
+        pub ip_allowlist: Vec<String>,
+        /// New devices of members must be approved by a team admin
+        /// (`devices.approve`) before they can sign in.
+        #[serde(default)]
+        pub device_admin_approval: bool,
         /// Last change.
         pub updated_at: DateTime<Utc>,
     }
@@ -784,6 +792,52 @@ schema! {
         /// See [`TeamPolicies::password_max_age_days`].
         #[serde(default)]
         pub password_max_age_days: Option<i32>,
+        /// See [`TeamPolicies::ip_allowlist`].
+        #[serde(default)]
+        pub ip_allowlist: Option<Vec<String>>,
+        /// See [`TeamPolicies::device_admin_approval`].
+        #[serde(default)]
+        pub device_admin_approval: Option<bool>,
+    }
+}
+
+schema! {
+    /// A member's device as seen by team admins.
+    pub struct TeamDevice {
+        /// Device id.
+        pub device_id: Uuid,
+        /// Owner.
+        pub user_id: Uuid,
+        /// Owner's e-mail.
+        pub user_email: String,
+        /// Device name chosen by the client.
+        pub name: String,
+        /// Platform.
+        pub platform: String,
+        /// App version at last sign-in.
+        pub app_version: Option<String>,
+        /// Last activity.
+        pub last_seen_at: DateTime<Utc>,
+        /// Last client address.
+        pub last_ip: Option<String>,
+        /// `pending`, `approved` or `rejected`.
+        pub status: String,
+        /// Admin who decided.
+        pub decided_by: Option<Uuid>,
+        /// When.
+        pub decided_at: Option<DateTime<Utc>>,
+        /// First sign-in attempt from this device.
+        pub requested_at: DateTime<Utc>,
+    }
+}
+
+schema! {
+    /// `GET /teams/{id}/devices`.
+    pub struct TeamDeviceList {
+        /// Whether the policy currently requires admin approval.
+        pub admin_approval: bool,
+        /// Devices, pending first.
+        pub devices: Vec<TeamDevice>,
     }
 }
 

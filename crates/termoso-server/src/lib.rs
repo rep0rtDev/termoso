@@ -34,6 +34,7 @@ pub mod session;
 pub mod sso;
 pub mod state;
 pub mod storage;
+pub mod trust;
 pub mod turnstile;
 pub mod users;
 pub mod util;

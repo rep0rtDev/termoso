@@ -22,6 +22,7 @@ pub mod sshid;
 pub mod start_over;
 pub mod sync;
 pub mod teams;
+pub mod trust;
 pub mod vaults;
 pub mod web;
 
@@ -296,6 +297,15 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/teams/{id}/access-requests/{rid}/revoke",
             post(access::revoke),
+        )
+        .route("/teams/{id}/devices", get(trust::list))
+        .route(
+            "/teams/{id}/devices/{device_id}/approve",
+            post(trust::approve),
+        )
+        .route(
+            "/teams/{id}/devices/{device_id}/reject",
+            post(trust::reject),
         )
         .route("/teams/{id}/data", get(gdpr::status))
         .route("/teams/{id}/export", get(gdpr::export))

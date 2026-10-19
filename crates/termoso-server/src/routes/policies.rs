@@ -136,18 +136,26 @@ pub async fn put(
             *slot = days;
         }
     }
+    if let Some(list) = req.ip_allowlist {
+        next.ip_allowlist = crate::trust::normalize_allowlist(&list).map_err(Error::bad_request)?;
+    }
+    if let Some(on) = req.device_admin_approval {
+        next.device_admin_approval = on;
+    }
     let mut tx = state.db.begin().await?;
     sqlx::query(
         "INSERT INTO team_policies (team_id, mfa, local_keys, session_ttl_hours, sso_only, sso_provider,
                                     sso_domains, device_approval, audit_retention_days, session_recording,
-                                    log_retention_days, key_max_age_days, password_max_age_days, updated_by, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10, $11, $12, $13, $14, $9, now())
+                                    log_retention_days, key_max_age_days, password_max_age_days, ip_allowlist,
+                                    device_admin_approval, updated_by, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $10, $11, $12, $13, $14, $15, $16, $9, now())
          ON CONFLICT (team_id) DO UPDATE SET mfa = EXCLUDED.mfa, local_keys = EXCLUDED.local_keys,
              session_ttl_hours = EXCLUDED.session_ttl_hours, sso_only = EXCLUDED.sso_only,
              sso_provider = EXCLUDED.sso_provider, sso_domains = EXCLUDED.sso_domains,
              device_approval = EXCLUDED.device_approval, audit_retention_days = EXCLUDED.audit_retention_days,
              session_recording = EXCLUDED.session_recording, log_retention_days = EXCLUDED.log_retention_days,
              key_max_age_days = EXCLUDED.key_max_age_days, password_max_age_days = EXCLUDED.password_max_age_days,
+             ip_allowlist = EXCLUDED.ip_allowlist, device_admin_approval = EXCLUDED.device_admin_approval,
              updated_by = EXCLUDED.updated_by, updated_at = now()",
     )
     .bind(id)
@@ -164,6 +172,8 @@ pub async fn put(
     .bind(next.log_retention_days)
     .bind(next.key_max_age_days)
     .bind(next.password_max_age_days)
+    .bind(&next.ip_allowlist)
+    .bind(next.device_admin_approval)
     .execute(&mut *tx)
     .await?;
     if next.session_recording == "required" {
@@ -176,6 +186,9 @@ pub async fn put(
         .bind(id)
         .execute(&mut *tx)
         .await?;
+    }
+    if next.device_admin_approval && !before.device_admin_approval {
+        crate::trust::grandfather_devices(&state.db, id, auth.user_id()).await?;
     }
     // Older clients read the coarse flag.
     sqlx::query("UPDATE teams SET require_mfa = $2, updated_at = now() WHERE id = $1")

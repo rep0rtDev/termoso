@@ -546,6 +546,7 @@ async fn continue_login(
 
     let (device_id, is_new) =
         session::upsert_device(&state.db, user.id, &device, client.ip.as_deref()).await?;
+    crate::trust::gate(state, user.id, device_id, &device, client.ip.as_deref()).await?;
     let approved: (bool,) =
         sqlx::query_as("SELECT approved_at IS NOT NULL FROM devices WHERE id = $1")
             .bind(device_id)

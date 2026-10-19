@@ -34,6 +34,8 @@ type Row = (
     i32,
     i32,
     i32,
+    Vec<String>,
+    bool,
     DateTime<Utc>,
 );
 
@@ -41,7 +43,7 @@ macro_rules! policy_select {
     ($head:literal, $tail:literal) => {
         concat!(
             $head,
-            "mfa, local_keys, session_ttl_hours, sso_only, sso_provider, sso_domains, device_approval, audit_retention_days, session_recording, log_retention_days, key_max_age_days, password_max_age_days, updated_at",
+            "mfa, local_keys, session_ttl_hours, sso_only, sso_provider, sso_domains, device_approval, audit_retention_days, session_recording, log_retention_days, key_max_age_days, password_max_age_days, ip_allowlist, device_admin_approval, updated_at",
             $tail
         )
     };
@@ -61,7 +63,9 @@ fn from_row(r: Row) -> TeamPolicies {
         log_retention_days: r.9,
         key_max_age_days: r.10,
         password_max_age_days: r.11,
-        updated_at: r.12,
+        ip_allowlist: r.12,
+        device_admin_approval: r.13,
+        updated_at: r.14,
     }
 }
 
@@ -79,6 +83,8 @@ pub fn defaults() -> TeamPolicies {
         log_retention_days: 0,
         key_max_age_days: 0,
         password_max_age_days: 0,
+        ip_allowlist: Vec::new(),
+        device_admin_approval: false,
         updated_at: Utc::now(),
     }
 }
@@ -118,7 +124,7 @@ pub async fn attach(db: &PgPool, teams: &mut [Team]) -> ApiResult<()> {
     .await?
     .into_iter()
     .map(
-        |(id, a, b, c, d, e, f, g, h, i, j, k, l, m): (
+        |(id, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o): (
             Uuid,
             String,
             String,
@@ -132,8 +138,10 @@ pub async fn attach(db: &PgPool, teams: &mut [Team]) -> ApiResult<()> {
             i32,
             i32,
             i32,
+            Vec<String>,
+            bool,
             DateTime<Utc>,
-        )| { (id, (a, b, c, d, e, f, g, h, i, j, k, l, m)) },
+        )| { (id, (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o)) },
     )
     .collect();
     let mut map: HashMap<Uuid, TeamPolicies> =

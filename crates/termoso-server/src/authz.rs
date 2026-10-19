@@ -160,6 +160,11 @@ fn describe(key: &str) -> (&'static str, &'static str, bool) {
             false,
         ),
         "team.delete" => ("Delete team", "Owner only.", true),
+        "devices.approve" => (
+            "Approve devices",
+            "Vet members' new devices when the team requires admin approval; reject ends their sessions.",
+            true,
+        ),
         "team.export" => (
             "Export team data",
             "Download everything the server stores for the team (GDPR export).",
@@ -415,6 +420,7 @@ pub const BUILTIN_ROLES: &[(&str, &str, &str, &[&str], i32)] = &[
             "rotation.manage",
             "access.approve",
             "team.export",
+            "devices.approve",
             "vaults.rotate_key",
             "vaults.history",
             "entities.read",
