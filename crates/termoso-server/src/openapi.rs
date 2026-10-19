@@ -184,6 +184,10 @@ impl Modify for BearerAuth {
         crate::routes::admin::get_settings,
         crate::routes::admin::put_settings,
         crate::routes::admin::test_email,
+        crate::routes::admin::team_detail,
+        crate::routes::admin::add_member,
+        crate::routes::admin::remove_member,
+        crate::routes::admin::jobs,
     ),
     tags(
         (name = "server", description = "Server capabilities"),

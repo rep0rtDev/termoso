@@ -341,7 +341,16 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/admin/users/{id}/reset-mfa", post(admin::reset_mfa))
         .route("/admin/teams", get(admin::teams))
-        .route("/admin/teams/{id}", delete(admin::delete_team))
+        .route(
+            "/admin/teams/{id}",
+            get(admin::team_detail).delete(admin::delete_team),
+        )
+        .route("/admin/teams/{id}/members", post(admin::add_member))
+        .route(
+            "/admin/teams/{id}/members/{user_id}",
+            delete(admin::remove_member),
+        )
+        .route("/admin/jobs", get(admin::jobs))
         .route(
             "/admin/settings",
             get(admin::get_settings).put(admin::put_settings),

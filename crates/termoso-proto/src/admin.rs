@@ -56,6 +56,24 @@ schema! {
         pub last_seen_at: Option<DateTime<Utc>>,
         /// Device count.
         pub devices: i64,
+        /// Teams the user belongs to.
+        #[serde(default)]
+        pub teams: Vec<AdminUserTeam>,
+        /// How the account came to be: `password`, `sso` or `scim`.
+        #[serde(default)]
+        pub source: String,
+    }
+}
+
+schema! {
+    /// Team membership shown in the admin user list.
+    pub struct AdminUserTeam {
+        /// Team id.
+        pub id: Uuid,
+        /// Team name.
+        pub name: String,
+        /// Role slug in that team.
+        pub role: String,
     }
 }
 
@@ -180,6 +198,96 @@ schema! {
         pub vault_count: i64,
         /// Created.
         pub created_at: DateTime<Utc>,
+        /// Data-residency label stamped at creation.
+        #[serde(default)]
+        pub region: Option<String>,
+        /// Pending GDPR deletion.
+        #[serde(default)]
+        pub deletion_scheduled_at: Option<DateTime<Utc>>,
+        /// Bytes of session recordings stored for the team.
+        #[serde(default)]
+        pub log_bytes: i64,
+        /// This is the server's home team (corporate mode).
+        #[serde(default)]
+        pub is_home: bool,
+        /// A team IdP is configured and enabled.
+        #[serde(default)]
+        pub idp: bool,
+        /// SCIM provisioning has a live token.
+        #[serde(default)]
+        pub scim: bool,
+        /// Enabled webhooks.
+        #[serde(default)]
+        pub webhooks: i64,
+    }
+}
+
+schema! {
+    /// Member row in the admin team card.
+    pub struct AdminTeamMember {
+        /// User id.
+        pub user_id: Uuid,
+        /// E-mail.
+        pub email: String,
+        /// Coarse level (`owner`, `admin`, `member`).
+        pub level: String,
+        /// Role slug.
+        pub role: String,
+        /// How the role was assigned (`manual`, `idp`, `scim`, `server`, `admin`).
+        pub role_source: String,
+        /// Joined.
+        pub joined_at: DateTime<Utc>,
+        /// Last activity of the account.
+        pub last_seen_at: Option<DateTime<Utc>>,
+    }
+}
+
+schema! {
+    /// `GET /admin/teams/{id}`
+    pub struct AdminTeamDetail {
+        /// Summary row.
+        pub team: AdminTeam,
+        /// Members.
+        pub members: Vec<AdminTeamMember>,
+        /// Team policies.
+        pub policies: crate::team::TeamPolicies,
+        /// Last 50 audit events (same shape as the team audit log).
+        pub audit: serde_json::Value,
+    }
+}
+
+schema! {
+    /// `POST /admin/teams/{id}/members`
+    pub struct AdminAddMemberRequest {
+        /// Account to add.
+        pub user_id: Uuid,
+        /// Role slug; the team's default role when omitted.
+        #[serde(default)]
+        pub role: Option<String>,
+    }
+}
+
+schema! {
+    /// Background job as seen in the admin console.
+    pub struct AdminJob {
+        /// Job name.
+        pub name: String,
+        /// Last start.
+        pub last_started_at: DateTime<Utc>,
+        /// Last finish (`None` while running or after a crash).
+        pub last_finished_at: Option<DateTime<Utc>>,
+        /// Rows handled by the last pass.
+        pub last_result: Option<i64>,
+        /// Error of the last pass.
+        pub last_error: Option<String>,
+    }
+}
+
+schema! {
+    /// `GET /admin/jobs`
+    pub struct AdminJobList {
+        /// Jobs.
+        pub jobs: Vec<AdminJob>,
     }
 }
 

@@ -8,6 +8,7 @@ use sqlx::AssertSqlSafe;
 use termoso_proto::admin::*;
 use uuid::Uuid;
 
+use crate::audit;
 use crate::error::{ApiResult, Error, NoContent};
 use crate::events::{self, Event};
 use crate::extract::{Admin, Json as Body};
@@ -43,6 +44,10 @@ pub async fn stats(State(state): State<AppState>, _admin: Admin) -> ApiResult<Js
 
 #[derive(Deserialize, utoipa::IntoParams)]
 pub struct ListQuery {
+    /// Only members of this team.
+    pub team: Option<Uuid>,
+    /// `created` (default), `last_seen`, `email` or `devices`.
+    pub sort: Option<String>,
     /// Substring match on email / display name.
     pub q: Option<String>,
     #[serde(default)]
@@ -62,6 +67,8 @@ type UserRow = (
     DateTime<Utc>,
     Option<DateTime<Utc>>,
     i64,
+    serde_json::Value,
+    String,
 );
 
 fn to_admin_user(r: UserRow, owner: Option<Uuid>) -> AdminUser {
@@ -77,6 +84,8 @@ fn to_admin_user(r: UserRow, owner: Option<Uuid>) -> AdminUser {
         created_at,
         last_seen_at,
         devices,
+        teams,
+        source,
     ) = r;
     AdminUser {
         id,
@@ -91,6 +100,8 @@ fn to_admin_user(r: UserRow, owner: Option<Uuid>) -> AdminUser {
         created_at,
         last_seen_at,
         devices,
+        teams: serde_json::from_value(teams).unwrap_or_default(),
+        source,
     }
 }
 
@@ -98,8 +109,26 @@ const USER_SELECT: &str = "SELECT u.id, u.email, u.email_verified, u.display_nam
         (u.totp_enabled OR EXISTS (SELECT 1 FROM webauthn_credentials w WHERE w.user_id = u.id)),
         u.created_at, u.last_seen_at,
         (SELECT count(*) FROM devices d WHERE d.user_id = u.id
-           AND EXISTS (SELECT 1 FROM sessions s WHERE s.device_id = d.id AND s.revoked_at IS NULL AND s.expires_at > now()))
+           AND EXISTS (SELECT 1 FROM sessions s WHERE s.device_id = d.id AND s.revoked_at IS NULL AND s.expires_at > now())),
+        COALESCE((SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'role', r.slug) ORDER BY t.name)
+                  FROM team_members m JOIN teams t ON t.id = m.team_id JOIN team_roles r ON r.id = m.role_id
+                  WHERE m.user_id = u.id), '[]'::json),
+        CASE WHEN u.managed_by_team_id IS NOT NULL THEN 'scim'
+             WHEN EXISTS (SELECT 1 FROM sso_identities i WHERE i.user_id = u.id) THEN 'sso'
+             ELSE 'password' END
      FROM users u";
+
+const USER_FILTER: &str = "($1::text IS NULL OR lower(u.email) LIKE $1 OR lower(COALESCE(u.display_name, '')) LIKE $1)
+         AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = $4 AND tm.user_id = u.id))";
+
+fn user_order(sort: Option<&str>) -> &'static str {
+    match sort {
+        Some("last_seen") => "u.last_seen_at DESC NULLS LAST",
+        Some("email") => "lower(u.email)",
+        Some("devices") => "11 DESC, u.created_at DESC",
+        _ => "u.created_at DESC",
+    }
+}
 
 #[utoipa::path(get, path = "/api/v1/admin/users", tag = "admin", params(ListQuery), responses((status = 200, body = AdminUserList)))]
 pub async fn users(
@@ -111,19 +140,23 @@ pub async fn users(
     let pattern =
         q.q.as_deref()
             .map(|s| format!("%{}%", s.trim().to_lowercase()));
+    let order = user_order(q.sort.as_deref());
     let rows: Vec<UserRow> = sqlx::query_as(AssertSqlSafe(format!(
-        "{USER_SELECT} WHERE ($1::text IS NULL OR lower(u.email) LIKE $1 OR lower(COALESCE(u.display_name, '')) LIKE $1)
-         ORDER BY u.created_at DESC OFFSET $2 LIMIT $3"
+        "{USER_SELECT} WHERE {USER_FILTER} ORDER BY {order} OFFSET $2 LIMIT $3"
     )))
     .bind(&pattern)
     .bind(q.offset.max(0))
     .bind(limit)
+    .bind(q.team)
     .fetch_all(&state.db)
     .await?;
-    let (total,): (i64,) = sqlx::query_as(
-        "SELECT count(*) FROM users u WHERE ($1::text IS NULL OR lower(u.email) LIKE $1 OR lower(COALESCE(u.display_name, '')) LIKE $1)",
-    )
+    let (total,): (i64,) = sqlx::query_as(AssertSqlSafe(format!(
+        "SELECT count(*) FROM users u WHERE {USER_FILTER}"
+    )))
     .bind(&pattern)
+    .bind(0i64)
+    .bind(0i64)
+    .bind(q.team)
     .fetch_one(&state.db)
     .await?;
     let owner = state.owner_user_id().await?;
@@ -326,6 +359,51 @@ pub async fn reset_mfa(
 
 // ───────────────────────────── teams ─────────────────────────────
 
+type TeamRow = (
+    Uuid,
+    String,
+    String,
+    i64,
+    i64,
+    DateTime<Utc>,
+    Option<String>,
+    Option<DateTime<Utc>>,
+    i64,
+    bool,
+    bool,
+    i64,
+);
+
+const TEAM_SELECT: &str = "SELECT t.id, t.name, u.email,
+        (SELECT count(*) FROM team_members m WHERE m.team_id = t.id),
+        (SELECT count(*) FROM vaults v WHERE v.team_id = t.id AND v.deleted_at IS NULL),
+        t.created_at, t.region, t.deletion_scheduled_at,
+        (SELECT COALESCE(sum(l.size_bytes), 0)::bigint FROM session_logs l JOIN vaults v ON v.id = l.vault_id
+          WHERE v.team_id = t.id AND l.deleted = false),
+        EXISTS (SELECT 1 FROM team_idp i WHERE i.team_id = t.id AND i.enabled),
+        EXISTS (SELECT 1 FROM scim_tokens k WHERE k.team_id = t.id AND k.revoked_at IS NULL
+                  AND (k.expires_at IS NULL OR k.expires_at > now())),
+        (SELECT count(*) FROM team_webhooks w WHERE w.team_id = t.id AND w.enabled)
+     FROM teams t JOIN users u ON u.id = t.owner_id";
+
+fn to_admin_team(r: TeamRow, home: Option<Uuid>) -> AdminTeam {
+    AdminTeam {
+        id: r.0,
+        name: r.1,
+        owner_email: r.2,
+        member_count: r.3,
+        vault_count: r.4,
+        created_at: r.5,
+        region: r.6,
+        deletion_scheduled_at: r.7,
+        log_bytes: r.8,
+        is_home: home == Some(r.0),
+        idp: r.9,
+        scim: r.10,
+        webhooks: r.11,
+    }
+}
+
 #[utoipa::path(get, path = "/api/v1/admin/teams", tag = "admin", params(ListQuery), responses((status = 200, body = AdminTeamList)))]
 pub async fn teams(
     State(state): State<AppState>,
@@ -336,15 +414,16 @@ pub async fn teams(
     let pattern =
         q.q.as_deref()
             .map(|s| format!("%{}%", s.trim().to_lowercase()));
-    let rows: Vec<(Uuid, String, String, i64, i64, DateTime<Utc>)> = sqlx::query_as(
-        "SELECT t.id, t.name, u.email,
-                (SELECT count(*) FROM team_members m WHERE m.team_id = t.id),
-                (SELECT count(*) FROM vaults v WHERE v.team_id = t.id AND v.deleted_at IS NULL),
-                t.created_at
-         FROM teams t JOIN users u ON u.id = t.owner_id
-         WHERE ($1::text IS NULL OR lower(t.name) LIKE $1 OR lower(u.email) LIKE $1)
-         ORDER BY t.created_at DESC OFFSET $2 LIMIT $3",
-    )
+    let order = match q.sort.as_deref() {
+        Some("name") => "lower(t.name)",
+        Some("members") => "4 DESC, t.created_at DESC",
+        Some("storage") => "9 DESC, t.created_at DESC",
+        _ => "t.created_at DESC",
+    };
+    let rows: Vec<TeamRow> = sqlx::query_as(AssertSqlSafe(format!(
+        "{TEAM_SELECT} WHERE ($1::text IS NULL OR lower(t.name) LIKE $1 OR lower(u.email) LIKE $1)
+         ORDER BY {order} OFFSET $2 LIMIT $3"
+    )))
     .bind(&pattern)
     .bind(q.offset.max(0))
     .bind(limit)
@@ -357,21 +436,210 @@ pub async fn teams(
     .bind(&pattern)
     .fetch_one(&state.db)
     .await?;
+    let home = state.settings().await?.home_team_id;
     Ok(Json(AdminTeamList {
-        teams: rows
+        teams: rows.into_iter().map(|r| to_admin_team(r, home)).collect(),
+        total,
+    }))
+}
+
+/// One team: summary, members, policies and the last 50 audit events.
+#[utoipa::path(get, path = "/api/v1/admin/teams/{id}", tag = "admin", params(("id" = Uuid, Path)), responses((status = 200, body = AdminTeamDetail)))]
+pub async fn team_detail(
+    State(state): State<AppState>,
+    _admin: Admin,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<AdminTeamDetail>> {
+    let row: Option<TeamRow> =
+        sqlx::query_as(AssertSqlSafe(format!("{TEAM_SELECT} WHERE t.id = $1")))
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await?;
+    let row = row.ok_or_else(|| Error::not_found("Team"))?;
+    let home = state.settings().await?.home_team_id;
+    let members: Vec<(
+        Uuid,
+        String,
+        String,
+        String,
+        String,
+        DateTime<Utc>,
+        Option<DateTime<Utc>>,
+    )> = sqlx::query_as(
+        "SELECT m.user_id, u.email, m.role, r.slug, m.role_source, m.joined_at, u.last_seen_at
+         FROM team_members m JOIN users u ON u.id = m.user_id JOIN team_roles r ON r.id = m.role_id
+         WHERE m.team_id = $1 ORDER BY m.role = 'owner' DESC, m.role = 'admin' DESC, u.email",
+    )
+    .bind(id)
+    .fetch_all(&state.db)
+    .await?;
+    let policies = crate::policy::load(&state.db, id).await?;
+    let (audit,): (serde_json::Value,) = sqlx::query_as(
+        "SELECT COALESCE(json_agg(row_to_json(x)), '[]'::json) FROM (
+            SELECT e.id, e.action, e.actor_id, u.email AS actor_email, e.device_id, e.vault_id, e.target_user, e.details, e.created_at
+            FROM team_audit_events e LEFT JOIN users u ON u.id = e.actor_id
+            WHERE e.team_id = $1 ORDER BY e.created_at DESC LIMIT 50) x",
+    )
+    .bind(id)
+    .fetch_one(&state.db)
+    .await?;
+    Ok(Json(AdminTeamDetail {
+        team: to_admin_team(row, home),
+        members: members
             .into_iter()
             .map(
-                |(id, name, owner_email, member_count, vault_count, created_at)| AdminTeam {
-                    id,
-                    name,
-                    owner_email,
-                    member_count,
-                    vault_count,
-                    created_at,
+                |(user_id, email, level, role, role_source, joined_at, last_seen_at)| {
+                    AdminTeamMember {
+                        user_id,
+                        email,
+                        level,
+                        role,
+                        role_source,
+                        joined_at,
+                        last_seen_at,
+                    }
                 },
             )
             .collect(),
-        total,
+        policies,
+        audit,
+    }))
+}
+
+/// Add an existing account to a team (default role unless `role` is given).
+#[utoipa::path(post, path = "/api/v1/admin/teams/{id}/members", tag = "admin", params(("id" = Uuid, Path)),
+    request_body = AdminAddMemberRequest, responses((status = 200, body = AdminTeamDetail)))]
+pub async fn add_member(
+    State(state): State<AppState>,
+    admin: Admin,
+    Path(id): Path<Uuid>,
+    Body(req): Body<AdminAddMemberRequest>,
+) -> ApiResult<Json<AdminTeamDetail>> {
+    let role_id: Uuid = match req.role.as_deref().map(str::trim).filter(|r| !r.is_empty()) {
+        Some("owner") => {
+            return Err(Error::bad_request(
+                "Use ownership transfer for the owner role",
+            ));
+        }
+        Some(slug) => {
+            let r: Option<(Uuid,)> =
+                sqlx::query_as("SELECT id FROM team_roles WHERE team_id = $1 AND slug = $2")
+                    .bind(id)
+                    .bind(slug)
+                    .fetch_optional(&state.db)
+                    .await?;
+            r.ok_or_else(|| Error::not_found("Role"))?.0
+        }
+        None => crate::authz::default_role_id(&state.db, id).await?,
+    };
+    let (exists,): (bool,) = sqlx::query_as("SELECT EXISTS (SELECT 1 FROM users WHERE id = $1)")
+        .bind(req.user_id)
+        .fetch_one(&state.db)
+        .await?;
+    if !exists {
+        return Err(Error::not_found("User"));
+    }
+    let n = sqlx::query(
+        "INSERT INTO team_members (team_id, user_id, role, role_id, role_source)
+         VALUES ($1, $2, CASE WHEN (SELECT slug FROM team_roles WHERE id = $3) = 'admin' THEN 'admin' ELSE 'member' END, $3, 'admin')
+         ON CONFLICT (team_id, user_id) DO NOTHING",
+    )
+    .bind(id)
+    .bind(req.user_id)
+    .bind(role_id)
+    .execute(&state.db)
+    .await?
+    .rows_affected();
+    if n == 0 {
+        return Err(Error::conflict("Already a member"));
+    }
+    audit::record(
+        &state.db,
+        audit::Entry::system(id, "member.joined")
+            .user(req.user_id)
+            .details(
+                serde_json::json!({ "by_server_admin": admin.0.user_id(), "role_id": role_id }),
+            ),
+    )
+    .await;
+    let _ = state.events.send(crate::events::Event::TeamsUpdated {
+        user_ids: vec![req.user_id],
+    });
+    team_detail(State(state), admin, Path(id)).await
+}
+
+/// Remove a member (not the owner).
+#[utoipa::path(delete, path = "/api/v1/admin/teams/{id}/members/{user_id}", tag = "admin",
+    params(("id" = Uuid, Path), ("user_id" = Uuid, Path)), responses((status = 204)))]
+pub async fn remove_member(
+    State(state): State<AppState>,
+    admin: Admin,
+    Path((id, user_id)): Path<(Uuid, Uuid)>,
+) -> ApiResult<NoContent> {
+    let role: Option<(String,)> =
+        sqlx::query_as("SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2")
+            .bind(id)
+            .bind(user_id)
+            .fetch_optional(&state.db)
+            .await?;
+    let (role,) = role.ok_or_else(|| Error::not_found("Member"))?;
+    if role == "owner" {
+        return Err(Error::conflict(
+            "Transfer ownership before removing the owner",
+        ));
+    }
+    let mut tx = state.db.begin().await?;
+    sqlx::query(
+        "DELETE FROM vault_members vm USING vaults v WHERE vm.vault_id = v.id AND v.team_id = $1 AND vm.user_id = $2",
+    )
+    .bind(id)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM team_members WHERE team_id = $1 AND user_id = $2")
+        .bind(id)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    audit::record(
+        &state.db,
+        audit::Entry::system(id, "member.removed")
+            .user(user_id)
+            .details(serde_json::json!({ "by_server_admin": admin.0.user_id() })),
+    )
+    .await;
+    let _ = state.events.send(crate::events::Event::TeamsUpdated {
+        user_ids: vec![user_id],
+    });
+    let _ = state.events.send(crate::events::Event::VaultsUpdated {
+        user_ids: vec![user_id],
+    });
+    Ok(NoContent)
+}
+
+/// Background jobs and their last pass.
+#[utoipa::path(get, path = "/api/v1/admin/jobs", tag = "admin", responses((status = 200, body = AdminJobList)))]
+pub async fn jobs(State(state): State<AppState>, _admin: Admin) -> ApiResult<Json<AdminJobList>> {
+    let rows: Vec<(String, DateTime<Utc>, Option<DateTime<Utc>>, Option<i64>, Option<String>)> =
+        sqlx::query_as(
+            "SELECT name, last_started_at, last_finished_at, last_result, last_error FROM job_runs ORDER BY name",
+        )
+        .fetch_all(&state.db)
+        .await?;
+    Ok(Json(AdminJobList {
+        jobs: rows
+            .into_iter()
+            .map(
+                |(name, last_started_at, last_finished_at, last_result, last_error)| AdminJob {
+                    name,
+                    last_started_at,
+                    last_finished_at,
+                    last_result,
+                    last_error,
+                },
+            )
+            .collect(),
     }))
 }
 
