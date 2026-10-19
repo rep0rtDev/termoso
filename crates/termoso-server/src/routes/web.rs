@@ -315,7 +315,7 @@ pub async fn landing_host_layer(
             && let Some(docs_url) = state.cfg.docs_url()
         {
             return redirect(docs_url, &req);
-        } else if !(path == "/" || passthrough || is_docs(&path)) {
+        } else if !(is_landing(&path) || passthrough || is_docs(&path)) {
             return redirect(&web_url, &req);
         }
         req.extensions_mut().insert(LandingHost);
@@ -402,6 +402,11 @@ async fn serve(
 /// Client-side routes look like `/team/123` — no extension in the last segment.
 /// The documentation is part of the web cabinet bundle but belongs to the
 /// public site, so the landing origin serves it instead of redirecting.
+/// Public pages that live on the landing origin.
+fn is_landing(path: &str) -> bool {
+    path == "/" || path == "/sponsor"
+}
+
 fn is_docs(path: &str) -> bool {
     path == "/docs" || path.starts_with("/docs/")
 }
