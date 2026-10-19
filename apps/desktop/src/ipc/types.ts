@@ -2104,7 +2104,7 @@ export interface WebhookDelivery {
 // ── 0.9.1 enterprise ──
 
 export interface SsoDiscoverResponse {
-  provider?: { id: string; name: string; kind?: string } | null;
+  provider?: SsoProvider | null;
   team_name?: string | null;
   required: boolean;
 }

@@ -26,6 +26,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Field } from "@/components/ui";
 import { useSnackbar } from "@/components/Snackbar";
 import * as ipc from "@/ipc/commands";
+import type { SsoDiscoverResponse } from "@/ipc/types";
 import { keys, type useAccount } from "@/ipc/hooks";
 import { createStore, useStore } from "@/lib/store";
 import { CLOUD_HOST, CLOUD_URL, normalizeServerUrl } from "@/lib/cloud";
@@ -199,6 +200,23 @@ export function SignInForm({
     !info.data.registration_open &&
     !(verified?.step === "registrationRequired" && info.data.sso_registration);
   const providers = info.data?.sso_providers ?? [];
+  const ssoOnly = info.data?.sso_only === true;
+  // Home-realm discovery: a corporate e-mail domain routes the form to the team's IdP.
+  const [disc, setDisc] = useState<{ email: string; r: SsoDiscoverResponse } | null>(null);
+  const [passwordAnyway, setPasswordAnyway] = useState(false);
+  const discover = () => {
+    const addr = email.trim().toLowerCase();
+    if (sso || url === null || !addr.includes("@") || disc?.email === addr) return;
+    ipc
+      .ssoDiscover(url, addr)
+      .then((r) => setDisc({ email: addr, r }))
+      .catch(() =>
+        setDisc({ email: addr, r: { provider: null, team_name: null, required: false } }),
+      );
+  };
+  const found = disc?.email === email.trim().toLowerCase() ? disc.r : null;
+  const idp = !sso && mode === "login" ? (found?.provider ?? null) : null;
+  const passwordHidden = !sso && (ssoOnly || (idp !== null && !passwordAnyway));
   const canSubmit =
     info.data !== undefined &&
     (verified !== null || email.trim().length > 0) &&
@@ -327,10 +345,26 @@ export function SignInForm({
                 onChange={(e) => {
                   setEmail(e.target.value);
                   setTouched(true);
+                  setPasswordAnyway(false);
                 }}
+                onBlur={discover}
                 onKeyDown={onEnter}
               />
             </Field>
+          )}
+          {idp && (
+            <Alert severity="info">
+              {found?.team_name
+                ? tr("Your organization {v1} uses single sign-on.", { v1: found.team_name })
+                : tr("Your organization uses single sign-on.")}
+            </Alert>
+          )}
+          {ssoOnly && !sso && (
+            <Alert severity="info">
+              {tr(
+                "This server accepts single sign-on only. Continue with your organization's provider below.",
+              )}
+            </Alert>
           )}
           {mode === "register" && (
             <Field label={tr("Display name")} hint={tr("Optional")}>
@@ -346,7 +380,7 @@ export function SignInForm({
               />
             </Field>
           )}
-          {
+          {!passwordHidden && (
             <Field
               label={verified ? tr("Termoso password") : tr("Password")}
               hint={
@@ -374,7 +408,7 @@ export function SignInForm({
                 onKeyDown={onEnter}
               />
             </Field>
-          }
+          )}
           {mode === "register" && needsInvite && (
             <Field label={tr("Invite token")} hint={tr("This server only accepts invited users.")}>
               <TextField value={invite} onChange={(e) => setInvite(e.target.value)} />
@@ -392,7 +426,23 @@ export function SignInForm({
               />
             </Field>
           )}
-          {
+          {idp && passwordHidden ? (
+            <>
+              <Button
+                variant="contained"
+                size="large"
+                disabled={ssoStart.isPending || busy}
+                onClick={() => ssoStart.mutate(idp)}
+              >
+                {tr("Continue with")} {idp.name}
+              </Button>
+              {!found?.required && !ssoOnly && (
+                <Button size="small" color="inherit" onClick={() => setPasswordAnyway(true)}>
+                  {tr("Sign in with a password instead")}
+                </Button>
+              )}
+            </>
+          ) : passwordHidden ? null : (
             <Button
               variant="contained"
               size="large"
@@ -407,7 +457,7 @@ export function SignInForm({
                 tr("Create account")
               )}
             </Button>
-          }
+          )}
         </>
       )}
 
@@ -419,17 +469,19 @@ export function SignInForm({
             </Typography>
           </Divider>
           <Stack spacing={1}>
-            {providers.map((p) => (
-              <Button
-                key={p.id}
-                variant="outlined"
-                size="large"
-                disabled={ssoStart.isPending || busy}
-                onClick={() => ssoStart.mutate(p)}
-              >
-                {tr("Continue with")} {p.name}
-              </Button>
-            ))}
+            {providers
+              .filter((p) => p.id !== idp?.id)
+              .map((p) => (
+                <Button
+                  key={p.id}
+                  variant="outlined"
+                  size="large"
+                  disabled={ssoStart.isPending || busy}
+                  onClick={() => ssoStart.mutate(p)}
+                >
+                  {tr("Continue with")} {p.name}
+                </Button>
+              ))}
           </Stack>
         </>
       )}
@@ -441,6 +493,7 @@ export function SignInForm({
             component="button"
             type="button"
             underline="hover"
+            disabled={ssoOnly}
             onClick={() => setMode(mode === "login" ? "register" : "login")}
           >
             {mode === "login" ? tr("Create a free account") : tr("Sign in")}
