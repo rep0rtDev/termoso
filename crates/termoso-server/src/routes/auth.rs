@@ -94,13 +94,15 @@ pub(crate) fn min_client_version(cfg: &crate::config::Config) -> &str {
         .unwrap_or(crate::state::VERSION)
 }
 
-/// `1.2.3[-pre][+build]` → (1, 2, 3); anything else is `None`.
+/// `1.2.3[-pre][+build]` → (1, 2, 3); anything else is `None`. `0.0.0-*` is
+/// the conventional "unreleased" version of dev and test builds and is also
+/// `None`, so such clients are never gated.
 fn semver_tuple(v: &str) -> Option<(u64, u64, u64)> {
     let core = v.trim().trim_start_matches('v');
     let core = core.split(['-', '+']).next()?;
     let mut it = core.split('.').map(|p| p.parse::<u64>().ok());
     let (a, b, c) = (it.next()??, it.next()??, it.next()??);
-    Some((a, b, c))
+    Some((a, b, c)).filter(|t| *t != (0, 0, 0))
 }
 
 /// Refuse clients older than [`min_client_version`]: an old client against a
@@ -1474,6 +1476,7 @@ mod client_version_tests {
         assert!(check_client_version(&cfg, &dev("1.0.0-beta.1")).is_ok());
         // Non-semver builds (dev, tests) are not blocked.
         assert!(check_client_version(&cfg, &dev("dev")).is_ok());
+        assert!(check_client_version(&cfg, &dev("0.0.0-test")).is_ok());
         assert!(check_client_version(&cfg, &dev("")).is_ok());
     }
 
