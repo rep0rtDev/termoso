@@ -647,6 +647,100 @@ export const ru: Readonly<Record<string, string>> = {
   Discard: "Отменить изменения",
   "Disconnect {v1}?": "Отключить {v1}?",
   "Download {file}": "Скачать {file}",
+  Recordings: "Записи",
+  "Recording deleted": "Запись удалена",
+  "Export NDJSON": "Экспорт NDJSON",
+  "All vaults": "Все хранилища",
+  From: "С",
+  To: "По",
+  "{v1} recordings · {v2}": "Записей: {v1} · {v2}",
+  "No recordings": "Записей нет",
+  Recorded: "Записано",
+  "Team policy requires recording: every session in a team vault is recorded and members cannot turn it off.":
+    "Политика команды требует запись: каждая сессия в командном хранилище записывается, участники не могут это выключить.",
+  "Recording is optional in this team — each vault decides. Set the policy “Session recording: required” to record everything.":
+    "Запись в команде по желанию — решает каждое хранилище. Включите политику «Запись сессий: обязательно», чтобы записывать всё.",
+  "Session recordings": "Записи сессий",
+  "Everything members recorded in this team's vaults. Retention follows the team policy; pinned recordings are never auto-deleted. What a session was — host, command line, output — is decrypted in this browser with the vault key; the server stores ciphertext only.":
+    "Всё, что участники записали в хранилищах команды. Срок хранения — по политике команды; закреплённые записи не удаляются автоматически. Что это была за сессия — хост, команда, вывод — расшифровывается в браузере ключом хранилища; сервер хранит только шифротекст.",
+  "No key for this vault in this browser": "В этом браузере нет ключа этого хранилища",
+  "Delete recording": "Удалить запись",
+  "The recording is removed from the server for every member; copies already downloaded to members' devices stay with them.":
+    "Запись удаляется с сервера для всех участников; уже скачанные на устройства копии остаются у них.",
+  "Add this redirect / ACS URL to the application in your identity provider.":
+    "Добавьте этот redirect / ACS URL в приложение в вашем провайдере.",
+  Age: "Возраст",
+  Certificate: "Сертификат",
+  "Client ID": "Client ID",
+  "Client secret": "Client secret",
+  "Comma-separated. A domain can belong to one team only; sign-in with these domains is routed to this provider.":
+    "Через запятую. Домен может принадлежать только одной команде; вход с такой почтой направляется в этот провайдер.",
+  "Discovery is read from <issuer>/.well-known/openid-configuration.":
+    "Discovery читается из <issuer>/.well-known/openid-configuration.",
+  "Due for rotation": "Пора ротировать",
+  "E-mail domains": "Домены почты",
+  Entity: "Сущность",
+  Failed: "Ошибка",
+  "Host password": "Пароль хоста",
+  "IdP entity ID": "Entity ID провайдера",
+  "IdP metadata XML": "Метаданные IdP (XML)",
+  Identity: "Идентичность",
+  "Identity provider removed": "Провайдер удалён",
+  "Identity provider saved": "Провайдер сохранён",
+  "Issuer URL": "Issuer URL",
+  "Job queued": "Задание в очереди",
+  "Join this team on first sign-in": "Вступать в команду при первом входе",
+  "Last rotated": "Последняя ротация",
+  "Members whose e-mail domain is listed below sign in through your company's IdP: the login form detects the domain and offers “Continue with <provider>”. New employees get an account and join this team on first sign-in (JIT) with the default role, or a role mapped from their IdP groups. To make SSO mandatory, set the policy “Sign in only through SSO” with provider “team”.":
+    "Участники с почтой в указанных доменах входят через IdP вашей компании: форма входа распознаёт домен и предлагает «Продолжить с <провайдер>». Новые сотрудники получают аккаунт и вступают в команду при первом входе (JIT) с ролью по умолчанию или ролью по группам IdP. Чтобы SSO стал обязательным, включите политику «Вход только через SSO» с провайдером «team».",
+  "Members will no longer be able to sign in through it. Accounts and team memberships stay; if the policy requires SSO through the team provider, members will be locked out until you change it.":
+    "Участники больше не смогут входить через него. Аккаунты и членство останутся; если политика требует SSO через командный провайдер, участники не смогут войти, пока вы её не измените.",
+  "Names of hosts and keys are encrypted; the cabinet shows entity IDs, the desktop and mobile clients show names.":
+    "Имена хостов и ключей зашифрованы: кабинет показывает ID сущностей, десктоп и мобильные клиенты — имена.",
+  Never: "Никогда",
+  "New accounts created through the IdP become members with the default role (or a mapped one).":
+    "Аккаунты, созданные через IdP, становятся участниками с ролью по умолчанию (или сопоставленной).",
+  "No jobs yet": "Заданий пока нет",
+  "Nothing is due": "Просроченных нет",
+  "Optional, space-separated. Default: openid email profile groups.":
+    "Необязательно, через пробел. По умолчанию: openid email profile groups.",
+  "Optional; taken from the metadata when empty.":
+    "Необязательно; берётся из метаданных, если пусто.",
+  Overdue: "Просрочен",
+  "Paste the SAML metadata document exported from your IdP.":
+    "Вставьте документ метаданных SAML, выгруженный из IdP.",
+  "Per-team identity providers are disabled on this server (TERMOSO_TEAM_IDP=false). Server-wide SSO providers still work.":
+    "Командные провайдеры отключены на этом сервере (TERMOSO_TEAM_IDP=false). Серверные SSO-провайдеры работают.",
+  Protocol: "Протокол",
+  "Provider reachable: discovery and metadata look valid":
+    "Провайдер доступен: discovery и метаданные корректны",
+  Queue: "В очередь",
+  "Queue rotation": "Поставить ротацию",
+  "Queue rotation ({v1})": "Поставить ротацию ({v1})",
+  Queued: "В очереди",
+  "Register in your IdP": "Регистрация в IdP",
+  "Remove identity provider?": "Удалить провайдер?",
+  "Remove provider": "Удалить провайдер",
+  Requested: "Запросил",
+  Rotation: "Ротация",
+  "Rotation ages are not set in the team policies, so nothing is reported as due. Set “Key rotation age” or “Password rotation age” to start tracking.":
+    "Сроки ротации не заданы в политиках команды, поэтому просроченных нет. Задайте «Срок ротации ключей» или «Срок ротации паролей», чтобы начать отслеживание.",
+  "Rotation jobs": "Задания ротации",
+  "Rotation jobs queued; a client with write access to the vault will perform them":
+    "Задания поставлены; их выполнит клиент с правом записи в хранилище",
+  Running: "Выполняется",
+  "SSH key": "SSH-ключ",
+  Scopes: "Scopes",
+  "Secrets older than the policy allows. The server only sees when a secret was last rotated — never the secret itself. Queue a job and a client with write access to the vault generates the new key, deploys it to the host and replaces it in the vault.":
+    "Секреты старше, чем разрешает политика. Сервер видит только дату последней ротации — не сам секрет. Поставьте задание: клиент с правом записи в хранилище создаст новый ключ, развернёт его на хосте и заменит в хранилище.",
+  "Shown on the login button, e.g. “Okta (Acme)”.":
+    "Отображается на кнопке входа, например «Okta (Acme)».",
+  "Stored encrypted under the server master key.": "Хранится зашифрованным мастер-ключом сервера.",
+  "Stored encrypted under the server master key. Leave empty to keep the current one.":
+    "Хранится зашифрованным мастер-ключом сервера. Оставьте пустым, чтобы не менять.",
+  "Team identity provider": "Провайдер команды (IdP)",
+  "{v1} secrets will be rotated by the next client with write access to their vaults. Members are not interrupted; old keys stop working once the new ones are deployed.":
+    "{v1} секр. ротирует ближайший клиент с правом записи в их хранилища. Участников это не прерывает; старые ключи перестают работать после развёртывания новых.",
   Access: "Доступ",
   Data: "Данные",
   "Access granted — open the vault in a desktop or mobile client to seal the key for the member.":

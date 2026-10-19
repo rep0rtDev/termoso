@@ -1,3 +1,4 @@
+import { decryptLabeled } from "@/crypto";
 import type { LogAuthor, LogMeta, SessionLog } from "@/api/types";
 
 /** Distinct authors, most recordings first. */
@@ -33,4 +34,24 @@ export function durationOf(meta: LogMeta): string {
   if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
   if (m > 0) return `${m}m ${String(s).padStart(2, "0")}s`;
   return `${s}s`;
+}
+
+export function decryptMeta(vaultKey: string, log: SessionLog): LogMeta | null {
+  try {
+    const json: unknown = JSON.parse(decryptLabeled(vaultKey, ["log", log.id], log.meta));
+    return isLogMeta(json) ? json : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isLogMeta(v: unknown): v is LogMeta {
+  if (typeof v !== "object" || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.label === "string" &&
+    typeof o.target === "string" &&
+    typeof o.protocol === "string" &&
+    typeof o.started_at === "string"
+  );
 }
