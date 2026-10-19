@@ -1,0 +1,40 @@
+# Personal diagnostic Windows build (branch diag-winpty only): debug bundle
+# with the local-PTY trace enabled. Never merged, never published.
+name: Diag Windows build
+
+on:
+  push:
+    branches: [diag-winpty]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: diag-windows
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: apps/desktop
+      - name: Build (debug, nsis)
+        shell: bash
+        working-directory: apps/desktop
+        run: npm run tauri build -- --debug --bundles nsis --ci --config '{"bundle":{"createUpdaterArtifacts":false}}'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: termoso-diag-windows
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            target/debug/bundle/nsis/*.exe
+            target/debug/termoso*.exe
