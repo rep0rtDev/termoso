@@ -137,10 +137,10 @@ fn wsl_distros() -> Vec<String> {
     if !cfg!(windows) {
         return Vec::new();
     }
-    let Ok(output) = std::process::Command::new("wsl.exe")
-        .args(["-l", "-q"])
-        .output()
-    else {
+    let mut cmd = std::process::Command::new("wsl.exe");
+    cmd.args(["-l", "-q"]);
+    hide_console_window(&mut cmd);
+    let Ok(output) = cmd.output() else {
         return Vec::new();
     };
     if !output.status.success() {
@@ -158,6 +158,21 @@ fn wsl_distros() -> Vec<String> {
         .map(|l| l.trim_matches(['\r', '\0', ' ']).to_string())
         .filter(|l| !l.is_empty())
         .collect()
+}
+
+/// Child processes of a GUI app get their own console on Windows unless
+/// told otherwise, which shows up as a `cmd` window blinking for a frame.
+pub(crate) fn hide_console_window(cmd: &mut std::process::Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = cmd;
+    }
 }
 
 /// Display name of the shell a local terminal runs.
