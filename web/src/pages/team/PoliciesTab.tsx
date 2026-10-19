@@ -54,8 +54,13 @@ function PoliciesForm({
   const snack = useSnackbar();
   const [p, setP] = useState<TeamPolicies>(saved);
   const [domains, setDomains] = useState(saved.sso_domains.join(", "));
+  const [ipList, setIpList] = useState(saved.ip_allowlist.join("\n"));
   const dirty =
-    JSON.stringify({ ...p, sso_domains: parseDomains(domains) }) !== JSON.stringify(saved);
+    JSON.stringify({
+      ...p,
+      sso_domains: parseDomains(domains),
+      ip_allowlist: parseList(ipList),
+    }) !== JSON.stringify(saved);
   const save = useMutation({
     mutationFn: () => {
       const patch: UpdateTeamPolicies = {
@@ -67,6 +72,12 @@ function PoliciesForm({
         sso_domains: parseDomains(domains),
         device_approval: p.device_approval,
         audit_retention_days: p.audit_retention_days,
+        session_recording: p.session_recording,
+        log_retention_days: p.log_retention_days,
+        key_max_age_days: p.key_max_age_days,
+        password_max_age_days: p.password_max_age_days,
+        ip_allowlist: parseList(ipList),
+        device_admin_approval: p.device_admin_approval,
       };
       return teamsApi.updatePolicies(team.id, patch);
     },
@@ -218,7 +229,6 @@ function PoliciesForm({
         description={tr(
           "Days to keep audit events (30–3650, capped by the server). Export before they expire.",
         )}
-        divider={false}
         control={
           <TextField
             size="small"
@@ -232,6 +242,120 @@ function PoliciesForm({
           />
         }
       />
+      <SettingRow
+        label={tr("Session recording")}
+        description={tr(
+          "Required turns recording on in every team vault; members cannot switch it off and only logs.delete may remove recordings.",
+        )}
+        control={
+          <Select
+            size="small"
+            value={p.session_recording}
+            disabled={ro}
+            onChange={(e) => setP({ ...p, session_recording: e.target.value })}
+            sx={{ minWidth: 180 }}
+          >
+            <MenuItem value="optional">{tr("Optional")}</MenuItem>
+            <MenuItem value="required">{tr("Required")}</MenuItem>
+          </Select>
+        }
+      />
+      <SettingRow
+        label={tr("Recording retention")}
+        description={tr(
+          "Days before unpinned session recordings are deleted; 0 keeps them forever.",
+        )}
+        control={
+          <TextField
+            size="small"
+            type="number"
+            value={p.log_retention_days}
+            disabled={ro}
+            onChange={(e) => setP({ ...p, log_retention_days: Number(e.target.value) })}
+            slotProps={{ htmlInput: { min: 0, max: 3650 } }}
+            helperText={
+              p.log_retention_days === 0
+                ? tr("Forever")
+                : tr("{v1} days", { v1: p.log_retention_days })
+            }
+            sx={{ width: 150 }}
+          />
+        }
+      />
+      <SettingRow
+        label={tr("Key rotation age")}
+        description={tr(
+          "SSH keys, certificates and identities older than this are listed as due in Rotation; 0 disables the check.",
+        )}
+        control={
+          <TextField
+            size="small"
+            type="number"
+            value={p.key_max_age_days}
+            disabled={ro}
+            onChange={(e) => setP({ ...p, key_max_age_days: Number(e.target.value) })}
+            slotProps={{ htmlInput: { min: 0, max: 3650 } }}
+            helperText={
+              p.key_max_age_days === 0 ? tr("Off") : tr("{v1} days", { v1: p.key_max_age_days })
+            }
+            sx={{ width: 150 }}
+          />
+        }
+      />
+      <SettingRow
+        label={tr("Password rotation age")}
+        description={tr(
+          "Host passwords older than this are due for rotation; 0 disables the check.",
+        )}
+        control={
+          <TextField
+            size="small"
+            type="number"
+            value={p.password_max_age_days}
+            disabled={ro}
+            onChange={(e) => setP({ ...p, password_max_age_days: Number(e.target.value) })}
+            slotProps={{ htmlInput: { min: 0, max: 3650 } }}
+            helperText={
+              p.password_max_age_days === 0
+                ? tr("Off")
+                : tr("{v1} days", { v1: p.password_max_age_days })
+            }
+            sx={{ width: 150 }}
+          />
+        }
+      />
+      <SettingRow
+        label={tr("IP allow-list")}
+        description={tr(
+          "Members may sign in only from these networks (CIDR, one per line, up to 100). Empty allows everywhere. Owners and admins are included — keep your own network in the list.",
+        )}
+        control={
+          <TextField
+            size="small"
+            multiline
+            minRows={2}
+            placeholder={"203.0.113.0/24\n2001:db8::/32"}
+            value={ipList}
+            disabled={ro}
+            onChange={(e) => setIpList(e.target.value)}
+            sx={{ width: { xs: "100%", sm: 260 }, fontFamily: "monospace" }}
+          />
+        }
+      />
+      <SettingRow
+        label={tr("Admin approval for new devices")}
+        description={tr(
+          "A member's new device waits in Devices until an owner, admin or devices.approve holder approves it; rejection signs it out.",
+        )}
+        divider={false}
+        control={
+          <Switch
+            checked={p.device_admin_approval}
+            disabled={ro}
+            onChange={(e) => setP({ ...p, device_admin_approval: e.target.checked })}
+          />
+        }
+      />
       <Box sx={{ pt: 1.5 }}>
         <Typography variant="caption" color="text.secondary">
           {tr("Last changed {v1}", { v1: formatDateTime(saved.updated_at) })}
@@ -239,6 +363,13 @@ function PoliciesForm({
       </Box>
     </Section>
   );
+}
+
+function parseList(s: string): string[] {
+  return s
+    .split(/[\s,]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
 }
 
 function parseDomains(s: string): string[] {

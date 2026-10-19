@@ -66,6 +66,20 @@ import type {
   WebhookDelivery,
   WebhookKind,
 } from "./types";
+import type {
+  AccessRequest,
+  AccessRequestList,
+  AccessRole,
+  EntityAclRule,
+  RotationJob,
+  RotationOverview,
+  SsoDiscoverResponse,
+  TeamDataStatus,
+  TeamDeviceList,
+  TeamIdpResponse,
+  UpdateTeamIdp,
+  UpsertEntityAcl,
+} from "./types";
 
 const anon = { anonymous: true } as const;
 
@@ -74,6 +88,8 @@ export const serverApi = {
 };
 
 export const authApi = {
+  ssoDiscover: (email: string) =>
+    http.get<SsoDiscoverResponse>("/auth/sso/discover", { query: { email } }),
   registerStart: (email: string, opaque_request: string, turnstile_token?: string) =>
     http.post<{ opaque_response: string }>(
       "/auth/register/start",
@@ -275,6 +291,53 @@ export const teamsApi = {
   roleMappings: (id: string) => http.get<{ mappings: RoleMapping[] }>(`/teams/${id}/role-mappings`),
   setRoleMappings: (id: string, mappings: RoleMapping[]) =>
     http.put<{ mappings: RoleMapping[] }>(`/teams/${id}/role-mappings`, { mappings }),
+  // ── 0.9.1 enterprise ──
+  idp: (id: string) => http.get<TeamIdpResponse>(`/teams/${id}/idp`),
+  updateIdp: (id: string, patch: UpdateTeamIdp) =>
+    http.put<TeamIdpResponse>(`/teams/${id}/idp`, patch),
+  deleteIdp: (id: string) => http.delete<undefined>(`/teams/${id}/idp`),
+  testIdp: (id: string, patch: UpdateTeamIdp) => http.post<TeamIdpResponse>(`/teams/${id}/idp/test`, patch),
+  acl: (id: string, vaultId: string) =>
+    http.get<{ rules: EntityAclRule[] }>(`/teams/${id}/vaults/${vaultId}/acl`),
+  upsertAcl: (id: string, vaultId: string, rule: UpsertEntityAcl) =>
+    http.put<{ rules: EntityAclRule[] }>(`/teams/${id}/vaults/${vaultId}/acl`, rule),
+  deleteAcl: (id: string, vaultId: string, ruleId: string) =>
+    http.delete<undefined>(`/teams/${id}/vaults/${vaultId}/acl/${ruleId}`),
+  logs: (id: string, q: { vault_id?: string; from?: string; to?: string } = {}) =>
+    http.get<{ logs: SessionLog[] }>(`/teams/${id}/logs`, { query: q }),
+  logsExportPath: (id: string) => `/teams/${id}/logs/export`,
+  rotation: (id: string) => http.get<RotationOverview>(`/teams/${id}/rotation`),
+  createRotationJobs: (
+    id: string,
+    body: { vault_id: string; entity_ids: string[]; note: string },
+  ) => http.post<{ jobs: RotationJob[] }>(`/teams/${id}/rotation/jobs`, body),
+  cancelRotationJob: (jobId: string) => http.delete<undefined>(`/rotation/jobs/${jobId}`),
+  accessRequests: (id: string) => http.get<AccessRequestList>(`/teams/${id}/access-requests`),
+  createAccessRequest: (
+    id: string,
+    body: { vault_id: string; role: AccessRole; hours: number; reason: string },
+  ) => http.post<AccessRequest>(`/teams/${id}/access-requests`, body),
+  cancelAccessRequest: (id: string, rid: string) =>
+    http.delete<undefined>(`/teams/${id}/access-requests/${rid}`),
+  approveAccessRequest: (
+    id: string,
+    rid: string,
+    body: { hours?: number; role?: AccessRole; note?: string },
+  ) => http.post<AccessRequest>(`/teams/${id}/access-requests/${rid}/approve`, body),
+  denyAccessRequest: (id: string, rid: string, note?: string) =>
+    http.post<AccessRequest>(`/teams/${id}/access-requests/${rid}/deny`, { note }),
+  revokeAccessRequest: (id: string, rid: string, note?: string) =>
+    http.post<AccessRequest>(`/teams/${id}/access-requests/${rid}/revoke`, { note }),
+  data: (id: string) => http.get<TeamDataStatus>(`/teams/${id}/data`),
+  exportPath: (id: string) => `/teams/${id}/export`,
+  scheduleDeletion: (id: string, confirmName: string) =>
+    http.post<TeamDataStatus>(`/teams/${id}/deletion`, { confirm_name: confirmName }),
+  cancelDeletion: (id: string) => http.delete<TeamDataStatus>(`/teams/${id}/deletion`),
+  devices: (id: string) => http.get<TeamDeviceList>(`/teams/${id}/devices`),
+  approveDevice: (id: string, deviceId: string) =>
+    http.post<undefined>(`/teams/${id}/devices/${deviceId}/approve`),
+  rejectDevice: (id: string, deviceId: string) =>
+    http.post<undefined>(`/teams/${id}/devices/${deviceId}/reject`),
   // ── policies ──
   policies: (id: string) => http.get<TeamPoliciesResponse>(`/teams/${id}/policies`),
   updatePolicies: (id: string, patch: UpdateTeamPolicies) =>

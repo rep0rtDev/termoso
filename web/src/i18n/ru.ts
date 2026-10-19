@@ -647,6 +647,43 @@ export const ru: Readonly<Record<string, string>> = {
   Discard: "Отменить изменения",
   "Disconnect {v1}?": "Отключить {v1}?",
   "Download {file}": "Скачать {file}",
+  "Session recording": "Запись сессий",
+  "Required turns recording on in every team vault; members cannot switch it off and only logs.delete may remove recordings.":
+    "«Обязательно» включает запись во всех командных хранилищах; участники не могут её выключить, удалять записи может только право logs.delete.",
+  Optional: "По желанию",
+  Required: "Обязательно",
+  "Recording retention": "Хранение записей",
+  "Days before unpinned session recordings are deleted; 0 keeps them forever.":
+    "Через сколько дней удаляются незакреплённые записи сессий; 0 — хранить вечно.",
+  Forever: "Вечно",
+  "{v1} days": "{v1} дн.",
+  "Key rotation age": "Срок ротации ключей",
+  "SSH keys, certificates and identities older than this are listed as due in Rotation; 0 disables the check.":
+    "SSH-ключи, сертификаты и идентичности старше этого срока попадают в «Ротацию» как просроченные; 0 отключает проверку.",
+  "Password rotation age": "Срок ротации паролей",
+  "Host passwords older than this are due for rotation; 0 disables the check.":
+    "Пароли хостов старше этого срока считаются просроченными; 0 отключает проверку.",
+  "IP allow-list": "Разрешённые IP",
+  "Members may sign in only from these networks (CIDR, one per line, up to 100). Empty allows everywhere. Owners and admins are included — keep your own network in the list.":
+    "Участники смогут входить только из этих сетей (CIDR, по одной в строке, до 100). Пусто — отовсюду. Владельцы и админы тоже под правилом — не забудьте свою сеть.",
+  "Admin approval for new devices": "Одобрение новых устройств админом",
+  "A member's new device waits in Devices until an owner, admin or devices.approve holder approves it; rejection signs it out.":
+    "Новое устройство участника ждёт во вкладке «Устройства», пока владелец, админ или обладатель права devices.approve его не одобрит; отклонение завершает его сессии.",
+  "Approve devices": "Одобрять устройства",
+  "Vet members' new devices when the team requires admin approval; reject ends their sessions.":
+    "Проверять новые устройства участников, когда команда требует одобрения админом; отклонение завершает их сессии.",
+  "Export team data": "Экспорт данных команды",
+  "Download everything the server stores for the team (GDPR export).":
+    "Скачать всё, что сервер хранит о команде (экспорт GDPR).",
+  "Manage group and host access": "Доступ к группам и хостам",
+  "Set per-group/per-host access rules (hidden, connect only, read, edit) for roles, members and IdP groups inside team vaults.":
+    "Задавать правила доступа к группам и хостам (скрыто, только подключение, чтение, правка) для ролей, участников и групп IdP внутри командных хранилищ.",
+  "Manage credential rotation": "Ротация учётных данных",
+  "See overdue keys and passwords, queue and cancel rotation jobs.":
+    "Видеть просроченные ключи и пароли, ставить и отменять задания ротации.",
+  "Approve access requests": "Одобрять заявки на доступ",
+  "Grant, deny and revoke temporary (just-in-time) access to team vaults.":
+    "Выдавать, отклонять и отзывать временный (JIT) доступ к командным хранилищам.",
   "Team vaults · {v1}": "Командные хранилища · {v1}",
   "Filter by vault or team": "Поиск по хранилищу или команде",
   "No vaults match": "Ничего не найдено",

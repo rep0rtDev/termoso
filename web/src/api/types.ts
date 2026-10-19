@@ -18,6 +18,8 @@ export interface ApiErrorBody {
 // ── server ──────────────────────────────────────────────────────────────
 
 export interface ServerFeatures {
+  /** `false` hides personal vaults (corporate mode). */
+  personal_vaults?: boolean;
   session_logs: boolean;
   email: boolean;
   webauthn: boolean;
@@ -35,7 +37,16 @@ export interface SsoProvider {
 }
 
 export interface ServerInfo {
+  /** Ceiling for per-team audit retention (days). */
   audit_retention_days_max: number;
+  /** Teams may configure their own IdP (`TERMOSO_TEAM_IDP`). */
+  team_idp?: boolean;
+  /** Corporate mode: password sign-in and e-mail sign-up are refused. */
+  sso_only?: boolean;
+  /** Data-residency label of this server. */
+  region?: string | null;
+  /** Corporate mode: every account is a member of this team. */
+  home_team?: HomeTeam | null;
   name: string;
   version: string;
   registration_open: boolean;
@@ -329,6 +340,18 @@ export interface TeamPolicies {
   sso_domains: string[];
   device_approval: boolean;
   audit_retention_days: number;
+  /** `optional` | `required` — required forces recording in every team vault. */
+  session_recording: SessionRecordingPolicy;
+  /** Days session recordings are kept; 0 = forever. */
+  log_retention_days: number;
+  /** Max age of SSH keys/certificates before rotation is due; 0 = off. */
+  key_max_age_days: number;
+  /** Max age of passwords before rotation is due; 0 = off. */
+  password_max_age_days: number;
+  /** CIDR allow-list for member sign-in; empty = everywhere. */
+  ip_allowlist: string[];
+  /** New member devices wait for an admin's approval. */
+  device_admin_approval: boolean;
   updated_at: string;
 }
 
@@ -341,7 +364,8 @@ export interface EffectivePolicies {
   session_ttl_hours: number | null;
   local_keys_denied_by: string[];
   device_approval_by: string[];
-  sso_provider: string | null;
+  sso_provider: string | null; /** Teams whose policy forces session recording. */
+  recording_required_by?: string[];
 }
 
 export interface TeamPoliciesResponse {
@@ -612,7 +636,12 @@ export interface ServerSettings {
   max_entity_bytes: number;
   max_log_bytes: number;
   log_quota_bytes: number;
-  audit_retention_days: number;
+  audit_retention_days: number; /** Corporate mode: every account joins this team automatically. */
+  home_team_id?: string | null;
+  /** Corporate mode: only SSO sign-in (bootstrap admin keeps password). */
+  sso_only?: boolean;
+  /** `false` hides personal vaults in clients. */
+  personal_vaults?: boolean;
 }
 
 export interface AdminTeam {
@@ -671,4 +700,180 @@ export interface BridgeCredentials {
   bridge_id: string;
   private_key: string;
   token: string;
+}
+
+// ── 0.9.1 enterprise ──
+
+export interface HomeTeam {
+  id: string;
+  name: string;
+}
+
+export type SessionRecordingPolicy = "optional" | "required";
+
+export interface SsoDiscoverResponse {
+  provider?: SsoProvider | null;
+  team_name?: string | null;
+  /** The matching policy forbids password sign-in. */
+  required: boolean;
+}
+
+export type TeamIdpKind = "oidc" | "saml";
+
+export interface TeamIdp {
+  kind: TeamIdpKind;
+  name: string;
+  issuer?: string | null;
+  client_id?: string | null;
+  has_client_secret: boolean;
+  scopes?: string | null;
+  saml_metadata?: string | null;
+  saml_idp_entity_id?: string | null;
+  domains: string[];
+  enabled: boolean;
+  jit_join: boolean;
+  provider_id: string;
+  callback_url: string;
+  updated_at: string;
+}
+
+export interface UpdateTeamIdp {
+  kind?: TeamIdpKind;
+  name?: string;
+  issuer?: string;
+  client_id?: string;
+  client_secret?: string;
+  scopes?: string;
+  saml_metadata?: string;
+  saml_idp_entity_id?: string;
+  domains?: string[];
+  enabled?: boolean;
+  jit_join?: boolean;
+}
+
+export interface TeamIdpResponse {
+  idp: TeamIdp | null;
+  /** Feature is enabled on this server. */
+  available: boolean;
+}
+
+export type AclMode = "none" | "connect" | "read" | "edit";
+export type AclPrincipalKind = "role" | "member" | "group";
+export type AclEntityKind = "host" | "group";
+
+export interface EntityAclRule {
+  id: string;
+  vault_id: string;
+  entity_id: string;
+  entity_kind: AclEntityKind;
+  principal_kind: AclPrincipalKind;
+  role_id?: string | null;
+  user_id?: string | null;
+  group_name?: string | null;
+  principal_name: string;
+  mode: AclMode;
+  updated_at: string;
+}
+
+export interface UpsertEntityAcl {
+  entity_id: string;
+  entity_kind: AclEntityKind;
+  principal_kind: AclPrincipalKind;
+  role_id?: string;
+  user_id?: string;
+  group_name?: string;
+  mode: AclMode;
+}
+
+export type TeamDeviceStatus = "pending" | "approved" | "rejected";
+
+export interface TeamDevice {
+  device_id: string;
+  user_id: string;
+  user_email: string;
+  name: string;
+  platform: string;
+  app_version?: string | null;
+  last_seen_at: string;
+  last_ip?: string | null;
+  status: TeamDeviceStatus;
+  decided_by?: string | null;
+  decided_at?: string | null;
+  requested_at: string;
+}
+
+export interface TeamDeviceList {
+  admin_approval: boolean;
+  devices: TeamDevice[];
+}
+
+export interface RotationDue {
+  entity_id: string;
+  vault_id: string;
+  kind: string;
+  secret_rotated_at?: string | null;
+  age_days: number;
+  job_id?: string | null;
+}
+
+export type RotationJobStatus = "pending" | "running" | "done" | "failed" | "cancelled";
+
+export interface RotationJob {
+  id: string;
+  team_id: string;
+  vault_id: string;
+  entity_id: string;
+  entity_kind: string;
+  status: RotationJobStatus;
+  note: string;
+  error?: string | null;
+  requested_by: string;
+  requested_by_email: string;
+  claimed_by?: string | null;
+  created_at: string;
+  updated_at: string;
+  finished_at?: string | null;
+}
+
+export interface RotationOverview {
+  key_max_age_days: number;
+  password_max_age_days: number;
+  due: RotationDue[];
+  jobs: RotationJob[];
+}
+
+export type AccessRole = "viewer" | "editor";
+export type AccessRequestStatus =
+  "pending" | "approved" | "denied" | "revoked" | "expired" | "cancelled";
+
+export interface AccessRequest {
+  id: string;
+  team_id: string;
+  vault_id: string;
+  vault_name: string;
+  user_id: string;
+  user_email: string;
+  role: AccessRole;
+  hours: number;
+  reason: string;
+  status: AccessRequestStatus;
+  decided_by?: string | null;
+  decided_at?: string | null;
+  decision_note?: string | null;
+  expires_at?: string | null;
+  created_at: string;
+}
+
+export interface AccessRequestList {
+  can_approve: boolean;
+  requests: AccessRequest[];
+}
+
+export interface TeamDataStatus {
+  region?: string | null;
+  server_region?: string | null;
+  created_at: string;
+  deletion_scheduled_at?: string | null;
+  deletion_requested_by?: string | null;
+  deletion_grace_days: number;
 }
