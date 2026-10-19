@@ -49,6 +49,7 @@ import { useSnackbar } from "@/components/Snackbar";
 import { UserCell } from "@/components/UserCell";
 import { formatDate } from "@/components/format";
 import { rotateVaultKey, upsertMemberWithKey } from "@/vaults/keys";
+import { AclSection } from "./AclSection";
 import { SessionLogsSection } from "./SessionLogsSection";
 
 export function VaultPage() {
@@ -134,6 +135,7 @@ function VaultDetail({ vault }: { vault: Vault }) {
             teamAdmin={team.data ? team.data.my_role !== "member" : false}
           />
           <SessionLogsSection vault={vault} manager={manager} />
+          {team.data && <AclSection vault={vault} team={team.data} />}
         </>
       )}
     </>
