@@ -323,7 +323,7 @@ pub(crate) enum Backend {
         spool_dir: PathBuf,
     },
     /// The local shell's home; paths are relative to it and cannot leave it.
-    Local { root: PathBuf },
+    Local { root: PathBuf, home: String },
     /// SFTP over the SSH connection of an open terminal: no new login, no
     /// prompts — exactly what the terminal already authenticated with.
     Session {
@@ -1192,10 +1192,10 @@ fn entry_from(e: RemoteEntry) -> SftpEntry {
 }
 
 async fn run(inner: Arc<Inner>, backend: Backend, settings: MobileSettings) {
-    if let Backend::Local { root } = &backend {
+    if let Backend::Local { root, home } = &backend {
         // No connection to record: the directory is right here.
         let result = tokio::select! {
-            r = LocalFs::open(root) => r,
+            r = LocalFs::open_at(root, home) => r,
             _ = inner.closed.cancelled() => {
                 inner.set_state(SessionState::Closed { reason: None });
                 return;
