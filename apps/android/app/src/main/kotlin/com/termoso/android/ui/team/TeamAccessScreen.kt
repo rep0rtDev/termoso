@@ -27,7 +27,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.termoso.android.R
@@ -50,7 +49,6 @@ fun TeamAccessScreen(shell: ShellViewModel, account: AccountManager, teamId: Str
     var reload by remember { mutableIntStateOf(0) }
     var requesting by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val ctx = LocalContext.current
     LaunchedEffect(teamId, reload) {
         runCatching { shell.repo.read { teamAccessRequests(teamId) } }
             .onSuccess { card = it }
@@ -60,10 +58,10 @@ fun TeamAccessScreen(shell: ShellViewModel, account: AccountManager, teamId: Str
                 .onSuccess { list -> myId = list.firstOrNull { it.me }?.userId }
         }
     }
-    fun mutate(done: Int?, block: suspend () -> Unit) {
+    fun mutate(done: String?, block: suspend () -> Unit) {
         scope.launch {
             runCatching { block() }
-                .onSuccess { reload++; done?.let { shell.notify(ctx.getString(it)) } }
+                .onSuccess { reload++; done?.let { shell.notify(it) } }
                 .onFailure { shell.notify(it.userMessage()) }
         }
     }
@@ -92,6 +90,7 @@ fun TeamAccessScreen(shell: ShellViewModel, account: AccountManager, teamId: Str
             }
             if (open.isEmpty()) item { Text(stringResource(R.string.no_open_requests), modifier = Modifier.padding(16.dp)) }
             items(open, key = { it.id }) { r ->
+                val grantedMsg = stringResource(R.string.access_granted_seal_hint)
                 RequestRow(r, mine = r.userId == myId) {
                     Row {
                         if (r.status == "pending" && r.userId == myId) {
@@ -101,7 +100,7 @@ fun TeamAccessScreen(shell: ShellViewModel, account: AccountManager, teamId: Str
                             TextButton(onClick = { mutate(null) { shell.repo.read { teamDecideAccessRequest(teamId, r.id, "deny", null, null) } } }) {
                                 Text(stringResource(R.string.deny), color = MaterialTheme.colorScheme.error)
                             }
-                            Button(onClick = { mutate(R.string.access_granted_seal_hint) { shell.repo.read { teamDecideAccessRequest(teamId, r.id, "approve", null, null) } } }) {
+                            Button(onClick = { mutate(grantedMsg) { shell.repo.read { teamDecideAccessRequest(teamId, r.id, "approve", null, null) } } }) {
                                 Text(stringResource(R.string.approve))
                             }
                         }
@@ -120,13 +119,14 @@ fun TeamAccessScreen(shell: ShellViewModel, account: AccountManager, teamId: Str
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
+    val sentMsg = stringResource(R.string.request_sent)
     if (requesting) {
         RequestAccessDialog(
             vaults = teamVaults,
             onDismiss = { requesting = false },
             onSubmit = { vaultId, role, hours, reason ->
                 requesting = false
-                mutate(R.string.request_sent) { shell.repo.read { teamRequestAccess(teamId, vaultId, role, hours, reason) } }
+                mutate(sentMsg) { shell.repo.read { teamRequestAccess(teamId, vaultId, role, hours, reason) } }
             },
         )
     }

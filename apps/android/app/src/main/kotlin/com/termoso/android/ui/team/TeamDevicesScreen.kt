@@ -27,7 +27,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.termoso.android.R
@@ -44,16 +43,15 @@ fun TeamDevicesScreen(shell: ShellViewModel, teamId: String, onBack: () -> Unit)
     var card by remember { mutableStateOf<TeamDevicesCard?>(null) }
     var reload by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
-    val ctx = LocalContext.current
     LaunchedEffect(teamId, reload) {
         runCatching { shell.repo.read { teamDevices(teamId) } }
             .onSuccess { card = it }
             .onFailure { shell.notify(it.userMessage()) }
     }
-    fun mutate(done: Int, block: suspend () -> Unit) {
+    fun mutate(done: String, block: suspend () -> Unit) {
         scope.launch {
             runCatching { block() }
-                .onSuccess { reload++; shell.notify(ctx.getString(done)) }
+                .onSuccess { reload++; shell.notify(done) }
                 .onFailure { shell.notify(it.userMessage()) }
         }
     }
@@ -80,12 +78,14 @@ fun TeamDevicesScreen(shell: ShellViewModel, teamId: String, onBack: () -> Unit)
                 item { Text(stringResource(R.string.no_pending_devices), modifier = Modifier.padding(16.dp)) }
             }
             items(pending, key = { it.deviceId }) { d ->
+                val approvedMsg = stringResource(R.string.device_approved)
+                val rejectedMsg = stringResource(R.string.device_rejected)
                 DeviceRow(d) {
                     Row {
-                        TextButton(onClick = { mutate(R.string.device_rejected) { shell.repo.read { teamRejectDevice(teamId, d.deviceId) } } }) {
+                        TextButton(onClick = { mutate(rejectedMsg) { shell.repo.read { teamRejectDevice(teamId, d.deviceId) } } }) {
                             Text(stringResource(R.string.reject), color = MaterialTheme.colorScheme.error)
                         }
-                        Button(onClick = { mutate(R.string.device_approved) { shell.repo.read { teamApproveDevice(teamId, d.deviceId) } } }) {
+                        Button(onClick = { mutate(approvedMsg) { shell.repo.read { teamApproveDevice(teamId, d.deviceId) } } }) {
                             Text(stringResource(R.string.approve))
                         }
                     }
