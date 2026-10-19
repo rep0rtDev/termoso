@@ -28,6 +28,7 @@ pub async fn info(
         sso_only: settings.sso_only,
         region: state.cfg.data_region.clone(),
         audit_retention_days_max: state.cfg.audit_retention_days_max,
+        min_client_version: crate::routes::auth::min_client_version(&state.cfg).to_string(),
         home_team: crate::enterprise::home_team(&state, &settings).await?,
         features: ServerFeatures {
             session_logs: state.storage.is_some(),

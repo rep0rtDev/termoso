@@ -365,6 +365,7 @@ pub async fn finish(
     let user = ready_user(&state, &req.token).await?;
     validate_keys(&req.keys)?;
     validate_device(&req.device)?;
+    crate::routes::auth::check_client_version(&state.cfg, &req.device)?;
     let record = opaque::Server::registration_finish(&req.opaque_upload)?;
 
     // Everyone who shared a vault with this user must re-issue its key to the

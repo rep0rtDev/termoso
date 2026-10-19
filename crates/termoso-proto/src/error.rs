@@ -56,6 +56,9 @@ pub mod codes {
     /// A team policy forbids password sign-in for this email; use the SSO
     /// provider in `details.provider`.
     pub const SSO_REQUIRED: &str = "sso_required";
+    /// The client is older than the server allows; `details.required_version`
+    /// says which version to update to.
+    pub const CLIENT_UPDATE_REQUIRED: &str = "client_update_required";
     /// The email domain is outside the team's SSO domain allow-list.
     pub const DOMAIN_NOT_ALLOWED: &str = "domain_not_allowed";
     /// A team of the user switched multiplayer off.

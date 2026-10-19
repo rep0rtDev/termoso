@@ -29,6 +29,7 @@ const CODE_MESSAGES: Record<string, string> = {
   conflict: msg("This already exists."),
   network: msg("Cannot reach the server. Check your connection."),
   sso_required: msg("This account must sign in through single sign-on (SSO)."),
+  client_update_required: msg("This client is older than the server allows. Please update Termoso."),
   ip_not_allowed: msg("Sign-in from this network is not allowed by your team's IP allow-list."),
   device_pending_approval: msg(
     "This device is waiting for approval by a team admin. You will be able to sign in once it is approved.",

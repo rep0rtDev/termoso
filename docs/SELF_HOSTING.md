@@ -83,6 +83,7 @@ TERMOSO_SMTP__HOST=… PORT=… USERNAME=… PASSWORD=… SECURITY=starttls FROM
 TERMOSO_TURNSTILE__SITE_KEY=… TERMOSO_TURNSTILE__SECRET_KEY=…   # optional Cloudflare Turnstile captcha
 TERMOSO_DATA_REGION=eu-central            # optional label shown in /server/info and stamped on new teams
 TERMOSO_TEAM_DELETION_GRACE_DAYS=7        # days before a requested team deletion is purged (0 = immediately)
+- `TERMOSO_MIN_CLIENT_VERSION` — oldest client version allowed to sign in (semver). Default: the server's own version; older clients get `client_update_required` and are asked to update.
 TERMOSO_AUDIT_RETENTION_DAYS_MAX=3650     # ceiling for per-team audit retention
 TERMOSO_TEAM_IDP=true                     # allow teams to configure their own OIDC/SAML IdP
 ```

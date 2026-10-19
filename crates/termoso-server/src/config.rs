@@ -111,6 +111,9 @@ pub struct Config {
     /// Where this server keeps its data (e.g. `eu`, `us`); stamped on teams
     /// at creation and shown to clients. Default: unset.
     pub data_region: Option<String>,
+    /// Oldest client version allowed to sign in (semver). Default: this
+    /// server's own version — clients must be at least as new as the server.
+    pub min_client_version: Option<String>,
     /// Days between an owner scheduling team deletion and the purge
     /// (0 = immediate). Default: 7.
     pub team_deletion_grace_days: u32,
@@ -384,6 +387,7 @@ impl Default for Config {
             webhooks_allow_private: false,
             webhooks_syslog_ca: None,
             data_region: None,
+            min_client_version: None,
             team_deletion_grace_days: 7,
         }
     }

@@ -182,6 +182,9 @@ schema! {
         /// Ceiling for per-team audit retention (days).
         #[serde(default)]
         pub audit_retention_days_max: u32,
+        /// Oldest client version this server lets sign in.
+        #[serde(default)]
+        pub min_client_version: String,
         /// Corporate mode: the team every account joins automatically.
         #[serde(default)]
         pub home_team: Option<HomeTeam>,

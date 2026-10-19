@@ -53,6 +53,7 @@ Android, iOS or web cabinet.
 | Erasure | Account deletion (self-service and admin); team deletion with a cancellable grace period (`TERMOSO_TEAM_DELETION_GRACE_DAYS`, default 7) that purges rows and stored recordings; SCIM deprovisioning with retention delete. |
 | Retention | Audit retention per team, recording retention per team, SCIM retention, session limits — all enforced by server jobs. |
 | Residency | `TERMOSO_DATA_REGION` labels the installation; it is advertised in `/server/info`, stamped on teams at creation and shown at `GET /teams/{id}/data`. Self-hosting keeps all data in your region by construction. |
+| Client currency | `TERMOSO_MIN_CLIENT_VERSION` — oldest client version allowed to sign in (semver). Default: the server's own version — clients older than the server get `client_update_required` and must update. |
 | Processing records | Audit log + webhooks give Art. 30 evidence of who did what to team data. |
 
 ## 5. Change management and supply chain (CC8.1, A.8.25–A.8.32)
