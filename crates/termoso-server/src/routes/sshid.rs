@@ -98,7 +98,7 @@ pub async fn host_layer(
             let base = state.cfg.sshid_url().unwrap_or_default();
             if sshid_page::wants_html(req.headers()) {
                 let (name, home, docs) = page_ctx(&state);
-                return sshid_page::index_page(base, name, &home, docs);
+                return sshid_page::index_page(base, name, &home, docs.as_deref());
             }
             return usage(base);
         }
@@ -108,7 +108,7 @@ pub async fn host_layer(
         _ => {
             if sshid_page::wants_html(req.headers()) {
                 let (name, home, docs) = page_ctx(&state);
-                return sshid_page::not_found_page("Nothing here", name, &home, docs);
+                return sshid_page::not_found_page("Nothing here", name, &home, docs.as_deref());
             }
             return Error::not_found("ssh id").into_response();
         }
@@ -130,13 +130,19 @@ pub async fn host_layer(
 }
 
 /// Server name, home link and docs base for the HTML pages.
-fn page_ctx(state: &AppState) -> (&str, String, Option<&str>) {
+fn page_ctx(state: &AppState) -> (&str, String, Option<String>) {
     let cfg = &state.cfg;
+    let web = cfg.web_url().trim_end_matches('/');
     let home = cfg
         .landing_url()
         .map(str::to_string)
-        .unwrap_or_else(|| cfg.web_url().to_string());
-    (cfg.server_name.as_str(), home, cfg.docs_url())
+        .unwrap_or_else(|| web.to_string());
+    let docs = match cfg.docs_url() {
+        Some(d) => Some(d.to_string()),
+        None if cfg.docs => Some(format!("{web}/docs")),
+        None => None,
+    };
+    (cfg.server_name.as_str(), home, docs)
 }
 
 /// With a dedicated SSH ID host configured, browsers that open the list on
@@ -518,7 +524,12 @@ async fn listed(
     let not_found = |what: &str| {
         if html {
             let (name, home, docs) = page_ctx(state);
-            Ok(sshid_page::not_found_page(what, name, &home, docs))
+            Ok(sshid_page::not_found_page(
+                what,
+                name,
+                &home,
+                docs.as_deref(),
+            ))
         } else {
             Err(Error::not_found("ssh id"))
         }
@@ -553,7 +564,7 @@ async fn listed(
             keys: &keys,
             server_name: name,
             home_url: &home,
-            docs_url: docs,
+            docs_url: docs.as_deref(),
         }));
     }
     let mut body = String::new();
@@ -622,7 +633,7 @@ pub async fn public_typed(
                     &format!("There is no key type called {kind}"),
                     name,
                     &home,
-                    docs,
+                    docs.as_deref(),
                 ));
             }
             None => return Err(Error::not_found("key type")),

@@ -292,7 +292,7 @@ async fn handle_lifecycle_and_public_listing() {
     assert!(body.starts_with("<!doctype html>"));
     assert!(body.contains(&format!("@{handle}")));
     assert!(body.contains(&format!(
-        "curl -fsSL {SSHID_URL}/{handle} &gt;&gt; ~/.ssh/authorized_keys"
+        "curl -fs {SSHID_URL}/{handle} &gt;&gt; ~/.ssh/authorized_keys"
     )));
     assert!(body.contains(&format!("{SSHID_URL}/{handle}/ECDSA-SK")));
     assert!(body.contains("SHA256:"));

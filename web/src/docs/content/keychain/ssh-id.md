@@ -18,7 +18,7 @@ https://sshid.termoso.dev/<handle>
 3. On a server, trust the handle:
 
 ```bash
-curl -fsSL https://sshid.termoso.dev/<handle> >> ~/.ssh/authorized_keys
+curl -fs https://sshid.termoso.dev/<handle> >> ~/.ssh/authorized_keys
 ```
 
 or use it in `AuthorizedKeysCommand` to always fetch the current list.

@@ -116,99 +116,123 @@ fn requires(t: SshIdKeyType) -> &'static str {
     }
 }
 
-fn describe(t: SshIdKeyType) -> &'static str {
-    match t {
-        SshIdKeyType::Ed25519 => "Fast, small, the modern default.",
-        SshIdKeyType::Ecdsa => "NIST P-256; for hosts that lack ED25519.",
-        SshIdKeyType::Rsa => "Widest compatibility, 3072-bit.",
-        SshIdKeyType::EcdsaSk => "Private key lives in a FIDO2 security key.",
-        SshIdKeyType::Ed25519Sk => "Private key lives in a FIDO2 security key.",
-    }
-}
-
 const CSS: &str = r#"
-:root{--bg:#141826;--base:#1C2032;--high:#262B3F;--highest:#30364C;--strong:#3E4459;--text:#F1F3F8;--muted:#8D91A5;--accent:#2BB884;--accent-dark:#1F8F66;--accent-ink:#08170F;--sky:#5AA9E6;--warn:#F8AA4B;--radius:14px}
-@media (prefers-color-scheme:light){:root{--bg:#EEF1F5;--base:#F7F9FB;--high:#FFFFFF;--highest:#E7EBF1;--strong:#C9D0DB;--text:#171B26;--muted:#626D80;--accent-dark:#1F8F66}}
-*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 "Inter Variable",Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
-a{color:var(--sky);text-decoration:none}a:hover{text-decoration:underline}
-code,pre,.mono{font-family:"JetBrains Mono Variable","JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13.5px}
-.wrap{max-width:760px;margin:0 auto;padding:28px 20px 64px}
-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:36px}
-.brand{display:flex;align-items:center;gap:10px;color:var(--text);font-weight:600;letter-spacing:.01em}
-.brand svg{width:28px;height:28px;border-radius:7px;flex:none}
-.brand span{color:var(--muted);font-weight:500}
-.btn{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-radius:9px;border:0;font:inherit;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
-.btn-primary{background:var(--accent);color:var(--accent-ink)}.btn-primary:hover{background:var(--accent-dark);text-decoration:none}
-.btn-ghost{background:var(--high);color:var(--text)}.btn-ghost:hover{background:var(--highest);text-decoration:none}
-h1{font-size:30px;line-height:1.2;margin:0 0 8px;letter-spacing:-.02em;font-weight:700;overflow-wrap:anywhere}
+:root{--bg:#0F1320;--surface:#1C2032;--raised:#262B3F;--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);--text:#F1F3F8;--muted:#8D91A5;--dim:#5A5E73;--accent:#2BB884;--accent2:#1F8F66;--sky:#5AA9E6;--mono:'JetBrains Mono','SF Mono',Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+html{background:var(--bg);color:var(--text);font:16px/1.55 'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+body{margin:0;background:radial-gradient(900px 420px at 50% -120px,rgba(43,184,132,.14),transparent 70%),var(--bg)}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:760px;margin:0 auto;padding:28px 24px 56px}
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:56px}
+.brand{display:flex;align-items:center;gap:12px}
+.brand svg{width:40px;height:40px;flex:none}
+.brand b{display:block;font-size:17px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+.brand small{display:block;color:var(--muted);font-size:13px;line-height:1.2}
+.btn{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 18px;border-radius:10px;font-weight:600;font-size:14px;border:1px solid transparent;cursor:pointer;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#0B1A14}
+.btn-primary:hover{background:#3BC893}
+h1{font-size:40px;line-height:1.15;font-weight:600;letter-spacing:-.02em;margin:0 0 12px}
 h1 .at{color:var(--accent)}
-.lead{color:var(--muted);margin:0 0 28px;font-size:16px}
-h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:32px 0 12px;font-weight:600}
-.card{background:var(--base);border-radius:var(--radius);padding:18px 20px}
-.tabs{display:flex;gap:4px;margin-bottom:12px}
-.card>input[type=radio]{position:absolute;opacity:0;pointer-events:none;width:0;height:0}
-.tabs label{padding:6px 12px;border-radius:8px;color:var(--muted);font-size:13.5px;font-weight:600;cursor:pointer;user-select:none}
-.tabs label:hover{color:var(--text)}
-.cmd{display:none;position:relative;background:var(--high);border-radius:10px;padding:14px 112px 14px 16px;overflow-x:auto}
-.cmd pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
-.cmd .prompt{color:var(--muted);user-select:none}
-.copy{position:absolute;top:10px;right:10px;height:30px;padding:0 12px;border-radius:8px;border:0;background:var(--highest);color:var(--text);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
-.copy:hover{background:var(--strong)}.copy[data-done]{background:var(--accent);color:var(--accent-ink)}
-#t-sh:checked~.tabs label[for=t-sh],#t-ps:checked~.tabs label[for=t-ps],#t-raw:checked~.tabs label[for=t-raw]{background:var(--high);color:var(--text)}
-#t-sh:checked~.cmd.sh,#t-ps:checked~.cmd.ps,#t-raw:checked~.cmd.raw{display:block}
-.hint{color:var(--muted);font-size:13.5px;margin:12px 0 0}
-.types{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
-.group{grid-column:1/-1;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;margin-top:6px}
-.group:first-child{margin-top:0}
-.type{display:block;background:var(--base);border-radius:12px;padding:14px 16px;color:var(--text);position:relative;outline:2px solid transparent;outline-offset:-2px}
-.type:hover{background:var(--high);text-decoration:none}
-.type.on{outline-color:var(--accent)}
-.type .name{font-weight:700;display:flex;align-items:center;justify-content:space-between;gap:8px}
-.type .n{font-size:12px;font-weight:600;color:var(--accent-ink);background:var(--accent);border-radius:999px;padding:1px 8px}
-.type.none .n{background:var(--highest);color:var(--muted)}
-.type .req{color:var(--muted);font-size:13px;margin-top:4px}
-.type .desc{font-size:13px;margin-top:6px;color:var(--text);opacity:.85}
-.type.none{color:var(--muted)}.type.none .desc{opacity:.6}
-.all{display:inline-block;margin-top:12px;font-size:13.5px}
-.keys{display:flex;flex-direction:column;gap:8px}
-.key{background:var(--base);border-radius:12px;padding:12px 16px}
-.key .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.badge{font-size:12px;font-weight:700;letter-spacing:.04em;padding:2px 8px;border-radius:6px;background:var(--high);color:var(--accent)}
-.badge.hw{color:var(--warn)}
-.fp{color:var(--muted);overflow-wrap:anywhere}
-details.line{margin-top:8px}
-details.line summary{cursor:pointer;color:var(--sky);font-size:13px;list-style:none}
-details.line summary::-webkit-details-marker{display:none}
-details.line pre{margin:8px 0 0;background:var(--high);border-radius:8px;padding:10px 12px;white-space:pre-wrap;overflow-wrap:anywhere}
-.empty{background:var(--base);border-radius:12px;padding:18px 20px;color:var(--muted)}
-.faq details{background:var(--base);border-radius:12px;margin-bottom:8px}
-.faq summary{padding:14px 20px;cursor:pointer;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.lead{color:var(--muted);margin:0 0 28px;font-size:17px}
+h2{font-size:22px;font-weight:600;letter-spacing:-.01em;margin:44px 0 14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.dd{position:relative}
+.dd>summary{list-style:none;display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:9px;background:var(--raised);border:1px solid var(--line);font-size:14px;font-weight:500;cursor:pointer;user-select:none}
+.dd>summary::-webkit-details-marker{display:none}
+.dd>summary:hover{border-color:var(--line2)}
+.dd>summary .chev{width:10px;height:10px;border:solid var(--muted);border-width:0 1.5px 1.5px 0;transform:translateY(-3px) rotate(45deg);transition:transform .15s}
+.dd[open]>summary .chev{transform:translateY(2px) rotate(-135deg)}
+.menu{position:absolute;top:calc(100% + 6px);min-width:260px;background:var(--raised);border:1px solid var(--line2);border-radius:12px;padding:6px;box-shadow:0 18px 50px rgba(0,0,0,.45);z-index:5}
+.dd.right .menu{right:0}
+.menu .grp{padding:8px 12px 4px;font-size:12px;color:var(--muted)}
+.menu .grp+.item{margin-top:0}
+.menu hr{border:0;border-top:1px solid var(--line);margin:6px 0}
+.item{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:8px 12px;border:0;border-radius:8px;background:none;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+.item:hover{background:rgba(255,255,255,.06)}
+.item .t{display:block;font-size:14px;font-weight:500}
+.item .s{display:block;font-size:12px;color:var(--muted)}
+.item .ck{width:14px;height:8px;border:solid var(--accent);border-width:0 0 2px 2px;transform:rotate(-45deg) translateY(-3px);flex:none;visibility:hidden}
+.item.sel .ck{visibility:visible}
+.item.none .t{color:var(--muted)}
+.item .n{font-size:12px;color:var(--muted);flex:none}
+.hw{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--sky);margin-left:6px;vertical-align:1px}
+.code{display:flex;align-items:center;gap:12px;margin-top:14px;padding:14px 16px;background:var(--bg);border:1px solid var(--line);border-radius:10px}
+.code pre{margin:0;flex:1;overflow:auto;font:14px/1.5 var(--mono);white-space:pre-wrap;word-break:break-all;color:var(--text)}
+.code .u{color:var(--sky)}
+.code .k{color:var(--accent)}
+.cmd{display:none}.cmd.on{display:flex}
+.copy{flex:none;display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--raised);color:var(--muted);cursor:pointer}
+.copy:hover{color:var(--text);border-color:var(--line2)}
+.copy svg{width:16px;height:16px}
+.copy .y{display:none}.copy.ok .y{display:block;color:var(--accent)}.copy.ok .c{display:none}
+.hint{color:var(--muted);font-size:13px;margin:12px 2px 0}
+ol.steps{margin:0;padding:0 0 0 24px;color:var(--text)}
+ol.steps li{margin:6px 0}
+ol.steps b{font-weight:600}
+code{font:13px var(--mono);background:rgba(255,255,255,.07);padding:2px 6px;border-radius:5px}
+.faq{border-top:1px solid var(--line)}
+.faq details{border-bottom:1px solid var(--line)}
+.faq summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 2px;font-weight:600;font-size:15px;cursor:pointer}
 .faq summary::-webkit-details-marker{display:none}
-.faq summary::after{content:"+";color:var(--muted);font-weight:400;font-size:20px;line-height:1}
-.faq details[open] summary::after{content:"–"}
-.faq .body{padding:0 20px 16px;color:var(--text);opacity:.9}
-.faq .body p{margin:0 0 10px}.faq .body p:last-child{margin:0}
-.faq pre{background:var(--high);border-radius:8px;padding:10px 12px;white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0}
-footer{margin-top:48px;color:var(--muted);font-size:13px;display:flex;flex-wrap:wrap;gap:6px 18px}
-footer a{color:var(--muted)}
-@media (max-width:560px){h1{font-size:24px}.cmd{padding-right:16px;padding-bottom:50px}.copy{top:auto;bottom:10px}header{margin-bottom:28px}}
+.faq summary .pm{position:relative;width:16px;height:16px;flex:none;color:var(--muted)}
+.faq summary .pm:before,.faq summary .pm:after{content:'';position:absolute;background:currentColor;left:0;top:7px;width:16px;height:2px;border-radius:1px}
+.faq summary .pm:after{transform:rotate(90deg);transition:transform .15s}
+.faq details[open] summary .pm:after{transform:rotate(0)}
+.faq .body{padding:0 2px 18px;color:var(--muted);font-size:15px}
+.faq .body p{margin:0 0 10px}
+.faq pre{margin:10px 0;padding:12px 14px;background:var(--bg);border:1px solid var(--line);border-radius:10px;font:13px/1.5 var(--mono);overflow:auto;color:var(--text)}
+.keys{margin:0;padding:0;list-style:none}
+.keys li{display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.keys li:first-child{border-top:0}
+.tag{font-size:12px;font-weight:600;color:var(--accent);min-width:84px}
+.fp{font:13px var(--mono);color:var(--text);word-break:break-all;flex:1}
+.keys details{width:100%}
+.keys summary{font-size:13px;color:var(--sky);cursor:pointer;list-style:none}
+.keys summary::-webkit-details-marker{display:none}
+.keys pre{margin:8px 0 0;font:12px/1.5 var(--mono);white-space:pre-wrap;word-break:break-all;color:var(--muted)}
+footer{margin-top:72px;padding-top:28px;border-top:1px solid var(--line);display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:28px;font-size:14px}
+footer .fb .brand{margin-bottom:10px}
+footer .fb p{color:var(--muted);margin:0;font-size:13px}
+footer h4{margin:0 0 10px;font-size:14px;font-weight:600}
+footer a{display:block;color:var(--muted);margin:6px 0}
+footer a:hover{color:var(--text)}
+.fine{grid-column:1/-1;color:var(--dim);font-size:12px;padding-top:18px;border-top:1px solid var(--line)}
+@media (max-width:600px){h1{font-size:30px}.wrap{padding:20px 16px 40px}header{margin-bottom:36px}.btn{padding:0 12px}footer{grid-template-columns:1fr 1fr}footer .fb{grid-column:1/-1}.menu{min-width:220px}}
 "#;
 
 const JS: &str = r#"
-for(const b of document.querySelectorAll('.copy')){b.addEventListener('click',async()=>{const t=document.getElementById(b.dataset.copy);const s=t.dataset.text||t.textContent;try{await navigator.clipboard.writeText(s)}catch(e){const r=document.createRange();r.selectNodeContents(t);const sel=getSelection();sel.removeAllRanges();sel.addRange(r);document.execCommand('copy');sel.removeAllRanges()}const was=b.textContent;b.textContent='Copied';b.dataset.done='1';setTimeout(()=>{b.textContent=was;delete b.dataset.done},1400)})}
+(function(){
+var q=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+q('.dd').forEach(function(d){d.addEventListener('toggle',function(){if(d.open)q('.dd[open]').forEach(function(o){if(o!==d)o.removeAttribute('open')})})});
+document.addEventListener('click',function(e){q('.dd[open]').forEach(function(d){if(!d.contains(e.target))d.removeAttribute('open')})});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')q('.dd[open]').forEach(function(d){d.removeAttribute('open')})});
+q('[data-cmd]').forEach(function(b){b.addEventListener('click',function(){var k=b.getAttribute('data-cmd');
+q('.cmd').forEach(function(c){c.classList.toggle('on',c.getAttribute('data-kind')===k)});
+q('[data-cmd]').forEach(function(x){x.classList.toggle('sel',x===b)});
+var l=document.getElementById('cmd-label');if(l)l.textContent=b.getAttribute('data-label');
+var d=b.closest('.dd');if(d)d.removeAttribute('open')})});
+q('[data-copy]').forEach(function(b){b.addEventListener('click',function(){var el=document.getElementById(b.getAttribute('data-copy'));if(!el)return;
+var t=el.getAttribute('data-text')||el.textContent;
+var done=function(){b.classList.add('ok');setTimeout(function(){b.classList.remove('ok')},1400)};
+if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,function(){})}
+else{var r=document.createRange();r.selectNodeContents(el);var s=getSelection();s.removeAllRanges();s.addRange(r);try{document.execCommand('copy');done()}catch(e){}}})});
+})();
 "#;
 
 const LOGO: &str = r##"<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#12151F"/><path d="M16 20h32v8H36v20h-8V28H16z" fill="#2BB884"/><rect x="42" y="40" width="8" height="8" rx="2" fill="#5AA9E6"/></svg>"##;
 
+const COPY_ICON: &str = r#"<svg class="c" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><svg class="y" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>"#;
+
 fn document(title: &str, description: &str, body: &str, nonce: &str) -> String {
     format!(
-        r#"<!doctype html>
+        r##"<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark light">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0F1320">
 <meta name="robots" content="noindex">
 <meta name="description" content="{description}">
 <title>{title}</title>
@@ -220,7 +244,7 @@ fn document(title: &str, description: &str, body: &str, nonce: &str) -> String {
 <script nonce="{nonce}">{JS}</script>
 </body>
 </html>
-"#,
+"##,
         title = escape(title),
         description = escape(description),
     )
@@ -253,55 +277,124 @@ fn respond(status: StatusCode, html: String, nonce: &str, cache: &'static str) -
     res
 }
 
-fn header_html(server_name: &str, home_url: &str, cta: &str) -> String {
+fn header_html(server_name: &str, home_url: &str) -> String {
     format!(
-        r#"<header><a class="brand" href="{home}">{LOGO}SSH ID <span>· {name}</span></a><a class="btn btn-primary" href="{home}">{cta}</a></header>"#,
+        r#"<header><a class="brand" href="{home}">{LOGO}<span><b>SSH ID</b><small>SSH keys · {name}</small></span></a><a class="btn btn-primary" href="{home}">Create SSH ID with Termoso</a></header>"#,
         home = escape(home_url),
         name = escape(server_name),
-        cta = escape(cta),
     )
 }
 
-fn footer_html(p_home: &str, server_name: &str, docs_url: Option<&str>) -> String {
+fn footer_html(home_url: &str, server_name: &str, docs_url: Option<&str>) -> String {
+    let home = escape(home_url);
     let docs = match docs_url {
-        Some(d) => format!(
-            r#"<a href="{}/keychain/ssh-id">How SSH ID works</a>"#,
-            escape(d)
-        ),
+        Some(d) => {
+            let d = escape(d);
+            format!(
+                r#"<a href="{d}">Documentation</a><a href="{d}/keychain/ssh-id">How SSH ID works</a>"#
+            )
+        }
         None => String::new(),
     };
     format!(
-        r#"<footer><span>SSH ID is part of Termoso, running at <a href="{home}">{name}</a>.</span>{docs}<span>Only public keys are published.</span></footer>"#,
-        home = escape(p_home),
+        r#"<footer><div class="fb"><a class="brand" href="{home}">{LOGO}<span><b>Termoso</b></span></a><p>Software should report to you, not on you.<br>Free, open source, self-hosted.</p></div>
+<div><h4>Resources</h4><a href="https://github.com/termoso/termoso/releases/latest">Download</a>{docs}</div>
+<div><h4>Project</h4><a href="https://github.com/termoso/termoso">GitHub</a><a href="https://github.com/termoso/termoso/issues">Issues</a><a href="https://github.com/termoso/termoso/blob/main/LICENSE">License (AGPL-3.0)</a></div>
+<div class="fine">SSH ID is served by {name}. Only public keys are published — they can verify a signature, never make one.</div></footer>"#,
         name = escape(server_name),
     )
 }
 
-/// Install command block for `url`, with Shell / PowerShell / raw tabs.
-fn command_html(url: &str, id: &str) -> String {
-    let u = escape(url);
+fn copy_btn(target: &str) -> String {
     format!(
-        r#"<div class="card"><input type="radio" name="tab-{id}" id="t-sh" checked><input type="radio" name="tab-{id}" id="t-ps"><input type="radio" name="tab-{id}" id="t-raw">
-<div class="tabs"><label for="t-sh">Shell</label><label for="t-ps">PowerShell</label><label for="t-raw">URL</label></div>
-<div class="cmd sh"><pre id="c-sh-{id}" data-text="curl -fsSL {u} &gt;&gt; ~/.ssh/authorized_keys"><span class="prompt">$ </span>curl -fsSL {u} &gt;&gt; ~/.ssh/authorized_keys</pre><button class="copy" type="button" data-copy="c-sh-{id}">Copy</button></div>
-<div class="cmd ps"><pre id="c-ps-{id}" data-text="Invoke-RestMethod {u} | Add-Content -Encoding ascii $HOME\.ssh\authorized_keys"><span class="prompt">PS&gt; </span>Invoke-RestMethod {u} | Add-Content -Encoding ascii $HOME\.ssh\authorized_keys</pre><button class="copy" type="button" data-copy="c-ps-{id}">Copy</button></div>
-<div class="cmd raw"><pre id="c-raw-{id}">{u}</pre><button class="copy" type="button" data-copy="c-raw-{id}">Copy</button></div>
-<p class="hint">Run it on the server you want to sign in to, as the user you will log in as. The list is plain <code>authorized_keys</code> text, so it also works with <code>AuthorizedKeysCommand</code> — see below.</p></div>"#
+        r#"<button class="copy" type="button" data-copy="{target}" aria-label="Copy">{COPY_ICON}</button>"#
     )
 }
 
-fn faq_html(url: &str, server_name: &str) -> String {
+/// Install command card: command picker (Shell / PowerShell / URL) on the left, key type
+/// picker on the right, the command underneath.
+fn command_html(url: &str, type_menu: &str) -> String {
+    let u = escape(url);
+    format!(
+        r##"<div class="card">
+<div class="bar">
+<details class="dd"><summary><span id="cmd-label">Shell command</span><i class="chev"></i></summary><div class="menu">
+<button class="item sel" type="button" data-cmd="sh" data-label="Shell command"><span><span class="t">Shell command</span><span class="s">bash, zsh, fish — Linux, macOS, WSL</span></span><i class="ck"></i></button>
+<button class="item" type="button" data-cmd="ps" data-label="PowerShell command"><span><span class="t">PowerShell command</span><span class="s">Windows OpenSSH</span></span><i class="ck"></i></button>
+<button class="item" type="button" data-cmd="url" data-label="URL"><span><span class="t">URL</span><span class="s">Plain authorized_keys text</span></span><i class="ck"></i></button>
+</div></details>
+{type_menu}
+</div>
+<div class="code cmd on" data-kind="sh"><pre id="c-sh" data-text="curl -fs {u} &gt;&gt; ~/.ssh/authorized_keys"><span class="k">curl</span> -fs <span class="u">{u}</span> &gt;&gt; ~/.ssh/authorized_keys</pre>{cp_sh}</div>
+<div class="code cmd" data-kind="ps"><pre id="c-ps" data-text="Invoke-RestMethod {u} | Add-Content -Encoding ascii $HOME\.ssh\authorized_keys"><span class="k">Invoke-RestMethod</span> <span class="u">{u}</span> | Add-Content -Encoding ascii $HOME\.ssh\authorized_keys</pre>{cp_ps}</div>
+<div class="code cmd" data-kind="url"><pre id="c-url"><span class="u">{u}</span></pre>{cp_url}</div>
+</div>"##,
+        cp_sh = copy_btn("c-sh"),
+        cp_ps = copy_btn("c-ps"),
+        cp_url = copy_btn("c-url"),
+    )
+}
+
+fn faq_item(q: &str, body: &str) -> String {
+    format!(
+        r#"<details><summary>{q}<i class="pm"></i></summary><div class="body">{body}</div></details>"#
+    )
+}
+
+fn faq_common(url: &str, server_name: &str) -> String {
     let u = escape(url);
     let name = escape(server_name);
+    let mut s = String::new();
+    s.push_str(&faq_item(
+        "Where did these keys come from?",
+        "<p>Termoso generates an SSH key pair on every device the account is signed in on, and the owner can add FIDO2 security keys. Only the <em>public</em> halves are uploaded; private keys never leave the device or the security key.</p>",
+    ));
+    s.push_str(&faq_item(
+        "Why are those keys accessible online?",
+        "<p>A public key is meant to be shared — it can only verify a signature, never create one. Publishing them under a handle lets a server trust a <em>person</em> instead of a pasted file: one command installs every current key, and a new or lost laptop is handled by the owner in Termoso, not by editing <code>authorized_keys</code> on every host.</p>",
+    ));
+    s.push_str(&faq_item(
+        "Why should I trust these keys?",
+        &format!(
+            "<p>The list is served over HTTPS by <strong>{name}</strong> and can only be changed by someone signed in to this account — protected by a password that never reaches the server and, if enabled, MFA. A device's keys are listed only while that device is signed in; signing it out or removing it withdraws its keys at once.</p><p>If the access matters, compare the fingerprints under “Which keys are published right now?” with what the owner shows you in Termoso. Like any key server, the operator of {name} could in principle serve a different list, so for high-value hosts pin the fingerprints after the first install.</p>"
+        ),
+    ));
+    s.push_str(&faq_item(
+        "What is the safest option?",
+        "<p><strong>Hardware</strong> keys (ECDSA-SK, ED25519-SK): the private key is inside a FIDO2 security key and every login needs a touch, so malware on the device cannot use or copy it. Among software keys <strong>ED25519</strong> is the modern default; RSA only for hosts that cannot do better.</p>",
+    ));
+    s.push_str(&faq_item(
+        "Keep it current with AuthorizedKeysCommand",
+        &format!(
+            "<p>Instead of appending once, let <code>sshd</code> fetch the list at every login so removed keys stop working immediately:</p><pre>AuthorizedKeysCommand /usr/bin/curl -fs --max-time 5 {u}\nAuthorizedKeysCommandUser nobody</pre><p>Put it in a <code>Match User</code> block in <code>sshd_config</code> and keep a local key as a fallback for when the network is down.</p>"
+        ),
+    ));
+    s
+}
+
+fn type_item(href: &str, t: SshIdKeyType, n: usize, selected: bool) -> String {
     format!(
-        r#"<section class="faq">
-<details><summary>Where do these keys come from?</summary><div class="body"><p>Termoso generates an SSH key pair on each device the account is signed in on, and the owner can add FIDO2 security keys. Only the <em>public</em> halves are uploaded; private keys never leave the device or the security key.</p></div></details>
-<details><summary>Why are they published online?</summary><div class="body"><p>A public key is meant to be shared — it can only verify, never sign. Publishing them under a handle lets a server trust a <em>person</em> instead of a copy-pasted file: one command installs every current key, and a new laptop or a lost one is handled by the owner in Termoso rather than by editing <code>authorized_keys</code> on every host.</p></div></details>
-<details><summary>Why trust this list?</summary><div class="body"><p>It is served over HTTPS by <strong>{name}</strong>, so it can only be changed by someone signed in to this account — which is protected by the account password (never sent to the server) and, if enabled, MFA. A device's keys are listed only while that device is signed in; signing it out or removing it withdraws its keys at once.</p><p>Compare the fingerprints below with what the owner shows you in Termoso if the access matters. The operator of {name} could in principle serve a different list, as with any key server, so for high-value hosts pin the fingerprints after the first install.</p></div></details>
-<details><summary>Which type is the safest?</summary><div class="body"><p><strong>Hardware</strong> keys (ECDSA-SK, ED25519-SK) — the private key is inside a FIDO2 security key and each login needs a touch, so malware on the device cannot use or copy it. Among software keys, <strong>ED25519</strong> is the modern default; RSA only for hosts that cannot do better.</p></div></details>
-<details><summary>Keep it current with AuthorizedKeysCommand</summary><div class="body"><p>Instead of appending once, let <code>sshd</code> fetch the list at every login so removed keys stop working immediately:</p><pre>AuthorizedKeysCommand /usr/bin/curl -fsSL --max-time 5 {u}
-AuthorizedKeysCommandUser nobody</pre><p>Put it in a <code>Match User</code> block in <code>sshd_config</code>. Keep a local key as a fallback for when the network is down.</p></div></details>
-</section>"#
+        r#"<a class="item{sel}{none}" href="{href}"{cur}><span><span class="t">{name}{hw}</span><span class="s">{req}</span></span><span class="n">{count}</span><i class="ck"></i></a>"#,
+        sel = if selected { " sel" } else { "" },
+        none = if n == 0 { " none" } else { "" },
+        href = escape(href),
+        cur = if selected {
+            r#" aria-current="page""#
+        } else {
+            ""
+        },
+        name = label(t),
+        hw = if t.is_hardware() {
+            r#"<i class="hw" title="Security key"></i>"#
+        } else {
+            ""
+        },
+        req = requires(t),
+        count = match n {
+            0 => "no keys".to_string(),
+            1 => "1 key".to_string(),
+            n => format!("{n} keys"),
+        },
     )
 }
 
@@ -310,53 +403,47 @@ pub fn handle_page(p: &HandlePage<'_>) -> Response {
     let nonce = nonce();
     let handle_e = escape(p.handle);
     let base_url = format!("{}/{}", p.base, p.handle);
-    let (url, selected_name) = match p.selected {
-        Some(SshIdKeyType::Ed25519) => (base_url.clone(), "ED25519"),
-        Some(t) => (format!("{base_url}/{}", t.url_name()), label(t)),
-        None => (format!("{base_url}/all"), "all"),
-    };
-    let count = |t: SshIdKeyType| p.keys.iter().filter(|k| k.key_type == t).count();
-
-    let mut types = String::from(r#"<div class="types"><div class="group">Hardware</div>"#);
-    let push_type = |types: &mut String, t: SshIdKeyType| {
-        let n = count(t);
-        let href = if t == SshIdKeyType::Ed25519 {
+    let href_of = |t: SshIdKeyType| {
+        if t == SshIdKeyType::Ed25519 {
             base_url.clone()
         } else {
             format!("{base_url}/{}", t.url_name())
-        };
-        let on = p.selected == Some(t);
-        types.push_str(&format!(
-            r#"<a class="type{on}{none}" href="{href}"{cur}><div class="name">{name}<span class="n">{n}</span></div><div class="req">{req}</div><div class="desc">{desc}</div></a>"#,
-            on = if on { " on" } else { "" },
-            none = if n == 0 { " none" } else { "" },
-            href = escape(&href),
-            cur = if on { r#" aria-current="page""# } else { "" },
-            name = label(t),
-            req = requires(t),
-            desc = describe(t),
-        ));
+        }
     };
+    let (url, selected_name) = match p.selected {
+        Some(t) => (href_of(t), label(t)),
+        None => (format!("{base_url}/all"), "All types"),
+    };
+    let count = |t: SshIdKeyType| p.keys.iter().filter(|k| k.key_type == t).count();
+
+    let mut menu = format!(
+        r#"<details class="dd right"><summary>{selected_name}{hw}<i class="chev"></i></summary><div class="menu"><div class="grp">Hardware: security keys</div>"#,
+        hw = if p.selected.is_some_and(|t| t.is_hardware()) {
+            r#"<i class="hw"></i>"#
+        } else {
+            ""
+        }
+    );
     for t in [SshIdKeyType::EcdsaSk, SshIdKeyType::Ed25519Sk] {
-        push_type(&mut types, t);
+        menu.push_str(&type_item(&href_of(t), t, count(t), p.selected == Some(t)));
     }
-    types.push_str(r#"<div class="group">Software</div>"#);
+    menu.push_str(r#"<div class="grp">Software</div>"#);
     for t in [
         SshIdKeyType::Ed25519,
         SshIdKeyType::Ecdsa,
         SshIdKeyType::Rsa,
     ] {
-        push_type(&mut types, t);
+        menu.push_str(&type_item(&href_of(t), t, count(t), p.selected == Some(t)));
     }
-    types.push_str("</div>");
-    types.push_str(&format!(
-        r#"<a class="all" href="{}/all">{}</a>"#,
-        escape(&base_url),
-        if p.selected.is_none() {
-            "Showing every type"
-        } else {
-            "Or list every type at once"
-        }
+    menu.push_str(&format!(
+        r#"<hr><a class="item{sel}" href="{all}"><span><span class="t">All types</span><span class="s">Every published key in one list</span></span><span class="n">{n}</span><i class="ck"></i></a></div></details>"#,
+        sel = if p.selected.is_none() { " sel" } else { "" },
+        all = escape(&format!("{base_url}/all")),
+        n = match p.keys.len() {
+            0 => "no keys".to_string(),
+            1 => "1 key".to_string(),
+            n => format!("{n} keys"),
+        },
     ));
 
     let shown: Vec<&Key> = p
@@ -367,61 +454,58 @@ pub fn handle_page(p: &HandlePage<'_>) -> Response {
     let mut keys = String::new();
     if shown.is_empty() {
         keys.push_str(&format!(
-            r#"<div class="empty">No {selected_name} keys are published right now. Device keys appear while the device is signed in to Termoso; hardware keys are added by the owner.</div>"#
+            "<p>No {selected_name} keys are published right now. Device keys appear while the device is signed in to Termoso; hardware keys are added by the owner.</p>"
         ));
     } else {
-        keys.push_str(r#"<div class="keys">"#);
+        keys.push_str(&format!(
+            "<p>{} {} behind the command above, with SHA256 fingerprints as <code>ssh-keygen -lf</code> prints them:</p><ul class=\"keys\">",
+            shown.len(),
+            if shown.len() == 1 { "key is" } else { "keys are" }
+        ));
         for (i, k) in shown.iter().enumerate() {
             let fp = fingerprint(&k.public_key).unwrap_or_default();
             let line = format!("{} #SSH ID - @{}", k.public_key, p.handle);
             keys.push_str(&format!(
-                r#"<div class="key"><div class="row"><span class="badge{hw}">{name}</span><span class="fp mono">{fp}</span></div><details class="line"><summary>Show key</summary><pre id="k-{i}">{line}</pre><button class="copy" type="button" data-copy="k-{i}">Copy</button></details></div>"#,
-                hw = if k.key_type.is_hardware() { " hw" } else { "" },
+                r#"<li><span class="tag">{name}</span><span class="fp">{fp}</span>{cp}<details><summary>Show key</summary><pre id="k-{i}">{line}</pre></details></li>"#,
                 name = label(k.key_type),
                 fp = escape(&fp),
+                cp = copy_btn(&format!("k-{i}")),
                 line = escape(&line),
             ));
         }
-        keys.push_str("</div>");
+        keys.push_str("</ul>");
     }
 
     let n_all = p.keys.len();
-    let lead = match (n_all, p.selected) {
-        (0, _) => "This SSH ID has no keys published at the moment.".to_string(),
-        (n, None) => format!(
-            "{n} public {} published by the owner of this SSH ID. Install them on a server and the owner can sign in with any of their devices.",
-            if n == 1 { "key" } else { "keys" }
-        ),
-        (_, Some(t)) => {
-            let n = count(t);
-            format!(
-                "{n} {} {} published. Install {} on a server and the owner can sign in with their {} key.",
-                label(t),
-                if n == 1 { "key" } else { "keys" },
-                if n == 1 { "it" } else { "them" },
-                label(t)
-            )
-        }
+    let lead = if n_all == 0 {
+        "SSH ID is one address for a person's SSH public keys. This one has no keys published at the moment.".to_string()
+    } else {
+        format!(
+            "SSH ID is one address for a person's SSH public keys — every signed-in device and every security key. {n_all} {} published.",
+            if n_all == 1 { "key is" } else { "keys are" }
+        )
     };
+
+    let mut faq = faq_item("Which keys are published right now?", &keys);
+    faq.push_str(&faq_common(&url, p.server_name));
 
     let body = format!(
         r#"{header}
 <h1>SSH keys of <span class="at">@{handle}</span></h1>
 <p class="lead">{lead}</p>
-<h2>Add to a server</h2>
 {command}
-<h2>Key type</h2>
-{types}
-<h2>Published keys</h2>
-{keys}
-<h2>About SSH ID</h2>
-{faq}
+<h2>Next steps</h2>
+<ol class="steps">
+<li>Run the command on the server, as the user you want to log in as: it appends the public keys to <b>~/.ssh/authorized_keys</b>.</li>
+<li>Connect from any device signed in to Termoso — the matching private key is already there. For hosts that should follow the list automatically, see <b>AuthorizedKeysCommand</b> below.</li>
+</ol>
+<h2>Questions</h2>
+<section class="faq">{faq}</section>
 {footer}"#,
-        header = header_html(p.server_name, p.home_url, "Get Termoso"),
+        header = header_html(p.server_name, p.home_url),
         handle = handle_e,
         lead = escape(&lead),
-        command = command_html(&url, "cmd"),
-        faq = faq_html(&url, p.server_name),
+        command = command_html(&url, &menu),
         footer = footer_html(p.home_url, p.server_name, p.docs_url),
     );
     let html = document(
@@ -444,21 +528,28 @@ pub fn index_page(
     docs_url: Option<&str>,
 ) -> Response {
     let nonce = nonce();
+    let b = escape(base);
+    let menu = r#"<details class="dd right"><summary>ED25519<i class="chev"></i></summary><div class="menu"><div class="grp">Append <code>/&lt;type&gt;</code> to the address</div>
+<div class="item"><span><span class="t">ECDSA-SK<i class="hw"></i>, ED25519-SK<i class="hw"></i></span><span class="s">Security keys · OpenSSH 8.2+</span></span></div>
+<div class="item"><span><span class="t">ED25519</span><span class="s">Default when no type is given · OpenSSH 6.5+</span></span></div>
+<div class="item"><span><span class="t">ECDSA, RSA</span><span class="s">For older hosts</span></span></div>
+<hr><div class="item"><span><span class="t">all</span><span class="s">Every type in one list</span></span></div></div></details>"#;
     let body = format!(
         r#"{header}
 <h1>SSH ID</h1>
-<p class="lead">A handle for your SSH public keys. Every key of every signed-in Termoso device, and every security key you add, is published here as plain <code>authorized_keys</code> text — one URL to trust a person.</p>
-<h2>Trust a handle on a server</h2>
+<p class="lead">One address for a person's SSH public keys: every device signed in to Termoso and every security key they add, as plain <code>authorized_keys</code> text.</p>
 {command}
-<h2>Addresses</h2>
-<div class="card"><p style="margin:0 0 8px"><code>{b}/&lt;handle&gt;</code> — ED25519 keys (default)</p><p style="margin:0 0 8px"><code>{b}/&lt;handle&gt;/&lt;type&gt;</code> — <code>ED25519</code>, <code>ECDSA</code>, <code>RSA</code>, <code>ECDSA-SK</code>, <code>ED25519-SK</code></p><p style="margin:0"><code>{b}/&lt;handle&gt;/all</code> — every type</p></div>
-<h2>About SSH ID</h2>
-{faq}
+<h2>Next steps</h2>
+<ol class="steps">
+<li>Ask for the handle. Every Termoso account can publish one from <b>Keychain → SSH ID</b>.</li>
+<li>Replace <b>&lt;handle&gt;</b> in the command and run it on the server as the user who should log in. <code>{b}/&lt;handle&gt;/&lt;type&gt;</code> narrows the list to one key type, <code>{b}/&lt;handle&gt;/all</code> returns every type.</li>
+</ol>
+<h2>Questions</h2>
+<section class="faq">{faq}</section>
 {footer}"#,
-        header = header_html(server_name, home_url, "Get Termoso"),
-        command = command_html(&format!("{base}/<handle>"), "cmd"),
-        b = escape(base),
-        faq = faq_html(&format!("{base}/<handle>"), server_name),
+        header = header_html(server_name, home_url),
+        command = command_html(&format!("{base}/<handle>"), menu),
+        faq = faq_common(&format!("{base}/<handle>"), server_name),
         footer = footer_html(home_url, server_name, docs_url),
     );
     let html = document(
@@ -483,7 +574,7 @@ pub fn not_found_page(
 <h1>No such SSH ID</h1>
 <p class="lead">{what}. Handles are 3–32 characters: letters, digits, <code>-</code> and <code>_</code>. Key types are <code>ED25519</code>, <code>ECDSA</code>, <code>RSA</code>, <code>ECDSA-SK</code>, <code>ED25519-SK</code> or <code>all</code>.</p>
 {footer}"#,
-        header = header_html(server_name, home_url, "Get Termoso"),
+        header = header_html(server_name, home_url),
         what = escape(what),
         footer = footer_html(home_url, server_name, docs_url),
     );
@@ -556,9 +647,11 @@ mod tests {
         let body =
             futures::executor::block_on(axum::body::to_bytes(res.into_body(), usize::MAX)).unwrap();
         let html = String::from_utf8(body.to_vec()).unwrap();
-        assert!(html.contains(
-            "curl -fsSL https://sshid.example.com/alice &gt;&gt; ~/.ssh/authorized_keys"
-        ));
+        assert!(
+            html.contains(
+                "curl -fs https://sshid.example.com/alice &gt;&gt; ~/.ssh/authorized_keys"
+            )
+        );
         assert!(html.contains("https://sshid.example.com/alice/RSA"));
         assert!(html.contains("Termoso &lt;test&gt;"));
         assert!(!html.contains("<test>"));
