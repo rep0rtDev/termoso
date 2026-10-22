@@ -120,9 +120,9 @@ jobs:
             libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
             libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libxdo-dev libudev-dev libssl-dev patchelf file xdg-utils
 
-      # Wraps the linuxdeploy the bundler keeps in ~/.cache/tauri so Termoso's
-      # plugin runs after the GTK one and strips the bundled libwayland.
-      - name: Termoso linuxdeploy wrapper
+      # Pre-seeds ~/.cache/tauri with Termoso's linuxdeploy `appimage` output
+      # plugin, which strips the bundled libwayland before packing.
+      - name: Termoso linuxdeploy appimage plugin
         if: runner.os == 'Linux'
         run: apps/desktop/src-tauri/appimage/prepare.sh
 

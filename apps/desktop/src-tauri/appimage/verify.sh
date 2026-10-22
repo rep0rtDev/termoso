@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sanity-check a built Termoso AppImage: it must not ship libwayland (see
-# linuxdeploy-plugin-termoso.sh) and its GTK hook must leave GDK_BACKEND
+# linuxdeploy-plugin-appimage.sh) and its GTK hook must leave GDK_BACKEND
 # alone. Usage: verify.sh path/to/Termoso.AppImage
 set -euo pipefail
 

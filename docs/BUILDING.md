@@ -268,7 +268,7 @@ Build:
 ```bash
 cd apps/desktop
 npm ci
-src-tauri/appimage/prepare.sh      # once: Termoso's linuxdeploy wrapper + plugin into ~/.cache/tauri
+src-tauri/appimage/prepare.sh      # once: Termoso's linuxdeploy appimage plugin into ~/.cache/tauri
 npm run tauri build -- --config src-tauri/tauri.no-updater.conf.json --bundles deb,rpm,appimage
 src-tauri/appimage/verify.sh ../../target/release/bundle/appimage/*.AppImage
 ```
@@ -294,16 +294,14 @@ all three. Building the AppImage needs `file`, `patchelf` and `xdg-mime`
 `libwayland-*` into the AppImage, which shadows the system one and leaves a
 current Mesa unable to load its EGL driver — blank window on Arch and friends
 ([tauri-apps/tauri#15665](https://github.com/tauri-apps/tauri/issues/15665)).
-`prepare.sh` therefore installs `src-tauri/appimage/linuxdeploy-wrapper.sh`
-under the file name the bundler expects for linuxdeploy (the bundler reuses an
-existing binary, but since tauri-cli 2.12 rewrites the GTK plugin from an
-embedded copy, so the plugin itself cannot be patched any more); the wrapper
-runs the real linuxdeploy with Termoso's `linuxdeploy-plugin-termoso.sh`
-appended, which removes `libwayland-*` after the GTK plugin. Skip it and you
-get a stock AppImage; `verify.sh` fails in that case, and the release workflow
-runs it on every AppImage. The linuxdeploy commit the bundler pins is
-hard-coded in `prepare.sh` — if a bundler update changes it, the wrapper is
-bypassed and `verify.sh` is what tells you.
+Since tauri-cli 2.12 the bundler rewrites the GTK plugin from an embedded copy
+on every build, so it cannot be patched; the `appimage` output plugin,
+however, is only downloaded when missing. `prepare.sh` installs
+`src-tauri/appimage/linuxdeploy-plugin-appimage.sh` under that name: it
+removes `libwayland-*` after the input plugins ran, then hands over to the
+stock output plugin shipped inside linuxdeploy. Skip it and you get a stock
+AppImage; `verify.sh` fails in that case, and the release workflow runs it on
+every AppImage.
 
 ### Windows
 
