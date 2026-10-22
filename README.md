@@ -354,9 +354,8 @@ a current Mesa (linked against a newer libwayland than 22.04 ships) then cannot 
 [tauri-apps/tauri#15665](https://github.com/tauri-apps/tauri/issues/15665)).
 Releases up to 0.6.1 did bundle it; on Arch/Fedora and other rolling distros
 either upgrade or run `./Termoso.AppImage --appimage-extract && rm squashfs-root/usr/lib/libwayland-*.so* && squashfs-root/AppRun`.
-On Wayland the AppImage runs through XWayland by default (`GDK_BACKEND=x11`,
-what linuxdeploy's GTK hook does for every Tauri app); `GDK_BACKEND=wayland ./Termoso.AppImage`
-runs it natively. The `.deb`/`.rpm` use the distribution's WebKitGTK and are
+On Wayland the AppImage runs natively; `GDK_BACKEND=x11 ./Termoso.AppImage`
+puts it through XWayland instead if the compositor misbehaves. The `.deb`/`.rpm` use the distribution's WebKitGTK and are
 not affected.
 
 ### Android

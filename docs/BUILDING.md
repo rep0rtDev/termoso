@@ -268,7 +268,7 @@ Build:
 ```bash
 cd apps/desktop
 npm ci
-src-tauri/appimage/prepare.sh      # once: Termoso's linuxdeploy GTK plugin into ~/.cache/tauri
+src-tauri/appimage/prepare.sh      # once: Termoso's linuxdeploy wrapper + plugin into ~/.cache/tauri
 npm run tauri build -- --config src-tauri/tauri.no-updater.conf.json --bundles deb,rpm,appimage
 src-tauri/appimage/verify.sh ../../target/release/bundle/appimage/*.AppImage
 ```
@@ -290,14 +290,20 @@ there is no cross-compilation, build on the architecture you target.
 `--bundles` accepts any subset of `deb,rpm,appimage`; leave it out to build
 all three. Building the AppImage needs `file`, `patchelf` and `xdg-mime`
 (`xdg-utils`) and downloads `linuxdeploy` and its plugins into
-`~/.cache/tauri` on first use. `prepare.sh` pre-seeds that cache with
-`src-tauri/appimage/linuxdeploy-plugin-gtk.sh`, our copy of the upstream GTK
-plugin with two changes: the bundled `libwayland-*` are removed again (a copy
-from Ubuntu 22.04 shadows the system one and a current Mesa cannot load its
-EGL driver — blank window, [tauri-apps/tauri#15665](https://github.com/tauri-apps/tauri/issues/15665)),
-and `GDK_BACKEND=x11` becomes a default the user can override. Skip it and
-you get a stock AppImage that breaks on Arch and friends; `verify.sh` fails
-in that case, and the release workflow runs it on every AppImage.
+`~/.cache/tauri` on first use. The upstream GTK plugin also copies
+`libwayland-*` into the AppImage, which shadows the system one and leaves a
+current Mesa unable to load its EGL driver — blank window on Arch and friends
+([tauri-apps/tauri#15665](https://github.com/tauri-apps/tauri/issues/15665)).
+`prepare.sh` therefore installs `src-tauri/appimage/linuxdeploy-wrapper.sh`
+under the file name the bundler expects for linuxdeploy (the bundler reuses an
+existing binary, but since tauri-cli 2.12 rewrites the GTK plugin from an
+embedded copy, so the plugin itself cannot be patched any more); the wrapper
+runs the real linuxdeploy with Termoso's `linuxdeploy-plugin-termoso.sh`
+appended, which removes `libwayland-*` after the GTK plugin. Skip it and you
+get a stock AppImage; `verify.sh` fails in that case, and the release workflow
+runs it on every AppImage. The linuxdeploy commit the bundler pins is
+hard-coded in `prepare.sh` — if a bundler update changes it, the wrapper is
+bypassed and `verify.sh` is what tells you.
 
 ### Windows
 
