@@ -59,7 +59,7 @@ export function PasswordField(props: Omit<TextFieldProps, "slotProps" | "type">)
   );
 }
 
-export const MIN_PASSWORD = 10;
+export const MIN_PASSWORD = 12;
 
 export function passwordProblem(pw: string): string | null {
   if (pw.length < MIN_PASSWORD)

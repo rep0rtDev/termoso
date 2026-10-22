@@ -186,6 +186,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arcstr"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03918c3dbd7701a85c6b9887732e2921175f26c350b4563841d0958c21d57e6d"
+
+[[package]]
 name = "argon2"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1021,7 +1027,7 @@ dependencies = [
  "arrayvec",
  "cc",
  "cfg-if",
- "constant_time_eq 0.4.2",
+ "constant_time_eq",
  "cpufeatures 0.3.1",
 ]
 
@@ -1385,12 +1391,6 @@ name = "const-oid"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
-
-[[package]]
-name = "constant_time_eq"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c74b8349d32d297c9134b8c88677813a227df8f779daa29bfc29c183fe3dca6"
 
 [[package]]
 name = "constant_time_eq"
@@ -1913,9 +1913,9 @@ dependencies = [
 
 [[package]]
 name = "dirs"
-version = "6.0.0"
+version = "7.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
+checksum = "8d57d423b3c82e89b9a24ca3091fee61f456a26edbd28d26c65906f4bc1dcd8f"
 dependencies = [
  "dirs-sys",
 ]
@@ -2300,6 +2300,16 @@ dependencies = [
  "libc",
  "thiserror 1.0.69",
  "winapi",
+]
+
+[[package]]
+name = "filetime"
+version = "0.2.29"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c287a33c7f0a620c38e641e7f60827713987b3c0f26e8ddc9462cc69cf75759"
+dependencies = [
+ "cfg-if",
+ "libc",
 ]
 
 [[package]]
@@ -3445,6 +3455,17 @@ name = "lru-slab"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
+
+[[package]]
+name = "lzma-sys"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fda04ab3764e6cde78b9974eec4f779acaba7c4e84b36eca3cf77c581b85d27"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+]
 
 [[package]]
 name = "mach2"
@@ -4780,11 +4801,13 @@ dependencies = [
 
 [[package]]
 name = "redis"
-version = "0.32.7"
+version = "1.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "014cc767fefab6a3e798ca45112bccad9c6e0e218fbd49720042716c73cfef44"
+checksum = "ed5b98ae99461e02895c3a96a25dbe4d852a3d5e5b815d31d5d9e4b5344d99e9"
 dependencies = [
  "arc-swap",
+ "arcstr",
+ "async-lock",
  "backon",
  "bytes",
  "cfg-if",
@@ -4792,9 +4815,11 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "itoa",
- "num-bigint 0.4.8",
+ "log",
+ "num-bigint 0.5.1",
  "percent-encoding",
  "pin-project-lite",
+ "rand 0.10.3",
  "rustls",
  "rustls-native-certs",
  "ryu",
@@ -4804,6 +4829,7 @@ dependencies = [
  "tokio-rustls",
  "tokio-util",
  "url",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -5032,9 +5058,9 @@ dependencies = [
 
 [[package]]
 name = "russh"
-version = "0.63.3"
+version = "0.64.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "036204edbd199552a5b3832f63c60dcdf395dc44c7f06b4af1c0e8139cc11bce"
+checksum = "ba61e87b9ec9a39a59a6bbed4c0b8ff7fb07073405b24a767a1f2c8560ac8f58"
 dependencies = [
  "aes 0.9.3",
  "aws-lc-rs",
@@ -6264,6 +6290,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tar"
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+dependencies = [
+ "filetime",
+ "libc",
+ "xattr",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6278,7 +6315,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-awslc-rsa"
-version = "0.4.0"
+version = "0.9.4"
 dependencies = [
  "aws-lc-sys",
  "thiserror 2.0.20",
@@ -6286,7 +6323,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-client"
-version = "0.4.0"
+version = "0.9.4"
 dependencies = [
  "chrono",
  "serde",
@@ -6300,7 +6337,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-core"
-version = "0.4.0"
+version = "0.9.4"
 dependencies = [
  "aes 0.8.4",
  "async-trait",
@@ -6351,7 +6388,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-crypto"
-version = "0.4.0"
+version = "0.9.4"
 dependencies = [
  "argon2 0.5.3",
  "base64 0.23.1",
@@ -6387,14 +6424,22 @@ dependencies = [
 
 [[package]]
 name = "termoso-mobile"
-version = "0.4.0"
+version = "0.9.4"
 dependencies = [
  "alacritty_terminal",
+ "async-trait",
  "bytes",
  "chrono",
+ "encoding_rs",
+ "flate2",
+ "futures-util",
+ "lzma-sys",
+ "reqwest",
  "russh",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "tar",
  "termoso-client",
  "termoso-core",
  "termoso-crypto",
@@ -6408,12 +6453,13 @@ dependencies = [
  "tracing-subscriber",
  "uniffi",
  "uuid",
+ "xz2",
  "zeroize",
 ]
 
 [[package]]
 name = "termoso-proto"
-version = "0.4.0"
+version = "0.9.4"
 dependencies = [
  "chrono",
  "serde",
@@ -6424,7 +6470,7 @@ dependencies = [
 
 [[package]]
 name = "termoso-server"
-version = "0.4.0"
+version = "0.9.4"
 dependencies = [
  "aes 0.8.4",
  "aes-gcm 0.10.3",
@@ -6455,6 +6501,8 @@ dependencies = [
  "reqwest",
  "roxmltree",
  "rsa 0.9.10",
+ "rustls-native-certs",
+ "rustls-pki-types",
  "serde",
  "serde_json",
  "sha1 0.10.7",
@@ -6466,6 +6514,7 @@ dependencies = [
  "termoso-proto",
  "thiserror 2.0.20",
  "tokio",
+ "tokio-rustls",
  "totp-rs",
  "tower",
  "tower-http",
@@ -6750,18 +6799,20 @@ checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
 
 [[package]]
 name = "totp-rs"
-version = "5.7.2"
+version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50e69a15e21b2ff22c415446983978bded3244195f17d59cb113551c1e806f91"
+checksum = "49d0f9b7aa5def86d3a8d8ba926fe8c1990924dd715d2b5fc54a4aa3788c11c1"
 dependencies = [
  "base32",
- "constant_time_eq 0.3.1",
- "hmac 0.12.1",
- "rand 0.9.5",
- "sha1 0.10.7",
- "sha2 0.10.9",
+ "constant_time_eq",
+ "hmac 0.13.0",
+ "percent-encoding",
+ "rand 0.10.3",
+ "serde",
+ "sha1 0.11.0",
+ "sha2 0.11.0",
  "url",
- "urlencoding",
+ "zeroize",
 ]
 
 [[package]]
@@ -7147,12 +7198,6 @@ dependencies = [
  "serde",
  "serde_derive",
 ]
-
-[[package]]
-name = "urlencoding"
-version = "2.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
 name = "utf8_iter"
@@ -7832,10 +7877,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "xattr"
+version = "1.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32e45ad4206f6d2479085147f02bc2ef834ac85886624a23575ae137c8aa8156"
+dependencies = [
+ "libc",
+ "rustix",
+]
+
+[[package]]
 name = "xmlparser"
 version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "550a2b930b62486a393c52d5c3b84bff264b28aa437ed64694d31e93b1757af7"
+
+[[package]]
+name = "xz2"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "388c44dc09d76f1536602ead6d325eb532f5c122f17782bd57fb47baeeb767e2"
+dependencies = [
+ "lzma-sys",
+]
 
 [[package]]
 name = "yansi"
