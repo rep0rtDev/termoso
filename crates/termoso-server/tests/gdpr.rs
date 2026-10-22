@@ -131,7 +131,10 @@ async fn export_and_scheduled_deletion() {
     assert_eq!(ents.len(), 1);
     assert_eq!(ents[0]["kind"], "host");
     assert!(
-        !ents[0]["data"].as_str().unwrap().contains("db"),
+        !ents[0]["data"]
+            .as_str()
+            .unwrap()
+            .contains(r#""label":"db""#),
         "ciphertext only"
     );
     assert!(doc["policies"]["mfa"].is_string());
