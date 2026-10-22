@@ -97,6 +97,26 @@ key to produce, and a client never swaps a personal key it already holds for
 a same-version envelope. Entity ciphertext is bound to its kind and id, so
 records cannot be swapped between hosts or vaults.
 
+**Passwords can still be guessed offline — by the operator.** OPAQUE keeps
+the password off the wire and the server never sees it, but the registration
+record it stores plus the server's own OPAQUE key (encrypted at rest under
+`TERMOSO_MASTER_KEY`) are enough for whoever holds *both* — the operator, or an
+attacker who took the database and the key — to test password guesses offline
+and, on a hit, unwrap the account key and every vault it opens. A database
+dump alone is not enough: the per-user OPRF key is what stops precomputation.
+Each guess costs one Argon2id evaluation (64 MiB, 3 passes), which puts a long
+passphrase out of reach and a short or reused password within it. MFA does
+not help here — it gates sign-in, not decryption. Clients enforce a minimum
+length only; use a passphrase, and keep the recovery phrase (256 random bits)
+offline.
+
+**The server's master key is part of your data.** `TERMOSO_MASTER_KEY`
+encrypts the OPAQUE server key and TOTP seeds at rest. If it is lost, or a
+database is restored under a different key, every password sign-in fails.
+Vault contents are not lost: each account's recovery phrase unwraps the
+account key without the server's help and sets a new password — but back the
+key up together with the database.
+
 **ACL is not a vault.** Team ACL rules (group/host → `connect`/`read`/`edit`)
 are enforced by clients and, for directly named entities, by the server's
 write path. They do not change who can *decrypt*: anyone holding the vault
