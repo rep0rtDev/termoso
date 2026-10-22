@@ -1,5 +1,4 @@
 import {
-  cloneElement,
   useCallback,
   useEffect,
   useMemo,
@@ -1010,29 +1009,29 @@ export function HostsPage() {
                 [
                   {
                     label: tr("Connect"),
-                    icon: <PlayArrowRoundedIcon />,
+                    icon: <PlayArrowRoundedIcon fontSize="small" />,
                     onClick: () => connectHosts(selectedHosts),
                   },
                   {
                     label: tr("Move to"),
-                    icon: <DriveFileMoveOutlinedIcon />,
+                    icon: <DriveFileMoveOutlinedIcon fontSize="small" />,
                     disabled: readOnly,
                     onClick: () => setMoveCopy({ kind: "group", hosts: selectedHosts }),
                   },
                   {
                     label: tr("Copy to"),
-                    icon: <LibraryAddOutlinedIcon />,
+                    icon: <LibraryAddOutlinedIcon fontSize="small" />,
                     onClick: (e: MouseEvent<HTMLElement>) => setCopyAnchor(e.currentTarget),
                   },
                   {
                     label: tr("Duplicate"),
-                    icon: <ContentCopyRoundedIcon />,
+                    icon: <ContentCopyRoundedIcon fontSize="small" />,
                     disabled: readOnly,
                     onClick: () => void duplicateHosts(selectedHosts),
                   },
                   {
                     label: tr("Remove"),
-                    icon: <DeleteOutlineRoundedIcon />,
+                    icon: <DeleteOutlineRoundedIcon fontSize="small" />,
                     disabled: readOnly,
                     color: "error" as const,
                     onClick: () => setConfirmRemove(selectedHosts),
@@ -1055,7 +1054,7 @@ export function HostsPage() {
                         disabled={a.disabled}
                         onClick={a.onClick}
                       >
-                        {cloneElement(a.icon, { fontSize: "small" })}
+                        {a.icon}
                       </IconButton>
                     </span>
                   </Tooltip>
