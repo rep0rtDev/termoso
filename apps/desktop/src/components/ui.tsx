@@ -13,6 +13,7 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useMediaQuery,
   type ButtonProps,
   type SxProps,
   type Theme,
@@ -828,6 +829,13 @@ export function ToolIconButton({
 
 /* ---------------------------------------------------------------- panel */
 
+/** Below this window width a side panel would squeeze the page below usable width, so it overlays instead. */
+export const NARROW_WINDOW = `(max-width:${sizes.sidebar + sizes.panel + 520}px)`;
+
+export function useNarrowWindow(): boolean {
+  return useMediaQuery(NARROW_WINDOW);
+}
+
 /** Right-hand side panel: header (title, subtitle, actions, close) + scrollable body + footer. */
 export function SidePanel({
   title,
@@ -848,6 +856,7 @@ export function SidePanel({
   footer?: ReactNode;
   width?: number;
 }) {
+  const narrow = useNarrowWindow();
   return (
     <Box
       component="aside"
@@ -860,6 +869,15 @@ export function SidePanel({
         borderLeft: 1,
         borderColor: "border.light",
         minHeight: 0,
+        ...(narrow && {
+          position: "absolute",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 3,
+          maxWidth: "calc(100% - 48px)",
+          boxShadow: 8,
+        }),
       }}
     >
       <Box

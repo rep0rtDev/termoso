@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import {
+  cloneElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent,
+  type ReactElement,
+} from "react";
 import { copyToClipboard } from "@/lib/clipboard";
 import {
   Box,
@@ -58,6 +66,7 @@ import {
   ToolIconButton,
   Toolbar,
   type MenuAction,
+  useNarrowWindow,
 } from "@/components/ui";
 import {
   useDeleteHosts,
@@ -800,6 +809,7 @@ export function HostsPage() {
 
   /** Bulk-action bar replaces the breadcrumbs, except mid-drag so the crumbs stay droppable. */
   const selecting = visibleChecked.size > 0 && dnd.dragging.size === 0;
+  const narrow = useNarrowWindow();
 
   return (
     <Box sx={{ display: "flex", flex: 1, minHeight: 0 }}>
@@ -983,6 +993,7 @@ export function HostsPage() {
               sx={{
                 display: "flex",
                 alignItems: "center",
+                flexWrap: "wrap",
                 minHeight: 28,
                 gap: 0.5,
                 pl: 1,
@@ -992,57 +1003,77 @@ export function HostsPage() {
                 bgcolor: "surface.high",
               }}
             >
-              <Typography variant="body2" sx={{ fontWeight: 600, mr: 1 }}>
+              <Typography variant="body2" noWrap sx={{ fontWeight: 600, mr: 1 }}>
                 {tr("{count} selected", { count: visibleChecked.size })}
               </Typography>
-              <Button
-                size="small"
-                variant="text"
-                color="inherit"
-                startIcon={<PlayArrowRoundedIcon />}
-                onClick={() => connectHosts(selectedHosts)}
-              >
-                {tr("Connect")}
-              </Button>
-              <Button
-                size="small"
-                variant="text"
-                color="inherit"
-                startIcon={<DriveFileMoveOutlinedIcon />}
-                disabled={readOnly}
-                onClick={() => setMoveCopy({ kind: "group", hosts: selectedHosts })}
-              >
-                {tr("Move to")}
-              </Button>
-              <Button
-                size="small"
-                variant="text"
-                color="inherit"
-                startIcon={<LibraryAddOutlinedIcon />}
-                onClick={(e) => setCopyAnchor(e.currentTarget)}
-              >
-                {tr("Copy to")}
-              </Button>
-              <Button
-                size="small"
-                variant="text"
-                color="inherit"
-                startIcon={<ContentCopyRoundedIcon />}
-                disabled={readOnly}
-                onClick={() => void duplicateHosts(selectedHosts)}
-              >
-                {tr("Duplicate")}
-              </Button>
-              <Button
-                size="small"
-                variant="text"
-                color="error"
-                startIcon={<DeleteOutlineRoundedIcon />}
-                disabled={readOnly}
-                onClick={() => setConfirmRemove(selectedHosts)}
-              >
-                {tr("Remove")}
-              </Button>
+              {(
+                [
+                  {
+                    label: tr("Connect"),
+                    icon: <PlayArrowRoundedIcon />,
+                    onClick: () => connectHosts(selectedHosts),
+                  },
+                  {
+                    label: tr("Move to"),
+                    icon: <DriveFileMoveOutlinedIcon />,
+                    disabled: readOnly,
+                    onClick: () => setMoveCopy({ kind: "group", hosts: selectedHosts }),
+                  },
+                  {
+                    label: tr("Copy to"),
+                    icon: <LibraryAddOutlinedIcon />,
+                    onClick: (e: MouseEvent<HTMLElement>) => setCopyAnchor(e.currentTarget),
+                  },
+                  {
+                    label: tr("Duplicate"),
+                    icon: <ContentCopyRoundedIcon />,
+                    disabled: readOnly,
+                    onClick: () => void duplicateHosts(selectedHosts),
+                  },
+                  {
+                    label: tr("Remove"),
+                    icon: <DeleteOutlineRoundedIcon />,
+                    disabled: readOnly,
+                    color: "error" as const,
+                    onClick: () => setConfirmRemove(selectedHosts),
+                  },
+                ] as {
+                  label: string;
+                  icon: ReactElement;
+                  disabled?: boolean;
+                  color?: "error";
+                  onClick: (e: MouseEvent<HTMLElement>) => void;
+                }[]
+              ).map((a) =>
+                narrow ? (
+                  <Tooltip key={a.label} title={a.label}>
+                    <span>
+                      <IconButton
+                        size="small"
+                        color={a.color}
+                        aria-label={a.label}
+                        disabled={a.disabled}
+                        onClick={a.onClick}
+                      >
+                        {cloneElement(a.icon, { fontSize: "small" })}
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                ) : (
+                  <Button
+                    key={a.label}
+                    size="small"
+                    variant="text"
+                    color={a.color ?? "inherit"}
+                    startIcon={a.icon}
+                    disabled={a.disabled}
+                    onClick={a.onClick}
+                    sx={{ whiteSpace: "nowrap", flexShrink: 0 }}
+                  >
+                    {a.label}
+                  </Button>
+                ),
+              )}
               <Box sx={{ flex: 1 }} />
               <Tooltip title={`Select all (${IS_MAC ? "Cmd" : "Ctrl"}+A)`}>
                 <IconButton

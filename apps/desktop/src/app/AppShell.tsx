@@ -164,6 +164,7 @@ function UnlockedShell() {
             display: "flex",
             flexDirection: "column",
             bgcolor: "surface.base",
+            position: "relative",
           }}
         >
           {home && <UpdateBanner onOpenSettings={() => goToSettings("updates")} />}
