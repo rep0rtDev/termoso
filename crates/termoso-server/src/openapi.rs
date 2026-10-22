@@ -91,6 +91,7 @@ impl Modify for BearerAuth {
         crate::routes::sshid::delete,
         crate::routes::sshid::put_device_keys,
         crate::routes::sshid::add_fido2_key,
+        crate::routes::sshid::add_public_key,
         crate::routes::sshid::remove_key,
         crate::routes::sshid::public_default,
         crate::routes::sshid::public_typed,

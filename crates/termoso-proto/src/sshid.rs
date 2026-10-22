@@ -115,6 +115,11 @@ impl SshIdKeyType {
     pub fn is_hardware(self) -> bool {
         matches!(self, SshIdKeyType::EcdsaSk | SshIdKeyType::Ed25519Sk)
     }
+
+    /// Type of an `authorized_keys` line by its algorithm token.
+    pub fn from_wire_name(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|t| t.wire_name() == s.trim())
+    }
 }
 
 schema! {
@@ -177,6 +182,18 @@ schema! {
     pub struct PutDeviceKeysRequest {
         /// The full set; types not listed are removed.
         pub keys: Vec<DeviceKeyUpload>,
+    }
+}
+
+schema! {
+    /// `POST /account/sshid/keys` — publish a public key the account already
+    /// owns (generated elsewhere). Bound to the account, not to a device: it
+    /// stays listed until removed. The type is taken from the algorithm token.
+    pub struct AddPublicKeyRequest {
+        /// Label shown in the key list.
+        pub label: String,
+        /// `<algorithm> <base64> [comment]`.
+        pub public_key: String,
     }
 }
 

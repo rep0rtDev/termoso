@@ -12,7 +12,9 @@ use termoso_core::model::SshKey;
 use termoso_core::ssh::AuthMethod;
 use termoso_core::sshid as core;
 use termoso_core::store::Store;
-use termoso_proto::sshid::{AddFido2KeyRequest, SshIdKeyType, SshIdProfile, normalize_handle};
+use termoso_proto::sshid::{
+    AddFido2KeyRequest, AddPublicKeyRequest, SshIdKeyType, SshIdProfile, normalize_handle,
+};
 use zeroize::Zeroizing;
 
 use crate::account::AccountRuntime;
@@ -334,6 +336,40 @@ impl AccountRuntime {
         .await?;
         key.ssh_id = true;
         store.update(id, &key)?;
+        let profile = api.sshid().await?;
+        view_of(&store, profile)
+    }
+
+    /// Publish a public key the user already has (generated elsewhere):
+    /// account-bound like a security key, nothing is stored on the phone.
+    pub async fn sshid_add_public_key(
+        &self,
+        label: String,
+        public_key: String,
+    ) -> Result<SshIdView> {
+        let api = self.api().await?;
+        let store = self.store_arc();
+        let profile = api
+            .sshid()
+            .await?
+            .ok_or_else(|| MobileError::invalid("SSH ID is not set up"))?;
+        let label = label.trim().to_string();
+        if label.is_empty() {
+            return Err(MobileError::invalid("key label is required"));
+        }
+        let public_key = public_key.trim().to_string();
+        if public_key.is_empty() {
+            return Err(MobileError::invalid("public key is required"));
+        }
+        if profile
+            .keys
+            .iter()
+            .any(|k| same_key(&k.public_key, &public_key))
+        {
+            return Err(MobileError::invalid("this key is already published"));
+        }
+        api.add_sshid_public_key(&AddPublicKeyRequest { label, public_key })
+            .await?;
         let profile = api.sshid().await?;
         view_of(&store, profile)
     }

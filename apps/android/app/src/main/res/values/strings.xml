@@ -261,6 +261,13 @@
     <string name="create_a_credential_on_a_fido2_token_usb">Create a credential on a FIDO2 token (USB or NFC) and publish it</string>
     <string name="publish_a_key_from_the_keychain">Publish a key from the keychain</string>
     <string name="an_sk_key_already_in_a_vault_on">An sk-* key already in a vault on this phone</string>
+    <string name="your_own_keys">Your own keys</string>
+    <string name="publish_existing_key">Publish existing key</string>
+    <string name="paste_a_pub_line_from_another_machine">A .pub line from another machine, a password manager or a token enrolled elsewhere</string>
+    <string name="paste_the_public_key_pub_of_a_key_you">Paste the public key (.pub) of a key you already use. Only the public half is sent; the key is tied to your account and stays published until you remove it.</string>
+    <string name="public_key_plain">Public key</string>
+    <string name="publish">Publish</string>
+    <string name="the_published_key_is_removed_from">The %1$s key “%2$s” is removed from @%3$s. Hosts that fetch the list on login stop accepting it at once.</string>
     <string name="only_the_public_key_and_its_type_go">Only the public key and its type go to the server; the credential stays on the token. Provision servers with /all or the SK type to accept it.</string>
     <string name="publish_a_security_key">Publish a security key</string>
     <string name="no_security_key_to_publish_every_sk_key">No security key to publish: every sk-* key in the unlocked vaults is already under this handle, or its handle is passphrase-protected without the passphrase remembered.</string>

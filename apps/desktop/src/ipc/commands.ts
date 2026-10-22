@@ -645,6 +645,8 @@ export const sshidPublish = () => invoke<SshIdView>("sshid_publish");
 export const sshidRotate = () => invoke<SshIdView>("sshid_rotate");
 export const sshidAddFido2 = (form: SshIdFido2Form) =>
   invoke<SshIdView>("sshid_add_fido2", { form });
+export const sshidAddPublicKey = (form: { label: string; publicKey: string }) =>
+  invoke<SshIdView>("sshid_add_public_key", form);
 export const sshidRemoveKey = (id: Uuid) => invoke<SshIdView>("sshid_remove_key", { id });
 export const sshidRemoveDevice = (deviceId: Uuid) =>
   invoke<SshIdView>("sshid_remove_device", { deviceId });

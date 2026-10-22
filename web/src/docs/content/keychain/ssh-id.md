@@ -23,6 +23,14 @@ curl -fs https://sshid.termoso.dev/<handle> >> ~/.ssh/authorized_keys
 
 or use it in `AuthorizedKeysCommand` to always fetch the current list.
 
+## Publishing a key you already have
+
+Keys made elsewhere — another machine, a password manager's SSH agent, a security key enrolled by other software — can be published too: **Keychain → SSH ID → Publish existing key**, paste the `.pub` line, give it a label. Only the public half is sent. Such a key is tied to the account rather than to a device, so it stays listed until you remove it, whichever devices are signed in.
+
+## Key types
+
+`ED25519`, `ECDSA` and `RSA` are ordinary software keys; the private half lives on the device that made it. `ED25519-SK` and `ECDSA-SK` are **security-key** types (`sk-ssh-ed25519@openssh.com`, `sk-ecdsa-sha2-nistp256@openssh.com`): the private half lives on a FIDO2 token such as a YubiKey and every login needs a touch. They are listed separately because the server's `sshd` must be OpenSSH 8.2+ (ECDSA-SK: 8.4+) to accept them; older hosts should fetch `/<handle>` or `/<handle>/RSA` instead.
+
 ## Rotating keys
 
 Remove a key from SSH ID and it disappears from the published list at once; servers that fetch the list on login stop accepting it immediately.

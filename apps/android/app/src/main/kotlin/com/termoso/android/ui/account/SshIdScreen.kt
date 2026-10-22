@@ -124,6 +124,9 @@ class SshIdViewModel(private val repo: VaultRepository, private val account: Acc
     /** Publish an existing keychain `sk-*` key under the handle (only its public half leaves the phone). */
     suspend fun attach(keyId: String): Boolean = call { sshidAttachSecurityKey(keyId) }
 
+    /** Publish a public key made elsewhere; account-bound, listed until removed. */
+    suspend fun addPublicKey(label: String, publicKey: String): Boolean = call { sshidAddPublicKey(label, publicKey) }
+
     /**
      * Security keys from every unlocked vault that are not yet published: the
      * Rust side refuses passphrase-protected handles and duplicates, so they
@@ -164,6 +167,7 @@ fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Un
     var confirmRotate by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     var removeKey by remember { mutableStateOf<SshIdKeyCard?>(null) }
+    var addPublicKey by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.reload() }
@@ -234,6 +238,7 @@ fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Un
                     onPublish = { scope.launch { if (vm.publish()) shell.notify(str(R.string.keys_published)) } },
                     onAddSecurityKey = onAddSecurityKey,
                     onAttachSecurityKey = vm::loadAttachable,
+                    onAddPublicKey = { addPublicKey = true },
                 )
             }
             Spacer(Modifier.height(24.dp))
@@ -277,6 +282,20 @@ fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Un
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
+    if (addPublicKey) {
+        AddPublicKeyDialog(
+            working = state.working,
+            onPublish = { label, key ->
+                scope.launch {
+                    if (vm.addPublicKey(label, key)) {
+                        addPublicKey = false
+                        shell.notify(str(R.string.published_under, label, handle.orEmpty()))
+                    }
+                }
+            },
+            onDismiss = { addPublicKey = false },
+        )
+    }
     state.attachable?.let { keys ->
         AttachKeyDialog(
             keys = keys,
@@ -293,10 +312,10 @@ fun SshIdScreen(shell: ShellViewModel, account: AccountManager, onBack: () -> Un
             title = { Text(stringResource(R.string.remove_key)) },
             text = {
                 Text(
-                    if (k.hardware) {
-                        stringResource(R.string.the_security_key_entry_is_removed_from, k.keyType.label(), k.label, handle.orEmpty())
-                    } else {
-                        stringResource(R.string.the_key_of_is_removed_from_it_comes, k.keyType.label(), k.label, handle.orEmpty())
+                    when {
+                        k.hardware -> stringResource(R.string.the_security_key_entry_is_removed_from, k.keyType.label(), k.label, handle.orEmpty())
+                        k.deviceId == null -> stringResource(R.string.the_published_key_is_removed_from, k.keyType.label(), k.label, handle.orEmpty())
+                        else -> stringResource(R.string.the_key_of_is_removed_from_it_comes, k.keyType.label(), k.label, handle.orEmpty())
                     },
                 )
             },
@@ -357,6 +376,7 @@ private fun HandleSections(
     onPublish: () -> Unit,
     onAddSecurityKey: () -> Unit,
     onAttachSecurityKey: () -> Unit,
+    onAddPublicKey: () -> Unit,
 ) {
     val handle = view.handle ?: return
     val url = view.url ?: return
@@ -450,6 +470,16 @@ private fun HandleSections(
             modifier = Modifier.clickable(enabled = !working, onClick = onAttachSecurityKey),
         )
     }
+
+    SectionLabel(stringResource(R.string.your_own_keys))
+    SectionCard {
+        ListRow(
+            title = stringResource(R.string.publish_existing_key),
+            subtitle = stringResource(R.string.paste_a_pub_line_from_another_machine),
+            leading = { IconTile(Icons.Filled.Key) },
+            modifier = Modifier.clickable(enabled = !working, onClick = onAddPublicKey),
+        )
+    }
     Text(
         stringResource(R.string.only_the_public_key_and_its_type_go),
         style = MaterialTheme.typography.bodySmall,
@@ -462,6 +492,49 @@ private fun HandleSections(
             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
         }
     }
+}
+
+@Composable
+private fun AddPublicKeyDialog(working: Boolean, onPublish: (String, String) -> Unit, onDismiss: () -> Unit) {
+    var label by remember { mutableStateOf("") }
+    var key by remember { mutableStateOf("") }
+    val valid = label.isNotBlank() && key.trim().split(Regex("\\s+")).size >= 2
+    AlertDialog(
+        onDismissRequest = { if (!working) onDismiss() },
+        title = { Text(stringResource(R.string.publish_existing_key)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    stringResource(R.string.paste_the_public_key_pub_of_a_key_you),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = label,
+                    onValueChange = { label = it },
+                    label = { Text(stringResource(R.string.label)) },
+                    singleLine = true,
+                    enabled = !working,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = key,
+                    onValueChange = { key = it },
+                    label = { Text(stringResource(R.string.public_key_plain)) },
+                    placeholder = { Text("ssh-ed25519 AAAAC3…") },
+                    minLines = 3,
+                    enabled = !working,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onPublish(label.trim(), key.trim()) }, enabled = valid && !working) {
+                Text(stringResource(R.string.publish))
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !working) { Text(stringResource(R.string.cancel)) } },
+    )
 }
 
 @Composable

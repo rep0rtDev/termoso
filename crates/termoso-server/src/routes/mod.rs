@@ -138,6 +138,7 @@ pub fn router(state: AppState) -> Router {
             get(sshid::get).post(sshid::create).delete(sshid::delete),
         )
         .route("/account/sshid/keys/device", put(sshid::put_device_keys))
+        .route("/account/sshid/keys", post(sshid::add_public_key))
         .route("/account/sshid/keys/fido2", post(sshid::add_fido2_key))
         .route("/account/sshid/keys/{id}", delete(sshid::remove_key))
         .route("/account/security-events", get(account::security_events))

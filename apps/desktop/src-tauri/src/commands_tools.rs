@@ -1227,6 +1227,15 @@ pub async fn sshid_add_fido2<R: Runtime>(
 }
 
 #[tauri::command]
+pub async fn sshid_add_public_key<R: Runtime>(
+    app: AppHandle<R>,
+    label: String,
+    public_key: String,
+) -> Result<SshIdView> {
+    sshid::add_public_key(&app, label, public_key).await
+}
+
+#[tauri::command]
 pub async fn sshid_remove_key<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<SshIdView> {
     sshid::remove_key(&app, id).await
 }

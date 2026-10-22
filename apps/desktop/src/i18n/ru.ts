@@ -9,9 +9,15 @@ export const ru: Readonly<Record<string, string>> = {
   ".reg export…": "Экспорт .reg…",
   "1 hour": "1 час",
   "Client secret": "Секрет клиента",
+  "Detected: {type}": "Определён тип: {type}",
+  "e.g. work laptop": "например, рабочий ноутбук",
   "Key rotated; new key installed on {v1}": "Ключ заменён; новый ключ установлен на {v1}",
   "Key rotated (no host in this vault used it)":
     "Ключ заменён (ни один хост этого хранилища его не использовал)",
+  "Paste the public key (the .pub file) of a key you already use. Only the public half is sent; the key is tied to your account and stays published until you remove it.":
+    "Вставьте открытый ключ (файл .pub), которым уже пользуетесь. Отправляется только открытая половина; ключ привязан к аккаунту и остаётся опубликованным, пока вы его не удалите.",
+  Publish: "Опубликовать",
+  "Publish Existing Key": "Опубликовать существующий ключ",
   "Rotation stopped, old key kept: {v1}": "Ротация остановлена, старый ключ сохранён: {v1}",
   "Generates a new key of the same type on this device, installs it on every host of the vault that uses the key, removes the old one there and replaces the key in the vault.":
     "Создаёт на этом устройстве новый ключ того же типа, устанавливает его на все хосты хранилища, использующие ключ, удаляет там старый и заменяет ключ в хранилище.",
@@ -29,6 +35,8 @@ export const ru: Readonly<Record<string, string>> = {
   "Recordings of every team vault this device holds a key for, decrypted locally. Vaults you are not a member of stay invisible — the server cannot read them either.":
     "Записи всех командных хранилищ, ключи которых есть на этом устройстве, расшифрованные локально. Хранилища, в которых вы не состоите, не видны — сервер их тоже прочитать не может.",
   "Team recordings": "Записи команды",
+  "Unsupported key type. Use ssh-ed25519, ecdsa-sha2-nistp256, ssh-rsa or an sk-* key.":
+    "Неподдерживаемый тип ключа. Используйте ssh-ed25519, ecdsa-sha2-nistp256, ssh-rsa или sk-* ключ.",
   "You are not a member of any vault of this team, so there is nothing to decrypt here.":
     "Вы не состоите ни в одном хранилище этой команды, поэтому расшифровывать здесь нечего.",
   "ACL does not replace a separate vault.": "ACL не заменяет отдельное хранилище.",

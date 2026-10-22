@@ -1177,6 +1177,12 @@ impl TermosoApp {
         RUNTIME.block_on(self.account.sshid_attach_security_key(key_id))
     }
 
+    /// Publish a public key generated elsewhere under the SSH ID (see
+    /// [`AccountRuntime::sshid_add_public_key`]).
+    pub fn sshid_add_public_key(&self, label: String, public_key: String) -> Result<SshIdView> {
+        RUNTIME.block_on(self.account.sshid_add_public_key(label, public_key))
+    }
+
     /// Create a credential on an attached security key and publish it
     /// under the SSH ID in one go. The handle is kept unencrypted in the
     /// personal vault (the local one when signed out of sync) so it

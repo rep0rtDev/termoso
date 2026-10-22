@@ -1009,12 +1009,38 @@ export const SSH_ID_KEY_TYPES: {
   label: string;
   hint: string;
   hardware: boolean;
+  /** Algorithm token of an `authorized_keys` line. */
+  wire: string;
 }[] = [
-  { value: "ecdsa_sk", label: "ECDSA-SK", hint: "OpenSSH 8.4+", hardware: true },
-  { value: "ed25519_sk", label: "ED25519-SK", hint: "OpenSSH 8.2+", hardware: true },
-  { value: "ed25519", label: "ED25519", hint: "OpenSSH 6.5+", hardware: false },
-  { value: "ecdsa", label: "ECDSA", hint: msg("OpenSSH 5.7+"), hardware: false },
-  { value: "rsa", label: "RSA", hint: msg("Legacy devices"), hardware: false },
+  {
+    value: "ecdsa_sk",
+    label: "ECDSA-SK",
+    hint: "OpenSSH 8.4+",
+    hardware: true,
+    wire: "sk-ecdsa-sha2-nistp256@openssh.com",
+  },
+  {
+    value: "ed25519_sk",
+    label: "ED25519-SK",
+    hint: "OpenSSH 8.2+",
+    hardware: true,
+    wire: "sk-ssh-ed25519@openssh.com",
+  },
+  {
+    value: "ed25519",
+    label: "ED25519",
+    hint: "OpenSSH 6.5+",
+    hardware: false,
+    wire: "ssh-ed25519",
+  },
+  {
+    value: "ecdsa",
+    label: "ECDSA",
+    hint: msg("OpenSSH 5.7+"),
+    hardware: false,
+    wire: "ecdsa-sha2-nistp256",
+  },
+  { value: "rsa", label: "RSA", hint: msg("Legacy devices"), hardware: false, wire: "ssh-rsa" },
 ];
 
 export const SSH_ID_DEFAULT_TYPE: SshIdKeyType = "ed25519";

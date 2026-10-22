@@ -267,6 +267,13 @@
     <string name="create_a_credential_on_a_fido2_token_usb">Создать учётные данные на токене FIDO2 (USB или NFC) и опубликовать их</string>
     <string name="publish_a_key_from_the_keychain">Опубликовать ключ из связки ключей</string>
     <string name="an_sk_key_already_in_a_vault_on">Ключ sk-*, уже находящийся в хранилище на этом телефоне</string>
+    <string name="your_own_keys">Свои ключи</string>
+    <string name="publish_existing_key">Опубликовать существующий ключ</string>
+    <string name="paste_a_pub_line_from_another_machine">Строка .pub с другой машины, из менеджера паролей или токена, настроенного в другом месте</string>
+    <string name="paste_the_public_key_pub_of_a_key_you">Вставьте открытый ключ (.pub), которым уже пользуетесь. Отправляется только открытая половина; ключ привязан к аккаунту и остаётся опубликованным, пока вы его не удалите.</string>
+    <string name="public_key_plain">Открытый ключ</string>
+    <string name="publish">Опубликовать</string>
+    <string name="the_published_key_is_removed_from">Ключ %1$s «%2$s» удаляется из @%3$s. Хосты, запрашивающие список при входе, сразу перестанут его принимать.</string>
     <string name="only_the_public_key_and_its_type_go">На сервер отправляются только открытый ключ и его тип; учётные данные остаются на токене. Настройте серверы с /all или типом SK, чтобы они его принимали.</string>
     <string name="publish_a_security_key">Опубликовать ключ безопасности</string>
     <string name="no_security_key_to_publish_every_sk_key">Нет ключа безопасности для публикации: все ключи sk-* в разблокированных хранилищах уже под этим именем, либо их имя защищено парольной фразой, которая не сохранена.</string>

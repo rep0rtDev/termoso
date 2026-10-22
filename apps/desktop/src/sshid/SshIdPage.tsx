@@ -27,6 +27,7 @@ import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import ComputerOutlinedIcon from "@mui/icons-material/ComputerOutlined";
 import UsbRoundedIcon from "@mui/icons-material/UsbRounded";
+import KeyRoundedIcon from "@mui/icons-material/KeyRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
@@ -230,6 +231,7 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmRotate, setConfirmRotate] = useState(false);
   const [fido2Open, setFido2Open] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [removeKey, setRemoveKey] = useState<SshIdKey | null>(null);
 
   const publish = useSshIdMutation(ipc.sshidPublish);
@@ -391,17 +393,26 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
           ))
         )}
 
-        {hardware && (
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+          {hardware && (
+            <Button
+              variant="text"
+              size="small"
+              startIcon={<AddRoundedIcon />}
+              onClick={() => setFido2Open(true)}
+            >
+              {tr("Add FIDO2 Key")}
+            </Button>
+          )}
           <Button
             variant="text"
             size="small"
-            startIcon={<AddRoundedIcon />}
-            onClick={() => setFido2Open(true)}
-            sx={{ alignSelf: "flex-start" }}
+            startIcon={<KeyRoundedIcon />}
+            onClick={() => setImportOpen(true)}
           >
-            {tr("Add FIDO2 Key")}
+            {tr("Publish Existing Key")}
           </Button>
-        )}
+        </Box>
       </SectionCard>
 
       <SectionCard title={tr("Provision a host")}>
@@ -549,7 +560,88 @@ function Profile({ view, profile }: { view: SshIdView; profile: SshIdProfile }) 
           onClose={() => setFido2Open(false)}
         />
       )}
+      {importOpen && <AddPublicKeyDialog onClose={() => setImportOpen(false)} onAdded={setType} />}
     </>
+  );
+}
+
+/** Publish a public key made elsewhere (another machine, a password manager,
+ *  a token under a different agent). Only the public line is sent; the key is
+ *  bound to the account and stays listed until removed. */
+function AddPublicKeyDialog({
+  onClose,
+  onAdded,
+}: {
+  onClose: () => void;
+  onAdded: (type: SshIdKeyType) => void;
+}) {
+  const add = useSshIdMutation(ipc.sshidAddPublicKey);
+  const [label, setLabel] = useState("");
+  const [publicKey, setPublicKey] = useState("");
+  const algorithm = publicKey.trim().split(/\s+/)[0] ?? "";
+  const detected = SSH_ID_KEY_TYPES.find((k) => k.wire === algorithm);
+  const valid = label.trim().length > 0 && detected !== undefined;
+
+  const submit = () => {
+    if (!valid) return;
+    add.mutate(
+      { label: label.trim(), publicKey: publicKey.trim() },
+      {
+        onSuccess: () => {
+          onAdded(detected.value);
+          onClose();
+        },
+      },
+    );
+  };
+
+  return (
+    <Dialog open onClose={add.isPending ? undefined : onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{tr("Publish Existing Key")}</DialogTitle>
+      <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+        <Typography variant="body2" color="text.secondary">
+          {tr(
+            "Paste the public key (the .pub file) of a key you already use. Only the public half is sent; the key is tied to your account and stays published until you remove it.",
+          )}
+        </Typography>
+        <TextField
+          autoFocus
+          label={tr("Label")}
+          placeholder={tr("e.g. work laptop")}
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          fullWidth
+        />
+        <TextField
+          label={tr("Public key")}
+          placeholder="ssh-ed25519 AAAAC3… user@host"
+          value={publicKey}
+          onChange={(e) => setPublicKey(e.target.value)}
+          multiline
+          minRows={3}
+          fullWidth
+          error={publicKey.trim().length > 0 && !detected}
+          helperText={
+            publicKey.trim().length > 0 && !detected
+              ? tr(
+                  "Unsupported key type. Use ssh-ed25519, ecdsa-sha2-nistp256, ssh-rsa or an sk-* key.",
+                )
+              : detected
+                ? tr("Detected: {type}", { type: sshIdTypeLabel(detected.value) })
+                : " "
+          }
+          slotProps={{ input: { sx: { fontFamily: "monospace", fontSize: 12.5 } } }}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={add.isPending}>
+          {tr("Cancel")}
+        </Button>
+        <Button variant="contained" onClick={submit} disabled={!valid || add.isPending}>
+          {tr("Publish")}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 
@@ -602,12 +694,15 @@ function KeyRow({
   onCopy: () => void;
   onRemove?: () => void;
 }) {
-  const hardware = k.device_id === null;
+  const hardware = SSH_ID_KEY_TYPES.find((t) => t.value === k.key_type)?.hardware ?? false;
+  const imported = k.device_id === null && !hardware;
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
         {hardware ? (
           <UsbRoundedIcon sx={{ fontSize: 16, color: "text.secondary" }} />
+        ) : imported ? (
+          <KeyRoundedIcon sx={{ fontSize: 16, color: "text.secondary" }} />
         ) : (
           <ComputerOutlinedIcon sx={{ fontSize: 16, color: "text.secondary" }} />
         )}
@@ -628,7 +723,7 @@ function KeyRow({
           </IconButton>
         </Tooltip>
         {onRemove && (
-          <Tooltip title={hardware ? tr("Remove key") : tr("Sign out device")}>
+          <Tooltip title={k.device_id === null ? tr("Remove key") : tr("Sign out device")}>
             <IconButton
               size="small"
               onClick={onRemove}

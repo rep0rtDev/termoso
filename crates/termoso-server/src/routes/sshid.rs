@@ -39,7 +39,8 @@ const PUBLIC_IP: ratelimit::Limit = ratelimit::Limit {
     max: 120,
     window: Duration::from_secs(60),
 };
-const MAX_FIDO2_KEYS: i64 = 20;
+/// Account-bound keys (FIDO2 + imported) per handle.
+const MAX_ACCOUNT_KEYS: i64 = 20;
 const MAX_LABEL: usize = 64;
 /// Handles that would collide with routes or look official.
 const RESERVED: &[&str] = &[
@@ -450,8 +451,8 @@ pub async fn add_fido2_key(
             .bind(auth.user_id())
             .fetch_one(&state.db)
             .await?;
-    if n >= MAX_FIDO2_KEYS {
-        return Err(Error::quota_exceeded("Too many FIDO2 keys"));
+    if n >= MAX_ACCOUNT_KEYS {
+        return Err(Error::quota_exceeded("Too many keys"));
     }
     let id = Uuid::new_v4();
     let row: (DateTime<Utc>,) = sqlx::query_as(
@@ -474,6 +475,68 @@ pub async fn add_fido2_key(
     Ok(Json(SshIdKey {
         id,
         key_type: req.key_type,
+        public_key,
+        device_id: None,
+        label: label.to_string(),
+        current_device: false,
+        updated_at: row.0,
+    }))
+}
+
+#[utoipa::path(post, path = "/api/v1/account/sshid/keys", tag = "sshid",
+    request_body = AddPublicKeyRequest, responses((status = 200, body = SshIdKey)))]
+/// Publish a public key generated outside Termoso. Account-bound like a FIDO2
+/// key: listed until removed, whatever device is signed in.
+pub async fn add_public_key(
+    State(state): State<AppState>,
+    StepUp(auth): StepUp,
+    Body(req): Body<AddPublicKeyRequest>,
+) -> ApiResult<Json<SshIdKey>> {
+    if handle_of(&state, auth.user_id()).await?.is_none() {
+        return Err(Error::not_found("ssh id"));
+    }
+    let label = req.label.trim();
+    if label.is_empty() || label.chars().count() > MAX_LABEL {
+        return Err(Error::bad_request(format!(
+            "Label must be 1–{MAX_LABEL} characters"
+        )));
+    }
+    let alg = req.public_key.split_whitespace().next().unwrap_or("");
+    let key_type = SshIdKeyType::from_wire_name(alg).ok_or_else(|| {
+        Error::bad_request(
+            "Unsupported key: expected an OpenSSH public key line (ssh-ed25519, ecdsa-sha2-nistp256, ssh-rsa or sk-*)",
+        )
+    })?;
+    let public_key = normalize_public_key(key_type, &req.public_key)?;
+    let (n,): (i64,) =
+        sqlx::query_as("SELECT count(*) FROM ssh_id_keys WHERE user_id = $1 AND device_id IS NULL")
+            .bind(auth.user_id())
+            .fetch_one(&state.db)
+            .await?;
+    if n >= MAX_ACCOUNT_KEYS {
+        return Err(Error::quota_exceeded("Too many keys"));
+    }
+    let id = Uuid::new_v4();
+    let row: (DateTime<Utc>,) = sqlx::query_as(
+        "INSERT INTO ssh_id_keys (id, user_id, device_id, key_type, public_key, label)
+         VALUES ($1, $2, NULL, $3, $4, $5) RETURNING updated_at",
+    )
+    .bind(id)
+    .bind(auth.user_id())
+    .bind(key_type.url_name())
+    .bind(&public_key)
+    .bind(label)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Database(ref d) if d.is_unique_violation() => {
+            Error::conflict("This public key is already published")
+        }
+        other => other.into(),
+    })?;
+    Ok(Json(SshIdKey {
+        id,
+        key_type,
         public_key,
         device_id: None,
         label: label.to_string(),

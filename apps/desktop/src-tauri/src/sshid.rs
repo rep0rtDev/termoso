@@ -14,7 +14,9 @@ use termoso_core::model::SshKey;
 use termoso_core::ssh::AuthMethod;
 use termoso_core::sshid as core;
 use termoso_core::store::Store;
-use termoso_proto::sshid::{AddFido2KeyRequest, SshIdKeyType, SshIdProfile, normalize_handle};
+use termoso_proto::sshid::{
+    AddFido2KeyRequest, AddPublicKeyRequest, SshIdKeyType, SshIdProfile, normalize_handle,
+};
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
@@ -297,6 +299,30 @@ pub async fn add_fido2<R: Runtime>(app: &AppHandle<R>, form: SshIdFido2Form) -> 
             ssh_id: true,
         },
     )?;
+    let profile = api.sshid().await?;
+    view_of(&*state.store()?, profile)
+}
+
+/// Publish a public key the user already has (generated elsewhere). Nothing
+/// is stored locally: only the public line goes to the server, bound to the
+/// account rather than this device.
+pub async fn add_public_key<R: Runtime>(
+    app: &AppHandle<R>,
+    label: String,
+    public_key: String,
+) -> Result<SshIdView> {
+    let state = app.state::<AppState>();
+    let api = api(app).await?;
+    let label = label.trim().to_string();
+    if label.is_empty() {
+        return Err(DesktopError::invalid("key label is required"));
+    }
+    let public_key = public_key.trim().to_string();
+    if public_key.is_empty() {
+        return Err(DesktopError::invalid("public key is required"));
+    }
+    api.add_sshid_public_key(&AddPublicKeyRequest { label, public_key })
+        .await?;
     let profile = api.sshid().await?;
     view_of(&*state.store()?, profile)
 }

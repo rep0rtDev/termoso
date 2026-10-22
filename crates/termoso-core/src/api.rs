@@ -35,7 +35,8 @@ use termoso_proto::logs::{
     UpdateLogRequest,
 };
 use termoso_proto::sshid::{
-    AddFido2KeyRequest, CreateSshIdRequest, PutDeviceKeysRequest, SshIdKey, SshIdProfile,
+    AddFido2KeyRequest, AddPublicKeyRequest, CreateSshIdRequest, PutDeviceKeysRequest, SshIdKey,
+    SshIdProfile,
 };
 use termoso_proto::sync::{
     HistoryClearRequest, HistoryKind, HistoryPullResponse, HistoryPushRequest, PullRequest,
@@ -554,6 +555,11 @@ impl ApiClient {
                 .json(req),
         )
         .await
+    }
+
+    /// `POST /account/sshid/keys` — publish a public key the user already has.
+    pub async fn add_sshid_public_key(&self, req: &AddPublicKeyRequest) -> Result<SshIdKey> {
+        self.post("account/sshid/keys", req).await
     }
 
     /// `POST /account/sshid/keys/fido2` — publish a security-key public key.

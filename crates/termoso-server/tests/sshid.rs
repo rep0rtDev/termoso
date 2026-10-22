@@ -218,6 +218,60 @@ async fn handle_lifecycle_and_public_listing() {
         .await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 
+    // Own key (generated elsewhere): type from the algorithm token, listed
+    // like a FIDO2 key; garbage and duplicates are rejected.
+    let own_rsa = fake_key(SshIdKeyType::Rsa, 6);
+    let own: SshIdKey = s
+        .json(
+            Method::POST,
+            "/account/sshid/keys",
+            Some(u.token()),
+            Some(&AddPublicKeyRequest {
+                label: "laptop (1Password)".into(),
+                public_key: format!("{own_rsa}\n"),
+            }),
+        )
+        .await;
+    assert!(own.device_id.is_none() && own.key_type == SshIdKeyType::Rsa);
+    assert_eq!(own.public_key, own_rsa.rsplit_once(' ').unwrap().0);
+    for bad in ["ssh-dss AAAA", "not a key", ""] {
+        let resp = s
+            .call(
+                Method::POST,
+                "/account/sshid/keys",
+                Some(u.token()),
+                Some(&AddPublicKeyRequest {
+                    label: "x".into(),
+                    public_key: bad.into(),
+                }),
+            )
+            .await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "{bad:?}");
+    }
+    let resp = s
+        .call(
+            Method::POST,
+            "/account/sshid/keys",
+            Some(u.token()),
+            Some(&AddPublicKeyRequest {
+                label: "again".into(),
+                public_key: own_rsa.clone(),
+            }),
+        )
+        .await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let (st, body) = public(s, &format!("/sshid/{handle}/RSA")).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(body.contains(own_rsa.rsplit_once(' ').unwrap().0));
+    s.expect_status(
+        Method::DELETE,
+        &format!("/account/sshid/keys/{}", own.id),
+        Some(u.token()),
+        NOBODY,
+        StatusCode::NO_CONTENT,
+    )
+    .await;
+
     // Public listing: default = ED25519 only; typed; all.
     let (st, body) = public(s, &format!("/sshid/{handle}")).await;
     assert_eq!(st, StatusCode::OK);
