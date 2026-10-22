@@ -13,7 +13,7 @@ name = "termoso_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.6", features = [] }
+tauri-build = { version = "2.7", features = [] }
 
 [dependencies]
 termoso-core = { path = "../../../crates/termoso-core" }
@@ -21,13 +21,13 @@ termoso-client = { workspace = true, features = ["fido2"] }
 termoso-crypto = { workspace = true }
 termoso-proto = { workspace = true }
 
-tauri = { version = "2.11", features = ["tray-icon"] }
-tauri-plugin-dialog = "2.7"
-tauri-plugin-opener = "2.5"
-tauri-plugin-clipboard-manager = "2.3"
-tauri-plugin-deep-link = "2.4"
-tauri-plugin-notification = "2.4"
-tauri-plugin-single-instance = { version = "2.4", features = ["deep-link"] }
+tauri = { version = "2.12", features = ["tray-icon"] }
+tauri-plugin-dialog = "2.8"
+tauri-plugin-opener = "2.7"
+tauri-plugin-clipboard-manager = "2.5"
+tauri-plugin-deep-link = "2.6"
+tauri-plugin-notification = "2.7"
+tauri-plugin-single-instance = { version = "2.5", features = ["deep-link"] }
 
 tokio = { workspace = true }
 tokio-util = { version = "0.7" }
@@ -46,7 +46,7 @@ base64 = { workspace = true }
 hostname = "0.4"
 url = { workspace = true }
 time = { version = "0.3", features = ["formatting"] }
-tauri-plugin-updater = "2.11"
+tauri-plugin-updater = "2.14"
 dunce = "1"
 
 [dev-dependencies]
