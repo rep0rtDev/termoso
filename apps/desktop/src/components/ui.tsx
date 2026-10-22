@@ -964,14 +964,16 @@ export function SettingRow({
       sx={{
         display: "flex",
         alignItems: "center",
-        gap: 2,
+        flexWrap: "wrap",
+        columnGap: 2,
+        rowGap: 0.75,
         minHeight: compact ? 36 : sizes.row,
         py: compact ? 0.25 : 0.75,
         borderBottom: last ? 0 : 1,
         borderColor: "border.light",
       }}
     >
-      <Box sx={{ flex: 1, minWidth: 0 }}>
+      <Box sx={{ flex: "1 1 220px", minWidth: 0 }}>
         <Typography variant={compact ? "body2" : "body1"}>
           {label}
           {compact && hint && <HintIcon hint={hint} />}
@@ -982,7 +984,9 @@ export function SettingRow({
           </Typography>
         )}
       </Box>
-      <Box sx={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 1 }}>{control}</Box>
+      <Box sx={{ flexShrink: 0, ml: "auto", display: "flex", alignItems: "center", gap: 1 }}>
+        {control}
+      </Box>
     </Box>
   );
 }
