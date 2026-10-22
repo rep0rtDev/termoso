@@ -313,6 +313,9 @@ pub async fn landing_host_layer(
             if is_cabinet(&path) {
                 return redirect(&web_url, &req);
             }
+            if is_route(&path) {
+                return redirect("/docs", &req);
+            }
         }
         req.extensions_mut().insert(DocsHost);
         return next.run(req).await;

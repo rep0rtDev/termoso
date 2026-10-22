@@ -138,7 +138,7 @@ fn page_ctx(state: &AppState) -> (&str, String, Option<String>) {
         .map(str::to_string)
         .unwrap_or_else(|| web.to_string());
     let docs = match cfg.docs_url() {
-        Some(d) => Some(d.to_string()),
+        Some(d) => Some(format!("{}/docs", d.trim_end_matches('/'))),
         None if cfg.docs => Some(format!("{web}/docs")),
         None => None,
     };
