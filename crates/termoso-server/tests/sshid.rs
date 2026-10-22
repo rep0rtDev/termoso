@@ -41,6 +41,29 @@ async fn public(s: &TestServer, path: &str) -> (StatusCode, String) {
     (status, resp.text().await.unwrap())
 }
 
+/// Same as [`public`] but the way a browser asks (`Accept: text/html`),
+/// optionally on `host`; redirects are not followed.
+async fn browser(
+    s: &TestServer,
+    path: &str,
+    host: Option<&str>,
+) -> (StatusCode, reqwest::header::HeaderMap, String) {
+    let mut req = s
+        .http_no_redirect()
+        .get(format!("http://{}{path}", s.addr))
+        .header(
+            "Accept",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        );
+    if let Some(h) = host {
+        req = req.header("Host", h);
+    }
+    let resp = req.send().await.unwrap();
+    let status = resp.status();
+    let headers = resp.headers().clone();
+    (status, headers, resp.text().await.unwrap())
+}
+
 /// Same as [`public`] but addressed to the dedicated SSH ID host
 /// (`TERMOSO_SSHID_URL`), the way a reverse proxy would forward it.
 async fn dedicated(s: &TestServer, path: &str) -> (StatusCode, String) {
@@ -250,6 +273,93 @@ async fn handle_lifecycle_and_public_listing() {
     assert!(!body.contains("Termoso SSH ID"));
     let (_, body) = public(s, &format!("/{handle}")).await;
     assert!(!body.contains(ed_line), "SPA fallback, not the key list");
+
+    // A browser gets a page instead of the raw list; curl above is unchanged.
+    let (st, hdrs, body) = browser(s, &format!("/{handle}"), Some(SSHID_HOST)).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(
+        hdrs["content-type"]
+            .to_str()
+            .unwrap()
+            .starts_with("text/html")
+    );
+    assert!(
+        hdrs["content-security-policy"]
+            .to_str()
+            .unwrap()
+            .contains("script-src 'nonce-")
+    );
+    assert!(body.starts_with("<!doctype html>"));
+    assert!(body.contains(&format!("@{handle}")));
+    assert!(body.contains(&format!(
+        "curl -fsSL {SSHID_URL}/{handle} &gt;&gt; ~/.ssh/authorized_keys"
+    )));
+    assert!(body.contains(&format!("{SSHID_URL}/{handle}/ECDSA-SK")));
+    assert!(body.contains("SHA256:"));
+    assert!(body.contains(&format!(
+        "<pre id=\"k-0\">{ed_line} #SSH ID - @{handle}</pre>"
+    )));
+    let (st, _, body) = browser(s, &format!("/{handle}/rsa"), Some(SSHID_HOST)).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(body.contains("aria-current=\"page\""));
+    assert!(body.contains("No RSA keys are published"));
+    let (st, _, body) = browser(s, "/", Some(SSHID_HOST)).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(body.contains("<h1>SSH ID</h1>"));
+    assert!(body.contains(&format!("{SSHID_URL}/&lt;handle&gt;")));
+    for (path, host) in [
+        ("/nobody-here-000", Some(SSHID_HOST)),
+        ("/a", Some(SSHID_HOST)),
+    ] {
+        let (st, hdrs, body) = browser(s, path, host).await;
+        assert_eq!(st, StatusCode::NOT_FOUND, "{path}");
+        assert!(
+            hdrs["content-type"]
+                .to_str()
+                .unwrap()
+                .starts_with("text/html"),
+            "{path}"
+        );
+        assert!(body.contains("No such SSH ID"), "{path}");
+    }
+    let (st, _, body) = browser(s, &format!("/sshid/{handle}/dsa"), None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    assert!(body.contains("no key type called dsa"));
+    // With a dedicated host configured, browsers on the fallback path are
+    // sent to the canonical address; the text endpoint there is untouched.
+    let (st, hdrs, _) = browser(s, &format!("/sshid/{handle}"), None).await;
+    assert_eq!(st, StatusCode::MOVED_PERMANENTLY);
+    let (st, hdrs2, _) = browser(s, "/sshid/nobody-here-000", None).await;
+    assert_eq!(
+        st,
+        StatusCode::MOVED_PERMANENTLY,
+        "unknown handles redirect too"
+    );
+    assert_eq!(
+        hdrs2["location"],
+        format!("{SSHID_URL}/nobody-here-000").as_str()
+    );
+    assert_eq!(hdrs["location"], format!("{SSHID_URL}/{handle}").as_str());
+    let (st, hdrs, _) = browser(
+        s,
+        &format!("/sshid/{}/ecdsa-sk", handle.to_uppercase()),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::MOVED_PERMANENTLY);
+    assert_eq!(
+        hdrs["location"],
+        format!("{SSHID_URL}/{handle}/ECDSA-SK").as_str()
+    );
+    let (st, hdrs, _) = browser(s, &format!("/sshid/{handle}/all"), None).await;
+    assert_eq!(st, StatusCode::MOVED_PERMANENTLY);
+    assert_eq!(
+        hdrs["location"],
+        format!("{SSHID_URL}/{handle}/all").as_str()
+    );
+    let (st, body) = public(s, &format!("/sshid/{handle}")).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(body.trim(), format!("{ed_line} #SSH ID - @{handle}"));
 
     // Replacing the set drops types not listed.
     let p: SshIdProfile = s

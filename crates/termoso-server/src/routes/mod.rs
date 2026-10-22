@@ -19,6 +19,7 @@ pub mod rotation;
 pub mod scim_admin;
 pub mod server;
 pub mod sshid;
+pub mod sshid_page;
 pub mod start_over;
 pub mod sync;
 pub mod teams;

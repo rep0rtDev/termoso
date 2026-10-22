@@ -6,8 +6,10 @@ description: Publish your public keys under a handle so servers can trust a pers
 SSH ID gives your account a public **handle**. The keys you choose are published at a URL that serves plain `authorized_keys` text:
 
 ```
-https://app.termoso.dev/sshid/<handle>
+https://sshid.termoso.dev/<handle>
 ```
+
+`curl` and `AuthorizedKeysCommand` get the text; open the same address in a browser and you get a page with the install command for Shell and PowerShell, the key types with the OpenSSH version each needs, fingerprints of the published keys and a short explanation to send to whoever is granting you access. `/<handle>/<type>` lists one type (`ED25519`, `ECDSA`, `RSA`, `ECDSA-SK`, `ED25519-SK`), `/<handle>/all` every type; `/<handle>` alone is ED25519.
 
 ## Setting it up
 
@@ -16,7 +18,7 @@ https://app.termoso.dev/sshid/<handle>
 3. On a server, trust the handle:
 
 ```bash
-curl -fsS https://app.termoso.dev/sshid/<handle> >> ~/.ssh/authorized_keys
+curl -fsSL https://sshid.termoso.dev/<handle> >> ~/.ssh/authorized_keys
 ```
 
 or use it in `AuthorizedKeysCommand` to always fetch the current list.
@@ -27,4 +29,4 @@ Remove a key from SSH ID and it disappears from the published list at once; serv
 
 ## Privacy
 
-Only public keys and the handle are published. Self-hosted servers can serve SSH ID on a dedicated origin (`TERMOSO_SSHID_URL`) such as `https://sshid.example.com/<handle>`.
+Only public keys and the handle are published; device keys are listed only while that device is signed in. Self-hosted servers publish at `https://<server>/sshid/<handle>` and can add a dedicated origin (`TERMOSO_SSHID_URL`) such as `https://sshid.example.com/<handle>` — the `/sshid/` path keeps working either way, and browsers opening it are redirected to the dedicated one.

@@ -7,7 +7,9 @@
 //!
 //! The public list is served as plain `authorized_keys` lines at
 //! `GET /sshid/{handle}` (default type, ED25519) and
-//! `GET /sshid/{handle}/{type}`; `all` lists every type. With
+//! `GET /sshid/{handle}/{type}`; `all` lists every type. A browser
+//! (`Accept: text/html`) gets the same list as a page with the install
+//! command and an explanation instead — see [`super::sshid_page`]. With
 //! `TERMOSO_SSHID_URL` set, requests for that host get the same lists at the
 //! root (`https://sshid.example.com/{handle}[/{type}]`) — see [`host_layer`].
 
@@ -15,7 +17,7 @@ use std::time::Duration;
 
 use axum::Json;
 use axum::extract::{Path, State};
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
 use termoso_crypto::encoding::unb64;
@@ -28,6 +30,8 @@ use crate::extract::{Auth, Client, Json as Body, StepUp};
 use crate::ratelimit;
 use crate::state::AppState;
 use crate::users;
+
+use super::sshid_page;
 
 /// Public fetches per IP (the list is meant to be curl'ed by servers).
 const PUBLIC_IP: ratelimit::Limit = ratelimit::Limit {
@@ -90,11 +94,24 @@ pub async fn host_layer(
     let path = req.uri().path().to_string();
     let segs: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
     let rewritten = match segs.as_slice() {
-        [] => return usage(state.cfg.sshid_url().unwrap_or_default()),
+        [] => {
+            let base = state.cfg.sshid_url().unwrap_or_default();
+            if sshid_page::wants_html(req.headers()) {
+                let (name, home, docs) = page_ctx(&state);
+                return sshid_page::index_page(base, name, &home, docs);
+            }
+            return usage(base);
+        }
         ["healthz"] | ["readyz"] => return next.run(req).await,
         [h] | ["sshid", h] if normalize_handle(h).is_some() => format!("/sshid/{h}"),
         [h, t] | ["sshid", h, t] if normalize_handle(h).is_some() => format!("/sshid/{h}/{t}"),
-        _ => return Error::not_found("ssh id").into_response(),
+        _ => {
+            if sshid_page::wants_html(req.headers()) {
+                let (name, home, docs) = page_ctx(&state);
+                return sshid_page::not_found_page("Nothing here", name, &home, docs);
+            }
+            return Error::not_found("ssh id").into_response();
+        }
     };
     let rewritten = match req.uri().query() {
         Some(q) => format!("{rewritten}?{q}"),
@@ -110,6 +127,56 @@ pub async fn host_layer(
         Err(_) => return Error::not_found("ssh id").into_response(),
     }
     next.run(req).await
+}
+
+/// Server name, home link and docs base for the HTML pages.
+fn page_ctx(state: &AppState) -> (&str, String, Option<&str>) {
+    let cfg = &state.cfg;
+    let home = cfg
+        .landing_url()
+        .map(str::to_string)
+        .unwrap_or_else(|| cfg.web_url().to_string());
+    (cfg.server_name.as_str(), home, cfg.docs_url())
+}
+
+/// With a dedicated SSH ID host configured, browsers that open the list on
+/// another host are sent to the canonical address; `curl` on the fallback
+/// path is left alone.
+fn browser_redirect(
+    state: &AppState,
+    headers: &HeaderMap,
+    handle: &str,
+    kind: Option<&str>,
+) -> Option<Response> {
+    let want = state.sshid_host.as_deref()?;
+    let host = headers
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if host == want {
+        return None;
+    }
+    let mut to = public_url(state, handle);
+    if let Some(k) = kind {
+        to.push('/');
+        to.push_str(k);
+    }
+    let location = HeaderValue::from_str(&to).ok()?;
+    Some(
+        (
+            StatusCode::MOVED_PERMANENTLY,
+            [
+                (header::LOCATION, location),
+                (
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_static("public, max-age=300"),
+                ),
+                (header::VARY, HeaderValue::from_static("Accept")),
+            ],
+        )
+            .into_response(),
+    )
 }
 
 fn usage(base: &str) -> Response {
@@ -440,25 +507,55 @@ pub async fn forget_device(state: &AppState, device_id: Uuid) -> ApiResult<()> {
 
 // ───────────────────────── public ─────────────────────────
 
+/// `/sshid/{handle}[/{type}]`: `authorized_keys` text, or the page for a
+/// browser (`html`), which shows every type and highlights `filter`.
 async fn listed(
     state: &AppState,
     handle: &str,
     filter: Option<SshIdKeyType>,
+    html: bool,
 ) -> ApiResult<Response> {
+    let not_found = |what: &str| {
+        if html {
+            let (name, home, docs) = page_ctx(state);
+            Ok(sshid_page::not_found_page(what, name, &home, docs))
+        } else {
+            Err(Error::not_found("ssh id"))
+        }
+    };
     let Some(handle) = normalize_handle(handle) else {
-        return Err(Error::not_found("ssh id"));
+        return not_found("That is not a valid handle");
     };
     let row: Option<(Uuid,)> = sqlx::query_as("SELECT user_id FROM ssh_ids WHERE handle = $1")
         .bind(&handle)
         .fetch_optional(&state.db)
         .await?;
     let Some((user_id,)) = row else {
-        return Err(Error::not_found("ssh id"));
+        return not_found(&format!("Nobody has claimed @{handle}"));
     };
     let rows: Vec<KeyRow> = sqlx::query_as(LISTED_KEYS)
         .bind(user_id)
         .fetch_all(&state.db)
         .await?;
+    if html {
+        let keys: Vec<sshid_page::Key> = rows
+            .into_iter()
+            .map(|(_, key_type, public_key, _, _, _)| sshid_page::Key {
+                key_type: key_type_of(&key_type),
+                public_key,
+            })
+            .collect();
+        let (name, home, docs) = page_ctx(state);
+        return Ok(sshid_page::handle_page(&sshid_page::HandlePage {
+            handle: &handle,
+            base: &base_url(&state.cfg),
+            selected: filter,
+            keys: &keys,
+            server_name: name,
+            home_url: &home,
+            docs_url: docs,
+        }));
+    }
     let mut body = String::new();
     for (_, key_type, public_key, _, _, _) in rows {
         let t = key_type_of(&key_type);
@@ -475,6 +572,7 @@ async fn listed(
         [
             (header::CONTENT_TYPE, "text/plain; charset=utf-8"),
             (header::CACHE_CONTROL, "public, max-age=60"),
+            (header::VARY, "Accept"),
             (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
         ],
         body,
@@ -484,31 +582,59 @@ async fn listed(
 
 #[utoipa::path(get, path = "/sshid/{handle}", tag = "sshid",
     params(("handle" = String, Path)),
-    responses((status = 200, description = "authorized_keys lines of the default type (ED25519)", content_type = "text/plain")))]
+    responses((status = 200, description = "authorized_keys lines of the default type (ED25519); an HTML page when `Accept: text/html`", content_type = "text/plain")))]
 pub async fn public_default(
     State(state): State<AppState>,
     client: Client,
+    headers: HeaderMap,
     Path(handle): Path<String>,
 ) -> ApiResult<Response> {
     ratelimit::check_ip(&state, PUBLIC_IP, client.ip.as_deref()).await?;
-    listed(&state, &handle, Some(SshIdKeyType::Ed25519)).await
+    let html = sshid_page::wants_html(&headers);
+    if html
+        && let Some(h) = normalize_handle(&handle)
+        && let Some(r) = browser_redirect(&state, &headers, &h, None)
+    {
+        return Ok(r);
+    }
+    listed(&state, &handle, Some(SshIdKeyType::Ed25519), html).await
 }
 
 #[utoipa::path(get, path = "/sshid/{handle}/{type}", tag = "sshid",
     params(("handle" = String, Path), ("type" = String, Path, description = "ED25519, ECDSA, RSA, ECDSA-SK, ED25519-SK or all")),
-    responses((status = 200, description = "authorized_keys lines", content_type = "text/plain")))]
+    responses((status = 200, description = "authorized_keys lines; an HTML page when `Accept: text/html`", content_type = "text/plain")))]
 pub async fn public_typed(
     State(state): State<AppState>,
     client: Client,
+    headers: HeaderMap,
     Path((handle, kind)): Path<(String, String)>,
 ) -> ApiResult<Response> {
     ratelimit::check_ip(&state, PUBLIC_IP, client.ip.as_deref()).await?;
+    let html = sshid_page::wants_html(&headers);
     let filter = if kind.eq_ignore_ascii_case("all") {
         None
     } else {
-        Some(SshIdKeyType::from_url_name(&kind).ok_or_else(|| Error::not_found("key type"))?)
+        match SshIdKeyType::from_url_name(&kind) {
+            Some(t) => Some(t),
+            None if html => {
+                let (name, home, docs) = page_ctx(&state);
+                return Ok(sshid_page::not_found_page(
+                    &format!("There is no key type called {kind}"),
+                    name,
+                    &home,
+                    docs,
+                ));
+            }
+            None => return Err(Error::not_found("key type")),
+        }
     };
-    listed(&state, &handle, filter).await
+    if html && let Some(h) = normalize_handle(&handle) {
+        let k = filter.map_or("all", SshIdKeyType::url_name);
+        if let Some(r) = browser_redirect(&state, &headers, &h, Some(k)) {
+            return Ok(r);
+        }
+    }
+    listed(&state, &handle, filter, html).await
 }
 
 #[cfg(test)]

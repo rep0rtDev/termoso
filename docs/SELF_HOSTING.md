@@ -141,7 +141,10 @@ RustFS unchanged (pre-signed URLs are signed for that exact host and path).
 Optional second hostname: `TERMOSO_SSHID_URL` serves SSH ID public keys at the
 root of a dedicated origin (`https://sshid.example.com/<handle>`), convenient
 for `curl … | tee -a ~/.ssh/authorized_keys`. Point another proxy block at
-`api:8080` with that hostname.
+`api:8080` with that hostname. `<public_url>/sshid/<handle>` keeps working;
+browsers opening it are redirected to the dedicated origin, `curl` is not. Any
+of these URLs opened in a browser (`Accept: text/html`) shows a page with the
+install command, key types and fingerprints instead of the raw list.
 
 ### Landing page: on, off, or on its own domain
 
