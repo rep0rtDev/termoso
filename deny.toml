@@ -36,6 +36,7 @@ ignore = [
   { id = "RUSTSEC-2025-0081", reason = "unic-* via tera (uniffi-bindgen templates); compile-time only" },
   { id = "RUSTSEC-2025-0098", reason = "unic-* via tera (uniffi-bindgen templates); compile-time only" },
   { id = "RUSTSEC-2025-0100", reason = "unic-* via tera (uniffi-bindgen templates); compile-time only" },
+  { id = "RUSTSEC-2026-0374", reason = "basic-toml via askama_derive (uniffi-bindgen templates); compile-time only, parses our own templates" },
   # zip < 9 extract(): symlink escape / SUID bits / permissions through
   # symlinks. No fixed release reachable: utoipa-swagger-ui 9 and 10 pin
   # zip 3 / 8 as a *build* dependency (it unpacks the vendored Swagger UI
