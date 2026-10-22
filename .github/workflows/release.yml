@@ -520,7 +520,7 @@ jobs:
             "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/${{ steps.rel.outputs.id }}/assets?name=SHA256SUMS.txt.sigstore.json" \
             --input SHA256SUMS.txt.sigstore.json > /dev/null
       - name: Build provenance attestations
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             assets/*
