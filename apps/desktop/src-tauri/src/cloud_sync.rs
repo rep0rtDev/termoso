@@ -1313,6 +1313,8 @@ mod tests {
                 color_scheme: None,
                 has_password: false,
                 files_provider: false,
+                has_totp: false,
+                totp_secret: None,
             },
         )
         .unwrap();

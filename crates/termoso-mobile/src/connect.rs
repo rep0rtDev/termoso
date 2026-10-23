@@ -17,6 +17,7 @@ use termoso_core::hostkey::{
 };
 use termoso_core::model::{Identity, ResolvedHost, SshConfig};
 use termoso_core::ssh::proxy::{ProxyConfig, ProxyKind};
+use termoso_core::ssh::totp::TotpResponder;
 use termoso_core::ssh::{
     AuthMethod, ConnectOptions, ConnectPhase, ConnectProgress, InteractivePrompt,
     InteractiveQuestion, IpVersion, SshClient, SshTarget,
@@ -503,6 +504,7 @@ fn remember_on_identity(
             ssh_id_key_type: None,
             bearer_token: None,
             client_certificate: None,
+            totp_secret: None,
         };
         edit(&mut identity);
         let identity_id = store.insert(vault_id, &identity)?;
@@ -663,6 +665,12 @@ async fn ssh_connect(
         cached_passphrase = true;
     }
     let mut typed_passphrase: Option<Zeroizing<String>> = None;
+    let totp = identity
+        .as_ref()
+        .and_then(|i| i.data.totp_secret.as_deref())
+        .filter(|t| !t.is_empty())
+        .map(|t| TotpResponder::parse(t).map_err(MobileError::from))
+        .transpose()?;
     let proxy = match resolved.and_then(|r| r.proxy.as_ref()) {
         Some(p) => Some(proxy_config(store, &p.data)?),
         None => None,
@@ -724,9 +732,15 @@ async fn ssh_connect(
         }
         auth.push(AuthMethod::KeyboardInteractive);
 
-        let interactive: Option<Arc<dyn InteractivePrompt>> = match password {
-            Some(_) => None,
-            None => Some(Arc::new(InteractiveAsk { conn: conn.clone() })),
+        let ask: Arc<dyn InteractivePrompt> = Arc::new(InteractiveAsk { conn: conn.clone() });
+        let interactive: Option<Arc<dyn InteractivePrompt>> = match (&totp, &password) {
+            (Some(t), _) => Some(Arc::new(TotpResponder::new(
+                t.clone(),
+                password.clone(),
+                Some(ask),
+            ))),
+            (None, Some(_)) => None,
+            (None, None) => Some(ask),
         };
         let opts = ConnectOptions {
             target: target.clone(),

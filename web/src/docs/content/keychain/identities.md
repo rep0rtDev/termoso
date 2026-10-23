@@ -29,3 +29,9 @@ Identities in a team vault are shared with the members of that vault. Members wi
 
 > [!TIP]
 > Name identities after the role, not the person: `deploy (production)`, `postgres (analytics)`. The label is what you see in a host's credentials field a year later.
+
+## One-time codes (TOTP)
+
+Servers behind PAM `google-authenticator`, Duo, FreeIPA or a router's two-factor login ask for a *verification code* after the password. Put the account's TOTP secret into the identity (or straight into the host's credentials) — the `otpauth://` URI from the enrolment QR code, or the bare base32 secret — and Termoso types the current six-digit code into that prompt itself. Hidden prompts still get the stored password; anything it does not recognise is shown to you as before.
+
+The secret lives in the vault like a password: encrypted locally, synced end-to-end encrypted with the identity, never sent to a Termoso server in the clear. The stored value is shown masked; type a new one to replace it or clear the field to remove it. Keep the secret in a second authenticator app as well — Termoso does not replace your recovery codes.

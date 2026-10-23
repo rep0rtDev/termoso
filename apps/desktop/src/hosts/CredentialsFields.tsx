@@ -44,6 +44,9 @@ export interface CredentialValues {
   /** `null` = keep the stored password (see `hasPassword`). */
   password: string | null;
   hasPassword: boolean;
+  /** `null` = keep the stored TOTP secret (see `hasTotp`); `""` clears it. */
+  totpSecret: string | null;
+  hasTotp: boolean;
   sshKeyId: Uuid | null;
   /** Certificate pinned here; `null` = the key's own certificate. */
   sshCertificateId: Uuid | null;
@@ -382,6 +385,45 @@ export function CredentialsFields({
                     </IconButton>
                   </InputAdornment>
                 ),
+              },
+            }}
+          />
+          <TextField
+            value={value.totpSecret ?? ""}
+            onChange={(e) => onChange({ totpSecret: e.target.value })}
+            autoComplete="off"
+            placeholder={
+              value.hasTotp && value.totpSecret === null
+                ? "••••••••••••"
+                : inherited?.hasTotp
+                  ? tr("•••••••• (inherited)")
+                  : tr("TOTP secret (optional)")
+            }
+            helperText={
+              value.hasTotp && value.totpSecret === null
+                ? tr(
+                    "A TOTP secret is stored: one-time codes are typed for you. Type to replace it or clear it to remove.",
+                  )
+                : tr(
+                    "otpauth:// URI or base32 secret from the server's authenticator setup. The current code is typed into the verification-code prompt.",
+                  )
+            }
+            slotProps={{
+              htmlInput: { "aria-label": tr("TOTP secret") },
+              input: {
+                startAdornment: adornment(<PasswordRoundedIcon />),
+                endAdornment:
+                  value.hasTotp && value.totpSecret === null ? (
+                    <InputAdornment position="end">
+                      <Button
+                        size="small"
+                        color="inherit"
+                        onClick={() => onChange({ totpSecret: "" })}
+                      >
+                        {tr("Clear")}
+                      </Button>
+                    </InputAdornment>
+                  ) : undefined,
               },
             }}
           />

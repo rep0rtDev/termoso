@@ -185,6 +185,8 @@ pub struct IdentityCard {
     pub label: String,
     pub username: String,
     pub has_password: bool,
+    /// A TOTP secret is stored: one-time codes are typed automatically.
+    pub has_totp: bool,
     pub ssh_key_id: Option<Uuid>,
     pub ssh_key_label: Option<String>,
     /// Certificate pinned on the identity itself (`None` = the key's own).
@@ -208,6 +210,10 @@ pub struct IdentityForm {
     /// `None` keeps the stored password, `Some("")` clears it.
     #[serde(default)]
     pub password: Option<String>,
+    /// TOTP secret (`otpauth://` URI or base32) for keyboard-interactive
+    /// logins; `None` keeps the stored one, `Some("")` clears it.
+    #[serde(default)]
+    pub totp_secret: Option<String>,
     #[serde(default)]
     pub ssh_key_id: Option<Uuid>,
     /// Explicit certificate; `None` falls back to the key's own certificate.
@@ -956,6 +962,7 @@ pub fn identities(store: &Store, vault_id: Option<Uuid>) -> Result<Vec<IdentityC
             label: i.data.label,
             username: i.data.username,
             has_password: i.data.password.as_deref().is_some_and(|p| !p.is_empty()),
+            has_totp: i.data.totp_secret.as_deref().is_some_and(|t| !t.is_empty()),
             ssh_key_id: i.data.ssh_key_id,
             ssh_key_label: i.data.ssh_key_id.and_then(|k| labels.get(&k).cloned()),
             ssh_certificate_id: i.data.ssh_certificate_id,
@@ -1009,6 +1016,11 @@ pub fn save_identity(store: &Store, form: &IdentityForm) -> Result<IdentityCard>
         Some(p) => Some(p.clone()),
         None => existing.as_ref().and_then(|e| e.data.password.clone()),
     };
+    let totp_secret = match &form.totp_secret {
+        Some(t) if t.trim().is_empty() => None,
+        Some(t) => Some(crate::hosts::normalize_totp_secret(t)?),
+        None => existing.as_ref().and_then(|e| e.data.totp_secret.clone()),
+    };
     let data = Identity {
         label,
         username,
@@ -1022,6 +1034,7 @@ pub fn save_identity(store: &Store, form: &IdentityForm) -> Result<IdentityCard>
         client_certificate: existing
             .as_ref()
             .and_then(|e| e.data.client_certificate.clone()),
+        totp_secret,
     };
     let id = match existing {
         Some(e) => {
@@ -1447,6 +1460,7 @@ mod tests {
                 ssh_certificate_id: None,
                 ssh_id: false,
                 ssh_id_key_type: None,
+                totp_secret: None,
             },
         )
         .unwrap();
@@ -1465,6 +1479,7 @@ mod tests {
                 ssh_certificate_id: cert.id,
                 ssh_id: false,
                 ssh_id_key_type: None,
+                totp_secret: None,
             },
         )
         .unwrap();
@@ -1496,6 +1511,7 @@ mod tests {
                     ssh_certificate_id: cert.id,
                     ssh_id: false,
                     ssh_id_key_type: None,
+                    totp_secret: None,
                 },
             )
             .is_err()
@@ -1588,6 +1604,7 @@ mod tests {
                 ssh_certificate_id: None,
                 ssh_id: false,
                 ssh_id_key_type: None,
+                totp_secret: None,
             },
         )
         .unwrap();
@@ -1608,6 +1625,7 @@ mod tests {
                 ssh_certificate_id: None,
                 ssh_id: false,
                 ssh_id_key_type: None,
+                totp_secret: None,
             },
         )
         .unwrap();
@@ -1624,6 +1642,7 @@ mod tests {
                 ssh_certificate_id: None,
                 ssh_id: false,
                 ssh_id_key_type: None,
+                totp_secret: None,
             },
         )
         .unwrap();
@@ -1646,6 +1665,7 @@ mod tests {
                     ssh_certificate_id: None,
                     ssh_id: false,
                     ssh_id_key_type: None,
+                    totp_secret: None,
                 },
             )
             .is_err()
@@ -1681,6 +1701,7 @@ mod tests {
                 ssh_certificate_id: None,
                 ssh_id: false,
                 ssh_id_key_type: None,
+                totp_secret: None,
             },
         )
         .unwrap()

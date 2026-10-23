@@ -1629,4 +1629,7 @@
     <string name="no_keys_in_this_vault">No keys in this vault</string>
     <string name="key_added_to_authorized_keys">%1$s added to authorized_keys on</string>
     <string name="key_already_authorized">%1$s is already authorized on</string>
+    <string name="totp_secret">TOTP secret (optional)</string>
+    <string name="totp_secret_saved">TOTP secret saved</string>
+    <string name="totp_secret_hint">otpauth:// URI or base32 secret; the code is typed into the verification prompt</string>
 </resources>

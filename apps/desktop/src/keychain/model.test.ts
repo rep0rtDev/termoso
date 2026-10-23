@@ -56,6 +56,7 @@ const identity = (over: Partial<IdentityCard> = {}): IdentityCard => ({
   label: "prod",
   username: "root",
   hasPassword: false,
+  hasTotp: false,
   sshKeyId: null,
   sshKeyLabel: null,
   sshCertificateId: null,

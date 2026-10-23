@@ -118,6 +118,8 @@ export function WebDavAuthFields({
             username: value.username,
             password: value.password,
             hasPassword: value.hasPassword,
+            totpSecret: null,
+            hasTotp: false,
             sshKeyId: null,
             sshCertificateId: null,
             sshId: false,

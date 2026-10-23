@@ -626,6 +626,7 @@ fn keychain_and_identities() {
             ssh_key_id: Some(key.id.clone()),
             ssh_id: false,
             ssh_id_key_type: None,
+            totp_secret: None,
         })
         .unwrap();
     assert!(ident.has_password);
@@ -669,6 +670,7 @@ fn sshid_identity_and_signed_out_view() {
             ssh_key_id: None,
             ssh_id: true,
             ssh_id_key_type: Some(SshIdKeyKind::Ecdsa),
+            totp_secret: None,
         })
         .unwrap();
     assert!(ident.ssh_id && !ident.has_password && ident.ssh_key_id.is_none());

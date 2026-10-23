@@ -161,6 +161,9 @@ pub struct HostDraft {
     pub username: String,
     /// `None` keeps the stored password when editing; `Some("")` clears it.
     pub password: Option<String>,
+    /// TOTP secret (`otpauth://` URI or base32) typed into one-time-code
+    /// prompts; `None` keeps the stored one, `Some("")` clears it.
+    pub totp_secret: Option<String>,
     pub ssh_key_id: Option<String>,
     /// Use an existing identity instead of the inline username/password/key.
     pub identity_id: Option<String>,
@@ -199,6 +202,8 @@ pub struct HostDraft {
     pub backspace: Option<String>,
     /// Set by the core when the stored inline identity has a password.
     pub has_password: bool,
+    /// Set by the core when the stored inline identity has a TOTP secret.
+    pub has_totp: bool,
     /// The host has an SSH section (the SSH fields above belong to it). A
     /// host needs this, `telnet` or `webdav`.
     pub ssh: bool,
@@ -332,10 +337,12 @@ impl HostDraft {
             backspace: None,
             timeout: None,
             has_password: false,
+            has_totp: false,
             ssh: true,
             telnet: None,
             webdav: None,
             files_provider: false,
+            totp_secret: None,
         }
     }
 }
@@ -351,6 +358,7 @@ impl From<hosts::HostForm> for HostDraft {
             port: f.port,
             username: f.username,
             password: None,
+            totp_secret: None,
             ssh_key_id: f.ssh_key_id.map(|k| k.to_string()),
             identity_id: f.identity_id.map(|i| i.to_string()),
             ssh_id: f.ssh_id,
@@ -378,6 +386,7 @@ impl From<hosts::HostForm> for HostDraft {
             charset: f.charset,
             backspace: f.backspace,
             has_password: f.has_password,
+            has_totp: f.has_totp,
             ssh: f.ssh,
             telnet: f.telnet.map(Into::into),
             webdav: f.webdav.map(Into::into),
@@ -399,6 +408,7 @@ impl HostDraft {
         base.port = self.port;
         base.username = self.username;
         base.password = self.password;
+        base.totp_secret = self.totp_secret;
         base.ssh_key_id = parse_opt_id(&self.ssh_key_id)?;
         base.identity_id = parse_opt_id(&self.identity_id)?;
         base.ssh_id = self.ssh_id;
@@ -518,6 +528,8 @@ pub(crate) fn blank_form(vault_id: Uuid) -> hosts::HostForm {
         backspace: None,
         has_password: false,
         files_provider: false,
+        totp_secret: None,
+        has_totp: false,
     }
 }
 
@@ -554,6 +566,8 @@ pub struct InheritedInfo {
     pub port: Option<u16>,
     pub username: Option<String>,
     pub has_password: bool,
+    /// A TOTP secret is inherited (codes typed automatically).
+    pub has_totp: bool,
     pub ssh_key_id: Option<String>,
     pub ssh_key_label: Option<String>,
     pub identity_id: Option<String>,
@@ -569,6 +583,7 @@ impl From<hosts::Inherited> for InheritedInfo {
             port: i.port,
             username: i.username,
             has_password: i.has_password,
+            has_totp: i.has_totp,
             ssh_key_id: i.ssh_key_id.map(|k| k.to_string()),
             ssh_key_label: i.ssh_key_label,
             identity_id: i.identity_id.map(|k| k.to_string()),
@@ -726,6 +741,8 @@ pub struct IdentityItem {
     pub label: String,
     pub username: String,
     pub has_password: bool,
+    /// A TOTP secret is stored: one-time codes are typed automatically.
+    pub has_totp: bool,
     pub ssh_key_id: Option<String>,
     pub ssh_key_label: Option<String>,
     pub has_certificate: bool,
@@ -749,6 +766,7 @@ impl From<keychain::IdentityCard> for IdentityItem {
             ssh_id: i.ssh_id,
             ssh_id_key_type: i.ssh_id_key_type.map(Into::into),
             updated_at: millis(i.updated_at),
+            has_totp: i.has_totp,
         }
     }
 }
@@ -761,6 +779,8 @@ pub struct IdentityDraft {
     pub username: String,
     /// `None` keeps the stored password, `Some("")` clears it.
     pub password: Option<String>,
+    /// `None` keeps the stored TOTP secret, `Some("")` clears it.
+    pub totp_secret: Option<String>,
     pub ssh_key_id: Option<String>,
     pub ssh_id: bool,
     pub ssh_id_key_type: Option<SshIdKeyKind>,
@@ -774,6 +794,7 @@ impl IdentityDraft {
             label: self.label,
             username: self.username,
             password: self.password,
+            totp_secret: self.totp_secret,
             ssh_key_id: parse_opt_id(&self.ssh_key_id)?,
             ssh_certificate_id: None,
             ssh_id: self.ssh_id,

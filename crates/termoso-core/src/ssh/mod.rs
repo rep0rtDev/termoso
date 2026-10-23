@@ -13,6 +13,7 @@ mod handler;
 mod peek;
 pub mod proxy;
 mod shell;
+pub mod totp;
 pub mod x11;
 
 use std::borrow::Cow;
