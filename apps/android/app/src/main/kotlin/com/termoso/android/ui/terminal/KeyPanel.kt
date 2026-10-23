@@ -20,6 +20,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DataObject
@@ -202,7 +207,7 @@ fun KeyPanel(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 item("ai") { IconKey(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai), Modifier.width(40.dp), flat = true) { onKeyPressed(); onAskAi() } }
-                item("pw") { IconKey(Icons.Filled.Password, stringResource(R.string.password), Modifier.width(40.dp), flat = true) { onKeyPressed(); onHiddenInput() } }
+                item("pw") { IconKey(Icons.Filled.Key, stringResource(R.string.password), Modifier.width(40.dp), flat = true) { onKeyPressed(); onHiddenInput() } }
                 if (canAttach) {
                     item("attach") { IconKey(Icons.Filled.AttachFile, stringResource(R.string.send_file), Modifier.width(40.dp), flat = true) { onKeyPressed(); onAttach() } }
                 }
@@ -266,11 +271,20 @@ fun KeyPanel(
  */
 @Composable
 private fun KeyRow(row: List<PanelKey>, active: (PanelKey) -> Boolean, press: (PanelKey) -> Unit) {
+    if (row.size > 8) {
+        // Long custom rows wrap into 8-key lines instead of shrinking into slivers.
+        Column(verticalArrangement = Arrangement.spacedBy(GridRowGap)) {
+            row.chunked(8).forEach { KeyRow(it, active, press) }
+        }
+        return
+    }
+    // 7 keys: 3 | 4 with the first key double width (Termius' shift+tab esc ctrl | arrows).
+    val split = when (row.size) { 8 -> 4; 7 -> 3; 2 -> 1; else -> -1 }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(GridGap)) {
         row.forEachIndexed { i, key ->
-            if (row.size == 8 && i == 4) Spacer(Modifier.width(GridGutter - GridGap * 2))
-            else if (row.size == 2 && i == 1) Spacer(Modifier.width(GridGutter - GridGap * 2))
-            TextKey(key, active(key), Modifier.weight(1f), height = GridKeyHeight) { press(it) }
+            if (i == split) Spacer(Modifier.width(GridGutter - GridGap * 2))
+            val weight = if (row.size == 7 && i == 0) 2f else 1f
+            TextKey(key, active(key), Modifier.weight(weight), height = GridKeyHeight) { press(it) }
         }
     }
 }
@@ -289,6 +303,13 @@ private fun TextKey(
     flat: Boolean = false,
     onPress: (PanelKey) -> Unit,
 ) {
+    val arrow = when (key.label) {
+        "←" -> Icons.AutoMirrored.Filled.ArrowBack
+        "→" -> Icons.AutoMirrored.Filled.ArrowForward
+        "↑" -> Icons.Filled.ArrowUpward
+        "↓" -> Icons.Filled.ArrowDownward
+        else -> null
+    }
     val twoLine = key.label.contains('\n')
     val single = when {
         twoLine -> 11.sp
@@ -306,6 +327,15 @@ private fun TextKey(
             .padding(horizontal = if (flat) 8.dp else 6.dp),
         contentAlignment = Alignment.Center,
     ) {
+        if (arrow != null) {
+            Icon(
+                arrow,
+                contentDescription = key.label,
+                tint = if (flat) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(if (flat) 22.dp else 18.dp),
+            )
+            return@Box
+        }
         Text(
             key.label,
             fontSize = single,
@@ -391,6 +421,7 @@ private fun IconKey(
             tint = when {
                 selected -> MaterialTheme.colorScheme.onPrimary
                 !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                flat -> MaterialTheme.colorScheme.primary
                 else -> MaterialTheme.colorScheme.onSurface
             },
             modifier = Modifier.size(if (flat) 22.dp else 20.dp),
