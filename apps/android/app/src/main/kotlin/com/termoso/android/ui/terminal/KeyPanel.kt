@@ -339,7 +339,7 @@ private fun TextKey(
             Icon(
                 arrow,
                 contentDescription = key.label,
-                tint = if (flat) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (flat) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(if (flat) 22.dp else 18.dp),
             )
             return@Box
@@ -435,7 +435,6 @@ private fun IconKey(
                 selected -> MaterialTheme.colorScheme.onPrimary
                 !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                 active -> MaterialTheme.colorScheme.primary
-                flat -> MaterialTheme.colorScheme.primary
                 tile || muted -> MaterialTheme.colorScheme.onSurfaceVariant
                 else -> MaterialTheme.colorScheme.onSurface
             },
