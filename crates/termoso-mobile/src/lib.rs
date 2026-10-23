@@ -26,6 +26,7 @@ mod keys;
 mod linux;
 mod live;
 mod presence;
+mod quiet;
 mod serial;
 mod session;
 mod settings;

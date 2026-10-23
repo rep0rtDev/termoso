@@ -1632,4 +1632,14 @@
     <string name="totp_secret">TOTP secret (optional)</string>
     <string name="totp_secret_saved">TOTP secret saved</string>
     <string name="totp_secret_hint">otpauth:// URI or base32 secret; the code is typed into the verification prompt</string>
+    <string name="run_quietly">Run quietly</string>
+    <string name="run_quietly_title">Quiet run: %1$s</string>
+    <string name="run_quietly_hint">Runs on each host over a separate channel without opening terminals; output and exit codes are collected here.</string>
+    <string name="no_ssh_hosts_in_this_vault">No SSH hosts in this vault</string>
+    <string name="quiet_summary">%1$d hosts · %2$d ok · %3$d failed</string>
+    <string name="quiet_progress">%1$d of %2$d finished</string>
+    <string name="copy_summary">Copy summary</string>
+    <string name="summary_copied">Summary copied</string>
+    <string name="ok">OK</string>
+    <string name="exit_code">Exit %1$s</string>
 </resources>

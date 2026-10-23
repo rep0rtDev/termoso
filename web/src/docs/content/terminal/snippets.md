@@ -44,6 +44,14 @@ Other ways to run a snippet:
 - **From the host** — the host's context menu has **Run snippet…**, which connects and runs in one step.
 - **As a startup snippet** — set on a host or a group, it runs right after the shell is ready: `cd /srv/app && source .env`, a `tmux attach`, an agent start.
 
+## Quiet run
+
+**Run quietly…** (in the snippet menu) runs the snippet on several hosts without opening a terminal: Termoso connects to each host, runs the expanded script over a separate `exec` channel and collects stdout, stderr and the exit code into one table. Pick the hosts (the snippet's targets are preselected), fill in the variables, and watch the rows fill in as hosts finish; expand a row for the full output, **Copy summary** puts everything into the clipboard as text.
+
+It is the right tool for `uptime`, `df -h`, `systemctl is-active {{service}}` across a fleet — read-only checks whose result you want side by side, not in ten tabs. Hosts run eight at a time on desktop (four on Android), each has two minutes for connect plus command, output is kept up to 64 KB per stream. Password, passphrase and host-key prompts appear as usual; a host that fails to connect is shown with the error and does not stop the others. There is no interactive shell behind the command, so anything that needs a TTY (`sudo` with a password prompt, `top`) will not work there — run it in terminals instead.
+
+On Android the same **Run quietly** is in the long-press menu of a snippet.
+
 ## Running on many hosts safely
 
 Running a destructive command on ten servers deserves a pause, so a few habits help:
