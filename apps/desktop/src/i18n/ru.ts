@@ -567,6 +567,7 @@ export const ru: Readonly<Record<string, string>> = {
   "Connected now: {viewersSummary}": "Сейчас подключены: {viewersSummary}",
   "Connecting to the WebDAV share…": "Подключение к WebDAV…",
   "Connecting to {quickLabel}": "Подключение к {quickLabel}",
+  "No saved host named {name}": "Нет сохранённого хоста с именем {name}",
   "Connecting to {value}": "Подключение к {value}",
   "Connecting via {via}{where}": "Подключение через {via}{where}",
   "Connecting via {via}{where}…": "Подключение через {via}{where}…",

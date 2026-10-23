@@ -104,7 +104,20 @@ export type QuickAction = "new" | "local" | "sftp";
 
 export type LinkTarget =
   | { kind: "host"; hostId: Uuid }
-  | { kind: "action"; action: QuickAction }
+  /** `termoso://sftp?host=<label or address>` opens the SFTP browser on that saved host. */
+  | { kind: "action"; action: QuickAction; host?: string }
+  /**
+   * `termoso://connect?host=…&user=…&port=…&protocol=ssh|telnet` — what the
+   * command line (`termoso ssh deploy@edge`) asks for: a saved host by label or
+   * address if there is one, otherwise an ad hoc connection.
+   */
+  | {
+      kind: "connect";
+      host: string;
+      username: string | null;
+      port: number | null;
+      protocol: HostProtocol | null;
+    }
   | { kind: "quick"; target: QuickTarget }
   /** Multiplayer invitation (`https://<server>/join/<session>#<secret>` or `termoso://join/…`). */
   | { kind: "live"; link: string }
@@ -122,8 +135,36 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function parseLink(url: string): LinkTarget {
   const s = url.trim();
   if (isLiveLink(s)) return { kind: "live", link: s };
-  const a = /^termoso:\/\/(new|local|sftp)\/?(?:[?#].*)?$/i.exec(s);
-  if (a?.[1]) return { kind: "action", action: a[1].toLowerCase() as QuickAction };
+  const a = /^termoso:\/\/(new|local|sftp)\/?(?:\?([^#]*))?(?:#.*)?$/i.exec(s);
+  if (a?.[1]) {
+    const action = a[1].toLowerCase() as QuickAction;
+    const host = new URLSearchParams(a[2] ?? "").get("host")?.trim();
+    return action === "sftp" && host
+      ? { kind: "action", action, host }
+      : { kind: "action", action };
+  }
+  const c = /^termoso:\/\/connect\/?(?:\?([^#]*))?(?:#.*)?$/i.exec(s);
+  if (c) {
+    const q = new URLSearchParams(c[1] ?? "");
+    const host = q.get("host")?.trim() ?? "";
+    const port = parsePort(q.get("port") ?? undefined);
+    const protocol = q.get("protocol")?.toLowerCase() ?? null;
+    if (
+      !host ||
+      port === undefined ||
+      (protocol !== null && protocol !== "ssh" && protocol !== "telnet")
+    ) {
+      return { kind: "unsupported", url: s };
+    }
+    const user = q.get("user")?.trim();
+    return {
+      kind: "connect",
+      host,
+      username: user === undefined || user === "" ? null : user,
+      port,
+      protocol,
+    };
+  }
   const m = /^termoso:\/\/host\/([^/?#]+)\/?(?:[?#].*)?$/i.exec(s);
   if (m?.[1]) {
     const id = decodeURIComponent(m[1]);
@@ -134,4 +175,48 @@ export function parseLink(url: string): LinkTarget {
     return target ? { kind: "quick", target } : { kind: "unsupported", url: s };
   }
   return { kind: "unsupported", url: s };
+}
+
+/**
+ * Resolve a `connect` link against the saved hosts: label (case-insensitive)
+ * first, then address — narrowed by user / port when the link names them.
+ * Null when nothing matches and the link should connect ad hoc.
+ */
+export function matchConnectHost(
+  link: Extract<LinkTarget, { kind: "connect" }>,
+  hosts: readonly HostCard[],
+): HostCard | null {
+  const needle = link.host.trim().toLowerCase();
+  const quick = parseQuickConnect(
+    `${link.protocol ?? "ssh"}://${link.username ? `${link.username}@` : ""}${link.host}${link.port ? `:${link.port}` : ""}`,
+  );
+  const fits = (h: HostCard) =>
+    (link.protocol === null || h.protocol === link.protocol) &&
+    (!link.username || !h.username || h.username === link.username) &&
+    (link.port === null || h.port === link.port);
+  const byLabel = hosts.find((h) => h.label.trim().toLowerCase() === needle && fits(h));
+  if (byLabel) return byLabel;
+  const address = quick?.address.toLowerCase() ?? needle;
+  return (
+    hosts.find(
+      (h) =>
+        h.address.toLowerCase() === address &&
+        fits(h) &&
+        (!quick?.username || !h.username || h.username === quick.username) &&
+        (quick?.port === null || quick?.port === undefined || h.port === quick.port),
+    ) ?? null
+  );
+}
+
+/** The ad hoc target a `connect` link describes when no saved host matches. */
+export function connectQuickTarget(
+  link: Extract<LinkTarget, { kind: "connect" }>,
+): QuickTarget | null {
+  const inner = parseQuickConnect(`${link.protocol ?? "ssh"}://${link.host}`);
+  if (!inner) return null;
+  return {
+    ...inner,
+    username: inner.protocol === "telnet" ? null : (link.username ?? inner.username),
+    port: link.port ?? inner.port,
+  };
 }

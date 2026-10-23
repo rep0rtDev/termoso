@@ -2,9 +2,10 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { bringToFront } from "@/app/tray";
 import { toast } from "@/components/Snackbar";
-import { hostsList, launchFiles } from "@/ipc/commands";
+import { hostsList, launchFiles, launchLinks } from "@/ipc/commands";
 import { errorMessage } from "@/ipc/types";
-import { parseLink, quickLabel } from "@/hosts/links";
+import { connectQuickTarget, matchConnectHost, parseLink, quickLabel } from "@/hosts/links";
+import { openSftpForHost } from "@/sftp/store";
 import { handleSsoLink } from "@/account/sso";
 import { isSsoLink, parseSsoLink } from "@/account/ssoLink";
 import { openTerminal } from "@/terminal/store";
@@ -47,7 +48,12 @@ async function openLink(url: string) {
   if (link.kind === "action") {
     if (link.action === "new") requestCreate("host");
     else if (link.action === "local") openTerminal({ kind: "local" });
+    else if (link.host) await openSftpByName(link.host);
     else goToSftp();
+    return;
+  }
+  if (link.kind === "connect") {
+    await openConnect(link);
     return;
   }
   if (link.kind === "quick") {
@@ -70,6 +76,46 @@ async function openLink(url: string) {
   } catch (e) {
     toast(errorMessage(e), "error");
   }
+}
+
+/** `termoso sftp <host>`: the SFTP browser on a saved host named by label or address. */
+async function openSftpByName(name: string) {
+  const needle = name.trim().toLowerCase();
+  try {
+    const hosts = await hostsList(null);
+    const host =
+      hosts.find((h) => h.label.trim().toLowerCase() === needle) ??
+      hosts.find((h) => h.address.toLowerCase() === needle);
+    if (!host) {
+      toast(tr("No saved host named {name}", { name }), "warning");
+      goToSftp();
+      return;
+    }
+    openSftpForHost(host.id, host.label, host.vaultId);
+  } catch (e) {
+    toast(errorMessage(e), "error");
+  }
+}
+
+/** `termoso ssh …` / `termoso open …`: a saved host if one matches, else ad hoc. */
+async function openConnect(link: Extract<ReturnType<typeof parseLink>, { kind: "connect" }>) {
+  const hosts = await hostsList(null).catch((e: unknown) => {
+    toast(errorMessage(e), "error");
+    return null;
+  });
+  if (!hosts) return;
+  const host = matchConnectHost(link, hosts);
+  if (host) {
+    openTerminal({ kind: "host", host_id: host.id, vault_id: host.vaultId });
+    return;
+  }
+  const target = connectQuickTarget(link);
+  if (!target) {
+    toast(tr("No saved host named {name}", { name: link.host }), "warning");
+    return;
+  }
+  openTerminal(target);
+  toast(tr("Connecting to {quickLabel}", { quickLabel: quickLabel(target) }), "info");
 }
 
 const fileName = (path: string) => (path.split(/[\\/]/).pop() ?? path).toLowerCase();
@@ -120,6 +166,11 @@ export function startDeepLinks(): () => void {
   void launchFiles()
     .then((paths) => {
       if (!stopped) paths.forEach(openFilePath);
+    })
+    .catch(() => undefined);
+  void launchLinks()
+    .then((links) => {
+      if (!stopped) links.forEach((u) => void openLink(u));
     })
     .catch(() => undefined);
   const stops: (() => void)[] = [];
