@@ -251,6 +251,7 @@ pub fn run() {
             commands_tools::snippet_delete,
             commands_tools::snippet_set_targets,
             commands_tools::snippet_run,
+            commands_tools::snippet_run_quiet,
             commands_tools::snippet_packages,
             commands_tools::snippet_package_save,
             commands_tools::snippet_package_delete,

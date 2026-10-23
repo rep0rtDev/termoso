@@ -479,6 +479,10 @@ export const snippetRun = (
   vars: Record<string, string>,
   paste = false,
 ) => invoke<RunResult>("snippet_run", { id, sessionIds, vars, paste });
+export const snippetRunQuiet = (id: Uuid, hostIds: Uuid[], vars: Record<string, string>) =>
+  invoke<QuietRun>("snippet_run_quiet", { id, hostIds, vars });
+export const onSnippetQuietProgress = (cb: (p: QuietProgress) => void): Promise<UnlistenFn> =>
+  listen<QuietProgress>("snippet-quiet-progress", (e) => cb(e.payload));
 export const snippetPackages = (vaultId?: Uuid | null) =>
   invoke<PackageNode[]>("snippet_packages", { vaultId: vaultId ?? null });
 export const snippetPackageSave = (args: {

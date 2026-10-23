@@ -1486,6 +1486,31 @@ export interface TailnetScan {
   devices: TailnetDevice[];
 }
 
+/** One host of a quiet snippet run (no terminal; `exec` channel). */
+export interface QuietHostResult {
+  hostId: Uuid;
+  label: string;
+  /** `user@host:port` the command ran on; empty when connecting failed. */
+  target: string;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  /** Connection or transport error — the command never ran. */
+  error: string | null;
+  ms: number;
+}
+
+export interface QuietRun {
+  runId: Uuid;
+  command: string;
+  results: QuietHostResult[];
+}
+
+export interface QuietProgress {
+  runId: Uuid;
+  result: QuietHostResult;
+}
+
 // ───────────────────────────── export / backup ─────────────────────────────
 
 export interface CsvExportReport {
