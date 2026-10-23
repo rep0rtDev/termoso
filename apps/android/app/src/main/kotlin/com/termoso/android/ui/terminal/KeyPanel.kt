@@ -228,7 +228,7 @@ fun KeyPanel(
                 WideKey(Icons.Filled.Settings, stringResource(R.string.customize), Modifier.weight(1f)) { onKeyPressed(); onCustomize() }
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(GridGap)) {
                     IconKey(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai), Modifier.weight(1f), tile = true) { onKeyPressed(); onAskAi() }
-                    IconKey(Icons.Filled.Password, stringResource(R.string.password), Modifier.weight(1f), tile = true) { onKeyPressed(); onHiddenInput() }
+                    IconKey(Icons.Filled.Key, stringResource(R.string.password), Modifier.weight(1f), tile = true) { onKeyPressed(); onHiddenInput() }
                     IconKey(Icons.Filled.AttachFile, stringResource(R.string.send_file), Modifier.weight(1f), tile = true, enabled = canAttach) { onKeyPressed(); onAttach() }
                     IconKey(Icons.Filled.ContentPaste, stringResource(R.string.paste_2), Modifier.weight(1f), tile = true) { onKeyPressed(); onPaste() }
                 }
@@ -237,7 +237,7 @@ fun KeyPanel(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .height((gridHeight ?: GridDefaultHeight) - GridKeyHeight - GridRowGap - 10.dp - TabBarHeight)
+                    .height((gridHeight ?: GridDefaultHeight) + BarHeight - GridKeyHeight - GridRowGap - 10.dp - TabBarHeight)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(GridRowGap),
             ) {
@@ -314,9 +314,10 @@ private fun TextKey(
     val single = when {
         twoLine -> 11.sp
         flat -> 15.sp
-        key.label.length <= 4 -> 14.sp
-        key.label.length <= 9 -> 12.sp
-        else -> 11.sp
+        key.label.length <= 3 -> 14.sp
+        key.label.length <= 4 -> 12.sp
+        key.label.length <= 9 -> 11.sp
+        else -> 10.sp
     }
     Box(
         modifier
@@ -324,7 +325,7 @@ private fun TextKey(
             .clip(KeyShape)
             .background(if (flat && !active) Color.Transparent else keyContainer(active))
             .clickable { onPress(key) }
-            .padding(horizontal = if (flat) 8.dp else 6.dp),
+            .padding(horizontal = if (flat) 8.dp else 2.dp),
         contentAlignment = Alignment.Center,
     ) {
         if (arrow != null) {
