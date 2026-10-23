@@ -23,6 +23,7 @@ import {
 import CodeRoundedIcon from "@mui/icons-material/CodeRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
+import PlaylistPlayRoundedIcon from "@mui/icons-material/PlaylistPlayRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import CreateNewFolderRoundedIcon from "@mui/icons-material/CreateNewFolderRounded";
@@ -71,6 +72,7 @@ import { terminalStore, type Pane } from "@/terminal/store";
 import { startRun, summarize, useLastRun, watchRun, type SnippetRun } from "./run";
 import { RunTargets, TargetStateIcon } from "./RunStatus";
 import { TargetsDialog } from "./TargetsDialog";
+import { QuietRunDialog } from "./QuietRunDialog";
 import { tr, trn, trx, msg } from "@/i18n";
 import { requirePerm } from "@/team/perms";
 
@@ -570,6 +572,7 @@ type DialogState =
   | { kind: "run"; snippet: SnippetCard }
   | { kind: "vars"; snippet: SnippetCard }
   | { kind: "targets"; snippet: SnippetCard }
+  | { kind: "quiet"; snippet: SnippetCard }
   | { kind: "delete"; snippet: SnippetCard }
   | { kind: "package"; pkg: PackageNode | null }
   | { kind: "deletePackage"; pkg: PackageNode };
@@ -659,6 +662,13 @@ export function SnippetsPage() {
       onClick: () => {
         if (s.targetHostIds.length > 0) runOnTargets(s);
         else setDialog({ kind: "run", snippet: s });
+      },
+    },
+    {
+      label: tr("Run quietly…"),
+      icon: <PlaylistPlayRoundedIcon fontSize="small" />,
+      onClick: () => {
+        if (requirePerm(s.vaultId, "snippets.run")) setDialog({ kind: "quiet", snippet: s });
       },
     },
     {
@@ -1065,6 +1075,14 @@ export function SnippetsPage() {
               return null;
             })
           }
+        />
+      )}
+      {dialog.kind === "quiet" && (
+        <QuietRunDialog
+          snippet={dialog.snippet}
+          hosts={hostList}
+          groups={groups.data ?? []}
+          onClose={() => setDialog({ kind: "none" })}
         />
       )}
       {dialog.kind === "targets" && (

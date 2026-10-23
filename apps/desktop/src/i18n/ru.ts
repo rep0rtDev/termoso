@@ -3039,4 +3039,18 @@ export const ru: Readonly<Record<string, string>> = {
     "Секрет TOTP сохранён: одноразовые коды вводятся автоматически. Введите новый, чтобы заменить, или очистите, чтобы удалить.",
   "otpauth:// URI or base32 secret from the server's authenticator setup. The current code is typed into the verification-code prompt.":
     "URI otpauth:// или base32-секрет из настройки аутентификатора на сервере. Текущий код подставляется в запрос кода подтверждения.",
+  "Run quietly…": "Выполнить тихо…",
+  "Runs quietly on {count} host.": "Выполнится тихо на {count} хосте.",
+  "Runs quietly on {count} hosts.": "Выполнится тихо на {count} хостах.",
+  "Quiet run: {name}": "Тихий запуск: {name}",
+  "{done} of {count} host finished": "Готово {done} из {count} хоста",
+  "{done} of {count} hosts finished": "Готово {done} из {count} хостов",
+  "{count} host · {ok} ok · {failed} failed": "{count} хост · {ok} ок · {failed} с ошибкой",
+  "{count} hosts · {ok} ok · {failed} failed": "{count} хостов · {ok} ок · {failed} с ошибкой",
+  "Copy summary": "Копировать сводку",
+  "Summary copied": "Сводка скопирована",
+  Result: "Результат",
+  Time: "Время",
+  "Exit {code}": "Код {code}",
+  error: "ошибка",
 };

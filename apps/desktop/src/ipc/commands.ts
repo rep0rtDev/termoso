@@ -130,6 +130,8 @@ import type {
   WebhookDelivery,
   WebhookKind,
   WorkspacesState,
+  QuietProgress,
+  QuietRun,
 } from "./types";
 import type {
   AccessRequest,
