@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
@@ -102,7 +104,9 @@ private val GridSidePadding = 27.dp
 private val GridGutter = 35.dp
 private val StripKeyHeight = 36.dp
 private val GridKeyHeight = 30.dp
-private val TabBarHeight = 50.dp
+// Bottom tab bar as in Termius: 1 dp rule, 10 dp padding, five 40 dp slots spread edge to edge,
+// a short vertical rule halfway between the last two.
+private val TabBarHeight = 60.dp
 /** Grid height when the keyboard has never been shown yet (no measured height to match). */
 private val GridDefaultHeight = 272.dp
 private val BarHeight = 40.dp
@@ -252,22 +256,33 @@ fun KeyPanel(
                 Spacer(Modifier.height(2.dp))
             }
         }
+        HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
         Row(
-            Modifier.fillMaxWidth().height(TabBarHeight).padding(horizontal = GridSidePadding, vertical = 5.dp),
+            Modifier.fillMaxWidth().height(TabBarHeight - 1.dp).padding(horizontal = 10.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            IconKey(Icons.Filled.GridView, stringResource(R.string.hide_keys), Modifier.weight(1f), selected = true, onClick = {})
-            IconKey(Icons.Filled.DataObject, stringResource(R.string.snippets), Modifier.weight(1f), muted = true) { onKeyPressed(); onSnippets() }
-            IconKey(Icons.Filled.History, stringResource(R.string.history), Modifier.weight(1f), muted = true) { onKeyPressed(); onPanel() }
-            IconKey(Icons.Filled.Palette, stringResource(R.string.themes), Modifier.weight(1f), muted = true) { onKeyPressed(); onThemes() }
-            Box(Modifier.width(1.dp).height(22.dp).background(MaterialTheme.colorScheme.outlineVariant))
-            IconKey(
-                if (imeShown) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
-                stringResource(R.string.toggle_keyboard),
-                Modifier.weight(1f),
-                muted = true,
-                onClick = onToggleIme,
-            )
+            IconKey(Icons.Filled.GridView, stringResource(R.string.hide_keys), Modifier.width(40.dp), selected = true, onClick = {})
+            IconKey(Icons.Filled.DataObject, stringResource(R.string.snippets), Modifier.width(40.dp), muted = true) { onKeyPressed(); onSnippets() }
+            IconKey(Icons.Filled.History, stringResource(R.string.history), Modifier.width(40.dp), muted = true) { onKeyPressed(); onPanel() }
+            IconKey(Icons.Filled.Palette, stringResource(R.string.themes), Modifier.width(40.dp), muted = true) { onKeyPressed(); onThemes() }
+            Box(Modifier.width(40.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(x = (-24).dp)
+                        .width(1.dp)
+                        .height(22.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant),
+                )
+                IconKey(
+                    if (imeShown) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
+                    stringResource(R.string.toggle_keyboard),
+                    Modifier.width(40.dp),
+                    muted = true,
+                    onClick = onToggleIme,
+                )
+            }
         }
     }
 }
