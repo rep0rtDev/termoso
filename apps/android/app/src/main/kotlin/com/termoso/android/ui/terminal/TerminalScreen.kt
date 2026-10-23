@@ -81,6 +81,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -534,6 +535,9 @@ private fun ActiveSession(
     var snippetPicker by remember { mutableStateOf(false) }
     var askAi by remember { mutableStateOf(false) }
     var panelSheet by remember { mutableStateOf(false) }
+    var panelTab by remember { mutableIntStateOf(0) }
+    // Cursor mode (grid ✢): swipes on the terminal move the cursor with arrow keys.
+    var cursorMode by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(panelRequest) { if (panelRequest > 0) panelSheet = true }
     var dropping by remember { mutableStateOf<DropProgress?>(null) }
     var confirmDrop by remember { mutableStateOf<List<Uri>?>(null) }
@@ -907,7 +911,7 @@ private fun ActiveSession(
                     onZoom = ::zoom,
                     gestures = TerminalGestures(
                         pinchZoom = settings.pinchZoom,
-                        swipeArrows = settings.swipeArrows,
+                        swipeArrows = settings.swipeArrows || cursorMode,
                         swipeSessions = settings.swipeSessions,
                         longPressArrows = settings.longPressArrows,
                         doubleTapTab = settings.doubleTapTab,
@@ -969,7 +973,10 @@ private fun ActiveSession(
                 onHiddenInput = { hiddenInput = true },
                 onSnippets = { snippetPicker = true },
                 onAskAi = { askAi = true },
-                onPanel = { panelSheet = true },
+                onPanel = { panelTab = 0; panelSheet = true },
+                onThemes = { panelTab = 1; panelSheet = true },
+                cursorMode = cursorMode,
+                onToggleCursorMode = { cursorMode = !cursorMode },
                 onPaste = ::paste,
                 canAttach = FileDrop.blocker(session) == null,
                 onAttach = { pickFiles.launch(arrayOf("*/*")) },
@@ -1019,7 +1026,7 @@ private fun ActiveSession(
         )
     }
     if (panelSheet) {
-        TerminalPanelSheet(shell = shell, session = session, controller = controller, onClose = { panelSheet = false })
+        TerminalPanelSheet(initialTab = panelTab, shell = shell, session = session, controller = controller, onClose = { panelSheet = false })
     }
     confirmDrop?.let { uris ->
         fun answer(send: Boolean) {

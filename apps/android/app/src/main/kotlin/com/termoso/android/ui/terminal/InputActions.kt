@@ -207,6 +207,11 @@ object KeyGroups {
                         special(SpecialKey.LEFT), special(SpecialKey.UP), special(SpecialKey.DOWN), special(SpecialKey.RIGHT),
                     ),
                 ),
+                // tmux prefix chords: ^B is sent as the byte itself, then the command key.
+                group(
+                    "tmux", R.string.tmux,
+                    listOf("%", "\"", "o", "x").map { c -> PanelKey.Text("ctrl+B, $c", "\u0002$c") },
+                ),
                 group(
                     "nav", R.string.navigation,
                     listOf(
@@ -227,13 +232,6 @@ object KeyGroups {
                 group(
                     "fkeys2", R.string.f5_f12,
                     listOf(SpecialKey.F9, SpecialKey.F10, SpecialKey.F11, SpecialKey.F12).map { special(it) },
-                ),
-                // tmux prefix chords: ^B is sent as the byte itself, then the command key.
-                group(
-                    "tmux", R.string.tmux,
-                    listOf("c", "n", "p", "d", "x", "z", "[", "\"", "%", ",", "w", "o").map { c ->
-                        PanelKey.Text("^B $c", "\u0002$c")
-                    },
                 ),
             )
         }
