@@ -285,13 +285,23 @@ private fun KeyRow(row: List<PanelKey>, active: (PanelKey) -> Boolean, press: (P
         }
         return
     }
-    // 7 keys: 3 | 4 with the first key double width (Termius' shift+tab esc ctrl | arrows).
+    // Two hand blocks of exactly half the width each, so every row's edges line up
+    // whatever the key count: 8 → 4 | 4, 7 → 3 | 4 (first key double width), 4 → 2 | 2, 2 → 1 | 1.
     val split = when (row.size) { 8 -> 4; 7 -> 3; 4 -> 2; 2 -> 1; else -> -1 }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(GridGap)) {
-        row.forEachIndexed { i, key ->
-            if (i == split) Spacer(Modifier.width(GridGutter - GridGap * 2))
-            val weight = if (row.size == 7 && i == 0) 2f else 1f
-            TextKey(key, active(key), Modifier.weight(weight), height = GridKeyHeight) { press(it) }
+    if (split < 0) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(GridGap)) {
+            row.forEach { key -> TextKey(key, active(key), Modifier.weight(1f), height = GridKeyHeight) { press(it) } }
+        }
+        return
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(GridGutter)) {
+        listOf(row.subList(0, split), row.subList(split, row.size)).forEach { block ->
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(GridGap)) {
+                block.forEachIndexed { i, key ->
+                    val weight = if (row.size == 7 && block.size == 3 && i == 0) 2f else 1f
+                    TextKey(key, active(key), Modifier.weight(weight), height = GridKeyHeight) { press(it) }
+                }
+            }
         }
     }
 }
