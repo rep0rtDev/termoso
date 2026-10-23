@@ -208,6 +208,8 @@ fun TerminalScreen(
     val gridShown = rememberSaveable { mutableStateOf(false) }
     // Bumped by the session bar's keyboard button to bring the soft keyboard back.
     var imeRequest by remember { mutableStateOf(0) }
+    // Background of the active terminal's theme: the session bar sits on it, as in Termius.
+    val terminalBackground = remember { mutableStateOf<Color?>(null) }
     // The sharing sheet is per session: switching chips or losing the session closes it.
     LaunchedEffect(active?.id) { liveSheet = false }
 
@@ -237,6 +239,7 @@ fun TerminalScreen(
                     onToggleGrid = {
                         if (gridShown.value) imeRequest++ else gridShown.value = true
                     },
+                    background = terminalBackground.value ?: MaterialTheme.colorScheme.surfaceContainer,
                 )
             }
             if (active == null) {
@@ -266,6 +269,7 @@ fun TerminalScreen(
                     panelRequest = panelRequest,
                     gridShown = gridShown,
                     imeRequest = imeRequest,
+                    terminalBackground = terminalBackground,
                     bar = bar,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
@@ -329,6 +333,7 @@ private fun SessionBar(
     onNew: () -> Unit,
     gridShown: Boolean = false,
     onToggleGrid: (() -> Unit)? = null,
+    background: Color = MaterialTheme.colorScheme.surfaceContainer,
 ) {
     val activeId = active?.id
     // Termius: 30 dp tiles and pill, 10 dp apart, 10 dp from the edges, 10 dp above the strip.
@@ -336,7 +341,7 @@ private fun SessionBar(
         Modifier
             .fillMaxWidth()
             .height(50.dp)
-            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .background(background)
             .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -483,6 +488,8 @@ private fun ActiveSession(
     gridShown: MutableState<Boolean> = mutableStateOf(false),
     /** Incremented by the caller to show the soft keyboard (closing the grid). */
     imeRequest: Int = 0,
+    /** Receives the terminal theme's background colour from each frame. */
+    terminalBackground: MutableState<Color?> = mutableStateOf(null),
     /** The session bar, drawn between the terminal and the key panel. */
     bar: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -833,7 +840,10 @@ private fun ActiveSession(
                     cursorBlink = settings.cursorBlink,
                     cursorStyle = settings.cursorStyle,
                     modifier = Modifier.fillMaxSize(),
-                    onFrame = { scrolled = it.frame.displayOffset > 0u },
+                    onFrame = {
+                        scrolled = it.frame.displayOffset > 0u
+                        terminalBackground.value = it.frame.background?.toInt()?.let { c -> Color(c or (0xFF shl 24)) }
+                    },
                     cursorBadge = typingBy?.let { card ->
                         {
                             UserAvatar(
