@@ -48,6 +48,7 @@ url = { workspace = true }
 time = { version = "0.3", features = ["formatting"] }
 tauri-plugin-updater = "2.14"
 dunce = "1"
+notify = "8"
 
 [dev-dependencies]
 tempfile = "3"

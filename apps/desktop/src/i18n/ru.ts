@@ -568,6 +568,23 @@ export const ru: Readonly<Record<string, string>> = {
   "Connecting to the WebDAV share…": "Подключение к WebDAV…",
   "Connecting to {quickLabel}": "Подключение к {quickLabel}",
   "No saved host named {name}": "Нет сохранённого хоста с именем {name}",
+  "Watch & upload": "Следить и загружать",
+  "Watch & upload: mirror saves from a local folder to this server":
+    "Следить и загружать: отправлять сохранения из локальной папки на этот сервер",
+  "Every file saved under the local folder is uploaded to the same place under the remote folder, until you stop. One way: local → server.":
+    "Каждый файл, сохранённый в локальной папке, загружается в то же место в удалённой папке, пока вы не остановите. В одну сторону: локально → сервер.",
+  "Local folder": "Локальная папка",
+  "Remote folder": "Удалённая папка",
+  Ignore: "Игнорировать",
+  "Names or globs skipped at any depth, separated by spaces":
+    "Имена или маски, пропускаемые на любой глубине, через пробел",
+  "Upload everything in the folder now": "Загрузить всё содержимое папки сейчас",
+  "Delete on the server what is deleted locally": "Удалять на сервере то, что удалено локально",
+  "Start watching": "Начать слежение",
+  "Uploading {n}…": "Загрузка {n}…",
+  Watching: "Слежение",
+  "{n} uploaded ({size})": "загружено: {n} ({size})",
+  "{n} removed": "удалено: {n}",
   "Connecting to {value}": "Подключение к {value}",
   "Connecting via {via}{where}": "Подключение через {via}{where}",
   "Connecting via {via}{where}…": "Подключение через {via}{where}…",
@@ -2307,7 +2324,6 @@ export const ru: Readonly<Record<string, string>> = {
   "Waiting for you to verify the host key": "Ожидание проверки ключа хоста",
   "Waiting…": "Ожидание…",
   Warning: "Предупреждение",
-  Watching: "Просмотр",
   "Watching — click to give remote control": "Просмотр — нажмите, чтобы передать управление",
   "We will forward traffic from specified port and interface address of the selected host.":
     "Трафик с указанного порта и адреса интерфейса выбранного хоста будет перенаправлен.",

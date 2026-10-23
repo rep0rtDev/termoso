@@ -19,6 +19,7 @@ use crate::multiplayer::Multiplayer;
 use crate::prompts::PromptBroker;
 use crate::sessions::Sessions;
 use crate::sftp::SftpSessions;
+use crate::sync::Syncs;
 
 pub const PROFILE_ENV: &str = "TERMOSO_PROFILE_DIR";
 pub const PROFILE_NAME: &str = "default";
@@ -36,6 +37,7 @@ pub struct AppState {
     pub sessions: Sessions,
     pub sftp: SftpSessions,
     pub edits: Edits,
+    pub syncs: Syncs,
     pub forwards: Forwards,
     pub prompts: PromptBroker,
     pub account: AccountRuntime,
@@ -113,6 +115,7 @@ impl AppState {
             sessions: Sessions::default(),
             sftp: SftpSessions::default(),
             edits: Edits::default(),
+            syncs: Syncs::default(),
             forwards: Forwards::default(),
             prompts: PromptBroker::default(),
             account: AccountRuntime::default(),
@@ -136,6 +139,7 @@ impl AppState {
             sessions: Sessions::default(),
             sftp: SftpSessions::default(),
             edits: Edits::default(),
+            syncs: Syncs::default(),
             forwards: Forwards::default(),
             prompts: PromptBroker::default(),
             account: AccountRuntime::default(),

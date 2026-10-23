@@ -33,6 +33,7 @@ mod snippets;
 mod sshid;
 mod state;
 mod tailnet;
+mod sync;
 mod team;
 mod theme_import;
 mod trust;
@@ -223,6 +224,9 @@ pub fn run() {
             commands::drop_mkdir,
             commands::drop_abort,
             commands::edits_list,
+            commands::syncs_list,
+            commands::sync_start,
+            commands::sync_stop,
             commands::edit_open,
             commands::edit_upload_now,
             commands::edit_close,

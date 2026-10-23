@@ -32,6 +32,16 @@ With a remote host in both panes, drag from one to the other — or **Copy to ta
 
 **Edit** opens a remote file in your editor (the system default, or the one set in **Settings → Files**). When you save, the file is uploaded back; the pane shows a small indicator while a file is open for editing. Useful for config files; for anything larger than a few megabytes download first.
 
+## Watch & upload
+
+For the «saved — it's on the server» loop, the SFTP toolbar has **Watch & upload** (the sync icon, shown when the left pane is the local disk). Pick a local folder and a remote folder on the open connection: from then on every file saved, created or renamed under the local folder is uploaded to the same path under the remote one, until you stop it from the bar at the bottom of the SFTP screen. Directories are created on the server as needed.
+
+- One way only, local → server. Nothing is downloaded, and remote files are deleted only if you switch on **Delete on the server what is deleted locally**.
+- **Upload everything in the folder now** (on by default) does a first full upload so the server matches before you start editing.
+- **Ignore** takes names or globs skipped at any depth; the default is `.git node_modules .DS_Store *.swp *~ .#* *.tmp` — editor temp files and dependency folders stay local.
+- Saves are batched for ~400 ms (editors write a file in several steps) and a failed upload is retried twice; the bar shows counts, the last file and the last error.
+- Watches end with the connection and are not remembered between launches. For a two-way or offline-tolerant sync use a tool made for it (rsync, Mutagen, Syncthing); this is deliberately the simple deploy loop.
+
 ## WebDAV
 
 A host can carry a WebDAV share next to (or instead of) SSH: **Add WebDAV** in the host details. The share lives at the host's **address** — the same one SSH uses — so the section only asks for what differs from SSH:

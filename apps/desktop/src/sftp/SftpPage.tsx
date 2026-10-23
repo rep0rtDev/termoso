@@ -16,12 +16,14 @@ import {
   MenuItem,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import ArrowDropDownRoundedIcon from "@mui/icons-material/ArrowDropDownRounded";
 import FolderCopyRoundedIcon from "@mui/icons-material/FolderCopyRounded";
 import ReplayRoundedIcon from "@mui/icons-material/ReplayRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import SyncRoundedIcon from "@mui/icons-material/SyncRounded";
 import { useActiveVault } from "@/app/vault";
 import * as ipc from "@/ipc/commands";
 import type { Conflict, Direction, FsEntry, HostCard, Uuid } from "@/ipc/types";
@@ -35,6 +37,8 @@ import { ConflictDialog, type ConflictDecision, type ConflictPrompt } from "./Co
 import { FilePane, type PaneKey } from "./FilePane";
 import { OpenWithDialog, extensionOf } from "./OpenWithDialog";
 import { TransfersPanel } from "./TransfersPanel";
+import { SyncBar } from "./SyncBar";
+import { SyncDialog } from "./SyncDialog";
 import { dropTargetAt, stageDrop, statPaths } from "./drop";
 import { joinPath } from "./format";
 import {
@@ -88,6 +92,7 @@ export function SftpPage() {
   const [rightPath, setRightPath] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<ConflictPrompt | null>(null);
   const [openWith, setOpenWith] = useState<{ pane: PaneKey; entry: FsEntry } | null>(null);
+  const [syncFor, setSyncFor] = useState<Uuid | null>(null);
   const snack = useSnackbar();
   const settings = useSettings();
   const edits = useSftp((s) => s.edits);
@@ -385,6 +390,18 @@ export function SftpPage() {
               );
             })}
           </Stack>
+          <Box sx={{ flex: 1 }} />
+          {active && leftId === null && (
+            <Tooltip title={tr("Watch & upload: mirror saves from a local folder to this server")}>
+              <IconButton
+                size="small"
+                aria-label={tr("Watch & upload")}
+                onClick={() => setSyncFor(active.id)}
+              >
+                <SyncRoundedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
         </Toolbar>
       )}
 
@@ -394,8 +411,16 @@ export function SftpPage() {
         {renderPane("right")}
       </Stack>
 
+      <SyncBar />
       <TransfersPanel />
       <ConflictDialog prompt={prompt} />
+      <SyncDialog
+        key={syncFor ?? ""}
+        sftpId={syncFor}
+        defaultLocal={leftPath}
+        defaultRemote={rightPath}
+        onClose={() => setSyncFor(null)}
+      />
       <OpenWithDialog
         key={openWith ? `${openWith.pane}:${openWith.entry.path}` : ""}
         entry={openWith?.entry ?? null}
