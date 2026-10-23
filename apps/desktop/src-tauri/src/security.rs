@@ -78,6 +78,7 @@ async fn shutdown<R: Runtime>(app: &AppHandle<R>) {
     crate::sessions::close_all(app).await;
     crate::sftp::close_all(app).await;
     crate::forwarding::stop_all(app).await;
+    crate::agent_server::stop(app).await;
     app.state::<AppState>().edits.close_all();
     crate::account::suspend(app).await;
 }

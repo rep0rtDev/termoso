@@ -399,6 +399,28 @@ function General({ s, update }: SectionProps) {
           control={<Toggle checked={s.useSshAgent} onChange={(v) => update({ useSshAgent: v })} />}
         />
         {s.useSshAgent && <AgentKeyList />}
+        <SettingRow
+          label={tr("Serve vault keys as an SSH agent")}
+          hint={tr(
+            "Termoso runs its own agent: ssh, git and editors on this computer can sign with keys from the vault without the private keys ever being written to disk. Point SSH_AUTH_SOCK at it (line below).",
+          )}
+          last={!s.serveSshAgent}
+          control={
+            <Toggle checked={s.serveSshAgent} onChange={(v) => update({ serveSshAgent: v })} />
+          }
+        />
+        {s.serveSshAgent && (
+          <>
+            <SettingRow
+              label={tr("Confirm every signature")}
+              hint={tr("Ask before a program uses a key; off = sign silently (logged).")}
+              control={
+                <Toggle checked={s.agentConfirm} onChange={(v) => update({ agentConfirm: v })} />
+              }
+            />
+            <AgentServerCard />
+          </>
+        )}
       </SectionCard>
 
       <SectionCard title={tr("Sync")}>
@@ -434,6 +456,84 @@ function General({ s, update }: SectionProps) {
         />
       </SectionCard>
     </>
+  );
+}
+
+function AgentServerCard() {
+  const snackbar = useSnackbar();
+  const q = useQuery({
+    queryKey: ["agentServer"],
+    queryFn: ipc.agentServerStatus,
+    refetchInterval: 15_000,
+  });
+  const a = q.data;
+  const copy = async (text: string) => {
+    await navigator.clipboard.writeText(text);
+    snackbar.notify(tr("Copied"));
+  };
+  return (
+    <Box sx={{ py: 1 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 0.75 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+          {q.isPending
+            ? tr("Starting the agent…")
+            : a?.running
+              ? trn(a.keys.length, "Agent running · {count} key", "Agent running · {count} keys")
+              : tr("Agent not running: {value}", { value: errorMessage(q.error) })}
+        </Typography>
+        <Button
+          size="small"
+          color="inherit"
+          onClick={() =>
+            void ipc
+              .agentServerRefresh()
+              .then(() => q.refetch())
+              .catch((e: unknown) => snackbar.error(errorMessage(e)))
+          }
+          disabled={q.isFetching}
+        >
+          {tr("Refresh")}
+        </Button>
+      </Box>
+      {a?.exportHint && (
+        <Box sx={{ display: "flex", gap: 1, alignItems: "center", mb: 0.75, minWidth: 0 }}>
+          <Mono
+            sx={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            {a.exportHint}
+          </Mono>
+          <Button size="small" color="inherit" onClick={() => void copy(a.exportHint ?? "")}>
+            {tr("Copy")}
+          </Button>
+        </Box>
+      )}
+      {a?.keys.map((k) => (
+        <Box
+          key={k.fingerprint}
+          sx={{ display: "flex", gap: 1.5, alignItems: "baseline", minWidth: 0, py: 0.25 }}
+        >
+          <Mono secondary>{k.keyType}</Mono>
+          <Mono
+            sx={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            {k.fingerprint}
+          </Mono>
+          <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 200 }}>
+            {k.label}
+          </Typography>
+        </Box>
+      ))}
+      {a?.skipped.map((k) => (
+        <Typography
+          key={k.label}
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: "block" }}
+        >
+          {tr("{label} not served: {reason}", { label: k.label, reason: k.reason })}
+        </Typography>
+      ))}
+    </Box>
   );
 }
 

@@ -32,6 +32,7 @@
 
 pub mod account;
 pub mod agent;
+pub mod agent_server;
 pub mod api;
 pub mod autocomplete;
 pub mod cloud;

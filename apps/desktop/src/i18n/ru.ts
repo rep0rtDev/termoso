@@ -3000,4 +3000,23 @@ export const ru: Readonly<Record<string, string>> = {
     "Добавляет публичную часть выбранного ключа в {file} на {host}, подключаясь с текущими учётными данными хоста. Больше ничего не меняется; уже имеющийся ключ остаётся как есть.",
   "No keys in this vault": "В этом хранилище нет ключей",
   "Add key": "Добавить ключ",
+  "Allow SSH key use?": "Разрешить использование SSH-ключа?",
+  Allow: "Разрешить",
+  "{process} asks the Termoso SSH agent to sign with {key}.":
+    "{process} просит SSH-агент Termoso подписать ключом {key}.",
+  "A local program asks the Termoso SSH agent to sign with {key}.":
+    "Локальная программа просит SSH-агент Termoso подписать ключом {key}.",
+  "The private key stays in Termoso; only the signature is handed over.":
+    "Закрытый ключ остаётся в Termoso; наружу уходит только подпись.",
+  "Serve vault keys as an SSH agent": "Раздавать ключи хранилища как SSH-агент",
+  "Termoso runs its own agent: ssh, git and editors on this computer can sign with keys from the vault without the private keys ever being written to disk. Point SSH_AUTH_SOCK at it (line below).":
+    "Termoso запускает собственный агент: ssh, git и редакторы на этом компьютере подписывают ключами из хранилища, а закрытые ключи никогда не пишутся на диск. Укажите на него SSH_AUTH_SOCK (строка ниже).",
+  "Confirm every signature": "Подтверждать каждую подпись",
+  "Ask before a program uses a key; off = sign silently (logged).":
+    "Спрашивать перед тем, как программа использует ключ; выкл. — подписывать молча (с записью в журнал).",
+  "Starting the agent…": "Запуск агента…",
+  "Agent running · {count} key": "Агент работает · {count} ключ",
+  "Agent running · {count} keys": "Агент работает · {count} ключей",
+  "Agent not running: {value}": "Агент не запущен: {value}",
+  "{label} not served: {reason}": "{label} не раздаётся: {reason}",
 };

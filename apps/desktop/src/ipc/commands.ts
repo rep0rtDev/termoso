@@ -7,6 +7,7 @@ import type {
   AgentImportFileForm,
   AgentImportForm,
   AgentKeys,
+  AgentServerStatus,
   AiCommandResponse,
   AiStatus,
   AppInfo,
@@ -433,6 +434,9 @@ export const keyExportFile = (args: {
 export const keyExportToHost = (id: Uuid, hostId: Uuid) =>
   invoke<ExportToHostResult>("key_export_to_host", { id, hostId });
 export const agentKeys = () => invoke<AgentKeys>("agent_keys");
+/** Our own agent (serves vault keys to local tools). */
+export const agentServerStatus = () => invoke<AgentServerStatus>("agent_server_status");
+export const agentServerRefresh = () => invoke<AgentServerStatus>("agent_server_refresh");
 export const keyDelete = (id: Uuid) => invoke<null>("key_delete", { id });
 
 export const identitiesList = (vaultId?: Uuid | null) =>

@@ -172,6 +172,8 @@ function PromptDialog({
           onCancel={cancel}
         />
       );
+    case "agent_sign":
+      return <AgentSignPrompt prompt={prompt} inline={inline} onAnswer={onAnswer} />;
     case "interactive":
       return <InteractivePrompt prompt={prompt} inline={inline} onAnswer={onAnswer} />;
   }
@@ -202,6 +204,55 @@ function KeyBlock({ info, tone }: { info: HostKeyInfo; tone?: "old" | "new" }) {
       </Typography>
       {info.fingerprint}
     </Box>
+  );
+}
+
+function AgentSignPrompt({
+  prompt,
+  inline,
+  onAnswer,
+}: {
+  prompt: Extract<PromptEvent, { kind: "agent_sign" }>;
+  inline?: boolean;
+  onAnswer: (a: PromptAnswer) => void;
+}) {
+  return (
+    <PromptFrame
+      inline={inline}
+      title={tr("Allow SSH key use?")}
+      onClose={() => onAnswer({ kind: "cancel" })}
+      maxWidth="xs"
+      actions={
+        <>
+          <Button color="inherit" onClick={() => onAnswer({ kind: "cancel" })}>
+            {tr("Deny")}
+          </Button>
+          <Box sx={{ flex: 1 }} />
+          <Button variant="contained" autoFocus onClick={() => onAnswer({ kind: "confirm" })}>
+            {tr("Allow")}
+          </Button>
+        </>
+      }
+    >
+      <Stack spacing={1.5}>
+        <Typography variant="body2">
+          {prompt.process
+            ? trx("{process} asks the Termoso SSH agent to sign with {key}.", {
+                process: <b>{prompt.process}</b>,
+                key: <b>{prompt.key_label}</b>,
+              })
+            : trx("A local program asks the Termoso SSH agent to sign with {key}.", {
+                key: <b>{prompt.key_label}</b>,
+              })}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace" }}>
+          {prompt.fingerprint}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {tr("The private key stays in Termoso; only the signature is handed over.")}
+        </Typography>
+      </Stack>
+    </PromptFrame>
   );
 }
 

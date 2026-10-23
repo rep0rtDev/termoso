@@ -68,6 +68,14 @@ pub enum PromptRequest {
         instructions: String,
         questions: Vec<Question>,
     },
+    /// A local program asked our SSH agent to sign with a vault key.
+    /// Answered with [`PromptAnswer::Confirm`] or cancelled.
+    AgentSign {
+        key_label: String,
+        fingerprint: String,
+        /// `ssh (pid 1234)` when the platform tells us who asked.
+        process: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -90,6 +98,8 @@ pub enum PromptAnswer {
     Interactive {
         answers: Vec<Zeroizing<String>>,
     },
+    /// Plain yes (agent signature).
+    Confirm,
     Cancel,
 }
 
