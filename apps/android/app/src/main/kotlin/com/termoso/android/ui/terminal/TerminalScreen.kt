@@ -77,6 +77,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.MutableState
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -200,6 +204,10 @@ fun TerminalScreen(
     var menuFor by remember { mutableStateOf<String?>(null) }
     // Bumped by the session menu to open the History & themes panel, which lives with the terminal.
     var panelRequest by remember { mutableStateOf(0) }
+    // Key grid shown instead of the keyboard; toggled from the session bar like Termius.
+    val gridShown = rememberSaveable { mutableStateOf(false) }
+    // Bumped by the session bar's keyboard button to bring the soft keyboard back.
+    var imeRequest by remember { mutableStateOf(0) }
     // The sharing sheet is per session: switching chips or losing the session closes it.
     LaunchedEffect(active?.id) { liveSheet = false }
 
@@ -225,6 +233,10 @@ fun TerminalScreen(
                     onLive = { liveSheet = true },
                     onMenu = { id -> shell.sessions.setActive(id); menuFor = id },
                     onNew = onNewSession,
+                    gridShown = gridShown.value,
+                    onToggleGrid = {
+                        if (gridShown.value) imeRequest++ else gridShown.value = true
+                    },
                 )
             }
             if (active == null) {
@@ -252,6 +264,8 @@ fun TerminalScreen(
                     onShareConsumed = onShareConsumed,
                     onHardwareKeyHook = onHardwareKeyHook,
                     panelRequest = panelRequest,
+                    gridShown = gridShown,
+                    imeRequest = imeRequest,
                     bar = bar,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
@@ -280,20 +294,20 @@ fun TerminalScreen(
     }
 }
 
-private val ChipShape = RoundedCornerShape(12.dp)
+private val ChipShape = RoundedCornerShape(8.dp)
 
 /** Square 40dp chrome button of the session bar (back, sharing, menu, new). */
 @Composable
 private fun HeaderButton(icon: ImageVector, description: String, tint: Color? = null, onClick: () -> Unit) {
     Box(
         Modifier
-            .size(36.dp)
+            .size(30.dp)
             .clip(ChipShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = description, tint = tint ?: MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = description, tint = tint ?: MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -313,16 +327,19 @@ private fun SessionBar(
     onLive: () -> Unit,
     onMenu: (String) -> Unit,
     onNew: () -> Unit,
+    gridShown: Boolean = false,
+    onToggleGrid: (() -> Unit)? = null,
 ) {
     val activeId = active?.id
+    // Termius: 30 dp tiles and pill, 10 dp apart, 10 dp from the edges, 10 dp above the strip.
     Row(
         Modifier
             .fillMaxWidth()
-            .height(44.dp)
+            .height(50.dp)
             .background(MaterialTheme.colorScheme.surfaceContainer)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         HeaderButton(Icons.Filled.ArrowBackIosNew, stringResource(R.string.back), onClick = onBack)
         val listState = rememberLazyListState()
@@ -342,7 +359,7 @@ private fun SessionBar(
         LazyRow(
             Modifier.weight(1f),
             state = listState,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(sessions, key = { it.id }) { s ->
                 SessionChip(
@@ -351,6 +368,8 @@ private fun SessionBar(
                     onClick = { onSelect(s.id) },
                     onLongClick = { onMenu(s.id) },
                     onClose = { onClose(s.id) },
+                    // A lone session stretches across the row like the Termius pill.
+                    modifier = if (sessions.size == 1) Modifier.fillParentMaxWidth() else Modifier,
                 )
             }
         }
@@ -368,6 +387,13 @@ private fun SessionBar(
             HeaderButton(Icons.Filled.MoreVert, stringResource(R.string.session_actions), onClick = { onMenu(active.id) })
         }
         HeaderButton(Icons.Filled.Add, stringResource(R.string.new_session), tint = MaterialTheme.colorScheme.primary, onClick = onNew)
+        if (onToggleGrid != null && active != null) {
+            HeaderButton(
+                if (gridShown) Icons.Filled.Keyboard else Icons.Filled.GridView,
+                if (gridShown) stringResource(R.string.toggle_keyboard) else stringResource(R.string.more_keys),
+                onClick = onToggleGrid,
+            )
+        }
     }
 }
 
@@ -383,6 +409,7 @@ private fun SessionChip(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onClose: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val state by session.state.collectAsStateWithLifecycle()
     val detected by session.detectedOs.collectAsStateWithLifecycle()
@@ -395,42 +422,42 @@ private fun SessionChip(
         else -> MaterialTheme.colorScheme.onSurface
     }
     Row(
-        Modifier
-            .height(36.dp)
+        modifier
+            .height(30.dp)
             .clip(ChipShape)
             .background(bg)
             // Not focusable: a focus grab (e.g. after a dialog closes) would
             // otherwise scroll the row back to the first chip.
             .focusProperties { canFocus = false }
             .combinedClickable(onClick = onClick, onLongClick = onLongClick, onLongClickLabel = stringResource(R.string.session_actions))
-            .padding(start = 10.dp, end = if (active) 6.dp else 12.dp),
+            .padding(start = 12.dp, end = if (active) 4.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         when {
-            state is SessionState.Connecting -> CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = fg)
-            session.isView -> Icon(Icons.Filled.Groups, contentDescription = null, tint = fg, modifier = Modifier.size(20.dp))
-            else -> HostAvatar(detected ?: session.savedOsName, size = 20)
+            state is SessionState.Connecting -> CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = fg)
+            session.isView -> Icon(Icons.Filled.Groups, contentDescription = null, tint = fg, modifier = Modifier.size(18.dp))
+            else -> HostAvatar(detected ?: session.savedOsName, size = 18)
         }
         Text(
             session.label,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
             color = fg,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 150.dp),
+            modifier = Modifier.weight(1f, fill = false),
         )
         if (active) {
             Icon(
-                Icons.Outlined.Cancel,
+                Icons.Filled.Close,
                 contentDescription = stringResource(R.string.close_session),
                 tint = fg,
                 modifier = Modifier
-                    .size(28.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .size(26.dp)
+                    .clip(RoundedCornerShape(13.dp))
                     .clickable(onClick = onClose)
-                    .padding(4.dp),
+                    .padding(5.dp),
             )
         }
     }
@@ -452,6 +479,10 @@ private fun ActiveSession(
     onHardwareKeyHook: (((KeyEvent) -> Boolean)?) -> Unit,
     /** Incremented by the caller to open the History & themes sheet. */
     panelRequest: Int = 0,
+    /** Whether the key grid stands in for the keyboard (owned by the screen so the session bar can toggle it). */
+    gridShown: MutableState<Boolean> = mutableStateOf(false),
+    /** Incremented by the caller to show the soft keyboard (closing the grid). */
+    imeRequest: Int = 0,
     /** The session bar, drawn between the terminal and the key panel. */
     bar: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -489,7 +520,7 @@ private fun ActiveSession(
     var panelForced by remember(hardwareKeyboard) { mutableStateOf(false) }
     val panelCollapsed = settings.hidePanelWithKeyboard && hardwareKeyboard && !panelForced
 
-    var panelExpanded by rememberSaveable { mutableStateOf(false) }
+    var panelExpanded by gridShown
     var imeShown by remember { mutableStateOf(false) }
     var hiddenInput by remember { mutableStateOf(false) }
     var snippetPicker by remember { mutableStateOf(false) }
@@ -577,6 +608,16 @@ private fun ActiveSession(
             imeShown = true
             panelExpanded = false
         }
+    }
+    LaunchedEffect(imeRequest) {
+        if (imeRequest > 0) {
+            panelExpanded = false
+            if (!imeShown) toggleIme()
+        }
+    }
+    LaunchedEffect(panelExpanded) {
+        // The grid stands in for the keyboard, as in Termius: one or the other.
+        if (panelExpanded && imeShown) hideIme()
     }
 
     fun switchSession(forward: Boolean) {
