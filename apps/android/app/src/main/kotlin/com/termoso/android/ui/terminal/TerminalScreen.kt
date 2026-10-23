@@ -375,6 +375,7 @@ private fun SessionBar(
                     onLongClick = { onMenu(s.id) },
                     onClose = { onClose(s.id) },
                     // A lone session stretches across the row like the Termius pill.
+                    fillWidth = sessions.size == 1,
                     modifier = if (sessions.size == 1) Modifier.fillParentMaxWidth() else Modifier,
                 )
             }
@@ -415,6 +416,8 @@ private fun SessionChip(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onClose: () -> Unit,
+    /** Stretched pill: the name takes the free width so the close button sits at the edge. */
+    fillWidth: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val state by session.state.collectAsStateWithLifecycle()
@@ -452,8 +455,8 @@ private fun SessionChip(
             color = fg,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            // The name takes the free width so the close button sits at the pill's edge, like Termius.
-            modifier = Modifier.weight(1f),
+            // Weight only in a stretched pill: in an unbounded LazyRow item it would collapse to zero.
+            modifier = if (fillWidth) Modifier.weight(1f) else Modifier.widthIn(max = 180.dp),
         )
         if (active) {
             Icon(
