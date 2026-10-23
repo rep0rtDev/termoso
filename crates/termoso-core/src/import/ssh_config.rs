@@ -6,9 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::forwarding::PfKind;
-
-use super::{ImportPreview, ImportedHost, ImportedPfRule, expand_tilde};
+use super::{ImportPreview, ImportedHost, ImportedPfRule, PfKind, expand_tilde};
 
 const MAX_INCLUDE_DEPTH: usize = 8;
 const MULTI_VALUED: &[&str] = &[

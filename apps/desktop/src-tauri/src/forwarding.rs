@@ -44,6 +44,16 @@ pub enum PfKind {
     Dynamic,
 }
 
+impl From<termoso_core::import::PfKind> for PfKind {
+    fn from(k: termoso_core::import::PfKind) -> Self {
+        match k {
+            termoso_core::import::PfKind::Local => Self::Local,
+            termoso_core::import::PfKind::Remote => Self::Remote,
+            termoso_core::import::PfKind::Dynamic => Self::Dynamic,
+        }
+    }
+}
+
 impl PfKind {
     fn as_str(self) -> &'static str {
         match self {

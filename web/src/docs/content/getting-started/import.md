@@ -39,11 +39,11 @@ The provider credentials are kept only in this device's encrypted local storage:
 
 ## Android
 
-Open **Hosts → + → Quick Import**. Paste an `ssh_config` snippet, a list of `user@host:port` lines (one per line, `ssh user@host -p 2222` works too), pick a file, or press **Scan QR** to read a QR code with the camera. The counter on the button shows how many hosts were recognised before anything is created.
+**+ → Import hosts** on the Hosts screen takes pasted text, a QR code or a file from the system picker and runs the same parsers as the desktop: OpenSSH `ssh_config`, a PuTTY registry export (`.reg`), MobaXterm bookmarks (`.mxtsessions`), SecureCRT settings (`.ini` / `.xml`), the ZOC host directory and CSV (the desktop's template or any sheet with host/address columns). The format is detected from the file name and contents; loose `user@host:port` lines work too. Tick the hosts you want — label, address, port, user and a password from the source are imported; key files, jump hosts, proxies and port-forwarding rules are not on the phone, so they are listed as warnings instead. Copy the export to the phone (or open it from a cloud drive) and pick it.
 
 ![Quick Import on Android](/docs/img/android-quick-import.png)
 
-Both formats can be mixed in one paste; QR decoding runs on the device and the camera is only requested when you open the scanner. A handy trick for a new phone: `cat ~/.ssh/config | qrencode -t ansiutf8` on the desktop, then scan.
+QR decoding runs on the device and the camera is only requested when you open the scanner. A handy trick for a new phone: `cat ~/.ssh/config | qrencode -t ansiutf8` on the desktop, then scan.
 
 ## Discover on local network
 

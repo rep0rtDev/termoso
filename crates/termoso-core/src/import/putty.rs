@@ -5,10 +5,9 @@
 
 use std::collections::BTreeMap;
 
-use crate::error::{DesktopError, Result};
-use crate::forwarding::PfKind;
+use crate::error::Result;
 
-use super::{ImportPreview, ImportedHost, ImportedPfRule, ImportedProxy};
+use super::{ImportPreview, ImportedHost, ImportedPfRule, ImportedProxy, PfKind};
 
 pub const REGISTRY_ORIGIN: &str = "HKEY_CURRENT_USER\\Software\\SimonTatham\\PuTTY\\Sessions";
 const SESSIONS_MARKER: &str = "\\simontatham\\putty\\sessions\\";
@@ -161,7 +160,7 @@ pub fn parse_reg_into(text: &str, preview: &mut ImportPreview) -> Result<()> {
             .take(5)
             .any(|l| l.contains("Windows Registry Editor") || l.starts_with("REGEDIT"));
         if !looks_reg {
-            return Err(DesktopError::invalid(
+            return Err(super::invalid(
                 "Not a registry export (.reg) — export PuTTY sessions with regedit or `reg export`",
             ));
         }
@@ -372,32 +371,6 @@ fn forwarding(host_label: &str, spec: &str) -> Option<ImportedPfRule> {
 }
 
 /// Export the live PuTTY sessions key via `reg.exe` (Windows only).
-#[cfg(windows)]
-pub fn export_registry() -> Result<String> {
-    use std::process::Command;
-    let dir = std::env::temp_dir().join(format!("termoso-putty-{}.reg", uuid::Uuid::new_v4()));
-    let mut cmd = Command::new("reg");
-    cmd.args(["export", REGISTRY_ORIGIN, &dir.to_string_lossy(), "/y"]);
-    crate::sessions::hide_console_window(&mut cmd);
-    let status = cmd.output()?;
-    if !status.status.success() {
-        let _ = std::fs::remove_file(&dir);
-        return Err(DesktopError::not_found(
-            "PuTTY has no saved sessions in the registry (or PuTTY is not installed)",
-        ));
-    }
-    let bytes = std::fs::read(&dir)?;
-    let _ = std::fs::remove_file(&dir);
-    Ok(super::decode_text(&bytes))
-}
-
-#[cfg(not(windows))]
-pub fn export_registry() -> Result<String> {
-    Err(DesktopError::invalid(
-        "Reading the PuTTY registry works on Windows only — import a .reg export instead",
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

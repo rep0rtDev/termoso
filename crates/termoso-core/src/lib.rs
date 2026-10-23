@@ -40,6 +40,7 @@ pub mod error;
 pub mod fido2;
 pub mod forward;
 pub mod hostkey;
+pub mod import;
 pub mod keys;
 pub mod live;
 pub mod localfs;

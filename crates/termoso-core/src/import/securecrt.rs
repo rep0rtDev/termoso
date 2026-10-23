@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use super::{ImportPreview, ImportedHost};
-use crate::error::{DesktopError, Result};
+use crate::error::Result;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Value {
@@ -23,7 +23,7 @@ type Options = BTreeMap<String, Value>;
 pub fn parse_ini_into(text: &str, preview: &mut ImportPreview) -> Result<()> {
     let opts = parse_ini(text);
     if opts.is_empty() {
-        return Err(DesktopError::invalid(
+        return Err(super::invalid(
             "Not a SecureCRT session — expected S:\"…\"= / D:\"…\"= lines (Config/Sessions/*.ini)",
         ));
     }
@@ -78,7 +78,7 @@ fn walk(
             Err(e) => {
                 preview
                     .warnings
-                    .push(format!("{}: {}", super::display(&path), e.message));
+                    .push(format!("{}: {}", super::display(&path), e));
                 continue;
             }
         };
@@ -94,9 +94,9 @@ fn walk(
 /// File → Export Settings XML (`<VanDyke><key name="Sessions">…`).
 pub fn parse_xml_into(text: &str, preview: &mut ImportPreview) -> Result<()> {
     let root = parse_xml(text)
-        .ok_or_else(|| DesktopError::invalid("Not a SecureCRT settings export — malformed XML"))?;
+        .ok_or_else(|| super::invalid("Not a SecureCRT settings export — malformed XML"))?;
     let sessions = find_key(&root, "Sessions").ok_or_else(|| {
-        DesktopError::invalid(
+        super::invalid(
             "Not a SecureCRT settings export — no <key name=\"Sessions\"> (File → Export Settings)",
         )
     })?;
