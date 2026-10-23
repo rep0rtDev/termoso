@@ -48,6 +48,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -234,13 +235,12 @@ fun HostsScreen(
                         Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.add))
                     }
                     DropdownMenu(expanded = fabMenu, onDismissRequest = { fabMenu = false }) {
+                        // Create first, then "bring hosts in from somewhere".
                         DropdownMenuItem(text = { Text(stringResource(R.string.new_host)) }, onClick = { fabMenu = false; onNewHost() })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.discover_on_local_network)) }, onClick = { fabMenu = false; dialog = HostsDialog.Discover })
+                        DropdownMenuItem(text = { Text(stringResource(R.string.new_group)) }, onClick = { fabMenu = false; dialog = HostsDialog.NewGroup })
+                        HorizontalDivider()
                         DropdownMenuItem(text = { Text(stringResource(R.string.import_hosts)) }, onClick = { fabMenu = false; dialog = HostsDialog.QuickImport })
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.new_group)) },
-                            onClick = { fabMenu = false; dialog = HostsDialog.NewGroup },
-                        )
+                        DropdownMenuItem(text = { Text(stringResource(R.string.discover_on_local_network)) }, onClick = { fabMenu = false; dialog = HostsDialog.Discover })
                     }
                 }
             }
