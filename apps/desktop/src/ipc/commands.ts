@@ -30,6 +30,9 @@ import type {
   DirEntry,
   Direction,
   EditEvent,
+  SyncCard,
+  SyncEvent,
+  SyncInfo,
   EditInfo,
   Entity,
   ExportToHostResult,
@@ -362,6 +365,18 @@ export const dropWrite = (dir: string, rel: string, chunk: Uint8Array, append: b
 export const dropMkdir = (dir: string, rel: string) => invoke<null>("drop_mkdir", { dir, rel });
 export const dropAbort = (dir: string) => invoke<null>("drop_abort", { dir });
 
+export const syncsList = () => invoke<SyncCard[]>("syncs_list");
+export const syncStart = (args: {
+  sftpId: Uuid;
+  local: string;
+  remote: string;
+  ignore: string[];
+  deleteRemote: boolean;
+  uploadExisting: boolean;
+}) => invoke<SyncInfo>("sync_start", args);
+export const syncStop = (id: Uuid) => invoke<null>("sync_stop", { id });
+export const onSyncEvent = (cb: (e: SyncEvent) => void): Promise<UnlistenFn> =>
+  listen<SyncEvent>("sftp_sync", (ev) => cb(ev.payload));
 export const editsList = () => invoke<EditInfo[]>("edits_list");
 export const editOpen = (sftpId: Uuid, remote: string, withApp: string | null) =>
   invoke<EditInfo>("edit_open", { sftpId, remote, with: withApp });

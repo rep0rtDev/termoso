@@ -2095,6 +2095,38 @@ export type TransferEvent =
   | { type: "failed"; id: Uuid; message: string }
   | { type: "cancelled"; id: Uuid };
 
+/** A local folder watched; every save under it is uploaded to `remote` on `sftpId`. */
+export interface SyncInfo {
+  id: Uuid;
+  sftpId: Uuid;
+  local: string;
+  remote: string;
+  ignore: string[];
+  deleteRemote: boolean;
+  startedAt: string;
+}
+
+export interface SyncStats {
+  uploaded: number;
+  bytes: number;
+  removed: number;
+  failed: number;
+  pending: number;
+  lastPath: string | null;
+  lastAt: string | null;
+  lastError: string | null;
+}
+
+export interface SyncCard {
+  info: SyncInfo;
+  stats: SyncStats;
+}
+
+export type SyncEvent =
+  | { type: "started"; info: SyncInfo }
+  | { type: "progress"; id: Uuid; stats: SyncStats }
+  | { type: "stopped"; id: Uuid; reason: string | null };
+
 /** A remote file opened locally; saves are uploaded back while it is open. */
 export interface EditInfo {
   id: Uuid;

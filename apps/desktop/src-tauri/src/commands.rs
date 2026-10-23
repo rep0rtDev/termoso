@@ -755,6 +755,41 @@ pub async fn drop_abort(dir: String) -> Result<()> {
 // ───────────────────────────── edit in place ─────────────────────────────
 
 #[tauri::command]
+pub fn syncs_list(state: State<'_, AppState>) -> Vec<crate::sync::SyncCard> {
+    state.syncs.list()
+}
+
+/// Watch a local folder and upload every save under it to `remote` on an open
+/// SFTP connection; progress arrives as `sftp_sync` events.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn sync_start<R: Runtime>(
+    app: AppHandle<R>,
+    sftp_id: Uuid,
+    local: String,
+    remote: String,
+    ignore: Vec<String>,
+    delete_remote: bool,
+    upload_existing: bool,
+) -> Result<crate::sync::SyncInfo> {
+    crate::sync::start(
+        app,
+        sftp_id,
+        local,
+        remote,
+        ignore,
+        delete_remote,
+        upload_existing,
+    )
+    .await
+}
+
+#[tauri::command]
+pub fn sync_stop<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
+    crate::sync::stop(&app, id)
+}
+
+#[tauri::command]
 pub fn edits_list(state: State<'_, AppState>) -> Vec<EditInfo> {
     state.edits.list()
 }

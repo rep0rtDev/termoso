@@ -480,6 +480,7 @@ pub async fn close<R: Runtime>(app: &AppHandle<R>, id: Uuid) -> Result<()> {
     state.prompts.cancel_session(id);
     if let Some(live) = state.sftp.remove(id) {
         crate::edits::close_for_sftp(app, id).await;
+        crate::sync::close_for_sftp(app, id);
         let _ = live.fs.close().await;
         let _ = app.emit(SFTP_EVENT, SftpEvent::Closed { id });
         crate::presence::refresh(app);
