@@ -55,6 +55,7 @@ import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import UsbRoundedIcon from "@mui/icons-material/UsbRounded";
 import CloudOutlinedIcon from "@mui/icons-material/CloudOutlined";
+import HubOutlinedIcon from "@mui/icons-material/HubOutlined";
 import LanOutlinedIcon from "@mui/icons-material/LanOutlined";
 import { EmptyState } from "@/components/EmptyState";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -110,6 +111,7 @@ import { AddKeyToHostDialog } from "@/keychain/KeyDialogs";
 import { ImportDialog } from "./ImportDialog";
 import { CLOUD_PROVIDERS, CloudImportDialog } from "./CloudImportDialog";
 import { LanDiscoveryDialog } from "./LanDiscoveryDialog";
+import { TailnetImportDialog } from "./TailnetImportDialog";
 import { ExportCsvDialog } from "./ExportCsvDialog";
 import { TagManagerDialog } from "./TagManagerDialog";
 import { TagsPopover } from "./TagsPopover";
@@ -223,6 +225,7 @@ export function HostsPage() {
   });
   const [cloudProvider, setCloudProvider] = useState<CloudProvider | null>(null);
   const [lanOpen, setLanOpen] = useState(false);
+  const [tailnetOpen, setTailnetOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<HostCard[] | null>(null);
   const [confirmGroup, setConfirmGroup] = useState<GroupNode | null>(null);
@@ -951,6 +954,12 @@ export function HostsPage() {
                 divider: true,
                 onClick: () => setLanOpen(true),
               },
+              {
+                label: tr("Import from Tailscale / NetBird…"),
+                icon: <HubOutlinedIcon fontSize="small" />,
+                disabled: readOnly,
+                onClick: () => setTailnetOpen(true),
+              },
               ...CLOUD_PROVIDERS.map((p, i) => ({
                 label: tr("{short} Integration", { short: p.short }),
                 icon: <CloudOutlinedIcon fontSize="small" />,
@@ -1312,6 +1321,14 @@ export function HostsPage() {
           open={lanOpen}
           vaultId={vaultId}
           onClose={() => setLanOpen(false)}
+          onImported={clearSelection}
+        />
+      )}
+      {vaultId && (
+        <TailnetImportDialog
+          open={tailnetOpen}
+          vaultId={vaultId}
+          onClose={() => setTailnetOpen(false)}
           onImported={clearSelection}
         />
       )}

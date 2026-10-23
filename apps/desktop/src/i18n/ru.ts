@@ -696,6 +696,22 @@ export const ru: Readonly<Record<string, string>> = {
   Disconnect: "Отключиться",
   "Discover on local network": "Найти в локальной сети",
   "Discover on local network…": "Найти в локальной сети…",
+  "Import from Tailscale / NetBird…": "Импорт из Tailscale / NetBird…",
+  "Import from overlay network": "Импорт из оверлейной сети",
+  "Tailscale, NetBird or ZeroTier installed on this computer":
+    "Tailscale, NetBird или ZeroTier, установленные на этом компьютере",
+  "Asking…": "Запрос…",
+  "No Tailscale, NetBird or ZeroTier client found on this computer. Termoso reads the device list from the local client — install one and sign in, then refresh.":
+    "Клиент Tailscale, NetBird или ZeroTier на этом компьютере не найден. Termoso берёт список устройств у локального клиента — установите его, войдите и обновите список.",
+  "The client is running but reports no machines. Check that it is signed in and connected.":
+    "Клиент запущен, но устройств не сообщает. Проверьте, что он авторизован и подключён.",
+  "MagicDNS / FQDN names keep working when the overlay address changes.":
+    "Имена MagicDNS / FQDN продолжают работать при смене адреса в оверлейной сети.",
+  "DNS name": "DNS-имя",
+  "This device": "Это устройство",
+  offline: "офлайн",
+  "Added {count} host from the overlay network": "Добавлен {count} хост из оверлейной сети",
+  "Added {count} hosts from the overlay network": "Добавлено {count} хостов из оверлейной сети",
   Dismiss: "Скрыть",
   "Display name": "Отображаемое имя",
   "Do it later": "Позже",

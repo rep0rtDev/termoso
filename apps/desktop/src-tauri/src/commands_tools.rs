@@ -839,6 +839,12 @@ pub async fn mdns_browse(timeout_ms: Option<u64>) -> Result<Vec<termoso_core::md
     Ok(termoso_core::mdns::browse(timeout).await?)
 }
 
+/// Machines known to the local Tailscale / NetBird / ZeroTier client.
+#[tauri::command]
+pub async fn tailnet_scan() -> Result<crate::tailnet::TailnetScan> {
+    crate::tailnet::scan().await
+}
+
 // ───────────────────────────── export / backup ─────────────────────────────
 
 /// Write hosts as CSV. Passwords are left blank unless `include_passwords`.

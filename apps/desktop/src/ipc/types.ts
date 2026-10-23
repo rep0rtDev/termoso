@@ -1457,6 +1457,35 @@ export interface LocalDevice {
   txt?: Record<string, string>;
 }
 
+export type TailnetProvider = "tailscale" | "netbird" | "zerotier";
+
+/** A machine the local Tailscale / NetBird / ZeroTier client knows. A candidate only. */
+export interface TailnetDevice {
+  provider: TailnetProvider;
+  name: string;
+  /** MagicDNS / NetBird FQDN, without trailing dot. */
+  dnsName: string | null;
+  /** Overlay addresses, IPv4 first. */
+  addresses: string[];
+  os: string | null;
+  online: boolean;
+  tags: string[];
+  /** This machine itself. */
+  thisDevice: boolean;
+}
+
+export interface TailnetProviderStatus {
+  id: TailnetProvider;
+  installed: boolean;
+  /** CLI found but it failed (daemon down, logged out…). */
+  error: string | null;
+}
+
+export interface TailnetScan {
+  providers: TailnetProviderStatus[];
+  devices: TailnetDevice[];
+}
+
 // ───────────────────────────── export / backup ─────────────────────────────
 
 export interface CsvExportReport {

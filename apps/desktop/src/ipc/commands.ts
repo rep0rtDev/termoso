@@ -62,6 +62,7 @@ import type {
   Listing,
   LiveEvent,
   LocalDevice,
+  TailnetScan,
   LocalVault,
   LogBody,
   LogCard,
@@ -565,6 +566,8 @@ export const onCloudSync = (cb: (g: CloudSyncGroup) => void): Promise<UnlistenFn
 /** Browse the LAN over mDNS; returns candidates, creates nothing. */
 export const mdnsBrowse = (timeoutMs?: number) =>
   invoke<LocalDevice[]>("mdns_browse", { timeoutMs: timeoutMs ?? null });
+
+export const tailnetScan = () => invoke<TailnetScan>("tailnet_scan");
 
 // ───────────────────────────── export / backup ─────────────────────────────
 
