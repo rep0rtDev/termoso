@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -286,7 +287,7 @@ private val ChipShape = RoundedCornerShape(12.dp)
 private fun HeaderButton(icon: ImageVector, description: String, tint: Color? = null, onClick: () -> Unit) {
     Box(
         Modifier
-            .size(40.dp)
+            .size(36.dp)
             .clip(ChipShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .clickable(onClick = onClick),
@@ -317,11 +318,11 @@ private fun SessionBar(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .height(44.dp)
             .background(MaterialTheme.colorScheme.surfaceContainer)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         HeaderButton(Icons.Filled.ArrowBackIosNew, stringResource(R.string.back), onClick = onBack)
         val listState = rememberLazyListState()
@@ -395,7 +396,7 @@ private fun SessionChip(
     }
     Row(
         Modifier
-            .height(40.dp)
+            .height(36.dp)
             .clip(ChipShape)
             .background(bg)
             // Not focusable: a focus grab (e.g. after a dialog closes) would
@@ -409,7 +410,7 @@ private fun SessionChip(
         when {
             state is SessionState.Connecting -> CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = fg)
             session.isView -> Icon(Icons.Filled.Groups, contentDescription = null, tint = fg, modifier = Modifier.size(20.dp))
-            else -> HostAvatar(detected ?: session.savedOsName, size = 22)
+            else -> HostAvatar(detected ?: session.savedOsName, size = 20)
         }
         Text(
             session.label,
@@ -759,6 +760,14 @@ private fun ActiveSession(
     // so the terminal fills the screen; the next one leaves to Connections.
     @OptIn(ExperimentalLayoutApi::class)
     val imeVisible = WindowInsets.isImeVisible
+    // Last measured keyboard height: the key grid takes exactly this much room
+    // when it replaces the keyboard, so the terminal does not jump between the two.
+    val density = LocalDensity.current
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
+    var keyboardHeight by rememberSaveable { mutableStateOf(0f) }
+    LaunchedEffect(imeBottomPx, imeVisible) {
+        if (imeVisible && imeBottomPx > 0) keyboardHeight = maxOf(keyboardHeight, with(density) { imeBottomPx.toDp().value })
+    }
     BackHandler(enabled = imeVisible || panelExpanded) {
         when {
             panelExpanded -> panelExpanded = false
@@ -911,6 +920,7 @@ private fun ActiveSession(
                 onCompose = { composeOpen = true },
                 onVoice = ::voiceInput,
                 onKeyPressed = ::tap,
+                gridHeight = if (keyboardHeight > 0f) keyboardHeight.dp else null,
             )
         }
     }

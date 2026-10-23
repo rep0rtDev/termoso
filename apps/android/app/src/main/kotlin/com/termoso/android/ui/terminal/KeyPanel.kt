@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -87,10 +86,11 @@ fun TerminalController.press(key: PanelKey) {
 
 private val KeyShape = RoundedCornerShape(10.dp)
 private val KeyGap = 6.dp
-private val StripKeyHeight = 40.dp
+private val StripKeyHeight = 36.dp
 private val GridKeyHeight = 44.dp
-private val GridMaxHeight = 232.dp
-private val BarHeight = 46.dp
+/** Grid height when the keyboard has never been shown yet (no measured height to match). */
+private val GridDefaultHeight = 272.dp
+private val BarHeight = 44.dp
 
 /** Below this width the strip keeps only the key row; the secondary actions move into a menu. */
 private val CompactBarWidth = 600.dp
@@ -98,15 +98,15 @@ private val ChromePadding = PaddingValues(horizontal = 8.dp, vertical = 5.dp)
 
 /** Keys the compact strip always offers, scrolling sideways past the edge. */
 private val stripKeys: List<PanelKey> = listOf(
+    PanelKey.Special("shift+tab", SpecialKey.TAB, KeyMods(ctrl = false, alt = false, shift = true)),
     PanelKey.Special("esc", SpecialKey.ESCAPE),
-    PanelKey.Special("tab", SpecialKey.TAB),
     PanelKey.Modifier("ctrl", StickyMod.CTRL),
-    PanelKey.Modifier("alt", StickyMod.ALT),
     PanelKey.Special("←", SpecialKey.LEFT),
     PanelKey.Special("↑", SpecialKey.UP),
     PanelKey.Special("↓", SpecialKey.DOWN),
     PanelKey.Special("→", SpecialKey.RIGHT),
-    PanelKey.Special("shift\ntab", SpecialKey.TAB, KeyMods(ctrl = false, alt = false, shift = true)),
+    PanelKey.Modifier("alt", StickyMod.ALT),
+    PanelKey.Special("tab", SpecialKey.TAB),
     PanelKey.Text("-"),
     PanelKey.Text("|"),
     PanelKey.Text("/"),
@@ -147,6 +147,8 @@ fun KeyPanel(
     onCompose: () -> Unit = {},
     onVoice: () -> Unit = {},
     onKeyPressed: () -> Unit,
+    /** Height of the soft keyboard this grid stands in for; matching it keeps the terminal from jumping. */
+    gridHeight: androidx.compose.ui.unit.Dp? = null,
     modifier: Modifier = Modifier,
 ) {
     fun press(key: PanelKey) {
@@ -191,47 +193,44 @@ fun KeyPanel(
                 Row(
                     Modifier.fillMaxWidth().height(BarHeight).padding(ChromePadding),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(KeyGap),
                 ) {
-                    IconKey(Icons.Filled.GridView, stringResource(R.string.more_keys), Modifier.width(44.dp), onClick = onToggleExpanded)
-                    if (!compact) {
-                        IconKey(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai), Modifier.width(40.dp)) { onKeyPressed(); onAskAi() }
-                        IconKey(Icons.Filled.Password, stringResource(R.string.password), Modifier.width(40.dp)) { onKeyPressed(); onHiddenInput() }
-                    }
                     LazyRow(
                         Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(KeyGap),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
+                        item("ai") { IconKey(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai), Modifier.width(40.dp), flat = true) { onKeyPressed(); onAskAi() } }
+                        item("pw") { IconKey(Icons.Filled.Password, stringResource(R.string.password), Modifier.width(40.dp), flat = true) { onKeyPressed(); onHiddenInput() } }
+                        if (canAttach) {
+                            item("attach") { IconKey(Icons.Filled.AttachFile, stringResource(R.string.send_file), Modifier.width(40.dp), flat = true) { onKeyPressed(); onAttach() } }
+                        }
+                        item("paste") { IconKey(Icons.Filled.ContentPaste, stringResource(R.string.paste_2), Modifier.width(40.dp), flat = true) { onKeyPressed(); onPaste() } }
                         stripKeys.forEach { key ->
                             item(key = KeyActions.encode(key)) {
-                                TextKey(key, active(key), Modifier.widthIn(min = 44.dp), height = StripKeyHeight) { press(it) }
+                                TextKey(key, active(key), Modifier.widthIn(min = 40.dp), height = StripKeyHeight, flat = true) { press(it) }
                             }
+                        }
+                        if (!compact) {
+                            item("voice") { IconKey(Icons.Filled.Mic, stringResource(R.string.voice_input), Modifier.width(40.dp), flat = true) { onKeyPressed(); onVoice() } }
                         }
                     }
                     if (compact) {
                         Box {
-                            IconKey(Icons.Filled.MoreHoriz, stringResource(R.string.more), Modifier.width(40.dp)) { more = true }
+                            IconKey(Icons.Filled.MoreHoriz, stringResource(R.string.more), Modifier.width(40.dp), flat = true) { more = true }
                             DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
-                                MenuAction(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai)) { more = false; onKeyPressed(); onAskAi() }
-                                MenuAction(Icons.Filled.Password, stringResource(R.string.password)) { more = false; onKeyPressed(); onHiddenInput() }
-                                if (canAttach) {
-                                    MenuAction(Icons.Filled.AttachFile, stringResource(R.string.send_file)) { more = false; onKeyPressed(); onAttach() }
-                                }
                                 MenuAction(Icons.Filled.Mic, stringResource(R.string.voice_input)) { more = false; onKeyPressed(); onVoice() }
-                                MenuAction(Icons.Filled.ContentPaste, stringResource(R.string.paste_2)) { more = false; onKeyPressed(); onPaste() }
+                                MenuAction(Icons.Filled.EditNote, stringResource(R.string.compose_message)) { more = false; onKeyPressed(); onCompose() }
+                                MenuAction(Icons.Filled.DataObject, stringResource(R.string.snippets)) { more = false; onKeyPressed(); onSnippets() }
+                                MenuAction(Icons.Filled.History, stringResource(R.string.history_and_themes)) { more = false; onKeyPressed(); onPanel() }
                             }
                         }
-                    } else {
-                        if (canAttach) {
-                            IconKey(Icons.Filled.AttachFile, stringResource(R.string.send_file), Modifier.width(40.dp)) { onKeyPressed(); onAttach() }
-                        }
-                        IconKey(Icons.Filled.Mic, stringResource(R.string.voice_input), Modifier.width(40.dp)) { onKeyPressed(); onVoice() }
-                        IconKey(Icons.Filled.ContentPaste, stringResource(R.string.paste_2), Modifier.width(44.dp)) { onKeyPressed(); onPaste() }
                     }
+                    IconKey(Icons.Filled.GridView, stringResource(R.string.more_keys), Modifier.width(40.dp), flat = true, onClick = onToggleExpanded)
                     IconKey(
                         if (imeShown) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
                         stringResource(R.string.toggle_keyboard),
-                        Modifier.width(44.dp),
+                        Modifier.width(40.dp),
+                        flat = true,
                         onClick = onToggleIme,
                     )
                 }
@@ -247,7 +246,7 @@ fun KeyPanel(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(max = GridMaxHeight)
+                    .height((gridHeight ?: GridDefaultHeight) - GridKeyHeight - KeyGap - 8.dp - BarHeight - 4.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(KeyGap),
             ) {
@@ -302,11 +301,14 @@ private fun TextKey(
     active: Boolean,
     modifier: Modifier = Modifier,
     height: androidx.compose.ui.unit.Dp = GridKeyHeight,
+    /** Strip style: no tile, just the label (Termius-like). */
+    flat: Boolean = false,
     onPress: (PanelKey) -> Unit,
 ) {
     val twoLine = key.label.contains('\n')
     val single = when {
         twoLine -> 11.sp
+        flat -> 14.sp
         key.label.length <= 3 -> 14.sp
         key.label.length <= 4 -> 11.sp
         else -> 10.sp
@@ -315,9 +317,9 @@ private fun TextKey(
         modifier
             .height(height)
             .clip(KeyShape)
-            .background(keyContainer(active))
+            .background(if (flat && !active) Color.Transparent else keyContainer(active))
             .clickable { onPress(key) }
-            .padding(horizontal = 4.dp),
+            .padding(horizontal = if (flat) 8.dp else 4.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -365,6 +367,7 @@ private fun IconKey(
     description: String,
     modifier: Modifier = Modifier,
     selected: Boolean = false,
+    flat: Boolean = false,
     onClick: () -> Unit,
 ) {
     Box(
@@ -379,7 +382,7 @@ private fun IconKey(
             icon,
             contentDescription = description,
             tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(if (flat) 20.dp else 22.dp),
         )
     }
 }
