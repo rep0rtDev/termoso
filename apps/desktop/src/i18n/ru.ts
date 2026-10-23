@@ -582,7 +582,7 @@ export const ru: Readonly<Record<string, string>> = {
   "Delete on the server what is deleted locally": "Удалять на сервере то, что удалено локально",
   "Start watching": "Начать слежение",
   "Uploading {n}…": "Загрузка {n}…",
-  Watching: "Слежение",
+  "Watching for changes": "Слежу за изменениями",
   "{n} uploaded ({size})": "загружено: {n} ({size})",
   "{n} removed": "удалено: {n}",
   "Connecting to {value}": "Подключение к {value}",
