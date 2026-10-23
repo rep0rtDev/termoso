@@ -49,6 +49,17 @@ Both formats can be mixed in one paste; QR decoding runs on the device and the c
 
 **Discover on local network** (in the **+** menu on Android, and under **New host ▾** on the desktop) lists SSH and SFTP servers that advertise themselves over mDNS/DNS-SD on your network — Linux machines with Avahi, macOS with Remote Login on, NAS boxes, Raspberry Pis. Tap one to connect or save it.
 
+## Import from Tailscale, NetBird or ZeroTier
+
+On the desktop, **New host ▾ → Import from Tailscale / NetBird…** lists the machines your overlay-network client knows about. Termoso only asks the client that is already installed and signed in on this computer (`tailscale status --json`, `netbird status --json`, `zerotier-cli -j listnetworks`); nothing is sent anywhere and nothing is stored until you click **Add**.
+
+- Pick the devices to import, choose whether hosts connect by **DNS name** (MagicDNS / NetBird FQDN — survives address changes) or by **IP address**, and set an optional username, group and vault.
+- Devices already present in the vault (same name or address) are shown but skipped, so re-importing never creates duplicates. Offline peers are listed greyed out and can still be imported.
+- Tailscale tags (`tag:server` → `server`) and NetBird groups become host tags.
+- ZeroTier's CLI only reports this computer's own addresses per network, not other peers, so for ZeroTier the list is informational; add peers by their managed IP from the ZeroTier Central page.
+
+If no client is found, the dialog says so — install Tailscale, NetBird or ZeroTier, sign in, then **Refresh**.
+
 ## Shell history
 
 **Settings → Terminal → Import shell history** reads the history file of the remote shell when you connect, so autocomplete can suggest commands you already ran there. It is off by default, and the imported history is kept in memory only for that session.

@@ -31,6 +31,7 @@ mod smoke;
 mod snippets;
 mod sshid;
 mod state;
+mod tailnet;
 mod team;
 mod theme_import;
 mod trust;
@@ -285,6 +286,7 @@ pub fn run() {
             commands_tools::cloud_sync_forget,
             commands_tools::cloud_sync_run,
             commands_tools::mdns_browse,
+            commands_tools::tailnet_scan,
             commands_tools::hosts_export_csv,
             commands_tools::backup_export,
             commands_tools::backup_inspect,
