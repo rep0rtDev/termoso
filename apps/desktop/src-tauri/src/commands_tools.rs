@@ -550,6 +550,18 @@ pub async fn snippet_set_targets(
     snippets::set_targets(&*state.store()?, id, &host_ids)
 }
 
+/// Run a snippet on saved hosts without opening terminals; see
+/// [`snippets::run_quiet`].
+#[tauri::command]
+pub async fn snippet_run_quiet<R: Runtime>(
+    app: AppHandle<R>,
+    id: Uuid,
+    host_ids: Vec<Uuid>,
+    vars: HashMap<String, String>,
+) -> Result<snippets::QuietRun> {
+    snippets::run_quiet(&app, id, &host_ids, &vars).await
+}
+
 #[tauri::command]
 pub async fn snippet_run(
     state: State<'_, AppState>,
