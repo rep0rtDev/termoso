@@ -3,7 +3,7 @@
 //! aliases, so exports from other tools usually work too. Only the address
 //! column is required.
 
-use crate::error::{DesktopError, Result};
+use crate::error::Result;
 
 use super::{ImportPreview, ImportedHost};
 
@@ -131,11 +131,11 @@ fn split_list(s: &str) -> Vec<String> {
 pub fn parse_into(text: &str, preview: &mut ImportPreview) -> Result<()> {
     let rows = records(text);
     let Some(header) = rows.first() else {
-        return Err(DesktopError::invalid("The CSV file is empty"));
+        return Err(super::invalid("The CSV file is empty"));
     };
     let cols = columns(header);
     let Some(addr_col) = cols.address else {
-        return Err(DesktopError::invalid(
+        return Err(super::invalid(
             "No host column found — the first row must be a header like \
              `Groups,Label,Tags,Hostname/IP,Protocol,Port,Username,Password`",
         ));

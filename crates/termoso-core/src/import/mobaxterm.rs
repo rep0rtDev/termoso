@@ -5,7 +5,7 @@
 //! part of the file, so they are never imported.
 
 use super::{ImportPreview, ImportedHost, ImportedProxy};
-use crate::error::{DesktopError, Result};
+use crate::error::Result;
 
 const TYPE_SSH: u32 = 109;
 const TYPE_TELNET: u32 = 98;
@@ -68,7 +68,7 @@ pub fn parse_into(text: &str, preview: &mut ImportPreview) -> Result<()> {
         }
     }
     if !seen_section {
-        return Err(DesktopError::invalid(
+        return Err(super::invalid(
             "Not a MobaXterm sessions file — expected a [Bookmarks] section (.mxtsessions export or MobaXterm.ini)",
         ));
     }

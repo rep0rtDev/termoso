@@ -1642,4 +1642,7 @@
     <string name="summary_copied">Summary copied</string>
     <string name="ok">OK</string>
     <string name="exit_code">Exit %1$s</string>
+    <string name="import_hosts">Import hosts</string>
+    <string name="import_hosts_hint">Paste an ssh_config or user@host:port lines, scan a QR code, or pick a file: ssh_config, PuTTY .reg export, MobaXterm bookmarks, SecureCRT settings, ZOC host directory, CSV. The format is detected automatically.</string>
+    <string name="import_detected_format">Detected: %1$s</string>
 </resources>

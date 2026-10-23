@@ -27,6 +27,7 @@ use crate::dto::*;
 use crate::error::{MobileError, Result};
 use crate::fido2::{self, Fido2GenerateDraft, Fido2Listener, Fido2LoadDraft, SecurityKeyCard};
 use crate::forward::{self, PfRuleDraft, PfRuleItem, PfTunnel, TunnelLaunch, TunnelListener};
+use crate::import::{self as host_import, ImportPreviewItem};
 use crate::keyexport::{KeyExport, KeyExportLaunch, KeyExportListener};
 use crate::live::{LiveListener, LiveShare};
 use crate::presence::{self, TeamPresenceCard};
@@ -599,6 +600,17 @@ impl TermosoApp {
             termoso_core::webdav::ClientIdentity::from_pem(&certificate, &private_key)?
                 .fingerprint(),
         )
+    }
+
+    /// Parse pasted text or a picked file (ssh_config, PuTTY .reg, MobaXterm,
+    /// SecureCRT, ZOC, CSV) into a host preview; `source` overrides detection.
+    pub fn import_parse(
+        &self,
+        text: String,
+        file_name: String,
+        source: Option<String>,
+    ) -> Result<ImportPreviewItem> {
+        host_import::parse(&text, &file_name, source)
     }
 
     pub fn import_key(&self, draft: KeyImportDraft) -> Result<KeyItem> {

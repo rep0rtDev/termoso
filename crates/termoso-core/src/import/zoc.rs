@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use super::{ImportPreview, ImportedHost};
-use crate::error::{DesktopError, Result};
+use crate::error::Result;
 
 const DEVICE_SERIAL: i64 = 1;
 const DEVICE_SSH: i64 = 9;
@@ -24,7 +24,7 @@ pub fn parse_into(text: &str, preview: &mut ImportPreview) -> Result<()> {
         .map(|l| l.trim().trim_start_matches('\u{feff}'))
         .collect();
     if !lines.iter().any(|l| l.eq_ignore_ascii_case("[HOST]")) {
-        return Err(DesktopError::invalid(
+        return Err(super::invalid(
             "Not a ZOC host directory — expected [HOST] entries (HostDirectory.zhd)",
         ));
     }

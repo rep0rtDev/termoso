@@ -1676,4 +1676,7 @@
     <string name="summary_copied">Сводка скопирована</string>
     <string name="ok">ОК</string>
     <string name="exit_code">Код %1$s</string>
+    <string name="import_hosts">Импорт хостов</string>
+    <string name="import_hosts_hint">Вставьте ssh_config или строки user@host:port, отсканируйте QR или выберите файл: ssh_config, экспорт реестра PuTTY (.reg), закладки MobaXterm, настройки SecureCRT, каталог хостов ZOC, CSV. Формат определяется автоматически.</string>
+    <string name="import_detected_format">Распознано: %1$s</string>
 </resources>

@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.termoso.android.R
 import com.termoso.android.data.VaultRepository
 import com.termoso.android.data.userMessage
+import com.termoso.core.ImportPreviewItem
+import com.termoso.core.ImportedHostItem
 import com.termoso.core.GroupItem
 import com.termoso.core.HostItem
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,15 +82,30 @@ class HostsViewModel(
         }
     }
 
-    /** Quick Import: creates one host per parsed entry in the current vault/group. */
-    fun importHosts(items: List<ImportedHost>) {
+    /** Parse pasted text or a picked file with the shared parsers (ssh_config, PuTTY .reg, MobaXterm, SecureCRT, ZOC, CSV). */
+    suspend fun parseImport(text: String, fileName: String): ImportPreviewItem =
+        repo.read { importParse(text, fileName, null) }
+
+    /** Import: creates one host per selected entry in the current vault/group. */
+    fun importHosts(items: List<ImportedHostItem>) {
         val vault = currentVault ?: return
         viewModelScope.launch {
             runCatching {
                 repo.write {
                     items.forEach { h ->
                         val d = newHostDraft(vault, groupId)
-                        saveHost(d.copy(label = h.label, address = h.address, port = h.port?.toUShort(), username = h.username))
+                        saveHost(
+                            d.copy(
+                                label = h.label.ifBlank { h.address },
+                                address = h.address,
+                                port = h.port,
+                                username = h.username,
+                                password = h.password,
+                                notes = listOf(h.notes, h.groupPath.takeIf { it.isNotEmpty() }?.joinToString(" / ")?.let { "Imported from: $it" }.orEmpty())
+                                    .filter { it.isNotBlank() }
+                                    .joinToString("\n"),
+                            ),
+                        )
                     }
                 }
             }

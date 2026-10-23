@@ -8,13 +8,6 @@
 //! (CSV, PuTTY proxy) stay in the Rust-side preview cache and are redacted
 //! from what the UI receives; the UI refers to a preview by id.
 
-mod csv;
-mod mobaxterm;
-mod putty;
-mod securecrt;
-mod ssh_config;
-mod zoc;
-
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -26,159 +19,18 @@ use termoso_core::store::Store;
 use uuid::Uuid;
 
 use crate::error::{DesktopError, Result};
-use crate::forwarding::{self, PfKind, PfRuleForm};
+use crate::forwarding::{self, PfRuleForm};
 use crate::hosts::{self, HostForm, TelnetForm};
 use crate::keychain;
 use crate::state::AppState;
 use crate::trust;
+pub use termoso_core::import::{
+    ImportPreview, ImportSource, ImportedKey, ImportedKnownHost, ImportedProxy, MAX_TEXT_FILE,
+    PfKind, csv, default_ssh_dir, display, expand_tilde, mobaxterm, putty, read_text, securecrt,
+    ssh_config, zoc,
+};
 
 const MAX_KEY_FILE: u64 = 64 * 1024;
-const MAX_TEXT_FILE: u64 = 16 * 1024 * 1024;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ImportSource {
-    SshConfig,
-    Putty,
-    Csv,
-    Mobaxterm,
-    Securecrt,
-    Zoc,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportedProxy {
-    /// `socks4`, `socks5`, `http`.
-    pub kind: String,
-    pub host: String,
-    pub port: u16,
-    pub username: String,
-    /// Never leaves Rust; lands in the encrypted vault at apply time.
-    #[serde(skip_serializing)]
-    pub password: Option<String>,
-    pub has_password: bool,
-}
-
-#[derive(Debug, Clone, Default, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportedHost {
-    pub label: String,
-    pub address: String,
-    /// `ssh` or `telnet`.
-    pub protocol: String,
-    pub port: Option<u16>,
-    pub username: String,
-    /// Never leaves Rust; lands in the encrypted vault at apply time.
-    #[serde(skip_serializing)]
-    pub password: Option<String>,
-    pub has_password: bool,
-    pub group_path: Vec<String>,
-    pub tags: Vec<String>,
-    /// Private key file referenced by the source (`IdentityFile`,
-    /// `PublicKeyFile`); resolved against the imported keys at apply time.
-    pub key_path: Option<String>,
-    /// `ProxyJump` entries as written (`alias`, `user@host:port`).
-    pub jump_hosts: Vec<String>,
-    pub proxy: Option<ImportedProxy>,
-    pub agent_forwarding: bool,
-    pub forward_x11: bool,
-    pub env_variables: Vec<(String, String)>,
-    pub keep_alive_interval: Option<u32>,
-    pub timeout: Option<u32>,
-    /// Free text from the source (SecureCRT description, ZOC memo).
-    pub notes: String,
-    /// Source-specific notes for the user (ignored directives etc.).
-    pub warnings: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportedKey {
-    pub path: String,
-    pub name: String,
-    pub key_type: String,
-    pub bits: usize,
-    pub fingerprint: String,
-    pub encrypted: bool,
-    /// `authorized_keys` line, used to skip keys already in the vault.
-    pub public_key: String,
-    /// A `.pub` without its private half: stored public-only, the SSH
-    /// agent signs (OpenSSH `IdentityFile key.pub`).
-    pub agent_backed: bool,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportedKnownHost {
-    pub hostname: String,
-    pub key_type: String,
-    pub fingerprint: String,
-    /// Plain `known_hosts` line for this single host.
-    pub line: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportedPfRule {
-    /// Label of the host (in this preview) that carries the tunnel.
-    pub host_label: String,
-    pub kind: PfKind,
-    pub bound_address: String,
-    pub local_port: u16,
-    pub remote_host: String,
-    pub remote_port: u16,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportPreview {
-    /// Handle for `apply` / `discard`; the full preview lives in the cache.
-    pub id: Uuid,
-    pub source: ImportSource,
-    /// Where the data came from (path, registry), for the dialog header.
-    pub origin: String,
-    pub hosts: Vec<ImportedHost>,
-    pub keys: Vec<ImportedKey>,
-    pub known_hosts: Vec<ImportedKnownHost>,
-    pub pf_rules: Vec<ImportedPfRule>,
-    /// Non-fatal problems: skipped files, ignored directives.
-    pub warnings: Vec<String>,
-}
-
-impl ImportPreview {
-    fn new(source: ImportSource, origin: impl Into<String>) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            source,
-            origin: origin.into(),
-            hosts: Vec::new(),
-            keys: Vec::new(),
-            known_hosts: Vec::new(),
-            pf_rules: Vec::new(),
-            warnings: Vec::new(),
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.hosts.is_empty()
-            && self.keys.is_empty()
-            && self.known_hosts.is_empty()
-            && self.pf_rules.is_empty()
-    }
-
-    /// Set the `has_password` flags the UI sees instead of the secrets.
-    fn seal(mut self) -> Self {
-        for h in &mut self.hosts {
-            h.has_password = h.password.as_deref().is_some_and(|p| !p.is_empty());
-            if let Some(p) = &mut h.proxy {
-                p.has_password = p.password.as_deref().is_some_and(|s| !s.is_empty());
-            }
-        }
-        self
-    }
-}
-
 fn cache() -> &'static Mutex<HashMap<Uuid, ImportPreview>> {
     static CACHE: OnceLock<Mutex<HashMap<Uuid, ImportPreview>>> = OnceLock::new();
     CACHE.get_or_init(Mutex::default)
@@ -246,87 +98,6 @@ pub struct ImportReport {
 
 // ───────────────────────────── discovery ─────────────────────────────
 
-pub fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-}
-
-/// `~/.ssh` of the current user (may not exist).
-pub fn default_ssh_dir() -> Option<PathBuf> {
-    home_dir().map(|h| h.join(".ssh"))
-}
-
-fn expand_tilde(path: &str) -> PathBuf {
-    if let Some(rest) = path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\")) {
-        if let Some(home) = home_dir() {
-            return home.join(rest);
-        }
-    } else if path == "~"
-        && let Some(home) = home_dir()
-    {
-        return home;
-    }
-    PathBuf::from(path)
-}
-
-fn display(p: &Path) -> String {
-    p.to_string_lossy().into_owned()
-}
-
-fn read_text(path: &Path, max: u64) -> Result<String> {
-    let meta = std::fs::metadata(path)?;
-    if !meta.is_file() {
-        return Err(DesktopError::invalid(format!(
-            "{} is not a file",
-            display(path)
-        )));
-    }
-    if meta.len() > max {
-        return Err(DesktopError::invalid(format!(
-            "{} is too large",
-            display(path)
-        )));
-    }
-    let bytes = std::fs::read(path)?;
-    Ok(decode_text(&bytes))
-}
-
-/// UTF-8, or UTF-16LE/BE with BOM (what `regedit` writes).
-fn decode_text(bytes: &[u8]) -> String {
-    if bytes.starts_with(&[0xFF, 0xFE]) {
-        return utf16(&bytes[2..], true);
-    }
-    if bytes.starts_with(&[0xFE, 0xFF]) {
-        return utf16(&bytes[2..], false);
-    }
-    if bytes.len() >= 4 && bytes.iter().skip(1).step_by(2).take(64).all(|b| *b == 0) {
-        return utf16(bytes, true);
-    }
-    let text = String::from_utf8_lossy(bytes);
-    text.strip_prefix('\u{feff}')
-        .map(str::to_owned)
-        .unwrap_or_else(|| text.into_owned())
-}
-
-fn utf16(bytes: &[u8], little: bool) -> String {
-    let units: Vec<u16> = bytes
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|c| {
-            if little {
-                u16::from_le_bytes(*c)
-            } else {
-                u16::from_be_bytes(*c)
-            }
-        })
-        .collect();
-    String::from_utf16_lossy(&units)
-}
-
-/// Inspect a private key file without decrypting it. `None` when the file is
-/// not a private key at all (public keys, configs).
 fn inspect_key_file(path: &Path) -> Result<Option<ImportedKey>> {
     let meta = std::fs::metadata(path)?;
     if !meta.is_file() || meta.len() > MAX_KEY_FILE {
@@ -524,7 +295,7 @@ pub fn scan_ssh_dir(dir: Option<&str>) -> Result<ImportPreview> {
                         .warnings
                         .extend(hashed_known_hosts_warning(name, hashed));
                 }
-                Err(e) => preview.warnings.push(format!("{name}: {}", e.message)),
+                Err(e) => preview.warnings.push(format!("{name}: {e}")),
             }
         }
     }
@@ -653,7 +424,7 @@ pub fn scan_securecrt_dir(dir: &str) -> Result<ImportPreview> {
 
 /// Saved sessions of the PuTTY installed on this machine (Windows registry).
 pub fn scan_putty_registry() -> Result<ImportPreview> {
-    let text = putty::export_registry()?;
+    let text = export_registry()?;
     let mut preview = ImportPreview::new(ImportSource::Putty, putty::REGISTRY_ORIGIN);
     putty::parse_reg_into(&text, &mut preview)?;
     if preview.is_empty() {
@@ -1019,7 +790,7 @@ pub fn apply(
             vault_id,
             label,
             host_id,
-            kind: r.kind,
+            kind: r.kind.into(),
             bound_address: r.bound_address.clone(),
             local_port: r.local_port,
             remote_host: r.remote_host.clone(),
@@ -1349,9 +1120,37 @@ fn build_chain(
     Ok((store.insert(vault_id, &chain)?, created))
 }
 
+// PuTTY sessions straight from the Windows registry (regedit export).
+#[cfg(windows)]
+pub fn export_registry() -> Result<String> {
+    use std::process::Command;
+    let dir = std::env::temp_dir().join(format!("termoso-putty-{}.reg", uuid::Uuid::new_v4()));
+    let mut cmd = Command::new("reg");
+    cmd.args(["export", REGISTRY_ORIGIN, &dir.to_string_lossy(), "/y"]);
+    crate::sessions::hide_console_window(&mut cmd);
+    let status = cmd.output()?;
+    if !status.status.success() {
+        let _ = std::fs::remove_file(&dir);
+        return Err(super::not_found(
+            "PuTTY has no saved sessions in the registry (or PuTTY is not installed)",
+        ));
+    }
+    let bytes = std::fs::read(&dir)?;
+    let _ = std::fs::remove_file(&dir);
+    Ok(termoso_core::import::decode_text(&bytes))
+}
+
+#[cfg(not(windows))]
+pub fn export_registry() -> Result<String> {
+    Err(DesktopError::invalid(
+        "Reading the PuTTY registry works on Windows only — import a .reg export instead",
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use termoso_core::import::{ImportedHost, decode_text};
 
     #[test]
     fn jump_specs_split() {
