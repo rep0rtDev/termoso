@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,8 +30,8 @@ import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Password
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -84,17 +83,24 @@ fun TerminalController.press(key: PanelKey) {
     }
 }
 
-private val KeyShape = RoundedCornerShape(10.dp)
+// Measured from Termius Android at 2.625 px/dp: the strip is a flat 40 dp row of glyphs
+// ~40 dp apart (no tiles); the grid has 30 dp tiles, 7 dp apart, in two 4-tile hand
+// blocks separated by a tile-wide gutter, 27 dp from the sides; the bottom tab bar is
+// 50 dp with the active tab a filled 40 dp square.
+private val KeyShape = RoundedCornerShape(8.dp)
 private val KeyGap = 6.dp
+private val GridGap = 7.dp
+private val GridRowGap = 7.dp
+private val GridSidePadding = 27.dp
+private val GridGutter = 35.dp
 private val StripKeyHeight = 36.dp
-private val GridKeyHeight = 44.dp
+private val GridKeyHeight = 30.dp
+private val TabBarHeight = 50.dp
 /** Grid height when the keyboard has never been shown yet (no measured height to match). */
 private val GridDefaultHeight = 272.dp
-private val BarHeight = 44.dp
+private val BarHeight = 40.dp
 
-/** Below this width the strip keeps only the key row; the secondary actions move into a menu. */
-private val CompactBarWidth = 600.dp
-private val ChromePadding = PaddingValues(horizontal = 8.dp, vertical = 5.dp)
+private val ChromePadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
 
 /** Keys the compact strip always offers, scrolling sideways past the edge. */
 private val stripKeys: List<PanelKey> = listOf(
@@ -187,90 +193,67 @@ fun KeyPanel(
             return@Column
         }
         if (!expanded) {
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val compact = maxWidth < CompactBarWidth
-                var more by remember { mutableStateOf(false) }
-                Row(
-                    Modifier.fillMaxWidth().height(BarHeight).padding(ChromePadding),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    LazyRow(
-                        Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        item("ai") { IconKey(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai), Modifier.width(40.dp), flat = true) { onKeyPressed(); onAskAi() } }
-                        item("pw") { IconKey(Icons.Filled.Password, stringResource(R.string.password), Modifier.width(40.dp), flat = true) { onKeyPressed(); onHiddenInput() } }
-                        if (canAttach) {
-                            item("attach") { IconKey(Icons.Filled.AttachFile, stringResource(R.string.send_file), Modifier.width(40.dp), flat = true) { onKeyPressed(); onAttach() } }
-                        }
-                        item("paste") { IconKey(Icons.Filled.ContentPaste, stringResource(R.string.paste_2), Modifier.width(40.dp), flat = true) { onKeyPressed(); onPaste() } }
-                        stripKeys.forEach { key ->
-                            item(key = KeyActions.encode(key)) {
-                                TextKey(key, active(key), Modifier.widthIn(min = 40.dp), height = StripKeyHeight, flat = true) { press(it) }
-                            }
-                        }
-                        if (!compact) {
-                            item("voice") { IconKey(Icons.Filled.Mic, stringResource(R.string.voice_input), Modifier.width(40.dp), flat = true) { onKeyPressed(); onVoice() } }
-                        }
-                    }
-                    if (compact) {
-                        Box {
-                            IconKey(Icons.Filled.MoreHoriz, stringResource(R.string.more), Modifier.width(40.dp), flat = true) { more = true }
-                            DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
-                                MenuAction(Icons.Filled.Mic, stringResource(R.string.voice_input)) { more = false; onKeyPressed(); onVoice() }
-                                MenuAction(Icons.Filled.EditNote, stringResource(R.string.compose_message)) { more = false; onKeyPressed(); onCompose() }
-                                MenuAction(Icons.Filled.DataObject, stringResource(R.string.snippets)) { more = false; onKeyPressed(); onSnippets() }
-                                MenuAction(Icons.Filled.History, stringResource(R.string.history_and_themes)) { more = false; onKeyPressed(); onPanel() }
-                            }
-                        }
-                    }
-                    IconKey(Icons.Filled.GridView, stringResource(R.string.more_keys), Modifier.width(40.dp), flat = true, onClick = onToggleExpanded)
-                    IconKey(
-                        if (imeShown) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
-                        stringResource(R.string.toggle_keyboard),
-                        Modifier.width(40.dp),
-                        flat = true,
-                        onClick = onToggleIme,
-                    )
+            // Termius strip: tools first (AI, hidden input, attach, paste), then the keys,
+            // all flat glyphs that scroll sideways. Grid/keyboard toggles live in the session bar.
+            LazyRow(
+                Modifier.fillMaxWidth().height(BarHeight),
+                verticalAlignment = Alignment.CenterVertically,
+                contentPadding = ChromePadding,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                item("ai") { IconKey(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai), Modifier.width(40.dp), flat = true) { onKeyPressed(); onAskAi() } }
+                item("pw") { IconKey(Icons.Filled.Password, stringResource(R.string.password), Modifier.width(40.dp), flat = true) { onKeyPressed(); onHiddenInput() } }
+                if (canAttach) {
+                    item("attach") { IconKey(Icons.Filled.AttachFile, stringResource(R.string.send_file), Modifier.width(40.dp), flat = true) { onKeyPressed(); onAttach() } }
                 }
+                item("paste") { IconKey(Icons.Filled.ContentPaste, stringResource(R.string.paste_2), Modifier.width(40.dp), flat = true) { onKeyPressed(); onPaste() } }
+                stripKeys.forEach { key ->
+                    item(key = KeyActions.encode(key)) {
+                        TextKey(key, active(key), Modifier.widthIn(min = 40.dp), height = StripKeyHeight, flat = true) { press(it) }
+                    }
+                }
+                item("voice") { IconKey(Icons.Filled.Mic, stringResource(R.string.voice_input), Modifier.width(40.dp), flat = true) { onKeyPressed(); onVoice() } }
+                item("compose") { IconKey(Icons.Filled.EditNote, stringResource(R.string.compose_message), Modifier.width(40.dp), flat = true) { onKeyPressed(); onCompose() } }
+                item("snippets") { IconKey(Icons.Filled.DataObject, stringResource(R.string.snippets), Modifier.width(40.dp), flat = true) { onKeyPressed(); onSnippets() } }
             }
             return@Column
         }
-        Column(Modifier.fillMaxWidth().padding(top = 8.dp, start = 8.dp, end = 8.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KeyGap)) {
-                WideKey(Icons.Filled.Tune, stringResource(R.string.customize), Modifier.weight(1f)) { onKeyPressed(); onCustomize() }
-                WideKey(Icons.Filled.Password, stringResource(R.string.password), Modifier.weight(1f)) { onKeyPressed(); onHiddenInput() }
+        Column(Modifier.fillMaxWidth().padding(top = 10.dp, start = GridSidePadding, end = GridSidePadding)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(GridGutter)) {
+                WideKey(Icons.Filled.Settings, stringResource(R.string.customize), Modifier.weight(1f)) { onKeyPressed(); onCustomize() }
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(GridGap)) {
+                    IconKey(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai), Modifier.weight(1f), tile = true) { onKeyPressed(); onAskAi() }
+                    IconKey(Icons.Filled.Password, stringResource(R.string.password), Modifier.weight(1f), tile = true) { onKeyPressed(); onHiddenInput() }
+                    IconKey(Icons.Filled.AttachFile, stringResource(R.string.send_file), Modifier.weight(1f), tile = true, enabled = canAttach) { onKeyPressed(); onAttach() }
+                    IconKey(Icons.Filled.ContentPaste, stringResource(R.string.paste_2), Modifier.weight(1f), tile = true) { onKeyPressed(); onPaste() }
+                }
             }
-            Spacer(Modifier.height(KeyGap))
+            Spacer(Modifier.height(GridRowGap))
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .height((gridHeight ?: GridDefaultHeight) - GridKeyHeight - KeyGap - 8.dp - BarHeight - 4.dp)
+                    .height((gridHeight ?: GridDefaultHeight) - GridKeyHeight - GridRowGap - 10.dp - TabBarHeight)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(KeyGap),
+                verticalArrangement = Arrangement.spacedBy(GridRowGap),
             ) {
                 rows.forEach { row -> KeyRow(row, ::active, ::press) }
                 Spacer(Modifier.height(2.dp))
             }
         }
         Row(
-            Modifier.fillMaxWidth().height(BarHeight + 4.dp).padding(ChromePadding),
+            Modifier.fillMaxWidth().height(TabBarHeight).padding(horizontal = GridSidePadding, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(KeyGap),
         ) {
-            IconKey(Icons.Filled.GridView, stringResource(R.string.hide_keys), Modifier.width(52.dp), selected = true, onClick = onToggleExpanded)
-            IconKey(Icons.Filled.DataObject, stringResource(R.string.snippets), Modifier.width(52.dp)) { onKeyPressed(); onSnippets() }
-            IconKey(Icons.Filled.History, stringResource(R.string.history_and_themes), Modifier.width(52.dp)) { onKeyPressed(); onPanel() }
-            IconKey(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai), Modifier.width(52.dp)) { onKeyPressed(); onAskAi() }
-            IconKey(Icons.Filled.EditNote, stringResource(R.string.compose_message), Modifier.width(52.dp)) { onKeyPressed(); onCompose() }
-            Spacer(Modifier.weight(1f))
+            IconKey(Icons.Filled.GridView, stringResource(R.string.hide_keys), Modifier.weight(1f), selected = true, onClick = {})
+            IconKey(Icons.Filled.DataObject, stringResource(R.string.snippets), Modifier.weight(1f), flat = true) { onKeyPressed(); onSnippets() }
+            IconKey(Icons.Filled.History, stringResource(R.string.history_and_themes), Modifier.weight(1f), flat = true) { onKeyPressed(); onPanel() }
+            IconKey(Icons.Filled.EditNote, stringResource(R.string.compose_message), Modifier.weight(1f), flat = true) { onKeyPressed(); onCompose() }
             Box(Modifier.width(1.dp).height(22.dp).background(MaterialTheme.colorScheme.outlineVariant))
-            Spacer(Modifier.width(2.dp))
             IconKey(
                 if (imeShown) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
                 stringResource(R.string.toggle_keyboard),
-                Modifier.width(52.dp),
+                Modifier.weight(1f),
+                flat = true,
                 onClick = onToggleIme,
             )
         }
@@ -283,9 +266,10 @@ fun KeyPanel(
  */
 @Composable
 private fun KeyRow(row: List<PanelKey>, active: (PanelKey) -> Boolean, press: (PanelKey) -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(KeyGap)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(GridGap)) {
         row.forEachIndexed { i, key ->
-            if (row.size == 8 && i == 4) Spacer(Modifier.width(KeyGap * 2))
+            if (row.size == 8 && i == 4) Spacer(Modifier.width(GridGutter - GridGap * 2))
+            else if (row.size == 2 && i == 1) Spacer(Modifier.width(GridGutter - GridGap * 2))
             TextKey(key, active(key), Modifier.weight(1f), height = GridKeyHeight) { press(it) }
         }
     }
@@ -308,10 +292,10 @@ private fun TextKey(
     val twoLine = key.label.contains('\n')
     val single = when {
         twoLine -> 11.sp
-        flat -> 14.sp
-        key.label.length <= 3 -> 14.sp
-        key.label.length <= 4 -> 11.sp
-        else -> 10.sp
+        flat -> 15.sp
+        key.label.length <= 4 -> 14.sp
+        key.label.length <= 9 -> 12.sp
+        else -> 11.sp
     }
     Box(
         modifier
@@ -319,7 +303,7 @@ private fun TextKey(
             .clip(KeyShape)
             .background(if (flat && !active) Color.Transparent else keyContainer(active))
             .clickable { onPress(key) }
-            .padding(horizontal = if (flat) 8.dp else 4.dp),
+            .padding(horizontal = if (flat) 8.dp else 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -330,7 +314,11 @@ private fun TextKey(
             maxLines = if (twoLine) 2 else 1,
             softWrap = twoLine,
             fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-            color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            color = when {
+                active -> MaterialTheme.colorScheme.primary
+                flat -> MaterialTheme.colorScheme.onSurface
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            },
         )
     }
 }
@@ -348,7 +336,7 @@ private fun WideKey(icon: ImageVector, label: String, modifier: Modifier = Modif
     ) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -368,21 +356,44 @@ private fun IconKey(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     flat: Boolean = false,
+    /** Grid style: same rounded tile as a text key. */
+    tile: Boolean = false,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
+    val bg = when {
+        selected -> MaterialTheme.colorScheme.primary
+        tile -> MaterialTheme.colorScheme.surfaceContainerHigh
+        else -> Color.Transparent
+    }
+    if (selected) {
+        Box(modifier, contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(bg).clickable(onClick = onClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, contentDescription = description, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(22.dp))
+            }
+        }
+        return
+    }
     Box(
         modifier
-            .height(StripKeyHeight)
+            .height(if (tile) GridKeyHeight else StripKeyHeight)
             .clip(KeyShape)
-            .background(if (selected) keyContainer(true) else Color.Transparent)
-            .clickable(onClick = onClick),
+            .background(bg)
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             icon,
             contentDescription = description,
-            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.size(if (flat) 20.dp else 22.dp),
+            tint = when {
+                selected -> MaterialTheme.colorScheme.onPrimary
+                !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                else -> MaterialTheme.colorScheme.onSurface
+            },
+            modifier = Modifier.size(if (flat) 22.dp else 20.dp),
         )
     }
 }
