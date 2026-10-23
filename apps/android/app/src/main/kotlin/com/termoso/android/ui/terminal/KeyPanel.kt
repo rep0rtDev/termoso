@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.ControlCamera
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DataObject
@@ -157,6 +159,11 @@ fun KeyPanel(
     onAttach: () -> Unit = {},
     onCompose: () -> Unit = {},
     onVoice: () -> Unit = {},
+    /** Opens the Themes tab of the history & themes sheet (bottom tab bar). */
+    onThemes: () -> Unit = onPanel,
+    /** Cursor mode: swipes on the terminal move the cursor with arrow keys. */
+    cursorMode: Boolean = false,
+    onToggleCursorMode: () -> Unit = {},
     onKeyPressed: () -> Unit,
     /** Height of the soft keyboard this grid stands in for; matching it keeps the terminal from jumping. */
     gridHeight: androidx.compose.ui.unit.Dp? = null,
@@ -229,8 +236,8 @@ fun KeyPanel(
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(GridGap)) {
                     IconKey(Icons.Filled.AutoAwesome, stringResource(R.string.ask_ai), Modifier.weight(1f), tile = true) { onKeyPressed(); onAskAi() }
                     IconKey(Icons.Filled.Key, stringResource(R.string.password), Modifier.weight(1f), tile = true) { onKeyPressed(); onHiddenInput() }
+                    IconKey(Icons.Filled.ControlCamera, stringResource(R.string.cursor), Modifier.weight(1f), tile = true, active = cursorMode) { onKeyPressed(); onToggleCursorMode() }
                     IconKey(Icons.Filled.AttachFile, stringResource(R.string.send_file), Modifier.weight(1f), tile = true, enabled = canAttach) { onKeyPressed(); onAttach() }
-                    IconKey(Icons.Filled.ContentPaste, stringResource(R.string.paste_2), Modifier.weight(1f), tile = true) { onKeyPressed(); onPaste() }
                 }
             }
             Spacer(Modifier.height(GridRowGap))
@@ -250,15 +257,15 @@ fun KeyPanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconKey(Icons.Filled.GridView, stringResource(R.string.hide_keys), Modifier.weight(1f), selected = true, onClick = {})
-            IconKey(Icons.Filled.DataObject, stringResource(R.string.snippets), Modifier.weight(1f), flat = true) { onKeyPressed(); onSnippets() }
-            IconKey(Icons.Filled.History, stringResource(R.string.history_and_themes), Modifier.weight(1f), flat = true) { onKeyPressed(); onPanel() }
-            IconKey(Icons.Filled.EditNote, stringResource(R.string.compose_message), Modifier.weight(1f), flat = true) { onKeyPressed(); onCompose() }
+            IconKey(Icons.Filled.DataObject, stringResource(R.string.snippets), Modifier.weight(1f), muted = true) { onKeyPressed(); onSnippets() }
+            IconKey(Icons.Filled.History, stringResource(R.string.history), Modifier.weight(1f), muted = true) { onKeyPressed(); onPanel() }
+            IconKey(Icons.Filled.Palette, stringResource(R.string.themes), Modifier.weight(1f), muted = true) { onKeyPressed(); onThemes() }
             Box(Modifier.width(1.dp).height(22.dp).background(MaterialTheme.colorScheme.outlineVariant))
             IconKey(
                 if (imeShown) Icons.Filled.KeyboardHide else Icons.Filled.Keyboard,
                 stringResource(R.string.toggle_keyboard),
                 Modifier.weight(1f),
-                flat = true,
+                muted = true,
                 onClick = onToggleIme,
             )
         }
@@ -279,7 +286,7 @@ private fun KeyRow(row: List<PanelKey>, active: (PanelKey) -> Boolean, press: (P
         return
     }
     // 7 keys: 3 | 4 with the first key double width (Termius' shift+tab esc ctrl | arrows).
-    val split = when (row.size) { 8 -> 4; 7 -> 3; 2 -> 1; else -> -1 }
+    val split = when (row.size) { 8 -> 4; 7 -> 3; 4 -> 2; 2 -> 1; else -> -1 }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(GridGap)) {
         row.forEachIndexed { i, key ->
             if (i == split) Spacer(Modifier.width(GridGutter - GridGap * 2))
@@ -389,11 +396,16 @@ private fun IconKey(
     flat: Boolean = false,
     /** Grid style: same rounded tile as a text key. */
     tile: Boolean = false,
+    /** Bottom tab bar style: no tile, dimmed glyph. */
+    muted: Boolean = false,
+    /** Toggle that is currently on (accent tint). */
+    active: Boolean = false,
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     val bg = when {
         selected -> MaterialTheme.colorScheme.primary
+        tile && active -> keyContainer(true)
         tile -> MaterialTheme.colorScheme.surfaceContainerHigh
         else -> Color.Transparent
     }
@@ -422,7 +434,9 @@ private fun IconKey(
             tint = when {
                 selected -> MaterialTheme.colorScheme.onPrimary
                 !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                active -> MaterialTheme.colorScheme.primary
                 flat -> MaterialTheme.colorScheme.primary
+                tile || muted -> MaterialTheme.colorScheme.onSurfaceVariant
                 else -> MaterialTheme.colorScheme.onSurface
             },
             modifier = Modifier.size(if (flat) 22.dp else 20.dp),

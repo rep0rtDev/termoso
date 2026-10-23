@@ -85,8 +85,9 @@ fun TerminalPanelSheet(
     session: TerminalSession,
     controller: TerminalController,
     onClose: () -> Unit,
+    initialTab: Int = 0,
 ) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var tab by rememberSaveable(initialTab) { mutableIntStateOf(initialTab) }
     ModalBottomSheet(onDismissRequest = onClose) {
         TabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.history)) })
