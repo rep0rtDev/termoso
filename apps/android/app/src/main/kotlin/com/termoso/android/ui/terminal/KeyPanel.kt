@@ -92,24 +92,24 @@ fun TerminalController.press(key: PanelKey) {
     }
 }
 
-// Measured from Termius Android at 2.625 px/dp: the strip is a flat 40 dp row of glyphs
+// Layout as in Termius Android, sizes scaled up for touch: the strip is a flat 48 dp row of glyphs
 // ~40 dp apart (no tiles); the grid has 30 dp tiles, 7 dp apart, in two 4-tile hand
 // blocks separated by a tile-wide gutter, 27 dp from the sides; the bottom tab bar is
 // 50 dp with the active tab a filled 40 dp square.
 private val KeyShape = RoundedCornerShape(8.dp)
 private val KeyGap = 6.dp
-private val GridGap = 7.dp
-private val GridRowGap = 7.dp
-private val GridSidePadding = 27.dp
-private val GridGutter = 35.dp
-private val StripKeyHeight = 36.dp
-private val GridKeyHeight = 30.dp
+private val GridGap = 6.dp
+private val GridRowGap = 6.dp
+private val GridSidePadding = 12.dp
+private val GridGutter = 20.dp
+private val StripKeyHeight = 44.dp
+private val GridKeyHeight = 40.dp
 // Bottom tab bar as in Termius: 1 dp rule, 10 dp padding, five 40 dp slots spread edge to edge,
 // a short vertical rule halfway between the last two.
 private val TabBarHeight = 60.dp
 /** Grid height when the keyboard has never been shown yet (no measured height to match). */
 private val GridDefaultHeight = 272.dp
-private val BarHeight = 40.dp
+private val BarHeight = 48.dp
 
 private val ChromePadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
 
@@ -345,11 +345,11 @@ private fun TextKey(
     val twoLine = key.label.contains('\n')
     val single = when {
         twoLine -> 11.sp
-        flat -> 15.sp
-        key.label.length <= 3 -> 14.sp
-        key.label.length <= 4 -> 12.sp
-        key.label.length <= 9 -> 11.sp
-        else -> 10.sp
+        flat -> 16.sp
+        key.label.length <= 3 -> 15.sp
+        key.label.length <= 4 -> 14.sp
+        key.label.length <= 9 -> 12.sp
+        else -> 11.sp
     }
     Box(
         modifier
