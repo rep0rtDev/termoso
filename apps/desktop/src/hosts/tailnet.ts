@@ -68,6 +68,5 @@ export function tailnetHostForm(
     label: d.name || address,
     address,
     username: username.trim(),
-    tags: d.tags.slice(0, 8),
   };
 }
