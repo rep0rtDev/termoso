@@ -534,6 +534,9 @@ private fun ActiveSession(
 
     var panelExpanded by gridShown
     var imeShown by remember { mutableStateOf(false) }
+    // The real keyboard state from the window insets; `imeShown` is our intent and follows it.
+    @OptIn(ExperimentalLayoutApi::class)
+    val imeVisible = WindowInsets.isImeVisible
     var hiddenInput by remember { mutableStateOf(false) }
     var snippetPicker by remember { mutableStateOf(false) }
     var askAi by remember { mutableStateOf(false) }
@@ -615,11 +618,15 @@ private fun ActiveSession(
     fun toggleIme() {
         val imm = context.getSystemService<InputMethodManager>()
         val input = controller.inputView
-        if (imeShown) {
+        // Decide by what is on screen, not by our flag: a keyboard the system took away
+        // (app switch, home and back) left `imeShown` true and the tap used to hide nothing.
+        if (imeVisible) {
             hideIme()
         } else if (input != null) {
             input.requestFocus()
-            imm?.showSoftInput(input, 0)
+            if (imm?.showSoftInput(input, 0) != true) {
+                imm?.showSoftInput(input, InputMethodManager.SHOW_IMPLICIT)
+            }
             imeShown = true
             panelExpanded = false
         }
@@ -814,8 +821,6 @@ private fun ActiveSession(
 
     // Like Termius: the first Back only puts the keyboard (or the key grid) away
     // so the terminal fills the screen; the next one leaves to Connections.
-    @OptIn(ExperimentalLayoutApi::class)
-    val imeVisible = WindowInsets.isImeVisible
     // Last measured keyboard height: the key grid takes exactly this much room
     // when it replaces the keyboard, so the terminal does not jump between the two.
     // The screen already pads the navigation bar, and the IME inset includes it, so the
