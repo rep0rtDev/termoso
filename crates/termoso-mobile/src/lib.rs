@@ -21,6 +21,7 @@ mod dto;
 mod error;
 mod fido2;
 mod forward;
+mod keyexport;
 mod keys;
 mod linux;
 mod live;

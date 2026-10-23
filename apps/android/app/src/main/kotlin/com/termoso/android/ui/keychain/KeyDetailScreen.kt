@@ -65,7 +65,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private enum class Sheet { RENAME, PASSPHRASE, CERTIFICATE, EXPORT, DELETE }
+private enum class Sheet { RENAME, PASSPHRASE, CERTIFICATE, EXPORT, TO_HOST, DELETE }
 
 /** Details and actions for one stored SSH key. */
 @Composable
@@ -204,6 +204,12 @@ fun KeyDetailScreen(shell: ShellViewModel, keyId: String, onBack: () -> Unit) {
                     subtitle = if (s.securityKey != null) stringResource(R.string.useless_without_the_security_key_confirmation_required) else stringResource(R.string.reveals_the_secret_confirmation_required),
                     modifier = Modifier.clickable(enabled = !key.unreadable) { sheet = Sheet.EXPORT },
                 )
+                RowDivider()
+                ChevronRow(
+                    title = stringResource(R.string.export_key_to_host),
+                    subtitle = stringResource(R.string.export_key_to_host_hint),
+                    modifier = Modifier.clickable(enabled = !key.unreadable) { sheet = Sheet.TO_HOST },
+                )
             }
 
             SectionLabel(" ")
@@ -234,6 +240,9 @@ fun KeyDetailScreen(shell: ShellViewModel, keyId: String, onBack: () -> Unit) {
         }
         Sheet.EXPORT -> key?.let { k ->
             ExportDialog(k, vm, onNotify = shell::notify, onDismiss = { sheet = null })
+        }
+        Sheet.TO_HOST -> key?.let { k ->
+            ExportKeyToHostFlow(shell.repo, k, onNotify = shell::notify, onDismiss = { sheet = null })
         }
         Sheet.DELETE -> ConfirmDialog(
             title = stringResource(R.string.delete_key_2),

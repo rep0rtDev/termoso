@@ -2985,4 +2985,19 @@ export const ru: Readonly<Record<string, string>> = {
   Workspaces: "Рабочие пространства",
   "Update Termoso to sign in.": "Чтобы войти, обновите Termoso.",
   Download: "Скачать",
+  "Adds the public half of {key} to {file} on the selected hosts, connecting with each host's current credentials. Nothing else is changed; an already present key is left as is.":
+    "Добавляет публичную часть {key} в {file} на выбранных хостах, подключаясь с текущими учётными данными каждого хоста. Больше ничего не меняется; уже имеющийся ключ остаётся как есть.",
+  "Choose hosts": "Выберите хосты",
+  "{n} hosts": "{n} хостов",
+  "Hosts are handled one after another; you may be asked for a password or to trust a host key for each.":
+    "Хосты обрабатываются по очереди; для каждого могут спросить пароль или подтверждение ключа хоста.",
+  "Export to {n} hosts": "Экспорт на {n} хостов",
+  "{label}: added on {added}, already present on {present}":
+    "{label}: добавлен на {added}, уже был на {present}",
+  "Add SSH key to host…": "Добавить SSH-ключ на хост…",
+  "Add SSH key to {host}": "Добавить SSH-ключ на {host}",
+  "Adds the public half of the chosen key to {file} on {host}, connecting with the host's current credentials. Nothing else is changed; an already present key is left as is.":
+    "Добавляет публичную часть выбранного ключа в {file} на {host}, подключаясь с текущими учётными данными хоста. Больше ничего не меняется; уже имеющийся ключ остаётся как есть.",
+  "No keys in this vault": "В этом хранилище нет ключей",
+  "Add key": "Добавить ключ",
 };

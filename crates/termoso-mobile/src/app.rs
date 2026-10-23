@@ -27,6 +27,7 @@ use crate::dto::*;
 use crate::error::{MobileError, Result};
 use crate::fido2::{self, Fido2GenerateDraft, Fido2Listener, Fido2LoadDraft, SecurityKeyCard};
 use crate::forward::{self, PfRuleDraft, PfRuleItem, PfTunnel, TunnelLaunch, TunnelListener};
+use crate::keyexport::{KeyExport, KeyExportLaunch, KeyExportListener};
 use crate::live::{LiveListener, LiveShare};
 use crate::presence::{self, TeamPresenceCard};
 use crate::serial::{PipeTerminal, SerialLine, SerialLink, SerialPipe, SerialSession};
@@ -1899,6 +1900,33 @@ impl TermosoApp {
 
     /// Start a rule's tunnel. Returns at once; state and prompts arrive on
     /// `listener`. Fails synchronously only when the rule or its host is gone.
+    /// `ssh-copy-id`: put the key's public half into `~/.ssh/authorized_keys`
+    /// of a saved host. Keep the returned object until the listener fires.
+    pub fn start_key_export(
+        &self,
+        key_id: String,
+        host_id: String,
+        vault_id: Option<String>,
+        listener: Arc<dyn KeyExportListener>,
+    ) -> Result<Arc<KeyExport>> {
+        let vault_id = match vault_id {
+            Some(v) => Some(parse_id(&v)?),
+            None => None,
+        };
+        Ok(KeyExport::launch(
+            RUNTIME.handle().clone(),
+            KeyExportLaunch {
+                store: self.store.clone(),
+                secrets: self.secrets.clone(),
+                settings: MobileSettings::load(&self.store)?,
+                key_id: parse_id(&key_id)?,
+                host_id: parse_id(&host_id)?,
+                vault_id,
+                listener,
+            },
+        ))
+    }
+
     pub fn start_pf(
         &self,
         rule_id: String,

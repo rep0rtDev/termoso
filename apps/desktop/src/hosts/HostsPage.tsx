@@ -30,6 +30,7 @@ import ViewListRoundedIcon from "@mui/icons-material/ViewListRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import CreateNewFolderRoundedIcon from "@mui/icons-material/CreateNewFolderRounded";
 import DnsRoundedIcon from "@mui/icons-material/DnsRounded";
+import VpnKeyOutlinedIcon from "@mui/icons-material/VpnKeyOutlined";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import SellOutlinedIcon from "@mui/icons-material/SellOutlined";
 import SwapVertRoundedIcon from "@mui/icons-material/SwapVertRounded";
@@ -57,6 +58,7 @@ import CloudOutlinedIcon from "@mui/icons-material/CloudOutlined";
 import LanOutlinedIcon from "@mui/icons-material/LanOutlined";
 import { EmptyState } from "@/components/EmptyState";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import * as ipc from "@/ipc/commands";
 import { useSnackbar } from "@/components/Snackbar";
 import {
   ActionMenu,
@@ -80,6 +82,7 @@ import {
   useSaveSettings,
   useSettings,
   useTags,
+  useSshKeys,
 } from "@/ipc/hooks";
 import { useActiveVault, vaultIcon, ViewOnlyChip } from "@/app/vault";
 import type { CloudProvider, GroupNode, HostCard, HostsView, Uuid } from "@/ipc/types";
@@ -103,6 +106,7 @@ import { useVaultPresence } from "./PresenceViews";
 import { HostEditPanel } from "./HostEditPanel";
 import { DeleteGroupDialog, GroupPanel } from "./GroupPanel";
 import { MoveCopyDialog, type MoveCopyRequest } from "./MoveCopyDialog";
+import { AddKeyToHostDialog } from "@/keychain/KeyDialogs";
 import { ImportDialog } from "./ImportDialog";
 import { CLOUD_PROVIDERS, CloudImportDialog } from "./CloudImportDialog";
 import { LanDiscoveryDialog } from "./LanDiscoveryDialog";
@@ -208,6 +212,9 @@ export function HostsPage() {
   const [checked, setChecked] = useState<ReadonlySet<Uuid>>(() => new Set());
   const [anchorId, setAnchorId] = useState<Uuid | null>(null);
   const [moveCopy, setMoveCopy] = useState<MoveCopyRequest | null>(null);
+  const [addKeyHost, setAddKeyHost] = useState<HostCard | null>(null);
+  const [addKeyBusy, setAddKeyBusy] = useState(false);
+  const sshKeys = useSshKeys(vaultId);
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<string | null>(null);
   useOpenFileRequests(isSshConfigFile, (path) => {
@@ -651,6 +658,12 @@ export function HostsPage() {
         icon: <MoreHorizRoundedIcon fontSize="small" />,
         divider: true,
         items: [
+          {
+            label: tr("Add SSH key to host…"),
+            icon: <VpnKeyOutlinedIcon fontSize="small" />,
+            onClick: () => setAddKeyHost(h),
+            disabled: many || !hasSsh(h),
+          },
           {
             label: tr("Port forwarding"),
             icon: <SwapHorizRoundedIcon fontSize="small" />,
@@ -1328,6 +1341,38 @@ export function HostsPage() {
           vaultId={vaultId}
           onClose={() => setMoveCopy(null)}
           onDone={clearSelection}
+        />
+      )}
+
+      {addKeyHost && (
+        <AddKeyToHostDialog
+          open
+          host={addKeyHost}
+          keys={sshKeys.data ?? []}
+          busy={addKeyBusy}
+          onCancel={() => setAddKeyHost(null)}
+          onConfirm={(key) => {
+            const host = addKeyHost;
+            setAddKeyBusy(true);
+            ipc
+              .keyExportToHost(key.id, host.id)
+              .then((r) => {
+                snackbar.notify(
+                  r.outcome === "added"
+                    ? tr("{label} added to authorized_keys on {target}", {
+                        label: key.label,
+                        target: r.target,
+                      })
+                    : tr("{label} is already authorized on {target}", {
+                        label: key.label,
+                        target: r.target,
+                      }),
+                );
+                setAddKeyHost(null);
+              })
+              .catch((e: unknown) => snackbar.error(errorMessage(e)))
+              .finally(() => setAddKeyBusy(false));
+          }}
         />
       )}
 
