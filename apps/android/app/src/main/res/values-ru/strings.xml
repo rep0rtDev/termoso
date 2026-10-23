@@ -1666,4 +1666,14 @@
     <string name="totp_secret">Секрет TOTP (необязательно)</string>
     <string name="totp_secret_saved">Секрет TOTP сохранён</string>
     <string name="totp_secret_hint">URI otpauth:// или base32-секрет; код подставляется в запрос подтверждения</string>
+    <string name="run_quietly">Выполнить тихо</string>
+    <string name="run_quietly_title">Тихий запуск: %1$s</string>
+    <string name="run_quietly_hint">Выполняется на каждом хосте по отдельному каналу без открытия терминалов; вывод и коды выхода собираются здесь.</string>
+    <string name="no_ssh_hosts_in_this_vault">В этом хранилище нет SSH-хостов</string>
+    <string name="quiet_summary">Хостов: %1$d · ок: %2$d · с ошибкой: %3$d</string>
+    <string name="quiet_progress">Готово %1$d из %2$d</string>
+    <string name="copy_summary">Копировать сводку</string>
+    <string name="summary_copied">Сводка скопирована</string>
+    <string name="ok">ОК</string>
+    <string name="exit_code">Код %1$s</string>
 </resources>

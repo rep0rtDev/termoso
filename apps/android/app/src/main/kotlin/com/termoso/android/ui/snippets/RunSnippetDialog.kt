@@ -187,7 +187,7 @@ fun RunSnippetDialog(
 }
 
 @Composable
-private fun CheckRow(title: String, subtitle: String, checked: Boolean, onToggle: () -> Unit) {
+internal fun CheckRow(title: String, subtitle: String, checked: Boolean, onToggle: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,

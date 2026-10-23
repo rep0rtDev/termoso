@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.LibraryAdd
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -94,6 +95,7 @@ fun SnippetsScreen(
     var confirmDelete by remember { mutableStateOf<SnippetItem?>(null) }
     var confirmDeletePackage by remember { mutableStateOf<SnippetPackageItem?>(null) }
     var run by remember { mutableStateOf<SnippetItem?>(null) }
+    var quiet by remember { mutableStateOf<SnippetItem?>(null) }
     var transfer by remember { mutableStateOf<VaultTransfer?>(null) }
 
     LaunchedEffect(state.error) { state.error?.let { shell.notify(it); vm.errorShown() } }
@@ -184,6 +186,13 @@ fun SnippetsScreen(
                                                 .onFailure { shell.notify(it.userMessage()) }
                                         }
                                     },
+                                    onRunQuiet = {
+                                        permScope.launch {
+                                            runCatching { shell.repo.perms.require(s.vaultId, "snippets.run") }
+                                                .onSuccess { quiet = s }
+                                                .onFailure { shell.notify(it.userMessage()) }
+                                        }
+                                    },
                                     onDuplicate = { vm.duplicate(s.id) },
                                     onTransfer = if (destinations.isEmpty()) null else { move -> transfer = VaultTransfer.Snippet(s, move) },
                                     onDelete = { confirmDelete = s },
@@ -243,6 +252,7 @@ fun SnippetsScreen(
             onDismiss = { transfer = null },
         )
     }
+    quiet?.let { s -> QuietRunDialog(shell = shell, snippet = s, onDismiss = { quiet = null }) }
     run?.let { s ->
         RunSnippetDialog(
             shell = shell,
@@ -330,6 +340,7 @@ private fun SnippetRow(
     snippet: SnippetItem,
     onEdit: () -> Unit,
     onRun: () -> Unit,
+    onRunQuiet: () -> Unit,
     onDuplicate: () -> Unit,
     onTransfer: ((move: Boolean) -> Unit)?,
     onDelete: () -> Unit,
@@ -346,6 +357,7 @@ private fun SnippetRow(
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(text = { Text(stringResource(R.string.run)) }, leadingIcon = { Icon(Icons.Filled.PlayArrow, null) }, onClick = { menu = false; onRun() })
+            DropdownMenuItem(text = { Text(stringResource(R.string.run_quietly)) }, leadingIcon = { Icon(Icons.Filled.PlaylistPlay, null) }, onClick = { menu = false; onRunQuiet() })
             DropdownMenuItem(text = { Text(stringResource(R.string.edit)) }, leadingIcon = { Icon(Icons.Filled.Edit, null) }, onClick = { menu = false; onEdit() })
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.duplicate)) },

@@ -30,6 +30,7 @@ use crate::forward::{self, PfRuleDraft, PfRuleItem, PfTunnel, TunnelLaunch, Tunn
 use crate::keyexport::{KeyExport, KeyExportLaunch, KeyExportListener};
 use crate::live::{LiveListener, LiveShare};
 use crate::presence::{self, TeamPresenceCard};
+use crate::quiet::{QuietLaunch, QuietRun, QuietRunListener};
 use crate::serial::{PipeTerminal, SerialLine, SerialLink, SerialPipe, SerialSession};
 use crate::session::{
     Launch, LaunchTarget, SessionListener, SshSession, TerminalOptions, Transport, ViewerLaunch,
@@ -2054,6 +2055,29 @@ impl TermosoApp {
         snippets::prepare(&self.store, parse_id(&id)?, &vars, paste).map(|(text, _)| text)
     }
 
+    /// Run a snippet on hosts without opening terminals: one `exec` channel
+    /// per host, stdout / stderr / exit code per host through `listener`.
+    pub fn start_quiet_run(
+        &self,
+        id: String,
+        host_ids: Vec<String>,
+        vars: HashMap<String, String>,
+        listener: Arc<dyn QuietRunListener>,
+    ) -> Result<Arc<QuietRun>> {
+        QuietRun::launch(
+            RUNTIME.handle().clone(),
+            QuietLaunch {
+                store: self.store.clone(),
+                secrets: self.secrets.clone(),
+                snippet_id: parse_id(&id)?,
+                host_ids: crate::quiet::parse_ids(&host_ids)?,
+                vars,
+                settings: MobileSettings::load(&self.store)?,
+                listener,
+            },
+        )
+    }
+
     /// Type a snippet into the given live sessions.
     pub fn run_snippet(
         &self,
@@ -2087,7 +2111,7 @@ impl TermosoApp {
     }
 }
 
-fn ssh_target(resolved: &ResolvedHost) -> SshTarget {
+pub(crate) fn ssh_target(resolved: &ResolvedHost) -> SshTarget {
     SshTarget {
         host: resolved.host.data.address.clone(),
         port: resolved.port(),
