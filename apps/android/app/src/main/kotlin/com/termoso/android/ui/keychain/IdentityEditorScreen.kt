@@ -71,6 +71,8 @@ data class IdentityEditorState(
     val username: String = "",
     /** null = keep the stored password; "" = clear it. */
     val password: String? = null,
+    /** null = keep the stored TOTP secret; "" = clear it. */
+    val totpSecret: String? = null,
     val sshKeyId: String? = null,
     val sshId: Boolean = false,
     val sshIdKeyType: SshIdKeyKind? = null,
@@ -142,6 +144,7 @@ class IdentityEditorViewModel(
                             label = s.label.trim().ifBlank { s.username.trim() }.ifBlank { str(R.string.ssh_id) },
                             username = s.username.trim(),
                             password = s.password,
+                            totpSecret = s.totpSecret,
                             sshKeyId = s.sshKeyId,
                             sshId = s.sshId,
                             sshIdKeyType = s.sshIdKeyType.takeIf { s.sshId },
@@ -238,6 +241,18 @@ fun IdentityEditorScreen(shell: ShellViewModel, identityId: String?, onClose: ()
                         placeholder = if (keepStored) stringResource(R.string.saved) else null,
                         leadingActions = if (keepStored) {
                             { TextButton(onClick = { vm.update { it.copy(password = "") } }) { Text(stringResource(R.string.clear)) } }
+                        } else {
+                            null
+                        },
+                    )
+                    val keepTotp = s.totpSecret == null && s.existing?.hasTotp == true
+                    SecretField(
+                        value = s.totpSecret ?: "",
+                        onChange = { v -> vm.update { it.copy(totpSecret = v) } },
+                        label = stringResource(R.string.totp_secret),
+                        placeholder = if (keepTotp) stringResource(R.string.saved) else stringResource(R.string.totp_secret_hint),
+                        leadingActions = if (keepTotp) {
+                            { TextButton(onClick = { vm.update { it.copy(totpSecret = "") } }) { Text(stringResource(R.string.clear)) } }
                         } else {
                             null
                         },

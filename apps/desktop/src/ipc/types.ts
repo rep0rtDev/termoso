@@ -412,6 +412,8 @@ export interface HostForm {
   port: number | null;
   username: string;
   password: string | null;
+  /** TOTP secret (otpauth URI or base32); null keeps the stored one, "" clears it. */
+  totpSecret: string | null;
   sshKeyId: Uuid | null;
   /** Certificate pinned here; null = the key's own certificate, if any. */
   sshCertificateId: Uuid | null;
@@ -446,6 +448,7 @@ export interface HostForm {
   /** Custom `mosh-server` command; null runs the default. */
   moshServerCommand: string | null;
   hasPassword: boolean;
+  hasTotp: boolean;
 }
 
 export interface TelnetForm {
@@ -660,6 +663,7 @@ export function emptyHostForm(vaultId: Uuid, groupId: Uuid | null): HostForm {
     port: null,
     username: "",
     password: null,
+    totpSecret: null,
     sshKeyId: null,
     sshCertificateId: null,
     identityId: null,
@@ -684,6 +688,7 @@ export function emptyHostForm(vaultId: Uuid, groupId: Uuid | null): HostForm {
     useMosh: false,
     moshServerCommand: null,
     hasPassword: false,
+    hasTotp: false,
   };
 }
 
@@ -707,6 +712,8 @@ export interface GroupForm {
   port: number | null;
   username: string;
   password: string | null;
+  /** TOTP secret (otpauth URI or base32); null keeps the stored one, "" clears it. */
+  totpSecret: string | null;
   sshKeyId: Uuid | null;
   /** Certificate pinned here; null = the key's own certificate, if any. */
   sshCertificateId: Uuid | null;
@@ -714,6 +721,7 @@ export interface GroupForm {
   sshId: boolean;
   sshIdKeyType: SshIdKeyType | null;
   hasPassword: boolean;
+  hasTotp: boolean;
   agentForwarding: boolean;
   forwardX11: boolean;
   hostChainId: Uuid | null;
@@ -732,12 +740,14 @@ export function emptyGroupForm(vaultId: Uuid, parentId: Uuid | null): GroupForm 
     port: null,
     username: "",
     password: null,
+    totpSecret: null,
     sshKeyId: null,
     sshCertificateId: null,
     identityId: null,
     sshId: false,
     sshIdKeyType: null,
     hasPassword: false,
+    hasTotp: false,
     agentForwarding: false,
     forwardX11: false,
     hostChainId: null,
@@ -754,6 +764,8 @@ export interface Inherited {
   port: number | null;
   username: string | null;
   hasPassword: boolean;
+  /** A TOTP secret is inherited (codes typed automatically). */
+  hasTotp: boolean;
   sshKeyId: Uuid | null;
   sshKeyLabel: string | null;
   identityId: Uuid | null;
@@ -979,6 +991,8 @@ export interface IdentityCard {
   label: string;
   username: string;
   hasPassword: boolean;
+  /** A TOTP secret is stored; one-time codes are typed automatically. */
+  hasTotp: boolean;
   sshKeyId: Uuid | null;
   sshKeyLabel: string | null;
   /** Certificate pinned on the identity itself (`null` = the key's own). */
@@ -996,6 +1010,8 @@ export interface IdentityForm {
   username: string;
   /** `null` keeps the stored password; `""` clears it. */
   password: string | null;
+  /** TOTP secret; `null` keeps the stored one, `""` clears it. */
+  totpSecret: string | null;
   sshKeyId: Uuid | null;
   /** Explicit certificate; `null` falls back to the key's own certificate. */
   sshCertificateId: Uuid | null;

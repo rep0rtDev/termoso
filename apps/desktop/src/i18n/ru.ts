@@ -3019,4 +3019,10 @@ export const ru: Readonly<Record<string, string>> = {
   "Agent running · {count} keys": "Агент работает · {count} ключей",
   "Agent not running: {value}": "Агент не запущен: {value}",
   "{label} not served: {reason}": "{label} не раздаётся: {reason}",
+  "TOTP secret (optional)": "Секрет TOTP (необязательно)",
+  "TOTP secret": "Секрет TOTP",
+  "A TOTP secret is stored: one-time codes are typed for you. Type to replace it or clear it to remove.":
+    "Секрет TOTP сохранён: одноразовые коды вводятся автоматически. Введите новый, чтобы заменить, или очистите, чтобы удалить.",
+  "otpauth:// URI or base32 secret from the server's authenticator setup. The current code is typed into the verification-code prompt.":
+    "URI otpauth:// или base32-секрет из настройки аутентификатора на сервере. Текущий код подставляется в запрос кода подтверждения.",
 };

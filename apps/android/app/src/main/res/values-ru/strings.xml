@@ -1663,4 +1663,7 @@
     <string name="no_keys_in_this_vault">В этом хранилище нет ключей</string>
     <string name="key_added_to_authorized_keys">%1$s добавлен в authorized_keys на</string>
     <string name="key_already_authorized">%1$s уже авторизован на</string>
+    <string name="totp_secret">Секрет TOTP (необязательно)</string>
+    <string name="totp_secret_saved">Секрет TOTP сохранён</string>
+    <string name="totp_secret_hint">URI otpauth:// или base32-секрет; код подставляется в запрос подтверждения</string>
 </resources>

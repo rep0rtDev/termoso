@@ -860,6 +860,8 @@ function HostEditor({
                   username: form.telnet.username,
                   password: form.telnet.password,
                   hasPassword: form.telnet.hasPassword,
+                  totpSecret: null,
+                  hasTotp: false,
                   sshKeyId: null,
                   sshCertificateId: null,
                   sshId: false,

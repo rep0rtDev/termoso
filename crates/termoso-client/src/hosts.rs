@@ -78,6 +78,10 @@ pub struct HostForm {
     pub username: String,
     /// `None` keeps the stored password when editing; `Some("")` clears it.
     pub password: Option<String>,
+    /// TOTP secret for keyboard-interactive logins; `None` keeps the stored
+    /// one, `Some("")` clears it.
+    #[serde(default)]
+    pub totp_secret: Option<String>,
     pub ssh_key_id: Option<Uuid>,
     /// Certificate pinned on the host (`None` = the key's own, if any).
     #[serde(default)]
@@ -136,6 +140,9 @@ pub struct HostForm {
     /// Set when the stored inline identity has a password (UI shows a mask).
     #[serde(default)]
     pub has_password: bool,
+    /// Set when the stored inline identity has a TOTP secret.
+    #[serde(default)]
+    pub has_totp: bool,
     /// Expose the SFTP / WebDAV share to the system file picker (Android SAF).
     #[serde(default)]
     pub files_provider: bool,
@@ -379,6 +386,7 @@ struct FlatIdentity {
     ssh_key_id: Option<Uuid>,
     ssh_certificate_id: Option<Uuid>,
     has_password: bool,
+    has_totp: bool,
     ssh_id: bool,
     ssh_id_key_type: Option<SshIdKeyType>,
     has_bearer_token: bool,
@@ -401,6 +409,7 @@ fn flatten_identity(store: &Store, id: Option<Uuid>) -> Result<FlatIdentity> {
             ssh_key_id: i.data.ssh_key_id,
             ssh_certificate_id: i.data.ssh_certificate_id,
             has_password: i.data.password.as_deref().is_some_and(|p| !p.is_empty()),
+            has_totp: i.data.totp_secret.as_deref().is_some_and(|t| !t.is_empty()),
             ssh_id: i.data.ssh_id,
             ssh_id_key_type: i.data.ssh_id_key_type,
             has_bearer_token: i
@@ -446,12 +455,17 @@ pub struct GroupForm {
     pub username: String,
     /// `None` keeps the stored password when editing; `Some("")` clears it.
     pub password: Option<String>,
+    /// TOTP secret; `None` keeps the stored one, `Some("")` clears it.
+    #[serde(default)]
+    pub totp_secret: Option<String>,
     pub ssh_key_id: Option<Uuid>,
     #[serde(default)]
     pub ssh_certificate_id: Option<Uuid>,
     pub identity_id: Option<Uuid>,
     #[serde(default)]
     pub has_password: bool,
+    #[serde(default)]
+    pub has_totp: bool,
     #[serde(default)]
     pub ssh_id: bool,
     #[serde(default)]
@@ -480,6 +494,8 @@ pub struct Inherited {
     pub port: Option<u16>,
     pub username: Option<String>,
     pub has_password: bool,
+    /// A TOTP secret is inherited (codes typed automatically).
+    pub has_totp: bool,
     pub ssh_key_id: Option<Uuid>,
     pub ssh_key_label: Option<String>,
     /// A visible (shared) identity is inherited.
@@ -827,6 +843,7 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
         port: ssh.as_ref().and_then(|s| s.port),
         username: ssh_login.username,
         password: None,
+        totp_secret: None,
         ssh_key_id: ssh_login.ssh_key_id,
         ssh_certificate_id: ssh_login.ssh_certificate_id,
         identity_id: ssh_login.identity_id,
@@ -856,6 +873,7 @@ pub fn form(store: &Store, id: Uuid) -> Result<HostForm> {
         charset: ssh.as_ref().and_then(|s| s.charset.clone()),
         backspace: host.data.backspace.clone(),
         has_password: ssh_login.has_password,
+        has_totp: ssh_login.has_totp,
         files_provider: host.data.files_provider,
     })
 }
@@ -944,6 +962,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
                 identity_id: f.identity_id,
                 username: &f.username,
                 password: f.password.as_deref(),
+                totp_secret: f.totp_secret.as_deref(),
                 ssh_key_id: f.ssh_key_id,
                 ssh_certificate_id: f.ssh_certificate_id,
                 ssh_id: f.ssh_id,
@@ -1001,6 +1020,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
                 identity_id: tf.identity_id,
                 username: &tf.username,
                 password: tf.password.as_deref(),
+                totp_secret: None,
                 ssh_key_id: None,
                 ssh_certificate_id: None,
                 ssh_id: false,
@@ -1049,6 +1069,7 @@ pub fn save(store: &Store, f: &HostForm) -> Result<HostCard> {
             webdav_inline_identity.as_ref(),
             &Credentials {
                 identity_id: wf.identity_id,
+                totp_secret: None,
                 // Switching modes drops the other mode's secret.
                 username: if token_mode { "" } else { &wf.username },
                 password: if token_mode {
@@ -1190,6 +1211,8 @@ struct Credentials<'a> {
     identity_id: Option<Uuid>,
     username: &'a str,
     password: Option<&'a str>,
+    /// `None` keeps the stored TOTP secret, `Some("")` clears it.
+    totp_secret: Option<&'a str>,
     ssh_key_id: Option<Uuid>,
     ssh_certificate_id: Option<Uuid>,
     ssh_id: bool,
@@ -1256,6 +1279,11 @@ impl WebDavCredentials<'_> {
     }
 }
 
+/// Check a TOTP secret (`otpauth://` URI or base32) before storing it.
+pub fn normalize_totp_secret(raw: &str) -> Result<String> {
+    termoso_core::ssh::totp::normalize_secret(raw).map_err(|e| ClientError::invalid(e.to_string()))
+}
+
 /// Point at a visible identity, or create / update / drop the inline hidden
 /// one. Returns the identity the config should reference.
 fn upsert_identity(
@@ -1307,12 +1335,19 @@ fn upsert_identity(
         (None, Some(old)) => old.data.password.clone(),
         (None, None) => None,
     };
+    let totp_secret = match (c.totp_secret, existing_inline) {
+        (Some(""), _) => None,
+        (Some(t), _) => Some(normalize_totp_secret(t)?),
+        (None, Some(old)) => old.data.totp_secret.clone(),
+        (None, None) => None,
+    };
     let (bearer_token, client_certificate) = match &c.webdav {
         Some(w) => w.resolve(existing_inline.map(|e| &e.data))?,
         None => (None, None),
     };
     if username.is_empty()
         && password.is_none()
+        && totp_secret.is_none()
         && ssh_key_id.is_none()
         && !c.ssh_id
         && bearer_token.is_none()
@@ -1334,6 +1369,7 @@ fn upsert_identity(
         ssh_id_key_type: c.ssh_id_key_type.filter(|_| c.ssh_id),
         bearer_token,
         client_certificate,
+        totp_secret,
     };
     Ok(Some(match existing_inline {
         Some(old) => {
@@ -1482,7 +1518,9 @@ pub fn group_form(store: &Store, id: Uuid) -> Result<GroupForm> {
             .map(|i| i.username.clone())
             .unwrap_or_default(),
         password: None,
+        totp_secret: None,
         has_password: inline.as_ref().is_some_and(|i| i.password.is_some()),
+        has_totp: inline.as_ref().is_some_and(|i| i.totp_secret.is_some()),
         ssh_key_id: inline.as_ref().and_then(|i| i.ssh_key_id),
         ssh_certificate_id: inline.as_ref().and_then(|i| i.ssh_certificate_id),
         identity_id,
@@ -1528,6 +1566,7 @@ pub fn save_group_form(store: &Store, f: &GroupForm) -> Result<GroupNode> {
             identity_id: f.identity_id,
             username: &f.username,
             password: f.password.as_deref(),
+            totp_secret: f.totp_secret.as_deref(),
             ssh_key_id: f.ssh_key_id,
             ssh_certificate_id: f.ssh_certificate_id,
             ssh_id: f.ssh_id,
@@ -1654,6 +1693,9 @@ pub fn inherited(store: &Store, group_id: Option<Uuid>) -> Result<Inherited> {
             .map(|i| i.data.username.clone())
             .filter(|u| !u.is_empty()),
         has_password: identity.as_ref().is_some_and(|i| i.data.password.is_some()),
+        has_totp: identity
+            .as_ref()
+            .is_some_and(|i| i.data.totp_secret.is_some()),
         ssh_key_id: key_id,
         ssh_key_label: key_label,
         identity_id,
@@ -2054,7 +2096,9 @@ mod tests {
             timeout: None,
             color_scheme: None,
             has_password: false,
+            has_totp: false,
             files_provider: false,
+            totp_secret: None,
         }
     }
 
@@ -2597,6 +2641,7 @@ mod tests {
                 ssh_certificate_id: None,
                 identity_id: None,
                 has_password: false,
+                has_totp: false,
                 ssh_id: false,
                 ssh_id_key_type: None,
                 agent_forwarding: true,
@@ -2606,6 +2651,7 @@ mod tests {
                 env_variables: vec![("LANG".into(), "C".into())],
                 keep_alive_interval: None,
                 timeout: None,
+                totp_secret: None,
             },
         )
         .unwrap();

@@ -931,6 +931,8 @@ pub fn apply(
             color_scheme: None,
             has_password: false,
             files_provider: false,
+            totp_secret: None,
+            has_totp: false,
         };
         match hosts::save(store, &form) {
             Ok(card) => {
@@ -1217,6 +1219,7 @@ fn ensure_proxy(
                 ssh_id_key_type: None,
                 bearer_token: None,
                 client_certificate: None,
+                totp_secret: None,
             },
         )?)
     } else {
@@ -1312,6 +1315,8 @@ fn build_chain(
                     color_scheme: None,
                     has_password: false,
                     files_provider: false,
+                    totp_secret: None,
+                    has_totp: false,
                 };
                 let card = hosts::save(store, &form)?;
                 existing.hosts.push(card.clone());

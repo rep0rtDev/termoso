@@ -613,6 +613,14 @@ private fun SshSection(
                     inheritedHint = inherited?.hasPassword == true,
                     onChange = { v -> vm.update { it.copy(password = v) } },
                 )
+                PasswordField(
+                    password = draft.totpSecret,
+                    hasPassword = draft.hasTotp,
+                    inheritedHint = inherited?.hasTotp == true,
+                    onChange = { v -> vm.update { it.copy(totpSecret = v) } },
+                    label = stringResource(R.string.totp_secret),
+                    savedLabel = stringResource(R.string.totp_secret_saved),
+                )
                 KeyRow(state, draft, onPick = { id -> vm.update { it.copy(sshKeyId = id) } })
                 SshIdRows(
                     sshId = draft.sshId,

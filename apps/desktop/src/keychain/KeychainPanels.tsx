@@ -1492,6 +1492,7 @@ export function IdentityPanel({
   const [label, setLabel] = useState(initial?.label ?? "");
   const [username, setUsername] = useState(initial?.username ?? "");
   const [password, setPassword] = useState<string | null>(null);
+  const [totpSecret, setTotpSecret] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [keyId, setKeyId] = useState<Uuid | null>(initial?.sshKeyId ?? null);
   const [certId, setCertId] = useState<Uuid | null>(initial?.sshCertificateId ?? null);
@@ -1605,6 +1606,7 @@ export function IdentityPanel({
                 label: label.trim(),
                 username: username.trim(),
                 password,
+                totpSecret,
                 sshKeyId: keyId,
                 sshCertificateId: certId,
                 sshId,
@@ -1678,6 +1680,37 @@ export function IdentityPanel({
                   </IconButton>
                 </InputAdornment>
               ),
+            },
+          }}
+        />
+
+        <TextField
+          {...lock}
+          value={totpSecret ?? ""}
+          onChange={(e) => setTotpSecret(e.target.value)}
+          autoComplete="off"
+          placeholder={
+            initial?.hasTotp && totpSecret === null ? "••••••••••••" : tr("TOTP secret (optional)")
+          }
+          helperText={
+            initial?.hasTotp && totpSecret === null
+              ? tr(
+                  "A TOTP secret is stored: one-time codes are typed for you. Type to replace it or clear it to remove.",
+                )
+              : tr(
+                  "otpauth:// URI or base32 secret from the server's authenticator setup. The current code is typed into the verification-code prompt.",
+                )
+          }
+          slotProps={{
+            input: {
+              endAdornment:
+                initial?.hasTotp && totpSecret === null && !readOnly ? (
+                  <InputAdornment position="end">
+                    <Button size="small" color="inherit" onClick={() => setTotpSecret("")}>
+                      {tr("Clear")}
+                    </Button>
+                  </InputAdornment>
+                ) : undefined,
             },
           }}
         />

@@ -378,6 +378,10 @@ pub mod payload {
             /// TLS client certificate presented to servers requiring mTLS (WebDAV).
             #[serde(default, skip_serializing_if = "Option::is_none")]
             pub client_certificate: Option<ClientCertificate>,
+            /// TOTP secret (`otpauth://` URI or base32) used to answer the
+            /// one-time-code prompt of keyboard-interactive logins.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub totp_secret: Option<String>,
         }
     }
 

@@ -36,6 +36,7 @@ use crate::prompts::{PromptAnswer, PromptRequest, UiHostKeyPrompt, UiInteractive
 use crate::snippets;
 use crate::sshid;
 use crate::state::AppState;
+use termoso_core::ssh::totp::TotpResponder;
 
 pub const SESSION_EVENT: &str = "session";
 const MAX_PASSWORD_ATTEMPTS: usize = 3;
@@ -1482,6 +1483,12 @@ async fn ssh_connect<R: Runtime>(
         .and_then(|k| k.data.passphrase.clone())
         .filter(|p| !p.is_empty())
         .map(Zeroizing::new);
+    let totp = identity
+        .as_ref()
+        .and_then(|i| i.data.totp_secret.as_deref())
+        .filter(|t| !t.is_empty())
+        .map(|t| TotpResponder::parse(t).map_err(DesktopError::from))
+        .transpose()?;
     let proxy = match resolved.and_then(|r| r.proxy.as_ref()) {
         Some(p) => Some(proxy_config(&state, &p.data)?),
         None => None,
@@ -1540,14 +1547,22 @@ async fn ssh_connect<R: Runtime>(
         }
         auth.push(AuthMethod::KeyboardInteractive);
 
-        let interactive: Option<Arc<dyn termoso_core::ssh::InteractivePrompt>> = match password {
-            Some(_) => None,
-            None => Some(Arc::new(UiInteractivePrompt {
+        let ui_prompt: Arc<dyn termoso_core::ssh::InteractivePrompt> =
+            Arc::new(UiInteractivePrompt {
                 app: app.clone(),
                 session_id,
                 target: display.clone(),
-            })),
-        };
+            });
+        let interactive: Option<Arc<dyn termoso_core::ssh::InteractivePrompt>> =
+            match (&totp, &password) {
+                (Some(t), _) => Some(Arc::new(TotpResponder::new(
+                    t.clone(),
+                    password.clone(),
+                    Some(ui_prompt),
+                ))),
+                (None, Some(_)) => None,
+                (None, None) => Some(ui_prompt),
+            };
         let opts = ConnectOptions {
             target: target.clone(),
             auth,
@@ -1757,6 +1772,7 @@ fn remember_on_identity(
             ssh_id_key_type: None,
             bearer_token: None,
             client_certificate: None,
+            totp_secret: None,
         };
         edit(&mut identity);
         let identity_id = store.insert(vault_id, &identity)?;

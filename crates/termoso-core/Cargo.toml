@@ -9,6 +9,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+totp-rs = { workspace = true }
 termoso-crypto = { workspace = true }
 termoso-proto = { workspace = true }
 
@@ -100,4 +101,3 @@ termoso-server = { path = "../termoso-server" }
 axum = { workspace = true }
 sqlx = { workspace = true }
 anyhow = { workspace = true }
-totp-rs = { workspace = true }
