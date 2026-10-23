@@ -451,7 +451,8 @@ private fun SessionChip(
             color = fg,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
+            // The name takes the free width so the close button sits at the pill's edge, like Termius.
+            modifier = Modifier.weight(1f),
         )
         if (active) {
             Icon(
