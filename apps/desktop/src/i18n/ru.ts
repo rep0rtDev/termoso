@@ -700,7 +700,6 @@ export const ru: Readonly<Record<string, string>> = {
   "Import from overlay network": "Импорт из оверлейной сети",
   "Tailscale, NetBird or ZeroTier installed on this computer":
     "Tailscale, NetBird или ZeroTier, установленные на этом компьютере",
-  "Asking…": "Запрос…",
   "No Tailscale, NetBird or ZeroTier client found on this computer. Termoso reads the device list from the local client — install one and sign in, then refresh.":
     "Клиент Tailscale, NetBird или ZeroTier на этом компьютере не найден. Termoso берёт список устройств у локального клиента — установите его, войдите и обновите список.",
   "The client is running but reports no machines. Check that it is signed in and connected.":
@@ -2173,7 +2172,6 @@ export const ru: Readonly<Record<string, string>> = {
   "This cannot be undone.": "Это нельзя отменить.",
   "This change affects the security of your account. Enter the password for {account} to continue.":
     "Это изменение влияет на безопасность аккаунта. Введите пароль для {account}, чтобы продолжить.",
-  "This device": "Это устройство",
   "This device only": "Только это устройство",
   "This device was signed out of the account.": "Это устройство вышло из аккаунта.",
   "This device wins": "Побеждает это устройство",
