@@ -238,6 +238,9 @@ export const deepLinksRegister = () => invoke<string[]>("deep_links_register");
 /** Files passed on the command line at launch (file associations), reported once. */
 export const launchFiles = () => invoke<string[]>("launch_files");
 export const launchLinks = () => invoke<string[]>("launch_links");
+export const zmodemReceive = (id: Uuid, dir: string) => invoke<null>("zmodem_receive", { id, dir });
+export const zmodemSend = (id: Uuid, paths: string[]) => invoke<null>("zmodem_send", { id, paths });
+export const zmodemCancel = (id: Uuid) => invoke<null>("zmodem_cancel", { id });
 
 export const historyConnections = (limit = 50) =>
   invoke<VaultConnection[]>("history_connections", { limit });

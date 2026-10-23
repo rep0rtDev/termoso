@@ -28,6 +28,12 @@ Folders are transferred recursively; symlinks are copied as the files they point
 
 With a remote host in both panes, drag from one to the other — or **Copy to target directory** — and the file is streamed through the app from one server to the other. It works even when the two servers cannot reach each other, and nothing is written to the local disk on the way.
 
+## ZMODEM (`rz` / `sz`) in the terminal
+
+Old-school and still handy on routers, serial consoles and boxes without SFTP: run `sz file.bin` on the remote and Termoso notices the ZMODEM header, hides the protocol noise and asks for a folder (Downloads by default); run `rz` and it asks which local files to send. A bar over the terminal shows the file, bytes and a cancel button, and a line in the terminal sums up the result. Files that already exist are kept — the new one lands as `name (1).ext`; the remote's modification time is preserved.
+
+Needs `lrzsz` on the remote (`apt install lrzsz`, `apk add lrzsz`), works over SSH, Telnet and serial, one direction at a time; `sz -e` (escape control characters) helps on noisy serial links. For anything bigger than a few megabytes the SFTP pane is faster.
+
 ## Editing in place
 
 **Edit** opens a remote file in your editor (the system default, or the one set in **Settings → Files**). When you save, the file is uploaded back; the pane shows a small indicator while a file is open for editing. Useful for config files; for anything larger than a few megabytes download first.

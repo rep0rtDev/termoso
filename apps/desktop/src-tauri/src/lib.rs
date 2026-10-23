@@ -40,6 +40,7 @@ mod trust;
 mod update;
 mod webdav;
 mod workspaces;
+mod zmodem;
 
 use termoso_client::{hosts, keychain};
 
@@ -139,6 +140,9 @@ pub fn run() {
             commands::deep_links_register,
             commands::launch_files,
             commands::launch_links,
+            commands::zmodem_receive,
+            commands::zmodem_send,
+            commands::zmodem_cancel,
             commands::settings_get,
             commands::settings_set,
             security::vault_status,

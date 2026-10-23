@@ -295,6 +295,25 @@ pub enum SessionEvent {
     Closed {
         id: Uuid,
     },
+    /// The remote started `sz` (receive) or `rz` (send); the UI picks files / a folder.
+    Zmodem {
+        id: Uuid,
+        kind: crate::zmodem::Kind,
+    },
+    ZmodemProgress {
+        id: Uuid,
+        kind: crate::zmodem::Kind,
+        name: String,
+        done: u64,
+        total: Option<u64>,
+        files: u32,
+    },
+    ZmodemDone {
+        id: Uuid,
+        ok: bool,
+        files: u32,
+        error: Option<String>,
+    },
 }
 
 struct Live {
@@ -314,6 +333,8 @@ struct Live {
     cancel: CancellationToken,
     history_id: Option<Uuid>,
     recorder: Option<Arc<Recorder>>,
+    /// ZMODEM detector / running transfer on this session's byte stream.
+    zmodem: Arc<crate::zmodem::Slot>,
 }
 
 /// Registry of sessions. Connection attempts are registered up-front so the UI
@@ -343,6 +364,15 @@ impl Sessions {
             .expect("sessions poisoned")
             .get(&id)
             .map(|l| l.info.clone())
+            .ok_or_else(|| DesktopError::not_found(format!("session {id}")))
+    }
+
+    pub fn zmodem(&self, id: Uuid) -> Result<Arc<crate::zmodem::Slot>> {
+        self.live
+            .lock()
+            .expect("sessions poisoned")
+            .get(&id)
+            .map(|l| l.zmodem.clone())
             .ok_or_else(|| DesktopError::not_found(format!("session {id}")))
     }
 
@@ -531,6 +561,7 @@ pub async fn open<R: Runtime>(
 
     let output = Arc::new(Mutex::new(output));
     let tap: Arc<Mutex<Option<Publisher>>> = Arc::default();
+    let zmodem: Arc<crate::zmodem::Slot> = Arc::default();
     let pump = tokio::spawn(pump(
         app.clone(),
         id,
@@ -538,6 +569,7 @@ pub async fn open<R: Runtime>(
         output.clone(),
         tap.clone(),
         recorder.clone(),
+        zmodem.clone(),
     ));
     let live = Live {
         info: info.clone(),
@@ -551,6 +583,7 @@ pub async fn open<R: Runtime>(
         cancel,
         history_id,
         recorder,
+        zmodem,
     };
     state
         .sessions
@@ -724,11 +757,18 @@ async fn pump<R: Runtime>(
     output: Arc<Mutex<Channel<InvokeResponseBody>>>,
     tap: Arc<Mutex<Option<Publisher>>>,
     recorder: Option<Arc<Recorder>>,
+    zmodem: Arc<crate::zmodem::Slot>,
 ) {
     let mut error: Option<String> = None;
     while let Some(ev) = events.recv().await {
         match ev {
             TermEvent::Output(bytes) => {
+                let Some(bytes) = crate::zmodem::filter(&app, id, &zmodem, bytes) else {
+                    continue;
+                };
+                if bytes.is_empty() {
+                    continue;
+                }
                 if let Some(rec) = &recorder {
                     rec.append(&bytes);
                 }
@@ -753,6 +793,7 @@ async fn pump<R: Runtime>(
             TermEvent::Closed => break,
         }
     }
+    zmodem.shutdown();
     let state = app.state::<AppState>();
     state.multiplayer.detach(id);
     if let Some(live) = state.sessions.close(id) {

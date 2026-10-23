@@ -1848,7 +1848,21 @@ export type SessionEvent =
   | { type: "exit"; id: Uuid; code: number | null; signal: string | null }
   | { type: "error"; id: Uuid; message: string }
   | { type: "shell"; id: Uuid; shell: string }
-  | { type: "closed"; id: Uuid };
+  | { type: "closed"; id: Uuid }
+  /** The remote started `sz` (receive) or `rz` (send); pick a folder / files. */
+  | { type: "zmodem"; id: Uuid; kind: ZmodemKind }
+  | {
+      type: "zmodem_progress";
+      id: Uuid;
+      kind: ZmodemKind;
+      name: string;
+      done: number;
+      total: number | null;
+      files: number;
+    }
+  | { type: "zmodem_done"; id: Uuid; ok: boolean; files: number; error: string | null };
+
+export type ZmodemKind = "receive" | "send";
 
 export type OpenTarget =
   | {

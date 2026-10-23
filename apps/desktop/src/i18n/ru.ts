@@ -585,6 +585,18 @@ export const ru: Readonly<Record<string, string>> = {
   "Watching for changes": "Слежу за изменениями",
   "{n} uploaded ({size})": "загружено: {n} ({size})",
   "{n} removed": "удалено: {n}",
+  "ZMODEM: sent {count} files":
+    "ZMODEM: отправлен {count} файл|ZMODEM: отправлено {count} файла|ZMODEM: отправлено {count} файлов",
+  "ZMODEM: received {count} files":
+    "ZMODEM: получен {count} файл|ZMODEM: получено {count} файла|ZMODEM: получено {count} файлов",
+  failed: "ошибка",
+  "Save received files to": "Сохранить полученные файлы в",
+  "Files to send": "Файлы для отправки",
+  "ZMODEM: the remote wants to send files — choose a folder":
+    "ZMODEM: удалённая сторона хочет отправить файлы — выберите папку",
+  "ZMODEM: the remote wants files — choose which":
+    "ZMODEM: удалённая сторона ждёт файлы — выберите какие",
+  "Cancel transfer": "Отменить передачу",
   "Connecting to {value}": "Подключение к {value}",
   "Connecting via {via}{where}": "Подключение через {via}{where}",
   "Connecting via {via}{where}…": "Подключение через {via}{where}…",
