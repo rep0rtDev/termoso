@@ -306,13 +306,13 @@ private val ChipShape = RoundedCornerShape(8.dp)
 private fun HeaderButton(icon: ImageVector, description: String, tint: Color? = null, onClick: () -> Unit) {
     Box(
         Modifier
-            .size(30.dp)
+            .size(36.dp)
             .clip(ChipShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = description, tint = tint ?: MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
+        Icon(icon, contentDescription = description, tint = tint ?: MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -341,7 +341,7 @@ private fun SessionBar(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .height(56.dp)
             .background(background)
             .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -429,7 +429,7 @@ private fun SessionChip(
     }
     Row(
         modifier
-            .height(30.dp)
+            .height(36.dp)
             .clip(ChipShape)
             .background(bg)
             // Not focusable: a focus grab (e.g. after a dialog closes) would
@@ -443,7 +443,7 @@ private fun SessionChip(
         when {
             state is SessionState.Connecting -> CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = fg)
             session.isView -> Icon(Icons.Filled.Groups, contentDescription = null, tint = fg, modifier = Modifier.size(18.dp))
-            else -> HostAvatar(detected ?: session.savedOsName, size = 18)
+            else -> HostAvatar(detected ?: session.savedOsName, size = 20)
         }
         Text(
             session.label,
