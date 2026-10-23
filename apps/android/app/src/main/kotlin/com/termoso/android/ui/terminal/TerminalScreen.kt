@@ -829,6 +829,17 @@ private fun ActiveSession(
             keyboardHeight = maxOf(keyboardHeight, with(density) { (imeBottomPx - navBottomPx).toDp().value })
         }
     }
+    // The keyboard also comes up on its own (a tap on the terminal, the system restoring
+    // it after a rotation or an app switch): follow the real inset so the flag stays honest
+    // and the key grid never stands on top of the keyboard.
+    LaunchedEffect(imeVisible) {
+        if (imeVisible) {
+            imeShown = true
+            panelExpanded = false
+        } else {
+            imeShown = false
+        }
+    }
     BackHandler(enabled = imeVisible || panelExpanded) {
         when {
             panelExpanded -> panelExpanded = false
