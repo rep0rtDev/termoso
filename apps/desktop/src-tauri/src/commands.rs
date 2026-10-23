@@ -52,8 +52,6 @@ pub fn app_quit<R: Runtime>(app: AppHandle<R>) {
     app.exit(0);
 }
 
-/// Files the app was launched with (file associations, "Open with…"),
-/// reported once; later ones arrive as the `files-opened` event.
 /// Links the command line asked for at launch (`termoso ssh …`), reported once;
 /// later ones arrive as the `quick-action` event.
 #[tauri::command]
@@ -61,6 +59,29 @@ pub fn launch_links(links: tauri::State<'_, crate::quick::LaunchLinks>) -> Vec<S
     links.take()
 }
 
+/// `sz` on the remote: receive its files into `dir`.
+#[tauri::command]
+pub async fn zmodem_receive<R: Runtime>(app: AppHandle<R>, id: Uuid, dir: String) -> Result<()> {
+    crate::zmodem::receive(app, id, dir).await
+}
+
+/// `rz` on the remote: send these local files.
+#[tauri::command]
+pub async fn zmodem_send<R: Runtime>(
+    app: AppHandle<R>,
+    id: Uuid,
+    paths: Vec<String>,
+) -> Result<()> {
+    crate::zmodem::send(app, id, paths).await
+}
+
+#[tauri::command]
+pub async fn zmodem_cancel<R: Runtime>(app: AppHandle<R>, id: Uuid) -> Result<()> {
+    crate::zmodem::cancel(app, id).await
+}
+
+/// Files the app was launched with (file associations, "Open with…"),
+/// reported once; later ones arrive as the `files-opened` event.
 #[tauri::command]
 pub fn launch_files(files: tauri::State<'_, crate::quick::LaunchFiles>) -> Vec<String> {
     files.take()

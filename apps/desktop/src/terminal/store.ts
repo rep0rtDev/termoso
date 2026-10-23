@@ -27,6 +27,9 @@ import type {
   Uuid,
 } from "@/ipc/types";
 import { errorMessage } from "@/ipc/types";
+import type { ZmodemKind } from "@/ipc/types";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { downloadDir } from "@tauri-apps/api/path";
 import { keys } from "@/ipc/hooks";
 import { createStore, omit, useStore } from "@/lib/store";
 import { dismissControlHint, viewerJoined } from "./multiplayer";
@@ -74,7 +77,7 @@ import {
   enqueueReconnect,
   type ReconnectQueue,
 } from "./reconnect";
-import { tr } from "@/i18n";
+import { tr, trn } from "@/i18n";
 import { requireAnywhere, requirePerm } from "@/team/perms";
 
 export type { SplitDirection, SplitNode } from "./layout";
@@ -116,6 +119,17 @@ export interface Pane {
    * in place: the old buffer stays on screen instead of the connection view.
    */
   reconnecting: boolean;
+  /** ZMODEM transfer (`rz` / `sz` on the remote) in progress on this pane. */
+  zmodem: ZmodemState | null;
+}
+
+export interface ZmodemState {
+  kind: ZmodemKind;
+  /** Current file; empty while the folder / files are still being picked. */
+  name: string;
+  done: number;
+  total: number | null;
+  files: number;
 }
 
 /** Hovered link with the modifier hint, at viewport coordinates. */
@@ -1512,6 +1526,7 @@ function startSession(paneId: Uuid, target: OpenTarget) {
         progress: null,
         shell: info.shell,
         reconnecting: false,
+        zmodem: null,
       });
       flushPendingInput(paneId);
       retries.delete(paneId);
@@ -1585,6 +1600,7 @@ function newPane(paneId: Uuid, target: OpenTarget): Pane {
     lastExit: null,
     autocomplete: true,
     reconnecting: false,
+    zmodem: null,
   };
 }
 
@@ -2146,6 +2162,34 @@ export function activeSshPane(): Pane | null {
 
 // ───────────────────────────── events from Rust ─────────────────────────────
 
+/** Ask where `sz` files go (a folder) or which files `rz` gets; declining tells the remote to stop. */
+async function pickZmodemTarget(paneId: Uuid, kind: ZmodemKind) {
+  try {
+    if (kind === "receive") {
+      const picked = await openDialog({
+        directory: true,
+        multiple: false,
+        title: tr("Save received files to"),
+        defaultPath: await downloadDir().catch(() => undefined),
+      });
+      if (typeof picked === "string") await ipc.zmodemReceive(paneId, picked);
+      else await ipc.zmodemCancel(paneId);
+    } else {
+      const picked = await openDialog({ multiple: true, title: tr("Files to send") });
+      const paths = Array.isArray(picked) ? picked : typeof picked === "string" ? [picked] : [];
+      if (paths.length > 0) await ipc.zmodemSend(paneId, paths);
+      else await ipc.zmodemCancel(paneId);
+    }
+  } catch (e) {
+    patchPane(paneId, { zmodem: null });
+    writeSystemLine(paneId, tr("ZMODEM: {error}", { error: errorMessage(e) }), "33");
+  }
+}
+
+export function cancelZmodem(paneId: Uuid) {
+  void ipc.zmodemCancel(paneId).catch(() => undefined);
+}
+
 function onSessionEvent(ev: SessionEvent) {
   const pane = terminalStore.get().panes[ev.id];
   if (!pane) return;
@@ -2178,6 +2222,30 @@ function onSessionEvent(ev: SessionEvent) {
       if (pane.status === "connecting") appendLog(ev.id, ev.message);
       writeSystemLine(ev.id, ev.message);
       break;
+    case "zmodem":
+      patchPane(ev.id, { zmodem: { kind: ev.kind, name: "", done: 0, total: null, files: 0 } });
+      void pickZmodemTarget(ev.id, ev.kind);
+      break;
+    case "zmodem_progress":
+      patchPane(ev.id, {
+        zmodem: { kind: ev.kind, name: ev.name, done: ev.done, total: ev.total, files: ev.files },
+      });
+      break;
+    case "zmodem_done": {
+      const z = pane.zmodem;
+      patchPane(ev.id, { zmodem: null });
+      if (ev.ok) {
+        writeSystemLine(
+          ev.id,
+          z?.kind === "send"
+            ? trn(ev.files, "ZMODEM: sent {count} file", "ZMODEM: sent {count} files")
+            : trn(ev.files, "ZMODEM: received {count} file", "ZMODEM: received {count} files"),
+        );
+      } else {
+        writeSystemLine(ev.id, tr("ZMODEM: {error}", { error: ev.error ?? tr("failed") }), "33");
+      }
+      break;
+    }
     case "exit": {
       const detail =
         ev.signal !== null
