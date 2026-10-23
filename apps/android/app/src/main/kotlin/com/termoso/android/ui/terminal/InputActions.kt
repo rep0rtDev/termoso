@@ -53,9 +53,9 @@ object KeyActions {
                 PanelKey.Text(label?.ifBlank { null } ?: defaultLabel(arg, mods), arg, mods)
             }
             "mod" -> when (arg.trim().lowercase()) {
-                "ctrl" -> PanelKey.Modifier(label?.ifBlank { null } ?: "Ctrl", StickyMod.CTRL)
-                "alt" -> PanelKey.Modifier(label?.ifBlank { null } ?: "Alt", StickyMod.ALT)
-                "shift" -> PanelKey.Modifier(label?.ifBlank { null } ?: "Shift", StickyMod.SHIFT)
+                "ctrl" -> PanelKey.Modifier(label?.ifBlank { null } ?: "ctrl", StickyMod.CTRL)
+                "alt" -> PanelKey.Modifier(label?.ifBlank { null } ?: "alt", StickyMod.ALT)
+                "shift" -> PanelKey.Modifier(label?.ifBlank { null } ?: "shift", StickyMod.SHIFT)
                 else -> null
             }
             else -> null
@@ -74,23 +74,23 @@ object KeyActions {
         (if (mods.ctrl) "ctrl+" else "") + (if (mods.alt) "alt+" else "") + (if (mods.shift) "shift+" else "")
 
     private fun modLabel(mods: KeyMods): String =
-        (if (mods.ctrl) "^" else "") + (if (mods.alt) "⌥" else "") + (if (mods.shift) "⇧" else "")
+        (if (mods.ctrl) "^" else "") + (if (mods.alt) "⌥" else "") + (if (mods.shift) "shift+" else "")
 
     fun defaultLabel(key: SpecialKey, mods: KeyMods = NONE): String = modLabel(mods) + when (key) {
         SpecialKey.LEFT -> "←"
         SpecialKey.UP -> "↑"
         SpecialKey.DOWN -> "↓"
         SpecialKey.RIGHT -> "→"
-        SpecialKey.ESCAPE -> "Esc"
-        SpecialKey.ENTER -> "Enter"
+        SpecialKey.ESCAPE -> "esc"
+        SpecialKey.ENTER -> "enter"
         SpecialKey.BACKSPACE -> "⌫"
-        SpecialKey.DELETE -> "Delete"
-        SpecialKey.INSERT -> "Insert"
-        SpecialKey.HOME -> "Home"
-        SpecialKey.END -> "End"
-        SpecialKey.PAGE_UP -> "Pg Up"
-        SpecialKey.PAGE_DOWN -> "Pg Dn"
-        SpecialKey.TAB -> "Tab"
+        SpecialKey.DELETE -> "del"
+        SpecialKey.INSERT -> "ins"
+        SpecialKey.HOME -> "home"
+        SpecialKey.END -> "end"
+        SpecialKey.PAGE_UP -> "pgUp"
+        SpecialKey.PAGE_DOWN -> "pgDn"
+        SpecialKey.TAB -> "tab"
         else -> key.name
     }
 
@@ -199,31 +199,34 @@ object KeyGroups {
             fun group(id: String, @StringRes name: Int, keys: List<PanelKey>) =
                 KeyGroup(id = id, name = str(name), keys = keys.map(KeyActions::toDef), enabled = true)
             return listOf(
+                // Rows as in Termius: a 7-key first row renders 3 | 4 with a wide shift+tab.
                 group(
                     "arrows", R.string.arrows_editing,
                     listOf(
+                        special(SpecialKey.TAB, shift = true), special(SpecialKey.ESCAPE), PanelKey.Modifier("ctrl", StickyMod.CTRL),
                         special(SpecialKey.LEFT), special(SpecialKey.UP), special(SpecialKey.DOWN), special(SpecialKey.RIGHT),
-                        PanelKey.Modifier("Alt", StickyMod.ALT), special(SpecialKey.TAB),
-                        special(SpecialKey.INSERT), special(SpecialKey.DELETE),
                     ),
                 ),
                 group(
                     "nav", R.string.navigation,
-                    listOf(special(SpecialKey.HOME), special(SpecialKey.PAGE_UP), special(SpecialKey.PAGE_DOWN), special(SpecialKey.END)) +
-                        text("|", "\\", "?", "-"),
+                    listOf(
+                        PanelKey.Modifier("alt", StickyMod.ALT), special(SpecialKey.TAB), special(SpecialKey.INSERT), special(SpecialKey.DELETE),
+                        special(SpecialKey.HOME), special(SpecialKey.PAGE_UP), special(SpecialKey.PAGE_DOWN), special(SpecialKey.END),
+                    ),
                 ),
-                group("symbols1", R.string.symbols, text("/", ":", ";", "!", "~", "@", "$", "*")),
-                group("symbols2", R.string.more_symbols, text("^", "%", "=", "`", "<", ">", "(", ")")),
-                group(
-                    "brackets", R.string.brackets_f1_f4,
-                    text("{", "}", "[", "]") + listOf(SpecialKey.F1, SpecialKey.F2, SpecialKey.F3, SpecialKey.F4).map { special(it) },
-                ),
+                group("symbols1", R.string.symbols, text("/", "\\", "?", "-", "|", ":", ";", "!")),
+                group("symbols2", R.string.more_symbols, text("~", "@", "$", "*", "^", "%", "=", "`")),
+                group("brackets", R.string.brackets_f1_f4, text("<", ">", "(", ")", "{", "}", "[", "]")),
                 group(
                     "fkeys", R.string.f5_f12,
                     listOf(
+                        SpecialKey.F1, SpecialKey.F2, SpecialKey.F3, SpecialKey.F4,
                         SpecialKey.F5, SpecialKey.F6, SpecialKey.F7, SpecialKey.F8,
-                        SpecialKey.F9, SpecialKey.F10, SpecialKey.F11, SpecialKey.F12,
                     ).map { special(it) },
+                ),
+                group(
+                    "fkeys2", R.string.f5_f12,
+                    listOf(SpecialKey.F9, SpecialKey.F10, SpecialKey.F11, SpecialKey.F12).map { special(it) },
                 ),
                 // tmux prefix chords: ^B is sent as the byte itself, then the command key.
                 group(
@@ -248,9 +251,9 @@ object KeyGroups {
     val palette: List<PanelKey> by lazy {
         buildList {
             addAll(listOf(SpecialKey.LEFT, SpecialKey.UP, SpecialKey.DOWN, SpecialKey.RIGHT).map { special(it) })
-            add(PanelKey.Modifier("Ctrl", StickyMod.CTRL))
-            add(PanelKey.Modifier("Alt", StickyMod.ALT))
-            add(PanelKey.Modifier("Shift", StickyMod.SHIFT))
+            add(PanelKey.Modifier("ctrl", StickyMod.CTRL))
+            add(PanelKey.Modifier("alt", StickyMod.ALT))
+            add(PanelKey.Modifier("shift", StickyMod.SHIFT))
             addAll(
                 listOf(
                     SpecialKey.ESCAPE, SpecialKey.TAB, SpecialKey.ENTER, SpecialKey.BACKSPACE, SpecialKey.INSERT,

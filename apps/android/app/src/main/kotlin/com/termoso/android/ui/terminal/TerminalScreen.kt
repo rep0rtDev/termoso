@@ -803,11 +803,16 @@ private fun ActiveSession(
     val imeVisible = WindowInsets.isImeVisible
     // Last measured keyboard height: the key grid takes exactly this much room
     // when it replaces the keyboard, so the terminal does not jump between the two.
+    // The screen already pads the navigation bar, and the IME inset includes it, so the
+    // grid gets the keyboard height minus that bar.
     val density = LocalDensity.current
     val imeBottomPx = WindowInsets.ime.getBottom(density)
+    val navBottomPx = WindowInsets.navigationBars.getBottom(density)
     var keyboardHeight by rememberSaveable { mutableStateOf(0f) }
     LaunchedEffect(imeBottomPx, imeVisible) {
-        if (imeVisible && imeBottomPx > 0) keyboardHeight = maxOf(keyboardHeight, with(density) { imeBottomPx.toDp().value })
+        if (imeVisible && imeBottomPx > navBottomPx) {
+            keyboardHeight = maxOf(keyboardHeight, with(density) { (imeBottomPx - navBottomPx).toDp().value })
+        }
     }
     BackHandler(enabled = imeVisible || panelExpanded) {
         when {
