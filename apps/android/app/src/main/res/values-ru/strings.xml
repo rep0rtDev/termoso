@@ -1655,4 +1655,12 @@
         <item quantity="many">%d файлов пройдут через это устройство, на нём ничего не сохраняется.</item>
         <item quantity="other">%d файла пройдут через это устройство, на нём ничего не сохраняется.</item>
     </plurals>
+    <string name="export_key_to_host">Экспорт ключа на хост</string>
+    <string name="export_key_to_host_hint">Добавляет публичную часть в ~/.ssh/authorized_keys на хосте с его текущими учётными данными. Больше ничего не меняется.</string>
+    <string name="no_hosts_in_this_vault">В этом хранилище нет SSH-хостов</string>
+    <string name="add_ssh_key_to_host">Добавить SSH-ключ на хост</string>
+    <string name="add_ssh_key_to_host_hint">Выберите ключ из связки, чтобы добавить его в ~/.ssh/authorized_keys на %1$s.</string>
+    <string name="no_keys_in_this_vault">В этом хранилище нет ключей</string>
+    <string name="key_added_to_authorized_keys">%1$s добавлен в authorized_keys на</string>
+    <string name="key_already_authorized">%1$s уже авторизован на</string>
 </resources>

@@ -1621,4 +1621,12 @@
         <item quantity="one">%d file will be streamed through this device, nothing is saved on it.</item>
         <item quantity="other">%d files will be streamed through this device, nothing is saved on it.</item>
     </plurals>
+    <string name="export_key_to_host">Export key to host</string>
+    <string name="export_key_to_host_hint">Adds the public half to ~/.ssh/authorized_keys on the host, using its current credentials. Nothing else is changed.</string>
+    <string name="no_hosts_in_this_vault">No SSH hosts in this vault</string>
+    <string name="add_ssh_key_to_host">Add SSH key to host</string>
+    <string name="add_ssh_key_to_host_hint">Choose a key from the keychain to add to ~/.ssh/authorized_keys on %1$s.</string>
+    <string name="no_keys_in_this_vault">No keys in this vault</string>
+    <string name="key_added_to_authorized_keys">%1$s added to authorized_keys on</string>
+    <string name="key_already_authorized">%1$s is already authorized on</string>
 </resources>

@@ -869,19 +869,43 @@ function KeychainBody({ vault }: { vault: ReturnType<typeof useActiveVault> }) {
           hosts={hosts.data ?? []}
           busy={op.isPending}
           onCancel={closeDialog}
-          onConfirm={(host) => {
+          onConfirm={(targets) => {
             const card = dialog.card;
             run(async () => {
-              const r = await ipc.keyExportToHost(card.id, host.id);
-              return r.outcome === "added"
-                ? tr("{label} added to authorized_keys on {target}", {
-                    label: card.label,
-                    target: r.target,
-                  })
-                : tr("{label} is already authorized on {target}", {
-                    label: card.label,
-                    target: r.target,
-                  });
+              const only = targets.length === 1 ? targets[0] : undefined;
+              if (only) {
+                const r = await ipc.keyExportToHost(card.id, only.id);
+                return r.outcome === "added"
+                  ? tr("{label} added to authorized_keys on {target}", {
+                      label: card.label,
+                      target: r.target,
+                    })
+                  : tr("{label} is already authorized on {target}", {
+                      label: card.label,
+                      target: r.target,
+                    });
+              }
+              let added = 0;
+              let present = 0;
+              const failed: string[] = [];
+              for (const h of targets) {
+                try {
+                  const r = await ipc.keyExportToHost(card.id, h.id);
+                  if (r.outcome === "added") added += 1;
+                  else present += 1;
+                } catch (e) {
+                  failed.push(`${h.label}: ${errorMessage(e)}`);
+                }
+              }
+              const summary = tr("{label}: added on {added}, already present on {present}", {
+                label: card.label,
+                added,
+                present,
+              });
+              if (failed.length) {
+                throw new Error(`${summary}. ${tr("Failed")}: ${failed.join("; ")}`);
+              }
+              return summary;
             });
           }}
         />
