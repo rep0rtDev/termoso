@@ -104,6 +104,10 @@ export interface Settings {
   postQuantumKex: boolean;
   /** Offer keys from the system SSH agent (SSH_AUTH_SOCK / Pageant) when authenticating. */
   useSshAgent: boolean;
+  /** Run Termoso's own SSH agent serving vault keys to local ssh/git. */
+  serveSshAgent: boolean;
+  /** Confirm every signature the agent makes. */
+  agentConfirm: boolean;
   recordSessions: boolean;
   logRetentionDays: number;
   /** Relock a password-protected vault after this many idle minutes; 0 = never. */
@@ -1903,7 +1907,8 @@ export type PromptRequest =
   | { kind: "password"; username: string; retry: boolean }
   | { kind: "passphrase"; key_label: string }
   | { kind: "pin"; key_label: string; retry: boolean; retries: number | null }
-  | { kind: "interactive"; name: string; instructions: string; questions: Question[] };
+  | { kind: "interactive"; name: string; instructions: string; questions: Question[] }
+  | { kind: "agent_sign"; key_label: string; fingerprint: string; process: string | null };
 
 export type PromptEvent = { id: Uuid; session_id: Uuid; target: string } & PromptRequest;
 
@@ -1916,6 +1921,7 @@ export type PromptAnswer =
   | { kind: "host_key"; decision: "reject" | "accept_once" | "accept_and_save" }
   | { kind: "secret"; value: string; remember: boolean }
   | { kind: "interactive"; answers: string[] }
+  | { kind: "confirm" }
   | { kind: "cancel" };
 
 // ───────────────────────────── SFTP ─────────────────────────────
@@ -2332,4 +2338,28 @@ export interface RotationRunResult {
   status: "done" | "failed";
   hostsUpdated: string[];
   hostsFailed: [string, string][];
+}
+
+// ───────────────────────────── SSH agent (ours) ─────────────────────────────
+
+export interface AgentServedKey {
+  label: string;
+  keyType: string;
+  fingerprint: string;
+}
+
+export interface AgentSkippedKey {
+  label: string;
+  reason: string;
+}
+
+/** `agent_server_status`: Termoso's own agent serving vault keys. */
+export interface AgentServerStatus {
+  running: boolean;
+  /** Socket path (Unix) or pipe name (Windows). */
+  endpoint: string | null;
+  /** Shell line pointing SSH_AUTH_SOCK at the agent. */
+  exportHint: string | null;
+  keys: AgentServedKey[];
+  skipped: AgentSkippedKey[];
 }

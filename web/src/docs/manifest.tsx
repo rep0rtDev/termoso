@@ -26,6 +26,7 @@ import KeyOutlinedIcon from "@mui/icons-material/KeyOutlined";
 import BadgeOutlinedIcon from "@mui/icons-material/BadgeOutlined";
 import FingerprintOutlinedIcon from "@mui/icons-material/FingerprintOutlined";
 import AlternateEmailOutlinedIcon from "@mui/icons-material/AlternateEmailOutlined";
+import VpnKeyOutlinedIcon from "@mui/icons-material/VpnKeyOutlined";
 import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import ConnectedTvOutlinedIcon from "@mui/icons-material/ConnectedTvOutlined";
@@ -115,6 +116,7 @@ const layout: { title: string; pages: Entry[] }[] = [
       ["keychain/identities", <BadgeOutlinedIcon />],
       ["keychain/security-keys", <FingerprintOutlinedIcon />],
       ["keychain/ssh-id", <AlternateEmailOutlinedIcon />],
+      ["keychain/ssh-agent", <VpnKeyOutlinedIcon />],
     ],
   },
   {

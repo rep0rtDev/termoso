@@ -88,6 +88,9 @@ pub async fn settings_set<R: Runtime>(
 ) -> Result<Settings> {
     let before = state.settings()?;
     state.save_settings(&settings)?;
+    if before.serve_ssh_agent != settings.serve_ssh_agent {
+        crate::agent_server::reconcile(&app).await?;
+    }
     if before.sync_credentials != settings.sync_credentials {
         account::set_credential_sync(&app, settings.sync_credentials).await?;
     } else if before.sync_conflict != settings.sync_conflict

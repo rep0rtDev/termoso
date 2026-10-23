@@ -2,6 +2,7 @@
 //! sessions; the webview only renders and forwards user input.
 
 mod account;
+mod agent_server;
 mod ai;
 mod avatars;
 mod backup;
@@ -204,6 +205,8 @@ pub fn run() {
             commands::edit_upload_now,
             commands::edit_close,
             commands_tools::keys_list,
+            agent_server::agent_server_status,
+            agent_server::agent_server_refresh,
             commands_tools::key_generate,
             commands_tools::key_import,
             commands_tools::fido2_devices,
@@ -444,6 +447,12 @@ pub(crate) async fn startup(app: tauri::AppHandle) {
         Ok(Some(a)) => tracing::info!(email = %a.email, "account session restored"),
         Ok(None) => {}
         Err(e) => tracing::warn!("account resume failed: {e}"),
+    }
+    if settings.serve_ssh_agent {
+        match agent_server::reconcile(&app).await {
+            Ok(s) => tracing::info!(keys = s.keys.len(), "ssh-agent serving vault keys"),
+            Err(e) => tracing::warn!("ssh-agent start failed: {e}"),
+        }
     }
     if settings.autostart_forwarding {
         match forwarding::autostart(&app).await {

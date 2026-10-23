@@ -40,6 +40,7 @@ pub struct AppState {
     pub prompts: PromptBroker,
     pub account: AccountRuntime,
     pub multiplayer: Multiplayer,
+    pub agent: crate::agent_server::AgentRuntime,
 }
 
 /// App Lock bookkeeping that outlives the store.
@@ -116,6 +117,7 @@ impl AppState {
             prompts: PromptBroker::default(),
             account: AccountRuntime::default(),
             multiplayer: Multiplayer::default(),
+            agent: Default::default(),
         })
     }
 
@@ -138,6 +140,7 @@ impl AppState {
             prompts: PromptBroker::default(),
             account: AccountRuntime::default(),
             multiplayer: Multiplayer::default(),
+            agent: Default::default(),
         }
     }
 
@@ -318,6 +321,11 @@ pub struct Settings {
     /// Offer keys held by the system SSH agent (`SSH_AUTH_SOCK`, Windows
     /// OpenSSH agent or Pageant) when authenticating.
     pub use_ssh_agent: bool,
+    /// Run our own SSH agent (socket / named pipe) serving the vault's keys
+    /// to local `ssh`, `git` and IDEs.
+    pub serve_ssh_agent: bool,
+    /// Ask in the UI before each signature our agent makes.
+    pub agent_confirm: bool,
     /// Record terminal output of every session into the encrypted log store.
     pub record_sessions: bool,
     /// Delete local recordings older than this many days (0 = keep).
@@ -423,6 +431,8 @@ impl Default for Settings {
             record_sessions: false,
             log_retention_days: 0,
             autostart_forwarding: true,
+            serve_ssh_agent: false,
+            agent_confirm: true,
             minimize_to_tray: false,
             sync_conflict: "newest_wins".into(),
             sync_interval_seconds: 300,

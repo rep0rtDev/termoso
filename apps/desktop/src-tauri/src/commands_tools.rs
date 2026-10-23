@@ -48,8 +48,22 @@ use crate::update::{self, UpdateInfo};
 // ───────────────────────────── keychain ─────────────────────────────
 
 #[tauri::command]
-pub async fn keys_list(state: State<'_, AppState>, vault_id: Option<Uuid>) -> Result<Vec<KeyCard>> {
-    keychain::keys_list(&*state.store()?, vault_id)
+pub async fn keys_list<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    vault_id: Option<Uuid>,
+) -> Result<Vec<KeyCard>> {
+    let cards = keychain::keys_list(&*state.store()?, vault_id)?;
+    // The keychain page lists after every change: keep the agent in step.
+    if state.settings().map(|s| s.serve_ssh_agent).unwrap_or(false) {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = crate::agent_server::reconcile(&app).await {
+                tracing::warn!("ssh-agent refresh failed: {e}");
+            }
+        });
+    }
+    Ok(cards)
 }
 
 #[tauri::command]
