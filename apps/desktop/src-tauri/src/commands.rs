@@ -54,6 +54,13 @@ pub fn app_quit<R: Runtime>(app: AppHandle<R>) {
 
 /// Files the app was launched with (file associations, "Open with…"),
 /// reported once; later ones arrive as the `files-opened` event.
+/// Links the command line asked for at launch (`termoso ssh …`), reported once;
+/// later ones arrive as the `quick-action` event.
+#[tauri::command]
+pub fn launch_links(links: tauri::State<'_, crate::quick::LaunchLinks>) -> Vec<String> {
+    links.take()
+}
+
 #[tauri::command]
 pub fn launch_files(files: tauri::State<'_, crate::quick::LaunchFiles>) -> Vec<String> {
     files.take()

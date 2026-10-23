@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { HostCard } from "@/ipc/types";
 import {
+  connectQuickTarget,
   hostLink,
+  matchConnectHost,
   looksLikeTarget,
   parseKnownHostName,
   parseLink,
@@ -221,5 +223,85 @@ describe("links", () => {
     expect(parseLink(`https://cloud.example.com/invite/${ID}#${secret}`)).toMatchObject({
       kind: "unsupported",
     });
+  });
+});
+
+describe("connect and sftp links (command line)", () => {
+  const prod = {
+    id: ID,
+    vaultId: null,
+    label: "Prod web",
+    address: "10.0.1.12",
+    port: 22,
+    username: "deploy",
+    protocol: "ssh",
+    telnetPort: null,
+  } as unknown as HostCard;
+
+  it("parses termoso://connect with user, port and protocol", () => {
+    expect(parseLink("termoso://connect?host=edge&user=root&port=2200&protocol=ssh")).toEqual({
+      kind: "connect",
+      host: "edge",
+      username: "root",
+      port: 2200,
+      protocol: "ssh",
+    });
+    expect(parseLink("termoso://connect?host=prod+web")).toEqual({
+      kind: "connect",
+      host: "prod web",
+      username: null,
+      port: null,
+      protocol: null,
+    });
+    expect(parseLink("termoso://connect?host=x&port=99999").kind).toBe("unsupported");
+    expect(parseLink("termoso://connect?host=x&protocol=ftp").kind).toBe("unsupported");
+    expect(parseLink("termoso://connect").kind).toBe("unsupported");
+  });
+
+  it("parses termoso://sftp with and without a host", () => {
+    expect(parseLink("termoso://sftp?host=prod-web")).toEqual({
+      kind: "action",
+      action: "sftp",
+      host: "prod-web",
+    });
+    expect(parseLink("termoso://sftp")).toEqual({ kind: "action", action: "sftp" });
+  });
+
+  it("matches saved hosts by label, then address", () => {
+    const link = parseLink("termoso://connect?host=prod%20web");
+    expect(link.kind).toBe("connect");
+    if (link.kind !== "connect") return;
+    expect(matchConnectHost(link, [prod])).toBe(prod);
+    const byAddr = parseLink("termoso://connect?host=deploy%4010.0.1.12&protocol=ssh");
+    if (byAddr.kind !== "connect") throw new Error("connect");
+    expect(matchConnectHost(byAddr, [prod])).toBe(prod);
+    const otherUser = parseLink("termoso://connect?host=root%4010.0.1.12&protocol=ssh");
+    if (otherUser.kind !== "connect") throw new Error("connect");
+    expect(matchConnectHost(otherUser, [prod])).toBeNull();
+    const telnet = parseLink("termoso://connect?host=10.0.1.12&protocol=telnet");
+    if (telnet.kind !== "connect") throw new Error("connect");
+    expect(matchConnectHost(telnet, [prod])).toBeNull();
+  });
+
+  it("falls back to an ad hoc target", () => {
+    const link = parseLink("termoso://connect?host=admin%40edge.example.io%3A2222&protocol=ssh");
+    if (link.kind !== "connect") throw new Error("connect");
+    expect(connectQuickTarget(link)).toEqual({
+      kind: "quick",
+      address: "edge.example.io",
+      username: "admin",
+      port: 2222,
+      protocol: "ssh",
+    });
+    const flags = parseLink("termoso://connect?host=edge&user=root&port=2200&protocol=ssh");
+    if (flags.kind !== "connect") throw new Error("connect");
+    expect(connectQuickTarget(flags)).toMatchObject({
+      address: "edge",
+      username: "root",
+      port: 2200,
+    });
+    const label = parseLink("termoso://connect?host=prod+web");
+    if (label.kind !== "connect") throw new Error("connect");
+    expect(connectQuickTarget(label)).toBeNull();
   });
 });

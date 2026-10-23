@@ -234,6 +234,7 @@ export const localShells = () => invoke<string[]>("local_shells");
 export const deepLinksRegister = () => invoke<string[]>("deep_links_register");
 /** Files passed on the command line at launch (file associations), reported once. */
 export const launchFiles = () => invoke<string[]>("launch_files");
+export const launchLinks = () => invoke<string[]>("launch_links");
 
 export const historyConnections = (limit = 50) =>
   invoke<VaultConnection[]>("history_connections", { limit });

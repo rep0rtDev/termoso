@@ -6,6 +6,7 @@ mod agent_server;
 mod ai;
 mod avatars;
 mod backup;
+mod cli;
 mod cloud;
 mod cloud_sync;
 mod commands;
@@ -47,6 +48,23 @@ use crate::state::AppState;
 use crate::update::UpdateHub;
 
 pub fn run() {
+    if let Some(exit) = cli::early_exit(std::env::args().skip(1)) {
+        // Release builds have no console of their own on Windows: borrow the parent's.
+        #[cfg(windows)]
+        let _ = unsafe {
+            windows::Win32::System::Console::AttachConsole(
+                windows::Win32::System::Console::ATTACH_PARENT_PROCESS,
+            )
+        };
+        match exit {
+            cli::EarlyExit::Stdout(text) => println!("{text}"),
+            cli::EarlyExit::Stderr(text) => {
+                eprintln!("{text}");
+                std::process::exit(2);
+            }
+        }
+        return;
+    }
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_env("TERMOSO_LOG")
@@ -70,6 +88,7 @@ pub fn run() {
         // its arguments to the running instance instead of starting another.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             quick::forward_files(app, &args);
+            quick::forward_links(app, &args);
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
                 let _ = w.unminimize();
@@ -97,6 +116,7 @@ pub fn run() {
             app.manage(state);
             app.manage(UpdateHub::default());
             app.manage(quick::LaunchFiles::from_args(std::env::args().skip(1)));
+            app.manage(quick::LaunchLinks::from_args(std::env::args().skip(1)));
             #[cfg(target_os = "macos")]
             if let Err(e) = quick::install_app_menu(app) {
                 tracing::debug!(error = %e, "app menu not installed");
@@ -117,6 +137,7 @@ pub fn run() {
             commands::app_quit,
             commands::deep_links_register,
             commands::launch_files,
+            commands::launch_links,
             commands::settings_get,
             commands::settings_set,
             security::vault_status,

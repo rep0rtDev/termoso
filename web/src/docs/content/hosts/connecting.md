@@ -20,6 +20,26 @@ The same field filters the host list as you type, and <kbd>Ctrl</kbd>+<kbd>J</kb
 
 ![The Hosts screen](/docs/img/desktop-hosts.png)
 
+## Command line
+
+The desktop binary doubles as a launcher, so a host can be opened from a shell, a script or another tool:
+
+```
+termoso ssh deploy@10.0.1.12          # ad hoc, or the saved host with that address and user
+termoso ssh -l root -p 2200 edge      # OpenSSH-style flags
+termoso ssh "prod web"                # a saved host by label
+termoso telnet switch.lab:23
+termoso sftp prod-web                 # SFTP browser on a saved host
+termoso open termoso://host/<id>      # a host link copied from the app
+termoso local                         # local terminal
+termoso new                           # new host dialog
+termoso --version
+```
+
+Labels are matched case-insensitively, then addresses; with no match the connection is ad hoc, like quick connect. If Termoso is already running, the command goes to that window instead of starting a second one; otherwise the app starts and opens it. Files on the command line (keys, colour schemes, `ssh_config`) and `ssh://` / `telnet://` / `termoso://` links keep working as before.
+
+Where the binary is: `termoso` on the `PATH` from the deb/rpm packages; `/Applications/Termoso.app/Contents/MacOS/Termoso` on macOS (add an alias); `%LOCALAPPDATA%\Programs\Termoso\Termoso.exe` from the Windows installer (add that folder to `PATH` to type `termoso` in a shell; `--help` and `--version` print to the console you ran it from).
+
 ## Saved hosts
 
 **New host** (or <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>) opens the details panel. The address is all that is required; everything else has a sensible default and is saved as you type.

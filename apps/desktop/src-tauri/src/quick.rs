@@ -24,8 +24,37 @@ impl LaunchFiles {
     }
 }
 
+/// Links the first launch's command line asked for (`termoso ssh …`), handed
+/// to the web view when it asks, like [`LaunchFiles`].
+#[derive(Default)]
+pub struct LaunchLinks(Mutex<Vec<String>>);
+
+impl LaunchLinks {
+    pub fn from_args<I: IntoIterator<Item = String>>(args: I) -> Self {
+        Self(Mutex::new(crate::cli::links_from_args(args)))
+    }
+
+    pub fn take(&self) -> Vec<String> {
+        std::mem::take(&mut *self.0.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+}
+
+/// A second instance started as `termoso ssh …`: the link goes to the running window.
+pub fn forward_links<R: Runtime>(app: &AppHandle<R>, args: &[String]) {
+    for link in crate::cli::links_from_args(args.iter().skip(1).cloned()) {
+        let _ = app.emit("quick-action", link);
+    }
+}
+
 /// Arguments that are existing files (URLs and flags go to the deep-link plugin).
 pub fn file_args<I: IntoIterator<Item = String>>(args: I) -> Vec<String> {
+    let args: Vec<String> = args.into_iter().collect();
+    if args
+        .first()
+        .is_some_and(|a| crate::cli::SUBCOMMANDS.contains(&a.as_str()))
+    {
+        return Vec::new();
+    }
     args.into_iter()
         .filter(|a| !a.starts_with('-') && !a.contains("://"))
         .filter(|a| PathBuf::from(a).is_file())
