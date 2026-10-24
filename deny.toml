@@ -37,6 +37,13 @@ ignore = [
   { id = "RUSTSEC-2025-0098", reason = "unic-* via tera (uniffi-bindgen templates); compile-time only" },
   { id = "RUSTSEC-2025-0100", reason = "unic-* via tera (uniffi-bindgen templates); compile-time only" },
   { id = "RUSTSEC-2026-0374", reason = "basic-toml via askama_derive (uniffi-bindgen templates); compile-time only, parses our own templates" },
+  # crypto-bigint 0.5 timing variability. Fixed only in the 0.7 line (0.7.6, which
+  # we use for russh/rsa); aws-sigv4 and elliptic-curve 0.13 still pin 0.5 and no
+  # 0.5.x fix exists. On the server 0.5 only signs S3 requests (SigV4 is HMAC, the
+  # bigint is a hashing helper, no secret-dependent arithmetic); on clients it
+  # backs ECDSA host-key verification (public-key ops). Drop when aws-sigv4 /
+  # elliptic-curve move to 0.7.
+  { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5 pinned by aws-sigv4 + elliptic-curve 0.13; no 0.5 fix; no secret-dependent use on our paths" },
   # zip < 9 extract(): symlink escape / SUID bits / permissions through
   # symlinks. No fixed release reachable: utoipa-swagger-ui 9 and 10 pin
   # zip 3 / 8 as a *build* dependency (it unpacks the vendored Swagger UI
