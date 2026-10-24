@@ -1126,12 +1126,17 @@ pub fn export_registry() -> Result<String> {
     use std::process::Command;
     let dir = std::env::temp_dir().join(format!("termoso-putty-{}.reg", uuid::Uuid::new_v4()));
     let mut cmd = Command::new("reg");
-    cmd.args(["export", REGISTRY_ORIGIN, &dir.to_string_lossy(), "/y"]);
+    cmd.args([
+        "export",
+        putty::REGISTRY_ORIGIN,
+        &dir.to_string_lossy(),
+        "/y",
+    ]);
     crate::sessions::hide_console_window(&mut cmd);
     let status = cmd.output()?;
     if !status.status.success() {
         let _ = std::fs::remove_file(&dir);
-        return Err(super::not_found(
+        return Err(DesktopError::invalid(
             "PuTTY has no saved sessions in the registry (or PuTTY is not installed)",
         ));
     }
