@@ -534,6 +534,11 @@ private fun ActiveSession(
 
     var panelExpanded by gridShown
     var imeShown by remember { mutableStateOf(false) }
+    // The system hides the keyboard on its own (home, recents, a swipe-down); follow the real
+    // inset state so the next tap shows the keyboard instead of "hiding" one that is already gone.
+    @OptIn(ExperimentalLayoutApi::class)
+    val imeVisibleNow = WindowInsets.isImeVisible
+    LaunchedEffect(imeVisibleNow) { imeShown = imeVisibleNow }
     var hiddenInput by remember { mutableStateOf(false) }
     var snippetPicker by remember { mutableStateOf(false) }
     var askAi by remember { mutableStateOf(false) }
